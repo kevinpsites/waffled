@@ -23,7 +23,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] 1.4 *(optional)* Terraform **GCP**: project + enable Calendar API
 
 ## M2 — Backend skeleton & local stack
-- [ ] 2.1 `docker-compose.yml`: Postgres (logical replication) + Caddy + `.env.example` + `justfile` (up/down/logs)
+- [x] 2.1 `docker-compose.yml`: Postgres (logical replication) + Caddy + `.env.example` + `justfile` (up/down/logs)
 - [ ] 2.2 `api` (lambda-api): `/healthz` + Auth0 JWT validation middleware (extract `household_id`); Dockerfile; behind Caddy
 - [ ] 2.3 DB migration tooling + first migration: `households`, `members`, `persons`
 - [ ] 2.4 `backup` service (pg_dump→S3) + `just restore-check` (restore into throwaway PG, assert row counts)
