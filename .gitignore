@@ -1,0 +1,31 @@
+# secrets — never commit
+.env
+.env.*
+!.env.example
+*.tfvars
+!*.example.tfvars
+secrets/
+*.p8
+*.pem
+*-key.json
+
+# terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# node
+node_modules/
+dist/
+build/
+*.log
+.DS_Store
+
+# ios
+ios/**/xcuserdata/
+ios/**/*.xcuserstate
+ios/**/DerivedData/
+
+# docker
+postgres/data/
