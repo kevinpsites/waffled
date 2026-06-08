@@ -11,11 +11,12 @@ import {
   inferProvider,
 } from './households'
 import { registerPersonRoutes } from './persons'
+import { registerPowerSyncRoutes } from './powersync'
 
 const api = createAPI()
 
-// Routes that skip auth.
-const PUBLIC_PATHS = new Set(['/healthz'])
+// Routes that skip auth. /api/auth/keys is the JWKS PowerSync fetches.
+const PUBLIC_PATHS = new Set(['/healthz', '/api/auth/keys'])
 
 // Auth gate — verifies the token (sets req.principal) for every non-public route.
 api.use(async (req: Request, res: Response, next: NextFunction) => {
@@ -98,6 +99,9 @@ api.post('/api/households', async (req: Request, res: Response) => {
 
 // Members CRUD (/api/persons…)
 registerPersonRoutes(api)
+
+// PowerSync auth (JWKS + token endpoint)
+registerPowerSyncRoutes(api)
 
 // Error handler — lambda-api treats a 4-arg middleware as the error sink.
 api.use(
