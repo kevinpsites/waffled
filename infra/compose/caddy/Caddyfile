@@ -10,9 +10,9 @@
 	handle /api/* {
 		reverse_proxy api:3000
 	}
-	# handle /powersync/* {        # uncommented in chunk 4.1
-	#	reverse_proxy powersync:8080
-	# }
+	# PowerSync (chunk 4.1) is exposed directly on its own published port
+	# (POWERSYNC_PORT, default 8090); clients get its URL from /api/powersync/token.
+	# Front it with its own hostname when public ingress lands (M7).
 
 	# static frontend (placeholder until the web build lands)
 	root * /srv

@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://unpkg.com/@powersync/service-sync-rules@latest/schema/sync_rules.json
+#
+# Sync rules: one bucket per household. The household_id comes from the client's
+# PowerSync token (minted by our api with the caller's real household_id), so a
+# client only ever receives its own household's rows. Soft-deleted rows are
+# filtered out so deletes propagate as removals on the client.
+#
+# As more domains become offline-synced, add their tables to the publication
+# (ALTER PUBLICATION powersync ...) and a matching `data:` query here.
+
+bucket_definitions:
+  household:
+    parameters: SELECT request.jwt() ->> 'household_id' as household_id
+    data:
+      - SELECT * FROM households WHERE id = bucket.household_id AND deleted_at IS NULL
+      - SELECT * FROM persons WHERE household_id = bucket.household_id AND deleted_at IS NULL

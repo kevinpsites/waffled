@@ -35,7 +35,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] 3.3 Kiosk device pairing + kid profile tokens
 
 ## M4 — Offline foundation (de-risk #1)
-- [ ] 4.1 Add self-hosted `powersync` service; `config.yaml` + `sync-rules.yaml` (household bucket); enable replication
+- [x] 4.1 Self-hosted `powersync` service + `service.yaml`/`sync-config.yaml` (one `household` bucket scoped by the `household_id` JWT claim); logical-replication publication (4.1a); api as PowerSync token authority — JWKS + `/api/powersync/token` (4.1b); service replicating `households`+`persons`, verified healthy (4.1c). *Client sync E2E lands in 4.2.*
 - [ ] 4.2 iOS skeleton (SwiftUI) + Auth0 login + PowerSync Swift SDK syncing `members`; **demo airplane-mode read/write + reconnect**
 
 ## M5 — Calendar (de-risk #2, the core tenet)
@@ -63,11 +63,12 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 ---
 
 ### Current focus
-**Through M3.2 done** — repo/data-model, compose stack, api (TS + JWT), test harness,
-migrations + identity tables, first-login provisioning, and members CRUD. Onboard via
-`POST /api/households`, then manage the family via `/api/persons` (household-scoped,
-admin-gated mutations). Still **zero external dependencies**: local HS256 via `mint-token`,
-schema via `just migrate`, **39 tests green** (in-process + Testcontainers + wiremock). Next
-options: **3.3** (kiosk device pairing + kid profile tokens), **M4.1** (PowerSync — the
-offline pillar, the big de-risk), or **2.4** (pg_dump→S3 backup, which opens the
-AWS/Terraform surface). `0.2` (Google console) stays parallel, not a blocker until M5.
+**Through M4.1 done** — repo/data-model, compose stack, api (TS + JWT), test harness,
+migrations + identity tables, first-login provisioning, members CRUD, and the **PowerSync
+offline pillar stood up** (service replicating households+persons, household-scoped sync
+rules, api as token authority). Still runnable with **zero external dependencies**: local
+HS256 via `mint-token`, schema via `just migrate`, **45 tests green**; PowerSync verified
+healthy + replicating via a live compose bring-up. Next: **4.2** (iOS skeleton + PowerSync
+Swift SDK → the airplane-mode read/write demo that proves the whole offline loop), or
+**3.3** (kiosk pairing), or **2.4** (backups → opens AWS/Terraform). `0.2` (Google console)
+stays parallel, not a blocker until M5.

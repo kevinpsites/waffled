@@ -47,6 +47,8 @@ services:
       LOCAL_JWT_SECRET: ${LOCAL_JWT_SECRET:-nook-local-dev-secret-change-me}
       # Wired now for chunk 2.3 (migrations); unused until the api talks to PG.
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Returned by /api/powersync/token so clients know where to connect.
+      POWERSYNC_PUBLIC_URL: ${POWERSYNC_PUBLIC_URL:-http://localhost:8090}
       # --- switch to Auth0 (RS256): set these, then restart the api ---
       # AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       # AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
@@ -57,6 +59,36 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  powersync:
+    image: journeyapps/powersync-service:1.22.0
+    container_name: nook-powersync
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    command: ['start', '-r', 'unified']    # API server + replication in one container
+    volumes:
+      - ./powersync:/config:ro             # service.yaml + sync-config.yaml
+    environment:
+      POWERSYNC_CONFIG_PATH: /config/service.yaml
+      NODE_OPTIONS: --max-old-space-size=1000
+      PS_PORT: 8080
+      # Replicate from our DB (needs the `powersync` publication: run `just migrate`).
+      PS_DATA_SOURCE_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # PowerSync's own bucket storage lives in the powersync_storage database.
+      PS_STORAGE_SOURCE_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/powersync_storage
+      # JWKS our api serves; clients present tokens minted by /api/powersync/token.
+      PS_JWKS_URL: ${PS_JWKS_URL:-http://api:3000/api/auth/keys}
+    ports:
+      - "${POWERSYNC_PORT:-8090}:8080"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8080/probes/liveness').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
     restart: unless-stopped
 
   caddy:

@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://unpkg.com/@powersync/service-schema@latest/json-schema/powersync-config.json
+#
+# PowerSync Service config. PS_* values are injected by docker-compose via the
+# `!env` custom tag (only PS_-prefixed vars can be substituted).
+
+telemetry:
+  # Private family app — opt out of anonymized usage reporting.
+  disable_telemetry_sharing: true
+
+# Source database we replicate from (our Postgres + the `powersync` publication
+# created in migration 0003). wal_level=logical is set on the server in compose.
+replication:
+  connections:
+    - type: postgresql
+      uri: !env PS_DATA_SOURCE_URI
+      sslmode: disable
+
+# PowerSync's own bucket storage — a dedicated database on the same Postgres
+# server (powersync_storage, created by the compose init script).
+storage:
+  type: postgresql
+  uri: !env PS_STORAGE_SOURCE_URI
+  sslmode: disable
+
+port: !env PS_PORT
+
+sync_config:
+  path: sync-config.yaml
+
+# Clients authenticate with short-lived RS256 tokens our api mints; PowerSync
+# validates them against the api's JWKS. allow_local_jwks permits the local
+# http:// JWKS URL (api:3000) in dev — production uses a real hostname over TLS.
+client_auth:
+  jwks_uri: !env PS_JWKS_URL
+  allow_local_jwks: true
+  audience: ['powersync']
