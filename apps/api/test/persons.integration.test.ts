@@ -45,6 +45,7 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 
 const kevin = mint('dev|kevin')
 const kelly = mint('dev|kelly')
+let kevinHouseholdId = ''
 
 beforeAll(async () => {
   pg = await new PostgreSqlContainer('postgres:16').start()
@@ -56,17 +57,33 @@ beforeAll(async () => {
   closePool = (await import('../src/db')).closePool
 
   // Two separate households to prove isolation.
-  await call('POST', '/api/households', kevin, {
+  const k = await call('POST', '/api/households', kevin, {
     name: 'Sites',
     timezone: 'America/Chicago',
     person: { name: 'Kevin' },
   })
+  kevinHouseholdId = JSON.parse(k.body).household.id
   await call('POST', '/api/households', kelly, {
     name: 'Kelly HQ',
     timezone: 'UTC',
     person: { name: 'Kelly' },
   })
 })
+
+// Seed a logged-in non-admin (teen) directly — the API has no invite flow yet.
+async function seedNonAdmin(sub: string, householdId: string): Promise<void> {
+  const { query } = await import('../src/db')
+  const p = await query<{ id: string }>(
+    `insert into persons (household_id, name, member_type, is_admin)
+     values ($1,'Teen','teen',false) returning id`,
+    [householdId]
+  )
+  await query(
+    `insert into identities (household_id, person_id, provider, auth0_user_id)
+     values ($1,$2,'password',$3)`,
+    [householdId, p.rows[0].id, sub]
+  )
+}
 
 afterAll(async () => {
   await closePool?.()
@@ -92,5 +109,47 @@ describe('GET /api/persons', () => {
     const theirs = JSON.parse((await call('GET', '/api/persons', kelly)).body).persons
     expect(mine.map((p: { name: string }) => p.name)).toEqual(['Kevin'])
     expect(theirs.map((p: { name: string }) => p.name)).toEqual(['Kelly'])
+  })
+})
+
+describe('POST /api/persons', () => {
+  it('lets an admin add a kid, scoped to their household', async () => {
+    const res = await call('POST', '/api/persons', kevin, {
+      name: 'Ada',
+      memberType: 'kid',
+      avatarEmoji: '🦊',
+      colorHex: '#FFCC00',
+    })
+    expect(res.statusCode).toBe(201)
+    const { person } = JSON.parse(res.body)
+    expect(person).toMatchObject({
+      name: 'Ada',
+      memberType: 'kid',
+      isAdmin: false,
+      avatarEmoji: '🦊',
+      householdId: kevinHouseholdId,
+    })
+
+    const names = JSON.parse((await call('GET', '/api/persons', kevin)).body).persons.map(
+      (p: { name: string }) => p.name
+    )
+    expect(names).toContain('Ada')
+    expect(names).toContain('Kevin')
+  })
+
+  it('rejects a missing or invalid memberType (400)', async () => {
+    expect((await call('POST', '/api/persons', kevin, { name: 'NoType' })).statusCode).toBe(400)
+    expect(
+      (await call('POST', '/api/persons', kevin, { name: 'Bad', memberType: 'robot' })).statusCode
+    ).toBe(400)
+  })
+
+  it('forbids a non-admin member from adding people (403)', async () => {
+    await seedNonAdmin('dev|teen', kevinHouseholdId)
+    const res = await call('POST', '/api/persons', mint('dev|teen'), {
+      name: 'Sneaky',
+      memberType: 'kid',
+    })
+    expect(res.statusCode).toBe(403)
   })
 })
