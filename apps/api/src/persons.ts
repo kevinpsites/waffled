@@ -6,6 +6,24 @@ import { requireTenant, requireAdmin, presentPerson, type PersonRow } from './ho
 type Api = ReturnType<typeof createAPI>
 
 const MEMBER_TYPES = new Set(['adult', 'teen', 'kid'])
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// camelCase API field → persons column. Anything not here can't be patched.
+const UPDATABLE: Record<string, string> = {
+  name: 'name',
+  memberType: 'member_type',
+  isAdmin: 'is_admin',
+  avatarType: 'avatar_type',
+  avatarEmoji: 'avatar_emoji',
+  avatarUrl: 'avatar_url',
+  colorHex: 'color_hex',
+  paletteSlot: 'palette_slot',
+  birthday: 'birthday',
+  dietaryNotes: 'dietary_notes',
+  rewardStyle: 'reward_style',
+  showOnKiosk: 'show_on_kiosk',
+  sortOrder: 'sort_order',
+}
 
 export async function listPersons(householdId: string): Promise<PersonRow[]> {
   const { rows } = await query<PersonRow>(
@@ -52,6 +70,40 @@ export async function createPerson(
   return rows[0]
 }
 
+export async function getPerson(householdId: string, id: string): Promise<PersonRow | null> {
+  const { rows } = await query<PersonRow>(
+    `select * from persons where household_id = $1 and id = $2 and deleted_at is null`,
+    [householdId, id]
+  )
+  return rows[0] ?? null
+}
+
+// Patch is a whitelisted, household-scoped update. Returns null if no such
+// (live) person in this household. Caller validates the patch first.
+export async function updatePerson(
+  householdId: string,
+  id: string,
+  patch: Record<string, unknown>
+): Promise<PersonRow | null> {
+  const sets: string[] = []
+  const values: unknown[] = []
+  let i = 1
+  for (const [field, column] of Object.entries(UPDATABLE)) {
+    if (field in patch && patch[field] !== undefined) {
+      sets.push(`${column} = $${i++}`)
+      values.push(patch[field])
+    }
+  }
+  values.push(householdId, id)
+  const { rows } = await query<PersonRow>(
+    `update persons set ${sets.join(', ')}
+       where household_id = $${i++} and id = $${i} and deleted_at is null
+       returning *`,
+    values
+  )
+  return rows[0] ?? null
+}
+
 export function registerPersonRoutes(api: Api): void {
   // List everyone in the household (any member may read).
   api.get('/api/persons', async (req: Request) => {
@@ -73,5 +125,35 @@ export function registerPersonRoutes(api: Api): void {
     }
     const person = await createPerson(tenant.householdId, body as CreatePersonInput)
     return res.status(201).json({ person: presentPerson(person) })
+  })
+
+  // Read one member by id (any member may read; 404 if not in this household).
+  api.get('/api/persons/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
+    const person = await getPerson(tenant.householdId, id)
+    if (!person) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
+    return { person: presentPerson(person) }
+  })
+
+  // Update a member (admins only).
+  api.patch('/api/persons/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
+
+    const patch = (req.body ?? {}) as Record<string, unknown>
+    if (patch.memberType !== undefined && !MEMBER_TYPES.has(String(patch.memberType))) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid memberType' })
+    }
+    if (!Object.keys(UPDATABLE).some((field) => field in patch)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields provided' })
+    }
+
+    const person = await updatePerson(tenant.householdId, id, patch)
+    if (!person) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
+    return { person: presentPerson(person) }
   })
 }

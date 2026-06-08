@@ -153,3 +153,64 @@ describe('POST /api/persons', () => {
     expect(res.statusCode).toBe(403)
   })
 })
+
+describe('GET / PATCH /api/persons/:id', () => {
+  let targetId = ''
+
+  beforeAll(async () => {
+    const res = await call('POST', '/api/persons', kevin, {
+      name: 'Bram',
+      memberType: 'kid',
+      colorHex: '#111111',
+    })
+    targetId = JSON.parse(res.body).person.id
+  })
+
+  it('reads one member by id', async () => {
+    const res = await call('GET', `/api/persons/${targetId}`, kevin)
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).person).toMatchObject({ id: targetId, name: 'Bram' })
+  })
+
+  it('updates whitelisted fields', async () => {
+    const res = await call('PATCH', `/api/persons/${targetId}`, kevin, {
+      name: 'Bram Jr',
+      colorHex: '#222222',
+      sortOrder: 5,
+    })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).person).toMatchObject({ name: 'Bram Jr', colorHex: '#222222' })
+  })
+
+  it('rejects an invalid memberType (400) and an empty patch (400)', async () => {
+    expect(
+      (await call('PATCH', `/api/persons/${targetId}`, kevin, { memberType: 'alien' })).statusCode
+    ).toBe(400)
+    expect((await call('PATCH', `/api/persons/${targetId}`, kevin, {})).statusCode).toBe(400)
+  })
+
+  it('404s for an unknown or non-uuid id', async () => {
+    expect((await call('GET', '/api/persons/not-a-uuid', kevin)).statusCode).toBe(404)
+    expect(
+      (
+        await call('PATCH', '/api/persons/00000000-0000-0000-0000-000000000000', kevin, {
+          name: 'x',
+        })
+      ).statusCode
+    ).toBe(404)
+  })
+
+  it('is household-scoped: another household cannot read or edit (404)', async () => {
+    expect((await call('GET', `/api/persons/${targetId}`, kelly)).statusCode).toBe(404)
+    expect((await call('PATCH', `/api/persons/${targetId}`, kelly, { name: 'hax' })).statusCode).toBe(
+      404
+    )
+  })
+
+  it('forbids a non-admin from editing (403)', async () => {
+    await seedNonAdmin('dev|teen2', kevinHouseholdId)
+    expect(
+      (await call('PATCH', `/api/persons/${targetId}`, mint('dev|teen2'), { name: 'x' })).statusCode
+    ).toBe(403)
+  })
+})
