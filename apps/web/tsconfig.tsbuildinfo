@@ -1,0 +1,1 @@
+{"root":["./src/main.tsx","./src/vite-env.d.ts","./src/kiosk/kiosk.test.tsx","./src/kiosk/kiosk.tsx","./src/kiosk/kioskstage.tsx","./src/kiosk/icons.tsx","./src/kiosk/components/rail.tsx","./src/kiosk/components/topbar.tsx","./src/test/setup.ts"],"version":"5.9.3"}

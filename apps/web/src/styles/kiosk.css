@@ -1,0 +1,43 @@
+/* The kiosk renders at a fixed 1280×800 and is scaled to fit any viewport
+   (ported from the design's Nook Tablet.html stage). On the real 1280×800
+   counter tablet the scale is 1 and it fills the screen exactly. */
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #0c0b0a;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#root {
+  position: fixed;
+  inset: 0;
+}
+
+.stage-wrap {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.stage {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1280px;
+  height: 800px;
+  transform-origin: center center;
+  border-radius: 26px;
+  overflow: hidden;
+  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.5);
+}
+
+/* main column next to the nav rail */
+.kiosk-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
