@@ -46,6 +46,7 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 const kevin = mint('dev|kevin')
 const kelly = mint('dev|kelly')
 let kevinHouseholdId = ''
+let kevinOwnerId = ''
 
 beforeAll(async () => {
   pg = await new PostgreSqlContainer('postgres:16').start()
@@ -63,6 +64,7 @@ beforeAll(async () => {
     person: { name: 'Kevin' },
   })
   kevinHouseholdId = JSON.parse(k.body).household.id
+  kevinOwnerId = JSON.parse(k.body).person.id
   await call('POST', '/api/households', kelly, {
     name: 'Kelly HQ',
     timezone: 'UTC',
@@ -212,5 +214,46 @@ describe('GET / PATCH /api/persons/:id', () => {
     expect(
       (await call('PATCH', `/api/persons/${targetId}`, mint('dev|teen2'), { name: 'x' })).statusCode
     ).toBe(403)
+  })
+})
+
+describe('DELETE /api/persons/:id', () => {
+  let victimId = ''
+
+  beforeAll(async () => {
+    const res = await call('POST', '/api/persons', kevin, { name: 'Temp', memberType: 'kid' })
+    victimId = JSON.parse(res.body).person.id
+  })
+
+  it('soft-deletes a member (204) and drops them from the list', async () => {
+    expect((await call('DELETE', `/api/persons/${victimId}`, kevin)).statusCode).toBe(204)
+    expect((await call('GET', `/api/persons/${victimId}`, kevin)).statusCode).toBe(404)
+    const names = JSON.parse((await call('GET', '/api/persons', kevin)).body).persons.map(
+      (p: { name: string }) => p.name
+    )
+    expect(names).not.toContain('Temp')
+  })
+
+  it('refuses to delete the household owner (409)', async () => {
+    expect((await call('DELETE', `/api/persons/${kevinOwnerId}`, kevin)).statusCode).toBe(409)
+  })
+
+  it('404s for an already-deleted or unknown id', async () => {
+    expect((await call('DELETE', `/api/persons/${victimId}`, kevin)).statusCode).toBe(404)
+    expect(
+      (await call('DELETE', '/api/persons/00000000-0000-0000-0000-000000000000', kevin)).statusCode
+    ).toBe(404)
+  })
+
+  it('is household-scoped (404 across households)', async () => {
+    const created = await call('POST', '/api/persons', kevin, { name: 'Other', memberType: 'kid' })
+    const otherId = JSON.parse(created.body).person.id
+    expect((await call('DELETE', `/api/persons/${otherId}`, kelly)).statusCode).toBe(404)
+  })
+
+  it('forbids a non-admin from deleting (403)', async () => {
+    const created = await call('POST', '/api/persons', kevin, { name: 'Three', memberType: 'kid' })
+    const id = JSON.parse(created.body).person.id
+    expect((await call('DELETE', `/api/persons/${id}`, mint('dev|teen'))).statusCode).toBe(403)
   })
 })

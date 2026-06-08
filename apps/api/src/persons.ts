@@ -104,6 +104,24 @@ export async function updatePerson(
   return rows[0] ?? null
 }
 
+export type DeleteResult = 'deleted' | 'not_found' | 'is_owner'
+
+// Soft-delete a member. The household owner can't be removed.
+export async function softDeletePerson(householdId: string, id: string): Promise<DeleteResult> {
+  const owner = await query<{ owner_person_id: string | null }>(
+    `select owner_person_id from households where id = $1`,
+    [householdId]
+  )
+  if (owner.rows[0]?.owner_person_id === id) return 'is_owner'
+
+  const { rowCount } = await query(
+    `update persons set deleted_at = now()
+       where household_id = $1 and id = $2 and deleted_at is null`,
+    [householdId, id]
+  )
+  return rowCount ? 'deleted' : 'not_found'
+}
+
 export function registerPersonRoutes(api: Api): void {
   // List everyone in the household (any member may read).
   api.get('/api/persons', async (req: Request) => {
@@ -155,5 +173,22 @@ export function registerPersonRoutes(api: Api): void {
     const person = await updatePerson(tenant.householdId, id, patch)
     if (!person) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
     return { person: presentPerson(person) }
+  })
+
+  // Soft-delete a member (admins only; the owner is protected).
+  api.delete('/api/persons/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
+
+    const result = await softDeletePerson(tenant.householdId, id)
+    if (result === 'is_owner') {
+      return res.status(409).json({ error: 'Conflict', message: 'cannot remove the household owner' })
+    }
+    if (result === 'not_found') {
+      return res.status(404).json({ error: 'NotFound', message: 'person not found' })
+    }
+    return res.status(204).send('')
   })
 }

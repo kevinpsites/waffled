@@ -31,7 +31,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## M3 — Identity & household
 - [x] 3.1 First-login provisioning: `POST /api/households` creates household + owner `person` (adult/admin) + `identity`; `GET /api/household` resolves `sub`→household from the DB (identities table is the authority, not the JWT — so onboarding works pre-Auth0). `GET /api/me` echoes the principal. *(Auth0/Google login swaps in at M5; PowerSync gets the `household_id` claim then.)*
-- [ ] 3.2 Members CRUD: add kid profiles, colors, avatars, roles
+- [x] 3.2 Members CRUD (`/api/persons`): list + create + read-one + update + soft-delete, all household-scoped. Reads open to any member; mutations admin-only; owner protected from deletion
 - [ ] 3.3 Kiosk device pairing + kid profile tokens
 
 ## M4 — Offline foundation (de-risk #1)
@@ -63,11 +63,11 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 ---
 
 ### Current focus
-**Through M3.1 done** — repo/data-model, compose stack, api (TS + JWT), test harness,
-migrations + identity tables, and first-login provisioning. A token with no household can
-onboard (`POST /api/households`) and subsequent requests resolve `sub`→household from the DB.
-Still **zero external dependencies**: local HS256 via `mint-token`, schema via `just migrate`,
-22 tests green (in-process + Testcontainers + wiremock). Next options: **3.2** (members CRUD —
-add kid/teen profiles under a household, the natural follow-on), **2.4** (pg_dump→S3 backup,
-which starts the AWS/Terraform surface), or **M4.1** (PowerSync, the offline pillar). `0.2`
-(Google console) stays parallel, not a blocker until M5.
+**Through M3.2 done** — repo/data-model, compose stack, api (TS + JWT), test harness,
+migrations + identity tables, first-login provisioning, and members CRUD. Onboard via
+`POST /api/households`, then manage the family via `/api/persons` (household-scoped,
+admin-gated mutations). Still **zero external dependencies**: local HS256 via `mint-token`,
+schema via `just migrate`, **39 tests green** (in-process + Testcontainers + wiremock). Next
+options: **3.3** (kiosk device pairing + kid profile tokens), **M4.1** (PowerSync — the
+offline pillar, the big de-risk), or **2.4** (pg_dump→S3 backup, which opens the
+AWS/Terraform surface). `0.2` (Google console) stays parallel, not a blocker until M5.
