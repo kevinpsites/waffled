@@ -2,7 +2,9 @@
 // The identities table maps a token's `sub` → person → household; that mapping
 // (not the JWT) is the authority for which household a caller belongs to.
 import type { QueryResultRow } from 'pg'
+import type { Request } from 'lambda-api'
 import { getPool, query } from './db'
+import { AuthError } from './auth'
 
 export interface Tenant {
   sub: string
@@ -39,6 +41,18 @@ export function inferProvider(sub: string): string {
   if (sub.startsWith('google')) return 'google'
   if (sub.startsWith('apple')) return 'apple'
   return 'password'
+}
+
+// Resolve the caller's household, or 403 if they haven't onboarded yet.
+export async function requireTenant(req: Request): Promise<Tenant> {
+  const tenant = await findTenantBySub(req.principal!.sub)
+  if (!tenant) throw new AuthError('No household for this account; create one first', 403)
+  return tenant
+}
+
+// Gate mutations on admin rights (owner + other admins; teens/kids never).
+export function requireAdmin(tenant: Tenant): void {
+  if (!tenant.isAdmin) throw new AuthError('Admin privileges required', 403)
 }
 
 export async function findTenantBySub(sub: string): Promise<Tenant | null> {

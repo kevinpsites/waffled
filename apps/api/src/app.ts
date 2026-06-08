@@ -10,6 +10,7 @@ import {
   presentPerson,
   inferProvider,
 } from './households'
+import { registerPersonRoutes } from './persons'
 
 const api = createAPI()
 
@@ -94,6 +95,9 @@ api.post('/api/households', async (req: Request, res: Response) => {
     throw err
   }
 })
+
+// Members CRUD (/api/persons…)
+registerPersonRoutes(api)
 
 // Error handler — lambda-api treats a 4-arg middleware as the error sink.
 api.use(
