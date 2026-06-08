@@ -35,6 +35,10 @@ ps:
 psql:
     {{compose}} exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 
+# apply DB migrations against the running local stack (needs `npm install` in apps/api)
+migrate:
+    set -a && . infra/compose/.env && set +a && cd apps/api && DATABASE_URL="postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@localhost:$POSTGRES_PORT/$POSTGRES_DB" npm run migrate
+
 # mint a local dev JWT (prints only the token). e.g. `export TOKEN=$(just token)`
 # pass flags through: `just token --household <uuid> --sub dev:kelly`
 token *ARGS:
