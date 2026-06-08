@@ -40,6 +40,10 @@ psql:
 token *ARGS:
     {{compose}} run --rm --no-deps -T api node dist/mint-token.js {{ARGS}}
 
+# run the api test suite (Vitest + Testcontainers; needs Docker running)
+test:
+    cd apps/api && npm test
+
 # DANGER: stop and wipe local volumes (destroys local db)
 nuke:
     {{compose}} down -v

@@ -25,6 +25,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 ## M2 — Backend skeleton & local stack
 - [x] 2.1 `docker-compose.yml`: Postgres (logical replication) + Caddy + `.env.example` + `justfile` (up/down/logs)
 - [x] 2.2 `api` (lambda-api, **TypeScript** → esbuild bundle): `/healthz` + JWT middleware (local HS256 now, Auth0 RS256 on swap; extracts `household_id` → `req.tenant`); multi-stage Dockerfile; behind Caddy; `mint-token` dev CLI
+- [x] 2.2t **Test harness** (Vitest + Testcontainers; wiremock for external HTTP) + retrofit 2.2 tests. See `docs/TESTING.md`. **Test-first from here on.**
 - [ ] 2.3 DB migration tooling + first migration: `households`, `members`, `persons`
 - [ ] 2.4 `backup` service (pg_dump→S3) + `just restore-check` (restore into throwaway PG, assert row counts)
 
@@ -62,8 +63,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 ---
 
 ### Current focus
-**M0, chunk 1.0 (data model), 2.1 (compose), 2.2 (api skeleton) done.** Everything so far
-runs with **zero external dependencies** — local HS256 auth via `mint-token`, no Auth0/Google
-needed until M5. Next: stand up the **integration-test harness** (Vitest + Testcontainers,
-wiremock for external HTTP) and adopt test-first, then `2.3` (migrations + identity tables).
-`0.2` (Google console) stays parallel and is not a blocker until M5.
+**M0, chunk 1.0 (data model), 2.1 (compose), 2.2 (api + test harness) done.** Everything so
+far runs with **zero external dependencies** — local HS256 auth via `mint-token`, no
+Auth0/Google needed until M5, and the Auth0 path is already proven against a wiremock JWKS.
+Next: `2.3` (migrations + `households`/`persons`/`identities`), **test-first** per
+`docs/TESTING.md`. `0.2` (Google console) stays parallel and is not a blocker until M5.

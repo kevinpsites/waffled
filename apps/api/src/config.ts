@@ -15,7 +15,12 @@ export interface AppConfig {
     /** Where household_id lives on the token (Auth0 custom claims must be namespaced URIs). */
     householdClaim: string
     local: { secret: string; issuer: string; audience: string }
-    auth0: { domain: string | null; audience: string | null; issuer: string | null }
+    auth0: {
+      domain: string | null
+      audience: string | null
+      issuer: string | null
+      jwksUri: string | null
+    }
   }
 }
 
@@ -35,10 +40,15 @@ export const config: AppConfig = {
     },
 
     // Auth0 mode (RS256) — used as soon as AUTH0_DOMAIN is set.
+    // issuer/jwksUri default off the domain but are overridable, which lets
+    // integration tests point at a wiremock JWKS instead of real Auth0.
     auth0: {
       domain: auth0Domain,
       audience: process.env.AUTH0_AUDIENCE ?? null,
-      issuer: auth0Domain ? `https://${auth0Domain}/` : null,
+      issuer: process.env.AUTH0_ISSUER ?? (auth0Domain ? `https://${auth0Domain}/` : null),
+      jwksUri:
+        process.env.AUTH0_JWKS_URI ??
+        (auth0Domain ? `https://${auth0Domain}/.well-known/jwks.json` : null),
     },
   },
 }

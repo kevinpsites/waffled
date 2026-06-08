@@ -32,7 +32,7 @@ let jwksClient: JwksClient | null = null
 function auth0KeyResolver(): GetPublicKeyOrSecret {
   if (!jwksClient) {
     jwksClient = new JwksClient({
-      jwksUri: `https://${config.auth.auth0.domain}/.well-known/jwks.json`,
+      jwksUri: config.auth.auth0.jwksUri ?? '',
       cache: true,
       rateLimit: true,
     })
