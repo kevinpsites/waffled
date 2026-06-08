@@ -81,6 +81,9 @@ erDiagram
   goal_milestone_achievements ||--o| ledger_entries : "stars via"
 
   recipes ||--o{ recipe_ingredients : has
+  recipes ||--o{ recipe_steps : has
+  recipe_steps ||--o{ recipe_step_ingredients : uses
+  recipe_ingredients ||--o{ recipe_step_ingredients : "used in"
   meal_plans ||--o{ meal_plan_entries : contains
   recipes ||--o{ meal_plan_entries : "planned as"
   meal_plan_entries ||--o| events : "shows on calendar"
@@ -444,9 +447,11 @@ create table recipes (
   prep_time_minutes int, cook_time_minutes int,
   servings int not null default 4,                  -- base; scaling derives from this
   image_url text,
-  steps text[],                                     -- ordered instructions (array, not a table)
-  source_type text not null default 'manual',        -- manual | url_import | photo_scan
+  notes text,                                       -- freeform "Notes" section
+  source_type text not null default 'manual',        -- manual | url_import | photo_scan | markdown_import
+  source_name text,                                  -- cookbook / author / site, e.g. "Joshua Weissman"
   source_url text,
+  source_markdown text,                              -- original .md kept verbatim (hybrid: structured = SoR)
   is_favorite boolean not null default false,
   cooked_count int not null default 0, last_cooked_at timestamptz,
   rating numeric
@@ -458,7 +463,22 @@ create table recipe_ingredients (                  -- structured (scale + aggreg
   amount numeric, unit text,                        -- nullable for "to taste"
   prep_note text,                                   -- "diced", "to taste"
   display text,                                     -- raw original string (parse fallback / truth)
+  section text,                                     -- optional group: "Protein" | "Breading" | "Sauce"
   sort_order int
+);
+
+create table recipe_steps (                        -- ordered instructions (table, not array → per-step links)
+  <base>, recipe_id uuid not null references recipes(id),
+  position int not null,                            -- 1-based
+  instruction text not null,
+  section text                                      -- optional phase label ("Sauce", "Chicken")
+);
+create unique index uq_recipe_step on recipe_steps (recipe_id, position);
+
+create table recipe_step_ingredients (             -- which canonical ingredients a step uses (cook-mode highlight)
+  <base>, step_id uuid not null references recipe_steps(id),
+  recipe_ingredient_id uuid not null references recipe_ingredients(id),
+  note text                                         -- step-specific note ("continuing sauce")
 );
 
 create table meal_plans (
@@ -486,8 +506,13 @@ create table pantry_items (                          -- household staples assume
 );
 ```
 
-**Ingredient parsing:** on URL/photo import, an LLM pass parses each raw line into
-`amount`/`unit`/`name`/`prep_note`; `display` always holds the original string as truth/fallback.
+**Ingredient parsing (hybrid):** on URL/photo/**markdown** import, an LLM pass parses each raw
+line into `amount`/`unit`/`name`/`prep_note`/`section`, splits instructions into `recipe_steps`,
+and links each step to the ingredients it uses (`recipe_step_ingredients`). `display` holds the
+original ingredient string and `recipes.source_markdown` holds the original file verbatim — the
+structured tables are the system of record, markdown is kept for fidelity/round-trip. Ambiguous
+per-step references ("continuing sauce", "cheese mixture") fall back to a free-text `note` with
+no hard link.
 **Bridges:** entry → calendar `events` (`origin='meal_plan'`, `origin_ref_id=entry.id`,
 `entry.event_id` reverse-links); grocery auto-build reads entries → ingredients → dedup/sum →
 drop `pantry_items` → writes `list_items`. No pantry inventory in v1 (on-hand is AI-estimated).
@@ -602,7 +627,7 @@ from CloudFront/S3 on demand (private bucket, **signed URLs**) and cached on-dev
 | Economy | one `ledger_entries` (stars/marbles/xp); balances/levels/streaks derived; stickers deferred |
 | Chores | RRULE cadence; immediate award unless proof/approval; up-for-grabs = `person_id` null |
 | Goals | two-axis membership (visibility vs tracking); private lists sync to members; milestones via ledger w/ achievement guard; checklist items table included |
-| Recipes | structured ingredients (+`display` fallback, LLM parse); steps `text[]`; `cooked_count` counter; pantry staples table; no inventory |
+| Recipes | **hybrid**: structured ingredients (with `section`) + `recipe_steps` w/ per-step ingredient links = system-of-record; original `.md` kept in `source_markdown` for fidelity; `display` fallback + LLM parse; `source_name` = cookbook/author; `cooked_count` counter; pantry staples table; no inventory |
 | Lists | single `list_items` table; suggestions via `status`; `source_recipe_ids` array |
 | Photos | metadata-only sync; private signed URLs; presigned upload; per-album screensaver flag |
 | Cross-cutting | UUID client-gen; soft-delete + purge; `household_id` everywhere; RLS off in v1 |
