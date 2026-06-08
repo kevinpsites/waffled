@@ -29,6 +29,13 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] 2.3 DB migration tooling (**node-pg-migrate**, SQL files) + first migration: `households`, `persons`, `identities` (+ `set_updated_at` trigger, FKs, partial indexes). `just migrate`; test-first via a Postgres testcontainer
 - [ ] 2.4 `backup` service (pg_dump→S3) + `just restore-check` (restore into throwaway PG, assert row counts)
 
+## MW — Web & kiosk (apps/web)
+- [x] W1a Web scaffold (Vite + React + TS) + kiosk shell: design system (nook.css) ported, 1280×800 scaling stage, nav rail + topbar (live clock) + AI capture bar
+- [x] W1b Kiosk **Today** dashboard: agenda · meals · family chores + grocery (design-faithful; placeholder data until each domain lands)
+- [x] W1c Served via Caddy in the stack (web build baked into the caddy image; SPA fallback; `/api` proxied). `just web` for Vite dev
+- [ ] W2 Kiosk reads **real** data: `/api/persons` → real family (avatars/colors); device/dev token; light up cards as domains land
+- [ ] W3 Web management dashboard (full SPA: setup, calendar, lists, …) — grows alongside the backend domains
+
 ## M3 — Identity & household
 - [x] 3.1 First-login provisioning: `POST /api/households` creates household + owner `person` (adult/admin) + `identity`; `GET /api/household` resolves `sub`→household from the DB (identities table is the authority, not the JWT — so onboarding works pre-Auth0). `GET /api/me` echoes the principal. *(Auth0/Google login swaps in at M5; PowerSync gets the `household_id` claim then.)*
 - [x] 3.2 Members CRUD (`/api/persons`): list + create + read-one + update + soft-delete, all household-scoped. Reads open to any member; mutations admin-only; owner protected from deletion
@@ -63,12 +70,11 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 ---
 
 ### Current focus
-**Through M4.1 done** — repo/data-model, compose stack, api (TS + JWT), test harness,
-migrations + identity tables, first-login provisioning, members CRUD, and the **PowerSync
-offline pillar stood up** (service replicating households+persons, household-scoped sync
-rules, api as token authority). Still runnable with **zero external dependencies**: local
-HS256 via `mint-token`, schema via `just migrate`, **45 tests green**; PowerSync verified
-healthy + replicating via a live compose bring-up. Next: **4.2** (iOS skeleton + PowerSync
-Swift SDK → the airplane-mode read/write demo that proves the whole offline loop), or
-**3.3** (kiosk pairing), or **2.4** (backups → opens AWS/Terraform). `0.2` (Google console)
-stays parallel, not a blocker until M5.
+**Through M4.1 + the kiosk web shell (W1a–c) done** — backend: compose stack, api (TS + JWT),
+test harness, migrations + identity tables, first-login provisioning, members CRUD, PowerSync
+offline pillar. Frontend: `apps/web` (Vite + React + TS) renders the design-faithful kiosk
+**Today** dashboard, served via Caddy in the stack (`just up` → kiosk at :8080, `just web` for
+Vite dev). Still runnable with **zero external dependencies**; **45 api tests + 3 web tests
+green**. Next: **W2** (kiosk shows the real family from `/api/persons`; needs a kiosk/dev
+token), then **3.3** (real device pairing). Other tracks: **4.2** (iOS + airplane-mode demo),
+**2.4** (backups → AWS/Terraform). `0.2` (Google console) stays parallel, not a blocker until M5.

@@ -1,0 +1,7 @@
+# Keep build contexts lean (used by the caddy image build, context = repo root).
+**/node_modules
+**/dist
+**/.DS_Store
+.git
+*.log
+infra/compose/.env

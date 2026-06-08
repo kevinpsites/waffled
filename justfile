@@ -48,6 +48,10 @@ token *ARGS:
 test:
     cd apps/api && npm test
 
+# run the web app dev server (Vite; proxies /api to the local api on :3000)
+web:
+    cd apps/web && npm run dev
+
 # DANGER: stop and wipe local volumes (destroys local db)
 nuke:
     {{compose}} down -v

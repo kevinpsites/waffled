@@ -14,7 +14,10 @@
 	# (POWERSYNC_PORT, default 8090); clients get its URL from /api/powersync/token.
 	# Front it with its own hostname when public ingress lands (M7).
 
-	# static frontend (placeholder until the web build lands)
-	root * /srv
-	file_server
+	# the web SPA (built into this image from apps/web); SPA fallback to index.html
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
 }

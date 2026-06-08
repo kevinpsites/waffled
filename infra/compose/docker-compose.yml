@@ -92,7 +92,9 @@ services:
     restart: unless-stopped
 
   caddy:
-    image: caddy:2
+    build:
+      context: ../..                            # repo root, so the web app is in context
+      dockerfile: infra/compose/caddy/Dockerfile
     container_name: nook-caddy
     depends_on:
       postgres:
@@ -106,8 +108,7 @@ services:
       # unset locally → ":80" (plain HTTP); set to your MagicDNS name for auto-TLS
       CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-:80}
     volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./caddy/site:/srv:ro
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro   # web build is baked into the image at /srv
       - caddy_data:/data
       - caddy_config:/config
     restart: unless-stopped
