@@ -95,7 +95,7 @@ describe('auth — Auth0 RS256 via wiremock JWKS', () => {
     })
     const res = await call('GET', '/api/me', { authorization: `Bearer ${token}` })
     expect(res.statusCode).toBe(200)
-    expect(JSON.parse(res.body)).toMatchObject({ sub: 'auth0|abc', householdId: 'hh-rs-1' })
+    expect(JSON.parse(res.body)).toMatchObject({ sub: 'auth0|abc' })
   })
 
   it('rejects an RS256 token signed by an unpublished key (401)', async () => {

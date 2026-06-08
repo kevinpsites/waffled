@@ -5,7 +5,6 @@ import jwt, { type SignOptions } from 'jsonwebtoken'
 import app from '../src/app'
 
 const SECRET = 'nook-local-dev-secret-change-me' // matches config's local default
-const CLAIM = 'https://nook.app/household_id'
 
 function mint(payload: object, opts: SignOptions = {}): string {
   return jwt.sign(payload, SECRET, {
@@ -46,15 +45,10 @@ describe('auth — local HS256 mode', () => {
     expect(res.statusCode).toBe(401)
   })
 
-  it('rejects a valid token missing the household claim (403)', async () => {
-    const res = await call('GET', '/api/me', { authorization: `Bearer ${mint({ foo: 1 })}` })
-    expect(res.statusCode).toBe(403)
-  })
-
-  it('accepts a valid token and exposes household context', async () => {
-    const token = mint({ [CLAIM]: 'hh-local-1' }, { subject: 'dev|kevin' })
+  it('accepts a valid token and echoes the principal (DB-free)', async () => {
+    const token = mint({}, { subject: 'dev|kevin' })
     const res = await call('GET', '/api/me', { authorization: `Bearer ${token}` })
     expect(res.statusCode).toBe(200)
-    expect(JSON.parse(res.body)).toEqual({ sub: 'dev|kevin', householdId: 'hh-local-1' })
+    expect(JSON.parse(res.body)).toEqual({ sub: 'dev|kevin' })
   })
 })

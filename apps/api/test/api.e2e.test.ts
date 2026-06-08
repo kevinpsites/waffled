@@ -50,11 +50,11 @@ describe('api image — real container over HTTP', () => {
     expect(res.status).toBe(401)
   })
 
-  it('returns household context with a valid token', async () => {
+  it('echoes the principal with a valid token', async () => {
     const res = await fetch(`${baseUrl}/api/me`, {
       headers: { authorization: `Bearer ${mint('hh-e2e-9')}` },
     })
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ sub: 'dev|kevin', householdId: 'hh-e2e-9' })
+    expect(await res.json()).toEqual({ sub: 'dev|kevin' })
   })
 })

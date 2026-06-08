@@ -2,13 +2,21 @@
 import createAPI, { type Request, type Response, type NextFunction } from 'lambda-api'
 import { config } from './config'
 import { requireAuth } from './auth'
+import {
+  findTenantBySub,
+  getContext,
+  provisionHousehold,
+  presentHousehold,
+  presentPerson,
+  inferProvider,
+} from './households'
 
 const api = createAPI()
 
 // Routes that skip auth.
 const PUBLIC_PATHS = new Set(['/healthz'])
 
-// Auth gate — runs before every route except the public ones.
+// Auth gate — verifies the token (sets req.principal) for every non-public route.
 api.use(async (req: Request, res: Response, next: NextFunction) => {
   if (req.method === 'OPTIONS' || PUBLIC_PATHS.has(req.path)) return next()
   await requireAuth(req) // throws AuthError → error handler below
@@ -24,11 +32,68 @@ api.get('/healthz', async () => ({
   authMode: config.auth.mode,
 }))
 
-// Echoes the authenticated tenant context — the fastest proof the JWT flow works.
-api.get('/api/me', async (req: Request) => ({
-  sub: req.tenant?.sub,
-  householdId: req.tenant?.householdId,
-}))
+// Who the token says you are (no DB).
+api.get('/api/me', async (req: Request) => ({ sub: req.principal?.sub }))
+
+// Your household + person, or { provisioned: false } if you haven't onboarded yet.
+api.get('/api/household', async (req: Request) => {
+  const tenant = await findTenantBySub(req.principal!.sub)
+  if (!tenant) return { provisioned: false }
+  const { household, person } = await getContext(tenant)
+  return {
+    provisioned: true,
+    household: presentHousehold(household),
+    person: presentPerson(person),
+  }
+})
+
+// First-login provisioning: create a household with the caller as owner + admin.
+api.post('/api/households', async (req: Request, res: Response) => {
+  const sub = req.principal!.sub
+  if (await findTenantBySub(sub)) {
+    return res
+      .status(409)
+      .json({ error: 'Conflict', message: 'This account already has a household' })
+  }
+
+  const body = (req.body ?? {}) as {
+    name?: string
+    timezone?: string
+    person?: { name?: string; avatarEmoji?: string; colorHex?: string }
+  }
+  if (!body.name || !body.timezone || !body.person?.name) {
+    return res
+      .status(400)
+      .json({ error: 'BadRequest', message: 'name, timezone, and person.name are required' })
+  }
+
+  const claims = req.principal!.claims
+  try {
+    const { household, person } = await provisionHousehold({
+      sub,
+      provider: inferProvider(sub),
+      email: (claims.email as string | undefined) ?? null,
+      emailVerified: (claims.email_verified as boolean | undefined) ?? false,
+      householdName: body.name,
+      timezone: body.timezone,
+      person: {
+        name: body.person.name,
+        avatarEmoji: body.person.avatarEmoji ?? null,
+        colorHex: body.person.colorHex ?? null,
+      },
+    })
+    return res
+      .status(201)
+      .json({ household: presentHousehold(household), person: presentPerson(person) })
+  } catch (err) {
+    if ((err as { code?: string }).code === '23505') {
+      return res
+        .status(409)
+        .json({ error: 'Conflict', message: 'This account already has a household' })
+    }
+    throw err
+  }
+})
 
 // Error handler — lambda-api treats a 4-arg middleware as the error sink.
 api.use(

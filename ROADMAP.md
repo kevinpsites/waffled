@@ -30,7 +30,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] 2.4 `backup` service (pg_dump→S3) + `just restore-check` (restore into throwaway PG, assert row counts)
 
 ## M3 — Identity & household
-- [ ] 3.1 Login (Google/Apple via Auth0) → first-login provisioning (create household + owner); verify `household_id` claim end-to-end
+- [x] 3.1 First-login provisioning: `POST /api/households` creates household + owner `person` (adult/admin) + `identity`; `GET /api/household` resolves `sub`→household from the DB (identities table is the authority, not the JWT — so onboarding works pre-Auth0). `GET /api/me` echoes the principal. *(Auth0/Google login swaps in at M5; PowerSync gets the `household_id` claim then.)*
 - [ ] 3.2 Members CRUD: add kid profiles, colors, avatars, roles
 - [ ] 3.3 Kiosk device pairing + kid profile tokens
 
@@ -63,10 +63,11 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 ---
 
 ### Current focus
-**M0, chunk 1.0 (data model), 2.1 (compose), 2.2 (api + test harness), 2.3 (migrations +
-identity tables) done.** Everything still runs with **zero external dependencies** — local
-HS256 auth via `mint-token`, schema applied by `just migrate`, no Auth0/Google needed until
-M5 (the Auth0 path is already proven against a wiremock JWKS). Next: `2.4` (pg_dump→S3 backup
-service) or jump to **M3.1** (first-login provisioning: create household + owner, resolve the
-JWT's `household_id` to a real row) now that the identity tables exist. `0.2` (Google console)
-stays parallel, not a blocker until M5.
+**Through M3.1 done** — repo/data-model, compose stack, api (TS + JWT), test harness,
+migrations + identity tables, and first-login provisioning. A token with no household can
+onboard (`POST /api/households`) and subsequent requests resolve `sub`→household from the DB.
+Still **zero external dependencies**: local HS256 via `mint-token`, schema via `just migrate`,
+22 tests green (in-process + Testcontainers + wiremock). Next options: **3.2** (members CRUD —
+add kid/teen profiles under a household, the natural follow-on), **2.4** (pg_dump→S3 backup,
+which starts the AWS/Terraform surface), or **M4.1** (PowerSync, the offline pillar). `0.2`
+(Google console) stays parallel, not a blocker until M5.

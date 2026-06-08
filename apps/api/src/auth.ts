@@ -3,17 +3,16 @@ import { JwksClient } from 'jwks-rsa'
 import type { Request } from 'lambda-api'
 import { config } from './config'
 
-export interface AuthContext {
-  sub?: string
-  householdId: string
+export interface Principal {
+  sub: string
   claims: JwtPayload
 }
 
-// Hang the tenant context off the lambda-api Request so routes can read req.tenant.
-// (lambda-api already owns req.auth — its parsed Authorization header.)
+// The verified token identity. The household a sub belongs to is resolved from
+// the DB by the routes (see households.ts), not carried on the request here.
 declare module 'lambda-api' {
   interface Request {
-    tenant?: AuthContext
+    principal?: Principal
   }
 }
 
@@ -74,8 +73,8 @@ function bearerToken(req: Request): string {
   throw new AuthError('Missing Bearer token')
 }
 
-// Verifies the token and populates req.tenant. Every protected route can then
-// trust req.tenant.householdId.
+// Verifies the token and sets req.principal. First-login (no household yet) still
+// authenticates — routes decide what to do with an unprovisioned sub.
 export async function requireAuth(req: Request): Promise<void> {
   let claims: JwtPayload
   try {
@@ -85,7 +84,6 @@ export async function requireAuth(req: Request): Promise<void> {
     const message = err instanceof Error ? err.message : String(err)
     throw new AuthError(`Invalid token: ${message}`)
   }
-  const householdId = claims[config.auth.householdClaim] as string | undefined
-  if (!householdId) throw new AuthError('Token missing household_id claim', 403)
-  req.tenant = { sub: claims.sub, householdId, claims }
+  if (!claims.sub) throw new AuthError('Token missing sub')
+  req.principal = { sub: claims.sub, claims }
 }
