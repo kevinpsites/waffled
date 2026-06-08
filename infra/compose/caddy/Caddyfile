@@ -6,11 +6,11 @@
 	# health check
 	respond /healthz "ok" 200
 
-	# API — uncommented in chunk 2.2 once the api service exists
-	# handle /api/* {
-	#	reverse_proxy api:3000
-	# }
-	# handle /powersync/* {
+	# API (chunk 2.2). Path is preserved upstream, so the api sees /api/*.
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+	# handle /powersync/* {        # uncommented in chunk 4.1
 	#	reverse_proxy powersync:8080
 	# }
 

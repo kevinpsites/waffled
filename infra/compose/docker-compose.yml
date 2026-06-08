@@ -32,12 +32,41 @@ services:
       retries: 5
     restart: unless-stopped
 
+  api:
+    build:
+      context: ../../apps/api
+    container_name: nook-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # Local auth (HS256). Leave AUTH0_DOMAIN unset to stay dependency-free.
+      # mint-token signs with this same secret, so dev tokens validate.
+      LOCAL_JWT_SECRET: ${LOCAL_JWT_SECRET:-nook-local-dev-secret-change-me}
+      # Wired now for chunk 2.3 (migrations); unused until the api talks to PG.
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # --- switch to Auth0 (RS256): set these, then restart the api ---
+      # AUTH0_DOMAIN: ${AUTH0_DOMAIN}
+      # AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+    ports:
+      - "${API_PORT:-3000}:3000"     # direct dev access; also reachable via Caddy /api/*
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   caddy:
     image: caddy:2
     container_name: nook-caddy
     depends_on:
       postgres:
         condition: service_healthy
+      api:
+        condition: service_started
     ports:
       - "${HTTP_PORT:-8080}:80"
       # - "443:443"                              # enable for tailnet/prod TLS (later)

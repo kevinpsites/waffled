@@ -1,0 +1,27 @@
+{
+  "name": "@nook/api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Nook backend API (lambda-api), written in TS, bundled to JS with esbuild. Same code runs as a container locally (server) and on AWS Lambda (lambda).",
+  "main": "dist/lambda.js",
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "token": "tsx scripts/mint-token.ts"
+  },
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.1.0",
+    "lambda-api": "^1.4.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^20.14.0",
+    "esbuild": "^0.24.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
