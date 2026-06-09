@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink } from 'react-router'
 import { Icon } from '../icons'
 import { SCREENS, SETTINGS, type Screen } from '../nav'
 

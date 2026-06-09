@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route } from 'react-router'
 import { KioskLayout } from './KioskLayout'
 import { Today } from './Today'
 import { Tasks } from './Tasks'

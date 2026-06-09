@@ -1,5 +1,5 @@
 import { render, screen, within, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter } from 'react-router'
 import { KioskRoutes } from './routes'
 
 function renderAt(path = '/') {

@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom'
+import { Outlet } from 'react-router'
 import { Rail } from './components/Rail'
 import { Topbar } from './components/Topbar'
 

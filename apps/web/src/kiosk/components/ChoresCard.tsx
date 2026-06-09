@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { Star } from '../icons'
 import { useChoresToday, type PersonChores } from '../../lib/api'
 
