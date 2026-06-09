@@ -32,12 +32,20 @@ function call(method: string, path: string, token?: string, body?: unknown) {
   const headers: Record<string, string> = {}
   if (token) headers.authorization = `Bearer ${token}`
   if (body !== undefined) headers['content-type'] = 'application/json'
+  const [rawPath, qs] = path.split('?')
+  const queryStringParameters: Record<string, string> = {}
+  if (qs) {
+    for (const pair of qs.split('&')) {
+      const [k, v] = pair.split('=')
+      queryStringParameters[k] = decodeURIComponent(v ?? '')
+    }
+  }
   return app.run(
     {
       httpMethod: method,
-      path,
+      path: rawPath,
       headers,
-      queryStringParameters: {},
+      queryStringParameters,
       body: body !== undefined ? JSON.stringify(body) : null,
       isBase64Encoded: false,
     },

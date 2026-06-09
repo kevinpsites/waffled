@@ -33,12 +33,20 @@ function call(method: string, path: string, token?: string, body?: unknown) {
   const headers: Record<string, string> = {}
   if (token) headers.authorization = `Bearer ${token}`
   if (body !== undefined) headers['content-type'] = 'application/json'
+  const [rawPath, qs] = path.split('?')
+  const queryStringParameters: Record<string, string> = {}
+  if (qs) {
+    for (const pair of qs.split('&')) {
+      const [k, v] = pair.split('=')
+      queryStringParameters[k] = decodeURIComponent(v ?? '')
+    }
+  }
   return app.run(
     {
       httpMethod: method,
-      path,
+      path: rawPath,
       headers,
-      queryStringParameters: {},
+      queryStringParameters,
       body: body !== undefined ? JSON.stringify(body) : null,
       isBase64Encoded: false,
     },
@@ -109,5 +117,46 @@ describe('events schema', () => {
         c.query(`insert into events (household_id, starts_at, timezone) values ($1, now(), 'UTC')`, [hid])
       ).rejects.toThrow() // missing title (not null)
     })
+  })
+})
+
+describe('events api', () => {
+  it('403s for a caller with no household', async () => {
+    expect((await call('GET', '/api/events/today', mint('dev|nobody'))).statusCode).toBe(403)
+  })
+
+  it('400 without title or with a bad startsAt', async () => {
+    expect((await call('POST', '/api/events', kevin, { startsAt: '2026-06-08T13:30:00Z' })).statusCode).toBe(400)
+    expect((await call('POST', '/api/events', kevin, { title: 'X', startsAt: 'not-a-date' })).statusCode).toBe(400)
+  })
+
+  it('creates an event and lists it in today with the person color', async () => {
+    // 13:30Z = 08:30 in America/Chicago → local date 2026-06-08
+    const add = await call('POST', '/api/events', kevin, {
+      title: 'Swim lessons',
+      startsAt: '2026-06-08T13:30:00Z',
+      personId: kevinId,
+    })
+    expect(add.statusCode).toBe(201)
+
+    const today = JSON.parse((await call('GET', '/api/events/today?date=2026-06-08', kevin)).body)
+    const ev = today.events.find((e: { title: string }) => e.title === 'Swim lessons')
+    expect(ev).toMatchObject({ title: 'Swim lessons', personName: 'Kevin', allDay: false })
+  })
+
+  it('orders all-day events after timed ones', async () => {
+    await call('POST', '/api/events', kevin, {
+      title: 'Recital tickets',
+      startsAt: '2026-06-08T12:00:00Z',
+      allDay: true,
+    })
+    const events = JSON.parse((await call('GET', '/api/events/today?date=2026-06-08', kevin)).body).events
+    const flags = events.map((e: { allDay: boolean }) => Number(e.allDay))
+    expect(flags).toEqual([...flags].sort((a, b) => a - b)) // timed (0) before all-day (1)
+  })
+
+  it('returns events within a date range', async () => {
+    const r = JSON.parse((await call('GET', '/api/events?from=2026-06-08&to=2026-06-09', kevin)).body)
+    expect(r.events.some((e: { title: string }) => e.title === 'Swim lessons')).toBe(true)
   })
 })
