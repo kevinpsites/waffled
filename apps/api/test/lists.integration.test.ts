@@ -330,3 +330,62 @@ describe('grocery auto-build from a recipe', () => {
     ).toBe(404)
   })
 })
+
+function thisSunday(): string {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() - d.getDay())
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Runs last so its auto-built items don't pollute the earlier "empty grocery" test.
+describe('grocery auto-build + pantry staples', () => {
+  it('builds the grocery list from the week, aggregating + excluding staples', async () => {
+    const householdId = (await withClient((c) => c.query<{ id: string }>(`select id from households limit 1`))).rows[0].id
+    const recipeId = (
+      await withClient((c) =>
+        c.query<{ id: string }>(
+          `insert into recipes (household_id, title, category, servings) values ($1,'Test Salmon','dinner',4) returning id`,
+          [householdId]
+        )
+      )
+    ).rows[0].id
+    await withClient((c) =>
+      c.query(
+        `insert into recipe_ingredients (household_id, recipe_id, name, amount, unit, aisle, is_staple) values
+           ($1,$2,'Salmon fillets',1.5,'lb','Meat & Seafood',false),
+           ($1,$2,'Olive oil',2,'Tbsp','Pantry',true)`,
+        [householdId, recipeId]
+      )
+    )
+
+    const ws = thisSunday()
+    const planDate = (() => {
+      const d = new Date(ws + 'T00:00:00Z')
+      d.setUTCDate(d.getUTCDate() + 1)
+      return d.toISOString().slice(0, 10)
+    })()
+    expect((await call('POST', '/api/meals/plan', kevin, { date: planDate, mealType: 'dinner', recipeId })).statusCode).toBeLessThan(300)
+
+    const rebuilt = await call('POST', `/api/lists/grocery/rebuild?weekStart=${ws}`, kevin)
+    expect(rebuilt.statusCode).toBe(200)
+    const board = JSON.parse(rebuilt.body).board
+    const names = board.items.map((i: { name: string }) => i.name)
+    expect(names).toContain('Salmon fillets')
+    expect(names).not.toContain('Olive oil')
+    const salmon = board.items.find((i: { name: string }) => i.name === 'Salmon fillets')
+    expect(salmon).toMatchObject({ aisle: 'Meat & Seafood', quantity: '1.5 lb', source: 'auto' })
+    expect(salmon.sourceRecipeIds).toContain(recipeId)
+    expect(board.dinners.some((d: { recipeId: string }) => d.recipeId === recipeId)).toBe(true)
+  })
+
+  it('manages pantry staples (defaults, add, delete)', async () => {
+    const staples = JSON.parse((await call('GET', '/api/pantry-staples', kevin)).body).staples
+    expect(staples.map((s: { name: string }) => s.name)).toContain('Olive oil')
+    const add = await call('POST', '/api/pantry-staples', kevin, { name: 'Quinoa' })
+    expect(add.statusCode).toBe(201)
+    const id = JSON.parse(add.body).staple.id
+    expect((await call('DELETE', `/api/pantry-staples/${id}`, kevin)).statusCode).toBe(204)
+    expect((await call('POST', '/api/pantry-staples', kevin, {})).statusCode).toBe(400)
+  })
+})

@@ -301,6 +301,146 @@ export async function addRecipeToGrocery(
   return added
 }
 
+// ---- pantry staples (assumed in-house; excluded from the auto-build) --------
+
+const DEFAULT_STAPLES = ['Olive oil', 'Garlic', 'Rice', 'Parmesan', 'Butter', 'Salt & pepper', 'Pasta', 'Eggs']
+
+export async function listPantryStaples(householdId: string): Promise<Array<{ id: string; name: string }>> {
+  const { rows } = await query<{ id: string; name: string }>(
+    `select id, name from pantry_staples where household_id=$1 and deleted_at is null order by lower(name)`,
+    [householdId]
+  )
+  return rows
+}
+
+export async function ensureDefaultStaples(householdId: string): Promise<void> {
+  const { rowCount } = await query(`select 1 from pantry_staples where household_id=$1 limit 1`, [householdId])
+  if (rowCount) return
+  for (const name of DEFAULT_STAPLES) {
+    await query(`insert into pantry_staples (household_id, name) values ($1,$2) on conflict do nothing`, [householdId, name])
+  }
+}
+
+export async function addPantryStaple(householdId: string, name: string): Promise<{ id: string; name: string }> {
+  const { rows } = await query<{ id: string; name: string }>(
+    `insert into pantry_staples (household_id, name) values ($1,$2)
+       on conflict (household_id, lower(name)) where deleted_at is null do update set deleted_at = null
+     returning id, name`,
+    [householdId, name]
+  )
+  return rows[0]
+}
+
+export async function removePantryStaple(householdId: string, id: string): Promise<boolean> {
+  const { rowCount } = await query(
+    `update pantry_staples set deleted_at = now() where household_id=$1 and id=$2 and deleted_at is null`,
+    [householdId, id]
+  )
+  return !!rowCount
+}
+
+function isoAddDays(iso: string, n: number): string {
+  const d = new Date(iso + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+// Rebuild the auto portion of the grocery list from a week's planned dinners:
+// gather ingredients, drop staples, aggregate same-name (sum same-unit amounts),
+// tag each with the source recipes (for the per-meal dots), set the aisle.
+export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string): Promise<number> {
+  const list = await getOrCreateGroceryList(tenant)
+  const weekEnd = isoAddDays(weekStart, 6)
+  const dinners = await query<{ recipe_id: string }>(
+    `select distinct e.recipe_id from meal_plan_entries e
+      where e.household_id=$1 and e.meal_type='dinner' and e.recipe_id is not null
+        and e.deleted_at is null and e.date >= $2 and e.date <= $3`,
+    [tenant.householdId, weekStart, weekEnd]
+  )
+  await ensureDefaultStaples(tenant.householdId)
+  const staples = new Set((await listPantryStaples(tenant.householdId)).map((s) => s.name.trim().toLowerCase()))
+
+  type Agg = { name: string; aisle: string | null; unit: string | null; amount: number | null; recipeIds: Set<string> }
+  const byName = new Map<string, Agg>()
+  for (const { recipe_id } of dinners.rows) {
+    const ings = await listIngredients(tenant.householdId, recipe_id)
+    for (const ing of ings) {
+      const row = ing as typeof ing & { aisle?: string | null; is_staple?: boolean }
+      const name = ing.name.trim()
+      const key = name.toLowerCase()
+      if (row.is_staple || staples.has(key)) continue
+      const amt = ing.amount == null ? null : Number(ing.amount)
+      let g = byName.get(key)
+      if (!g) {
+        g = { name, aisle: row.aisle ?? 'Other', unit: ing.unit, amount: amt, recipeIds: new Set() }
+        byName.set(key, g)
+      } else if (amt != null && ing.unit && ing.unit === g.unit) {
+        g.amount = (g.amount ?? 0) + amt
+      }
+      g.recipeIds.add(recipe_id)
+    }
+  }
+
+  // replace the prior auto items; leave manual items alone
+  await query(`delete from list_items where household_id=$1 and list_id=$2 and source='auto'`, [tenant.householdId, list.id])
+  let order = 0
+  for (const g of byName.values()) {
+    const qty = g.amount != null ? `${Number(g.amount.toFixed(2))}${g.unit ? ` ${g.unit}` : ''}` : g.unit
+    await query(
+      `insert into list_items (household_id, list_id, name, quantity, category, source, source_recipe_ids, sort_order, created_by)
+       values ($1,$2,$3,$4,$5,'auto',$6,$7,$8)`,
+      [tenant.householdId, list.id, g.name, qty, g.aisle, [...g.recipeIds], order++, tenant.personId]
+    )
+  }
+  return byName.size
+}
+
+const DINNER_COLORS = ['#2F7FED', '#EC6049', '#8B5CF6', '#E0A500', '#25A368', '#EC4899', '#14B8A6']
+
+// The grocery "board": the list items + this week's dinners (with a color each,
+// so items can show per-meal dots) + the pantry staples. Powers the grocery view.
+export async function groceryBoard(tenant: Tenant, weekStart: string) {
+  const list = await getOrCreateGroceryList(tenant)
+  const weekEnd = isoAddDays(weekStart, 6)
+  const dinnerRows = await query<{ date: string; recipe_id: string; title: string | null; emoji: string | null }>(
+    `select e.date, e.recipe_id, coalesce(r.title, e.title) as title, r.emoji
+       from meal_plan_entries e left join recipes r on r.id = e.recipe_id and r.deleted_at is null
+      where e.household_id=$1 and e.meal_type='dinner' and e.deleted_at is null
+        and e.date >= $2 and e.date <= $3
+      order by e.date`,
+    [tenant.householdId, weekStart, weekEnd]
+  )
+  const dinners = dinnerRows.rows.map((d, i) => ({
+    date: d.date,
+    recipeId: d.recipe_id,
+    title: d.title,
+    emoji: d.emoji,
+    color: DINNER_COLORS[i % DINNER_COLORS.length],
+  }))
+
+  const itemRows = await query<ListItemRow & { source: string; source_recipe_ids: string[] | null }>(
+    `select li.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color
+       from list_items li left join persons p on p.id = li.assigned_to
+      where li.household_id=$1 and li.list_id=$2 and li.deleted_at is null
+      order by li.sort_order nulls last, li.created_at`,
+    [tenant.householdId, list.id]
+  )
+  const items = itemRows.rows.map((i) => ({
+    ...presentListItem(i),
+    aisle: i.category ?? 'Other',
+    source: i.source,
+    sourceRecipeIds: i.source_recipe_ids ?? [],
+  }))
+
+  return {
+    list: presentList(list),
+    weekStart,
+    dinners,
+    items,
+    staples: await listPantryStaples(tenant.householdId),
+  }
+}
+
 export function presentList(l: ListRow) {
   return {
     id: l.id,
@@ -464,5 +604,50 @@ export function registerListRoutes(api: Api): void {
     const added = await addRecipeToGrocery(tenant, recipeId)
     if (added === null) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     return res.status(201).json({ added: added.length, items: added.map(presentListItem) })
+  })
+
+  // ---- grocery board + auto-build + pantry staples --------------------------
+  function weekStartParam(req: Request): string {
+    const ws = (req.query?.weekStart as string | undefined) || ''
+    if (/^\d{4}-\d{2}-\d{2}$/.test(ws)) return ws
+    // default: the Sunday of the current week (server local)
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    d.setDate(d.getDate() - d.getDay())
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  api.get('/api/lists/grocery/board', async (req: Request) => {
+    const tenant = await requireTenant(req)
+    return groceryBoard(tenant, weekStartParam(req))
+  })
+
+  api.post('/api/lists/grocery/rebuild', async (req: Request) => {
+    const tenant = await requireTenant(req)
+    const weekStart = weekStartParam(req)
+    const count = await rebuildGroceryFromWeek(tenant, weekStart)
+    return { rebuilt: count, board: await groceryBoard(tenant, weekStart) }
+  })
+
+  api.get('/api/pantry-staples', async (req: Request) => {
+    const tenant = await requireTenant(req)
+    await ensureDefaultStaples(tenant.householdId)
+    return { staples: await listPantryStaples(tenant.householdId) }
+  })
+
+  api.post('/api/pantry-staples', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const name = ((req.body ?? {}) as { name?: string }).name?.trim()
+    if (!name) return res.status(400).json({ error: 'BadRequest', message: 'name is required' })
+    return res.status(201).json({ staple: await addPantryStaple(tenant.householdId, name) })
+  })
+
+  api.delete('/api/pantry-staples/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'staple not found' })
+    const ok = await removePantryStaple(tenant.householdId, id)
+    if (!ok) return res.status(404).json({ error: 'NotFound', message: 'staple not found' })
+    return res.status(204).send('')
   })
 }
