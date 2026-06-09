@@ -147,3 +147,51 @@ describe('grocery api', () => {
     expect(res.statusCode).toBe(400)
   })
 })
+
+describe('grocery item mutations', () => {
+  let itemId = ''
+
+  beforeAll(async () => {
+    const add = await call('POST', '/api/lists/grocery/items', kevin, { name: 'Eggs' })
+    itemId = JSON.parse(add.body).item.id
+  })
+
+  it('checks and unchecks an item', async () => {
+    const checked = await call('PATCH', `/api/list-items/${itemId}`, kevin, { checked: true })
+    expect(checked.statusCode).toBe(200)
+    const c = JSON.parse(checked.body).item
+    expect(c.checked).toBe(true)
+    expect(c.checkedAt).not.toBeNull()
+
+    const unchecked = await call('PATCH', `/api/list-items/${itemId}`, kevin, { checked: false })
+    const u = JSON.parse(unchecked.body).item
+    expect(u.checked).toBe(false)
+    expect(u.checkedAt).toBeNull()
+  })
+
+  it('rejects a non-boolean checked (400)', async () => {
+    expect(
+      (await call('PATCH', `/api/list-items/${itemId}`, kevin, { checked: 'yes' })).statusCode
+    ).toBe(400)
+  })
+
+  it('404s for unknown / non-uuid / another household', async () => {
+    expect((await call('PATCH', '/api/list-items/not-a-uuid', kevin, { checked: true })).statusCode).toBe(404)
+    expect(
+      (await call('PATCH', '/api/list-items/00000000-0000-0000-0000-000000000000', kevin, { checked: true }))
+        .statusCode
+    ).toBe(404)
+    const kelly = mint('dev|kelly')
+    await call('POST', '/api/households', kelly, { name: 'K', timezone: 'UTC', person: { name: 'Kelly' } })
+    expect((await call('PATCH', `/api/list-items/${itemId}`, kelly, { checked: true })).statusCode).toBe(404)
+  })
+
+  it('soft-deletes an item', async () => {
+    expect((await call('DELETE', `/api/list-items/${itemId}`, kevin)).statusCode).toBe(204)
+    const names = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items.map(
+      (i: { name: string }) => i.name
+    )
+    expect(names).not.toContain('Eggs')
+    expect((await call('DELETE', `/api/list-items/${itemId}`, kevin)).statusCode).toBe(404)
+  })
+})

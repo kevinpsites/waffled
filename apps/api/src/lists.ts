@@ -67,6 +67,36 @@ export async function addItem(
   return rows[0]
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Toggle an item's checked state (records who/when). Household-scoped; null if
+// no such live item in this household.
+export async function setItemChecked(
+  tenant: Tenant,
+  id: string,
+  checked: boolean
+): Promise<ListItemRow | null> {
+  const { rows } = await query<ListItemRow>(
+    `update list_items
+        set checked = $1,
+            checked_at = case when $1 then now() else null end,
+            checked_by = case when $1 then $2::uuid else null end
+      where household_id = $3 and id = $4 and deleted_at is null
+      returning *`,
+    [checked, tenant.personId, tenant.householdId, id]
+  )
+  return rows[0] ?? null
+}
+
+export async function softDeleteItem(householdId: string, id: string): Promise<boolean> {
+  const { rowCount } = await query(
+    `update list_items set deleted_at = now()
+       where household_id = $1 and id = $2 and deleted_at is null`,
+    [householdId, id]
+  )
+  return !!rowCount
+}
+
 export function presentList(l: ListRow) {
   return {
     id: l.id,
@@ -109,5 +139,29 @@ export function registerListRoutes(api: Api): void {
     const list = await getOrCreateGroceryList(tenant)
     const item = await addItem(tenant, list.id, { name: body.name.trim(), quantity: body.quantity ?? null })
     return res.status(201).json({ item: presentListItem(item) })
+  })
+
+  // Check / uncheck an item.
+  api.patch('/api/list-items/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'item not found' })
+    const body = (req.body ?? {}) as { checked?: unknown }
+    if (typeof body.checked !== 'boolean') {
+      return res.status(400).json({ error: 'BadRequest', message: 'checked (boolean) is required' })
+    }
+    const item = await setItemChecked(tenant, id, body.checked)
+    if (!item) return res.status(404).json({ error: 'NotFound', message: 'item not found' })
+    return { item: presentListItem(item) }
+  })
+
+  // Remove an item (soft-delete).
+  api.delete('/api/list-items/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'item not found' })
+    const ok = await softDeleteItem(tenant.householdId, id)
+    if (!ok) return res.status(404).json({ error: 'NotFound', message: 'item not found' })
+    return res.status(204).send('')
   })
 }
