@@ -35,8 +35,9 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] W1c Served via Caddy in the stack (web build baked into the caddy image; SPA fallback; `/api` proxied). `just web` for Vite dev
 - [x] W2a Responsive layout (fills viewport, reflows 3→2→1 cols) + **working rail navigation** (routes; placeholders for not-yet-built screens)
 - [x] W2b Kiosk reads **real** data: `/api/persons` → real family on the Today dashboard (real names/avatars/colors, empty/sign-in states). Dev/kiosk token via localStorage/env; `just seed` for a demo household. *(Verified api→kiosk end-to-end with Playwright.)*
-- [x] W2c-grocery Grocery card real + interactive (check off, add; persists via /api/lists/grocery)
-- [ ] W2c Light up the remaining cards as their domains land (calendar→agenda, chores→rings, meals→dinner); real device pairing (3.3) replaces the dev token
+- [x] W2c-grocery Grocery card real + interactive (check off, add, delete; persists via /api/lists/grocery)
+- [x] W2c-chores Family-chores rings (Today) + interactive Tasks screen (complete → stars → rings)
+- [ ] W2c Light up the remaining cards as their domains land (calendar→agenda, meals→dinner); real device pairing (3.3) replaces the dev token
 - [ ] W3 Web management dashboard (full SPA: setup, calendar, lists, …) — grows alongside the backend domains
 
 ## M3 — Identity & household
@@ -56,7 +57,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] 5.5 Calendar UI: kiosk/web Today + agenda + month; iOS agenda
 
 ## M6 — Feature modules (each a vertical slice)
-- [ ] 6.1 Tasks / chores + stars (recurring generation, "up for grabs")
+- [~] 6.1 Tasks / chores + stars: real api (chores, daily instances, append-only stars ledger, balances view) + kiosk Family-chores rings (Today) + interactive Tasks screen (complete/uncomplete → stars → rings move). Still to come: rrule beyond daily, up-for-grabs, photo/approval, streaks, add-chore UI
 - [~] 6.2 Lists: grocery (real api: lists + list_items, get-or-create, add/check/delete) wired to the kiosk Grocery card (tap to check, type to add, persists). Custom lists + meal auto-build still to come
 - [ ] 6.3 Meals / recipes + AI "plan my week" + auto-built grocery
 - [ ] 6.4 Goals + rewards (ledgers, leaderboards, parent-approval redemption)
