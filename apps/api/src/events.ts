@@ -9,6 +9,18 @@ import { requireTenant, type Tenant } from './households'
 type Api = ReturnType<typeof createAPI>
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// camelCase API field → events column. Anything not here can't be patched.
+const UPDATABLE: Record<string, string> = {
+  title: 'title',
+  description: 'description',
+  location: 'location',
+  startsAt: 'starts_at',
+  endsAt: 'ends_at',
+  allDay: 'all_day',
+  personId: 'person_id',
+}
 
 export interface EventRow extends QueryResultRow {
   id: string
@@ -85,6 +97,38 @@ export async function rangeEvents(householdId: string, from: string, to: string)
   return rows
 }
 
+export async function updateEvent(
+  householdId: string,
+  id: string,
+  patch: Record<string, unknown>
+): Promise<EventRow | null> {
+  const sets: string[] = []
+  const values: unknown[] = []
+  let i = 1
+  for (const [field, column] of Object.entries(UPDATABLE)) {
+    if (field in patch && patch[field] !== undefined) {
+      sets.push(`${column} = $${i++}`)
+      values.push(patch[field])
+    }
+  }
+  values.push(householdId, id)
+  const { rows } = await query<EventRow>(
+    `update events set ${sets.join(', ')}
+       where household_id = $${i++} and id = $${i} and deleted_at is null
+       returning *`,
+    values
+  )
+  return rows[0] ?? null
+}
+
+export async function softDeleteEvent(householdId: string, id: string): Promise<boolean> {
+  const { rowCount } = await query(
+    `update events set deleted_at = now() where household_id = $1 and id = $2 and deleted_at is null`,
+    [householdId, id]
+  )
+  return !!rowCount
+}
+
 export function presentEvent(e: EventRow) {
   return {
     id: e.id,
@@ -138,5 +182,30 @@ export function registerEventRoutes(api: Api): void {
     }
     const events = await rangeEvents(tenant.householdId, from, to)
     return { from, to, events: events.map(presentEvent) }
+  })
+
+  api.patch('/api/events/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
+    const patch = (req.body ?? {}) as Record<string, unknown>
+    if (typeof patch.startsAt === 'string' && Number.isNaN(Date.parse(patch.startsAt))) {
+      return res.status(400).json({ error: 'BadRequest', message: 'startsAt must be a valid timestamp' })
+    }
+    if (!Object.keys(UPDATABLE).some((field) => field in patch)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields provided' })
+    }
+    const event = await updateEvent(tenant.householdId, id, patch)
+    if (!event) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
+    return { event: presentEvent(event) }
+  })
+
+  api.delete('/api/events/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
+    const ok = await softDeleteEvent(tenant.householdId, id)
+    if (!ok) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
+    return res.status(204).send('')
   })
 }

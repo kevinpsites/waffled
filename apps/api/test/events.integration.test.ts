@@ -159,4 +159,32 @@ describe('events api', () => {
     const r = JSON.parse((await call('GET', '/api/events?from=2026-06-08&to=2026-06-09', kevin)).body)
     expect(r.events.some((e: { title: string }) => e.title === 'Swim lessons')).toBe(true)
   })
+
+  it('updates and deletes an event', async () => {
+    const add = await call('POST', '/api/events', kevin, {
+      title: 'Vet appt',
+      startsAt: '2026-06-08T20:00:00Z',
+    })
+    const id = JSON.parse(add.body).event.id
+
+    // edit title + assign a person
+    const patched = await call('PATCH', `/api/events/${id}`, kevin, { title: 'Vet checkup', personId: kevinId })
+    expect(patched.statusCode).toBe(200)
+    let today = JSON.parse((await call('GET', '/api/events/today?date=2026-06-08', kevin)).body)
+    const ev = today.events.find((e: { id: string }) => e.id === id)
+    expect(ev).toMatchObject({ title: 'Vet checkup', personName: 'Kevin' })
+
+    // empty patch → 400; unknown → 404
+    expect((await call('PATCH', `/api/events/${id}`, kevin, {})).statusCode).toBe(400)
+    expect(
+      (await call('PATCH', '/api/events/00000000-0000-0000-0000-000000000000', kevin, { title: 'x' }))
+        .statusCode
+    ).toBe(404)
+
+    // delete
+    expect((await call('DELETE', `/api/events/${id}`, kevin)).statusCode).toBe(204)
+    today = JSON.parse((await call('GET', '/api/events/today?date=2026-06-08', kevin)).body)
+    expect(today.events.some((e: { id: string }) => e.id === id)).toBe(false)
+    expect((await call('DELETE', `/api/events/${id}`, kevin)).statusCode).toBe(404)
+  })
 })
