@@ -1,15 +1,43 @@
 import { Icon } from '../icons'
-import { Avatar } from './Avatar'
+import { useEventsToday, type AgendaEvent } from '../../lib/api'
 
-// Static until the calendar domain (M5) lands.
-const AGENDA: Array<{ time: string; person: string; title: string }> = [
-  { time: '8:30', person: 'wally', title: 'Swim lessons' },
-  { time: '1:30', person: 'kevin', title: 'Psychiatrist appt' },
-  { time: '5:30', person: 'kelly', title: 'Tele-health call' },
-  { time: 'all day', person: 'lottie', title: 'Dance recital tickets' },
-]
+function formatTime(e: AgendaEvent): string {
+  if (e.allDay) return 'all day'
+  const d = new Date(e.startsAt)
+  return `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function AgendaRow({ event }: { event: AgendaEvent }) {
+  const color = event.personColor ?? '#A6A29B'
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        padding: '13px 4px',
+        borderBottom: '1px solid var(--hair-2)',
+      }}
+    >
+      <div style={{ width: 62, fontSize: 14, fontWeight: 700, color: 'var(--ink-2)', textAlign: 'right' }}>
+        {formatTime(event)}
+      </div>
+      <div style={{ width: 4, height: 34, borderRadius: 99, background: color }} />
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 16, fontWeight: 600 }}>{event.title}</div>
+        {event.location && <div className="tiny muted">{event.location}</div>}
+      </div>
+      {event.personEmoji && (
+        <div className="av sm" style={{ background: `${color}22` }}>
+          {event.personEmoji}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export function AgendaCard() {
+  const { events, loading, error } = useEventsToday()
   return (
     <div className="card" style={{ padding: '22px 22px 8px', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
@@ -17,7 +45,7 @@ export function AgendaCard() {
           Today
         </div>
         <div className="muted" style={{ fontWeight: 600 }}>
-          {AGENDA.length} events
+          {events.length} {events.length === 1 ? 'event' : 'events'}
         </div>
         <div style={{ marginLeft: 'auto' }} className="pill">
           <Icon name="filter" />
@@ -25,44 +53,14 @@ export function AgendaCard() {
         </div>
       </div>
 
-      {AGENDA.map((ev) => (
-        <div
-          key={`${ev.time}-${ev.title}`}
-          className={`home-ev ${ev.person}`}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 14,
-            padding: '13px 4px',
-            borderBottom: '1px solid var(--hair-2)',
-          }}
-        >
-          <div style={{ width: 62, fontSize: 14, fontWeight: 700, color: 'var(--ink-2)', textAlign: 'right' }}>
-            {ev.time}
-          </div>
-          <div style={{ width: 4, height: 34, borderRadius: 99, background: `var(--${ev.person})` }} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 600 }}>{ev.title}</div>
-          </div>
-          <Avatar person={ev.person} size="sm" />
-        </div>
+      {loading && <div className="muted" style={{ padding: '14px 4px' }}>Loading…</div>}
+      {error && <div className="muted" style={{ padding: '14px 4px' }}>Sign this kiosk in to see the calendar.</div>}
+      {!loading && !error && events.length === 0 && (
+        <div className="muted" style={{ padding: '14px 4px' }}>Nothing on the calendar today.</div>
+      )}
+      {events.map((e) => (
+        <AgendaRow key={e.id} event={e} />
       ))}
-
-      <div
-        style={{
-          marginTop: 'auto',
-          padding: '14px 4px 12px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          color: 'var(--ink-3)',
-        }}
-      >
-        <svg viewBox="0 0 24 24" width={17} height={17} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
-          <path d="M9 6l6 6-6 6" />
-        </svg>
-        <span style={{ fontSize: 14, fontWeight: 600 }}>Tomorrow · Chorizo Tacos night · 2 events</span>
-      </div>
     </div>
   )
 }

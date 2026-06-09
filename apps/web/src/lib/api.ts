@@ -74,6 +74,8 @@ export const api = {
   choresToday: () => apiGet<{ date: string; people: PersonChores[] }>('/api/chores/today'),
   mealsWeek: (start: string) =>
     apiGet<{ start: string; entries: WeekEntry[] }>(`/api/meals/week?start=${start}`),
+  eventsToday: (date: string) =>
+    apiGet<{ date: string; events: AgendaEvent[] }>(`/api/events/today?date=${date}`),
   choreInstancesToday: () =>
     apiGet<{ date: string; instances: ChoreInstance[] }>('/api/chore-instances/today'),
   completeInstance: (id: string) =>
@@ -107,6 +109,19 @@ export function usePersons(): PersonsState {
     }
   }, [])
   return state
+}
+
+export interface AgendaEvent {
+  id: string
+  title: string
+  startsAt: string
+  endsAt: string | null
+  allDay: boolean
+  location: string | null
+  personId: string | null
+  personName: string | null
+  personColor: string | null
+  personEmoji: string | null
 }
 
 export interface MealRecipe {
@@ -147,6 +162,27 @@ export interface ChoresState {
   people: PersonChores[]
   loading: boolean
   error: boolean
+}
+
+export interface AgendaState {
+  events: AgendaEvent[]
+  loading: boolean
+  error: boolean
+}
+
+export function useEventsToday(): AgendaState {
+  const [state, setState] = useState<AgendaState>({ events: [], loading: true, error: false })
+  useEffect(() => {
+    let alive = true
+    api
+      .eventsToday(localToday())
+      .then((d) => alive && setState({ events: d.events, loading: false, error: false }))
+      .catch(() => alive && setState({ events: [], loading: false, error: true }))
+    return () => {
+      alive = false
+    }
+  }, [])
+  return state
 }
 
 export interface MealsState {

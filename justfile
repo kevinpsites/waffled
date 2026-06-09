@@ -101,6 +101,17 @@ seed:
       d=$(date -v+"$i"d +%Y-%m-%d)
       curl -s -X POST -H "$H" -H "$J" -d "{\"date\":\"$d\",\"mealType\":\"dinner\",\"recipeId\":\"${ids[$i]}\"}" localhost:3000/api/meals/plan >/dev/null || true
     done
+    # today's calendar events
+    kevin=$(echo "$PERSONS" | python3 -c "import sys,json;print(next(p['id'] for p in json.load(sys.stdin)['persons'] if p['name']=='Kevin'))")
+    kelly=$(echo "$PERSONS" | python3 -c "import sys,json;print(next(p['id'] for p in json.load(sys.stdin)['persons'] if p['name']=='Kelly'))")
+    t=$(date +%Y-%m-%d)
+    for ev in \
+      "{\"title\":\"Swim lessons\",\"startsAt\":\"${t}T13:30:00Z\",\"personId\":\"$wally\"}" \
+      "{\"title\":\"Psychiatrist appt\",\"startsAt\":\"${t}T18:30:00Z\",\"personId\":\"$kevin\"}" \
+      "{\"title\":\"Tele-health call\",\"startsAt\":\"${t}T22:30:00Z\",\"personId\":\"$kelly\"}" \
+      "{\"title\":\"Dance recital tickets\",\"startsAt\":\"${t}T17:00:00Z\",\"allDay\":true,\"personId\":\"$lottie\"}"; do
+      curl -s -X POST -H "$H" -H "$J" -d "$ev" localhost:3000/api/events >/dev/null || true
+    done
     echo "Seeded. In the kiosk browser console, run:"
     echo "  localStorage.setItem('nook.token', '$TOKEN'); location.reload()"
 

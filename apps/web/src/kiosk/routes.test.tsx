@@ -17,8 +17,8 @@ function rail() {
 describe('kiosk navigation', () => {
   it('renders the Today dashboard at /', async () => {
     renderAt('/')
-    expect(screen.getByText('Swim lessons')).toBeInTheDocument()
     expect(screen.getByText('Family chores')).toBeInTheDocument()
+    expect(screen.getByText('This week’s dinners')).toBeInTheDocument()
     // Today is the active rail item
     expect(within(rail()).getByText('Today').closest('a')).toHaveClass('on')
     // the chores card resolves (default stub → empty)
@@ -27,12 +27,12 @@ describe('kiosk navigation', () => {
 
   it('navigates to another screen when its rail item is clicked', () => {
     renderAt('/')
-    fireEvent.click(within(rail()).getByText('Calendar'))
+    fireEvent.click(within(rail()).getByText('Goals'))
 
-    // the Calendar placeholder shows, Today content is gone, active moved
+    // the Goals placeholder shows, Today content is gone, active moved
     expect(screen.getByText(/Coming soon/)).toBeInTheDocument()
-    expect(screen.queryByText('Swim lessons')).not.toBeInTheDocument()
-    expect(within(rail()).getByText('Calendar').closest('a')).toHaveClass('on')
+    expect(screen.queryByText('Family chores')).not.toBeInTheDocument()
+    expect(within(rail()).getByText('Goals').closest('a')).toHaveClass('on')
     expect(within(rail()).getByText('Today').closest('a')).not.toHaveClass('on')
   })
 
