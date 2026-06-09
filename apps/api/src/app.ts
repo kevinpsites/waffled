@@ -12,6 +12,7 @@ import {
 } from './households'
 import { registerPersonRoutes } from './persons'
 import { registerListRoutes } from './lists'
+import { registerChoreRoutes } from './chores'
 import { registerPowerSyncRoutes } from './powersync'
 
 const api = createAPI()
@@ -103,6 +104,9 @@ registerPersonRoutes(api)
 
 // Lists (/api/lists…)
 registerListRoutes(api)
+
+// Chores (/api/chores…)
+registerChoreRoutes(api)
 
 // PowerSync auth (JWKS + token endpoint)
 registerPowerSyncRoutes(api)
