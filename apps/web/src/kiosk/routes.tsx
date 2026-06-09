@@ -4,13 +4,14 @@ import { Today } from './Today'
 import { Tasks } from './Tasks'
 import { Calendar } from './Calendar'
 import { Goals } from './Goals'
-import { Placeholder } from './components/Placeholder'
-import { SCREENS, SETTINGS } from './nav'
+import { Meals } from './Meals'
+import { Lists } from './Lists'
+import { Photos } from './Photos'
+import { Settings } from './Settings'
 
-const REAL = new Set(['/', '/tasks', '/calendar', '/goals'])
-
-// Today + Tasks + Calendar + Goals are real; the other rail destinations are
-// placeholders until their backend domains land.
+// Every rail destination has a real component (some still stubs, owned by the
+// per-screen agents). Each screen lives in its own file so screens can be built
+// independently without touching this router.
 export function KioskRoutes() {
   return (
     <Routes>
@@ -19,9 +20,10 @@ export function KioskRoutes() {
         <Route path="tasks" element={<Tasks />} />
         <Route path="calendar" element={<Calendar />} />
         <Route path="goals" element={<Goals />} />
-        {[...SCREENS.filter((s) => !REAL.has(s.path)), SETTINGS].map((s) => (
-          <Route key={s.path} path={s.path.slice(1)} element={<Placeholder title={s.label} icon={s.icon} />} />
-        ))}
+        <Route path="meals" element={<Meals />} />
+        <Route path="lists" element={<Lists />} />
+        <Route path="photos" element={<Photos />} />
+        <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>
   )

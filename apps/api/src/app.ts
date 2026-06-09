@@ -16,6 +16,7 @@ import { registerChoreRoutes } from './chores'
 import { registerMealRoutes } from './meals'
 import { registerEventRoutes } from './events'
 import { registerGoalRoutes } from './goals'
+import { registerPhotoRoutes } from './photos'
 import { registerPowerSyncRoutes } from './powersync'
 
 const api = createAPI()
@@ -119,6 +120,9 @@ registerEventRoutes(api)
 
 // Goals (/api/goals…)
 registerGoalRoutes(api)
+
+// Photos / memories (/api/photos…)
+registerPhotoRoutes(api)
 
 // PowerSync auth (JWKS + token endpoint)
 registerPowerSyncRoutes(api)

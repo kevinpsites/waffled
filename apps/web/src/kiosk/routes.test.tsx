@@ -27,19 +27,22 @@ describe('kiosk navigation', () => {
 
   it('navigates to another screen when its rail item is clicked', () => {
     renderAt('/')
-    fireEvent.click(within(rail()).getByText('Lists'))
+    // Calendar is a stable real screen — use it so this test stays independent
+    // of the per-screen agents building out Meals/Lists/Photos/Settings.
+    fireEvent.click(within(rail()).getByText('Calendar'))
 
-    // the Lists placeholder shows, Today content is gone, active moved
-    expect(screen.getByText(/Coming soon/)).toBeInTheDocument()
+    // Today content is gone, active moved to Calendar
     expect(screen.queryByText('Family chores')).not.toBeInTheDocument()
-    expect(within(rail()).getByText('Lists').closest('a')).toHaveClass('on')
+    expect(within(rail()).getByText('Calendar').closest('a')).toHaveClass('on')
     expect(within(rail()).getByText('Today').closest('a')).not.toHaveClass('on')
   })
 
-  it('renders a placeholder directly at a not-yet-built route', () => {
-    renderAt('/meals')
-    const ph = document.querySelector('.screen-placeholder') as HTMLElement
-    expect(within(ph).getByText('Meals')).toBeInTheDocument()
-    expect(within(ph).getByText(/Coming soon/)).toBeInTheDocument()
+  it('every rail destination resolves to a screen (no dead routes)', () => {
+    for (const path of ['/tasks', '/calendar', '/goals', '/meals', '/lists', '/photos', '/settings']) {
+      const { unmount } = renderAt(path)
+      // the layout + a main region always render; no thrown route
+      expect(document.querySelector('.kiosk-main, .nk-kiosk')).toBeTruthy()
+      unmount()
+    }
   })
 })
