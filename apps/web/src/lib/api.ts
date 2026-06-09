@@ -76,6 +76,8 @@ export const api = {
     apiGet<{ start: string; entries: WeekEntry[] }>(`/api/meals/week?start=${start}`),
   eventsToday: (date: string) =>
     apiGet<{ date: string; events: AgendaEvent[] }>(`/api/events/today?date=${date}`),
+  eventsRange: (from: string, to: string) =>
+    apiGet<{ from: string; to: string; events: AgendaEvent[] }>(`/api/events?from=${from}&to=${to}`),
   choreInstancesToday: () =>
     apiGet<{ date: string; instances: ChoreInstance[] }>('/api/chore-instances/today'),
   completeInstance: (id: string) =>
@@ -182,6 +184,22 @@ export function useEventsToday(): AgendaState {
       alive = false
     }
   }, [])
+  return state
+}
+
+export function useEventsRange(from: string, to: string): AgendaState {
+  const [state, setState] = useState<AgendaState>({ events: [], loading: true, error: false })
+  useEffect(() => {
+    let alive = true
+    setState((s) => ({ ...s, loading: true }))
+    api
+      .eventsRange(from, to)
+      .then((d) => alive && setState({ events: d.events, loading: false, error: false }))
+      .catch(() => alive && setState({ events: [], loading: false, error: true }))
+    return () => {
+      alive = false
+    }
+  }, [from, to])
   return state
 }
 
