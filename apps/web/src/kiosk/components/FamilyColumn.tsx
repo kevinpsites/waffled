@@ -1,5 +1,5 @@
-import { Icon } from '../icons'
 import { usePersons, type Person } from '../../lib/api'
+import { GroceryCard } from './GroceryCard'
 
 // Real family avatar — tinted with the member's own color.
 function PersonAvatar({ person }: { person: Person }) {
@@ -54,54 +54,6 @@ function FamilyCard() {
       {persons.map((p) => (
         <MemberRow key={p.id} person={p} />
       ))}
-    </div>
-  )
-}
-
-// Static until the lists domain (6.2) lands.
-const GROCERY = ['Naan dippers', 'Cheddar, sliced', 'Ground sausage', 'Ravioli']
-
-function GroceryCard() {
-  return (
-    <div className="card" style={{ padding: '18px 20px', flex: 1 }}>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
-        <div className="card-h" style={{ fontSize: 17 }}>
-          Grocery
-        </div>
-        <div style={{ marginLeft: 'auto' }} className="ai-tag">
-          <Icon name="spark" />
-          Auto
-        </div>
-      </div>
-      {GROCERY.map((item) => (
-        <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 7 }}>
-          <div style={{ width: 18, height: 18, borderRadius: 6, border: '2px solid var(--hair)', flex: 'none' }} />
-          <span style={{ fontSize: 14, fontWeight: 600 }}>{item}</span>
-        </div>
-      ))}
-      <div className="tiny muted" style={{ paddingTop: 6, fontWeight: 600 }}>
-        + 6 more from this week’s meals ›
-      </div>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 7,
-          marginTop: 10,
-          padding: '9px 11px',
-          borderRadius: 'var(--r-md)',
-          border: '2px dashed var(--hair)',
-          color: 'var(--ink-3)',
-          fontSize: 14,
-          fontWeight: 700,
-        }}
-      >
-        <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-        Add item
-      </div>
     </div>
   )
 }

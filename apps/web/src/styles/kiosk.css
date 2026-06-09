@@ -70,6 +70,34 @@ body {
   }
 }
 
+/* ===== grocery checkbox ===== */
+.gcheck {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 2px solid var(--hair);
+  background: #fff;
+  flex: none;
+  position: relative;
+  display: inline-block;
+}
+.gcheck.on {
+  background: var(--wally);
+  border-color: var(--wally);
+}
+.gcheck.on::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 4px;
+  height: 8px;
+  border: 2px solid #fff;
+  border-top: 0;
+  border-left: 0;
+  transform: rotate(43deg);
+}
+
 /* ===== placeholder screens (not yet built) ===== */
 .screen-placeholder {
   flex: 1;

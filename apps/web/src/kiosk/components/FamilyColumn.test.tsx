@@ -2,7 +2,8 @@ import { render, screen } from '@testing-library/react'
 import { FamilyColumn } from './FamilyColumn'
 
 function mockPersons(persons: unknown[]) {
-  globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ persons }) })) as unknown as typeof fetch
+  // FamilyColumn also renders the GroceryCard, which fetches its own list.
+  globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ persons, items: [] }) })) as unknown as typeof fetch
 }
 
 describe('FamilyColumn', () => {
@@ -20,7 +21,7 @@ describe('FamilyColumn', () => {
   it('shows a sign-in message when the api rejects', async () => {
     globalThis.fetch = vi.fn(async () => ({ ok: false, status: 403, json: async () => ({}) })) as unknown as typeof fetch
     render(<FamilyColumn />)
-    expect(await screen.findByText(/Sign this kiosk in/)).toBeInTheDocument()
+    expect(await screen.findByText(/Sign this kiosk in to see your family/)).toBeInTheDocument()
   })
 
   it('shows an empty state with no members', async () => {
