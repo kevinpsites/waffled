@@ -95,6 +95,65 @@ export const groceryApi = {
     }).then((r) => r.item),
   patchListItem: (id: string, patch: PatchItemBody) =>
     apiSend<{ item: ListItem }>('PATCH', `/api/list-items/${id}`, patchBody(patch)).then((r) => r.item),
+
+  // grocery board (auto-built view) + pantry staples
+  groceryBoard: (weekStart?: string) =>
+    apiGet<GroceryBoard>(`/api/lists/grocery/board${weekStart ? `?weekStart=${weekStart}` : ''}`),
+  rebuildGrocery: (weekStart?: string) =>
+    apiSend<{ rebuilt: number; board: GroceryBoard }>('POST', `/api/lists/grocery/rebuild${weekStart ? `?weekStart=${weekStart}` : ''}`),
+  pantryStaples: () => apiGet<{ staples: PantryStaple[] }>('/api/pantry-staples'),
+  addStaple: (name: string) => apiSend<{ staple: PantryStaple }>('POST', '/api/pantry-staples', { name }).then((r) => r.staple),
+  removeStaple: (id: string) => apiDelete(`/api/pantry-staples/${id}`),
+}
+
+export interface GroceryDinner {
+  date: string
+  recipeId: string | null
+  title: string | null
+  emoji: string | null
+  color: string
+}
+export interface PantryStaple {
+  id: string
+  name: string
+}
+export interface GroceryBoardItem extends ListItem {
+  aisle: string
+  source: string
+  sourceRecipeIds: string[]
+}
+export interface GroceryBoard {
+  list: ListSummary
+  weekStart: string
+  dinners: GroceryDinner[]
+  items: GroceryBoardItem[]
+  staples: PantryStaple[]
+}
+
+export interface GroceryBoardState {
+  board: GroceryBoard | null
+  loading: boolean
+  error: boolean
+  refetch: () => void
+}
+
+export function useGroceryBoard(weekStart?: string): GroceryBoardState {
+  const [board, setBoard] = useState<GroceryBoard | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const [nonce, setNonce] = useState(0)
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    groceryApi
+      .groceryBoard(weekStart)
+      .then((d) => alive && (setBoard(d), setLoading(false), setError(false)))
+      .catch(() => alive && (setError(true), setLoading(false)))
+    return () => {
+      alive = false
+    }
+  }, [weekStart, nonce])
+  return { board, loading, error, refetch: () => setNonce((n) => n + 1) }
 }
 
 // ---- grocery hook (Today dashboard) ----------------------------------------

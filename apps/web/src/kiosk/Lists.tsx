@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Icon } from './icons'
 import { ListsModal } from './components/ListsModal'
 import { ListItemModal } from './components/ListItemModal'
+import { GroceryBoard } from './components/GroceryBoard'
 import {
   groceryApi,
   useLists,
@@ -178,6 +179,7 @@ export function Lists() {
   const [filterPerson, setFilterPerson] = useState<string | null>(null)
   const [filterMenu, setFilterMenu] = useState(false)
   const [itemModal, setItemModal] = useState<{ item: ListItem | null } | null>(null)
+  const [groceryOpen, setGroceryOpen] = useState(false)
 
   const selected: ListSummary | null = useMemo(
     () => lists.find((l) => l.id === selectedId) ?? lists[0] ?? null,
@@ -264,6 +266,11 @@ export function Lists() {
     return <div className="muted" style={{ padding: 30 }}>Sign this kiosk in to see your lists.</div>
   }
 
+  // The grocery list opens its dedicated auto-built board (takes over the screen).
+  if (groceryOpen) {
+    return <GroceryBoard onBack={() => setGroceryOpen(false)} />
+  }
+
   const visibleItems = filterPerson ? items.filter((i) => i.assignee?.personId === filterPerson) : items
   const sections = groupBySection(visibleItems)
   const [leftCol, rightCol] = splitColumns(sections)
@@ -281,7 +288,10 @@ export function Lists() {
                 key={l.id}
                 type="button"
                 className={`list-item ${on ? 'on' : ''}`}
-                onClick={() => setSelectedId(l.id)}
+                onClick={() => {
+                  setSelectedId(l.id)
+                  setGroceryOpen(l.listType === 'grocery')
+                }}
               >
                 <span className="lemo">{l.emoji ?? '📝'}</span>
                 {l.name}

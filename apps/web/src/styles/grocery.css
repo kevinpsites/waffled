@@ -1,0 +1,210 @@
+/* ===== Grocery board (auto-built view — "Grocery / Auto-built" mock) ===== */
+.grocery-board {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 22px;
+  padding: 2px 30px 24px;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: start;
+}
+.grocery-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.grocery-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.grocery-title {
+  font-size: 26px;
+}
+.grocery-head .seg button {
+  cursor: pointer;
+}
+.grocery-add {
+  margin-bottom: 16px;
+}
+
+/* two-column flow of aisle sections (like the mock) */
+.grocery-cols {
+  columns: 2;
+  column-gap: 18px;
+}
+.grocery-section {
+  break-inside: avoid;
+  margin-bottom: 18px;
+}
+.grocery-section-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 2px 8px;
+}
+.grocery-section-h .ga-emo {
+  font-size: 15px;
+}
+.grocery-section-h .ga-n {
+  color: var(--ink-3);
+}
+
+.gitem {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 14px 16px;
+  background: var(--card);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
+  margin-bottom: 9px;
+  cursor: pointer;
+}
+.gitem.done {
+  background: var(--card-2);
+  box-shadow: none;
+}
+.gck {
+  width: 20px;
+  height: 20px;
+  border-radius: 7px;
+  border: 2px solid var(--hair);
+  background: #fff;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.gitem.done .gck {
+  background: var(--wally);
+  border-color: var(--wally);
+}
+.gnm {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+  min-width: 0;
+}
+.gitem.done .gnm {
+  text-decoration: line-through;
+  color: var(--ink-3);
+}
+.gdots {
+  display: inline-flex;
+  gap: 4px;
+  flex: none;
+}
+.gdot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+.gqty {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink-2);
+  flex: none;
+  min-width: 44px;
+  text-align: right;
+}
+
+/* right rail */
+.grocery-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+.grocery-railcard {
+  padding: 20px 22px;
+}
+.gdinner {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--hair-2);
+}
+.gdinner:last-child {
+  border-bottom: 0;
+}
+.gdinner-c {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  flex: none;
+}
+.gdinner-day {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-2);
+  width: 34px;
+  flex: none;
+}
+.gdinner-t {
+  flex: 1;
+  font-size: 14.5px;
+  font-weight: 600;
+  min-width: 0;
+}
+.gdinner-e {
+  font-size: 18px;
+  flex: none;
+}
+.grocery-staples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.staple-chip {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink-2);
+  border: 0;
+  cursor: pointer;
+}
+.staple-chip:hover {
+  background: var(--wally-t);
+  color: #167a4a;
+}
+.staple-chip.editable {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+.staple-chip.editable button {
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.staple-chip.editable button:hover {
+  color: var(--primary);
+}
+
+@media (max-width: 1000px) {
+  .grocery-board {
+    grid-template-columns: 1fr;
+  }
+  .grocery-cols {
+    columns: 1;
+  }
+}
+@media (max-width: 720px) {
+  .grocery-board {
+    padding: 2px 16px 20px;
+  }
+}

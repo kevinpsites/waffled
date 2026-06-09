@@ -1,0 +1,208 @@
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { Icon } from '../icons'
+import { useTopbarFull } from '../topbar-slot'
+import { groceryApi, useGroceryBoard, type GroceryBoardItem } from '../../lib/api'
+import { StaplesModal } from './StaplesModal'
+import '../../styles/grocery.css'
+
+const AISLE_ORDER = ['Produce', 'Dairy & Chilled', 'Meat & Seafood', 'Pantry', 'Bakery', 'Frozen', 'Other']
+const AISLE_EMOJI: Record<string, string> = {
+  Produce: '🥬',
+  'Dairy & Chilled': '🧀',
+  'Meat & Seafood': '🍖',
+  Pantry: '🥫',
+  Bakery: '🍞',
+  Frozen: '🧊',
+  Other: '🛒',
+}
+
+const CHECK = (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" strokeWidth="3">
+    <path d="M5 12l5 5 9-10" />
+  </svg>
+)
+
+function ItemRow({ item, colors, onToggle }: { item: GroceryBoardItem; colors: string[]; onToggle: () => void }) {
+  return (
+    <div className={`gitem ${item.checked ? 'done' : ''}`} onClick={onToggle} role="button" tabIndex={0}>
+      <span className="gck" aria-hidden>{item.checked ? CHECK : null}</span>
+      <span className="gnm">{item.name}</span>
+      <span className="gdots">
+        {colors.map((c, i) => (
+          <span key={i} className="gdot" style={{ background: c }} />
+        ))}
+      </span>
+      {item.quantity && <span className="gqty">{item.quantity}</span>}
+    </div>
+  )
+}
+
+// Group items into ordered aisle sections; manual/uncategorized items lead, ungrouped.
+function aisleSections(items: GroceryBoardItem[]): Array<{ aisle: string | null; items: GroceryBoardItem[] }> {
+  const ungrouped = items.filter((i) => !i.aisle)
+  const byAisle = new Map<string, GroceryBoardItem[]>()
+  for (const i of items) {
+    if (!i.aisle) continue
+    if (!byAisle.has(i.aisle)) byAisle.set(i.aisle, [])
+    byAisle.get(i.aisle)!.push(i)
+  }
+  const out: Array<{ aisle: string | null; items: GroceryBoardItem[] }> = []
+  if (ungrouped.length) out.push({ aisle: null, items: ungrouped })
+  for (const a of AISLE_ORDER) if (byAisle.has(a)) out.push({ aisle: a, items: byAisle.get(a)! })
+  for (const [a, list] of byAisle) if (!AISLE_ORDER.includes(a)) out.push({ aisle: a, items: list })
+  return out
+}
+
+export function GroceryBoard({ onBack }: { onBack: () => void }) {
+  const { board, loading, error, refetch } = useGroceryBoard()
+  const [view, setView] = useState<'aisle' | 'meal'>('aisle')
+  const [draft, setDraft] = useState('')
+  const [editStaples, setEditStaples] = useState(false)
+  const rebuilt = useRef(false)
+
+  // First time, if nothing auto-built yet but dinners exist, build it.
+  useEffect(() => {
+    if (rebuilt.current || !board) return
+    const hasAuto = board.items.some((i) => i.source === 'auto')
+    if (!hasAuto && board.dinners.length > 0) {
+      rebuilt.current = true
+      groceryApi.rebuildGrocery(board.weekStart).then(refetch).catch(() => {})
+    }
+  }, [board, refetch])
+
+  useTopbarFull(
+    () => (
+      <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
+        <button className="pill" style={{ cursor: 'pointer' }} onClick={onBack}>‹ Lists</button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
+          <button className="pill" style={{ cursor: 'pointer' }} title="Coming soon">⬆ Send to phone</button>
+          <button className="pill" style={{ cursor: 'pointer' }} title="Coming soon">🛒 Order online</button>
+        </div>
+      </div>
+    ),
+    [onBack]
+  )
+
+  const colorFor = useMemo(() => {
+    const m = new Map<string, string>()
+    board?.dinners.forEach((d) => d.recipeId && m.set(d.recipeId, d.color))
+    return (ids: string[]) => ids.map((id) => m.get(id)).filter(Boolean) as string[]
+  }, [board])
+
+  if (loading && !board) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
+  if (error || !board) return <div className="muted" style={{ padding: 30 }}>Couldn’t load the grocery list.</div>
+
+  const inCart = board.items.filter((i) => i.checked).length
+
+  async function toggle(item: GroceryBoardItem) {
+    await groceryApi.patchListItem(item.id, { checked: !item.checked })
+    refetch()
+  }
+  async function addItem(name: string) {
+    const n = name.trim()
+    if (!n) return
+    await groceryApi.addGroceryItem(n)
+    setDraft('')
+    refetch()
+  }
+  function onAdd(e: FormEvent) {
+    e.preventDefault()
+    addItem(draft)
+  }
+  async function addStapleToList(name: string) {
+    await groceryApi.addGroceryItem(name)
+    refetch()
+  }
+
+  const sections =
+    view === 'aisle'
+      ? aisleSections(board.items)
+      : board.dinners
+          .filter((d) => d.recipeId)
+          .map((d) => ({ aisle: d.title ?? 'Meal', items: board.items.filter((i) => i.sourceRecipeIds.includes(d.recipeId!)) }))
+          .filter((s) => s.items.length > 0)
+          .concat(
+            (() => {
+              const manual = board.items.filter((i) => i.sourceRecipeIds.length === 0)
+              return manual.length ? [{ aisle: 'Other items', items: manual }] : []
+            })()
+          )
+
+  return (
+    <div className="grocery-board">
+      <div className="grocery-main">
+        <div className="grocery-head">
+          <div className="card-h nk-serif grocery-title">Grocery list</div>
+          <div className="muted" style={{ fontWeight: 600 }}>
+            {board.items.length} items{inCart > 0 ? ` · ${inCart} in cart` : ''}
+          </div>
+          <div className="seg" style={{ marginLeft: 'auto' }}>
+            <button className={view === 'aisle' ? 'on' : ''} onClick={() => setView('aisle')}>By aisle</button>
+            <button className={view === 'meal' ? 'on' : ''} onClick={() => setView('meal')}>By meal</button>
+          </div>
+        </div>
+
+        <form className="ai-bar grocery-add" onSubmit={onAdd}>
+          <div className="ai-spark" aria-hidden><Icon name="spark" /></div>
+          <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={'Add to groceries… “bananas and oat milk”'} aria-label="Add to groceries" />
+          <div className="mic" aria-hidden><Icon name="mic" /></div>
+        </form>
+
+        {board.items.length === 0 ? (
+          <div className="muted" style={{ padding: '24px 2px', fontWeight: 600 }}>
+            Nothing here yet — plan some dinners in Meals, then it auto-builds, or add items above.
+          </div>
+        ) : (
+          <div className="grocery-cols">
+            {sections.map((sec, i) => (
+              <div key={i} className="grocery-section">
+                {sec.aisle && (
+                  <div className="grocery-section-h">
+                    {view === 'aisle' && AISLE_EMOJI[sec.aisle] && <span className="ga-emo">{AISLE_EMOJI[sec.aisle]}</span>}
+                    {sec.aisle}
+                    <span className="ga-n">{sec.items.length}</span>
+                  </div>
+                )}
+                {sec.items.map((it) => (
+                  <ItemRow key={it.id} item={it} colors={colorFor(it.sourceRecipeIds)} onToggle={() => toggle(it)} />
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="grocery-rail">
+        <div className="card grocery-railcard">
+          <div className="card-h" style={{ marginBottom: 12 }}>This week’s dinners</div>
+          {board.dinners.length === 0 && <div className="tiny muted" style={{ fontWeight: 600 }}>No dinners planned yet.</div>}
+          {board.dinners.map((d) => (
+            <div key={d.date} className="gdinner">
+              <span className="gdinner-c" style={{ background: d.color }} />
+              <span className="gdinner-day">{new Date(String(d.date).slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</span>
+              <span className="gdinner-t">{d.title ?? '—'}</span>
+              <span className="gdinner-e">{d.emoji ?? '🍽️'}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="card grocery-railcard">
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+            <div className="card-h">Pantry check</div>
+            <button type="button" className="pill" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={() => setEditStaples(true)}>☼ Edit staples</button>
+          </div>
+          <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 10 }}>
+            These staples are assumed in the house, so they’re left off the list. Tap one to add it anyway.
+          </div>
+          <div className="grocery-staples">
+            {board.staples.map((s) => (
+              <button key={s.id} type="button" className="staple-chip" onClick={() => addStapleToList(s.name)}>{s.name}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {editStaples && <StaplesModal staples={board.staples} onClose={() => setEditStaples(false)} onChanged={refetch} />}
+    </div>
+  )
+}
