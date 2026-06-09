@@ -106,9 +106,19 @@ export function RecipeDetail() {
           {recipe.cookMethod && <span className="rd-tag">🍳 {recipe.cookMethod}</span>}
           {recipe.effort && <span className="rd-tag">⏱️ {recipe.effort}</span>}
           {recipe.dietary.map((d) => <span key={d} className="rd-tag diet">{d}</span>)}
-          {recipe.vegetables.map((v) => <span key={v} className="rd-tag soft">{v}</span>)}
-          {(recipe.tags ?? []).map((t) => <span key={t} className="rd-tag soft">#{t}</span>)}
         </div>
+
+        {recipe.vegetables.length > 0 && (
+          <div className="rd-veg">
+            <span className="rd-veg-label">🥬 Vegetables</span>
+            {recipe.vegetables.map((v) => <span key={v} className="rd-tag veg">{v}</span>)}
+          </div>
+        )}
+        {(recipe.tags ?? []).length > 0 && (
+          <div className="rd-veg">
+            {(recipe.tags ?? []).map((t) => <span key={t} className="rd-tag soft">#{t}</span>)}
+          </div>
+        )}
 
         <div className="card rd-ings">
           <div className="rd-ings-head">

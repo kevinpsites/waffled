@@ -300,8 +300,13 @@
   color: #1559b8;
 }
 .rd-tag.diet {
+  background: var(--lottie-t);
+  color: #6a3fc4;
+}
+.rd-tag.veg {
   background: var(--wally-t);
   color: #167a4a;
+  text-transform: none;
 }
 .rd-tag.soft {
   background: transparent;
@@ -309,6 +314,22 @@
   color: var(--ink-3);
   font-weight: 600;
   text-transform: none;
+}
+/* vegetables + tags rows, each with a leading label */
+.rd-veg {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 12px;
+}
+.rd-veg-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  margin-right: 2px;
 }
 
 /* library filters */
@@ -323,12 +344,21 @@
   font: inherit;
   font-size: 13.5px;
   font-weight: 600;
-  padding: 8px 12px;
+  padding: 8px 32px 8px 14px;
   border-radius: 999px;
   border: 1px solid var(--hair);
-  background: var(--card);
+  background-color: var(--card);
   color: var(--ink-2);
   cursor: pointer;
+  /* replace the native arrow (which clipped the rounded pill) with our own */
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B6B70' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+.recipes-filter.on {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
 }
 .recipes-filter.on {
   background: var(--ink);

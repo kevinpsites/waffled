@@ -15,6 +15,27 @@ function gradClass(r: Recipe): string {
   return (r.category && GRAD_BY_CATEGORY[r.category.toLowerCase()]) || 'g-veg'
 }
 
+// One searchable string per recipe — title + every metadata field, so a search
+// for "cucumber" (a vegetable) or "weeknight" (effort) finds the recipe.
+function haystack(r: Recipe): string {
+  return [
+    r.title,
+    r.cuisine,
+    r.protein,
+    r.base,
+    r.mealType,
+    r.effort,
+    r.cookMethod,
+    r.collection,
+    ...(r.tags ?? []),
+    ...r.vegetables,
+    ...r.dietary,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
 function distinct(recipes: Recipe[], key: keyof Recipe): string[] {
   const s = new Set<string>()
   for (const r of recipes) {
@@ -73,11 +94,7 @@ export function RecipesLibrary() {
       (!cuisine || r.cuisine === cuisine) &&
       (!protein || r.protein === protein) &&
       (!diet || r.dietary.includes(diet)) &&
-      (!ql ||
-        r.title.toLowerCase().includes(ql) ||
-        (r.tags ?? []).some((t) => t.toLowerCase().includes(ql)) ||
-        (r.cuisine ?? '').toLowerCase().includes(ql) ||
-        (r.protein ?? '').toLowerCase().includes(ql))
+      (!ql || haystack(r).includes(ql))
   )
 
   const anyFilter = fav || collection || cuisine || protein || diet || ql
