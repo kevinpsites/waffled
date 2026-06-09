@@ -4,6 +4,7 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow } from 'pg'
 import { query } from './db'
 import { requireTenant, type Tenant } from './households'
+import { getRecipe, listIngredients } from './meals'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -97,6 +98,40 @@ export async function softDeleteItem(householdId: string, id: string): Promise<b
   return !!rowCount
 }
 
+// Auto-build: add a recipe's ingredients to the grocery list, skipping names
+// already on it. Returns null if the recipe isn't in this household.
+export async function addRecipeToGrocery(
+  tenant: Tenant,
+  recipeId: string
+): Promise<ListItemRow[] | null> {
+  const recipe = await getRecipe(tenant.householdId, recipeId)
+  if (!recipe) return null
+
+  const list = await getOrCreateGroceryList(tenant)
+  const ingredients = await listIngredients(tenant.householdId, recipeId)
+  const existing = await query<{ name: string }>(
+    `select name from list_items where household_id=$1 and list_id=$2 and deleted_at is null`,
+    [tenant.householdId, list.id]
+  )
+  const have = new Set(existing.rows.map((r) => r.name.trim().toLowerCase()))
+
+  const added: ListItemRow[] = []
+  for (const ing of ingredients) {
+    const key = ing.name.trim().toLowerCase()
+    if (have.has(key)) continue
+    have.add(key)
+    const quantity = ing.amount != null && ing.unit ? `${Number(ing.amount)} ${ing.unit}` : null
+    const { rows } = await query<ListItemRow>(
+      `insert into list_items
+         (household_id, list_id, name, quantity, source, source_recipe_ids, created_by)
+       values ($1,$2,$3,$4,'auto',$5,$6) returning *`,
+      [tenant.householdId, list.id, ing.name, quantity, [recipeId], tenant.personId]
+    )
+    added.push(rows[0])
+  }
+  return added
+}
+
 export function presentList(l: ListRow) {
   return {
     id: l.id,
@@ -163,5 +198,15 @@ export function registerListRoutes(api: Api): void {
     const ok = await softDeleteItem(tenant.householdId, id)
     if (!ok) return res.status(404).json({ error: 'NotFound', message: 'item not found' })
     return res.status(204).send('')
+  })
+
+  // Add a recipe's ingredients to the grocery list (the meal card's "To list").
+  api.post('/api/lists/grocery/from-recipe/:recipeId', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const recipeId = req.params.recipeId ?? ''
+    if (!UUID_RE.test(recipeId)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    const added = await addRecipeToGrocery(tenant, recipeId)
+    if (added === null) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    return res.status(201).json({ added: added.length, items: added.map(presentListItem) })
   })
 }

@@ -195,3 +195,39 @@ describe('grocery item mutations', () => {
     expect((await call('DELETE', `/api/list-items/${itemId}`, kevin)).statusCode).toBe(404)
   })
 })
+
+describe('grocery auto-build from a recipe', () => {
+  let recipeId = ''
+
+  beforeAll(async () => {
+    const r = await call('POST', '/api/recipes', kevin, { title: 'Chorizo Tacos', emoji: '🌮' })
+    recipeId = JSON.parse(r.body).recipe.id
+    await call('POST', `/api/recipes/${recipeId}/ingredients`, kevin, {
+      ingredients: [
+        { name: 'Tortillas', amount: 8, unit: 'count' },
+        { name: 'Chorizo', amount: 1, unit: 'lb' },
+        { name: 'Bananas' }, // already on the list from the 'grocery api' describe → skip
+      ],
+    })
+  })
+
+  it("adds a recipe's ingredients, skipping duplicates", async () => {
+    const res = await call('POST', `/api/lists/grocery/from-recipe/${recipeId}`, kevin)
+    expect(res.statusCode).toBe(201)
+    expect(JSON.parse(res.body).added).toBe(2) // Tortillas + Chorizo; Bananas skipped
+
+    const names = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items.map(
+      (i: { name: string }) => i.name
+    )
+    expect(names).toContain('Tortillas')
+    expect(names).toContain('Chorizo')
+    expect(names.filter((n: string) => n === 'Bananas')).toHaveLength(1)
+  })
+
+  it('404 for an unknown recipe', async () => {
+    expect(
+      (await call('POST', '/api/lists/grocery/from-recipe/00000000-0000-0000-0000-000000000000', kevin))
+        .statusCode
+    ).toBe(404)
+  })
+})
