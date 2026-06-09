@@ -408,18 +408,101 @@ export async function goalDetail(householdId: string, id: string) {
   return { ...base, createdAt: rows[0].created_at, milestones, recent, thisWeek, streakDays }
 }
 
+// Log progress for one or more people — the handoff "who was outside" multi-select
+// inserts one entry per person, so per-person sums still roll up to the pool total.
 export async function logProgress(
   tenant: Tenant,
   goalId: string,
   amount: number,
-  personId: string | null,
+  personIds: Array<string | null>,
   note?: string | null
 ): Promise<void> {
-  await query(
-    `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, created_by)
-     values ($1,$2,$3,$4,$5,'quick_log',$6)`,
-    [tenant.householdId, goalId, personId, amount, note ?? null, tenant.personId]
-  )
+  const targets = personIds.length ? personIds : [null]
+  for (const personId of targets) {
+    await query(
+      `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, created_by)
+       values ($1,$2,$3,$4,$5,'quick_log',$6)`,
+      [tenant.householdId, goalId, personId, amount, note ?? null, tenant.personId]
+    )
+  }
+}
+
+const GOAL_COLUMNS: Record<string, string> = {
+  title: 'title',
+  emoji: 'emoji',
+  category: 'category',
+  goalType: 'goal_type',
+  unit: 'unit',
+  targetValue: 'target_value',
+  habitPeriod: 'habit_period',
+  habitTargetPerPeriod: 'habit_target_per_period',
+  trackingMode: 'tracking_mode',
+  logMethod: 'log_method',
+  deadline: 'deadline',
+  isFeatured: 'is_featured',
+  hasRewards: 'has_rewards',
+  goalListId: 'goal_list_id',
+}
+
+export interface UpdateGoalInput {
+  participantIds?: string[]
+  milestones?: Array<{ threshold: number; emoji?: string | null; label?: string | null; rewardText?: string | null }>
+  [key: string]: unknown
+}
+
+export async function updateGoal(tenant: Tenant, id: string, patch: UpdateGoalInput): Promise<boolean> {
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    const sets: string[] = []
+    const vals: unknown[] = []
+    let i = 1
+    for (const [k, col] of Object.entries(GOAL_COLUMNS)) {
+      if (k in patch) {
+        sets.push(`${col}=$${i++}`)
+        vals.push((patch[k] as unknown) ?? null)
+      }
+    }
+    let exists = true
+    if (sets.length) {
+      vals.push(tenant.householdId, id)
+      const r = await client.query(
+        `update goals set ${sets.join(',')} where household_id=$${i++} and id=$${i++} and deleted_at is null`,
+        vals
+      )
+      exists = !!r.rowCount
+    } else {
+      const r = await client.query(`select 1 from goals where household_id=$1 and id=$2 and deleted_at is null`, [tenant.householdId, id])
+      exists = !!r.rowCount
+    }
+    if (!exists) {
+      await client.query('rollback')
+      return false
+    }
+    if (Array.isArray(patch.participantIds)) {
+      await client.query(`update goal_participants set deleted_at=now() where goal_id=$1 and deleted_at is null`, [id])
+      for (const pid of [...new Set(patch.participantIds)]) {
+        await client.query(`insert into goal_participants (household_id, goal_id, person_id) values ($1,$2,$3)`, [tenant.householdId, id, pid])
+      }
+    }
+    if (Array.isArray(patch.milestones)) {
+      await client.query(`update goal_milestones set deleted_at=now() where goal_id=$1 and deleted_at is null`, [id])
+      let order = 0
+      for (const m of patch.milestones) {
+        await client.query(
+          `insert into goal_milestones (household_id, goal_id, threshold, emoji, label, reward_text, sort_order) values ($1,$2,$3,$4,$5,$6,$7)`,
+          [tenant.householdId, id, m.threshold, m.emoji ?? null, m.label ?? null, m.rewardText ?? null, order++]
+        )
+      }
+    }
+    await client.query('commit')
+    return true
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+  }
 }
 
 export async function softDeleteGoal(householdId: string, id: string): Promise<boolean> {
@@ -490,11 +573,27 @@ export function registerGoalRoutes(api: Api): void {
     return { goal }
   })
 
+  api.patch('/api/goals/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    const body = (req.body ?? {}) as { goalType?: string; trackingMode?: string }
+    if (body.goalType && !GOAL_TYPES.has(body.goalType)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid goalType' })
+    }
+    if (body.trackingMode && !TRACKING_MODES.has(body.trackingMode)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid trackingMode' })
+    }
+    const ok = await updateGoal(tenant, id, req.body ?? {})
+    if (!ok) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    return { goal: await goalDetail(tenant.householdId, id) }
+  })
+
   api.post('/api/goals/:id/log', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
-    const body = (req.body ?? {}) as { amount?: unknown; personId?: string; note?: string }
+    const body = (req.body ?? {}) as { amount?: unknown; personId?: string; personIds?: string[]; note?: string }
     const amount = Number(body.amount)
     if (!Number.isFinite(amount) || amount === 0) {
       return res.status(400).json({ error: 'BadRequest', message: 'amount must be a non-zero number' })
@@ -502,7 +601,8 @@ export function registerGoalRoutes(api: Api): void {
     if (!(await goalExists(tenant.householdId, id))) {
       return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
     }
-    await logProgress(tenant, id, amount, body.personId || null, body.note ?? null)
+    const personIds = Array.isArray(body.personIds) ? body.personIds.filter(Boolean) : body.personId ? [body.personId] : []
+    await logProgress(tenant, id, amount, personIds, body.note ?? null)
     return res.status(201).json({ ok: true })
   })
 

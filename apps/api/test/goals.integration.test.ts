@@ -213,4 +213,35 @@ describe('goal lists + detail', () => {
   it('validates goal-list create input (400)', async () => {
     expect((await call('POST', '/api/goal-lists', kevin, {})).statusCode).toBe(400)
   })
+
+  it('edits a goal (fields + participants + milestones) via PATCH', async () => {
+    const add = await call('POST', '/api/goals', kevin, { title: 'Draft', goalType: 'count', trackingMode: 'shared_total', targetValue: 5, participantIds: [kevinId] })
+    const id = JSON.parse(add.body).goal.id
+
+    const patched = await call('PATCH', `/api/goals/${id}`, kevin, {
+      title: 'Edited goal', targetValue: 12, isFeatured: true,
+      milestones: [{ threshold: 6, emoji: '🌱', label: 'half', rewardText: 'treat' }],
+    })
+    expect(patched.statusCode).toBe(200)
+    const detail = JSON.parse(patched.body).goal
+    expect(detail).toMatchObject({ title: 'Edited goal', target: 12, isFeatured: true })
+    expect(detail.milestones).toHaveLength(1)
+
+    expect((await call('PATCH', '/api/goals/00000000-0000-0000-0000-000000000000', kevin, { title: 'x' })).statusCode).toBe(404)
+    expect((await call('PATCH', `/api/goals/${id}`, kevin, { goalType: 'bogus' })).statusCode).toBe(400)
+  })
+
+  it('logs progress for multiple people at once', async () => {
+    const add = await call('POST', '/api/goals', kevin, { title: 'Hours', goalType: 'total', unit: 'hours', targetValue: 100, trackingMode: 'each_tracks', participantIds: [kevinId] })
+    const id = JSON.parse(add.body).goal.id
+    // a second person to credit
+    const kelly = await call('POST', '/api/persons', kevin, { name: 'Kelly', memberType: 'adult' })
+    const kellyId = JSON.parse(kelly.body).person.id
+
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 2, personIds: [kevinId, kellyId], note: 'Creek hike' })).statusCode).toBe(201)
+    const detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.totalProgress).toBe(4) // 2 each
+    expect(detail.recent).toHaveLength(2)
+    expect(detail.recent.every((r: { note: string }) => r.note === 'Creek hike')).toBe(true)
+  })
 })
