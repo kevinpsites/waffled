@@ -1,20 +1,70 @@
-// Lists domain — migration + api. This file grows across the L1a/b/c chunks;
-// it shares one Postgres testcontainer + app across the describes.
+// Lists domain — migration + api. Shares one Postgres testcontainer + app.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
 import { Client } from 'pg'
+import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
+
+const SECRET = 'nook-local-dev-secret-change-me'
 
 let pg: StartedPostgreSqlContainer
 let url: string
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let app: any
+let closePool: () => Promise<void>
+
+function mint(sub: string): string {
+  return jwt.sign({}, SECRET, {
+    algorithm: 'HS256',
+    subject: sub,
+    issuer: 'nook-local',
+    audience: 'nook-api',
+    expiresIn: '1h',
+  })
+}
+
+interface RunResult {
+  statusCode: number
+  body: string
+}
+
+function call(method: string, path: string, token?: string, body?: unknown) {
+  const headers: Record<string, string> = {}
+  if (token) headers.authorization = `Bearer ${token}`
+  if (body !== undefined) headers['content-type'] = 'application/json'
+  return app.run(
+    {
+      httpMethod: method,
+      path,
+      headers,
+      queryStringParameters: {},
+      body: body !== undefined ? JSON.stringify(body) : null,
+      isBase64Encoded: false,
+    },
+    {}
+  ) as Promise<RunResult>
+}
+
+const kevin = mint('dev|kevin')
 
 beforeAll(async () => {
   pg = await new PostgreSqlContainer('postgres:16').start()
   url = pg.getConnectionUri()
   await runMigrations(url)
+  process.env.DATABASE_URL = url
+  delete process.env.AUTH0_DOMAIN
+  app = (await import('../src/app')).default
+  closePool = (await import('../src/db')).closePool
+
+  await call('POST', '/api/households', kevin, {
+    name: 'Sites',
+    timezone: 'America/Chicago',
+    person: { name: 'Kevin' },
+  })
 })
 
 afterAll(async () => {
+  await closePool?.()
   await pg?.stop()
 })
 
@@ -65,5 +115,35 @@ describe('lists schema', () => {
         ])
       ).rejects.toThrow()
     })
+  })
+})
+
+describe('grocery api', () => {
+  it('403s for a caller with no household', async () => {
+    const res = await call('GET', '/api/lists/grocery', mint('dev|nobody'))
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('GET /api/lists/grocery get-or-creates an empty grocery list', async () => {
+    const res = await call('GET', '/api/lists/grocery', kevin)
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.list).toMatchObject({ listType: 'grocery' })
+    expect(body.items).toEqual([])
+  })
+
+  it('POST adds an item, and GET then shows it', async () => {
+    const add = await call('POST', '/api/lists/grocery/items', kevin, { name: 'Bananas' })
+    expect(add.statusCode).toBe(201)
+    expect(JSON.parse(add.body).item).toMatchObject({ name: 'Bananas', checked: false })
+
+    const res = await call('GET', '/api/lists/grocery', kevin)
+    const names = JSON.parse(res.body).items.map((i: { name: string }) => i.name)
+    expect(names).toContain('Bananas')
+  })
+
+  it('rejects an item with no name (400)', async () => {
+    const res = await call('POST', '/api/lists/grocery/items', kevin, { quantity: '2' })
+    expect(res.statusCode).toBe(400)
   })
 })

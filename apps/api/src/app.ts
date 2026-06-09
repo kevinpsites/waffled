@@ -11,6 +11,7 @@ import {
   inferProvider,
 } from './households'
 import { registerPersonRoutes } from './persons'
+import { registerListRoutes } from './lists'
 import { registerPowerSyncRoutes } from './powersync'
 
 const api = createAPI()
@@ -99,6 +100,9 @@ api.post('/api/households', async (req: Request, res: Response) => {
 
 // Members CRUD (/api/persons…)
 registerPersonRoutes(api)
+
+// Lists (/api/lists…)
+registerListRoutes(api)
 
 // PowerSync auth (JWKS + token endpoint)
 registerPowerSyncRoutes(api)
