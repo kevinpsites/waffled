@@ -180,6 +180,15 @@ describe('meal planning api', () => {
     expect((await call('POST', '/api/meals/plan', kevin, { recipeId })).statusCode).toBe(400)
   })
 
+  it('rejects a malformed recipeId (400) but allows none (leftovers)', async () => {
+    expect(
+      (await call('POST', '/api/meals/plan', kevin, { date: '2026-06-10', mealType: 'dinner', recipeId: 'nope' }))
+        .statusCode
+    ).toBe(400)
+    const none = await call('POST', '/api/meals/plan', kevin, { date: '2026-06-11', mealType: 'lunch' })
+    expect([200, 201]).toContain(none.statusCode)
+  })
+
   it('plans a dinner and surfaces it in the week (joined to the recipe)', async () => {
     const plan = await call('POST', '/api/meals/plan', kevin, {
       date: '2026-06-09',

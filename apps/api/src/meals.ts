@@ -232,11 +232,19 @@ export function registerMealRoutes(api: Api): void {
         .status(400)
         .json({ error: 'BadRequest', message: 'date (YYYY-MM-DD) and mealType are required' })
     }
+    // recipeId is optional (null = leftovers/takeout); reject a malformed one.
+    let recipeId: string | null = null
+    if (body.recipeId != null && body.recipeId !== '') {
+      if (!UUID_RE.test(body.recipeId)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'recipeId must be a uuid' })
+      }
+      recipeId = body.recipeId
+    }
     const plan = await getOrCreateActivePlan(tenant)
     const entry = await upsertEntry(plan.id, tenant, {
       date: body.date,
       mealType: body.mealType,
-      recipeId: body.recipeId ?? null,
+      recipeId,
       title: body.title ?? null,
     })
     return res.status(200).json({ entry: presentEntry(entry) })
