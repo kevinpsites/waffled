@@ -166,3 +166,52 @@ describe('chores today api', () => {
     expect(me).toMatchObject({ total: 1, done: 0, stars: 0 })
   })
 })
+
+describe('chore completion', () => {
+  let instanceId = ''
+
+  async function meStats() {
+    const body = JSON.parse((await call('GET', '/api/chores/today', kevin)).body)
+    return body.people.find((p: { id: string }) => p.id === kevinId) as { done: number; stars: number }
+  }
+
+  beforeAll(async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Trash', personId: kevinId, rewardAmount: 5 })
+    const list = JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body)
+    instanceId = list.instances.find((i: { choreTitle: string }) => i.choreTitle === 'Trash').id
+  })
+
+  it('completes an instance: marks it done and awards stars', async () => {
+    const before = await meStats()
+    const done = await call('POST', `/api/chore-instances/${instanceId}/complete`, kevin)
+    expect(done.statusCode).toBe(200)
+    expect(JSON.parse(done.body).instance.status).toBe('done')
+    const after = await meStats()
+    expect(after.done - before.done).toBe(1)
+    expect(after.stars - before.stars).toBe(5)
+  })
+
+  it('is idempotent — completing again does not double-award', async () => {
+    const before = await meStats()
+    await call('POST', `/api/chore-instances/${instanceId}/complete`, kevin)
+    const after = await meStats()
+    expect(after.stars).toBe(before.stars)
+  })
+
+  it('uncompletes: back to pending and stars revoked', async () => {
+    const before = await meStats()
+    const res = await call('POST', `/api/chore-instances/${instanceId}/uncomplete`, kevin)
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).instance.status).toBe('pending')
+    const after = await meStats()
+    expect(after.done - before.done).toBe(-1)
+    expect(after.stars - before.stars).toBe(-5)
+  })
+
+  it('404s for an unknown instance', async () => {
+    expect(
+      (await call('POST', '/api/chore-instances/00000000-0000-0000-0000-000000000000/complete', kevin))
+        .statusCode
+    ).toBe(404)
+  })
+})
