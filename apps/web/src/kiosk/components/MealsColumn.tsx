@@ -1,11 +1,30 @@
+import { useState } from 'react'
 import { Icon } from '../icons'
-import { useMealsWeek, localToday, type WeekEntry, type MealRecipe } from '../../lib/api'
+import { api, useMealsWeek, localToday, type WeekEntry, type MealRecipe } from '../../lib/api'
 
 function dayAbbrev(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short' })
 }
 
-function TonightCard({ recipe }: { recipe: MealRecipe }) {
+function TonightCard({ recipe, recipeId }: { recipe: MealRecipe; recipeId: string | null }) {
+  const [status, setStatus] = useState<'idle' | 'adding' | 'added'>('idle')
+  const [added, setAdded] = useState(0)
+
+  async function toList() {
+    if (!recipeId || status === 'adding') return
+    setStatus('adding')
+    try {
+      const r = await api.groceryFromRecipe(recipeId)
+      setAdded(r.added)
+      setStatus('added')
+    } catch {
+      setStatus('idle')
+    }
+  }
+
+  const toListLabel =
+    status === 'added' ? `Added ${added}` : status === 'adding' ? 'Adding…' : 'To list'
+
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <div style={{ height: 112, background: 'linear-gradient(135deg,#f6d9c6,#e9b596)', position: 'relative' }}>
@@ -35,12 +54,20 @@ function TonightCard({ recipe }: { recipe: MealRecipe }) {
           </button>
           <button
             className="btn btn-primary"
-            disabled
-            title="Add ingredients to grocery — coming soon"
-            style={{ flex: 1, justifyContent: 'center', fontSize: 14, padding: 10, opacity: 0.5, cursor: 'not-allowed' }}
+            onClick={toList}
+            disabled={!recipeId || status !== 'idle'}
+            title="Add this recipe's ingredients to the grocery list"
+            style={{
+              flex: 1,
+              justifyContent: 'center',
+              fontSize: 14,
+              padding: 10,
+              cursor: !recipeId || status !== 'idle' ? 'default' : 'pointer',
+              opacity: !recipeId ? 0.5 : 1,
+            }}
           >
             <Icon name="bag" />
-            To list
+            {toListLabel}
           </button>
         </div>
       </div>
@@ -66,7 +93,11 @@ export function MealsColumn() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0 }}>
-      {tonight?.recipe ? <TonightCard recipe={tonight.recipe} /> : <TonightEmpty />}
+      {tonight?.recipe ? (
+        <TonightCard recipe={tonight.recipe} recipeId={tonight.recipeId} />
+      ) : (
+        <TonightEmpty />
+      )}
 
       <div className="card" style={{ padding: '15px 18px 8px', flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>

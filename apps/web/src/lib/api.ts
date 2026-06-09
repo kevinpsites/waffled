@@ -90,6 +90,8 @@ export const api = {
   setItemChecked: (id: string, checked: boolean) =>
     apiSend<{ item: GroceryItem }>('PATCH', `/api/list-items/${id}`, { checked }).then((r) => r.item),
   deleteItem: (id: string) => apiDelete(`/api/list-items/${id}`),
+  groceryFromRecipe: (recipeId: string) =>
+    apiSend<{ added: number }>('POST', `/api/lists/grocery/from-recipe/${recipeId}`),
 }
 
 export interface PersonsState {
