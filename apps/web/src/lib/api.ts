@@ -78,6 +78,14 @@ export const api = {
     apiGet<{ date: string; events: AgendaEvent[] }>(`/api/events/today?date=${date}`),
   eventsRange: (from: string, to: string) =>
     apiGet<{ from: string; to: string; events: AgendaEvent[] }>(`/api/events?from=${from}&to=${to}`),
+  createEvent: (input: {
+    title: string
+    startsAt: string
+    endsAt?: string | null
+    allDay?: boolean
+    personId?: string | null
+    location?: string | null
+  }) => apiSend<{ event: AgendaEvent }>('POST', '/api/events', input),
   choreInstancesToday: () =>
     apiGet<{ date: string; instances: ChoreInstance[] }>('/api/chore-instances/today'),
   completeInstance: (id: string) =>
@@ -242,8 +250,9 @@ export function useEventsToday(): AgendaState {
   return state
 }
 
-export function useEventsRange(from: string, to: string): AgendaState {
+export function useEventsRange(from: string, to: string): AgendaState & { refetch: () => void } {
   const [state, setState] = useState<AgendaState>({ events: [], loading: true, error: false })
+  const [nonce, setNonce] = useState(0)
   useEffect(() => {
     let alive = true
     setState((s) => ({ ...s, loading: true }))
@@ -254,8 +263,8 @@ export function useEventsRange(from: string, to: string): AgendaState {
     return () => {
       alive = false
     }
-  }, [from, to])
-  return state
+  }, [from, to, nonce])
+  return { ...state, refetch: () => setNonce((n) => n + 1) }
 }
 
 export interface MealsState {

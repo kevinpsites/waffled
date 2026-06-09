@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Icon } from './icons'
+import { EventModal } from './components/EventModal'
 import { useEventsRange, type AgendaEvent } from '../lib/api'
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -30,7 +31,8 @@ export function Calendar() {
   const cells = useMemo(() => monthGrid(view.year, view.month), [view])
   const from = ymd(cells[0])
   const to = ymd(cells[41])
-  const { events } = useEventsRange(from, to)
+  const { events, refetch } = useEventsRange(from, to)
+  const [createDate, setCreateDate] = useState<string | null>(null)
 
   const byDate = useMemo(() => {
     const map: Record<string, AgendaEvent[]> = {}
@@ -62,6 +64,15 @@ export function Calendar() {
         <button type="button" className="icon-btn" aria-label="Next month" onClick={() => shift(1)}>
           <Icon name="cr" />
         </button>
+        <button
+          type="button"
+          className="pill"
+          style={{ marginLeft: 'auto', cursor: 'pointer' }}
+          onClick={() => setCreateDate(ymd(now))}
+        >
+          <Icon name="plus" />
+          <span>New</span>
+        </button>
       </div>
 
       <div className="cal">
@@ -76,7 +87,11 @@ export function Calendar() {
             const dayEvents = byDate[key] ?? []
             const dim = d.getMonth() !== view.month
             return (
-              <div key={key} className={`cal-cell ${dim ? 'dim' : ''} ${key === today ? 'today' : ''}`}>
+              <div
+                key={key}
+                className={`cal-cell ${dim ? 'dim' : ''} ${key === today ? 'today' : ''}`}
+                onClick={() => setCreateDate(key)}
+              >
                 <div className="dn">{d.getDate()}</div>
                 {dayEvents.slice(0, 3).map((e) => {
                   const color = e.personColor ?? '#6B6B70'
@@ -92,6 +107,14 @@ export function Calendar() {
           })}
         </div>
       </div>
+
+      {createDate && (
+        <EventModal
+          date={createDate}
+          onClose={() => setCreateDate(null)}
+          onCreated={refetch}
+        />
+      )}
     </div>
   )
 }

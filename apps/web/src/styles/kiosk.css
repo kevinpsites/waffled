@@ -70,8 +70,8 @@ body {
   }
 }
 
-/* ===== recipe modal ===== */
-.recipe-overlay {
+/* ===== modal (recipe detail, event create) ===== */
+.modal-overlay {
   position: fixed;
   inset: 0;
   z-index: 50;
@@ -81,7 +81,7 @@ body {
   place-items: center;
   padding: 24px;
 }
-.recipe-modal {
+.modal-card {
   position: relative;
   background: #fff;
   border-radius: 22px;
@@ -92,7 +92,7 @@ body {
   overflow-y: auto;
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.4);
 }
-.recipe-close {
+.modal-close {
   position: absolute;
   top: 14px;
   right: 16px;
@@ -105,6 +105,37 @@ body {
   font-size: 20px;
   line-height: 1;
   cursor: pointer;
+}
+
+/* form fields inside modals */
+.field {
+  display: block;
+  margin-bottom: 12px;
+}
+.field > span {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-bottom: 4px;
+}
+.field input,
+.field select {
+  width: 100%;
+  font: inherit;
+  font-size: 15px;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hair);
+  background: var(--card-2);
+  color: var(--ink);
+}
+.field-row {
+  display: flex;
+  gap: 12px;
+}
+.field-row .field {
+  flex: 1;
 }
 
 /* ===== calendar screen ===== */
@@ -127,6 +158,9 @@ body {
 .cal-screen .cal {
   flex: 1;
   min-height: 0;
+}
+.cal-cell {
+  cursor: pointer;
 }
 @media (max-width: 720px) {
   .cal-screen {

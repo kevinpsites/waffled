@@ -21,9 +21,9 @@ export function RecipeModal({ recipeId, onClose }: { recipeId: string; onClose: 
   const { recipe, ingredients, loading, error } = useRecipe(recipeId)
 
   return (
-    <div className="recipe-overlay" onClick={onClose}>
-      <div className="recipe-modal" onClick={(e) => e.stopPropagation()}>
-        <button className="recipe-close" aria-label="Close recipe" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close" aria-label="Close recipe" onClick={onClose}>
           ×
         </button>
 
