@@ -97,6 +97,19 @@ export function RecipeDetail() {
           {recipe.sourceName && <span>📖 {recipe.sourceName}</span>}
         </div>
 
+        <div className="rd-tags">
+          {recipe.collection && <span className="rd-tag coll">📁 {recipe.collection}</span>}
+          {recipe.cuisine && <span className="rd-tag">🌍 {recipe.cuisine}</span>}
+          {recipe.mealType && <span className="rd-tag">{recipe.mealType.replace('-', ' ')}</span>}
+          {recipe.protein && <span className="rd-tag">🥩 {recipe.protein}</span>}
+          {recipe.base && <span className="rd-tag">🍚 {recipe.base}</span>}
+          {recipe.cookMethod && <span className="rd-tag">🍳 {recipe.cookMethod}</span>}
+          {recipe.effort && <span className="rd-tag">⏱️ {recipe.effort}</span>}
+          {recipe.dietary.map((d) => <span key={d} className="rd-tag diet">{d}</span>)}
+          {recipe.vegetables.map((v) => <span key={v} className="rd-tag soft">{v}</span>)}
+          {(recipe.tags ?? []).map((t) => <span key={t} className="rd-tag soft">#{t}</span>)}
+        </div>
+
         <div className="card rd-ings">
           <div className="rd-ings-head">
             <div className="card-h">Ingredients</div>

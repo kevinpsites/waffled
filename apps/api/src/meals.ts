@@ -185,6 +185,17 @@ export function presentRecipe(r: RecipeRow) {
     sourceName: r.source_name,
     isFavorite: r.is_favorite,
     cookedCount: r.cooked_count,
+    // rich metadata (markdown frontmatter)
+    mealType: (r as { meal_type?: string | null }).meal_type ?? null,
+    protein: (r as { protein?: string | null }).protein ?? null,
+    base: (r as { base?: string | null }).base ?? null,
+    cuisine: (r as { cuisine?: string | null }).cuisine ?? null,
+    effort: (r as { effort?: string | null }).effort ?? null,
+    cookMethod: (r as { cook_method?: string | null }).cook_method ?? null,
+    flavorProfile: (r as { flavor_profile?: string | null }).flavor_profile ?? null,
+    dietary: (r as { dietary?: string[] | null }).dietary ?? [],
+    vegetables: (r as { vegetables?: string[] | null }).vegetables ?? [],
+    collection: (r as { collection?: string | null }).collection ?? null,
   }
 }
 

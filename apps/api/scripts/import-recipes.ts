@@ -9,7 +9,7 @@
 // auto-build can group + dedupe later. Re-running replaces a recipe of the same
 // title (idempotent). Requires DATABASE_URL.
 import { readdir, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, basename } from 'node:path'
 import { query, getPool, closePool } from '../src/db'
 
 // ---- grocery aisle + staple categorization -------------------------------
@@ -119,6 +119,17 @@ interface ParsedRecipe {
   description: string | null
   notes: string | null
   sourceName: string | null
+  // rich frontmatter metadata
+  mealType: string | null
+  protein: string | null
+  base: string | null
+  cuisine: string | null
+  effort: string | null
+  cookMethod: string | null
+  flavorProfile: string | null
+  dietary: string[]
+  vegetables: string[]
+  collection: string | null
   ingredients: ParsedIng[]
   steps: Array<{ text: string; ingredients: string[] }>
   markdown: string
@@ -140,7 +151,12 @@ function parseList(v: string | undefined): string[] {
   return v.replace(/^\[|\]$/g, '').split(',').map((s) => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean)
 }
 
-function parseRecipe(md: string): ParsedRecipe {
+function clean(v: string | undefined): string | null {
+  const s = (v ?? '').trim().replace(/^["']|["']$/g, '')
+  return s && s.toLowerCase() !== 'none' ? s : null
+}
+
+function parseRecipe(md: string, collection: string | null): ParsedRecipe {
   const fm = parseFrontmatter(md)
   const body = md.replace(/^---\n[\s\S]*?\n---\n?/, '')
 
@@ -188,7 +204,28 @@ function parseRecipe(md: string): ParsedRecipe {
   const notes = notesBlock.trim() || null
   const sourceName = /Source:\s*(.+)/i.exec(notesBlock)?.[1]?.trim() ?? (fm.cuisine ? `${fm.cuisine}` : null)
 
-  return { title, emoji, tags, servings, description: null, notes, sourceName, ingredients, steps, markdown: md }
+  return {
+    title,
+    emoji,
+    tags,
+    servings,
+    description: null,
+    notes,
+    sourceName,
+    mealType: clean(fm.type),
+    protein: clean(fm.protein),
+    base: clean(fm.base),
+    cuisine: clean(fm.cuisine),
+    effort: clean(fm.effort),
+    cookMethod: clean(fm.cook_method),
+    flavorProfile: clean(fm.flavor_profile),
+    dietary: parseList(fm.dietary),
+    vegetables: parseList(fm.vegetables),
+    collection,
+    ingredients,
+    steps,
+    markdown: md,
+  }
 }
 
 // ---- import ----------------------------------------------------------------
@@ -217,22 +254,28 @@ async function importRecipe(householdId: string, r: ParsedRecipe): Promise<void>
         [householdId, r.title]
       )
     ).rows[0]
+    const category = r.mealType === 'dessert' ? 'dessert' : r.mealType === 'side' ? 'side' : 'dinner'
+    // shared column list (the metadata) for both branches
+    const meta = [r.mealType, r.protein, r.base, r.cuisine, r.effort, r.cookMethod, r.flavorProfile, r.dietary, r.vegetables, r.collection]
     let recipeId: string
     if (existing) {
       recipeId = existing.id
       await client.query(
-        `update recipes set title=$3, emoji=$4, description=$5, category='dinner', tags=$6, servings=$7,
-                notes=$8, source_type='markdown_import', source_name=$9, source_markdown=$10, updated_at=now()
+        `update recipes set title=$3, emoji=$4, description=$5, category=$6, tags=$7, servings=$8,
+                notes=$9, source_type='markdown_import', source_name=$10, source_markdown=$11,
+                meal_type=$12, protein=$13, base=$14, cuisine=$15, effort=$16, cook_method=$17,
+                flavor_profile=$18, dietary=$19, vegetables=$20, collection=$21, updated_at=now()
            where id=$1 and household_id=$2`,
-        [recipeId, householdId, r.title, r.emoji, r.description, r.tags, r.servings, r.notes, r.sourceName, r.markdown]
+        [recipeId, householdId, r.title, r.emoji, r.description, category, r.tags, r.servings, r.notes, r.sourceName, r.markdown, ...meta]
       )
       await client.query(`delete from recipe_ingredients where recipe_id=$1`, [recipeId])
       await client.query(`delete from recipe_steps where recipe_id=$1`, [recipeId])
     } else {
       const ins = await client.query<{ id: string }>(
-        `insert into recipes (household_id, title, emoji, description, category, tags, servings, notes, source_type, source_name, source_markdown)
-         values ($1,$2,$3,$4,'dinner',$5,$6,$7,'markdown_import',$8,$9) returning id`,
-        [householdId, r.title, r.emoji, r.description, r.tags, r.servings, r.notes, r.sourceName, r.markdown]
+        `insert into recipes (household_id, title, emoji, description, category, tags, servings, notes, source_type, source_name, source_markdown,
+                              meal_type, protein, base, cuisine, effort, cook_method, flavor_profile, dietary, vegetables, collection)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,'markdown_import',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) returning id`,
+        [householdId, r.title, r.emoji, r.description, category, r.tags, r.servings, r.notes, r.sourceName, r.markdown, ...meta]
       )
       recipeId = ins.rows[0].id
     }
@@ -261,24 +304,47 @@ async function importRecipe(householdId: string, r: ParsedRecipe): Promise<void>
   }
 }
 
+async function importFolder(householdId: string, folder: string): Promise<number> {
+  const collection = basename(folder)
+  let files: string[]
+  try {
+    files = (await readdir(folder)).filter((f) => f.endsWith('.md') && f.toLowerCase() !== 'readme.md')
+  } catch (e) {
+    console.error(`  (skipping ${folder}: ${(e as { code?: string }).code ?? (e as Error).message})`)
+    return 0
+  }
+  if (files.length === 0) return 0
+  console.log(`▸ ${collection} (${files.length})`)
+  for (const f of files) {
+    const md = await readFile(join(folder, f), 'utf8')
+    await importRecipe(householdId, parseRecipe(md, collection))
+  }
+  return files.length
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
   const folder = args.find((a) => !a.startsWith('--'))
-  const sub = (args[args.indexOf('--sub') + 1] && args.includes('--sub')) ? args[args.indexOf('--sub') + 1] : 'dev|demo'
+  const sub = args.includes('--sub') ? args[args.indexOf('--sub') + 1] : 'dev|demo'
   const household = args.includes('--household') ? args[args.indexOf('--household') + 1] : undefined
+  const recursive = args.includes('--recursive') || args.includes('-r')
   if (!folder) {
-    console.error('usage: tsx scripts/import-recipes.ts <folder> [--sub <sub>] [--household <uuid>]')
+    console.error('usage: tsx scripts/import-recipes.ts <folder> [--recursive] [--sub <sub>] [--household <uuid>]')
     process.exit(1)
   }
   const householdId = await resolveHousehold(sub, household)
-  const files = (await readdir(folder)).filter((f) => f.endsWith('.md') && f.toLowerCase() !== 'readme.md')
-  console.log(`Importing ${files.length} recipes from ${folder} → household ${householdId}`)
-  for (const f of files) {
-    const md = await readFile(join(folder, f), 'utf8')
-    await importRecipe(householdId, parseRecipe(md))
+  console.log(`Importing recipes from ${folder} → household ${householdId}`)
+  let total = 0
+  if (recursive) {
+    // each immediate subfolder is a collection
+    const subdirs = (await readdir(folder, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name)
+    for (const d of subdirs) total += await importFolder(householdId, join(folder, d))
+    total += await importFolder(householdId, folder) // loose files at the root too
+  } else {
+    total += await importFolder(householdId, folder)
   }
   await closePool()
-  console.log('Done.')
+  console.log(`Done — ${total} recipes.`)
 }
 
 main().catch((e) => {

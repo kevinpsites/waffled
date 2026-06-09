@@ -29,8 +29,22 @@ export interface WeekEntry {
   recipe: MealRecipe | null
 }
 
+// Rich frontmatter metadata shared by the list + detail shapes.
+export interface RecipeMeta {
+  mealType: string | null
+  protein: string | null
+  base: string | null
+  cuisine: string | null
+  effort: string | null
+  cookMethod: string | null
+  flavorProfile: string | null
+  dietary: string[]
+  vegetables: string[]
+  collection: string | null
+}
+
 // A saved recipe in the household library (powers the "+" picker & Explore).
-export interface Recipe {
+export interface Recipe extends RecipeMeta {
   id: string
   title: string
   emoji: string | null
@@ -54,12 +68,13 @@ export interface PlanSlot {
   cookPersonId?: string | null
 }
 
-export interface RecipeDetail {
+export interface RecipeDetail extends RecipeMeta {
   id: string
   title: string
   emoji: string | null
   description: string | null
   category: string | null
+  tags: string[] | null
   prepTimeMinutes: number | null
   cookTimeMinutes: number | null
   servings: number
