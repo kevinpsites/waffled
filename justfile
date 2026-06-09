@@ -85,6 +85,22 @@ seed:
       curl -s -X POST -H "$H" -H "$J" -d "$c" localhost:3000/api/chores >/dev/null || true
     done
     curl -s -X POST -H "$H" -H "$J" -d '{"name":"Bananas"}' localhost:3000/api/lists/grocery/items >/dev/null || true
+    # recipes + plan this week's dinners
+    recipes=(
+      '{"title":"Sheet-Pan Salmon","emoji":"🐟","cookTimeMinutes":25,"servings":4}'
+      '{"title":"Chorizo Tacos","emoji":"🌮","cookTimeMinutes":30,"servings":5}'
+      '{"title":"Madras Lentils","emoji":"🍛","cookTimeMinutes":40,"servings":4}'
+      '{"title":"Honey-Garlic Wings","emoji":"🍗","cookTimeMinutes":35,"servings":4}'
+      '{"title":"Ravioli & Sausage Bake","emoji":"🍝","cookTimeMinutes":35,"servings":5}'
+    )
+    ids=()
+    for r in "${recipes[@]}"; do
+      ids+=("$(curl -s -X POST -H "$H" -H "$J" -d "$r" localhost:3000/api/recipes | python3 -c "import sys,json;print(json.load(sys.stdin)['recipe']['id'])")")
+    done
+    for i in 0 1 2 3 4; do
+      d=$(date -v+"$i"d +%Y-%m-%d)
+      curl -s -X POST -H "$H" -H "$J" -d "{\"date\":\"$d\",\"mealType\":\"dinner\",\"recipeId\":\"${ids[$i]}\"}" localhost:3000/api/meals/plan >/dev/null || true
+    done
     echo "Seeded. In the kiosk browser console, run:"
     echo "  localStorage.setItem('nook.token', '$TOKEN'); location.reload()"
 

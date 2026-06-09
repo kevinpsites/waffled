@@ -72,6 +72,8 @@ export interface PersonChores {
 export const api = {
   persons: () => apiGet<{ persons: Person[] }>('/api/persons'),
   choresToday: () => apiGet<{ date: string; people: PersonChores[] }>('/api/chores/today'),
+  mealsWeek: (start: string) =>
+    apiGet<{ start: string; entries: WeekEntry[] }>(`/api/meals/week?start=${start}`),
   choreInstancesToday: () =>
     apiGet<{ date: string; instances: ChoreInstance[] }>('/api/chore-instances/today'),
   completeInstance: (id: string) =>
@@ -107,6 +109,30 @@ export function usePersons(): PersonsState {
   return state
 }
 
+export interface MealRecipe {
+  title: string | null
+  emoji: string | null
+  prepTimeMinutes: number | null
+  cookTimeMinutes: number | null
+  servings: number | null
+  imageUrl: string | null
+}
+
+export interface WeekEntry {
+  id: string
+  date: string
+  mealType: string
+  title: string | null
+  recipeId: string | null
+  recipe: MealRecipe | null
+}
+
+// Local YYYY-MM-DD (kiosk timezone), used to match "tonight" and window the week.
+export function localToday(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export interface ChoreInstance {
   id: string
   choreTitle: string
@@ -121,6 +147,27 @@ export interface ChoresState {
   people: PersonChores[]
   loading: boolean
   error: boolean
+}
+
+export interface MealsState {
+  entries: WeekEntry[]
+  loading: boolean
+  error: boolean
+}
+
+export function useMealsWeek(): MealsState {
+  const [state, setState] = useState<MealsState>({ entries: [], loading: true, error: false })
+  useEffect(() => {
+    let alive = true
+    api
+      .mealsWeek(localToday())
+      .then((d) => alive && setState({ entries: d.entries, loading: false, error: false }))
+      .catch(() => alive && setState({ entries: [], loading: false, error: true }))
+    return () => {
+      alive = false
+    }
+  }, [])
+  return state
 }
 
 export function useChoresToday(): ChoresState {
