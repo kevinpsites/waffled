@@ -54,6 +54,7 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 }
 
 const kevin = mint('dev|kevin')
+let kevinId = ''
 
 beforeAll(async () => {
   pg = await new PostgreSqlContainer('postgres:16').start()
@@ -63,11 +64,12 @@ beforeAll(async () => {
   delete process.env.AUTH0_DOMAIN
   app = (await import('../src/app')).default
   closePool = (await import('../src/db')).closePool
-  await call('POST', '/api/households', kevin, {
+  const h = await call('POST', '/api/households', kevin, {
     name: 'Sites',
     timezone: 'America/Chicago',
     person: { name: 'Kevin' },
   })
+  kevinId = JSON.parse(h.body).person.id
 })
 
 afterAll(async () => {
@@ -305,5 +307,47 @@ describe('meal planning api', () => {
     )
     expect(dinners).toHaveLength(1)
     expect(dinners[0].recipe.title).toBe('Madras Lentils')
+  })
+
+  it('records who is cooking and surfaces the cook in the week', async () => {
+    const plan = await call('POST', '/api/meals/plan', kevin, {
+      date: '2026-06-12',
+      mealType: 'dinner',
+      recipeId,
+      cookPersonId: kevinId,
+    })
+    expect([200, 201]).toContain(plan.statusCode)
+    expect(JSON.parse(plan.body).entry.cookPersonId).toBe(kevinId)
+
+    const week = JSON.parse((await call('GET', '/api/meals/week?start=2026-06-08', kevin)).body)
+    const fri = week.entries.find(
+      (e: { date: string; mealType: string }) => e.date === '2026-06-12' && e.mealType === 'dinner'
+    )
+    expect(fri.cook).toMatchObject({ personId: kevinId, name: 'Kevin' })
+  })
+
+  it('rejects a malformed cookPersonId (400)', async () => {
+    expect(
+      (await call('POST', '/api/meals/plan', kevin, { date: '2026-06-12', mealType: 'lunch', cookPersonId: 'nope' }))
+        .statusCode
+    ).toBe(400)
+  })
+
+  it('clears a planned slot (204) and removes it from the week; 404 when empty', async () => {
+    await call('POST', '/api/meals/plan', kevin, { date: '2026-06-13', mealType: 'breakfast', title: 'Toast' })
+    const cleared = await call('DELETE', '/api/meals/plan?date=2026-06-13&mealType=breakfast', kevin)
+    expect(cleared.statusCode).toBe(204)
+
+    const week = JSON.parse((await call('GET', '/api/meals/week?start=2026-06-08', kevin)).body)
+    const gone = week.entries.find(
+      (e: { date: string; mealType: string }) => e.date === '2026-06-13' && e.mealType === 'breakfast'
+    )
+    expect(gone).toBeUndefined()
+
+    expect((await call('DELETE', '/api/meals/plan?date=2026-06-13&mealType=breakfast', kevin)).statusCode).toBe(404)
+  })
+
+  it('400 clearing without a valid date/mealType', async () => {
+    expect((await call('DELETE', '/api/meals/plan?date=nope&mealType=dinner', kevin)).statusCode).toBe(400)
   })
 })
