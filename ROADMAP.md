@@ -38,7 +38,9 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] W2c-grocery Grocery card real + interactive (check off, add, delete; persists via /api/lists/grocery)
 - [x] W2c-chores Family-chores rings (Today) + interactive Tasks screen (complete → stars → rings)
 - [x] W2c-meals Meal card real (tonight + this week's dinners, from /api/meals/week)
-- [ ] W2c Last Today card: calendar→agenda (the Google-sync de-risk). Then real device pairing (3.3) replaces the dev token
+- [x] W2c-agenda Agenda card real (today's events, per-person color) + Calendar month-grid screen
+- [x] W2c **All four Today cards live** (agenda · meals · chores · grocery). Kiosk surfaces: Today, Tasks, Calendar real; Goals/Lists/Photos/Settings still placeholders
+- [ ] W3 Next surfaces (Lists / Meals planning / Recipes / Settings screens); real device pairing (3.3) replaces the dev token
 - [ ] W3 Web management dashboard (full SPA: setup, calendar, lists, …) — grows alongside the backend domains
 
 ## M3 — Identity & household
@@ -51,7 +53,9 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] 4.2 iOS skeleton (SwiftUI) + Auth0 login + PowerSync Swift SDK syncing `members`; **demo airplane-mode read/write + reconnect**
 
 ## M5 — Calendar (de-risk #2, the core tenet)
-- [ ] 5.1 Schema: `events` (timestamptz, rrule, tz, `google_event_id`, `etag`, calendar mapping) + migration
+**Part 1 (Nook-native, no Google) — done:** `events` migration, events api (create + today
+agenda + range), kiosk agenda card + Calendar month-grid screen. Part 2 below is the Google sync.
+- [x] 5.1 Schema: `events` (timestamptz, rrule, tz, `google_event_id`, `etag`, …) + migration (`0007_events`); native single-events. Recurrence read-model/overrides/participants deferred to recurrence work
 - [ ] 5.2 Backend Google **Calendar OAuth** ("Connect your calendar"), store encrypted refresh token, person↔calendar mapping
 - [ ] 5.3 Worker **inbound** poll (`syncToken`) → upsert events. Demo: Google event → appears in DB → syncs to iOS
 - [ ] 5.4 Worker **outbound** write-back (Nook event → Google) with conflict policy. Demo: Nook event → appears in Google
