@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Icon } from '../icons'
+import { useTopbarSlotNode } from '../topbar-slot'
 
 function useNow(): Date {
   const [now, setNow] = useState(() => new Date())
@@ -36,6 +37,7 @@ function AiBar() {
 
 export function Topbar() {
   const now = useNow()
+  const slot = useTopbarSlotNode()
   return (
     <div className="topbar">
       <div className="tb-date nk-serif">{formatDate(now)}</div>
@@ -44,9 +46,7 @@ export function Topbar() {
         <Icon name="cloud" />
         60°
       </div>
-      <div className="tb-right">
-        <AiBar />
-      </div>
+      <div className="tb-right">{slot ?? <AiBar />}</div>
     </div>
   )
 }

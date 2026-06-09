@@ -236,6 +236,49 @@ function mapGoal(g: GoalRow) {
   }
 }
 
+// Batched consecutive-day streaks for many goals (one query + JS rollup).
+async function streaksFor(householdId: string, goalIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>()
+  if (goalIds.length === 0) return out
+  const { rows: t } = await query<{ today: string }>(
+    `select (now() at time zone timezone)::date::text as today from households where id = $1`,
+    [householdId]
+  )
+  const today = new Date(t[0].today + 'T00:00:00Z').getTime()
+  const DAY = 86400000
+  const { rows } = await query<{ goal_id: string; day: string }>(
+    `select gl.goal_id, (gl.logged_at at time zone h.timezone)::date::text as day
+       from goal_logs gl join households h on h.id = gl.household_id
+      where gl.household_id = $1 and gl.goal_id = any($2) and gl.deleted_at is null
+      group by gl.goal_id, day`,
+    [householdId, goalIds]
+  )
+  const byGoal = new Map<string, number[]>()
+  for (const r of rows) {
+    const ts = new Date(r.day + 'T00:00:00Z').getTime()
+    ;(byGoal.get(r.goal_id) ?? byGoal.set(r.goal_id, []).get(r.goal_id)!).push(ts)
+  }
+  for (const [goalId, daysRaw] of byGoal) {
+    const days = daysRaw.sort((a, b) => b - a)
+    let cursor = days[0]
+    if (today - cursor > DAY) {
+      out.set(goalId, 0)
+      continue
+    }
+    let streak = 0
+    for (const ts of days) {
+      if (ts === cursor) {
+        streak++
+        cursor -= DAY
+      } else if (ts < cursor) {
+        break
+      }
+    }
+    out.set(goalId, streak)
+  }
+  return out
+}
+
 export async function listGoals(householdId: string, listId?: string | null) {
   const { rows } = await query<GoalRow>(
     `select g.id, g.goal_list_id, g.title, g.emoji, g.category, g.goal_type, g.unit, g.target_value,
@@ -256,7 +299,9 @@ export async function listGoals(householdId: string, listId?: string | null) {
       order by g.is_featured desc, g.created_at`,
     [householdId, listId ?? null]
   )
-  return rows.map(mapGoal)
+  const goals = rows.map(mapGoal)
+  const streaks = await streaksFor(householdId, goals.map((g) => g.id))
+  return goals.map((g) => ({ ...g, streakDays: streaks.get(g.id) ?? 0 }))
 }
 
 // Consecutive-day streak ending today/yesterday (household timezone).

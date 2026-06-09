@@ -1,0 +1,230 @@
+/* ===== Goals home — goal-lists membership model (handoff "Home / Family list") =====
+   Layout: a left list rail (SHARED LISTS / INDIVIDUAL) + a main column with the
+   list header, an adaptive featured hero, and a "more goals" grid. */
+
+.goals-home {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  gap: 22px;
+  padding: 2px 30px 24px;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: start;
+}
+
+.topbar-new {
+  cursor: pointer;
+  color: #fff;
+  border: 0;
+}
+
+/* ----- list rail (sidebar) ----- */
+.goal-listrail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.goal-listrail .flabel {
+  margin: 2px 2px 8px;
+}
+.goal-listrail .rail-div {
+  height: 1px;
+  background: var(--hair-2);
+  margin: 10px 6px;
+}
+.glist {
+  cursor: pointer;
+}
+.rail-new-list {
+  margin-top: 14px;
+  justify-content: center;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+/* ----- main column ----- */
+.goal-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.goal-listhead {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin-bottom: 14px;
+}
+.goal-listhead-t {
+  font-size: 24px;
+  font-weight: 600;
+}
+.goal-listhead .seg button {
+  cursor: pointer;
+}
+.more-label {
+  margin: 18px 2px 11px;
+}
+.more-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+/* ----- goal cards ----- */
+.goal-emoji {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--panel);
+  display: grid;
+  place-items: center;
+  font-size: 21px;
+  flex: none;
+}
+.goal-card.clickable {
+  cursor: pointer;
+  transition: box-shadow 0.12s, transform 0.12s;
+}
+.goal-card.clickable:hover {
+  box-shadow: var(--sh-3);
+}
+.more-goal {
+  padding: 15px 17px;
+  gap: 11px;
+}
+.more-goal .gc-t {
+  font-size: 16px;
+}
+.more-goal .goal-desc {
+  margin-top: 2px;
+  font-weight: 600;
+}
+.more-goal .goal-num {
+  text-align: right;
+  flex: none;
+}
+.more-goal .goal-num .num {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 600;
+}
+
+/* ----- adaptive featured hero ----- */
+.goal-hero {
+  cursor: pointer;
+}
+.challenge .ch-row {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  position: relative;
+  z-index: 1;
+  flex-wrap: wrap;
+}
+.challenge .ch-side {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 14px;
+}
+.hero-ring-num {
+  font-family: var(--serif);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1;
+}
+.hero-ring-sub {
+  font-size: 10.5px;
+  opacity: 0.85;
+  font-weight: 700;
+  margin-top: 2px;
+}
+.hero-pill {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+.hero-title {
+  font-size: 29px;
+  font-weight: 600;
+  margin: 9px 0 3px;
+}
+.hero-sub {
+  font-size: 13px;
+  opacity: 0.9;
+  font-weight: 600;
+  margin-bottom: 11px;
+}
+.hero-contribs {
+  max-width: 400px;
+}
+.hero-streak {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+.hero-log {
+  background: #fff;
+  color: #2f7d4f;
+}
+
+/* each-tracks variant — warm gradient, "TOGETHER x/y" */
+.hero-each {
+  background: linear-gradient(135deg, #e07b39, #ef9a52);
+}
+.hero-emoji {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.18);
+  display: grid;
+  place-items: center;
+  font-size: 30px;
+  flex: none;
+}
+.hero-each-side {
+  justify-content: center;
+  align-items: flex-end;
+  text-align: right;
+}
+.hero-together-l {
+  font-size: 12px;
+  opacity: 0.85;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.hero-together-n {
+  font-family: var(--serif);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.hero-open {
+  font-size: 12px;
+  opacity: 0.85;
+  font-weight: 600;
+}
+
+/* ----- responsive ----- */
+@media (max-width: 1000px) {
+  .goals-home {
+    grid-template-columns: 1fr;
+  }
+  .goal-listrail {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .more-grid {
+    grid-template-columns: 1fr;
+  }
+  .challenge .ch-side {
+    align-items: flex-start;
+  }
+}
+@media (max-width: 720px) {
+  .goals-home {
+    padding: 2px 16px 20px;
+  }
+}

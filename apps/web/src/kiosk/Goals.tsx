@@ -1,38 +1,59 @@
 import { useState, type ReactNode } from 'react'
+import { useNavigate } from 'react-router'
 import { Icon } from './icons'
-import { GoalModal } from './components/GoalModal'
 import { LogModal } from './components/LogModal'
-import { useGoals, usePersons, type Goal, type GoalParticipant } from '../lib/api'
+import { useGoalLists, useGoals, type Goal, type GoalList, type GoalListMember, type GoalParticipant } from '../lib/api'
+import { useTopbarRight } from './topbar-slot'
 import { CATEGORIES } from './categories'
+import '../styles/goals.css'
 
-const TRACKING_LABEL: Record<string, string> = {
-  shared_total: 'shared total',
-  each_tracks: 'each tracks their own',
-}
+const TYPE_LABEL: Record<string, string> = { count: 'Count', total: 'Total', habit: 'Habit', checklist: 'Milestones' }
 
 function frac(progress: number, target: number | null): number {
   return target ? Math.min(progress / target, 1) : 0
 }
-
-function cap(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1)
+function fmtNum(n: number | null): string {
+  return n == null ? '—' : n.toLocaleString('en-US')
 }
-
 function fmtDeadline(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
+function firstName(name: string): string {
+  return name.split(' ')[0]
+}
 
-function CatPill({ category }: { category: string | null }) {
-  const c = category ? CATEGORIES[category] : null
-  if (!c) return null
+// "Habit · 5× a week", "Count · each logs visits", "Total · add up over time"
+function descriptor(g: Goal): string {
+  const label = TYPE_LABEL[g.goalType] ?? g.goalType
+  let q: string
+  if (g.goalType === 'habit') q = `${g.habitTargetPerPeriod ?? ''}× a ${g.habitPeriod ?? 'week'}`.trim()
+  else if (g.trackingMode === 'each_tracks') q = `each logs ${g.unit ?? 'progress'}`
+  else if (g.unit) q = `in ${g.unit}`
+  else q = 'shared total'
+  return `${label} · ${q}`
+}
+function barColor(g: Goal): string {
+  return (g.category && CATEGORIES[g.category]?.color) || 'var(--primary)'
+}
+
+function listSub(list: GoalList): string {
+  if (list.members.length === 1) return 'Personal'
+  if (list.members.length === 2) return list.members.map((m) => firstName(m.name)).join(' & ')
+  return `Everyone · ${list.members.length} people`
+}
+
+function AvStack({ members }: { members: GoalListMember[] }) {
   return (
-    <span className="cat-pill" style={{ background: c.tint, color: c.txt }}>
-      {c.emoji} {c.label}
-    </span>
+    <div className="avstack">
+      {members.slice(0, 4).map((m) => (
+        <div key={m.personId} className="av sm" style={{ background: `${m.colorHex ?? '#A6A29B'}22` }}>
+          {m.avatarEmoji ?? '🙂'}
+        </div>
+      ))}
+    </div>
   )
 }
 
-// SVG progress ring (matches the handoff `ring()` helper).
 function Ring({ value, px, stroke, track, children }: { value: number; px: number; stroke: string; track: string; children: ReactNode }) {
   const C = 276.5
   const dash = (Math.min(Math.max(value, 0), 1) * C).toFixed(1)
@@ -47,13 +68,12 @@ function Ring({ value, px, stroke, track, children }: { value: number; px: numbe
   )
 }
 
-// One person's contribution bar inside the green challenge hero (white-on-green).
 function ContribRow({ p, max, unit }: { p: GoalParticipant; max: number; unit: string | null }) {
   const w = max ? Math.round((p.progress / max) * 100) : 0
   return (
     <div className="contrib-row">
       <div className="cn" style={{ color: '#fff' }}>
-        {p.avatarEmoji ?? '🙂'} {p.name}
+        {p.avatarEmoji ?? '🙂'} {firstName(p.name)}
       </div>
       <div className="cbar">
         <div style={{ width: `${w}%` }} />
@@ -66,44 +86,39 @@ function ContribRow({ p, max, unit }: { p: GoalParticipant; max: number; unit: s
   )
 }
 
-// The featured goal, rendered big like the kitchen-display hero.
-function ChallengeHero({ goal, onLog }: { goal: Goal; onLog: (g: Goal) => void }) {
-  const maxContrib = Math.max(1, ...goal.participants.map((p) => p.progress))
-  const sub =
-    goal.trackingMode === 'shared_total'
-      ? 'Everyone contributes to one pool'
-      : 'Each person tracks their own'
+// Featured goal, green pooled hero (shared_total).
+function SharedHero({ goal, onLog, onOpen }: { goal: Goal; onLog: (g: Goal) => void; onOpen: () => void }) {
+  const max = Math.max(1, ...goal.participants.map((p) => p.progress))
   return (
-    <div className="challenge">
+    <div className="challenge goal-hero" onClick={onOpen}>
       <div className="ch-row">
-        <Ring value={frac(goal.totalProgress, goal.target)} px={120} stroke="#fff" track="rgba(255,255,255,.25)">
+        <Ring value={frac(goal.totalProgress, goal.target)} px={130} stroke="#fff" track="rgba(255,255,255,.25)">
           <div>
-            <div style={{ fontFamily: 'var(--serif)', fontSize: 30, fontWeight: 600, lineHeight: 1 }}>{goal.totalProgress}</div>
-            <div style={{ fontSize: 10.5, opacity: 0.85, fontWeight: 700, marginTop: 2 }}>
-              of {goal.target ?? '—'}
-              {goal.unit ? ` ${goal.unit}` : ''}
-            </div>
+            <div className="hero-ring-num">{fmtNum(goal.totalProgress)}</div>
+            <div className="hero-ring-sub">of {fmtNum(goal.target)}{goal.unit ? ` ${goal.unit}` : ''}</div>
           </div>
         </Ring>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <span className="cat-pill" style={{ background: 'rgba(255,255,255,.2)', color: '#fff' }}>
-            ⭐ Featured · {TRACKING_LABEL[goal.trackingMode] ?? goal.trackingMode}
-          </span>
-          <div className="nk-serif" style={{ fontSize: 29, fontWeight: 600, margin: '9px 0 3px' }}>{goal.title}</div>
-          <div style={{ fontSize: 13, opacity: 0.9, fontWeight: 600, marginBottom: 11 }}>
-            {sub}
-            {goal.deadline ? ` · by ${fmtDeadline(goal.deadline)}` : ''}
-          </div>
+          <span className="cat-pill hero-pill">⭐ Featured · shared total</span>
+          <div className="nk-serif hero-title">{goal.title}</div>
+          <div className="hero-sub">Everyone contributes to one pool{goal.deadline ? ` · by ${fmtDeadline(goal.deadline)}` : ''}</div>
           {goal.participants.length > 0 && (
-            <div style={{ maxWidth: 400 }}>
+            <div className="hero-contribs">
               {goal.participants.map((p) => (
-                <ContribRow key={p.personId} p={p} max={maxContrib} unit={goal.unit} />
+                <ContribRow key={p.personId} p={p} max={max} unit={goal.unit} />
               ))}
             </div>
           )}
         </div>
         <div className="ch-side">
-          <button className="btn" style={{ background: '#fff', color: '#2f7d4f' }} onClick={() => onLog(goal)}>
+          {goal.streakDays > 0 && <span className="streak-pill hero-streak">🔥 {goal.streakDays}-day streak</span>}
+          <button
+            className="btn hero-log"
+            onClick={(e) => {
+              e.stopPropagation()
+              onLog(goal)
+            }}
+          >
             <Icon name="plus" />
             Log {goal.unit ?? 'progress'}
           </button>
@@ -113,154 +128,171 @@ function ChallengeHero({ goal, onLog }: { goal: Goal; onLog: (g: Goal) => void }
   )
 }
 
-// A family goal (shared or group): emoji tile + pooled progress bar.
-function FamilyGoalCard({ goal, onClick }: { goal: Goal; onClick: (g: Goal) => void }) {
-  const c = goal.category ? CATEGORIES[goal.category] : null
-  const color = c?.color ?? 'var(--primary)'
-  const sub = c?.label ?? cap(TRACKING_LABEL[goal.trackingMode] ?? goal.trackingMode)
+// Featured goal, orange "each tracks their own" hero.
+function EachHero({ goal, onOpen }: { goal: Goal; onOpen: () => void }) {
+  const summedTarget = goal.participants.reduce((s, p) => s + (p.target ?? 0), 0) || goal.target || 0
+  const sub = [
+    goal.target ? `${fmtNum(goal.target)} ${goal.unit ?? ''} each`.trim() : null,
+    goal.deadline ? `by ${fmtDeadline(goal.deadline)}` : null,
+    ...goal.participants.map((p) => `${firstName(p.name)} ${p.progress}`),
+  ]
+    .filter(Boolean)
+    .join(' · ')
   return (
-    <div className="goal-card clickable" style={{ padding: '16px 18px', gap: 11 }} onClick={() => onClick(goal)}>
+    <div className="challenge goal-hero hero-each" onClick={onOpen}>
+      <div className="ch-row">
+        <div className="hero-emoji">{goal.emoji ?? '🎯'}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span className="cat-pill hero-pill">⭐ Featured · each tracks their own</span>
+          <div className="nk-serif hero-title">{goal.title}</div>
+          <div className="hero-sub">{sub}</div>
+        </div>
+        <div className="ch-side hero-each-side">
+          <div className="hero-together-l">TOGETHER</div>
+          <div className="hero-together-n">
+            {fmtNum(goal.totalProgress)}/{fmtNum(summedTarget)}
+          </div>
+          <div className="hero-open">tap to open ›</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Hero({ goal, onLog, onOpen }: { goal: Goal; onLog: (g: Goal) => void; onOpen: () => void }) {
+  if (goal.trackingMode === 'each_tracks') return <EachHero goal={goal} onOpen={onOpen} />
+  return <SharedHero goal={goal} onLog={onLog} onOpen={onOpen} />
+}
+
+function MoreGoalCard({ goal, onClick }: { goal: Goal; onClick: () => void }) {
+  const c = goal.category ? CATEGORIES[goal.category] : null
+  return (
+    <div className="goal-card clickable more-goal" onClick={onClick}>
       <div className="gc-top">
         <div className="goal-emoji">{goal.emoji ?? c?.emoji ?? '🎯'}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="gc-t" style={{ fontSize: 16 }}>{goal.title}</div>
-          <div className="tiny muted" style={{ marginTop: 2, fontWeight: 600 }}>{sub}</div>
+          <div className="gc-t">{goal.title}</div>
+          <div className="tiny muted goal-desc">{descriptor(goal)}</div>
         </div>
-        <div style={{ textAlign: 'right', flex: 'none' }}>
-          <span style={{ fontFamily: 'var(--serif)', fontSize: 22, fontWeight: 600 }}>{goal.totalProgress}</span>
-          <span className="tiny muted" style={{ fontWeight: 700 }}>/{goal.target ?? '—'}</span>
+        <div className="goal-num">
+          <span className="num">{fmtNum(goal.totalProgress)}</span>
+          <span className="tiny muted">/{fmtNum(goal.target)}</span>
         </div>
       </div>
       <div className="gc-bar">
-        <div style={{ width: `${(frac(goal.totalProgress, goal.target) * 100).toFixed(0)}%`, background: color }} />
+        <div style={{ width: `${(frac(goal.totalProgress, goal.target) * 100).toFixed(0)}%`, background: barColor(goal) }} />
       </div>
     </div>
   )
 }
 
-// A personal goal (one owner): their avatar + category pill + progress.
-function PersonalGoalCard({ goal, onClick }: { goal: Goal; onClick: (g: Goal) => void }) {
-  const c = goal.category ? CATEGORIES[goal.category] : null
-  const color = c?.color ?? 'var(--kevin)'
-  const owner = goal.participants[0]
+function GlistItem({ list, on, onClick }: { list: GoalList; on: boolean; onClick: () => void }) {
   return (
-    <div className="goal-card clickable" style={{ padding: '15px 16px', gap: 11 }} onClick={() => onClick(goal)}>
-      <div className="gc-top">
-        <div className="av sm" style={{ background: `${owner?.colorHex ?? '#A6A29B'}22` }}>{owner?.avatarEmoji ?? '🙂'}</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="gc-t" style={{ fontSize: 15.5 }}>{goal.title}</div>
-          <div style={{ marginTop: 6 }}>
-            <CatPill category={goal.category} />
-          </div>
-        </div>
-        <div style={{ textAlign: 'right', flex: 'none' }}>
-          <span style={{ fontFamily: 'var(--serif)', fontSize: 23, fontWeight: 600 }}>{goal.totalProgress}</span>
-          <span className="tiny muted" style={{ fontWeight: 700 }}>
-            /{goal.target ?? '—'}
-            {goal.unit ? ` ${goal.unit}` : ''}
-          </span>
-        </div>
+    <div className={`glist ${on ? 'on' : ''}`} onClick={onClick}>
+      <AvStack members={list.members} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="gl-t">{list.name}</div>
+        <div className="gl-s">{listSub(list)}</div>
       </div>
-      <div className="gc-bar">
-        <div style={{ width: `${(frac(goal.totalProgress, goal.target) * 100).toFixed(0)}%`, background: color }} />
-      </div>
-      {goal.deadline && (
-        <div className="goal-meta">
-          <span className="tiny muted" style={{ fontWeight: 600 }}>by {fmtDeadline(goal.deadline)}</span>
-        </div>
-      )}
+      <div className="gl-n">{list.goalCount}</div>
     </div>
   )
 }
 
-// Goals home: FAMILY (featured hero + group cards) on the left, PERSONAL on the
-// right, with a person filter. Tap any card (or the hero's Log button) to log.
+// Goals home — the goal-lists membership model (matches "Home / Family list").
 export function Goals() {
-  const { goals, loading, error, refetch } = useGoals()
-  const { persons } = usePersons()
-  const [filter, setFilter] = useState<string>('all')
-  const [creating, setCreating] = useState(false)
+  const navigate = useNavigate()
+  const { lists, loading: listsLoading, error: listsError } = useGoalLists()
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [filter, setFilter] = useState<'all' | 'shared' | 'each'>('all')
   const [logging, setLogging] = useState<Goal | null>(null)
 
-  const visible = filter === 'all' ? goals : goals.filter((g) => g.participants.some((p) => p.personId === filter))
+  const shared = lists.filter((l) => l.members.length !== 1)
+  const individual = lists.filter((l) => l.members.length === 1)
+  const selected = lists.find((l) => l.id === selectedId) ?? lists[0] ?? null
+  const { goals, loading: goalsLoading, refetch } = useGoals(selected?.id ?? null)
+
+  useTopbarRight(
+    () => (
+      <button type="button" className="pill btn-primary topbar-new" onClick={() => navigate('/goals/new')}>
+        <Icon name="plus" />
+        <span>New goal</span>
+      </button>
+    ),
+    [navigate]
+  )
+
+  const visible = goals.filter(
+    (g) => filter === 'all' || (filter === 'shared' ? g.trackingMode === 'shared_total' : g.trackingMode === 'each_tracks')
+  )
   const featured = visible.find((g) => g.isFeatured) ?? null
-  const rest = visible.filter((g) => g !== featured)
-  const family = rest.filter((g) => g.participants.length !== 1)
-  const personal = rest.filter((g) => g.participants.length === 1)
+  const more = visible.filter((g) => g !== featured)
+
+  if (listsError) {
+    return <div className="muted" style={{ padding: 30 }}>Sign this kiosk in to see goals.</div>
+  }
 
   return (
-    <div className="goals-page">
-      <div className="goals-head">
-        <div className="card-h nk-serif" style={{ fontSize: 20 }}>Goals</div>
-        {persons.length > 0 && (
-          <div className="seg" style={{ marginLeft: 8 }}>
-            <button className={filter === 'all' ? 'on' : ''} onClick={() => setFilter('all')}>
-              Everyone
-            </button>
-            {persons.map((p) => (
-              <button key={p.id} className={filter === p.id ? 'on' : ''} onClick={() => setFilter(p.id)}>
-                {p.name}
-              </button>
-            ))}
-          </div>
+    <div className="goals-home">
+      <div className="goal-listrail">
+        {shared.length > 0 && <div className="flabel">SHARED LISTS</div>}
+        {shared.map((l) => (
+          <GlistItem key={l.id} list={l} on={l.id === selected?.id} onClick={() => setSelectedId(l.id)} />
+        ))}
+        {individual.length > 0 && (
+          <>
+            <div className="rail-div" />
+            <div className="flabel">INDIVIDUAL</div>
+          </>
         )}
-        <button
-          type="button"
-          className="pill btn-primary"
-          style={{ marginLeft: 'auto', color: '#fff', border: 0, cursor: 'pointer' }}
-          onClick={() => setCreating(true)}
-        >
+        {individual.map((l) => (
+          <GlistItem key={l.id} list={l} on={l.id === selected?.id} onClick={() => setSelectedId(l.id)} />
+        ))}
+        {!listsLoading && lists.length === 0 && (
+          <div className="tiny muted" style={{ padding: '4px 8px', fontWeight: 600 }}>No goal lists yet.</div>
+        )}
+        <button type="button" className="btn btn-ghost rail-new-list" onClick={() => navigate('/goals/new')}>
           <Icon name="plus" />
-          <span>New goal</span>
+          New goal list
         </button>
       </div>
 
-      {loading && <div className="muted" style={{ padding: '20px 30px' }}>Loading…</div>}
-      {error && <div className="muted" style={{ padding: '20px 30px' }}>Sign this kiosk in to see goals.</div>}
-      {!loading && !error && goals.length === 0 && (
-        <div className="muted" style={{ padding: '20px 30px' }}>No goals yet — add one with “New goal”.</div>
-      )}
-      {!loading && !error && goals.length > 0 && visible.length === 0 && (
-        <div className="muted" style={{ padding: '20px 30px' }}>No goals for this person yet.</div>
-      )}
-
-      {!loading && !error && visible.length > 0 && (
-        <div className="goals-body">
-          <div className="goals-col">
-            <div className="goals-sublabel">FAMILY GOALS</div>
-            {featured && <ChallengeHero goal={featured} onLog={setLogging} />}
-            {family.length > 0 && (
-              <div className="fam-grid">
-                {family.map((g) => (
-                  <FamilyGoalCard key={g.id} goal={g} onClick={setLogging} />
-                ))}
-              </div>
-            )}
-            {!featured && family.length === 0 && (
-              <div className="muted tiny" style={{ padding: '2px 2px', fontWeight: 600 }}>
-                No family goals yet — add one for everyone, or feature a goal to highlight it here.
-              </div>
-            )}
-          </div>
-
-          <div className="goals-col">
-            <div className="goals-sublabel" style={{ display: 'flex', alignItems: 'center' }}>
-              PERSONAL GOALS
-              <span className="tiny muted" style={{ marginLeft: 'auto', fontWeight: 600, letterSpacing: 0 }}>
-                {personal.length} active
-              </span>
+      <div className="goal-main">
+        <div className="goal-listhead">
+          {selected && <AvStack members={selected.members} />}
+          <div>
+            <div className="nk-serif goal-listhead-t">{selected?.name ?? 'All goals'}</div>
+            <div className="tiny muted" style={{ fontWeight: 600 }}>
+              {selected ? `${selected.goalCount} goals · ${listSub(selected)}` : `${goals.length} goals`}
             </div>
-            {personal.map((g) => (
-              <PersonalGoalCard key={g.id} goal={g} onClick={setLogging} />
-            ))}
-            {personal.length === 0 && (
-              <div className="muted tiny" style={{ padding: '2px 2px', fontWeight: 600 }}>No personal goals yet.</div>
-            )}
+          </div>
+          <div className="seg" style={{ marginLeft: 'auto' }}>
+            <button className={filter === 'all' ? 'on' : ''} onClick={() => setFilter('all')}>All</button>
+            <button className={filter === 'shared' ? 'on' : ''} onClick={() => setFilter('shared')}>Shared</button>
+            <button className={filter === 'each' ? 'on' : ''} onClick={() => setFilter('each')}>Each</button>
           </div>
         </div>
-      )}
 
-      {creating && <GoalModal onClose={() => setCreating(false)} onSaved={refetch} />}
+        {featured && <Hero goal={featured} onLog={setLogging} onOpen={() => navigate(`/goals/${featured.id}`)} />}
+
+        {more.length > 0 && (
+          <>
+            <div className="flabel more-label">MORE {(selected?.name ?? '').toUpperCase()} GOALS</div>
+            <div className="more-grid">
+              {more.map((g) => (
+                <MoreGoalCard key={g.id} goal={g} onClick={() => navigate(`/goals/${g.id}`)} />
+              ))}
+            </div>
+          </>
+        )}
+
+        {!goalsLoading && visible.length === 0 && (
+          <div className="muted" style={{ padding: '24px 2px', fontWeight: 600 }}>
+            No goals here yet — add one with “New goal”.
+          </div>
+        )}
+      </div>
+
       {logging && <LogModal goal={logging} onClose={() => setLogging(null)} onSaved={refetch} onDeleted={refetch} />}
     </div>
   )
