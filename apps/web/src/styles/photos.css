@@ -1,0 +1,92 @@
+/* Photos screen — co-located styles. The wall tiles (.ph-wall/.ph-tile/.ph-cap/
+   .heart) live in the shared nook.css; this file adds the "New memory" banner,
+   the add-photos picker, the photo detail and the full-screen screensaver. */
+
+/* layout: banner above the scrolling wall */
+.photos-home { display: flex; flex-direction: column; min-width: 0; flex: 1; min-height: 0; }
+.photos-wall-scroll { flex: 1; overflow: auto; padding: 0 30px 24px; }
+
+/* "NEW MEMORY — N photos" banner */
+.ph-banner { margin: 0 30px 16px; display: flex; align-items: center; gap: 14px;
+  padding: 16px 20px; border-radius: var(--r-lg); background: linear-gradient(120deg,#efeafc,#f4eefe); }
+.ph-banner-tile { width: 56px; height: 56px; border-radius: 14px; display: grid;
+  place-items: center; font-size: 28px; flex: none; overflow: hidden; }
+.ph-banner-tile img { width: 100%; height: 100%; object-fit: cover; }
+.ph-banner-title { font-size: 17px; font-weight: 700; }
+.ph-banner .btn-play { font-size: 14px; }
+
+/* an <img> photo fills the tile (emoji tiles use the gradient background) */
+.ph-tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ph-tile { cursor: pointer; }
+.ph-tile.clickable:hover { box-shadow: var(--sh-2); }
+
+/* tile delete affordance on the wall */
+.ph-del { position: absolute; top: 9px; left: 10px; width: 26px; height: 26px; border: 0;
+  border-radius: 999px; background: rgba(0,0,0,.32); color: #fff; font-size: 15px; line-height: 1;
+  display: none; place-items: center; cursor: pointer; backdrop-filter: blur(4px); }
+.ph-tile:hover .ph-del { display: grid; }
+
+/* ---- add-photos picker ---------------------------------------- */
+.ap-body { flex: 1; overflow: auto; padding: 0 30px 24px; }
+.ap-toolbar { padding: 0 30px 14px; display: flex; gap: 12px; flex-wrap: wrap; }
+.ap-toolbar .pill { font-size: 14px; padding: 11px 16px; cursor: pointer; }
+.ap-found { margin: 0 30px 14px; display: flex; align-items: center; gap: 13px;
+  padding: 13px 18px; border-radius: var(--r-lg); background: linear-gradient(120deg,#efeafc,#f4eefe); }
+.ap-found-t { font-size: 14.5px; font-weight: 700; color: var(--ai); }
+.ap-recent-label { font-size: 13px; font-weight: 800; letter-spacing: .05em; color: var(--ink-3); margin: 0 2px 12px; }
+.ap-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 14px; }
+.ap-tile { aspect-ratio: 1; border-radius: var(--r-md); display: grid; place-items: center;
+  font-size: 34px; position: relative; cursor: pointer; box-shadow: var(--sh-1); overflow: hidden; }
+.ap-tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ap-chk { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; border-radius: 99px;
+  background: rgba(255,255,255,.85); border: 2px solid rgba(255,255,255,.6); display: grid;
+  place-items: center; font-size: 14px; color: var(--primary); }
+.ap-tile.on { box-shadow: 0 0 0 3px var(--primary), var(--sh-1); }
+.ap-tile.on .ap-chk { background: var(--primary); border-color: var(--primary); color: #fff; }
+.ap-link-field { margin: 0 30px 14px; display: flex; gap: 10px; align-items: stretch; }
+.ap-link-field input { flex: 1; }
+
+/* ---- photo detail --------------------------------------------- */
+.photo-detail { flex: 1; display: grid; grid-template-columns: 1.7fr 1fr; gap: 22px;
+  padding: 2px 30px 26px; min-height: 0; }
+.pd-stage { border-radius: var(--r-xl); display: grid; place-items: center; font-size: 170px;
+  box-shadow: var(--sh-2); position: relative; overflow: hidden; }
+.pd-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.pd-stage-cap { position: absolute; left: 24px; bottom: 22px; color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,.4); }
+.pd-stage-cap .nk-serif { font-size: 30px; font-weight: 600; }
+.pd-stage-sub { font-size: 14px; font-weight: 600; opacity: .92; }
+.pd-side { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.pd-react-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.pd-react-row .pill.react { font-size: 20px; padding: 8px 14px; cursor: pointer; }
+.pd-react-row .pill.react.on { box-shadow: 0 0 0 2px var(--primary); }
+.pd-loved { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.pd-ai { flex: 1; display: flex; gap: 12px; align-items: flex-start; padding: 15px 17px;
+  border-radius: var(--r-lg); background: linear-gradient(120deg,#efeafc,#f4eefe); }
+.pd-ai-t { font-size: 13.5px; font-weight: 700; color: var(--ai); }
+
+/* ---- screensaver (full-screen takeover) ----------------------- */
+.ph-saver { position: fixed; inset: 0; z-index: 1000; overflow: hidden; cursor: pointer;
+  display: grid; place-items: center; color: #fff; }
+.ph-saver-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ph-saver-scrim { position: absolute; inset: 0;
+  background: radial-gradient(120% 120% at 70% 20%, rgba(0,0,0,0), rgba(0,0,0,.42)); }
+.ph-saver-clock { position: absolute; top: 46px; left: 54px; text-shadow: 0 2px 16px rgba(0,0,0,.35); }
+.ph-saver-time { font-size: 120px; font-weight: 600; line-height: .9; }
+.ph-saver-date { font-size: 26px; font-weight: 600; margin-top: 6px; opacity: .95; }
+.ph-saver-weather { position: absolute; right: 54px; top: 46px; text-align: right;
+  text-shadow: 0 2px 16px rgba(0,0,0,.35); font-size: 64px; }
+.ph-saver-hero { font-size: 220px; filter: drop-shadow(0 12px 40px rgba(0,0,0,.35)); z-index: 1; }
+.ph-saver-meta { position: absolute; left: 54px; bottom: 90px; text-shadow: 0 2px 14px rgba(0,0,0,.4); }
+.ph-saver-meta .nk-serif { font-size: 34px; font-weight: 600; }
+.ph-saver-meta-sub { font-size: 16px; font-weight: 600; opacity: .9; }
+.ph-saver-thumbs { position: absolute; left: 50%; bottom: 36px; transform: translateX(-50%);
+  display: flex; gap: 12px; align-items: center; }
+.ph-saver-thumb { width: 54px; height: 54px; border-radius: 12px; display: grid; place-items: center;
+  font-size: 24px; box-shadow: var(--sh-2); overflow: hidden; }
+.ph-saver-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.ph-saver-thumb.on { outline: 3px solid #fff; }
+.ph-saver-wake { position: absolute; right: 54px; bottom: 40px; font-size: 15px; font-weight: 700;
+  opacity: .9; display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,.22);
+  backdrop-filter: blur(8px); padding: 10px 16px; border-radius: 999px; }
+
+.ph-empty { padding: 40px 30px; color: var(--ink-2); font-weight: 600; }
