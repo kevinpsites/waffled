@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Icon } from '../icons'
+import { EventModal } from './EventModal'
 import { useEventsToday, type AgendaEvent } from '../../lib/api'
 
 function formatTime(e: AgendaEvent): string {
@@ -7,16 +9,18 @@ function formatTime(e: AgendaEvent): string {
   return `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-function AgendaRow({ event }: { event: AgendaEvent }) {
+function AgendaRow({ event, onClick }: { event: AgendaEvent; onClick: () => void }) {
   const color = event.personColor ?? '#A6A29B'
   return (
     <div
+      onClick={onClick}
       style={{
         display: 'flex',
         alignItems: 'center',
         gap: 14,
         padding: '13px 4px',
         borderBottom: '1px solid var(--hair-2)',
+        cursor: 'pointer',
       }}
     >
       <div style={{ width: 62, fontSize: 14, fontWeight: 700, color: 'var(--ink-2)', textAlign: 'right' }}>
@@ -37,7 +41,8 @@ function AgendaRow({ event }: { event: AgendaEvent }) {
 }
 
 export function AgendaCard() {
-  const { events, loading, error } = useEventsToday()
+  const { events, loading, error, refetch } = useEventsToday()
+  const [selected, setSelected] = useState<AgendaEvent | null>(null)
   return (
     <div className="card" style={{ padding: '22px 22px 8px', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
@@ -59,8 +64,9 @@ export function AgendaCard() {
         <div className="muted" style={{ padding: '14px 4px' }}>Nothing on the calendar today.</div>
       )}
       {events.map((e) => (
-        <AgendaRow key={e.id} event={e} />
+        <AgendaRow key={e.id} event={e} onClick={() => setSelected(e)} />
       ))}
+      {selected && <EventModal event={selected} onClose={() => setSelected(null)} onSaved={refetch} />}
     </div>
   )
 }

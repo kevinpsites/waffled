@@ -86,6 +86,9 @@ export const api = {
     personId?: string | null
     location?: string | null
   }) => apiSend<{ event: AgendaEvent }>('POST', '/api/events', input),
+  updateEvent: (id: string, patch: Record<string, unknown>) =>
+    apiSend<{ event: AgendaEvent }>('PATCH', `/api/events/${id}`, patch),
+  deleteEvent: (id: string) => apiDelete(`/api/events/${id}`),
   choreInstancesToday: () =>
     apiGet<{ date: string; instances: ChoreInstance[] }>('/api/chore-instances/today'),
   completeInstance: (id: string) =>
@@ -235,8 +238,9 @@ export interface AgendaState {
   error: boolean
 }
 
-export function useEventsToday(): AgendaState {
+export function useEventsToday(): AgendaState & { refetch: () => void } {
   const [state, setState] = useState<AgendaState>({ events: [], loading: true, error: false })
+  const [nonce, setNonce] = useState(0)
   useEffect(() => {
     let alive = true
     api
@@ -246,8 +250,8 @@ export function useEventsToday(): AgendaState {
     return () => {
       alive = false
     }
-  }, [])
-  return state
+  }, [nonce])
+  return { ...state, refetch: () => setNonce((n) => n + 1) }
 }
 
 export function useEventsRange(from: string, to: string): AgendaState & { refetch: () => void } {

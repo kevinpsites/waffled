@@ -32,7 +32,7 @@ export function Calendar() {
   const from = ymd(cells[0])
   const to = ymd(cells[41])
   const { events, refetch } = useEventsRange(from, to)
-  const [createDate, setCreateDate] = useState<string | null>(null)
+  const [modal, setModal] = useState<{ date?: string; event?: AgendaEvent } | null>(null)
 
   const byDate = useMemo(() => {
     const map: Record<string, AgendaEvent[]> = {}
@@ -68,7 +68,7 @@ export function Calendar() {
           type="button"
           className="pill"
           style={{ marginLeft: 'auto', cursor: 'pointer' }}
-          onClick={() => setCreateDate(ymd(now))}
+          onClick={() => setModal({ date: ymd(now) })}
         >
           <Icon name="plus" />
           <span>New</span>
@@ -90,13 +90,21 @@ export function Calendar() {
               <div
                 key={key}
                 className={`cal-cell ${dim ? 'dim' : ''} ${key === today ? 'today' : ''}`}
-                onClick={() => setCreateDate(key)}
+                onClick={() => setModal({ date: key })}
               >
                 <div className="dn">{d.getDate()}</div>
                 {dayEvents.slice(0, 3).map((e) => {
                   const color = e.personColor ?? '#6B6B70'
                   return (
-                    <div key={e.id} className="ev" style={{ background: `${color}22`, color }}>
+                    <div
+                      key={e.id}
+                      className="ev"
+                      style={{ background: `${color}22`, color, cursor: 'pointer' }}
+                      onClick={(ev) => {
+                        ev.stopPropagation()
+                        setModal({ event: e })
+                      }}
+                    >
                       {e.title}
                     </div>
                   )
@@ -108,11 +116,12 @@ export function Calendar() {
         </div>
       </div>
 
-      {createDate && (
+      {modal && (
         <EventModal
-          date={createDate}
-          onClose={() => setCreateDate(null)}
-          onCreated={refetch}
+          event={modal.event}
+          date={modal.date}
+          onClose={() => setModal(null)}
+          onSaved={refetch}
         />
       )}
     </div>
