@@ -13,6 +13,7 @@ export function GoalModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
     target: 10,
     trackingMode: 'shared_total',
     participantIds: [] as string[],
+    isFeatured: false,
   })
   const [saving, setSaving] = useState(false)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
@@ -31,6 +32,7 @@ export function GoalModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
         targetValue: Number(form.target) || null,
         trackingMode: form.trackingMode,
         participantIds: form.participantIds,
+        isFeatured: form.isFeatured,
       })
       onSaved()
       onClose()
@@ -120,6 +122,44 @@ export function GoalModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
               })}
             </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => set('isFeatured', !form.isFeatured)}
+            className="feature-row"
+            style={{ width: '100%', marginBottom: 14, cursor: 'pointer', textAlign: 'left' }}
+          >
+            <div style={{ fontSize: 24 }}>⭐</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14.5, fontWeight: 700 }}>Feature on the home screen</div>
+              <div className="tiny muted" style={{ fontWeight: 600 }}>Shows big on the kitchen display</div>
+            </div>
+            <div
+              aria-hidden
+              style={{
+                width: 44,
+                height: 26,
+                borderRadius: 999,
+                flex: 'none',
+                background: form.isFeatured ? 'var(--wally)' : 'var(--hair)',
+                position: 'relative',
+                transition: 'background 0.15s',
+              }}
+            >
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 3,
+                  left: form.isFeatured ? 21 : 3,
+                  width: 20,
+                  height: 20,
+                  borderRadius: 999,
+                  background: '#fff',
+                  transition: 'left 0.15s',
+                }}
+              />
+            </div>
+          </button>
 
           <button type="submit" className="btn btn-primary" disabled={!form.title.trim() || saving} style={{ width: '100%', justifyContent: 'center', marginTop: 6 }}>
             {saving ? 'Saving…' : 'Add goal'}

@@ -1,11 +1,22 @@
 import { useState, type FormEvent } from 'react'
 import { api, type Goal } from '../../lib/api'
 
-export function LogModal({ goal, onClose, onSaved }: { goal: Goal; onClose: () => void; onSaved: () => void }) {
+export function LogModal({
+  goal,
+  onClose,
+  onSaved,
+  onDeleted,
+}: {
+  goal: Goal
+  onClose: () => void
+  onSaved: () => void
+  onDeleted?: () => void
+}) {
   const eachTracks = goal.trackingMode === 'each_tracks'
   const [amount, setAmount] = useState(1)
   const [personId, setPersonId] = useState(eachTracks ? (goal.participants[0]?.personId ?? '') : '')
   const [saving, setSaving] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -18,6 +29,16 @@ export function LogModal({ goal, onClose, onSaved }: { goal: Goal; onClose: () =
     } catch {
       setSaving(false)
     }
+  }
+
+  async function del() {
+    if (!confirmDelete) {
+      setConfirmDelete(true)
+      return
+    }
+    await api.deleteGoal(goal.id)
+    onDeleted?.()
+    onClose()
   }
 
   return (
@@ -60,6 +81,13 @@ export function LogModal({ goal, onClose, onSaved }: { goal: Goal; onClose: () =
             {saving ? 'Saving…' : 'Log it'}
           </button>
         </form>
+        <button
+          type="button"
+          onClick={del}
+          style={{ display: 'block', margin: '14px auto 0', border: 0, background: 'none', color: confirmDelete ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+        >
+          {confirmDelete ? 'Tap again to delete this goal' : 'Delete goal'}
+        </button>
       </div>
     </div>
   )

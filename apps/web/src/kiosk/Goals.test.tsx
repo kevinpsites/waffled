@@ -1,7 +1,7 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { Goals } from './Goals'
 
-const sampleGoal = {
+const personalGoal = {
   id: 'g1',
   title: 'Read 20 books',
   emoji: '📚',
@@ -10,9 +10,28 @@ const sampleGoal = {
   unit: 'books',
   trackingMode: 'shared_total',
   deadline: null,
+  isFeatured: false,
   target: 20,
   totalProgress: 5,
   participants: [{ personId: 'p1', name: 'Wally', colorHex: '#25A368', avatarEmoji: '🐢', target: 20, progress: 5 }],
+}
+
+const featuredGoal = {
+  id: 'g2',
+  title: '1,000 Hours Outside',
+  emoji: '🌲',
+  category: 'physical',
+  goalType: 'total',
+  unit: 'hours',
+  trackingMode: 'shared_total',
+  deadline: null,
+  isFeatured: true,
+  target: 1000,
+  totalProgress: 312,
+  participants: [
+    { personId: 'p1', name: 'Wally', colorHex: '#25A368', avatarEmoji: '🐢', target: 1000, progress: 102 },
+    { personId: 'p2', name: 'Kevin', colorHex: '#2F7FED', avatarEmoji: '🐻', target: 1000, progress: 78 },
+  ],
 }
 
 function mockApi(opts: { goals?: unknown[]; logged?: unknown[] }) {
@@ -31,18 +50,28 @@ function mockApi(opts: { goals?: unknown[]; logged?: unknown[] }) {
 }
 
 describe('Goals screen', () => {
-  it('renders goals with progress and logs against one', async () => {
-    const logged: unknown[] = []
-    mockApi({ goals: [sampleGoal], logged })
+  it('renders the featured hero with contributor bars and personal goals', async () => {
+    mockApi({ goals: [featuredGoal, personalGoal] })
     render(<Goals />)
 
-    expect(await screen.findByText('Read 20 books')).toBeInTheDocument()
-    expect(screen.getByText(/Intellectual/)).toBeInTheDocument()
-    expect(screen.getByText('5')).toBeInTheDocument()
+    // featured goal becomes the hero with its derived total + per-person contributions
+    expect(await screen.findByText('1,000 Hours Outside')).toBeInTheDocument()
+    expect(screen.getByText(/Featured/)).toBeInTheDocument()
+    expect(screen.getByText('312')).toBeInTheDocument()
 
-    // open the Log modal and submit
-    fireEvent.click(screen.getByRole('button', { name: /Log/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Log it' }))
+    // the single-owner goal shows in the personal column
+    expect(screen.getByText('Read 20 books')).toBeInTheDocument()
+    expect(screen.getByText(/Intellectual/)).toBeInTheDocument()
+  })
+
+  it('logs progress against a goal card', async () => {
+    const logged: unknown[] = []
+    mockApi({ goals: [personalGoal], logged })
+    render(<Goals />)
+
+    fireEvent.click(await screen.findByText('Read 20 books'))
+    const modal = document.querySelector('.modal-card') as HTMLElement
+    fireEvent.click(within(modal).getByRole('button', { name: 'Log it' }))
     await waitFor(() => expect(logged).toHaveLength(1))
     expect(logged[0]).toMatchObject({ amount: 1 })
   })
