@@ -40,6 +40,7 @@ describe('EventModal', () => {
     personName: null,
     personColor: null,
     personEmoji: null,
+    participants: [],
   }
 
   function mockEventApi(patched: unknown[], deleted: string[]) {

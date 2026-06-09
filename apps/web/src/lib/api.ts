@@ -179,6 +179,13 @@ export function usePersons(): PersonsState {
   return state
 }
 
+export interface Participant {
+  id: string
+  name: string
+  colorHex: string | null
+  avatarEmoji: string | null
+}
+
 export interface AgendaEvent {
   id: string
   title: string
@@ -190,6 +197,7 @@ export interface AgendaEvent {
   personName: string | null
   personColor: string | null
   personEmoji: string | null
+  participants: Participant[]
 }
 
 export interface MealRecipe {

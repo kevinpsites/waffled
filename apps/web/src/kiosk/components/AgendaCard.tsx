@@ -31,11 +31,31 @@ function AgendaRow({ event, onClick }: { event: AgendaEvent; onClick: () => void
         <div style={{ fontSize: 16, fontWeight: 600 }}>{event.title}</div>
         {event.location && <div className="tiny muted">{event.location}</div>}
       </div>
-      {event.personEmoji && (
-        <div className="av sm" style={{ background: `${color}22` }}>
-          {event.personEmoji}
+      <Avatars event={event} />
+    </div>
+  )
+}
+
+// Participant avatars (stacked); falls back to the single person for older events.
+function Avatars({ event }: { event: AgendaEvent }) {
+  const people =
+    event.participants?.length
+      ? event.participants
+      : event.personEmoji
+        ? [{ id: '_', name: event.personName ?? '', colorHex: event.personColor, avatarEmoji: event.personEmoji }]
+        : []
+  if (people.length === 0) return null
+  return (
+    <div style={{ display: 'flex' }}>
+      {people.slice(0, 3).map((a, idx) => (
+        <div
+          key={a.id}
+          className="av sm"
+          style={{ background: `${a.colorHex ?? '#A6A29B'}22`, marginLeft: idx ? -8 : 0 }}
+        >
+          {a.avatarEmoji ?? '🙂'}
         </div>
-      )}
+      ))}
     </div>
   )
 }

@@ -11,16 +11,21 @@ function toIso(date: string, time: string): string {
 function initialForm(event?: AgendaEvent, date?: string) {
   if (event) {
     const d = new Date(event.startsAt)
+    const participantIds = event.participants.length
+      ? event.participants.map((p) => p.id)
+      : event.personId
+        ? [event.personId]
+        : []
     return {
       title: event.title,
       day: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
       time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
       allDay: event.allDay,
-      personId: event.personId ?? '',
+      participantIds,
       location: event.location ?? '',
     }
   }
-  return { title: '', day: date ?? localToday(), time: '17:00', allDay: false, personId: '', location: '' }
+  return { title: '', day: date ?? localToday(), time: '17:00', allDay: false, participantIds: [] as string[], location: '' }
 }
 
 // Create (pass `date`) or edit (pass `event`) a calendar event.
@@ -50,7 +55,7 @@ export function EventModal({
       title: form.title.trim(),
       startsAt: form.allDay ? toIso(form.day, '12:00') : toIso(form.day, form.time),
       allDay: form.allDay,
-      personId: form.personId || null,
+      participantIds: form.participantIds,
       location: form.location.trim() || null,
     }
     try {
@@ -113,18 +118,43 @@ export function EventModal({
             <span style={{ margin: 0 }}>All day</span>
           </label>
 
-          <label className="field">
+          <div className="field">
             <span>Who</span>
-            <select value={form.personId} onChange={(e) => set('personId', e.target.value)}>
-              <option value="">— nobody —</option>
-              {persons.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.avatarEmoji ? `${p.avatarEmoji} ` : ''}
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {persons.map((p) => {
+                const on = form.participantIds.includes(p.id)
+                const color = p.colorHex ?? '#6B6B70'
+                return (
+                  <button
+                    type="button"
+                    key={p.id}
+                    onClick={() =>
+                      set(
+                        'participantIds',
+                        on ? form.participantIds.filter((x) => x !== p.id) : [...form.participantIds, p.id]
+                      )
+                    }
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '6px 12px',
+                      borderRadius: 999,
+                      border: on ? `1.5px solid ${color}` : '1px solid var(--hair)',
+                      background: on ? `${color}22` : 'var(--card-2)',
+                      color: 'var(--ink)',
+                      font: 'inherit',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {p.avatarEmoji ?? '🙂'} {p.name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
 
           <label className="field">
             <span>Location (optional)</span>
