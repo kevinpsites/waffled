@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
+import { MultiSelect } from './components/MultiSelect'
 import { useRecipes, type Recipe } from '../lib/api'
 import './../styles/recipe.css'
 
@@ -15,22 +16,10 @@ function gradClass(r: Recipe): string {
   return (r.category && GRAD_BY_CATEGORY[r.category.toLowerCase()]) || 'g-veg'
 }
 
-// One searchable string per recipe — title + every metadata field, so a search
-// for "cucumber" (a vegetable) or "weeknight" (effort) finds the recipe.
+// Title + every metadata field, so search matches cuisine / protein / a vegetable
+// ("cucumber") / a tag / effort, etc.
 function haystack(r: Recipe): string {
-  return [
-    r.title,
-    r.cuisine,
-    r.protein,
-    r.base,
-    r.mealType,
-    r.effort,
-    r.cookMethod,
-    r.collection,
-    ...(r.tags ?? []),
-    ...r.vegetables,
-    ...r.dietary,
-  ]
+  return [r.title, r.cuisine, r.protein, r.base, r.mealType, r.effort, r.cookMethod, r.collection, ...(r.tags ?? []), ...r.vegetables, ...r.dietary]
     .filter(Boolean)
     .join(' ')
     .toLowerCase()
@@ -45,27 +34,26 @@ function distinct(recipes: Recipe[], key: keyof Recipe): string[] {
   return [...s].sort()
 }
 
-function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (v: string) => void }) {
-  if (options.length === 0) return null
-  return (
-    <select className={`recipes-filter ${value ? 'on' : ''}`} value={value} onChange={(e) => onChange(e.target.value)}>
-      <option value="">{label}</option>
-      {options.map((o) => (
-        <option key={o} value={o}>{o}</option>
-      ))}
-    </select>
-  )
-}
+const SORTS: Array<{ key: string; label: string }> = [
+  { key: 'name', label: 'A–Z' },
+  { key: 'time', label: 'Quickest' },
+  { key: 'cooked', label: 'Most cooked' },
+  { key: 'recent', label: 'Recently cooked' },
+]
 
 export function RecipesLibrary() {
   const navigate = useNavigate()
   const { recipes, loading, error } = useRecipes()
-  const [q, setQ] = useState('')
+  const [params] = useSearchParams()
+  const initArr = (k: string) => params.get(k)?.split(',').filter(Boolean) ?? []
+
+  const [q, setQ] = useState(() => params.get('q') ?? '')
   const [fav, setFav] = useState(false)
-  const [collection, setCollection] = useState('')
-  const [cuisine, setCuisine] = useState('')
-  const [protein, setProtein] = useState('')
-  const [diet, setDiet] = useState('')
+  const [collections, setCollections] = useState<string[]>(() => initArr('collection'))
+  const [cuisines, setCuisines] = useState<string[]>(() => initArr('cuisine'))
+  const [proteins, setProteins] = useState<string[]>(() => initArr('protein'))
+  const [diets, setDiets] = useState<string[]>(() => initArr('diet'))
+  const [sort, setSort] = useState('name')
 
   useTopbarFull(
     () => (
@@ -77,58 +65,71 @@ export function RecipesLibrary() {
     [navigate]
   )
 
-  const collections = useMemo(() => distinct(recipes, 'collection'), [recipes])
-  const cuisines = useMemo(() => distinct(recipes, 'cuisine'), [recipes])
-  const proteins = useMemo(() => distinct(recipes, 'protein'), [recipes])
-  const diets = useMemo(() => {
+  const collOpts = useMemo(() => distinct(recipes, 'collection'), [recipes])
+  const cuisineOpts = useMemo(() => distinct(recipes, 'cuisine'), [recipes])
+  const proteinOpts = useMemo(() => distinct(recipes, 'protein'), [recipes])
+  const dietOpts = useMemo(() => {
     const s = new Set<string>()
     recipes.forEach((r) => r.dietary.forEach((d) => s.add(d)))
     return [...s].sort()
   }, [recipes])
 
   const ql = q.trim().toLowerCase()
+  const has = (arr: string[], v: string | null) => arr.length === 0 || (v != null && arr.includes(v))
   const filtered = recipes.filter(
     (r) =>
       (!fav || r.isFavorite) &&
-      (!collection || r.collection === collection) &&
-      (!cuisine || r.cuisine === cuisine) &&
-      (!protein || r.protein === protein) &&
-      (!diet || r.dietary.includes(diet)) &&
+      has(collections, r.collection) &&
+      has(cuisines, r.cuisine) &&
+      has(proteins, r.protein) &&
+      (diets.length === 0 || diets.some((d) => r.dietary.includes(d))) &&
       (!ql || haystack(r).includes(ql))
   )
 
-  const anyFilter = fav || collection || cuisine || protein || diet || ql
+  const sorted = [...filtered].sort((a, b) => {
+    if (sort === 'time') return (a.cookTimeMinutes ?? 1e9) - (b.cookTimeMinutes ?? 1e9)
+    if (sort === 'cooked') return b.cookedCount - a.cookedCount
+    if (sort === 'recent') return (b.lastCookedAt ?? '').localeCompare(a.lastCookedAt ?? '')
+    return a.title.localeCompare(b.title)
+  })
+
+  const anyFilter = fav || collections.length || cuisines.length || proteins.length || diets.length || ql
   function clearAll() {
-    setFav(false); setCollection(''); setCuisine(''); setProtein(''); setDiet(''); setQ('')
+    setFav(false); setCollections([]); setCuisines([]); setProteins([]); setDiets([]); setQ('')
   }
 
   return (
     <div className="recipes-lib">
       <div className="recipes-head">
-        <input className="recipes-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search recipes, cuisine, protein…" aria-label="Search recipes" />
-        <button type="button" className={`pill ${fav ? 'btn-primary' : ''}`} style={{ marginLeft: 'auto', cursor: 'pointer', color: fav ? '#fff' : undefined, border: fav ? 0 : undefined }} onClick={() => setFav((v) => !v)}>
+        <input className="recipes-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search recipes, cuisine, protein, a veggie…" aria-label="Search recipes" />
+        <select className="recipes-filter recipes-sort" value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort">
+          {SORTS.map((s) => (
+            <option key={s.key} value={s.key}>Sort: {s.label}</option>
+          ))}
+        </select>
+        <button type="button" className={`pill ${fav ? 'btn-primary' : ''}`} style={{ cursor: 'pointer', color: fav ? '#fff' : undefined, border: fav ? 0 : undefined }} onClick={() => setFav((v) => !v)}>
           {fav ? '❤️' : '🤍'} Favorites
         </button>
       </div>
 
       <div className="recipes-filters">
-        <FilterSelect label="Collection" value={collection} options={collections} onChange={setCollection} />
-        <FilterSelect label="Cuisine" value={cuisine} options={cuisines} onChange={setCuisine} />
-        <FilterSelect label="Protein" value={protein} options={proteins} onChange={setProtein} />
-        <FilterSelect label="Dietary" value={diet} options={diets} onChange={setDiet} />
-        <span className="tiny muted recipes-count">{filtered.length} of {recipes.length}</span>
-        {anyFilter && <button type="button" className="pill recipes-clear" onClick={clearAll}>Clear</button>}
+        <MultiSelect label="Collection" options={collOpts} selected={collections} onChange={setCollections} />
+        <MultiSelect label="Cuisine" options={cuisineOpts} selected={cuisines} onChange={setCuisines} />
+        <MultiSelect label="Protein" options={proteinOpts} selected={proteins} onChange={setProteins} />
+        <MultiSelect label="Dietary" options={dietOpts} selected={diets} onChange={setDiets} />
+        <span className="tiny muted recipes-count">{sorted.length} of {recipes.length}</span>
+        {anyFilter ? <button type="button" className="pill recipes-clear" onClick={clearAll}>Clear</button> : null}
       </div>
 
       {error && <div className="muted" style={{ padding: 20 }}>Sign this kiosk in to see recipes.</div>}
-      {!error && !loading && filtered.length === 0 && (
+      {!error && !loading && sorted.length === 0 && (
         <div className="muted" style={{ padding: 20, fontWeight: 600 }}>
           {recipes.length === 0 ? 'No recipes yet — import some with `just import-recipes`.' : 'No recipes match these filters.'}
         </div>
       )}
 
       <div className="recipes-grid">
-        {filtered.map((r) => (
+        {sorted.map((r) => (
           <button key={r.id} type="button" className="rc recipes-card" onClick={() => navigate(`/meals/recipe/${r.id}`)}>
             <div className={`rc-img ${gradClass(r)}`}>
               {r.emoji ?? '🍽️'}
@@ -140,6 +141,7 @@ export function RecipesLibrary() {
                 {r.cuisine && <span>🌍 {r.cuisine}</span>}
                 {r.protein && <span>🥩 {r.protein}</span>}
                 {r.cookTimeMinutes != null && <span>🕐 {r.cookTimeMinutes}m</span>}
+                {r.cookedCount > 0 && <span>👨‍🍳 {r.cookedCount}×</span>}
               </div>
               {r.collection && <div className="recipes-coll">📁 {r.collection}</div>}
             </div>

@@ -185,6 +185,7 @@ export function presentRecipe(r: RecipeRow) {
     sourceName: r.source_name,
     isFavorite: r.is_favorite,
     cookedCount: r.cooked_count,
+    lastCookedAt: (r as { last_cooked_at?: string | null }).last_cooked_at ?? null,
     // rich metadata (markdown frontmatter)
     mealType: (r as { meal_type?: string | null }).meal_type ?? null,
     protein: (r as { protein?: string | null }).protein ?? null,
@@ -373,6 +374,21 @@ export function registerMealRoutes(api: Api): void {
     const { rows } = await query<RecipeRow>(
       `update recipes set ${cols.join(', ')} where household_id = $${i++} and id = $${i} and deleted_at is null returning *`,
       vals
+    )
+    if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    return { recipe: presentRecipe(rows[0]) }
+  })
+
+  // Mark a recipe cooked — bumps cooked_count + last_cooked_at (powers "recently
+  // cooked" sort + the "cooked N×" badge).
+  api.post('/api/recipes/:id/cooked', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    const { rows } = await query<RecipeRow>(
+      `update recipes set cooked_count = cooked_count + 1, last_cooked_at = now()
+         where household_id = $1 and id = $2 and deleted_at is null returning *`,
+      [tenant.householdId, id]
     )
     if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     return { recipe: presentRecipe(rows[0]) }

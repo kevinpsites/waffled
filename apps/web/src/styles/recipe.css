@@ -287,13 +287,20 @@
   margin-bottom: 16px;
 }
 .rd-tag {
+  font: inherit;
   font-size: 12px;
   font-weight: 700;
   padding: 5px 11px;
   border-radius: 999px;
+  border: 0;
   background: var(--panel);
   color: var(--ink-2);
   text-transform: capitalize;
+  cursor: pointer;
+  transition: filter 0.12s;
+}
+.rd-tag:hover {
+  filter: brightness(0.95);
 }
 .rd-tag.coll {
   background: var(--kevin-t);
@@ -376,4 +383,73 @@
   font-weight: 700;
   color: var(--ink-3);
   margin-top: 6px;
+}
+
+.rd-cooked {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.rd-cooked .pill {
+  font-size: 13px;
+}
+
+/* multi-select filter popover */
+.ms-wrap {
+  position: relative;
+}
+.ms-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  min-width: 180px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: var(--r-md);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--hair-2);
+  padding: 6px;
+}
+.ms-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  text-align: left;
+  text-transform: capitalize;
+  color: var(--ink);
+}
+.ms-opt:hover {
+  background: var(--panel);
+}
+.ms-ck {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 2px solid var(--hair);
+  background: #fff;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+}
+.ms-ck.on {
+  background: var(--wally);
+  border-color: var(--wally);
+}
+.recipes-sort {
+  cursor: pointer;
 }

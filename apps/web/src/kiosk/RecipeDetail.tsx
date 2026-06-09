@@ -49,6 +49,21 @@ export function RecipeDetail() {
     if (recipe) mealsApi.updateRecipe(recipe.id, { isFavorite: next }).catch(() => setFav(!next))
   }
 
+  const enc = encodeURIComponent
+  function chip(params: string) {
+    navigate(`/meals/recipes?${params}`)
+  }
+  const [cooked, setCooked] = useState(0)
+  useEffect(() => {
+    if (recipe) setCooked(recipe.cookedCount)
+  }, [recipe])
+  function markCooked() {
+    if (!recipe) return
+    setCooked((c) => c + 1)
+    setAddedNote('Marked as cooked — nice work.')
+    mealsApi.markCooked(recipe.id).catch(() => setCooked((c) => Math.max(0, c - 1)))
+  }
+
   useTopbarFull(
     () => (
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
@@ -98,27 +113,26 @@ export function RecipeDetail() {
         </div>
 
         <div className="rd-tags">
-          {recipe.collection && <span className="rd-tag coll">📁 {recipe.collection}</span>}
-          {recipe.cuisine && <span className="rd-tag">🌍 {recipe.cuisine}</span>}
-          {recipe.mealType && <span className="rd-tag">{recipe.mealType.replace('-', ' ')}</span>}
-          {recipe.protein && <span className="rd-tag">🥩 {recipe.protein}</span>}
-          {recipe.base && <span className="rd-tag">🍚 {recipe.base}</span>}
-          {recipe.cookMethod && <span className="rd-tag">🍳 {recipe.cookMethod}</span>}
-          {recipe.effort && <span className="rd-tag">⏱️ {recipe.effort}</span>}
-          {recipe.dietary.map((d) => <span key={d} className="rd-tag diet">{d}</span>)}
+          {recipe.collection && <button className="rd-tag coll" onClick={() => chip(`collection=${enc(recipe.collection!)}`)}>📁 {recipe.collection}</button>}
+          {recipe.cuisine && <button className="rd-tag" onClick={() => chip(`cuisine=${enc(recipe.cuisine!)}`)}>🌍 {recipe.cuisine}</button>}
+          {recipe.mealType && <button className="rd-tag" onClick={() => chip(`q=${enc(recipe.mealType!)}`)}>{recipe.mealType.replace('-', ' ')}</button>}
+          {recipe.protein && <button className="rd-tag" onClick={() => chip(`protein=${enc(recipe.protein!)}`)}>🥩 {recipe.protein}</button>}
+          {recipe.base && <button className="rd-tag" onClick={() => chip(`q=${enc(recipe.base!)}`)}>🍚 {recipe.base}</button>}
+          {recipe.cookMethod && <button className="rd-tag" onClick={() => chip(`q=${enc(recipe.cookMethod!)}`)}>🍳 {recipe.cookMethod}</button>}
+          {recipe.effort && <button className="rd-tag" onClick={() => chip(`q=${enc(recipe.effort!)}`)}>⏱️ {recipe.effort}</button>}
+          {recipe.dietary.map((d) => <button key={d} className="rd-tag diet" onClick={() => chip(`diet=${enc(d)}`)}>{d}</button>)}
+          {recipe.vegetables.map((v) => <button key={v} className="rd-tag veg" onClick={() => chip(`q=${enc(v)}`)}>🥬 {v}</button>)}
         </div>
-
-        {recipe.vegetables.length > 0 && (
-          <div className="rd-veg">
-            <span className="rd-veg-label">🥬 Vegetables</span>
-            {recipe.vegetables.map((v) => <span key={v} className="rd-tag veg">{v}</span>)}
-          </div>
-        )}
         {(recipe.tags ?? []).length > 0 && (
-          <div className="rd-veg">
-            {(recipe.tags ?? []).map((t) => <span key={t} className="rd-tag soft">#{t}</span>)}
+          <div className="rd-tags">
+            {(recipe.tags ?? []).map((t) => <button key={t} className="rd-tag soft" onClick={() => chip(`q=${enc(t)}`)}>#{t}</button>)}
           </div>
         )}
+
+        <div className="rd-cooked">
+          <span className="tiny muted" style={{ fontWeight: 700 }}>{cooked > 0 ? `👨‍🍳 Cooked ${cooked}×` : 'Not cooked yet'}</span>
+          <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={markCooked}>✓ Mark cooked</button>
+        </div>
 
         <div className="card rd-ings">
           <div className="rd-ings-head">
