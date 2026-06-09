@@ -111,3 +111,58 @@ describe('goals schema', () => {
     })
   })
 })
+
+describe('goals api', () => {
+  it('403s for a caller with no household', async () => {
+    expect((await call('GET', '/api/goals', mint('dev|nobody'))).statusCode).toBe(403)
+  })
+
+  it('validates create input (400)', async () => {
+    expect((await call('POST', '/api/goals', kevin, { goalType: 'count', trackingMode: 'shared_total' })).statusCode).toBe(400)
+    expect((await call('POST', '/api/goals', kevin, { title: 'X', trackingMode: 'shared_total' })).statusCode).toBe(400)
+    expect((await call('POST', '/api/goals', kevin, { title: 'X', goalType: 'count' })).statusCode).toBe(400)
+  })
+
+  it('creates a shared goal, logs progress, and derives totals', async () => {
+    const add = await call('POST', '/api/goals', kevin, {
+      title: 'Read 20 books',
+      emoji: '📚',
+      category: 'intellectual',
+      goalType: 'count',
+      unit: 'books',
+      targetValue: 20,
+      trackingMode: 'shared_total',
+      participantIds: [kevinId],
+    })
+    expect(add.statusCode).toBe(201)
+    const id = JSON.parse(add.body).goal.id
+
+    let goal = JSON.parse((await call('GET', '/api/goals', kevin)).body).goals.find((g: { id: string }) => g.id === id)
+    expect(goal).toMatchObject({ title: 'Read 20 books', target: 20, totalProgress: 0 })
+    expect(goal.participants[0]).toMatchObject({ name: 'Kevin', target: 20, progress: 0 })
+
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 3, personId: kevinId })).statusCode).toBe(201)
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 2, personId: kevinId })).statusCode).toBe(201)
+
+    goal = JSON.parse((await call('GET', '/api/goals', kevin)).body).goals.find((g: { id: string }) => g.id === id)
+    expect(goal.totalProgress).toBe(5)
+    expect(goal.participants[0].progress).toBe(5)
+  })
+
+  it('rejects a zero/NaN amount and an unknown goal (400/404)', async () => {
+    const add = await call('POST', '/api/goals', kevin, { title: 'G', goalType: 'count', trackingMode: 'shared_total', targetValue: 1 })
+    const id = JSON.parse(add.body).goal.id
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 0 })).statusCode).toBe(400)
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 'lots' })).statusCode).toBe(400)
+    expect((await call('POST', '/api/goals/00000000-0000-0000-0000-000000000000/log', kevin, { amount: 1 })).statusCode).toBe(404)
+  })
+
+  it('deletes a goal', async () => {
+    const add = await call('POST', '/api/goals', kevin, { title: 'Temp', goalType: 'count', trackingMode: 'shared_total', targetValue: 1 })
+    const id = JSON.parse(add.body).goal.id
+    expect((await call('DELETE', `/api/goals/${id}`, kevin)).statusCode).toBe(204)
+    const goals = JSON.parse((await call('GET', '/api/goals', kevin)).body).goals
+    expect(goals.some((g: { id: string }) => g.id === id)).toBe(false)
+    expect((await call('DELETE', `/api/goals/${id}`, kevin)).statusCode).toBe(404)
+  })
+})
