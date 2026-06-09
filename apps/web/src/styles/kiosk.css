@@ -70,6 +70,34 @@ body {
   }
 }
 
+/* ===== tasks screen ===== */
+.tasks-screen {
+  flex: 1;
+  display: flex;
+  gap: 16px;
+  padding: 6px 30px 26px;
+  overflow-x: auto;
+  align-items: flex-start;
+}
+.tasks-screen .chore-col {
+  width: 300px;
+  flex: none;
+}
+button.tick {
+  padding: 0;
+  cursor: pointer;
+}
+@media (max-width: 720px) {
+  .tasks-screen {
+    flex-direction: column;
+    padding: 6px 16px 22px;
+    overflow-x: visible;
+  }
+  .tasks-screen .chore-col {
+    width: auto;
+  }
+}
+
 /* ===== grocery checkbox ===== */
 .gcheck {
   width: 18px;

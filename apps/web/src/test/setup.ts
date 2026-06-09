@@ -6,6 +6,6 @@ import { vi, beforeEach } from 'vitest'
 beforeEach(() => {
   globalThis.fetch = vi.fn(async () => ({
     ok: true,
-    json: async () => ({ persons: [], items: [], people: [] }),
+    json: async () => ({ persons: [], items: [], people: [], instances: [] }),
   })) as unknown as typeof fetch
 })

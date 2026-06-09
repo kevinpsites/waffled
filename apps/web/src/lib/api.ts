@@ -72,6 +72,12 @@ export interface PersonChores {
 export const api = {
   persons: () => apiGet<{ persons: Person[] }>('/api/persons'),
   choresToday: () => apiGet<{ date: string; people: PersonChores[] }>('/api/chores/today'),
+  choreInstancesToday: () =>
+    apiGet<{ date: string; instances: ChoreInstance[] }>('/api/chore-instances/today'),
+  completeInstance: (id: string) =>
+    apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/complete`),
+  uncompleteInstance: (id: string) =>
+    apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/uncomplete`),
   grocery: () => apiGet<{ items: GroceryItem[] }>('/api/lists/grocery'),
   addGroceryItem: (name: string) =>
     apiSend<{ item: GroceryItem }>('POST', '/api/lists/grocery/items', { name }).then((r) => r.item),
@@ -101,6 +107,16 @@ export function usePersons(): PersonsState {
   return state
 }
 
+export interface ChoreInstance {
+  id: string
+  choreTitle: string
+  emoji: string | null
+  personId: string | null
+  personName: string | null
+  status: string
+  rewardAmount: number | null
+}
+
 export interface ChoresState {
   people: PersonChores[]
   loading: boolean
@@ -120,6 +136,55 @@ export function useChoresToday(): ChoresState {
     }
   }, [])
   return state
+}
+
+export interface InstancesState {
+  instances: ChoreInstance[]
+  loading: boolean
+  error: boolean
+  setDone: (id: string, done: boolean) => Promise<void>
+}
+
+export function useTodayInstances(): InstancesState {
+  const [instances, setInstances] = useState<ChoreInstance[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    api
+      .choreInstancesToday()
+      .then((d) => {
+        if (alive) {
+          setInstances(d.instances)
+          setLoading(false)
+        }
+      })
+      .catch(() => {
+        if (alive) {
+          setError(true)
+          setLoading(false)
+        }
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  async function setDone(id: string, done: boolean): Promise<void> {
+    let snapshot: ChoreInstance[] = []
+    setInstances((prev) => {
+      snapshot = prev
+      return prev.map((i) => (i.id === id ? { ...i, status: done ? 'done' : 'pending' } : i))
+    })
+    try {
+      await (done ? api.completeInstance(id) : api.uncompleteInstance(id))
+    } catch {
+      setInstances(snapshot)
+    }
+  }
+
+  return { instances, loading, error, setDone }
 }
 
 export interface GroceryState {
