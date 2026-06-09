@@ -381,15 +381,25 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
     }
   }
 
-  // replace the prior auto items; leave manual items alone
+  // remember which auto items were already checked off (so a refresh doesn't
+  // un-check what's in the cart), then replace the auto set; manual items stay.
+  const prevChecked = new Set(
+    (
+      await query<{ name: string }>(
+        `select name from list_items where household_id=$1 and list_id=$2 and source='auto' and checked and deleted_at is null`,
+        [tenant.householdId, list.id]
+      )
+    ).rows.map((r) => r.name.trim().toLowerCase())
+  )
   await query(`delete from list_items where household_id=$1 and list_id=$2 and source='auto'`, [tenant.householdId, list.id])
   let order = 0
   for (const g of byName.values()) {
     const qty = g.amount != null ? `${Number(g.amount.toFixed(2))}${g.unit ? ` ${g.unit}` : ''}` : g.unit
+    const checked = prevChecked.has(g.name.trim().toLowerCase())
     await query(
-      `insert into list_items (household_id, list_id, name, quantity, category, source, source_recipe_ids, sort_order, created_by)
-       values ($1,$2,$3,$4,$5,'auto',$6,$7,$8)`,
-      [tenant.householdId, list.id, g.name, qty, g.aisle, [...g.recipeIds], order++, tenant.personId]
+      `insert into list_items (household_id, list_id, name, quantity, category, source, source_recipe_ids, checked, checked_at, sort_order, created_by)
+       values ($1,$2,$3,$4,$5,'auto',$6,$7,$8,$9,$10)`,
+      [tenant.householdId, list.id, g.name, qty, g.aisle, [...g.recipeIds], checked, checked ? new Date() : null, order++, tenant.personId]
     )
   }
   return byName.size

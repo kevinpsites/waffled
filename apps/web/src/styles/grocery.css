@@ -208,3 +208,36 @@
     padding: 2px 16px 20px;
   }
 }
+
+.grocery-note {
+  margin: -4px 2px 14px;
+  font-weight: 600;
+}
+.grocery-refresh {
+  cursor: pointer;
+}
+.grocery-head {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+/* dinner thumbnail tile (matches the mock's rounded recipe thumb) */
+.gdinner-e {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  flex: none;
+}
+.grocery-railfoot {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+.grocery-railfoot .btn {
+  flex: 1;
+  justify-content: center;
+  cursor: pointer;
+}

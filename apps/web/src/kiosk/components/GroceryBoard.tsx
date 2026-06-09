@@ -58,7 +58,9 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   const [view, setView] = useState<'aisle' | 'meal'>('aisle')
   const [draft, setDraft] = useState('')
   const [editStaples, setEditStaples] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const rebuilt = useRef(false)
+  const addRef = useRef<HTMLInputElement>(null)
 
   // First time, if nothing auto-built yet but dinners exist, build it.
   useEffect(() => {
@@ -113,6 +115,15 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     await groceryApi.addGroceryItem(name)
     refetch()
   }
+  async function rebuild() {
+    setRefreshing(true)
+    try {
+      await groceryApi.rebuildGrocery(board!.weekStart)
+      refetch()
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const sections =
     view === 'aisle'
@@ -136,15 +147,21 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
           <div className="muted" style={{ fontWeight: 600 }}>
             {board.items.length} items{inCart > 0 ? ` · ${inCart} in cart` : ''}
           </div>
-          <div className="seg" style={{ marginLeft: 'auto' }}>
+          <button type="button" className="pill grocery-refresh" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={rebuild} disabled={refreshing}>
+            ↻ {refreshing ? 'Refreshing…' : 'Refresh from meals'}
+          </button>
+          <div className="seg">
             <button className={view === 'aisle' ? 'on' : ''} onClick={() => setView('aisle')}>By aisle</button>
             <button className={view === 'meal' ? 'on' : ''} onClick={() => setView('meal')}>By meal</button>
           </div>
         </div>
+        <div className="tiny muted grocery-note">
+          Auto-built from this week’s dinners — refresh after you change the plan. Items you add yourself and anything you’ve checked off are kept.
+        </div>
 
         <form className="ai-bar grocery-add" onSubmit={onAdd}>
           <div className="ai-spark" aria-hidden><Icon name="spark" /></div>
-          <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={'Add to groceries… “bananas and oat milk”'} aria-label="Add to groceries" />
+          <input ref={addRef} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={'Add to groceries… “bananas and oat milk”'} aria-label="Add to groceries" />
           <div className="mic" aria-hidden><Icon name="mic" /></div>
         </form>
 
@@ -181,7 +198,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
               <span className="gdinner-c" style={{ background: d.color }} />
               <span className="gdinner-day">{new Date(String(d.date).slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</span>
               <span className="gdinner-t">{d.title ?? '—'}</span>
-              <span className="gdinner-e">{d.emoji ?? '🍽️'}</span>
+              <span className="gdinner-e" style={{ background: `${d.color}1f` }}>{d.emoji ?? '🍽️'}</span>
             </div>
           ))}
         </div>
@@ -198,6 +215,10 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
             {board.staples.map((s) => (
               <button key={s.id} type="button" className="staple-chip" onClick={() => addStapleToList(s.name)}>{s.name}</button>
             ))}
+          </div>
+          <div className="grocery-railfoot">
+            <button type="button" className="btn btn-ghost" onClick={() => addRef.current?.focus()}>＋ Add item</button>
+            <button type="button" className="btn btn-primary" title="Sharing comes with device pairing">⬆ Share</button>
           </div>
         </div>
       </div>
