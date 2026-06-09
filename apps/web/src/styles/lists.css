@@ -1,0 +1,181 @@
+/* ===== Lists screen — multi-list, sectioned items (handoff KIOSK_lists) =====
+   Layout mirrors the mock: a 236px list rail (YOUR LISTS) + a main column with
+   the list header, an add bar, "Nook suggests" chips, and a two-column grid of
+   sectioned items. Most atoms (.list-item, .litem, .ai-bar, .sug-chip, .av,
+   .pill, .seg) come from nook.css; this file only adds the page scaffolding. */
+
+.lists-home {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 236px 1fr;
+  gap: 18px;
+  padding: 2px 30px 26px;
+  min-height: 0;
+}
+
+/* ----- list rail (sidebar) ----- */
+.lists-rail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.lists-rail-label {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+  margin: 4px 6px 10px;
+}
+.lists-rail-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.list-item {
+  /* the rail row is interactive; keep the resetbutton look of a div */
+  border: 0;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  background: transparent;
+}
+.list-item .lct.auto {
+  color: var(--ai);
+}
+
+/* ----- main column ----- */
+.lists-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.lists-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.lists-head-emoji {
+  font-size: 26px;
+}
+.lists-head-name {
+  font-size: 24px;
+}
+.lists-head .filter-pill {
+  margin-left: auto;
+  font-size: 13px;
+  cursor: pointer;
+}
+.lists-hint {
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.lists-addbar {
+  margin: 0 0 14px;
+  max-width: none;
+}
+.lists-addbar input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 15.5px;
+  color: var(--ink);
+  outline: none;
+}
+.lists-addbar input::placeholder {
+  color: var(--ink-3);
+}
+.lists-addbar .ai-spark {
+  cursor: pointer;
+  border: 0;
+  padding: 0;
+}
+.lists-suggest {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.lists-suggest-label {
+  font-weight: 700;
+  color: var(--ai);
+}
+.sug-chip {
+  border: 0;
+  font: inherit;
+}
+
+/* ----- sectioned item grid ----- */
+.lists-grid {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 22px;
+  align-content: start;
+}
+.lists-col {
+  min-width: 0;
+}
+.lists-section {
+  margin-bottom: 14px;
+}
+.lists-section-title {
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-2);
+  margin: 2px 2px 9px;
+}
+.litem {
+  cursor: pointer;
+}
+.litem .lck {
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.litem .lav {
+  cursor: pointer;
+}
+.lists-empty {
+  color: var(--ink-2);
+  font-weight: 600;
+  padding: 22px 2px;
+}
+
+/* assignee menu (tap an avatar to assign) */
+.assign-menu {
+  position: absolute;
+  z-index: 40;
+  background: var(--card);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-2, 0 8px 28px rgba(0, 0, 0, 0.16));
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 168px;
+}
+.assign-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  padding: 8px 10px;
+  border-radius: var(--r-sm, 9px);
+  cursor: pointer;
+  text-align: left;
+}
+.assign-menu button:hover {
+  background: var(--panel);
+}
