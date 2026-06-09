@@ -209,6 +209,49 @@ describe('recipes api', () => {
   })
 })
 
+describe('recipe ingredients api', () => {
+  let recipeId = ''
+
+  beforeAll(async () => {
+    const r = await call('POST', '/api/recipes', kevin, { title: 'Chicken Parmesan', emoji: '🍗' })
+    recipeId = JSON.parse(r.body).recipe.id
+  })
+
+  it('adds ingredients and returns them on the recipe', async () => {
+    const add = await call('POST', `/api/recipes/${recipeId}/ingredients`, kevin, {
+      ingredients: [
+        { name: 'all-purpose flour', amount: 1.5, unit: 'cup', section: 'Breading', display: '1½ cups (225g) flour' },
+        { name: 'kosher salt', display: 'Kosher salt, to taste', section: 'Protein' },
+      ],
+    })
+    expect(add.statusCode).toBe(201)
+    expect(JSON.parse(add.body).ingredients).toHaveLength(2)
+
+    const detail = JSON.parse((await call('GET', `/api/recipes/${recipeId}`, kevin)).body)
+    const names = detail.ingredients.map((i: { name: string }) => i.name)
+    expect(names).toContain('all-purpose flour')
+    expect(names).toContain('kosher salt')
+    const flour = detail.ingredients.find((i: { name: string }) => i.name === 'all-purpose flour')
+    expect(flour).toMatchObject({ amount: 1.5, unit: 'cup', section: 'Breading' })
+  })
+
+  it('400 on empty list or a nameless ingredient', async () => {
+    expect((await call('POST', `/api/recipes/${recipeId}/ingredients`, kevin, { ingredients: [] })).statusCode).toBe(400)
+    expect(
+      (await call('POST', `/api/recipes/${recipeId}/ingredients`, kevin, { ingredients: [{ amount: 1 }] }))
+        .statusCode
+    ).toBe(400)
+  })
+
+  it('404 adding to an unknown recipe', async () => {
+    expect(
+      (await call('POST', '/api/recipes/00000000-0000-0000-0000-000000000000/ingredients', kevin, {
+        ingredients: [{ name: 'x' }],
+      })).statusCode
+    ).toBe(404)
+  })
+})
+
 describe('meal planning api', () => {
   let recipeId = ''
 

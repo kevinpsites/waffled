@@ -80,6 +80,81 @@ export async function getRecipe(householdId: string, id: string): Promise<Recipe
   return rows[0] ?? null
 }
 
+export interface RecipeIngredientRow extends QueryResultRow {
+  id: string
+  name: string
+  amount: string | null
+  unit: string | null
+  prep_note: string | null
+  display: string | null
+  section: string | null
+  sort_order: number | null
+}
+
+export interface IngredientInput {
+  name: string
+  amount?: number | null
+  unit?: string | null
+  prepNote?: string | null
+  display?: string | null
+  section?: string | null
+  sortOrder?: number | null
+}
+
+export async function addIngredients(
+  tenant: Tenant,
+  recipeId: string,
+  items: IngredientInput[]
+): Promise<RecipeIngredientRow[]> {
+  const out: RecipeIngredientRow[] = []
+  for (const [i, it] of items.entries()) {
+    const { rows } = await query<RecipeIngredientRow>(
+      `insert into recipe_ingredients
+         (household_id, recipe_id, name, amount, unit, prep_note, display, section, sort_order)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,
+      [
+        tenant.householdId,
+        recipeId,
+        it.name,
+        it.amount ?? null,
+        it.unit ?? null,
+        it.prepNote ?? null,
+        it.display ?? null,
+        it.section ?? null,
+        it.sortOrder ?? i,
+      ]
+    )
+    out.push(rows[0])
+  }
+  return out
+}
+
+export async function listIngredients(
+  householdId: string,
+  recipeId: string
+): Promise<RecipeIngredientRow[]> {
+  const { rows } = await query<RecipeIngredientRow>(
+    `select * from recipe_ingredients
+       where household_id = $1 and recipe_id = $2 and deleted_at is null
+       order by sort_order nulls last, created_at`,
+    [householdId, recipeId]
+  )
+  return rows
+}
+
+export function presentIngredient(i: RecipeIngredientRow) {
+  return {
+    id: i.id,
+    name: i.name,
+    amount: i.amount == null ? null : Number(i.amount),
+    unit: i.unit,
+    prepNote: i.prep_note,
+    display: i.display,
+    section: i.section,
+    sortOrder: i.sort_order,
+  }
+}
+
 export function presentRecipe(r: RecipeRow) {
   return {
     id: r.id,
@@ -220,7 +295,27 @@ export function registerMealRoutes(api: Api): void {
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     const recipe = await getRecipe(tenant.householdId, id)
     if (!recipe) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
-    return { recipe: presentRecipe(recipe) }
+    const ingredients = await listIngredients(tenant.householdId, id)
+    return { recipe: presentRecipe(recipe), ingredients: ingredients.map(presentIngredient) }
+  })
+
+  // Add ingredients to a recipe (bulk).
+  api.post('/api/recipes/:id/ingredients', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    const recipe = await getRecipe(tenant.householdId, id)
+    if (!recipe) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+
+    const body = (req.body ?? {}) as { ingredients?: IngredientInput[] }
+    if (!Array.isArray(body.ingredients) || body.ingredients.length === 0) {
+      return res.status(400).json({ error: 'BadRequest', message: 'ingredients array is required' })
+    }
+    if (body.ingredients.some((i) => !i?.name || !String(i.name).trim())) {
+      return res.status(400).json({ error: 'BadRequest', message: 'every ingredient needs a name' })
+    }
+    const added = await addIngredients(tenant, id, body.ingredients)
+    return res.status(201).json({ ingredients: added.map(presentIngredient) })
   })
 
   // Plan (or re-plan) a meal slot.
