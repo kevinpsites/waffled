@@ -151,8 +151,20 @@ export function presentIngredient(i: RecipeIngredientRow) {
     prepNote: i.prep_note,
     display: i.display,
     section: i.section,
+    aisle: (i as { aisle?: string | null }).aisle ?? null,
+    isStaple: (i as { is_staple?: boolean }).is_staple ?? false,
     sortOrder: i.sort_order,
   }
+}
+
+export async function listSteps(householdId: string, recipeId: string): Promise<Array<{ stepNumber: number; instruction: string }>> {
+  const { rows } = await query<{ step_number: number; instruction: string }>(
+    `select step_number, instruction from recipe_steps
+       where household_id = $1 and recipe_id = $2 and deleted_at is null
+       order by step_number`,
+    [householdId, recipeId]
+  )
+  return rows.map((r) => ({ stepNumber: r.step_number, instruction: r.instruction }))
 }
 
 export function presentRecipe(r: RecipeRow) {
@@ -326,7 +338,8 @@ export function registerMealRoutes(api: Api): void {
     const recipe = await getRecipe(tenant.householdId, id)
     if (!recipe) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     const ingredients = await listIngredients(tenant.householdId, id)
-    return { recipe: presentRecipe(recipe), ingredients: ingredients.map(presentIngredient) }
+    const steps = await listSteps(tenant.householdId, id)
+    return { recipe: presentRecipe(recipe), ingredients: ingredients.map(presentIngredient), steps }
   })
 
   // Add ingredients to a recipe (bulk).

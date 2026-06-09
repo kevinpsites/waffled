@@ -28,7 +28,7 @@ export function RecipeModal({
   onSelect?: () => void
   selectLabel?: string
 }) {
-  const { recipe, ingredients, loading, error } = useRecipe(recipeId)
+  const { recipe, ingredients, steps, loading, error } = useRecipe(recipeId)
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -49,6 +49,7 @@ export function RecipeModal({
             <div className="tiny muted" style={{ display: 'flex', gap: 14, marginBottom: 10, flexWrap: 'wrap' }}>
               {recipe.cookTimeMinutes != null && <span>🕐 {recipe.cookTimeMinutes} min</span>}
               <span>🍽️ Serves {recipe.servings}</span>
+              {steps.length > 0 && <span>🪜 {steps.length} step{steps.length === 1 ? '' : 's'}</span>}
               {recipe.sourceName && <span>📖 {recipe.sourceName}</span>}
             </div>
             {recipe.description && (
@@ -72,11 +73,24 @@ export function RecipeModal({
               </div>
             ))}
 
+            {steps.length > 0 && (
+              <div style={{ marginTop: 4 }}>
+                <div className="card-h" style={{ fontSize: 13, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--ink-2)', marginBottom: 6 }}>
+                  Steps
+                </div>
+                <ol style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {steps.map((s) => (
+                    <li key={s.stepNumber} style={{ fontSize: 14.5, lineHeight: 1.45 }}>{s.instruction}</li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
             {onSelect && (
               <button
                 type="button"
                 className="btn btn-primary"
-                style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
+                style={{ width: '100%', justifyContent: 'center', marginTop: 12 }}
                 onClick={onSelect}
               >
                 {selectLabel ?? 'Select meal'}

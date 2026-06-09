@@ -39,6 +39,10 @@ psql:
 migrate:
     set -a && . infra/compose/.env && set +a && cd apps/api && DATABASE_URL="postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@localhost:$POSTGRES_PORT/$POSTGRES_DB" npm run migrate
 
+# import a folder of Markdown recipes into a household. e.g. `just import-recipes ~/Documents/Recipes/recipeFiles/Noodles`
+import-recipes folder *ARGS:
+    set -a && . infra/compose/.env && set +a && cd apps/api && DATABASE_URL="postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@localhost:$POSTGRES_PORT/$POSTGRES_DB" npx tsx scripts/import-recipes.ts "{{folder}}" {{ARGS}}
+
 # mint a local dev JWT (prints only the token). e.g. `export TOKEN=$(just token)`
 # pass flags through: `just token --household <uuid> --sub dev:kelly`
 token *ARGS:

@@ -73,14 +73,21 @@ export interface RecipeIngredient {
   prepNote: string | null
   display: string | null
   section: string | null
+  aisle: string | null
+  isStaple: boolean
   sortOrder: number | null
+}
+
+export interface RecipeStep {
+  stepNumber: number
+  instruction: string
 }
 
 export const mealsApi = {
   mealsWeek: (start: string) => apiGet<{ start: string; entries: WeekEntry[] }>(`/api/meals/week?start=${start}`),
   recipes: () => apiGet<{ recipes: Recipe[] }>('/api/recipes'),
   recipe: (id: string) =>
-    apiGet<{ recipe: RecipeDetail; ingredients: RecipeIngredient[] }>(`/api/recipes/${id}`),
+    apiGet<{ recipe: RecipeDetail; ingredients: RecipeIngredient[]; steps: RecipeStep[] }>(`/api/recipes/${id}`),
   planSlot: (slot: PlanSlot) => apiSend<{ entry: WeekEntry }>('POST', '/api/meals/plan', slot),
   clearSlot: (date: string, mealType: string) =>
     apiDelete(`/api/meals/plan?date=${date}&mealType=${mealType}`),
@@ -138,6 +145,7 @@ export function useRecipes(): RecipesState {
 export interface RecipeState {
   recipe: RecipeDetail | null
   ingredients: RecipeIngredient[]
+  steps: RecipeStep[]
   loading: boolean
   error: boolean
 }
@@ -146,6 +154,7 @@ export function useRecipe(id: string | null): RecipeState {
   const [state, setState] = useState<RecipeState>({
     recipe: null,
     ingredients: [],
+    steps: [],
     loading: true,
     error: false,
   })
@@ -155,8 +164,8 @@ export function useRecipe(id: string | null): RecipeState {
     setState((s) => ({ ...s, loading: true }))
     mealsApi
       .recipe(id)
-      .then((d) => alive && setState({ recipe: d.recipe, ingredients: d.ingredients, loading: false, error: false }))
-      .catch(() => alive && setState({ recipe: null, ingredients: [], loading: false, error: true }))
+      .then((d) => alive && setState({ recipe: d.recipe, ingredients: d.ingredients, steps: d.steps ?? [], loading: false, error: false }))
+      .catch(() => alive && setState({ recipe: null, ingredients: [], steps: [], loading: false, error: true }))
     return () => {
       alive = false
     }

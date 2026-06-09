@@ -72,6 +72,7 @@ agenda + range), kiosk agenda card + Calendar month-grid screen. Part 2 below is
 - [~] 6.5 Photos / memories: **done** — `photos` table + family wall (emoji/URL tiles), "new memory" banner, full-screen **screensaver**, add-photos + photo detail. Real blob upload (device library) still to come
 - [ ] 6.6 AI "Add anything" intent parsing (Claude) → route to event/task/list/goal
 - [ ] 6.7 Notifications: ride Google reminders + APNs nudges
+- [ ] 6.8 Live weather on the kiosk topbar (location captured in Settings; needs a weather provider e.g. Open-Meteo). *Not crucial — placeholder temp for now.*
 
 ## M7 — Harden & "make it real"
 - [ ] 7.1 Kiosk PWA: service worker + cached last-known state (survive backend blips)
