@@ -1,3 +1,4 @@
+import { Icon } from '../icons'
 import { useMealsWeek, localToday, type WeekEntry, type MealRecipe } from '../../lib/api'
 
 function dayAbbrev(dateStr: string): string {
@@ -20,6 +21,27 @@ function TonightCard({ recipe }: { recipe: MealRecipe }) {
         <div className="tiny muted" style={{ display: 'flex', gap: 14 }}>
           {recipe.cookTimeMinutes != null && <span>🕐 {recipe.cookTimeMinutes} min</span>}
           {recipe.servings != null && <span>🍽️ Serves {recipe.servings}</span>}
+        </div>
+        {/* TODO: wire when the recipe-detail screen (View) and grocery auto-build
+            (To list) land — see ROADMAP 6.3. Disabled until then, not dead-clickable. */}
+        <div style={{ display: 'flex', gap: 9, paddingTop: 13 }}>
+          <button
+            className="btn btn-ghost"
+            disabled
+            title="Recipe view — coming soon"
+            style={{ flex: 1, justifyContent: 'center', fontSize: 14, padding: 10, opacity: 0.5, cursor: 'not-allowed' }}
+          >
+            View recipe
+          </button>
+          <button
+            className="btn btn-primary"
+            disabled
+            title="Add ingredients to grocery — coming soon"
+            style={{ flex: 1, justifyContent: 'center', fontSize: 14, padding: 10, opacity: 0.5, cursor: 'not-allowed' }}
+          >
+            <Icon name="bag" />
+            To list
+          </button>
         </div>
       </div>
     </div>
