@@ -93,9 +93,18 @@ seed:
       '{"title":"Honey-Garlic Wings","emoji":"🍗","cookTimeMinutes":35,"servings":4}'
       '{"title":"Ravioli & Sausage Bake","emoji":"🍝","cookTimeMinutes":35,"servings":5}'
     )
+    ings=(
+      '{"ingredients":[{"name":"Salmon fillets","amount":4,"unit":"count"},{"name":"Asparagus","amount":1,"unit":"bunch"},{"name":"Lemon"},{"name":"Olive oil"}]}'
+      '{"ingredients":[{"name":"Corn tortillas","amount":8,"unit":"count"},{"name":"Chorizo","amount":1,"unit":"lb"},{"name":"Cotija cheese"},{"name":"Cilantro"}]}'
+      '{"ingredients":[{"name":"Red lentils","amount":2,"unit":"cup"},{"name":"Coconut milk","amount":1,"unit":"can"},{"name":"Garam masala"},{"name":"Onion"}]}'
+      '{"ingredients":[{"name":"Chicken wings","amount":2,"unit":"lb"},{"name":"Honey","amount":0.25,"unit":"cup"},{"name":"Garlic"},{"name":"Soy sauce"}]}'
+      '{"ingredients":[{"name":"Ravioli","amount":1,"unit":"lb"},{"name":"Italian sausage","amount":1,"unit":"lb"},{"name":"Marinara","amount":1,"unit":"jar"},{"name":"Mozzarella"}]}'
+    )
     ids=()
-    for r in "${recipes[@]}"; do
-      ids+=("$(curl -s -X POST -H "$H" -H "$J" -d "$r" localhost:3000/api/recipes | python3 -c "import sys,json;print(json.load(sys.stdin)['recipe']['id'])")")
+    for i in 0 1 2 3 4; do
+      rid=$(curl -s -X POST -H "$H" -H "$J" -d "${recipes[$i]}" localhost:3000/api/recipes | python3 -c "import sys,json;print(json.load(sys.stdin)['recipe']['id'])")
+      ids+=("$rid")
+      curl -s -X POST -H "$H" -H "$J" -d "${ings[$i]}" "localhost:3000/api/recipes/$rid/ingredients" >/dev/null || true
     done
     for i in 0 1 2 3 4; do
       d=$(date -v+"$i"d +%Y-%m-%d)
