@@ -1,33 +1,30 @@
-import { Icon, type IconName } from '../icons'
+import { NavLink } from 'react-router-dom'
+import { Icon } from '../icons'
+import { SCREENS, SETTINGS, type Screen } from '../nav'
 
-const NAV: Array<[IconName, string]> = [
-  ['home', 'Today'],
-  ['calendar', 'Calendar'],
-  ['tasks', 'Tasks'],
-  ['goals', 'Goals'],
-  ['meals', 'Meals'],
-  ['lists', 'Lists'],
-  ['photos', 'Photos'],
-]
+function railClass({ isActive }: { isActive: boolean }) {
+  return `rail-item ${isActive ? 'on' : ''}`
+}
 
-export type RailKey = IconName | 'home'
-
-export function Rail({ active }: { active: RailKey }) {
+function RailLink({ screen }: { screen: Screen }) {
   return (
-    <div className="rail">
+    <NavLink to={screen.path} end={screen.path === '/'} className={railClass}>
+      <Icon name={screen.icon} />
+      {screen.label}
+    </NavLink>
+  )
+}
+
+export function Rail() {
+  return (
+    <nav className="rail">
       <div className="rail-logo nk-serif">N</div>
       <div className="rail-new">New</div>
-      {NAV.map(([key, label]) => (
-        <div key={key} className={`rail-item ${key === active ? 'on' : ''}`}>
-          <Icon name={key} />
-          {label}
-        </div>
+      {SCREENS.map((s) => (
+        <RailLink key={s.path} screen={s} />
       ))}
       <div className="rail-spacer" />
-      <div className={`rail-item ${active === 'settings' ? 'on' : ''}`}>
-        <Icon name="settings" />
-        Settings
-      </div>
-    </div>
+      <RailLink screen={SETTINGS} />
+    </nav>
   )
 }

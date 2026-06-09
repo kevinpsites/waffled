@@ -1,16 +1,14 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter } from 'react-router-dom'
 import './styles/nook.css'
 import './styles/kiosk.css'
-import { Kiosk } from './kiosk/Kiosk'
+import { KioskRoutes } from './kiosk/routes'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Kiosk />} />
-      </Routes>
+      <KioskRoutes />
     </BrowserRouter>
   </StrictMode>
 )

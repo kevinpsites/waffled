@@ -1,43 +1,104 @@
-/* The kiosk renders at a fixed 1280×800 and is scaled to fit any viewport
-   (ported from the design's Nook Tablet.html stage). On the real 1280×800
-   counter tablet the scale is 1 and it fills the screen exactly. */
+/* The kiosk is a responsive web app: it fills the viewport and reflows, rather
+   than rendering at a fixed 1280×800. On the always-on counter tablet (1280×800)
+   it matches the design; on a laptop or phone it adapts. */
 
 html,
-body {
-  margin: 0;
+body,
+#root {
   height: 100%;
-  background: #0c0b0a;
-  overflow: hidden;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
   -webkit-user-select: none;
   user-select: none;
 }
 
-#root {
-  position: fixed;
-  inset: 0;
+/* Override the design's fixed dimensions; keep its 96px rail + content grid. */
+.nk-kiosk {
+  width: 100%;
+  height: 100dvh;
 }
 
-.stage-wrap {
-  position: fixed;
-  inset: 0;
-  overflow: hidden;
+.rail {
+  overflow-y: auto;
 }
 
-.stage {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 1280px;
-  height: 800px;
-  transform-origin: center center;
-  border-radius: 26px;
-  overflow: hidden;
-  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.5);
-}
-
-/* main column next to the nav rail */
 .kiosk-main {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  overflow-y: auto;
+}
+
+/* topbar wraps when it runs out of room */
+.topbar {
+  flex-wrap: wrap;
+}
+
+/* ===== Today dashboard — responsive columns ===== */
+.today-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr 0.82fr;
+  gap: 18px;
+  padding: 6px 30px 26px;
+  align-content: start;
+}
+
+/* On a roomy landscape display, fill the height like the design. */
+@media (min-width: 1101px) and (min-height: 680px) {
+  .today-grid {
+    flex: 1;
+    min-height: 0;
+  }
+}
+
+@media (max-width: 1100px) {
+  .today-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .today-grid {
+    grid-template-columns: 1fr;
+    padding: 6px 16px 22px;
+  }
+  .topbar {
+    padding: 16px 16px 10px;
+  }
+}
+
+/* ===== placeholder screens (not yet built) ===== */
+.screen-placeholder {
+  flex: 1;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+  padding: 40px;
+}
+.screen-placeholder .ph-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  display: grid;
+  place-items: center;
+  background: var(--panel);
+  color: var(--ink-2);
+}
+.screen-placeholder .ph-icon svg {
+  width: 30px;
+  height: 30px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.screen-placeholder .ph-title {
+  font-size: 28px;
+  font-weight: 600;
 }
