@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { personsApi, useHouseholdSettings, type SettingsMember } from '../lib/api'
+import { personsApi, useHouseholdSettings, emitHouseholdChanged, type SettingsMember } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import '../styles/settings.css'
 
@@ -46,7 +46,15 @@ function roleLine(m: SettingsMember): string {
   return parts.join(' · ')
 }
 
+function fmtBirthday(birthday: string | null | undefined): string | null {
+  if (!birthday) return null
+  const b = new Date(String(birthday))
+  if (isNaN(b.getTime())) return null
+  return b.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+}
+
 function MemberRow({ m, onClick }: { m: SettingsMember; onClick: () => void }) {
+  const bday = fmtBirthday(m.birthday)
   return (
     <div className="set-member" onClick={onClick}>
       <div className="av md" style={{ background: `${m.colorHex ?? '#A6A29B'}22` }}>{m.avatarEmoji ?? '🙂'}</div>
@@ -54,6 +62,7 @@ function MemberRow({ m, onClick }: { m: SettingsMember; onClick: () => void }) {
         <div className="set-member-n">{m.name}</div>
         <div className="tiny muted" style={{ fontWeight: 600 }}>{roleLine(m)}</div>
       </div>
+      {bday && <div className="tiny muted set-bday" style={{ fontWeight: 600 }}>🎂 {bday}</div>}
       <div className="set-swatch" style={{ background: m.colorHex ?? '#A6A29B' }} />
       <div className="set-chev">›</div>
     </div>
@@ -84,6 +93,7 @@ function FamilyPanel() {
 
   async function saveHousehold(patch: Record<string, unknown>) {
     await personsApi.updateHousehold(patch)
+    emitHouseholdChanged() // refresh the topbar clock/name immediately
     refetch()
   }
 

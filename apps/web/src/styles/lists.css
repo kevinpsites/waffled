@@ -179,3 +179,60 @@
 .assign-menu button:hover {
   background: var(--panel);
 }
+
+/* ----- item rename + delete affordances ----- */
+.litem-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
+  flex: none;
+}
+.litem:hover .litem-actions {
+  opacity: 1;
+}
+.litem-act {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.litem-act:hover {
+  background: var(--panel);
+  color: var(--ink);
+}
+.litem-del:hover {
+  color: var(--primary);
+}
+.lnm-edit {
+  flex: 1;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: #fff;
+  color: var(--ink);
+}
+
+/* ----- assignee / filter menu ----- */
+.filter-wrap {
+  position: relative;
+}
+.filter-pill {
+  cursor: pointer;
+}
+.lists-new {
+  margin-top: 14px;
+  justify-content: center;
+  font-size: 13.5px;
+  cursor: pointer;
+  width: 100%;
+}

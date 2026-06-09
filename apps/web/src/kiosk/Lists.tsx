@@ -59,22 +59,55 @@ function ItemRow({
   people,
   onToggle,
   onAssign,
+  onRename,
+  onDelete,
 }: {
   item: ListItem
   people: Person[]
   onToggle: (item: ListItem) => void
   onAssign: (item: ListItem, personId: string | null) => void
+  onRename: (item: ListItem, name: string) => void
+  onDelete: (item: ListItem) => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState(item.name)
   const a = item.assignee
 
+  function commit() {
+    setEditing(false)
+    onRename(item, name)
+  }
+
   return (
-    <div className={`litem ${item.checked ? 'done' : ''}`} onClick={() => onToggle(item)}>
+    <div className={`litem ${item.checked ? 'done' : ''}`} onClick={() => !editing && onToggle(item)}>
       <div className="lck" aria-label={item.checked ? 'Checked' : 'Not checked'}>
         {item.checked ? CHECK : null}
       </div>
-      <span className="lnm">{item.name}</span>
+      {editing ? (
+        <input
+          className="lnm-edit"
+          autoFocus
+          value={name}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit()
+            if (e.key === 'Escape') {
+              setName(item.name)
+              setEditing(false)
+            }
+          }}
+        />
+      ) : (
+        <span className="lnm">{item.name}</span>
+      )}
       {item.quantity ? <span className="lqty">{item.quantity}</span> : null}
+      <div className="litem-actions" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="litem-act" aria-label="Rename item" onClick={() => { setName(item.name); setEditing(true) }}>✎</button>
+        <button type="button" className="litem-act litem-del" aria-label="Delete item" onClick={() => onDelete(item)}>×</button>
+      </div>
       <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
         {a ? (
           <Avatar emoji={a.avatarEmoji} color={a.colorHex} onClick={() => setMenuOpen((v) => !v)} />
@@ -164,6 +197,9 @@ export function Lists() {
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState('')
   const addingRef = useRef(false)
+  const addInputRef = useRef<HTMLInputElement>(null)
+  const [filterPerson, setFilterPerson] = useState<string | null>(null)
+  const [filterMenu, setFilterMenu] = useState(false)
 
   const selected: ListSummary | null = useMemo(
     () => lists.find((l) => l.id === selectedId) ?? lists[0] ?? null,
@@ -178,9 +214,9 @@ export function Lists() {
         <button type="button" className="pill" aria-label="Share list" style={{ cursor: 'pointer' }}>
           📤 Share list
         </button>
-        <button type="button" className="pill btn-primary topbar-new" onClick={() => setCreating(true)}>
+        <button type="button" className="pill btn-primary topbar-new" onClick={() => addInputRef.current?.focus()}>
           <Icon name="plus" />
-          <span>New list</span>
+          <span>Add item</span>
         </button>
       </>
     ),
@@ -205,6 +241,33 @@ export function Lists() {
       setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)))
     } catch {
       /* keep current state on failure */
+    }
+  }
+
+  async function rename(item: ListItem, name: string) {
+    const trimmed = name.trim()
+    if (!trimmed || trimmed === item.name) return
+    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, name: trimmed } : i)))
+    try {
+      const updated = await groceryApi.patchListItem(item.id, { name: trimmed })
+      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)))
+    } catch {
+      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, name: item.name } : i)))
+    }
+  }
+
+  // Optimistic delete; restore on failure.
+  async function remove(item: ListItem) {
+    let snapshot: ListItem[] = []
+    setItems((prev) => {
+      snapshot = prev
+      return prev.filter((i) => i.id !== item.id)
+    })
+    try {
+      await groceryApi.deleteItem(item.id)
+      refetchLists()
+    } catch {
+      setItems(snapshot)
     }
   }
 
@@ -235,7 +298,8 @@ export function Lists() {
     return <div className="muted" style={{ padding: 30 }}>Sign this kiosk in to see your lists.</div>
   }
 
-  const sections = groupBySection(items)
+  const visibleItems = filterPerson ? items.filter((i) => i.assignee?.personId === filterPerson) : items
+  const sections = groupBySection(visibleItems)
   const [leftCol, rightCol] = splitColumns(sections)
 
   return (
@@ -265,6 +329,10 @@ export function Lists() {
             <div className="tiny muted" style={{ padding: '4px 8px', fontWeight: 600 }}>No lists yet.</div>
           )}
         </div>
+        <button type="button" className="btn btn-ghost lists-new" onClick={() => setCreating(true)}>
+          <Icon name="plus" />
+          New list
+        </button>
       </div>
 
       <div className="lists-main">
@@ -274,9 +342,23 @@ export function Lists() {
               <div className="lists-head-emoji">{selected.emoji ?? '📝'}</div>
               <div className="card-h nk-serif lists-head-name">{selected.name}</div>
               <div className="muted" style={{ fontWeight: 600 }}>{summaryLine(items)}</div>
-              <div className="pill filter-pill">
-                <Icon name="filter" />
-                Everyone
+              <div className="filter-wrap" onClick={(e) => e.stopPropagation()}>
+                <button type="button" className="pill filter-pill" onClick={() => setFilterMenu((v) => !v)}>
+                  <Icon name="filter" />
+                  {filterPerson ? persons.find((p) => p.id === filterPerson)?.name ?? 'Everyone' : 'Everyone'}
+                </button>
+                {filterMenu && (
+                  <div className="assign-menu" style={{ right: 0, top: 40 }}>
+                    <button type="button" onClick={() => { setFilterPerson(null); setFilterMenu(false) }}>
+                      <span>👪</span> Everyone
+                    </button>
+                    {persons.map((p) => (
+                      <button key={p.id} type="button" onClick={() => { setFilterPerson(p.id); setFilterMenu(false) }}>
+                        <span>{p.avatarEmoji ?? '🙂'}</span> {p.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             <div className="tiny muted lists-hint">
@@ -288,6 +370,7 @@ export function Lists() {
                 <Icon name="spark" />
               </div>
               <input
+                ref={addInputRef}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder={'Add to this list… “bug spray and 2 water bottles”'}
@@ -310,6 +393,8 @@ export function Lists() {
 
             {items.length === 0 && !itemsLoading ? (
               <div className="lists-empty">This list is empty — add something above.</div>
+            ) : visibleItems.length === 0 ? (
+              <div className="lists-empty">Nothing assigned to {persons.find((p) => p.id === filterPerson)?.name ?? 'them'} here.</div>
             ) : (
               <div className="lists-grid">
                 {[leftCol, rightCol].map((col, ci) => (
@@ -318,7 +403,7 @@ export function Lists() {
                       <div key={sec.key} className="lists-section">
                         <div className="lists-section-title">{sec.title}</div>
                         {sec.items.map((it) => (
-                          <ItemRow key={it.id} item={it} people={persons} onToggle={toggle} onAssign={assign} />
+                          <ItemRow key={it.id} item={it} people={persons} onToggle={toggle} onAssign={assign} onRename={rename} onDelete={remove} />
                         ))}
                       </div>
                     ))}

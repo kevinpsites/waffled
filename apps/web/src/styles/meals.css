@@ -139,6 +139,17 @@
   border-radius: 999px;
   display: grid;
   place-items: center;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.meals-nav:hover {
+  background: var(--panel);
+}
+/* the rest of the Meals topbar controls are interactive too */
+.kiosk-main .topbar .tb-right .pill,
+.kiosk-main .topbar .tb-right .btn,
+.kiosk-main .topbar .tb-right .seg button {
+  cursor: pointer;
 }
 .meals-nav svg {
   width: 18px;

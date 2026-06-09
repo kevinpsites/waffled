@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Icon } from '../icons'
 import { useTopbarSlots } from '../topbar-slot'
+import { useHousehold } from '../../lib/api'
 
 function useNow(): Date {
   const [now, setNow] = useState(() => new Date())
@@ -11,13 +12,15 @@ function useNow(): Date {
   return now
 }
 
-function formatDate(d: Date): string {
-  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric' })
+function formatDate(d: Date, tz?: string): string {
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', timeZone: tz || undefined })
 }
 
-function formatTime(d: Date): string {
-  const h = d.getHours() % 12 || 12
-  return `${h}:${String(d.getMinutes()).padStart(2, '0')}`
+function formatTime(d: Date, tz?: string): string {
+  // 12-hour without the AM/PM suffix (matches the design), in the household tz
+  return d
+    .toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz || undefined })
+    .replace(/\s?[AP]M$/i, '')
 }
 
 // The AI "Add anything…" capture bar (static placeholder until 6.6).
@@ -38,11 +41,13 @@ function AiBar() {
 export function Topbar() {
   const now = useNow()
   const { right, full } = useTopbarSlots()
+  const { household } = useHousehold()
+  const tz = household?.timezone
   if (full) return <div className="topbar">{full}</div>
   return (
     <div className="topbar">
-      <div className="tb-date nk-serif">{formatDate(now)}</div>
-      <div className="tb-time">{formatTime(now)}</div>
+      <div className="tb-date nk-serif">{formatDate(now, tz)}</div>
+      <div className="tb-time">{formatTime(now, tz)}</div>
       <div className="tb-wx">
         <Icon name="cloud" />
         60°
