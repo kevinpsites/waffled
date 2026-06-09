@@ -18,11 +18,11 @@ describe('kiosk navigation', () => {
   it('renders the Today dashboard at /', async () => {
     renderAt('/')
     expect(screen.getByText('Swim lessons')).toBeInTheDocument()
-    expect(screen.getByText('Family')).toBeInTheDocument()
+    expect(screen.getByText('Family chores')).toBeInTheDocument()
     // Today is the active rail item
     expect(within(rail()).getByText('Today').closest('a')).toHaveClass('on')
-    // the family card resolves (default stub → empty)
-    expect(await screen.findByText(/No family members yet/)).toBeInTheDocument()
+    // the chores card resolves (default stub → empty)
+    expect(await screen.findByText(/No chores yet/)).toBeInTheDocument()
   })
 
   it('navigates to another screen when its rail item is clicked', () => {

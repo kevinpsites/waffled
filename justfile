@@ -61,20 +61,30 @@ api:
 web:
     cd apps/web && npm run dev
 
-# seed a demo household + members and print a kiosk token (needs the stack up + migrated)
+# seed a demo household + members + chores + a grocery item; print a kiosk token
+# (needs the stack up + migrated)
 seed:
     #!/usr/bin/env bash
     set -euo pipefail
     TOKEN=$({{compose}} run --rm --no-deps -T api node dist/mint-token.js --sub 'dev|demo')
-    curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-      -d '{"name":"Demo Family","timezone":"America/Chicago","person":{"name":"Kevin","avatarEmoji":"🐻","colorHex":"#2F7FED"}}' \
-      localhost:3000/api/households >/dev/null || true
+    H="Authorization: Bearer $TOKEN"; J="Content-Type: application/json"
+    curl -s -X POST -H "$H" -H "$J" -d '{"name":"Demo Family","timezone":"America/Chicago","person":{"name":"Kevin","avatarEmoji":"🐻","colorHex":"#2F7FED"}}' localhost:3000/api/households >/dev/null || true
     for m in \
       '{"name":"Kelly","memberType":"adult","isAdmin":true,"avatarEmoji":"🦊","colorHex":"#E0548B"}' \
       '{"name":"Wally","memberType":"kid","avatarEmoji":"🐢","colorHex":"#25A368"}' \
       '{"name":"Lottie","memberType":"kid","avatarEmoji":"🦄","colorHex":"#8A5CF0"}'; do
-      curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$m" localhost:3000/api/persons >/dev/null || true
+      curl -s -X POST -H "$H" -H "$J" -d "$m" localhost:3000/api/persons >/dev/null || true
     done
+    PERSONS=$(curl -s -H "$H" localhost:3000/api/persons)
+    wally=$(echo "$PERSONS" | python3 -c "import sys,json;print(next(p['id'] for p in json.load(sys.stdin)['persons'] if p['name']=='Wally'))")
+    lottie=$(echo "$PERSONS" | python3 -c "import sys,json;print(next(p['id'] for p in json.load(sys.stdin)['persons'] if p['name']=='Lottie'))")
+    for c in \
+      "{\"title\":\"Feed the dog\",\"emoji\":\"🐶\",\"personId\":\"$wally\",\"rewardAmount\":2}" \
+      "{\"title\":\"Make your bed\",\"emoji\":\"🛏️\",\"personId\":\"$wally\",\"rewardAmount\":1}" \
+      "{\"title\":\"Set the table\",\"emoji\":\"🍽️\",\"personId\":\"$lottie\",\"rewardAmount\":2}"; do
+      curl -s -X POST -H "$H" -H "$J" -d "$c" localhost:3000/api/chores >/dev/null || true
+    done
+    curl -s -X POST -H "$H" -H "$J" -d '{"name":"Bananas"}' localhost:3000/api/lists/grocery/items >/dev/null || true
     echo "Seeded. In the kiosk browser console, run:"
     echo "  localStorage.setItem('nook.token', '$TOKEN'); location.reload()"
 

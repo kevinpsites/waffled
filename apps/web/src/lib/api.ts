@@ -57,8 +57,21 @@ export interface GroceryItem {
   checked: boolean
 }
 
+export interface PersonChores {
+  id: string
+  name: string
+  avatarEmoji: string | null
+  colorHex: string | null
+  memberType: string
+  isAdmin: boolean
+  total: number
+  done: number
+  stars: number
+}
+
 export const api = {
   persons: () => apiGet<{ persons: Person[] }>('/api/persons'),
+  choresToday: () => apiGet<{ date: string; people: PersonChores[] }>('/api/chores/today'),
   grocery: () => apiGet<{ items: GroceryItem[] }>('/api/lists/grocery'),
   addGroceryItem: (name: string) =>
     apiSend<{ item: GroceryItem }>('POST', '/api/lists/grocery/items', { name }).then((r) => r.item),
@@ -81,6 +94,27 @@ export function usePersons(): PersonsState {
       .persons()
       .then((d) => alive && setState({ persons: d.persons, loading: false, error: false }))
       .catch(() => alive && setState({ persons: [], loading: false, error: true }))
+    return () => {
+      alive = false
+    }
+  }, [])
+  return state
+}
+
+export interface ChoresState {
+  people: PersonChores[]
+  loading: boolean
+  error: boolean
+}
+
+export function useChoresToday(): ChoresState {
+  const [state, setState] = useState<ChoresState>({ people: [], loading: true, error: false })
+  useEffect(() => {
+    let alive = true
+    api
+      .choresToday()
+      .then((d) => alive && setState({ people: d.people, loading: false, error: false }))
+      .catch(() => alive && setState({ people: [], loading: false, error: true }))
     return () => {
       alive = false
     }
