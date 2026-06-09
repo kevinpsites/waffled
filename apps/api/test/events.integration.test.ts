@@ -197,6 +197,33 @@ describe('events api', () => {
     expect(r.events.some((e: { title: string }) => e.title === 'Swim lessons')).toBe(true)
   })
 
+  it('supports multiple participants (date night) and replaces them on edit', async () => {
+    const kelly = JSON.parse(
+      (await call('POST', '/api/persons', kevin, { name: 'Kelly', memberType: 'adult', colorHex: '#E0548B' })).body
+    ).person.id
+
+    const add = await call('POST', '/api/events', kevin, {
+      title: 'Date night',
+      startsAt: '2026-06-08T23:00:00Z',
+      participantIds: [kevinId, kelly],
+    })
+    expect(add.statusCode).toBe(201)
+    const id = JSON.parse(add.body).event.id
+
+    let ev = JSON.parse((await call('GET', '/api/events/today?date=2026-06-08', kevin)).body).events.find(
+      (e: { id: string }) => e.id === id
+    )
+    expect(ev.participants.map((p: { name: string }) => p.name).sort()).toEqual(['Kelly', 'Kevin'])
+    expect(ev.personName).toBe('Kevin') // color owner = first participant
+
+    await call('PATCH', `/api/events/${id}`, kevin, { participantIds: [kelly] })
+    ev = JSON.parse((await call('GET', '/api/events/today?date=2026-06-08', kevin)).body).events.find(
+      (e: { id: string }) => e.id === id
+    )
+    expect(ev.participants.map((p: { name: string }) => p.name)).toEqual(['Kelly'])
+    expect(ev.personName).toBe('Kelly')
+  })
+
   it('updates and deletes an event', async () => {
     const add = await call('POST', '/api/events', kevin, {
       title: 'Vet appt',

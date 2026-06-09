@@ -1,9 +1,10 @@
 // Calendar — Nook-native events (part 1, no Google). Single events created here
 // and read for the agenda / Calendar screen. "Today" buckets by the household's
-// timezone so a kiosk shows the right local day.
+// timezone so a kiosk shows the right local day. events.person_id is the
+// color/owner; event_participants is the broader "who's involved" set.
 import createAPI, { type Request, type Response } from 'lambda-api'
-import type { QueryResultRow } from 'pg'
-import { query } from './db'
+import type { PoolClient, QueryResultRow } from 'pg'
+import { getPool, query } from './db'
 import { requireTenant, type Tenant } from './households'
 
 type Api = ReturnType<typeof createAPI>
@@ -12,6 +13,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // camelCase API field → events column. Anything not here can't be patched.
+// (person_id is set from participantIds; personId is also accepted directly.)
 const UPDATABLE: Record<string, string> = {
   title: 'title',
   description: 'description',
@@ -20,6 +22,13 @@ const UPDATABLE: Record<string, string> = {
   endsAt: 'ends_at',
   allDay: 'all_day',
   personId: 'person_id',
+}
+
+export interface Participant {
+  id: string
+  name: string
+  colorHex: string | null
+  avatarEmoji: string | null
 }
 
 export interface EventRow extends QueryResultRow {
@@ -34,6 +43,7 @@ export interface EventRow extends QueryResultRow {
   person_name?: string | null
   person_color?: string | null
   person_emoji?: string | null
+  participants?: Participant[]
 }
 
 export interface CreateEventInput {
@@ -44,34 +54,76 @@ export interface CreateEventInput {
   location?: string | null
   description?: string | null
   personId?: string | null
+  participantIds?: string[]
   timezone?: string | null
 }
 
-export async function createEvent(tenant: Tenant, input: CreateEventInput): Promise<EventRow> {
-  const { rows } = await query<EventRow>(
-    `insert into events
-       (household_id, title, description, location, starts_at, ends_at, all_day, timezone, person_id, origin)
-     values ($1,$2,$3,$4,$5,$6, coalesce($7,false),
-             coalesce($8, (select timezone from households where id=$1)), $9, 'manual')
-     returning *`,
-    [
-      tenant.householdId,
-      input.title,
-      input.description ?? null,
-      input.location ?? null,
-      input.startsAt,
-      input.endsAt ?? null,
-      input.allDay ?? false,
-      input.timezone ?? null,
-      input.personId ?? null,
-    ]
-  )
-  return rows[0]
+// Replace an event's participants with the given (deduped) people.
+async function replaceParticipants(
+  client: PoolClient,
+  householdId: string,
+  eventId: string,
+  personIds: string[]
+): Promise<void> {
+  await client.query(`delete from event_participants where event_id = $1`, [eventId])
+  for (const pid of [...new Set(personIds)]) {
+    await client.query(
+      `insert into event_participants (household_id, event_id, person_id) values ($1,$2,$3)`,
+      [householdId, eventId, pid]
+    )
+  }
 }
+
+export async function createEvent(tenant: Tenant, input: CreateEventInput): Promise<EventRow> {
+  const personIds = input.participantIds ?? (input.personId ? [input.personId] : [])
+  const primary = personIds[0] ?? input.personId ?? null
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    const ins = await client.query<EventRow>(
+      `insert into events
+         (household_id, title, description, location, starts_at, ends_at, all_day, timezone, person_id, origin)
+       values ($1,$2,$3,$4,$5,$6, coalesce($7,false),
+               coalesce($8, (select timezone from households where id=$1)), $9, 'manual')
+       returning *`,
+      [
+        tenant.householdId,
+        input.title,
+        input.description ?? null,
+        input.location ?? null,
+        input.startsAt,
+        input.endsAt ?? null,
+        input.allDay ?? false,
+        input.timezone ?? null,
+        primary,
+      ]
+    )
+    const event = ins.rows[0]
+    await replaceParticipants(client, tenant.householdId, event.id, personIds)
+    await client.query('commit')
+    return event
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+const PARTICIPANTS_SUBQUERY = `
+  coalesce((
+    select json_agg(json_build_object(
+             'id', pp.id, 'name', pp.name, 'colorHex', pp.color_hex, 'avatarEmoji', pp.avatar_emoji)
+           order by pp.sort_order, pp.created_at)
+      from event_participants ep
+      join persons pp on pp.id = ep.person_id and pp.deleted_at is null
+     where ep.event_id = e.id and ep.deleted_at is null
+  ), '[]'::json) as participants`
 
 const SELECT_WITH_PERSON = `
   select e.id, e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.person_id,
-         p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji
+         p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
+         ${PARTICIPANTS_SUBQUERY}
     from events e
     join households h on h.id = e.household_id
     left join persons p on p.id = e.person_id and p.deleted_at is null
@@ -102,23 +154,62 @@ export async function updateEvent(
   id: string,
   patch: Record<string, unknown>
 ): Promise<EventRow | null> {
-  const sets: string[] = []
-  const values: unknown[] = []
-  let i = 1
-  for (const [field, column] of Object.entries(UPDATABLE)) {
-    if (field in patch && patch[field] !== undefined) {
-      sets.push(`${column} = $${i++}`)
-      values.push(patch[field])
+  const personIds = Array.isArray(patch.participantIds)
+    ? [...new Set(patch.participantIds as string[])]
+    : null
+
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    const sets: string[] = []
+    const values: unknown[] = []
+    let i = 1
+    for (const [field, column] of Object.entries(UPDATABLE)) {
+      if (field === 'personId') continue // derived from participantIds (or handled below)
+      if (field in patch && patch[field] !== undefined) {
+        sets.push(`${column} = $${i++}`)
+        values.push(patch[field])
+      }
     }
+    if (personIds) {
+      sets.push(`person_id = $${i++}`)
+      values.push(personIds[0] ?? null)
+    } else if ('personId' in patch) {
+      sets.push(`person_id = $${i++}`)
+      values.push(patch.personId ?? null)
+    }
+
+    let event: EventRow | undefined
+    if (sets.length > 0) {
+      values.push(householdId, id)
+      const upd = await client.query<EventRow>(
+        `update events set ${sets.join(', ')}
+           where household_id = $${i++} and id = $${i} and deleted_at is null
+           returning *`,
+        values
+      )
+      event = upd.rows[0]
+    } else {
+      const cur = await client.query<EventRow>(
+        `select * from events where household_id = $1 and id = $2 and deleted_at is null`,
+        [householdId, id]
+      )
+      event = cur.rows[0]
+    }
+
+    if (!event) {
+      await client.query('rollback')
+      return null
+    }
+    if (personIds) await replaceParticipants(client, householdId, id, personIds)
+    await client.query('commit')
+    return event
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
   }
-  values.push(householdId, id)
-  const { rows } = await query<EventRow>(
-    `update events set ${sets.join(', ')}
-       where household_id = $${i++} and id = $${i} and deleted_at is null
-       returning *`,
-    values
-  )
-  return rows[0] ?? null
 }
 
 export async function softDeleteEvent(householdId: string, id: string): Promise<boolean> {
@@ -142,6 +233,7 @@ export function presentEvent(e: EventRow) {
     personName: e.person_name ?? null,
     personColor: e.person_color ?? null,
     personEmoji: e.person_emoji ?? null,
+    participants: e.participants ?? [],
   }
 }
 
@@ -192,7 +284,8 @@ export function registerEventRoutes(api: Api): void {
     if (typeof patch.startsAt === 'string' && Number.isNaN(Date.parse(patch.startsAt))) {
       return res.status(400).json({ error: 'BadRequest', message: 'startsAt must be a valid timestamp' })
     }
-    if (!Object.keys(UPDATABLE).some((field) => field in patch)) {
+    const hasField = Object.keys(UPDATABLE).some((field) => field in patch) || 'participantIds' in patch
+    if (!hasField) {
       return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields provided' })
     }
     const event = await updateEvent(tenant.householdId, id, patch)
