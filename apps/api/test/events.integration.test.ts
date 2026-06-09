@@ -120,6 +120,43 @@ describe('events schema', () => {
   })
 })
 
+describe('event_participants schema', () => {
+  it('creates the event_participants table', async () => {
+    const res = await withClient((c) =>
+      c.query(`select table_name from information_schema.tables where table_name='event_participants'`)
+    )
+    expect(res.rowCount).toBe(1)
+  })
+
+  it('enforces one row per person per event', async () => {
+    await withClient(async (c) => {
+      const h = await c.query<{ id: string }>(
+        `insert into households (name,timezone) values ('EP','UTC') returning id`
+      )
+      const hid = h.rows[0].id
+      const p = await c.query<{ id: string }>(
+        `insert into persons (household_id,name,member_type) values ($1,'A','adult') returning id`,
+        [hid]
+      )
+      const e = await c.query<{ id: string }>(
+        `insert into events (household_id,title,starts_at,timezone) values ($1,'X',now(),'UTC') returning id`,
+        [hid]
+      )
+      await c.query(
+        `insert into event_participants (household_id,event_id,person_id) values ($1,$2,$3)`,
+        [hid, e.rows[0].id, p.rows[0].id]
+      )
+      await expect(
+        c.query(`insert into event_participants (household_id,event_id,person_id) values ($1,$2,$3)`, [
+          hid,
+          e.rows[0].id,
+          p.rows[0].id,
+        ])
+      ).rejects.toThrow()
+    })
+  })
+})
+
 describe('events api', () => {
   it('403s for a caller with no household', async () => {
     expect((await call('GET', '/api/events/today', mint('dev|nobody'))).statusCode).toBe(403)
