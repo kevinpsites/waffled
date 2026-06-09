@@ -196,6 +196,105 @@ describe('grocery item mutations', () => {
   })
 })
 
+describe('lists sidebar + custom-list CRUD', () => {
+  it('GET /api/lists seeds + returns the grocery list with a live count', async () => {
+    const res = await call('GET', '/api/lists', kevin)
+    expect(res.statusCode).toBe(200)
+    const lists = JSON.parse(res.body).lists as Array<{ name: string; listType: string; itemCount: number }>
+    const groc = lists.find((l) => l.listType === 'grocery')
+    expect(groc).toBeTruthy()
+    expect(groc!.name).toBe('Grocery') // seeded name (Today's Grocery card depends on this)
+    // grocery list sorts first in the rail
+    expect(lists[0].listType).toBe('grocery')
+  })
+
+  it('requires a tenant', async () => {
+    expect((await call('GET', '/api/lists')).statusCode).toBe(401)
+  })
+
+  it('creates → renames → deletes a named list', async () => {
+    const created = await call('POST', '/api/lists', kevin, { name: 'Lake trip packing', emoji: '🧳' })
+    expect(created.statusCode).toBe(201)
+    const list = JSON.parse(created.body).list
+    expect(list).toMatchObject({ name: 'Lake trip packing', emoji: '🧳', listType: 'custom' })
+
+    // shows in the sidebar with a zero count
+    const sidebar = JSON.parse((await call('GET', '/api/lists', kevin)).body).lists as Array<{ id: string; itemCount: number }>
+    expect(sidebar.find((l) => l.id === list.id)?.itemCount).toBe(0)
+
+    const renamed = await call('PATCH', `/api/lists/${list.id}`, kevin, { name: 'Lake packing', emoji: '🏖️' })
+    expect(renamed.statusCode).toBe(200)
+    expect(JSON.parse(renamed.body).list).toMatchObject({ name: 'Lake packing', emoji: '🏖️' })
+
+    expect((await call('DELETE', `/api/lists/${list.id}`, kevin)).statusCode).toBe(204)
+    expect((await call('GET', `/api/lists/${list.id}`, kevin)).statusCode).toBe(404)
+  })
+
+  it('rejects an empty list name (400) and 404s bad ids', async () => {
+    expect((await call('POST', '/api/lists', kevin, { name: '  ' })).statusCode).toBe(400)
+    expect((await call('GET', '/api/lists/not-a-uuid', kevin)).statusCode).toBe(404)
+    expect((await call('GET', '/api/lists/00000000-0000-0000-0000-000000000000', kevin)).statusCode).toBe(404)
+  })
+})
+
+describe('list items — sections, quantity, assignee', () => {
+  let listId = ''
+  let kellyId = ''
+  let itemId = ''
+
+  beforeAll(async () => {
+    const p = await call('POST', '/api/persons', kevin, {
+      name: 'Kelly',
+      memberType: 'adult',
+      avatarEmoji: '🦊',
+      colorHex: '#EC6049',
+    })
+    kellyId = JSON.parse(p.body).person.id
+    listId = JSON.parse((await call('POST', '/api/lists', kevin, { name: 'Packing', emoji: '🧳' })).body).list.id
+  })
+
+  it('adds an item with section, quantity and assignee (resolves the avatar)', async () => {
+    const res = await call('POST', `/api/lists/${listId}/items`, kevin, {
+      name: 'Swimsuits',
+      quantity: '×4',
+      category: 'Clothes',
+      assignedTo: kellyId,
+    })
+    expect(res.statusCode).toBe(201)
+    const item = JSON.parse(res.body).item
+    expect(item).toMatchObject({ name: 'Swimsuits', quantity: '×4', section: 'Clothes' })
+    expect(item.assignee).toMatchObject({ personId: kellyId, avatarEmoji: '🦊', colorHex: '#EC6049' })
+    itemId = item.id
+  })
+
+  it('returns items with their sections in the list detail', async () => {
+    await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Sunscreen', category: 'Gear' })
+    const res = await call('GET', `/api/lists/${listId}`, kevin)
+    const items = JSON.parse(res.body).items as Array<{ name: string; section: string | null }>
+    expect(items.map((i) => i.name).sort()).toEqual(['Sunscreen', 'Swimsuits'])
+    expect(new Set(items.map((i) => i.section))).toEqual(new Set(['Clothes', 'Gear']))
+  })
+
+  it('rejects an item with no name (400) and 404s an unknown list', async () => {
+    expect((await call('POST', `/api/lists/${listId}/items`, kevin, { name: '' })).statusCode).toBe(400)
+    expect(
+      (await call('POST', `/api/lists/00000000-0000-0000-0000-000000000000/items`, kevin, { name: 'X' })).statusCode
+    ).toBe(404)
+  })
+
+  it('patches an item: reassign + re-quantity, then clears the assignee', async () => {
+    const re = await call('PATCH', `/api/list-items/${itemId}`, kevin, { quantity: '×2', assignedTo: null })
+    expect(re.statusCode).toBe(200)
+    const item = JSON.parse(re.body).item
+    expect(item.quantity).toBe('×2')
+    expect(item.assignee).toBeNull()
+  })
+
+  it('rejects a patch with no known fields (400)', async () => {
+    expect((await call('PATCH', `/api/list-items/${itemId}`, kevin, { bogus: 1 })).statusCode).toBe(400)
+  })
+})
+
 describe('grocery auto-build from a recipe', () => {
   let recipeId = ''
 
