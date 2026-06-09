@@ -218,3 +218,23 @@
   padding: 24px 2px;
   font-weight: 600;
 }
+
+/* recipe picker card actions (preview + select) */
+.mp-card {
+  cursor: pointer;
+  text-align: left;
+}
+.mp-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.mp-actions .pill {
+  cursor: pointer;
+  padding: 7px 14px;
+  font-size: 13.5px;
+}
+.mp-select {
+  color: #fff;
+  border: 0;
+}

@@ -150,7 +150,9 @@ describe('Meals weekly planner', () => {
     // breakfast-only recipe is filtered out of the dinner list
     expect(screen.queryByText('German Pancakes')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByText('Ravioli & Sausage Bake'))
+    // cards now open a preview; the quick "Select" button plans it
+    const card = screen.getByText('Ravioli & Sausage Bake').closest('.mp-card') as HTMLElement
+    fireEvent.click(within(card).getByRole('button', { name: 'Select' }))
     await waitFor(() => expect(planned).toHaveLength(1))
     expect(planned[0]).toMatchObject({ mealType: 'dinner', recipeId: 'r1' })
   })

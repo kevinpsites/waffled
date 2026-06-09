@@ -18,6 +18,7 @@ export interface HouseholdRow extends QueryResultRow {
   name: string
   timezone: string
   week_start: string
+  location: string | null
   owner_person_id: string | null
   settings: unknown
   created_at: Date
@@ -143,6 +144,7 @@ export function presentHousehold(h: HouseholdRow) {
     name: h.name,
     timezone: h.timezone,
     weekStart: h.week_start,
+    location: h.location ?? null,
     ownerPersonId: h.owner_person_id,
     settings: h.settings,
     createdAt: h.created_at,

@@ -28,6 +28,7 @@ export interface Household {
   name: string
   timezone: string
   weekStart: string
+  location: string | null
   ownerPersonId: string | null
 }
 

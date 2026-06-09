@@ -87,6 +87,7 @@ function FamilyPanel() {
   const [editing, setEditing] = useState<SettingsMember | null>(null)
   const [adding, setAdding] = useState(false)
   const [nameDraft, setNameDraft] = useState<string | null>(null)
+  const [locDraft, setLocDraft] = useState<string | null>(null)
 
   if (loading) return <div className="muted" style={{ padding: 20 }}>Loading…</div>
   if (error || !household) return <div className="muted" style={{ padding: 20 }}>Sign this kiosk in to manage your family.</div>
@@ -141,6 +142,26 @@ function FamilyPanel() {
               <option key={tz} value={tz}>{tz.split('/').pop()?.replace('_', ' ')}</option>
             ))}
           </select>
+        </SettingRow>
+        <SettingRow icon="📍" title="Location" sub="For local weather on the kiosk (weather wiring coming soon)">
+          {locDraft === null ? (
+            <button type="button" className="sel" onClick={() => setLocDraft(household.location ?? '')}>
+              {household.location || 'Set location'} ▾
+            </button>
+          ) : (
+            <input
+              className="set-inline-input"
+              autoFocus
+              placeholder="City, State"
+              value={locDraft}
+              onChange={(e) => setLocDraft(e.target.value)}
+              onBlur={() => {
+                if ((locDraft.trim() || null) !== (household.location ?? null)) saveHousehold({ location: locDraft.trim() || null })
+                setLocDraft(null)
+              }}
+              onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+            />
+          )}
         </SettingRow>
       </div>
 

@@ -30,6 +30,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
   })
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [inviteNote, setInviteNote] = useState(false)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
 
   async function submit(e: FormEvent) {
@@ -122,6 +123,32 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
               <Toggle on={form.showOnKiosk} onClick={() => set('showOnKiosk', !form.showOnKiosk)} />
             </div>
           </div>
+
+          {editing && (
+            <div className="set-card" style={{ padding: '2px 16px', marginBottom: 14 }}>
+              <div className="set-row" style={{ padding: '13px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ fontSize: 21, width: 30, textAlign: 'center', flex: 'none' }}>🔑</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>Account</div>
+                  <div className="tiny muted" style={{ fontWeight: 600 }}>
+                    {person!.hasLogin ? 'Signed in with their own account' : person!.memberType === 'kid' ? 'Managed by parents' : 'No login yet'}
+                  </div>
+                </div>
+                {person!.hasLogin ? (
+                  <span className="tiny" style={{ fontWeight: 700, color: 'var(--wally)' }}>Connected ✓</span>
+                ) : person!.memberType === 'kid' ? (
+                  <span className="tiny muted" style={{ fontWeight: 700 }}>Parental</span>
+                ) : (
+                  <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => setInviteNote(true)}>Invite to sign in</button>
+                )}
+              </div>
+              {inviteNote && (
+                <div className="tiny muted" style={{ fontWeight: 600, padding: '0 0 12px', lineHeight: 1.45 }}>
+                  Sign-in invites arrive with Google / Apple login (M5). For now {form.name || 'they'} stays {person!.memberType === 'kid' ? 'parent-managed' : 'without a login'} — the account link will activate here once auth is connected.
+                </div>
+              )}
+            </div>
+          )}
 
           <button type="submit" className="btn btn-primary" disabled={!form.name.trim() || saving} style={{ width: '100%', justifyContent: 'center' }}>
             {saving ? 'Saving…' : editing ? 'Save changes' : 'Add person'}

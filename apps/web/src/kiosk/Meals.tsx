@@ -92,12 +92,15 @@ function MealPicker({
   dayLabel: string
   recipes: Recipe[]
   loading: boolean
-  onPick: (recipe: Recipe) => void
+  onPick?: (recipe: Recipe) => void
   onClose: () => void
 }) {
   const [filter, setFilter] = useState<MealType>(slot)
-  const matches = recipes.filter((r) => (r.category ?? '').toLowerCase() === filter)
-  const shown = matches.length ? matches : recipes
+  const [preview, setPreview] = useState<Recipe | null>(null)
+  const browse = !onPick
+  // Strict filter: a recipe shows under a meal type when it's tagged with it, or
+  // is untagged (untagged recipes fit any slot). No more "fall back to all".
+  const shown = recipes.filter((r) => !r.category || r.category.toLowerCase() === filter)
 
   useTopbarFull(
     () => (
@@ -107,7 +110,7 @@ function MealPicker({
           Meals
         </div>
         <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginLeft: 14 }}>
-          Add a {MEAL_LABEL[slot].toLowerCase()} · {dayLabel}
+          {browse ? 'Explore recipes' : `Add a ${MEAL_LABEL[slot].toLowerCase()} · ${dayLabel}`}
         </div>
         <div className="tb-right" style={{ marginLeft: 'auto' }}>
           <div className="ai-bar" style={{ width: 280, padding: '8px 10px 8px 14px' }}>
@@ -146,23 +149,36 @@ function MealPicker({
       <div className="picker-grid">
         {loading && <div className="muted picker-empty">Loading recipes…</div>}
         {!loading && shown.length === 0 && (
-          <div className="muted picker-empty">No saved recipes yet — add some from Explore.</div>
+          <div className="muted picker-empty">No {MEAL_LABEL[filter].toLowerCase()} recipes yet — tag a recipe with this meal to see it here.</div>
         )}
         {shown.map((r) => (
-          <button key={r.id} className="rc mp-card" onClick={() => onPick(r)}>
+          <div key={r.id} className="rc mp-card" role="button" tabIndex={0} onClick={() => setPreview(r)}>
             <div className={`rc-img ${gradClass(r)}`}>{r.emoji ?? '🍽️'}</div>
             <div className="rc-b" style={{ padding: '12px 14px 14px' }}>
-              <div className="rc-t" style={{ fontSize: 16 }}>
-                {r.title}
-              </div>
+              <div className="rc-t" style={{ fontSize: 16 }}>{r.title}</div>
               <div className="rc-m">
                 {r.cookTimeMinutes != null && <span>🕐 {r.cookTimeMinutes} min</span>}
                 {r.category && <span>{r.category}</span>}
               </div>
+              <div className="mp-actions">
+                <button type="button" className="pill" onClick={(e) => { e.stopPropagation(); setPreview(r) }}>Preview</button>
+                {onPick && (
+                  <button type="button" className="pill btn-primary mp-select" onClick={(e) => { e.stopPropagation(); onPick(r) }}>Select</button>
+                )}
+              </div>
             </div>
-          </button>
+          </div>
         ))}
       </div>
+
+      {preview && (
+        <RecipeModal
+          recipeId={preview.id}
+          onClose={() => setPreview(null)}
+          onSelect={onPick ? () => onPick(preview) : undefined}
+          selectLabel={onPick ? `Select for ${MEAL_LABEL[slot]}` : undefined}
+        />
+      )}
     </div>
   )
 }
@@ -171,6 +187,7 @@ export function Meals() {
   const [start, setStart] = useState<Date>(() => weekStart(new Date()))
   const [filter, setFilter] = useState<'all' | 'dinner'>('all')
   const [picking, setPicking] = useState<{ date: string; mealType: MealType; dayLabel: string } | null>(null)
+  const [browsing, setBrowsing] = useState(false)
   const [openRecipeId, setOpenRecipeId] = useState<string | null>(null)
 
   const startStr = ymd(start)
@@ -189,7 +206,7 @@ export function Meals() {
   useTopbarRight(
     () => (
       <>
-        <button type="button" className="pill" onClick={() => {}}>
+        <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => setBrowsing(true)}>
           <Icon name="recipes" />
           <span>Explore recipes</span>
         </button>
@@ -228,15 +245,18 @@ export function Meals() {
 
   const rows: MealType[] = filter === 'dinner' ? ['dinner'] : [...MEALS]
 
-  if (picking) {
+  if (picking || browsing) {
     return (
       <MealPicker
-        slot={picking.mealType}
-        dayLabel={picking.dayLabel}
+        slot={picking?.mealType ?? 'dinner'}
+        dayLabel={picking?.dayLabel ?? ''}
         recipes={recipes}
         loading={recipesLoading}
-        onPick={pick}
-        onClose={() => setPicking(null)}
+        onPick={picking ? pick : undefined}
+        onClose={() => {
+          setPicking(null)
+          setBrowsing(false)
+        }}
       />
     )
   }

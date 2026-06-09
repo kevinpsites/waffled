@@ -17,7 +17,17 @@ function groupBySection(ings: RecipeIngredient[]): Array<[string, RecipeIngredie
   return [...map.entries()]
 }
 
-export function RecipeModal({ recipeId, onClose }: { recipeId: string; onClose: () => void }) {
+export function RecipeModal({
+  recipeId,
+  onClose,
+  onSelect,
+  selectLabel,
+}: {
+  recipeId: string
+  onClose: () => void
+  onSelect?: () => void
+  selectLabel?: string
+}) {
   const { recipe, ingredients, loading, error } = useRecipe(recipeId)
 
   return (
@@ -61,6 +71,17 @@ export function RecipeModal({ recipeId, onClose }: { recipeId: string; onClose: 
                 ))}
               </div>
             ))}
+
+            {onSelect && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}
+                onClick={onSelect}
+              >
+                {selectLabel ?? 'Select meal'}
+              </button>
+            )}
           </>
         )}
       </div>

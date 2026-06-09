@@ -139,7 +139,7 @@ export async function householdSettings(householdId: string) {
   return { household: presentHousehold(h), members }
 }
 
-const HOUSEHOLD_COLUMNS: Record<string, string> = { name: 'name', timezone: 'timezone', weekStart: 'week_start' }
+const HOUSEHOLD_COLUMNS: Record<string, string> = { name: 'name', timezone: 'timezone', weekStart: 'week_start', location: 'location' }
 
 export async function updateHousehold(householdId: string, patch: Record<string, unknown>): Promise<HouseholdRow | null> {
   const sets: string[] = []
