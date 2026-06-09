@@ -207,7 +207,6 @@ export function Meals() {
   const [start, setStart] = useState<Date>(() => weekStart(new Date()))
   const [filter, setFilter] = useState<'all' | 'dinner'>('all')
   const [picking, setPicking] = useState<{ date: string; mealType: MealType; dayLabel: string } | null>(null)
-  const [browsing, setBrowsing] = useState(false)
 
   const startStr = ymd(start)
   const { entries, refetch } = useMealsWeek(startStr)
@@ -225,7 +224,7 @@ export function Meals() {
   useTopbarRight(
     () => (
       <>
-        <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => setBrowsing(true)}>
+        <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate('/meals/recipes')}>
           <Icon name="recipes" />
           <span>Explore recipes</span>
         </button>
@@ -269,19 +268,15 @@ export function Meals() {
 
   const rows: MealType[] = filter === 'dinner' ? ['dinner'] : [...MEALS]
 
-  if (picking || browsing) {
+  if (picking) {
     return (
       <MealPicker
-        slot={picking?.mealType ?? 'dinner'}
-        dayLabel={picking?.dayLabel ?? ''}
+        slot={picking.mealType}
+        dayLabel={picking.dayLabel}
         recipes={recipes}
         loading={recipesLoading}
-        onPick={picking ? pick : undefined}
-        onView={browsing ? (r) => navigate(`/meals/recipe/${r.id}`) : undefined}
-        onClose={() => {
-          setPicking(null)
-          setBrowsing(false)
-        }}
+        onPick={pick}
+        onClose={() => setPicking(null)}
       />
     )
   }

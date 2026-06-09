@@ -214,3 +214,67 @@
     padding: 4px 16px 20px;
   }
 }
+
+/* ===== Recipes library ===== */
+.recipes-lib {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 30px 26px;
+}
+.recipes-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.recipes-search {
+  flex: 1;
+  max-width: 460px;
+  font: inherit;
+  font-size: 15px;
+  padding: 11px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--hair);
+  background: var(--card);
+  color: var(--ink);
+}
+.recipes-head .seg button {
+  cursor: pointer;
+}
+.recipes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  align-content: start;
+}
+.recipes-card {
+  padding: 0;
+  border: 0;
+  text-align: left;
+  font: inherit;
+  width: 100%;
+  cursor: pointer;
+  transition: box-shadow 0.12s, transform 0.12s;
+}
+.recipes-card:hover {
+  box-shadow: var(--sh-3);
+}
+.recipes-card .rc-img {
+  height: 120px;
+  font-size: 44px;
+  position: relative;
+}
+.recipes-fav {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 16px;
+}
+@media (max-width: 720px) {
+  .recipes-lib {
+    padding: 4px 16px 20px;
+  }
+}

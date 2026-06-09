@@ -59,10 +59,12 @@ export interface RecipeDetail {
   title: string
   emoji: string | null
   description: string | null
+  category: string | null
   prepTimeMinutes: number | null
   cookTimeMinutes: number | null
   servings: number
   sourceName: string | null
+  isFavorite: boolean
 }
 
 export interface RecipeIngredient {
@@ -92,6 +94,8 @@ export const mealsApi = {
   planSlot: (slot: PlanSlot) => apiSend<{ entry: WeekEntry }>('POST', '/api/meals/plan', slot),
   clearSlot: (date: string, mealType: string) =>
     apiDelete(`/api/meals/plan?date=${date}&mealType=${mealType}`),
+  updateRecipe: (id: string, patch: { isFavorite?: boolean; title?: string; rating?: number }) =>
+    apiSend<{ recipe: RecipeDetail }>('PATCH', `/api/recipes/${id}`, patch).then((r) => r.recipe),
 }
 
 export interface MealsState {

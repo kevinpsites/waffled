@@ -8,6 +8,7 @@ import { GoalCreate } from './GoalCreate'
 import { GoalDetail } from './GoalDetail'
 import { Meals } from './Meals'
 import { RecipeDetail } from './RecipeDetail'
+import { RecipesLibrary } from './RecipesLibrary'
 import { Lists } from './Lists'
 import { Photos } from './Photos'
 import { Settings } from './Settings'
@@ -27,6 +28,7 @@ export function KioskRoutes() {
         <Route path="goals/:id" element={<GoalDetail />} />
         <Route path="goals/:id/edit" element={<GoalCreate />} />
         <Route path="meals" element={<Meals />} />
+        <Route path="meals/recipes" element={<RecipesLibrary />} />
         <Route path="meals/recipe/:id" element={<RecipeDetail />} />
         <Route path="lists" element={<Lists />} />
         <Route path="photos" element={<Photos />} />

@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
-import { groceryApi, useRecipe, type RecipeIngredient } from '../lib/api'
+import { groceryApi, mealsApi, useRecipe, type RecipeIngredient } from '../lib/api'
+import { ScheduleModal } from './components/ScheduleModal'
 import './../styles/recipe.css'
 
 // Pretty-print a (possibly scaled) amount: integers stay integers, halves/quarters
@@ -34,25 +35,36 @@ export function RecipeDetail() {
   const { recipe, ingredients, steps, loading, error } = useRecipe(id ?? null)
   const [servings, setServings] = useState<number | null>(null)
   const [fav, setFav] = useState(false)
+  const [scheduling, setScheduling] = useState(false)
   const [addedNote, setAddedNote] = useState<string | null>(null)
   const addRef = useRef<() => void>(() => {})
+
+  useEffect(() => {
+    if (recipe) setFav(recipe.isFavorite)
+  }, [recipe])
+
+  function toggleFav() {
+    const next = !fav
+    setFav(next)
+    if (recipe) mealsApi.updateRecipe(recipe.id, { isFavorite: next }).catch(() => setFav(!next))
+  }
 
   useTopbarFull(
     () => (
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
         <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(-1)}>‹ Recipes</button>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center' }}>
-          <button className="pill rd-fav" aria-label="Favorite" onClick={() => setFav((v) => !v)} style={{ cursor: 'pointer' }}>
+          <button className="pill rd-fav" aria-label="Favorite" onClick={toggleFav} style={{ cursor: 'pointer' }}>
             {fav ? '❤️' : '🤍'}
           </button>
-          <button className="pill" style={{ cursor: 'pointer' }} title="Scheduling a meal comes from the Meals planner">📅 Schedule</button>
+          <button className="pill" style={{ cursor: 'pointer' }} onClick={() => setScheduling(true)}>📅 Schedule</button>
           <button className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => addRef.current()}>
             🛒 Add to grocery list
           </button>
         </div>
       </div>
     ),
-    [navigate, fav]
+    [navigate, fav, recipe?.id]
   )
 
   if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
@@ -139,6 +151,14 @@ export function RecipeDetail() {
           ))}
         </div>
       </div>
+
+      {scheduling && (
+        <ScheduleModal
+          recipe={recipe}
+          onClose={() => setScheduling(false)}
+          onScheduled={(label) => setAddedNote(`Scheduled for ${label}.`)}
+        />
+      )}
     </div>
   )
 }

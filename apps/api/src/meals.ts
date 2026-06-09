@@ -345,6 +345,28 @@ export function registerMealRoutes(api: Api): void {
     return { recipe: presentRecipe(recipe), ingredients: ingredients.map(presentIngredient), steps }
   })
 
+  // Update a recipe (favorite toggle, rename, …).
+  api.patch('/api/recipes/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    const body = (req.body ?? {}) as { isFavorite?: boolean; title?: string; rating?: number }
+    const cols: string[] = []
+    const vals: unknown[] = []
+    let i = 1
+    if (typeof body.isFavorite === 'boolean') { cols.push(`is_favorite = $${i++}`); vals.push(body.isFavorite) }
+    if (typeof body.title === 'string' && body.title.trim()) { cols.push(`title = $${i++}`); vals.push(body.title.trim()) }
+    if (typeof body.rating === 'number') { cols.push(`rating = $${i++}`); vals.push(body.rating) }
+    if (cols.length === 0) return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields' })
+    vals.push(tenant.householdId, id)
+    const { rows } = await query<RecipeRow>(
+      `update recipes set ${cols.join(', ')} where household_id = $${i++} and id = $${i} and deleted_at is null returning *`,
+      vals
+    )
+    if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    return { recipe: presentRecipe(rows[0]) }
+  })
+
   // Add ingredients to a recipe (bulk).
   api.post('/api/recipes/:id/ingredients', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
