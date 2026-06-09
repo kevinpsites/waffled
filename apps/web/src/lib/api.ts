@@ -100,6 +100,11 @@ export const api = {
   updateChore: (id: string, patch: Record<string, unknown>) =>
     apiSend<{ chore: { id: string } }>('PATCH', `/api/chores/${id}`, patch),
   deleteChore: (id: string) => apiDelete(`/api/chores/${id}`),
+  goals: () => apiGet<{ goals: Goal[] }>('/api/goals'),
+  createGoal: (input: Record<string, unknown>) => apiSend<{ goal: { id: string } }>('POST', '/api/goals', input),
+  logGoal: (id: string, amount: number, personId?: string | null) =>
+    apiSend<{ ok: boolean }>('POST', `/api/goals/${id}/log`, { amount, personId: personId ?? null }),
+  deleteGoal: (id: string) => apiDelete(`/api/goals/${id}`),
   grocery: () => apiGet<{ items: GroceryItem[] }>('/api/lists/grocery'),
   addGroceryItem: (name: string) =>
     apiSend<{ item: GroceryItem }>('POST', '/api/lists/grocery/items', { name }).then((r) => r.item),
@@ -227,6 +232,64 @@ export interface WeekEntry {
 export function localToday(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+export interface GoalParticipant {
+  personId: string
+  name: string
+  colorHex: string | null
+  avatarEmoji: string | null
+  target: number | null
+  progress: number
+}
+
+export interface Goal {
+  id: string
+  title: string
+  emoji: string | null
+  category: string | null
+  goalType: string
+  unit: string | null
+  trackingMode: string
+  deadline: string | null
+  target: number | null
+  totalProgress: number
+  participants: GoalParticipant[]
+}
+
+export interface GoalsState {
+  goals: Goal[]
+  loading: boolean
+  error: boolean
+  refetch: () => void
+}
+
+export function useGoals(): GoalsState {
+  const [goals, setGoals] = useState<Goal[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const [nonce, setNonce] = useState(0)
+  useEffect(() => {
+    let alive = true
+    api
+      .goals()
+      .then((d) => {
+        if (alive) {
+          setGoals(d.goals)
+          setLoading(false)
+        }
+      })
+      .catch(() => {
+        if (alive) {
+          setError(true)
+          setLoading(false)
+        }
+      })
+    return () => {
+      alive = false
+    }
+  }, [nonce])
+  return { goals, loading, error, refetch: () => setNonce((n) => n + 1) }
 }
 
 export interface ChoreInstance {

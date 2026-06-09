@@ -27,12 +27,12 @@ describe('kiosk navigation', () => {
 
   it('navigates to another screen when its rail item is clicked', () => {
     renderAt('/')
-    fireEvent.click(within(rail()).getByText('Goals'))
+    fireEvent.click(within(rail()).getByText('Lists'))
 
-    // the Goals placeholder shows, Today content is gone, active moved
+    // the Lists placeholder shows, Today content is gone, active moved
     expect(screen.getByText(/Coming soon/)).toBeInTheDocument()
     expect(screen.queryByText('Family chores')).not.toBeInTheDocument()
-    expect(within(rail()).getByText('Goals').closest('a')).toHaveClass('on')
+    expect(within(rail()).getByText('Lists').closest('a')).toHaveClass('on')
     expect(within(rail()).getByText('Today').closest('a')).not.toHaveClass('on')
   })
 

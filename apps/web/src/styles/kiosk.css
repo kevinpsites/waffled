@@ -168,6 +168,41 @@ body {
   }
 }
 
+/* ===== goals screen ===== */
+.goals-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.goals-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 30px 8px;
+}
+.goals-head .pill {
+  cursor: pointer;
+}
+.goals-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 30px 26px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  align-content: start;
+}
+@media (max-width: 720px) {
+  .goals-head {
+    padding: 6px 16px 8px;
+  }
+  .goals-grid {
+    padding: 6px 16px 20px;
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ===== tasks screen ===== */
 .tasks-page {
   flex: 1;
