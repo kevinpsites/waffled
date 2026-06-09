@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Icon } from './icons'
 import { ListsModal } from './components/ListsModal'
+import { ListItemModal } from './components/ListItemModal'
 import {
   groceryApi,
   useLists,
@@ -59,53 +60,29 @@ function ItemRow({
   people,
   onToggle,
   onAssign,
-  onRename,
+  onEdit,
   onDelete,
 }: {
   item: ListItem
   people: Person[]
   onToggle: (item: ListItem) => void
   onAssign: (item: ListItem, personId: string | null) => void
-  onRename: (item: ListItem, name: string) => void
+  onEdit: (item: ListItem) => void
   onDelete: (item: ListItem) => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const [editing, setEditing] = useState(false)
-  const [name, setName] = useState(item.name)
   const a = item.assignee
 
-  function commit() {
-    setEditing(false)
-    onRename(item, name)
-  }
-
   return (
-    <div className={`litem ${item.checked ? 'done' : ''}`} onClick={() => !editing && onToggle(item)}>
+    <div className={`litem ${item.checked ? 'done' : ''}`} onClick={() => onToggle(item)}>
       <div className="lck" aria-label={item.checked ? 'Checked' : 'Not checked'}>
         {item.checked ? CHECK : null}
       </div>
-      {editing ? (
-        <input
-          className="lnm-edit"
-          autoFocus
-          value={name}
-          onClick={(e) => e.stopPropagation()}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commit()
-            if (e.key === 'Escape') {
-              setName(item.name)
-              setEditing(false)
-            }
-          }}
-        />
-      ) : (
-        <span className="lnm">{item.name}</span>
-      )}
+      <span className="lnm">{item.name}</span>
       {item.quantity ? <span className="lqty">{item.quantity}</span> : null}
+      {/* always-visible (touch: no hover) edit + delete */}
       <div className="litem-actions" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="litem-act" aria-label="Rename item" onClick={() => { setName(item.name); setEditing(true) }}>✎</button>
+        <button type="button" className="litem-act" aria-label="Edit item" onClick={() => onEdit(item)}>✎</button>
         <button type="button" className="litem-act litem-del" aria-label="Delete item" onClick={() => onDelete(item)}>×</button>
       </div>
       <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
@@ -200,12 +177,13 @@ export function Lists() {
   const addInputRef = useRef<HTMLInputElement>(null)
   const [filterPerson, setFilterPerson] = useState<string | null>(null)
   const [filterMenu, setFilterMenu] = useState(false)
+  const [itemModal, setItemModal] = useState<{ item: ListItem | null } | null>(null)
 
   const selected: ListSummary | null = useMemo(
     () => lists.find((l) => l.id === selectedId) ?? lists[0] ?? null,
     [lists, selectedId]
   )
-  const { items, loading: itemsLoading, setItems } = useListDetail(selected?.id ?? null)
+  const { items, loading: itemsLoading, setItems, refetch: refetchItems } = useListDetail(selected?.id ?? null)
 
   useTopbarRight(
     () => (
@@ -214,7 +192,7 @@ export function Lists() {
         <button type="button" className="pill" aria-label="Share list" style={{ cursor: 'pointer' }}>
           📤 Share list
         </button>
-        <button type="button" className="pill btn-primary topbar-new" onClick={() => addInputRef.current?.focus()}>
+        <button type="button" className="pill btn-primary topbar-new" onClick={() => setItemModal({ item: null })}>
           <Icon name="plus" />
           <span>Add item</span>
         </button>
@@ -241,18 +219,6 @@ export function Lists() {
       setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)))
     } catch {
       /* keep current state on failure */
-    }
-  }
-
-  async function rename(item: ListItem, name: string) {
-    const trimmed = name.trim()
-    if (!trimmed || trimmed === item.name) return
-    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, name: trimmed } : i)))
-    try {
-      const updated = await groceryApi.patchListItem(item.id, { name: trimmed })
-      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)))
-    } catch {
-      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, name: item.name } : i)))
     }
   }
 
@@ -403,7 +369,7 @@ export function Lists() {
                       <div key={sec.key} className="lists-section">
                         <div className="lists-section-title">{sec.title}</div>
                         {sec.items.map((it) => (
-                          <ItemRow key={it.id} item={it} people={persons} onToggle={toggle} onAssign={assign} onRename={rename} onDelete={remove} />
+                          <ItemRow key={it.id} item={it} people={persons} onToggle={toggle} onAssign={assign} onEdit={(i) => setItemModal({ item: i })} onDelete={remove} />
                         ))}
                       </div>
                     ))}
@@ -424,6 +390,19 @@ export function Lists() {
           onCreated={(id) => {
             refetchLists()
             setSelectedId(id)
+          }}
+        />
+      )}
+      {itemModal && selected && (
+        <ListItemModal
+          listId={selected.id}
+          item={itemModal.item}
+          persons={persons}
+          sections={[...new Set(items.map((i) => i.section).filter((s): s is string => !!s))]}
+          onClose={() => setItemModal(null)}
+          onSaved={() => {
+            refetchItems()
+            refetchLists()
           }}
         />
       )}

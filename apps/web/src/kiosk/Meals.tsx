@@ -51,7 +51,7 @@ function gradClass(r: { category: string | null }): string {
   return (r.category && GRAD_BY_CATEGORY[r.category.toLowerCase()]) || 'g-veg'
 }
 
-function PlannedCell({ entry, mealType, onOpen }: { entry: WeekEntry; mealType: MealType; onOpen: () => void }) {
+function PlannedCell({ entry, mealType, onOpen, onRemove }: { entry: WeekEntry; mealType: MealType; onOpen: () => void; onRemove: () => void }) {
   const title = entry.recipe?.title ?? entry.title ?? 'Planned'
   return (
     <div className={`meals-cell ${mealType}`} onClick={onOpen} role="button" tabIndex={0} aria-label={`${MEAL_LABEL[mealType]}: ${title}`}>
@@ -64,6 +64,18 @@ function PlannedCell({ entry, mealType, onOpen }: { entry: WeekEntry; mealType: 
           {entry.cook.avatarEmoji ?? '🧑‍🍳'}
         </div>
       )}
+      <button
+        type="button"
+        className="meal-remove"
+        aria-label={`Remove ${title}`}
+        title="Remove from this day"
+        onClick={(e) => {
+          e.stopPropagation()
+          onRemove()
+        }}
+      >
+        ×
+      </button>
       <div className="meal-t">{title}</div>
     </div>
   )
@@ -95,12 +107,13 @@ function MealPicker({
   onPick?: (recipe: Recipe) => void
   onClose: () => void
 }) {
-  const [filter, setFilter] = useState<MealType>(slot)
-  const [preview, setPreview] = useState<Recipe | null>(null)
   const browse = !onPick
-  // Strict filter: a recipe shows under a meal type when it's tagged with it, or
-  // is untagged (untagged recipes fit any slot). No more "fall back to all".
-  const shown = recipes.filter((r) => !r.category || r.category.toLowerCase() === filter)
+  const [filter, setFilter] = useState<'all' | MealType>(browse ? 'all' : slot)
+  const [preview, setPreview] = useState<Recipe | null>(null)
+  // 'all' shows everything; a meal filter shows recipes tagged with it (or untagged,
+  // which fit any slot). No more "fall back to all" when a filter has no matches.
+  const shown = filter === 'all' ? recipes : recipes.filter((r) => !r.category || r.category.toLowerCase() === filter)
+  const FILTERS: Array<'all' | MealType> = ['all', ...MEALS]
 
   useTopbarFull(
     () => (
@@ -130,7 +143,7 @@ function MealPicker({
   return (
     <div className="meals-picker">
       <div className="picker-filters">
-        {MEALS.map((f) => (
+        {FILTERS.map((f) => (
           <div
             key={f}
             className={`mp-filter tag ${f === filter ? 'on' : ''}`}
@@ -138,18 +151,21 @@ function MealPicker({
             role="button"
             tabIndex={0}
           >
-            {MEAL_LABEL[f]}
+            {f === 'all' ? 'All' : MEAL_LABEL[f]}
           </div>
         ))}
         <div className="tiny muted picker-count">
-          {shown.length} {MEAL_LABEL[filter].toLowerCase()} ideas
+          {shown.length} {filter === 'all' ? 'recipe' : MEAL_LABEL[filter].toLowerCase() + ' idea'}
+          {shown.length === 1 ? '' : 's'}
         </div>
       </div>
 
       <div className="picker-grid">
         {loading && <div className="muted picker-empty">Loading recipes…</div>}
         {!loading && shown.length === 0 && (
-          <div className="muted picker-empty">No {MEAL_LABEL[filter].toLowerCase()} recipes yet — tag a recipe with this meal to see it here.</div>
+          <div className="muted picker-empty">
+            {filter === 'all' ? 'No recipes yet.' : `No ${MEAL_LABEL[filter].toLowerCase()} recipes yet — tag a recipe with this meal to see it here.`}
+          </div>
         )}
         {shown.map((r) => (
           <div key={r.id} className="rc mp-card" role="button" tabIndex={0} onClick={() => setPreview(r)}>
@@ -243,6 +259,11 @@ export function Meals() {
     refetch()
   }
 
+  async function clearMeal(date: string, mealType: MealType) {
+    await api.clearSlot(date, mealType)
+    refetch()
+  }
+
   const rows: MealType[] = filter === 'dinner' ? ['dinner'] : [...MEALS]
 
   if (picking || browsing) {
@@ -288,6 +309,7 @@ export function Meals() {
                 dayLabel: `${DOW[d.getDay()]} ${d.toLocaleDateString('en-US', { month: 'short' })} ${d.getDate()}`,
               })
             }
+            onRemove={clearMeal}
           />
         ))}
       </div>
@@ -303,12 +325,14 @@ function Row({
   bySlot,
   onOpen,
   onAdd,
+  onRemove,
 }: {
   mealType: MealType
   days: Date[]
   bySlot: Map<string, WeekEntry>
   onOpen: (recipeId: string) => void
   onAdd: (d: Date) => void
+  onRemove: (date: string, mealType: MealType) => void
 }) {
   return (
     <>
@@ -325,6 +349,7 @@ function Row({
               entry={entry}
               mealType={mealType}
               onOpen={() => entry.recipeId && onOpen(entry.recipeId)}
+              onRemove={() => onRemove(dateStr, mealType)}
             />
           )
         }

@@ -181,11 +181,12 @@
 }
 
 /* ----- item rename + delete affordances ----- */
+/* always visible — the kiosk is a touch tablet with no hover */
 .litem-actions {
   display: flex;
   align-items: center;
   gap: 2px;
-  opacity: 0;
+  opacity: 0.5;
   transition: opacity 0.12s;
   flex: none;
 }

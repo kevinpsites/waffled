@@ -238,3 +238,28 @@
   color: #fff;
   border: 0;
 }
+
+/* remove (×) on a planned cell — always visible for touch (no hover needed) */
+.meal-remove {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink-2);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  opacity: 0.55;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.meal-remove:hover {
+  opacity: 1;
+  background: #fff;
+  color: var(--primary);
+}
