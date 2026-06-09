@@ -134,6 +134,44 @@ describe('meals schema', () => {
   })
 })
 
+describe('recipe_ingredients schema', () => {
+  it('creates the recipe_ingredients table', async () => {
+    const res = await withClient((c) =>
+      c.query(`select table_name from information_schema.tables where table_name='recipe_ingredients'`)
+    )
+    expect(res.rowCount).toBe(1)
+  })
+
+  it('stores structured + display fields and enforces the recipe FK', async () => {
+    await withClient(async (c) => {
+      const h = await c.query<{ id: string }>(
+        `insert into households (name,timezone) values ('RI','UTC') returning id`
+      )
+      const hid = h.rows[0].id
+      const r = await c.query<{ id: string }>(
+        `insert into recipes (household_id,title) values ($1,'Chicken Parm') returning id`,
+        [hid]
+      )
+      const ing = await c.query<{ amount: string; unit: string; display: string; section: string }>(
+        `insert into recipe_ingredients (household_id, recipe_id, name, amount, unit, display, section)
+         values ($1,$2,'all-purpose flour',1.5,'cup','1½ cups (225g) flour','Breading')
+         returning amount, unit, display, section`,
+        [hid, r.rows[0].id]
+      )
+      expect(Number(ing.rows[0].amount)).toBe(1.5)
+      expect(ing.rows[0].unit).toBe('cup')
+      expect(ing.rows[0].section).toBe('Breading')
+
+      await expect(
+        c.query(`insert into recipe_ingredients (household_id, recipe_id, name) values ($1,$2,'x')`, [
+          hid,
+          '00000000-0000-0000-0000-000000000000',
+        ])
+      ).rejects.toThrow()
+    })
+  })
+})
+
 describe('recipes api', () => {
   let recipeId = ''
 
