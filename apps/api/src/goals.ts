@@ -21,6 +21,7 @@ export interface CreateGoalInput {
   trackingMode: string
   participantIds?: string[]
   deadline?: string | null
+  isFeatured?: boolean
 }
 
 export async function createGoal(tenant: Tenant, input: CreateGoalInput): Promise<{ id: string }> {
@@ -29,8 +30,8 @@ export async function createGoal(tenant: Tenant, input: CreateGoalInput): Promis
     await client.query('begin')
     const g = await client.query<{ id: string }>(
       `insert into goals
-         (household_id, title, emoji, category, goal_type, unit, target_value, tracking_mode, deadline)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`,
+         (household_id, title, emoji, category, goal_type, unit, target_value, tracking_mode, deadline, is_featured)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id`,
       [
         tenant.householdId,
         input.title,
@@ -41,6 +42,7 @@ export async function createGoal(tenant: Tenant, input: CreateGoalInput): Promis
         input.targetValue ?? null,
         input.trackingMode,
         input.deadline ?? null,
+        input.isFeatured ?? false,
       ]
     )
     const goalId = g.rows[0].id
@@ -70,6 +72,7 @@ interface GoalRow extends QueryResultRow {
   target_value: string | null
   tracking_mode: string
   deadline: string | null
+  is_featured: boolean
   total_progress: number
   participants: Array<{
     personId: string
@@ -84,7 +87,7 @@ interface GoalRow extends QueryResultRow {
 export async function listGoals(householdId: string) {
   const { rows } = await query<GoalRow>(
     `select g.id, g.title, g.emoji, g.category, g.goal_type, g.unit, g.tracking_mode, g.deadline,
-            g.target_value,
+            g.target_value, g.is_featured,
             coalesce((select sum(amount)::float from goal_logs gl
                        where gl.goal_id = g.id and gl.deleted_at is null), 0) as total_progress,
             coalesce((
@@ -114,6 +117,7 @@ export async function listGoals(householdId: string) {
     unit: g.unit,
     trackingMode: g.tracking_mode,
     deadline: g.deadline,
+    isFeatured: g.is_featured,
     target: g.target_value == null ? null : Number(g.target_value),
     totalProgress: Number(g.total_progress),
     participants: g.participants,
