@@ -48,6 +48,15 @@ token *ARGS:
 test:
     cd apps/api && npm test
 
+# run the api from source with hot reload (tsx watch) against the compose Postgres.
+# Frees :3000 by stopping the containerized api; `just up` brings the container back.
+api:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    {{compose}} stop api >/dev/null 2>&1 || true
+    set -a; . infra/compose/.env; set +a
+    cd apps/api && DATABASE_URL="postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@localhost:$POSTGRES_PORT/$POSTGRES_DB" npm run dev
+
 # run the web app dev server (Vite; proxies /api to the local api on :3000)
 web:
     cd apps/web && npm run dev
