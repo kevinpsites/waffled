@@ -166,3 +166,51 @@ describe('goals api', () => {
     expect((await call('DELETE', `/api/goals/${id}`, kevin)).statusCode).toBe(404)
   })
 })
+
+describe('goal lists + detail', () => {
+  it('creates a goal list with members and scopes goals to it', async () => {
+    const list = await call('POST', '/api/goal-lists', kevin, { name: 'Family', emoji: '🏡', memberIds: [kevinId] })
+    expect(list.statusCode).toBe(201)
+    const listId = JSON.parse(list.body).list.id
+
+    const lists = JSON.parse((await call('GET', '/api/goal-lists', kevin)).body).lists
+    const fam = lists.find((l: { id: string }) => l.id === listId)
+    expect(fam).toMatchObject({ name: 'Family', goalCount: 0 })
+    expect(fam.members[0]).toMatchObject({ name: 'Kevin' })
+
+    await call('POST', '/api/goals', kevin, { title: 'In list', goalListId: listId, goalType: 'count', trackingMode: 'shared_total', targetValue: 5 })
+    await call('POST', '/api/goals', kevin, { title: 'No list', goalType: 'count', trackingMode: 'shared_total', targetValue: 5 })
+
+    const scoped = JSON.parse((await call('GET', `/api/goals?listId=${listId}`, kevin)).body).goals
+    expect(scoped.map((g: { title: string }) => g.title)).toEqual(['In list'])
+    expect(JSON.parse((await call('GET', '/api/goal-lists', kevin)).body).lists.find((l: { id: string }) => l.id === listId).goalCount).toBe(1)
+  })
+
+  it('returns a goal detail with milestones, recent activity, and totals', async () => {
+    const add = await call('POST', '/api/goals', kevin, {
+      title: '1,000 Hours Outside', goalType: 'total', unit: 'hours', targetValue: 1000,
+      trackingMode: 'shared_total', isFeatured: true, hasRewards: true, participantIds: [kevinId],
+      milestones: [
+        { threshold: 250, emoji: '🌱', label: '250 hrs', rewardText: '+25 stars' },
+        { threshold: 500, emoji: '⛺', label: '500 hrs', rewardText: 'Movie night' },
+      ],
+    })
+    const id = JSON.parse(add.body).goal.id
+    await call('POST', `/api/goals/${id}/log`, kevin, { amount: 300, personId: kevinId, note: 'Creek hike' })
+
+    const detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail).toMatchObject({ title: '1,000 Hours Outside', totalProgress: 300, target: 1000, thisWeek: 300 })
+    expect(detail.milestones).toHaveLength(2)
+    expect(detail.milestones[0]).toMatchObject({ label: '250 hrs', reached: true })
+    expect(detail.milestones[1]).toMatchObject({ label: '500 hrs', reached: false })
+    expect(detail.recent[0]).toMatchObject({ amount: 300, note: 'Creek hike', name: 'Kevin' })
+    expect(detail.streakDays).toBe(1)
+    expect(detail.milestoneReached).toBe(1)
+
+    expect((await call('GET', '/api/goals/00000000-0000-0000-0000-000000000000', kevin)).statusCode).toBe(404)
+  })
+
+  it('validates goal-list create input (400)', async () => {
+    expect((await call('POST', '/api/goal-lists', kevin, {})).statusCode).toBe(400)
+  })
+})
