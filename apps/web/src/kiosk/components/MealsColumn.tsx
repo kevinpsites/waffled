@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Icon } from '../icons'
+import { RecipeModal } from './RecipeModal'
 import { api, useMealsWeek, localToday, type WeekEntry, type MealRecipe } from '../../lib/api'
 
 function dayAbbrev(dateStr: string): string {
@@ -9,6 +10,7 @@ function dayAbbrev(dateStr: string): string {
 function TonightCard({ recipe, recipeId }: { recipe: MealRecipe; recipeId: string | null }) {
   const [status, setStatus] = useState<'idle' | 'adding' | 'added'>('idle')
   const [added, setAdded] = useState(0)
+  const [showRecipe, setShowRecipe] = useState(false)
 
   async function toList() {
     if (!recipeId || status === 'adding') return
@@ -46,9 +48,16 @@ function TonightCard({ recipe, recipeId }: { recipe: MealRecipe; recipeId: strin
         <div style={{ display: 'flex', gap: 9, paddingTop: 13 }}>
           <button
             className="btn btn-ghost"
-            disabled
-            title="Recipe view — coming soon"
-            style={{ flex: 1, justifyContent: 'center', fontSize: 14, padding: 10, opacity: 0.5, cursor: 'not-allowed' }}
+            onClick={() => setShowRecipe(true)}
+            disabled={!recipeId}
+            style={{
+              flex: 1,
+              justifyContent: 'center',
+              fontSize: 14,
+              padding: 10,
+              cursor: recipeId ? 'pointer' : 'default',
+              opacity: recipeId ? 1 : 0.5,
+            }}
           >
             View recipe
           </button>
@@ -71,6 +80,7 @@ function TonightCard({ recipe, recipeId }: { recipe: MealRecipe; recipeId: strin
           </button>
         </div>
       </div>
+      {showRecipe && recipeId && <RecipeModal recipeId={recipeId} onClose={() => setShowRecipe(false)} />}
     </div>
   )
 }

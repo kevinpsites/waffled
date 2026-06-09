@@ -92,6 +92,59 @@ export const api = {
   deleteItem: (id: string) => apiDelete(`/api/list-items/${id}`),
   groceryFromRecipe: (recipeId: string) =>
     apiSend<{ added: number }>('POST', `/api/lists/grocery/from-recipe/${recipeId}`),
+  recipe: (id: string) =>
+    apiGet<{ recipe: RecipeDetail; ingredients: RecipeIngredient[] }>(`/api/recipes/${id}`),
+}
+
+export interface RecipeDetail {
+  id: string
+  title: string
+  emoji: string | null
+  description: string | null
+  prepTimeMinutes: number | null
+  cookTimeMinutes: number | null
+  servings: number
+  sourceName: string | null
+}
+
+export interface RecipeIngredient {
+  id: string
+  name: string
+  amount: number | null
+  unit: string | null
+  prepNote: string | null
+  display: string | null
+  section: string | null
+  sortOrder: number | null
+}
+
+export interface RecipeState {
+  recipe: RecipeDetail | null
+  ingredients: RecipeIngredient[]
+  loading: boolean
+  error: boolean
+}
+
+export function useRecipe(id: string | null): RecipeState {
+  const [state, setState] = useState<RecipeState>({
+    recipe: null,
+    ingredients: [],
+    loading: true,
+    error: false,
+  })
+  useEffect(() => {
+    if (!id) return
+    let alive = true
+    setState((s) => ({ ...s, loading: true }))
+    api
+      .recipe(id)
+      .then((d) => alive && setState({ recipe: d.recipe, ingredients: d.ingredients, loading: false, error: false }))
+      .catch(() => alive && setState({ recipe: null, ingredients: [], loading: false, error: true }))
+    return () => {
+      alive = false
+    }
+  }, [id])
+  return state
 }
 
 export interface PersonsState {
