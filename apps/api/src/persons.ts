@@ -1,11 +1,12 @@
 // Members (persons) CRUD, always scoped to the caller's household.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from './db'
-import { requireTenant, requireAdmin, presentPerson, type PersonRow } from './households'
+import { requireTenant, requireAdmin, presentPerson, presentHousehold, type PersonRow, type HouseholdRow } from './households'
 
 type Api = ReturnType<typeof createAPI>
 
 const MEMBER_TYPES = new Set(['adult', 'teen', 'kid'])
+const WEEK_STARTS = new Set(['sunday', 'monday'])
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // camelCase API field → persons column. Anything not here can't be patched.
@@ -122,7 +123,66 @@ export async function softDeletePerson(householdId: string, id: string): Promise
   return rowCount ? 'deleted' : 'not_found'
 }
 
+// Household + members, enriched for the Settings screen: each member carries a
+// derived `hasLogin` (has an identity) and `isOwner` flag.
+export async function householdSettings(householdId: string) {
+  const h = (await query<HouseholdRow>(`select * from households where id = $1`, [householdId])).rows[0]
+  const { rows } = await query<PersonRow & { has_login: boolean }>(
+    `select p.*,
+            exists(select 1 from identities i where i.person_id = p.id and i.deleted_at is null) as has_login
+       from persons p
+      where p.household_id = $1 and p.deleted_at is null
+      order by p.sort_order, p.created_at`,
+    [householdId]
+  )
+  const members = rows.map((r) => ({ ...presentPerson(r), hasLogin: r.has_login, isOwner: r.id === h.owner_person_id }))
+  return { household: presentHousehold(h), members }
+}
+
+const HOUSEHOLD_COLUMNS: Record<string, string> = { name: 'name', timezone: 'timezone', weekStart: 'week_start' }
+
+export async function updateHousehold(householdId: string, patch: Record<string, unknown>): Promise<HouseholdRow | null> {
+  const sets: string[] = []
+  const values: unknown[] = []
+  let i = 1
+  for (const [field, column] of Object.entries(HOUSEHOLD_COLUMNS)) {
+    if (field in patch && patch[field] !== undefined) {
+      sets.push(`${column} = $${i++}`)
+      values.push(patch[field])
+    }
+  }
+  if (sets.length === 0) {
+    const { rows } = await query<HouseholdRow>(`select * from households where id = $1`, [householdId])
+    return rows[0] ?? null
+  }
+  values.push(householdId)
+  const { rows } = await query<HouseholdRow>(`update households set ${sets.join(', ')} where id = $${i} returning *`, values)
+  return rows[0] ?? null
+}
+
 export function registerPersonRoutes(api: Api): void {
+  // Household settings: the household + its members (with login/owner flags).
+  api.get('/api/household/settings', async (req: Request) => {
+    const tenant = await requireTenant(req)
+    return householdSettings(tenant.householdId)
+  })
+
+  // Edit household basics (admins only): name / timezone / week start.
+  api.patch('/api/household', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const patch = (req.body ?? {}) as Record<string, unknown>
+    if (patch.weekStart !== undefined && !WEEK_STARTS.has(String(patch.weekStart))) {
+      return res.status(400).json({ error: 'BadRequest', message: 'weekStart must be sunday|monday' })
+    }
+    if (!Object.keys(HOUSEHOLD_COLUMNS).some((f) => f in patch)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields provided' })
+    }
+    const h = await updateHousehold(tenant.householdId, patch)
+    if (!h) return res.status(404).json({ error: 'NotFound', message: 'household not found' })
+    return { household: presentHousehold(h) }
+  })
+
   // List everyone in the household (any member may read).
   api.get('/api/persons', async (req: Request) => {
     const tenant = await requireTenant(req)

@@ -32,7 +32,14 @@ export interface PersonRow extends QueryResultRow {
   is_admin: boolean
   avatar_type: string
   avatar_emoji: string | null
+  avatar_url: string | null
   color_hex: string | null
+  palette_slot: string | null
+  birthday: string | null
+  dietary_notes: string | null
+  reward_style: string
+  show_on_kiosk: boolean
+  sort_order: number
   created_at: Date
 }
 
@@ -149,7 +156,14 @@ export function presentPerson(p: PersonRow) {
     name: p.name,
     memberType: p.member_type,
     isAdmin: p.is_admin,
+    avatarType: p.avatar_type,
     avatarEmoji: p.avatar_emoji,
+    avatarUrl: p.avatar_url ?? null,
     colorHex: p.color_hex,
+    paletteSlot: p.palette_slot ?? null,
+    birthday: p.birthday ?? null,
+    dietaryNotes: p.dietary_notes ?? null,
+    rewardStyle: p.reward_style ?? 'stars',
+    showOnKiosk: p.show_on_kiosk ?? true,
   }
 }
