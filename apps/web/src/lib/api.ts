@@ -95,6 +95,11 @@ export const api = {
     apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/complete`),
   uncompleteInstance: (id: string) =>
     apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/uncomplete`),
+  createChore: (input: { title: string; personId?: string | null; emoji?: string | null; rewardAmount?: number }) =>
+    apiSend<{ chore: { id: string } }>('POST', '/api/chores', input),
+  updateChore: (id: string, patch: Record<string, unknown>) =>
+    apiSend<{ chore: { id: string } }>('PATCH', `/api/chores/${id}`, patch),
+  deleteChore: (id: string) => apiDelete(`/api/chores/${id}`),
   grocery: () => apiGet<{ items: GroceryItem[] }>('/api/lists/grocery'),
   addGroceryItem: (name: string) =>
     apiSend<{ item: GroceryItem }>('POST', '/api/lists/grocery/items', { name }).then((r) => r.item),
@@ -226,6 +231,7 @@ export function localToday(): string {
 
 export interface ChoreInstance {
   id: string
+  choreId: string
   choreTitle: string
   emoji: string | null
   personId: string | null
@@ -320,12 +326,14 @@ export interface InstancesState {
   loading: boolean
   error: boolean
   setDone: (id: string, done: boolean) => Promise<void>
+  refetch: () => void
 }
 
 export function useTodayInstances(): InstancesState {
   const [instances, setInstances] = useState<ChoreInstance[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [nonce, setNonce] = useState(0)
 
   useEffect(() => {
     let alive = true
@@ -346,7 +354,7 @@ export function useTodayInstances(): InstancesState {
     return () => {
       alive = false
     }
-  }, [])
+  }, [nonce])
 
   async function setDone(id: string, done: boolean): Promise<void> {
     let snapshot: ChoreInstance[] = []
@@ -361,7 +369,7 @@ export function useTodayInstances(): InstancesState {
     }
   }
 
-  return { instances, loading, error, setDone }
+  return { instances, loading, error, setDone, refetch: () => setNonce((n) => n + 1) }
 }
 
 export interface GroceryState {
