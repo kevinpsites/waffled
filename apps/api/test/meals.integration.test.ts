@@ -162,3 +162,50 @@ describe('recipes api', () => {
     ).toBe(404)
   })
 })
+
+describe('meal planning api', () => {
+  let recipeId = ''
+
+  beforeAll(async () => {
+    const r = await call('POST', '/api/recipes', kevin, {
+      title: 'Chorizo Tacos',
+      emoji: '🌮',
+      cookTimeMinutes: 30,
+      servings: 4,
+    })
+    recipeId = JSON.parse(r.body).recipe.id
+  })
+
+  it('400 without date or mealType', async () => {
+    expect((await call('POST', '/api/meals/plan', kevin, { recipeId })).statusCode).toBe(400)
+  })
+
+  it('plans a dinner and surfaces it in the week (joined to the recipe)', async () => {
+    const plan = await call('POST', '/api/meals/plan', kevin, {
+      date: '2026-06-09',
+      mealType: 'dinner',
+      recipeId,
+    })
+    expect([200, 201]).toContain(plan.statusCode)
+    expect(JSON.parse(plan.body).entry).toMatchObject({ date: '2026-06-09', mealType: 'dinner' })
+
+    const week = JSON.parse((await call('GET', '/api/meals/week?start=2026-06-08', kevin)).body)
+    const tue = week.entries.find(
+      (e: { date: string; mealType: string }) => e.date === '2026-06-09' && e.mealType === 'dinner'
+    )
+    expect(tue.recipe).toMatchObject({ title: 'Chorizo Tacos', emoji: '🌮' })
+  })
+
+  it('upserts — re-planning the same slot replaces, not duplicates', async () => {
+    const r2 = await call('POST', '/api/recipes', kevin, { title: 'Madras Lentils', emoji: '🍛' })
+    const r2id = JSON.parse(r2.body).recipe.id
+    await call('POST', '/api/meals/plan', kevin, { date: '2026-06-09', mealType: 'dinner', recipeId: r2id })
+
+    const week = JSON.parse((await call('GET', '/api/meals/week?start=2026-06-08', kevin)).body)
+    const dinners = week.entries.filter(
+      (e: { date: string; mealType: string }) => e.date === '2026-06-09' && e.mealType === 'dinner'
+    )
+    expect(dinners).toHaveLength(1)
+    expect(dinners[0].recipe.title).toBe('Madras Lentils')
+  })
+})
