@@ -40,7 +40,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] W2c-meals Meal card real (tonight + this week's dinners, from /api/meals/week)
 - [x] W2c-agenda Agenda card real (today's events, per-person color) + Calendar month-grid screen
 - [x] W2c **All four Today cards live** (agenda · meals · chores · grocery). Kiosk surfaces: Today, Tasks, Calendar real; Goals/Lists/Photos/Settings still placeholders
-- [x] W2c-event-create Calendar self-serve: create single events from the kiosk (day-click / New → modal → POST). Recurrence + AI capture still to come
+- [x] W2c-event-create Calendar self-serve: create/edit/delete single events from the kiosk (day-click / New / click an event → modal; PATCH/DELETE) with **multiple participants** (event_participants; date night = Kevin+Kelly, stacked avatars). Recurrence + AI capture still to come
 - [ ] W3 Next surfaces (Lists / Meals planning / Recipes / Settings screens); real device pairing (3.3) replaces the dev token
 - [ ] W3 Web management dashboard (full SPA: setup, calendar, lists, …) — grows alongside the backend domains
 
