@@ -389,3 +389,110 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== Goal detail ("Shared total / 1000 Hours detail") ===== */
+.goal-detail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 6px 30px 24px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.detail-hero {
+  padding: 24px 30px;
+}
+.detail-hero-row {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+  position: relative;
+  z-index: 1;
+  flex-wrap: wrap;
+}
+.detail-hero-title {
+  font-size: 32px;
+  font-weight: 600;
+  margin: 9px 0 4px;
+}
+.detail-hero-sub {
+  font-size: 13.5px;
+  opacity: 0.9;
+  font-weight: 600;
+}
+.detail-week {
+  align-self: flex-start;
+  text-align: right;
+}
+.detail-week-l {
+  font-size: 12px;
+  opacity: 0.85;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.detail-week-n {
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 600;
+}
+.detail-cols {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+.detail-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.detail-card {
+  padding: 20px 22px;
+}
+.detail-card .card-h {
+  font-size: 17px;
+}
+.detail-hours-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--hair-2);
+}
+.detail-hours-name {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.detail-hours-bar {
+  flex: 2;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.detail-hours-bar > div {
+  height: 100%;
+  border-radius: 99px;
+}
+.detail-hours-val {
+  width: 64px;
+  text-align: right;
+  font-weight: 700;
+}
+@media (max-width: 1000px) {
+  .detail-cols {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 720px) {
+  .goal-detail {
+    padding: 6px 16px 20px;
+  }
+  .detail-hero {
+    padding: 20px;
+  }
+}
