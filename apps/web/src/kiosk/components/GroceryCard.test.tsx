@@ -29,6 +29,11 @@ function mockGrocery(initial: Array<Partial<Item>>) {
       items = items.map((i) => (i.id === id ? { ...i, checked: b.checked } : i))
       return ok({ item: items.find((i) => i.id === id) })
     }
+    if (u.includes('/api/list-items/') && method === 'DELETE') {
+      const id = u.split('/').pop()
+      items = items.filter((i) => i.id !== id)
+      return { ok: true, status: 204, json: async () => ({}) }
+    }
     return { ok: false, status: 404, json: async () => ({}) }
   }) as unknown as typeof fetch
 }
@@ -58,5 +63,14 @@ describe('GroceryCard', () => {
     fireEvent.change(input, { target: { value: 'Bread' } })
     fireEvent.submit(input.closest('form')!)
     expect(await screen.findByText('Bread')).toBeInTheDocument()
+  })
+
+  it('removes an item via the delete button', async () => {
+    mockGrocery([{ name: 'Milk' }, { name: 'Eggs' }])
+    render(<GroceryCard />)
+    await screen.findByText('Milk')
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Milk' }))
+    await waitFor(() => expect(screen.queryByText('Milk')).not.toBeInTheDocument())
+    expect(screen.getByText('Eggs')).toBeInTheDocument()
   })
 })

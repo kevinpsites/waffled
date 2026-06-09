@@ -35,6 +35,12 @@ async function apiSend<T>(method: string, path: string, body?: unknown): Promise
   return res.json() as Promise<T>
 }
 
+async function apiDelete(path: string): Promise<void> {
+  const t = token()
+  const res = await fetch(path, { method: 'DELETE', headers: t ? { authorization: `Bearer ${t}` } : {} })
+  if (!res.ok) throw new Error(`DELETE ${path} -> ${res.status}`)
+}
+
 export interface Person {
   id: string
   name: string
@@ -58,6 +64,7 @@ export const api = {
     apiSend<{ item: GroceryItem }>('POST', '/api/lists/grocery/items', { name }).then((r) => r.item),
   setItemChecked: (id: string, checked: boolean) =>
     apiSend<{ item: GroceryItem }>('PATCH', `/api/list-items/${id}`, { checked }).then((r) => r.item),
+  deleteItem: (id: string) => apiDelete(`/api/list-items/${id}`),
 }
 
 export interface PersonsState {
@@ -87,6 +94,7 @@ export interface GroceryState {
   error: boolean
   add: (name: string) => Promise<void>
   toggle: (id: string, checked: boolean) => Promise<void>
+  remove: (id: string) => Promise<void>
 }
 
 export function useGrocery(): GroceryState {
@@ -130,5 +138,19 @@ export function useGrocery(): GroceryState {
     }
   }
 
-  return { items, loading, error, add, toggle }
+  // Optimistic removal; restore on failure.
+  async function remove(id: string): Promise<void> {
+    let snapshot: GroceryItem[] = []
+    setItems((prev) => {
+      snapshot = prev
+      return prev.filter((i) => i.id !== id)
+    })
+    try {
+      await api.deleteItem(id)
+    } catch {
+      setItems(snapshot)
+    }
+  }
+
+  return { items, loading, error, add, toggle, remove }
 }

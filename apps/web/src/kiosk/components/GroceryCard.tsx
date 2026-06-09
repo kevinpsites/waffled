@@ -5,7 +5,7 @@ import { useGrocery } from '../../lib/api'
 // Real, interactive grocery list: tap to check off, type to add. Backed by
 // /api/lists/grocery.
 export function GroceryCard() {
-  const { items, loading, error, add, toggle } = useGrocery()
+  const { items, loading, error, add, toggle, remove } = useGrocery()
   const [draft, setDraft] = useState('')
 
   async function submit(e: FormEvent) {
@@ -35,37 +35,46 @@ export function GroceryCard() {
       )}
 
       {items.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          className="gitem"
-          onClick={() => toggle(item.id, !item.checked)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            marginBottom: 7,
-            background: 'none',
-            border: 0,
-            padding: 0,
-            width: '100%',
-            textAlign: 'left',
-            font: 'inherit',
-            cursor: 'pointer',
-          }}
-        >
-          <span className={`gcheck ${item.checked ? 'on' : ''}`} />
-          <span
+        <div key={item.id} className="gitem" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 7 }}>
+          <button
+            type="button"
+            onClick={() => toggle(item.id, !item.checked)}
+            aria-label={`Toggle ${item.name}`}
             style={{
-              fontSize: 14,
-              fontWeight: 600,
-              textDecoration: item.checked ? 'line-through' : 'none',
-              color: item.checked ? 'var(--ink-3)' : 'var(--ink)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              flex: 1,
+              minWidth: 0,
+              background: 'none',
+              border: 0,
+              padding: 0,
+              font: 'inherit',
+              textAlign: 'left',
+              cursor: 'pointer',
             }}
           >
-            {item.name}
-          </span>
-        </button>
+            <span className={`gcheck ${item.checked ? 'on' : ''}`} />
+            <span
+              style={{
+                fontSize: 14,
+                fontWeight: 600,
+                textDecoration: item.checked ? 'line-through' : 'none',
+                color: item.checked ? 'var(--ink-3)' : 'var(--ink)',
+              }}
+            >
+              {item.name}
+            </span>
+          </button>
+          <button
+            type="button"
+            className="gitem-del"
+            onClick={() => remove(item.id)}
+            aria-label={`Remove ${item.name}`}
+          >
+            ×
+          </button>
+        </div>
       ))}
 
       {!error && (
