@@ -1,0 +1,216 @@
+/* ===== Recipe detail (full page — "Recipe / Detail" mock) ===== */
+.recipe-detail {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1.15fr;
+  gap: 26px;
+  padding: 4px 30px 26px;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: start;
+}
+.rd-left,
+.rd-right {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rd-hero {
+  height: 220px;
+  border-radius: var(--r-xl);
+  background: linear-gradient(135deg, #f6caa6, #f3b98a);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  position: relative;
+}
+.rd-hero img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.rd-hero-emoji {
+  font-size: 72px;
+}
+.rd-title {
+  font-size: 34px;
+  font-weight: 600;
+  margin: 14px 0 6px;
+  letter-spacing: -0.01em;
+}
+.rd-meta {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-bottom: 16px;
+}
+
+/* ingredients card */
+.rd-ings {
+  padding: 20px 22px;
+}
+.rd-ings-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.rd-ings-head .card-h {
+  font-size: 19px;
+}
+.rd-servings {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border-radius: 999px;
+  padding: 5px 8px 5px 14px;
+}
+.rd-servings button {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: var(--sh-1);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ink);
+}
+.rd-sv-n {
+  font-weight: 800;
+  min-width: 18px;
+  text-align: center;
+}
+.ring-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--hair-2);
+  cursor: pointer;
+}
+.ring-row:last-child {
+  border-bottom: 0;
+}
+.ring-ck {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  border: 2px solid var(--hair);
+  background: #fff;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+}
+.ring-row.on .ring-ck {
+  background: var(--wally);
+  border-color: var(--wally);
+}
+.ring-amt {
+  width: 92px;
+  flex: none;
+  font-weight: 700;
+  font-size: 15px;
+}
+.ring-name {
+  font-size: 15px;
+  min-width: 0;
+}
+.ring-row.on .ring-name,
+.ring-row.on .ring-amt {
+  color: var(--ink-3);
+  text-decoration: line-through;
+}
+
+/* on-hand banner */
+.rd-onhand {
+  display: flex;
+  gap: 13px;
+  align-items: flex-start;
+  padding: 16px 18px;
+  border-radius: var(--r-lg);
+  background: linear-gradient(120deg, #efeafc, #f4eefe);
+  margin-bottom: 16px;
+}
+.rd-onhand .ai-spark {
+  width: 36px;
+  height: 36px;
+  flex: none;
+}
+.rd-onhand-t {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--ai);
+  margin-bottom: 2px;
+}
+
+/* method + per-step ingredients */
+.rd-method {
+  padding: 22px 24px;
+  flex: 1;
+}
+.rd-method .card-h {
+  font-size: 19px;
+}
+.rd-step {
+  display: flex;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--hair-2);
+}
+.rd-step:last-child {
+  border-bottom: 0;
+}
+.rd-step-n {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--panel);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink-2);
+  flex: none;
+}
+.rd-step-body {
+  min-width: 0;
+}
+.rd-step-t {
+  font-size: 15.5px;
+  line-height: 1.5;
+}
+.rd-step-ings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+.rd-step-chip {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--wally-t);
+  color: #167a4a;
+}
+
+@media (max-width: 1000px) {
+  .recipe-detail {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 720px) {
+  .recipe-detail {
+    padding: 4px 16px 20px;
+  }
+}

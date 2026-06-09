@@ -81,6 +81,7 @@ export interface RecipeIngredient {
 export interface RecipeStep {
   stepNumber: number
   instruction: string
+  ingredients: string[]
 }
 
 export const mealsApi = {

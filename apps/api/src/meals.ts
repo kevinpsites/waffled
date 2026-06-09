@@ -157,14 +157,17 @@ export function presentIngredient(i: RecipeIngredientRow) {
   }
 }
 
-export async function listSteps(householdId: string, recipeId: string): Promise<Array<{ stepNumber: number; instruction: string }>> {
-  const { rows } = await query<{ step_number: number; instruction: string }>(
-    `select step_number, instruction from recipe_steps
+export async function listSteps(
+  householdId: string,
+  recipeId: string
+): Promise<Array<{ stepNumber: number; instruction: string; ingredients: string[] }>> {
+  const { rows } = await query<{ step_number: number; instruction: string; ingredients: string[] | null }>(
+    `select step_number, instruction, ingredients from recipe_steps
        where household_id = $1 and recipe_id = $2 and deleted_at is null
        order by step_number`,
     [householdId, recipeId]
   )
-  return rows.map((r) => ({ stepNumber: r.step_number, instruction: r.instruction }))
+  return rows.map((r) => ({ stepNumber: r.step_number, instruction: r.instruction, ingredients: r.ingredients ?? [] }))
 }
 
 export function presentRecipe(r: RecipeRow) {

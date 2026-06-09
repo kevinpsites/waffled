@@ -116,7 +116,7 @@ interface ParsedRecipe {
   notes: string | null
   sourceName: string | null
   ingredients: ParsedIng[]
-  steps: string[]
+  steps: Array<{ text: string; ingredients: string[] }>
   markdown: string
 }
 
@@ -160,15 +160,23 @@ function parseRecipe(md: string): ParsedRecipe {
     if (bullet) ingredients.push(parseIngredient(bullet[1], section))
   }
 
-  // ## Instructions → numbered steps (top-level "1." lines; ignore nested ingredient bullets)
-  const steps: string[] = []
+  // ## Instructions → numbered steps, each with its own per-step ingredient list
+  // (the "**Ingredients:**" sub-block). REQUIRED to keep.
+  const steps: Array<{ text: string; ingredients: string[] }> = []
   const insSection = /##\s+Instructions\s*\n([\s\S]*?)(?=\n##\s|\n*$)/i.exec(body)?.[1] ?? ''
   for (const block of insSection.split(/\n(?=\d+\.\s)/)) {
-    const m = /^\s*\d+\.\s+([\s\S]*?)(?=\n\s*\*\*Ingredients|\s*$)/.exec(block)
-    if (m) {
-      const text = m[1].replace(/\s+/g, ' ').trim()
-      if (text) steps.push(text)
+    const num = /^\s*\d+\.\s+([\s\S]*)$/.exec(block)
+    if (!num) continue
+    const [textPart, ingPart] = num[1].split(/\*\*\s*Ingredients?:?\s*\*\*/i)
+    const text = textPart.replace(/\s+/g, ' ').trim()
+    const ings: string[] = []
+    if (ingPart) {
+      for (const line of ingPart.split('\n')) {
+        const bl = /^\s*[-*]\s+(.+)$/.exec(line)
+        if (bl) ings.push(bl[1].trim())
+      }
     }
+    if (text) steps.push({ text, ingredients: ings })
   }
 
   // ## Notes → notes + source
@@ -197,22 +205,33 @@ async function importRecipe(householdId: string, r: ParsedRecipe): Promise<void>
   const client = await getPool().connect()
   try {
     await client.query('begin')
-    // replace an existing recipe of the same title (idempotent re-run)
-    const existing = await client.query<{ id: string }>(
-      `select id from recipes where household_id=$1 and lower(title)=lower($2) and deleted_at is null`,
-      [householdId, r.title]
-    )
-    for (const e of existing.rows) {
-      await client.query(`delete from recipe_ingredients where recipe_id=$1`, [e.id])
-      await client.query(`delete from recipe_steps where recipe_id=$1`, [e.id])
-      await client.query(`delete from recipes where id=$1`, [e.id])
+    // update an existing recipe in place (its id may be referenced by a planned
+    // meal, so we can't delete it) or insert a new one — idempotent re-run.
+    const existing = (
+      await client.query<{ id: string }>(
+        `select id from recipes where household_id=$1 and lower(title)=lower($2) and deleted_at is null`,
+        [householdId, r.title]
+      )
+    ).rows[0]
+    let recipeId: string
+    if (existing) {
+      recipeId = existing.id
+      await client.query(
+        `update recipes set title=$3, emoji=$4, description=$5, category='dinner', tags=$6, servings=$7,
+                notes=$8, source_type='markdown_import', source_name=$9, source_markdown=$10, updated_at=now()
+           where id=$1 and household_id=$2`,
+        [recipeId, householdId, r.title, r.emoji, r.description, r.tags, r.servings, r.notes, r.sourceName, r.markdown]
+      )
+      await client.query(`delete from recipe_ingredients where recipe_id=$1`, [recipeId])
+      await client.query(`delete from recipe_steps where recipe_id=$1`, [recipeId])
+    } else {
+      const ins = await client.query<{ id: string }>(
+        `insert into recipes (household_id, title, emoji, description, category, tags, servings, notes, source_type, source_name, source_markdown)
+         values ($1,$2,$3,$4,'dinner',$5,$6,$7,'markdown_import',$8,$9) returning id`,
+        [householdId, r.title, r.emoji, r.description, r.tags, r.servings, r.notes, r.sourceName, r.markdown]
+      )
+      recipeId = ins.rows[0].id
     }
-    const ins = await client.query<{ id: string }>(
-      `insert into recipes (household_id, title, emoji, description, category, tags, servings, notes, source_type, source_name, source_markdown)
-       values ($1,$2,$3,$4,'dinner',$5,$6,$7,'markdown_import',$8,$9) returning id`,
-      [householdId, r.title, r.emoji, r.description, r.tags, r.servings, r.notes, r.sourceName, r.markdown]
-    )
-    const recipeId = ins.rows[0].id
     let order = 0
     for (const ig of r.ingredients) {
       await client.query(
@@ -224,8 +243,8 @@ async function importRecipe(householdId: string, r: ParsedRecipe): Promise<void>
     let stepNo = 1
     for (const s of r.steps) {
       await client.query(
-        `insert into recipe_steps (household_id, recipe_id, step_number, instruction) values ($1,$2,$3,$4)`,
-        [householdId, recipeId, stepNo++, s]
+        `insert into recipe_steps (household_id, recipe_id, step_number, instruction, ingredients) values ($1,$2,$3,$4,$5)`,
+        [householdId, recipeId, stepNo++, s.text, JSON.stringify(s.ingredients)]
       )
     }
     await client.query('commit')

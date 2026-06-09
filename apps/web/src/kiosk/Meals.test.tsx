@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Routes, Route } from 'react-router'
 import { Meals } from './Meals'
 import { TopbarSlotProvider, useTopbarSlots } from './topbar-slot'
 
@@ -157,21 +157,20 @@ describe('Meals weekly planner', () => {
     expect(planned[0]).toMatchObject({ mealType: 'dinner', recipeId: 'r1' })
   })
 
-  it('opens the recipe modal when tapping a planned meal', async () => {
+  it('navigates to the recipe detail when tapping a planned meal', async () => {
     mockApi({ entries: [entry(wed, 'dinner', ravioli)], recipes: [ravioli] })
-    // recipe detail fetch for the modal
-    const realFetch = globalThis.fetch as unknown as (u: string, i?: { method?: string }) => Promise<unknown>
-    globalThis.fetch = vi.fn(async (url: string, init?: { method?: string }) => {
-      const u = String(url)
-      if (/\/api\/recipes\/r1$/.test(u)) {
-        return { ok: true, json: async () => ({ recipe: { ...ravioli }, ingredients: [] }) }
-      }
-      return realFetch(u, init)
-    }) as unknown as typeof fetch
-
-    renderMeals()
+    render(
+      <MemoryRouter initialEntries={['/meals']}>
+        <TopbarSlotProvider>
+          <Routes>
+            <Route path="/meals" element={<Meals />} />
+            <Route path="/meals/recipe/:id" element={<div>RECIPE DETAIL PAGE</div>} />
+          </Routes>
+        </TopbarSlotProvider>
+      </MemoryRouter>
+    )
     fireEvent.click(await screen.findByText('Ravioli & Sausage Bake'))
-    await waitFor(() => expect(document.querySelector('.modal-card')).toBeTruthy())
+    expect(await screen.findByText('RECIPE DETAIL PAGE')).toBeInTheDocument()
   })
 
   it('advances to next week via the nav arrow (refetches)', async () => {

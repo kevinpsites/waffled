@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { Icon } from './icons'
 import { RecipeModal } from './components/RecipeModal'
 import { useTopbarRight, useTopbarFull } from './topbar-slot'
@@ -98,6 +99,7 @@ function MealPicker({
   recipes,
   loading,
   onPick,
+  onView,
   onClose,
 }: {
   slot: MealType
@@ -105,6 +107,7 @@ function MealPicker({
   recipes: Recipe[]
   loading: boolean
   onPick?: (recipe: Recipe) => void
+  onView?: (recipe: Recipe) => void
   onClose: () => void
 }) {
   const browse = !onPick
@@ -168,7 +171,7 @@ function MealPicker({
           </div>
         )}
         {shown.map((r) => (
-          <div key={r.id} className="rc mp-card" role="button" tabIndex={0} onClick={() => setPreview(r)}>
+          <div key={r.id} className="rc mp-card" role="button" tabIndex={0} onClick={() => (onView ? onView(r) : setPreview(r))}>
             <div className={`rc-img ${gradClass(r)}`}>{r.emoji ?? '🍽️'}</div>
             <div className="rc-b" style={{ padding: '12px 14px 14px' }}>
               <div className="rc-t" style={{ fontSize: 16 }}>{r.title}</div>
@@ -177,7 +180,7 @@ function MealPicker({
                 {r.category && <span>{r.category}</span>}
               </div>
               <div className="mp-actions">
-                <button type="button" className="pill" onClick={(e) => { e.stopPropagation(); setPreview(r) }}>Preview</button>
+                <button type="button" className="pill" onClick={(e) => { e.stopPropagation(); onView ? onView(r) : setPreview(r) }}>View</button>
                 {onPick && (
                   <button type="button" className="pill btn-primary mp-select" onClick={(e) => { e.stopPropagation(); onPick(r) }}>Select</button>
                 )}
@@ -200,11 +203,11 @@ function MealPicker({
 }
 
 export function Meals() {
+  const navigate = useNavigate()
   const [start, setStart] = useState<Date>(() => weekStart(new Date()))
   const [filter, setFilter] = useState<'all' | 'dinner'>('all')
   const [picking, setPicking] = useState<{ date: string; mealType: MealType; dayLabel: string } | null>(null)
   const [browsing, setBrowsing] = useState(false)
-  const [openRecipeId, setOpenRecipeId] = useState<string | null>(null)
 
   const startStr = ymd(start)
   const { entries, refetch } = useMealsWeek(startStr)
@@ -274,6 +277,7 @@ export function Meals() {
         recipes={recipes}
         loading={recipesLoading}
         onPick={picking ? pick : undefined}
+        onView={browsing ? (r) => navigate(`/meals/recipe/${r.id}`) : undefined}
         onClose={() => {
           setPicking(null)
           setBrowsing(false)
@@ -301,7 +305,7 @@ export function Meals() {
             mealType={mealType}
             days={days}
             bySlot={bySlot}
-            onOpen={(id) => setOpenRecipeId(id)}
+            onOpen={(id) => navigate(`/meals/recipe/${id}`)}
             onAdd={(d) =>
               setPicking({
                 date: ymd(d),
@@ -313,8 +317,6 @@ export function Meals() {
           />
         ))}
       </div>
-
-      {openRecipeId && <RecipeModal recipeId={openRecipeId} onClose={() => setOpenRecipeId(null)} />}
     </div>
   )
 }
