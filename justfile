@@ -52,6 +52,23 @@ test:
 web:
     cd apps/web && npm run dev
 
+# seed a demo household + members and print a kiosk token (needs the stack up + migrated)
+seed:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    TOKEN=$({{compose}} run --rm --no-deps -T api node dist/mint-token.js --sub 'dev|demo')
+    curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+      -d '{"name":"Demo Family","timezone":"America/Chicago","person":{"name":"Kevin","avatarEmoji":"🐻","colorHex":"#2F7FED"}}' \
+      localhost:3000/api/households >/dev/null || true
+    for m in \
+      '{"name":"Kelly","memberType":"adult","isAdmin":true,"avatarEmoji":"🦊","colorHex":"#E0548B"}' \
+      '{"name":"Wally","memberType":"kid","avatarEmoji":"🐢","colorHex":"#25A368"}' \
+      '{"name":"Lottie","memberType":"kid","avatarEmoji":"🦄","colorHex":"#8A5CF0"}'; do
+      curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$m" localhost:3000/api/persons >/dev/null || true
+    done
+    echo "Seeded. In the kiosk browser console, run:"
+    echo "  localStorage.setItem('nook.token', '$TOKEN'); location.reload()"
+
 # DANGER: stop and wipe local volumes (destroys local db)
 nuke:
     {{compose}} down -v

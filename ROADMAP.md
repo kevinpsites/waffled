@@ -33,7 +33,9 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] W1a Web scaffold (Vite + React + TS) + kiosk shell: design system (nook.css) ported, 1280×800 scaling stage, nav rail + topbar (live clock) + AI capture bar
 - [x] W1b Kiosk **Today** dashboard: agenda · meals · family chores + grocery (design-faithful; placeholder data until each domain lands)
 - [x] W1c Served via Caddy in the stack (web build baked into the caddy image; SPA fallback; `/api` proxied). `just web` for Vite dev
-- [ ] W2 Kiosk reads **real** data: `/api/persons` → real family (avatars/colors); device/dev token; light up cards as domains land
+- [x] W2a Responsive layout (fills viewport, reflows 3→2→1 cols) + **working rail navigation** (routes; placeholders for not-yet-built screens)
+- [x] W2b Kiosk reads **real** data: `/api/persons` → real family on the Today dashboard (real names/avatars/colors, empty/sign-in states). Dev/kiosk token via localStorage/env; `just seed` for a demo household. *(Verified api→kiosk end-to-end with Playwright.)*
+- [ ] W2c Light up remaining cards as their domains land (calendar→agenda, chores→rings, meals→dinner, lists→grocery); real device pairing (3.3) replaces the dev token
 - [ ] W3 Web management dashboard (full SPA: setup, calendar, lists, …) — grows alongside the backend domains
 
 ## M3 — Identity & household
