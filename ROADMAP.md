@@ -63,7 +63,7 @@ agenda + range), kiosk agenda card + Calendar month-grid screen. Part 2 below is
 - [ ] 5.5 Calendar UI: kiosk/web Today + agenda + month; iOS agenda
 
 ## M6 — Feature modules (each a vertical slice)
-- [~] 6.1 Tasks / chores + stars: real api (chores, daily instances, append-only stars ledger, balances view) + kiosk Family-chores rings (Today) + interactive Tasks screen (complete/uncomplete → stars → rings move). Still to come: rrule beyond daily, up-for-grabs, photo/approval, streaks, add-chore UI
+- [~] 6.1 Tasks / chores + stars: real api (chores CRUD inc. edit/delete, daily instances, append-only stars ledger, balances view) + kiosk Family-chores rings (Today) + Tasks screen (complete + **add/edit/delete chores**, assign person + stars). Still to come: rrule beyond daily, up-for-grabs claim flow, photo/approval, streaks
 - [~] 6.2 Lists: grocery (real api: lists + list_items, get-or-create, add/check/delete) wired to the kiosk Grocery card (tap to check, type to add, persists) + **meal auto-build** (recipe ingredients → grocery, dedup). Custom lists + cross-card live refresh still to come
 - [~] 6.3 Meals / recipes: real api (recipes CRUD, meal_plans + entries, GET week, **structured ingredients**) + kiosk meal card (tonight + this week) + **recipe-detail modal** (View recipe) + **grocery auto-build** (To list). Still to come: recipe steps/cook-mode, AI "plan my week", Meals planning screen, markdown import
 - [ ] 6.4 Goals + rewards (ledgers, leaderboards, parent-approval redemption)
