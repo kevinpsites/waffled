@@ -496,3 +496,137 @@
     padding: 20px;
   }
 }
+
+/* ===== Log progress modal (handoff "Log time" capture) ===== */
+.log-quick {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+}
+.log-chip {
+  padding: 13px 0;
+  text-align: center;
+  border-radius: var(--r-md);
+  font-size: 15px;
+  font-weight: 700;
+  background: var(--panel);
+  color: var(--ink);
+  border: 0;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.log-chip.on {
+  background: var(--wally);
+  color: #fff;
+}
+.log-custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.log-custom input {
+  width: 90px;
+  font: inherit;
+  font-size: 15px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hair);
+  background: var(--card-2);
+}
+.log-who {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.log-person {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  position: relative;
+}
+.log-person .log-check {
+  position: absolute;
+  top: 30px;
+  right: -2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid var(--hair);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+}
+.log-person.on .av {
+  box-shadow: 0 0 0 2px var(--wally);
+}
+.log-note {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 15px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hair);
+  background: var(--card-2);
+}
+.log-acts {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: 9px;
+}
+.log-act {
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink-2);
+  border: 0;
+  cursor: pointer;
+}
+.log-act:hover {
+  background: var(--wally-t);
+  color: #167a4a;
+}
+
+/* milestone editor rows (create/edit) */
+.gc-memoji {
+  width: 46px;
+  text-align: center;
+  padding: 7px 4px;
+  flex: none;
+}
+.gc-mthresh {
+  width: 84px;
+  padding: 7px 10px;
+  flex: none;
+}
+.gc-mdel {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
+}
+.gc-mdel:hover {
+  background: var(--panel);
+  color: var(--primary);
+}
+.gc-addms {
+  align-self: flex-start;
+  font-size: 13.5px;
+  cursor: pointer;
+}

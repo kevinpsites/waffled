@@ -107,7 +107,7 @@ describe('Goals home (goal-lists model)', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Log hours/ }))
     const modal = document.querySelector('.modal-card') as HTMLElement
-    fireEvent.click(within(modal).getByRole('button', { name: 'Log it' }))
+    fireEvent.click(within(modal).getByRole('button', { name: /^Log \d/ }))
     await waitFor(() => expect(logged).toHaveLength(1))
     expect(logged[0]).toMatchObject({ amount: 1 })
   })

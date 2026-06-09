@@ -24,6 +24,7 @@ export function KioskRoutes() {
         <Route path="goals" element={<Goals />} />
         <Route path="goals/new" element={<GoalCreate />} />
         <Route path="goals/:id" element={<GoalDetail />} />
+        <Route path="goals/:id/edit" element={<GoalCreate />} />
         <Route path="meals" element={<Meals />} />
         <Route path="lists" element={<Lists />} />
         <Route path="photos" element={<Photos />} />

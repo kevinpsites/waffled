@@ -66,13 +66,14 @@ export function GoalDetail() {
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
         <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate('/goals')}>‹ Goals</button>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
+          <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(`/goals/${id}/edit`)}>Edit goal</button>
           <button className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => logRef.current()}>
             ＋ Log time
           </button>
         </div>
       </div>
     ),
-    [navigate]
+    [navigate, id]
   )
 
   if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>

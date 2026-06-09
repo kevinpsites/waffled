@@ -1,8 +1,9 @@
-import { useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
-import { api, useGoalLists, type GoalList } from '../lib/api'
+import { api, useGoalLists, useGoalDetail, type GoalList } from '../lib/api'
 import { CATEGORIES, CATEGORY_KEYS } from './categories'
+import { ListModal } from './components/ListModal'
 import './../styles/goals.css'
 
 const TYPES = [
@@ -17,6 +18,13 @@ const LOG_METHODS = [
   { key: 'auto_calendar', label: '📅 Auto from calendar ✦', tone: 'ai' },
   { key: 'check_off', label: '✅ Check off', tone: '' },
 ] as const
+
+type Milestone = { threshold: number; emoji: string; label: string; rewardText: string }
+const DEFAULT_MILESTONES: Milestone[] = [
+  { threshold: 250, emoji: '🌱', label: '250', rewardText: '+25 ★ bonus' },
+  { threshold: 500, emoji: '⛺', label: '500', rewardText: 'Family movie night' },
+  { threshold: 1000, emoji: '🏆', label: '1,000', rewardText: 'Big reward' },
+]
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -33,7 +41,11 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
 
 export function GoalCreate() {
   const navigate = useNavigate()
-  const { lists } = useGoalLists()
+  const { id } = useParams()
+  const editing = !!id
+  const { lists, refetch: refetchLists } = useGoalLists()
+  const { goal: editGoal } = useGoalDetail(id ?? null)
+
   const [form, setForm] = useState({
     title: '',
     goalListId: '' as string,
@@ -50,57 +62,82 @@ export function GoalCreate() {
     hasRewards: false,
     weeklyCheckIn: true,
   })
-  const [milestones, setMilestones] = useState<Array<{ threshold: number; emoji: string; label: string; rewardText: string }>>([
-    { threshold: 250, emoji: '🌱', label: '250', rewardText: '+25 ★ bonus' },
-    { threshold: 500, emoji: '⛺', label: '500', rewardText: 'Family movie night' },
-    { threshold: 1000, emoji: '🏆', label: '1,000', rewardText: 'Big reward' },
-  ])
+  const [milestones, setMilestones] = useState<Milestone[]>(DEFAULT_MILESTONES)
   const [saving, setSaving] = useState(false)
+  const [showListModal, setShowListModal] = useState(false)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
+
+  // prefill once when editing
+  const prefilled = useRef(false)
+  useEffect(() => {
+    if (!editing || prefilled.current || !editGoal) return
+    prefilled.current = true
+    setForm((f) => ({
+      ...f,
+      title: editGoal.title,
+      goalListId: editGoal.goalListId ?? '',
+      category: editGoal.category ?? 'physical',
+      trackingMode: editGoal.trackingMode === 'each_tracks' ? 'each_tracks' : 'shared_total',
+      goalType: (editGoal.goalType as (typeof TYPES)[number]['key']) ?? 'total',
+      target: editGoal.target ?? 1,
+      unit: editGoal.unit ?? '',
+      deadline: editGoal.deadline ?? '',
+      habitPeriod: editGoal.habitPeriod ?? 'week',
+      habitPerPeriod: editGoal.habitTargetPerPeriod ?? 5,
+      logMethod: (editGoal.logMethod as (typeof LOG_METHODS)[number]['key']) ?? 'quick_log',
+      isFeatured: editGoal.isFeatured,
+      hasRewards: editGoal.hasRewards,
+    }))
+    if (editGoal.milestones.length) {
+      setMilestones(editGoal.milestones.map((m) => ({ threshold: m.threshold, emoji: m.emoji ?? '⛳', label: m.label ?? String(m.threshold), rewardText: m.rewardText ?? '' })))
+    }
+  }, [editing, editGoal])
 
   const selectedList = useMemo(() => lists.find((l) => l.id === form.goalListId) ?? null, [lists, form.goalListId])
   const canSave = form.title.trim().length > 0 && !saving
 
-  // The "Create goal" button lives in the topbar (a separate subtree); call the
-  // latest submit through a ref so the stable topbar node always sees fresh state.
   const submitRef = useRef<() => void>(() => {})
-
   useTopbarFull(
     () => (
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
-        <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate('/goals')}>‹ Goals</button>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600 }}>New goal</div>
+        <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(editing ? `/goals/${id}` : '/goals')}>‹ {editing ? 'Goal' : 'Goals'}</button>
+        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600 }}>{editing ? 'Edit goal' : 'New goal'}</div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
-          <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate('/goals')}>Cancel</button>
-          <button className="pill btn-primary create-submit" style={{ color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => submitRef.current()}>Create goal</button>
+          <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(editing ? `/goals/${id}` : '/goals')}>Cancel</button>
+          <button className="pill btn-primary create-submit" style={{ color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => submitRef.current()}>{editing ? 'Save changes' : 'Create goal'}</button>
         </div>
       </div>
     ),
-    [navigate]
+    [navigate, editing, id]
   )
 
   async function submit() {
     if (!canSave) return
     setSaving(true)
+    const participantIds = selectedList ? selectedList.members.map((m) => m.personId) : editGoal?.participants.map((p) => p.personId) ?? []
+    const payload = {
+      title: form.title.trim(),
+      goalListId: form.goalListId || null,
+      category: form.category,
+      goalType: form.goalType,
+      unit: form.goalType === 'habit' ? null : form.unit.trim() || null,
+      targetValue: form.goalType === 'habit' ? form.habitPerPeriod : Number(form.target) || null,
+      habitPeriod: form.goalType === 'habit' ? form.habitPeriod : null,
+      habitTargetPerPeriod: form.goalType === 'habit' ? form.habitPerPeriod : null,
+      trackingMode: form.trackingMode,
+      logMethod: form.logMethod,
+      deadline: form.deadline || null,
+      isFeatured: form.isFeatured,
+      hasRewards: form.hasRewards,
+      participantIds,
+      milestones: form.hasRewards
+        ? milestones.map((m) => ({ threshold: Number(m.threshold) || 0, emoji: m.emoji, label: m.label || `${m.threshold}${form.unit ? ` ${form.unit}` : ''}`, rewardText: m.rewardText }))
+        : [],
+    }
     try {
-      await api.createGoal({
-        title: form.title.trim(),
-        goalListId: form.goalListId || null,
-        category: form.category,
-        goalType: form.goalType,
-        unit: form.goalType === 'habit' ? null : form.unit.trim() || null,
-        targetValue: form.goalType === 'habit' ? form.habitPerPeriod : Number(form.target) || null,
-        habitPeriod: form.goalType === 'habit' ? form.habitPeriod : null,
-        habitTargetPerPeriod: form.goalType === 'habit' ? form.habitPerPeriod : null,
-        trackingMode: form.trackingMode,
-        logMethod: form.logMethod,
-        deadline: form.deadline || null,
-        isFeatured: form.isFeatured,
-        hasRewards: form.hasRewards,
-        participantIds: selectedList?.members.map((m) => m.personId) ?? [],
-        milestones: form.hasRewards ? milestones.map((m) => ({ threshold: m.threshold, emoji: m.emoji, label: m.label, rewardText: m.rewardText })) : [],
-      })
-      navigate('/goals')
+      if (editing) await api.updateGoal(id!, payload)
+      else await api.createGoal(payload)
+      navigate(editing ? `/goals/${id}` : '/goals')
     } catch {
       setSaving(false)
     }
@@ -108,6 +145,8 @@ export function GoalCreate() {
   submitRef.current = submit
 
   const previewColor = form.trackingMode === 'each_tracks'
+  const setMs = (i: number, patch: Partial<Milestone>) => setMilestones((ms) => ms.map((m, j) => (j === i ? { ...m, ...patch } : m)))
+
   return (
     <div className="goal-create">
       {/* form */}
@@ -130,7 +169,7 @@ export function GoalCreate() {
                 </button>
               )
             })}
-            <button type="button" className="pill gc-chip" style={{ borderStyle: 'dashed' }} onClick={() => navigate('/goals')}>＋ New group</button>
+            <button type="button" className="pill gc-chip" style={{ borderStyle: 'dashed' }} onClick={() => setShowListModal(true)}>＋ New group</button>
           </div>
         </div>
 
@@ -267,7 +306,7 @@ export function GoalCreate() {
             <div className="gc-optic">🏆</div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 700 }}>Milestones &amp; rewards</div>
-              <div className="tiny muted" style={{ fontWeight: 600 }}>Bonus stars at {milestones.map((m) => m.label).join(' / ')}</div>
+              <div className="tiny muted" style={{ fontWeight: 600 }}>Bonus stars at custom thresholds</div>
             </div>
             <Toggle on={form.hasRewards} onClick={() => set('hasRewards', !form.hasRewards)} />
           </div>
@@ -286,11 +325,13 @@ export function GoalCreate() {
             <div className="flabel" style={{ margin: '2px 0 0' }}>Milestones &amp; rewards</div>
             {milestones.map((m, i) => (
               <div key={i} className="gc-mrow">
-                <div className="gc-optic">{m.emoji}</div>
-                <input className="gc-input gc-mlabel" value={m.label} onChange={(e) => setMilestones((ms) => ms.map((x, j) => (j === i ? { ...x, label: e.target.value, threshold: Number(e.target.value.replace(/[^0-9]/g, '')) || x.threshold } : x)))} />
-                <input className="gc-input gc-mreward" value={m.rewardText} onChange={(e) => setMilestones((ms) => ms.map((x, j) => (j === i ? { ...x, rewardText: e.target.value } : x)))} />
+                <input className="gc-input gc-memoji" value={m.emoji} onChange={(e) => setMs(i, { emoji: e.target.value })} maxLength={4} aria-label="emoji" />
+                <input className="gc-input gc-mthresh" type="number" value={m.threshold} onChange={(e) => setMs(i, { threshold: Number(e.target.value), label: e.target.value })} aria-label="threshold" />
+                <input className="gc-input gc-mreward" value={m.rewardText} onChange={(e) => setMs(i, { rewardText: e.target.value })} placeholder="reward" />
+                <button type="button" className="gc-mdel" aria-label="remove milestone" onClick={() => setMilestones((ms) => ms.filter((_, j) => j !== i))}>×</button>
               </div>
             ))}
+            <button type="button" className="btn btn-ghost gc-addms" onClick={() => setMilestones((ms) => [...ms, { threshold: 0, emoji: '🎯', label: '', rewardText: '' }])}>＋ Add milestone</button>
           </div>
         )}
 
@@ -298,6 +339,16 @@ export function GoalCreate() {
           Rewards are <b>off by default</b> — goals stay about growth, not points. Turn them on per goal when a little extra motivation helps.
         </div>
       </div>
+
+      {showListModal && (
+        <ListModal
+          onClose={() => setShowListModal(false)}
+          onCreated={(listId) => {
+            refetchLists()
+            set('goalListId', listId)
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { Icon } from './icons'
 import { LogModal } from './components/LogModal'
+import { ListModal } from './components/ListModal'
 import { useGoalLists, useGoals, type Goal, type GoalList, type GoalListMember, type GoalParticipant } from '../lib/api'
 import { useTopbarRight } from './topbar-slot'
 import { CATEGORIES } from './categories'
@@ -202,10 +203,11 @@ function GlistItem({ list, on, onClick }: { list: GoalList; on: boolean; onClick
 // Goals home — the goal-lists membership model (matches "Home / Family list").
 export function Goals() {
   const navigate = useNavigate()
-  const { lists, loading: listsLoading, error: listsError } = useGoalLists()
+  const { lists, loading: listsLoading, error: listsError, refetch: refetchLists } = useGoalLists()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'shared' | 'each'>('all')
   const [logging, setLogging] = useState<Goal | null>(null)
+  const [creatingList, setCreatingList] = useState(false)
 
   const shared = lists.filter((l) => l.members.length !== 1)
   const individual = lists.filter((l) => l.members.length === 1)
@@ -222,8 +224,9 @@ export function Goals() {
     [navigate]
   )
 
+  const isIndividual = (selected?.members.length ?? 0) === 1
   const visible = goals.filter(
-    (g) => filter === 'all' || (filter === 'shared' ? g.trackingMode === 'shared_total' : g.trackingMode === 'each_tracks')
+    (g) => isIndividual || filter === 'all' || (filter === 'shared' ? g.trackingMode === 'shared_total' : g.trackingMode === 'each_tracks')
   )
   const featured = visible.find((g) => g.isFeatured) ?? null
   const more = visible.filter((g) => g !== featured)
@@ -251,7 +254,7 @@ export function Goals() {
         {!listsLoading && lists.length === 0 && (
           <div className="tiny muted" style={{ padding: '4px 8px', fontWeight: 600 }}>No goal lists yet.</div>
         )}
-        <button type="button" className="btn btn-ghost rail-new-list" onClick={() => navigate('/goals/new')}>
+        <button type="button" className="btn btn-ghost rail-new-list" onClick={() => setCreatingList(true)}>
           <Icon name="plus" />
           New goal list
         </button>
@@ -266,11 +269,14 @@ export function Goals() {
               {selected ? `${selected.goalCount} goals · ${listSub(selected)}` : `${goals.length} goals`}
             </div>
           </div>
-          <div className="seg" style={{ marginLeft: 'auto' }}>
-            <button className={filter === 'all' ? 'on' : ''} onClick={() => setFilter('all')}>All</button>
-            <button className={filter === 'shared' ? 'on' : ''} onClick={() => setFilter('shared')}>Shared</button>
-            <button className={filter === 'each' ? 'on' : ''} onClick={() => setFilter('each')}>Each</button>
-          </div>
+          {/* All/Shared/Each only makes sense for multi-person lists */}
+          {(selected?.members.length ?? 0) !== 1 && (
+            <div className="seg" style={{ marginLeft: 'auto' }}>
+              <button className={filter === 'all' ? 'on' : ''} onClick={() => setFilter('all')}>All</button>
+              <button className={filter === 'shared' ? 'on' : ''} onClick={() => setFilter('shared')}>Shared</button>
+              <button className={filter === 'each' ? 'on' : ''} onClick={() => setFilter('each')}>Each</button>
+            </div>
+          )}
         </div>
 
         {featured && <Hero goal={featured} onLog={setLogging} onOpen={() => navigate(`/goals/${featured.id}`)} />}
@@ -294,6 +300,15 @@ export function Goals() {
       </div>
 
       {logging && <LogModal goal={logging} onClose={() => setLogging(null)} onSaved={refetch} onDeleted={refetch} />}
+      {creatingList && (
+        <ListModal
+          onClose={() => setCreatingList(false)}
+          onCreated={(listId) => {
+            refetchLists()
+            setSelectedId(listId)
+          }}
+        />
+      )}
     </div>
   )
 }
