@@ -54,9 +54,16 @@ export function RecipeDetail() {
     navigate(`/meals/recipes?${params}`)
   }
   const [cooked, setCooked] = useState(0)
+  const [notes, setNotes] = useState('')
   useEffect(() => {
-    if (recipe) setCooked(recipe.cookedCount)
+    if (recipe) {
+      setCooked(recipe.cookedCount)
+      setNotes(recipe.userNotes ?? '')
+    }
   }, [recipe])
+  function saveNotes() {
+    if (recipe && notes.trim() !== (recipe.userNotes ?? '')) mealsApi.updateRecipe(recipe.id, { userNotes: notes }).catch(() => {})
+  }
   function markCooked() {
     if (!recipe) return
     setCooked((c) => c + 1)
@@ -147,6 +154,23 @@ export function RecipeDetail() {
           {ingredients.map((ing) => (
             <IngredientRow key={ing.id} ing={ing} ratio={ratio} />
           ))}
+        </div>
+
+        <div className="card rd-notes">
+          <div className="card-h" style={{ fontSize: 16, marginBottom: 8 }}>📝 Your notes</div>
+          <textarea
+            className="rd-notes-input"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            onBlur={saveNotes}
+            placeholder="e.g. Sub chicken for the turkey · use less salt · doubles well. (Kept across re-imports.)"
+          />
+          {recipe.notes && (
+            <details className="rd-srcnotes">
+              <summary>Recipe notes (from the source)</summary>
+              <div className="tiny muted" style={{ whiteSpace: 'pre-wrap', marginTop: 6 }}>{recipe.notes}</div>
+            </details>
+          )}
         </div>
       </div>
 

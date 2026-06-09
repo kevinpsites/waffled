@@ -197,6 +197,8 @@ export function presentRecipe(r: RecipeRow) {
     dietary: (r as { dietary?: string[] | null }).dietary ?? [],
     vegetables: (r as { vegetables?: string[] | null }).vegetables ?? [],
     collection: (r as { collection?: string | null }).collection ?? null,
+    notes: (r as { notes?: string | null }).notes ?? null,
+    userNotes: (r as { user_notes?: string | null }).user_notes ?? null,
   }
 }
 
@@ -362,13 +364,14 @@ export function registerMealRoutes(api: Api): void {
     const tenant = await requireTenant(req)
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
-    const body = (req.body ?? {}) as { isFavorite?: boolean; title?: string; rating?: number }
+    const body = (req.body ?? {}) as { isFavorite?: boolean; title?: string; rating?: number; userNotes?: string }
     const cols: string[] = []
     const vals: unknown[] = []
     let i = 1
     if (typeof body.isFavorite === 'boolean') { cols.push(`is_favorite = $${i++}`); vals.push(body.isFavorite) }
     if (typeof body.title === 'string' && body.title.trim()) { cols.push(`title = $${i++}`); vals.push(body.title.trim()) }
     if (typeof body.rating === 'number') { cols.push(`rating = $${i++}`); vals.push(body.rating) }
+    if (typeof body.userNotes === 'string') { cols.push(`user_notes = $${i++}`); vals.push(body.userNotes.trim() || null) }
     if (cols.length === 0) return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields' })
     vals.push(tenant.householdId, id)
     const { rows } = await query<RecipeRow>(

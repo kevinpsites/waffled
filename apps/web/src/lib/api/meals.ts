@@ -83,6 +83,8 @@ export interface RecipeDetail extends RecipeMeta {
   isFavorite: boolean
   cookedCount: number
   lastCookedAt: string | null
+  notes: string | null
+  userNotes: string | null
 }
 
 export interface RecipeIngredient {
@@ -112,7 +114,7 @@ export const mealsApi = {
   planSlot: (slot: PlanSlot) => apiSend<{ entry: WeekEntry }>('POST', '/api/meals/plan', slot),
   clearSlot: (date: string, mealType: string) =>
     apiDelete(`/api/meals/plan?date=${date}&mealType=${mealType}`),
-  updateRecipe: (id: string, patch: { isFavorite?: boolean; title?: string; rating?: number }) =>
+  updateRecipe: (id: string, patch: { isFavorite?: boolean; title?: string; rating?: number; userNotes?: string }) =>
     apiSend<{ recipe: RecipeDetail }>('PATCH', `/api/recipes/${id}`, patch).then((r) => r.recipe),
   markCooked: (id: string) => apiSend<{ recipe: RecipeDetail }>('POST', `/api/recipes/${id}/cooked`).then((r) => r.recipe),
 }
