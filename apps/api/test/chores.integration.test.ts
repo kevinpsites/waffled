@@ -215,3 +215,48 @@ describe('chore completion', () => {
     ).toBe(404)
   })
 })
+
+describe('chore management (edit/delete)', () => {
+  let choreId = ''
+
+  async function instances() {
+    return JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body).instances as Array<{
+      choreId: string
+      choreTitle: string
+    }>
+  }
+  async function kevinTotal() {
+    return JSON.parse((await call('GET', '/api/chores/today', kevin)).body).people.find(
+      (p: { id: string }) => p.id === kevinId
+    ).total as number
+  }
+
+  beforeAll(async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Walk dog', personId: kevinId, rewardAmount: 3 })
+    choreId = (await instances()).find((i) => i.choreTitle === 'Walk dog')!.choreId
+  })
+
+  it('edits a chore, reflected in the instance list', async () => {
+    const res = await call('PATCH', `/api/chores/${choreId}`, kevin, { title: 'Walk the dog', rewardAmount: 5 })
+    expect(res.statusCode).toBe(200)
+    const list = await instances()
+    expect(list.some((i) => i.choreTitle === 'Walk the dog')).toBe(true)
+    expect(list.some((i) => i.choreTitle === 'Walk dog')).toBe(false)
+  })
+
+  it('400 on empty patch, 404 on unknown', async () => {
+    expect((await call('PATCH', `/api/chores/${choreId}`, kevin, {})).statusCode).toBe(400)
+    expect(
+      (await call('PATCH', '/api/chores/00000000-0000-0000-0000-000000000000', kevin, { title: 'x' }))
+        .statusCode
+    ).toBe(404)
+  })
+
+  it('deletes a chore — gone from instances and the rings total', async () => {
+    const before = await kevinTotal()
+    expect((await call('DELETE', `/api/chores/${choreId}`, kevin)).statusCode).toBe(204)
+    expect((await instances()).some((i) => i.choreId === choreId)).toBe(false)
+    expect(await kevinTotal()).toBe(before - 1)
+    expect((await call('DELETE', `/api/chores/${choreId}`, kevin)).statusCode).toBe(404)
+  })
+})

@@ -106,12 +106,13 @@ interface SummaryRow extends QueryResultRow {
 export async function todaySummary(householdId: string, dueOn: string): Promise<PersonChoreSummary[]> {
   const { rows } = await query<SummaryRow>(
     `select p.id, p.name, p.avatar_emoji, p.color_hex, p.member_type, p.is_admin,
-            count(ci.id) as total,
-            count(ci.id) filter (where ci.status = 'done') as done,
+            count(c.id) as total,
+            count(c.id) filter (where ci.status = 'done') as done,
             coalesce(b.balance, 0) as stars
        from persons p
        left join chore_instances ci
          on ci.person_id = p.id and ci.due_on = $2::date and ci.deleted_at is null
+       left join chores c on c.id = ci.chore_id and c.deleted_at is null
        left join v_person_balances b
          on b.person_id = p.id and b.currency = 'stars'
       where p.household_id = $1 and p.deleted_at is null
@@ -134,6 +135,7 @@ export async function todaySummary(householdId: string, dueOn: string): Promise<
 
 export interface TodayInstance {
   id: string
+  choreId: string
   choreTitle: string
   emoji: string | null
   personId: string | null
@@ -145,9 +147,9 @@ export interface TodayInstance {
 export async function listTodayInstances(householdId: string, dueOn: string): Promise<TodayInstance[]> {
   const { rows } = await query<QueryResultRow>(
     `select ci.id, ci.status, ci.reward_amount, ci.person_id,
-            c.title as chore_title, c.emoji, p.name as person_name
+            c.id as chore_id, c.title as chore_title, c.emoji, p.name as person_name
        from chore_instances ci
-       join chores c on c.id = ci.chore_id
+       join chores c on c.id = ci.chore_id and c.deleted_at is null
        left join persons p on p.id = ci.person_id
       where ci.household_id = $1 and ci.due_on = $2::date and ci.deleted_at is null
       order by p.sort_order nulls last, c.due_time nulls last, c.title`,
@@ -155,6 +157,7 @@ export async function listTodayInstances(householdId: string, dueOn: string): Pr
   )
   return rows.map((r) => ({
     id: r.id,
+    choreId: r.chore_id,
     choreTitle: r.chore_title,
     emoji: r.emoji,
     personId: r.person_id,
@@ -162,6 +165,47 @@ export async function listTodayInstances(householdId: string, dueOn: string): Pr
     status: r.status,
     rewardAmount: r.reward_amount,
   }))
+}
+
+const UPDATABLE_CHORE: Record<string, string> = {
+  title: 'title',
+  emoji: 'emoji',
+  personId: 'person_id',
+  rewardAmount: 'reward_amount',
+  dueTime: 'due_time',
+  isActive: 'is_active',
+}
+
+export async function updateChore(
+  householdId: string,
+  id: string,
+  patch: Record<string, unknown>
+): Promise<ChoreRow | null> {
+  const sets: string[] = []
+  const values: unknown[] = []
+  let i = 1
+  for (const [field, column] of Object.entries(UPDATABLE_CHORE)) {
+    if (field in patch && patch[field] !== undefined) {
+      sets.push(`${column} = $${i++}`)
+      values.push(patch[field])
+    }
+  }
+  values.push(householdId, id)
+  const { rows } = await query<ChoreRow>(
+    `update chores set ${sets.join(', ')}
+       where household_id = $${i++} and id = $${i} and deleted_at is null
+       returning *`,
+    values
+  )
+  return rows[0] ?? null
+}
+
+export async function softDeleteChore(householdId: string, id: string): Promise<boolean> {
+  const { rowCount } = await query(
+    `update chores set deleted_at = now() where household_id = $1 and id = $2 and deleted_at is null`,
+    [householdId, id]
+  )
+  return !!rowCount
 }
 
 function presentInstance(i: ChoreInstanceRow) {
@@ -294,6 +338,35 @@ export function registerChoreRoutes(api: Api): void {
     }
     const chore = await createChore(tenant, { ...body, title: body.title.trim() })
     return res.status(201).json({ chore: presentChore(chore) })
+  })
+
+  // Edit a chore definition (admins).
+  api.patch('/api/chores/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'chore not found' })
+    const patch = (req.body ?? {}) as Record<string, unknown>
+    if (typeof patch.title === 'string' && !patch.title.trim()) {
+      return res.status(400).json({ error: 'BadRequest', message: 'title cannot be empty' })
+    }
+    if (!Object.keys(UPDATABLE_CHORE).some((field) => field in patch)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields provided' })
+    }
+    const chore = await updateChore(tenant.householdId, id, patch)
+    if (!chore) return res.status(404).json({ error: 'NotFound', message: 'chore not found' })
+    return { chore: presentChore(chore) }
+  })
+
+  // Delete a chore (admins). Hides it + today's instances from the Tasks view.
+  api.delete('/api/chores/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'chore not found' })
+    const ok = await softDeleteChore(tenant.householdId, id)
+    if (!ok) return res.status(404).json({ error: 'NotFound', message: 'chore not found' })
+    return res.status(204).send('')
   })
 
   // Today's per-person chore summary (rings + stars).
