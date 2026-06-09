@@ -205,22 +205,34 @@ interface EntryRow extends QueryResultRow {
   meal_type: string
   recipe_id: string | null
   title: string | null
+  cook_person_id: string | null
 }
 
 async function upsertEntry(
   planId: string,
   tenant: Tenant,
-  input: { date: string; mealType: string; recipeId: string | null; title: string | null }
+  input: { date: string; mealType: string; recipeId: string | null; title: string | null; cookPersonId: string | null }
 ): Promise<EntryRow> {
   const { rows } = await query<EntryRow>(
-    `insert into meal_plan_entries (household_id, meal_plan_id, date, meal_type, recipe_id, title)
-     values ($1,$2,$3,$4,$5,$6)
+    `insert into meal_plan_entries (household_id, meal_plan_id, date, meal_type, recipe_id, title, cook_person_id)
+     values ($1,$2,$3,$4,$5,$6,$7)
      on conflict (meal_plan_id, date, meal_type)
-     do update set recipe_id = excluded.recipe_id, title = excluded.title, deleted_at = null
-     returning id, to_char(date,'YYYY-MM-DD') as date, meal_type, recipe_id, title`,
-    [tenant.householdId, planId, input.date, input.mealType, input.recipeId, input.title]
+     do update set recipe_id = excluded.recipe_id, title = excluded.title,
+                   cook_person_id = excluded.cook_person_id, deleted_at = null
+     returning id, to_char(date,'YYYY-MM-DD') as date, meal_type, recipe_id, title, cook_person_id`,
+    [tenant.householdId, planId, input.date, input.mealType, input.recipeId, input.title, input.cookPersonId]
   )
   return rows[0]
+}
+
+// Soft-clear a slot in the active plan. Returns true if a row was cleared.
+async function clearEntry(tenant: Tenant, date: string, mealType: string): Promise<boolean> {
+  const { rowCount } = await query(
+    `update meal_plan_entries set deleted_at = now()
+       where household_id = $1 and date = $2 and meal_type = $3 and deleted_at is null`,
+    [tenant.householdId, date, mealType]
+  )
+  return (rowCount ?? 0) > 0
 }
 
 interface WeekEntryRow extends QueryResultRow {
@@ -235,15 +247,22 @@ interface WeekEntryRow extends QueryResultRow {
   cook_time_minutes: number | null
   servings: number | null
   image_url: string | null
+  category: string | null
+  cook_person_id: string | null
+  cook_name: string | null
+  cook_avatar: string | null
+  cook_color: string | null
 }
 
 async function weekEntries(householdId: string, start: string) {
   const { rows } = await query<WeekEntryRow>(
     `select mpe.id, to_char(mpe.date,'YYYY-MM-DD') as date, mpe.meal_type, mpe.title, mpe.recipe_id,
-            r.title as recipe_title, r.emoji as recipe_emoji,
-            r.prep_time_minutes, r.cook_time_minutes, r.servings, r.image_url
+            r.title as recipe_title, r.emoji as recipe_emoji, r.category,
+            r.prep_time_minutes, r.cook_time_minutes, r.servings, r.image_url,
+            mpe.cook_person_id, p.name as cook_name, p.avatar_emoji as cook_avatar, p.color_hex as cook_color
        from meal_plan_entries mpe
        left join recipes r on r.id = mpe.recipe_id and r.deleted_at is null
+       left join persons p on p.id = mpe.cook_person_id and p.deleted_at is null
       where mpe.household_id = $1 and mpe.deleted_at is null
         and mpe.date >= $2::date and mpe.date < ($2::date + 7)
       order by mpe.date, mpe.meal_type`,
@@ -255,10 +274,14 @@ async function weekEntries(householdId: string, start: string) {
     mealType: e.meal_type,
     title: e.title,
     recipeId: e.recipe_id,
+    cook: e.cook_person_id
+      ? { personId: e.cook_person_id, name: e.cook_name, avatarEmoji: e.cook_avatar, colorHex: e.cook_color }
+      : null,
     recipe: e.recipe_id
       ? {
           title: e.recipe_title,
           emoji: e.recipe_emoji,
+          category: e.category,
           prepTimeMinutes: e.prep_time_minutes,
           cookTimeMinutes: e.cook_time_minutes,
           servings: e.servings,
@@ -269,7 +292,14 @@ async function weekEntries(householdId: string, start: string) {
 }
 
 function presentEntry(e: EntryRow) {
-  return { id: e.id, date: e.date, mealType: e.meal_type, recipeId: e.recipe_id, title: e.title }
+  return {
+    id: e.id,
+    date: e.date,
+    mealType: e.meal_type,
+    recipeId: e.recipe_id,
+    title: e.title,
+    cookPersonId: e.cook_person_id,
+  }
 }
 
 export function registerMealRoutes(api: Api): void {
@@ -318,10 +348,17 @@ export function registerMealRoutes(api: Api): void {
     return res.status(201).json({ ingredients: added.map(presentIngredient) })
   })
 
-  // Plan (or re-plan) a meal slot.
+  // Plan (or re-plan) a meal slot. Assigns a recipe or free-text title (and
+  // optionally who's cooking). Powers the Meals-screen "+" picker.
   api.post('/api/meals/plan', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
-    const body = (req.body ?? {}) as { date?: string; mealType?: string; recipeId?: string; title?: string }
+    const body = (req.body ?? {}) as {
+      date?: string
+      mealType?: string
+      recipeId?: string
+      title?: string
+      cookPersonId?: string
+    }
     if (!body.date || !DATE_RE.test(body.date) || !body.mealType || !MEAL_TYPES.has(body.mealType)) {
       return res
         .status(400)
@@ -335,14 +372,37 @@ export function registerMealRoutes(api: Api): void {
       }
       recipeId = body.recipeId
     }
+    let cookPersonId: string | null = null
+    if (body.cookPersonId != null && body.cookPersonId !== '') {
+      if (!UUID_RE.test(body.cookPersonId)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'cookPersonId must be a uuid' })
+      }
+      cookPersonId = body.cookPersonId
+    }
     const plan = await getOrCreateActivePlan(tenant)
     const entry = await upsertEntry(plan.id, tenant, {
       date: body.date,
       mealType: body.mealType,
       recipeId,
       title: body.title ?? null,
+      cookPersonId,
     })
     return res.status(200).json({ entry: presentEntry(entry) })
+  })
+
+  // Clear a planned slot (date + mealType). Idempotent: 404 if nothing planned.
+  api.delete('/api/meals/plan', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const date = typeof req.query?.date === 'string' ? req.query.date : ''
+    const mealType = typeof req.query?.mealType === 'string' ? req.query.mealType : ''
+    if (!DATE_RE.test(date) || !MEAL_TYPES.has(mealType)) {
+      return res
+        .status(400)
+        .json({ error: 'BadRequest', message: 'date (YYYY-MM-DD) and mealType are required' })
+    }
+    const cleared = await clearEntry(tenant, date, mealType)
+    if (!cleared) return res.status(404).json({ error: 'NotFound', message: 'nothing planned in that slot' })
+    return res.status(204).send('')
   })
 
   // The planned week (entries joined to recipes) — powers the kiosk meal card.

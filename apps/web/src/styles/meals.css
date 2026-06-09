@@ -1,0 +1,209 @@
+/* Meals — weekly planner grid. Co-located with kiosk/Meals.tsx (Meals agent).
+   Reuses nook.css tokens; only the planner-specific layout lives here. */
+
+.meals-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0 30px 24px;
+}
+
+.meals-hint {
+  font-size: 14px;
+  color: var(--ink-2);
+  font-weight: 500;
+  margin: 2px 2px 10px;
+}
+
+/* The grid: a slim label gutter + 7 day columns. The header row carries the
+   day-of-week + date; the four meal rows fill the rest. */
+.meals-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 30px repeat(7, 1fr);
+  grid-template-rows: auto repeat(4, 1fr);
+  gap: 10px;
+  min-height: 0;
+}
+
+.meals-dow {
+  text-align: center;
+  align-self: end;
+  padding-bottom: 6px;
+}
+.meals-dow .dow {
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--ink-2);
+  letter-spacing: -0.01em;
+}
+.meals-dow .date {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-3);
+  margin-top: 1px;
+}
+
+/* Rotated row labels (Breakfast / Lunch / Dinner / Snack) in the gutter. */
+.meals-rowlabel {
+  display: grid;
+  place-items: center;
+}
+.meals-rowlabel span {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-2);
+  letter-spacing: 0.01em;
+}
+
+/* A planned slot. Tinted by meal type, title centered, cook avatar top-right. */
+.meals-cell {
+  position: relative;
+  border-radius: var(--r-lg);
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 14px 12px;
+  cursor: pointer;
+  min-height: 0;
+  border: 1px solid transparent;
+  transition: box-shadow 0.12s ease, transform 0.12s ease;
+}
+.meals-cell:hover {
+  box-shadow: var(--sh-2);
+}
+.meals-cell .meal-t {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink);
+}
+.meals-cell .meal-cook {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  box-shadow: var(--sh-1);
+  background: var(--card);
+}
+
+.meals-cell.breakfast {
+  background: var(--wally-t);
+}
+.meals-cell.lunch {
+  background: var(--kelly-t);
+}
+.meals-cell.dinner {
+  background: var(--lottie-t);
+}
+.meals-cell.snack {
+  background: #fdf3dd;
+}
+
+/* Empty slot — dashed "+" tap target. */
+.meals-add {
+  border: 1.5px dashed var(--hair);
+  background: transparent;
+  color: var(--ink-3);
+  font-weight: 400;
+}
+.meals-add:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  box-shadow: none;
+}
+.meals-add svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+/* Topbar week-nav arrow buttons (round, like .icon-btn but compact). */
+.meals-nav {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+}
+.meals-nav svg {
+  width: 18px;
+  height: 18px;
+  stroke: var(--ink);
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---- Recipe picker (meals-picker.png) ----
+   Takes over the main column (topbar replaced via useTopbarFull): meal-type
+   filters + a 4-up grid of saved recipes. */
+.meals-picker {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding-top: 4px;
+}
+
+.picker-grid {
+  flex: 1;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: min-content;
+  gap: 16px;
+  align-content: start;
+  padding: 0 30px 24px;
+}
+.picker-filters {
+  padding: 0 30px 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.picker-filters .mp-filter {
+  font-size: 13.5px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+.picker-filters .mp-filter.on {
+  background: var(--ink);
+  color: #fff;
+}
+.picker-count {
+  margin-left: auto;
+  font-weight: 600;
+}
+.mp-card {
+  cursor: pointer;
+  padding: 0;
+  border: 0;
+  text-align: left;
+  font: inherit;
+  width: 100%;
+}
+.mp-card .rc-img {
+  height: 104px;
+  font-size: 38px;
+}
+.picker-empty {
+  grid-column: 1 / -1;
+  padding: 24px 2px;
+  font-weight: 600;
+}

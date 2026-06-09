@@ -1,10 +1,18 @@
 // Meals & recipes domain — client slice, types, and hooks.
-import { useEffect, useState } from 'react'
-import { apiGet, localToday } from './client'
+import { useCallback, useEffect, useState } from 'react'
+import { apiGet, apiSend, apiDelete, localToday } from './client'
+
+export interface MealCook {
+  personId: string
+  name: string | null
+  avatarEmoji: string | null
+  colorHex: string | null
+}
 
 export interface MealRecipe {
   title: string | null
   emoji: string | null
+  category: string | null
   prepTimeMinutes: number | null
   cookTimeMinutes: number | null
   servings: number | null
@@ -17,7 +25,33 @@ export interface WeekEntry {
   mealType: string
   title: string | null
   recipeId: string | null
+  cook: MealCook | null
   recipe: MealRecipe | null
+}
+
+// A saved recipe in the household library (powers the "+" picker & Explore).
+export interface Recipe {
+  id: string
+  title: string
+  emoji: string | null
+  description: string | null
+  category: string | null
+  tags: string[] | null
+  prepTimeMinutes: number | null
+  cookTimeMinutes: number | null
+  servings: number
+  imageUrl: string | null
+  sourceName: string | null
+  isFavorite: boolean
+  cookedCount: number
+}
+
+export interface PlanSlot {
+  date: string
+  mealType: string
+  recipeId?: string | null
+  title?: string | null
+  cookPersonId?: string | null
 }
 
 export interface RecipeDetail {
@@ -44,24 +78,56 @@ export interface RecipeIngredient {
 
 export const mealsApi = {
   mealsWeek: (start: string) => apiGet<{ start: string; entries: WeekEntry[] }>(`/api/meals/week?start=${start}`),
+  recipes: () => apiGet<{ recipes: Recipe[] }>('/api/recipes'),
   recipe: (id: string) =>
     apiGet<{ recipe: RecipeDetail; ingredients: RecipeIngredient[] }>(`/api/recipes/${id}`),
+  planSlot: (slot: PlanSlot) => apiSend<{ entry: WeekEntry }>('POST', '/api/meals/plan', slot),
+  clearSlot: (date: string, mealType: string) =>
+    apiDelete(`/api/meals/plan?date=${date}&mealType=${mealType}`),
 }
 
 export interface MealsState {
   entries: WeekEntry[]
   loading: boolean
   error: boolean
+  refetch: () => void
 }
 
-export function useMealsWeek(): MealsState {
-  const [state, setState] = useState<MealsState>({ entries: [], loading: true, error: false })
+// Loads one planned week starting at `start` (YYYY-MM-DD). Refetch after a
+// plan/clear so the grid reflects the mutation.
+export function useMealsWeek(start?: string): MealsState {
+  const day = start ?? localToday()
+  const [state, setState] = useState<Omit<MealsState, 'refetch'>>({ entries: [], loading: true, error: false })
+  const [nonce, setNonce] = useState(0)
+  const refetch = useCallback(() => setNonce((n) => n + 1), [])
+  useEffect(() => {
+    let alive = true
+    setState((s) => ({ ...s, loading: true }))
+    mealsApi
+      .mealsWeek(day)
+      .then((d) => alive && setState({ entries: d.entries, loading: false, error: false }))
+      .catch(() => alive && setState({ entries: [], loading: false, error: true }))
+    return () => {
+      alive = false
+    }
+  }, [day, nonce])
+  return { ...state, refetch }
+}
+
+export interface RecipesState {
+  recipes: Recipe[]
+  loading: boolean
+  error: boolean
+}
+
+export function useRecipes(): RecipesState {
+  const [state, setState] = useState<RecipesState>({ recipes: [], loading: true, error: false })
   useEffect(() => {
     let alive = true
     mealsApi
-      .mealsWeek(localToday())
-      .then((d) => alive && setState({ entries: d.entries, loading: false, error: false }))
-      .catch(() => alive && setState({ entries: [], loading: false, error: true }))
+      .recipes()
+      .then((d) => alive && setState({ recipes: d.recipes, loading: false, error: false }))
+      .catch(() => alive && setState({ recipes: [], loading: false, error: true }))
     return () => {
       alive = false
     }
