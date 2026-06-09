@@ -1,0 +1,23 @@
+<!doctype html><html><head><meta charset="utf8">
+<link rel="stylesheet" href="nook.css">
+<style>html,body{margin:0;background:#efece6}#stage{width:1280px;height:800px;overflow:hidden}</style>
+</head><body>
+<div id="stage"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script>window.KIOSK={};window.IOS={};</script>
+<script src="screens-kiosk-home.js"></script>
+<script src="screens-kiosk-rest.js"></script>
+<script src="screens-meals.js"></script>
+<script src="screens-calendar.js"></script>
+<script src="screens-lists.js"></script>
+<script src="screens-settings.js"></script>
+<script src="screens-settings2.js"></script>
+<script src="screens-rewards.js"></script>
+<script src="screens-detail.js"></script>
+<script src="screens-extra.js"></script>
+<script>
+  window.__keys = Object.keys(window.KIOSK);
+  window.show = function(k){ var v=window.KIOSK[k]; try{ if(typeof v==='function') v=v({}); }catch(e){ v='(threw: '+e.message+')'; } document.getElementById('stage').innerHTML = v || '(missing: '+k+')'; return !!window.KIOSK[k]; };
+</script>
+</body></html>
