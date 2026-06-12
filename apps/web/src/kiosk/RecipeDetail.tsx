@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
-import { groceryApi, mealsApi, useRecipe, type RecipeIngredient } from '../lib/api'
+import { groceryApi, mealsApi, useRecipe, type RecipeIngredient, type RecipeOverrides, type RecipeStep } from '../lib/api'
 import { ScheduleModal } from './components/ScheduleModal'
+import { CustomizeModal } from './components/CustomizeModal'
 import './../styles/recipe.css'
 
 // Pretty-print a (possibly scaled) amount: integers stay integers, halves/quarters
@@ -16,15 +17,77 @@ function fmtAmt(n: number): string {
   return `${+n.toFixed(2)}`
 }
 
-function IngredientRow({ ing, ratio }: { ing: RecipeIngredient; ratio: number }) {
+function IngredientRow({ ing, ratio, onSub }: { ing: RecipeIngredient; ratio: number; onSub: (val: string) => void }) {
   const [checked, setChecked] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
   const left = ing.amount != null ? `${fmtAmt(ing.amount * ratio)}${ing.unit ? ` ${ing.unit}` : ''}` : '—'
-  const name = ing.prepNote ? `${ing.name}, ${ing.prepNote}` : ing.name
+  const origName = ing.prepNote ? `${ing.name}, ${ing.prepNote}` : ing.name
+
+  if (editing) {
+    return (
+      <div className="ring-row editing">
+        <span className="ring-amt">{left}</span>
+        <input
+          className="ring-sub-input"
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder={`use instead of ${ing.name}…`}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { onSub(draft); setEditing(false) }
+            if (e.key === 'Escape') setEditing(false)
+          }}
+        />
+        <button type="button" className="ring-sub-ok" onClick={() => { onSub(draft); setEditing(false) }}>Save</button>
+        {ing.sub && <button type="button" className="ring-sub-clear" onClick={() => { onSub(''); setEditing(false) }}>Reset</button>}
+      </div>
+    )
+  }
   return (
-    <div className={`ring-row ${checked ? 'on' : ''}`} onClick={() => setChecked((v) => !v)} role="button" tabIndex={0}>
-      <span className="ring-ck" aria-hidden>{checked ? '✓' : ''}</span>
-      <span className="ring-amt">{left}</span>
-      <span className="ring-name">{name}</span>
+    <div className={`ring-row ${checked ? 'on' : ''} ${ing.sub ? 'subbed' : ''}`}>
+      <span className="ring-ck" aria-hidden role="button" tabIndex={0} onClick={() => setChecked((v) => !v)}>{checked ? '✓' : ''}</span>
+      <span className="ring-amt" onClick={() => setChecked((v) => !v)}>{left}</span>
+      <span className="ring-name" onClick={() => setChecked((v) => !v)}>
+        {ing.sub ? ing.sub : origName}
+        {ing.sub && <span className="ring-was">↺ instead of {ing.name}</span>}
+      </span>
+      <button type="button" className="ring-sub-btn" aria-label="Substitute" onClick={() => { setDraft(ing.sub ?? ''); setEditing(true) }}>⇄</button>
+    </div>
+  )
+}
+
+function StepRow({ s, onNote }: { s: RecipeStep; onNote: (val: string) => void }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  return (
+    <div className="rd-step">
+      <div className="rd-step-n">{s.stepNumber}</div>
+      <div className="rd-step-body">
+        <div className="rd-step-t">{s.instruction}</div>
+        {s.ingredients.length > 0 && (
+          <div className="rd-step-ings">
+            {s.ingredients.map((ig, i) => (
+              <span key={i} className="rd-step-chip">{ig}</span>
+            ))}
+          </div>
+        )}
+        {s.note && !editing && <div className="rd-step-note">📝 {s.note}</div>}
+        {editing ? (
+          <div className="rd-step-noteedit">
+            <textarea autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="add a note for this step…" />
+            <div className="rd-step-noteactions">
+              <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => { onNote(draft); setEditing(false) }}>Save</button>
+              {s.note && <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => { onNote(''); setEditing(false) }}>Remove</button>}
+              <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => setEditing(false)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" className="rd-step-addnote" onClick={() => { setDraft(s.note ?? ''); setEditing(true) }}>
+            {s.note ? 'Edit note' : '+ Add note'}
+          </button>
+        )}
+      </div>
     </div>
   )
 }
@@ -32,10 +95,11 @@ function IngredientRow({ ing, ratio }: { ing: RecipeIngredient; ratio: number })
 export function RecipeDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { recipe, ingredients, steps, loading, error } = useRecipe(id ?? null)
+  const { recipe, ingredients, steps, loading, error, refetch } = useRecipe(id ?? null)
   const [servings, setServings] = useState<number | null>(null)
   const [fav, setFav] = useState(false)
   const [scheduling, setScheduling] = useState(false)
+  const [customizing, setCustomizing] = useState(false)
   const [addedNote, setAddedNote] = useState<string | null>(null)
   const addRef = useRef<() => void>(() => {})
 
@@ -47,6 +111,43 @@ export function RecipeDetail() {
     const next = !fav
     setFav(next)
     if (recipe) mealsApi.updateRecipe(recipe.id, { isFavorite: next }).catch(() => setFav(!next))
+  }
+
+  // Read-modify-write the override blob, then refetch so server-side merges
+  // (ingredient subs / step notes) reflect immediately.
+  async function patchOverrides(mutate: (ov: RecipeOverrides) => RecipeOverrides) {
+    if (!recipe) return
+    try {
+      await mealsApi.updateRecipe(recipe.id, { overrides: mutate(recipe.overrides ?? {}) })
+      refetch()
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function setSub(name: string, value: string) {
+    patchOverrides((ov) => {
+      const subs = { ...(ov.subs ?? {}) }
+      const k = name.trim().toLowerCase()
+      if (value.trim()) subs[k] = value.trim()
+      else delete subs[k]
+      const next = { ...ov }
+      if (Object.keys(subs).length) next.subs = subs
+      else delete next.subs
+      return next
+    })
+  }
+
+  function setStepNote(n: number, value: string) {
+    patchOverrides((ov) => {
+      const sn = { ...(ov.stepNotes ?? {}) }
+      if (value.trim()) sn[String(n)] = value.trim()
+      else delete sn[String(n)]
+      const next = { ...ov }
+      if (Object.keys(sn).length) next.stepNotes = sn
+      else delete next.stepNotes
+      return next
+    })
   }
 
   const enc = encodeURIComponent
@@ -76,9 +177,13 @@ export function RecipeDetail() {
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
         <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(-1)}>‹ Recipes</button>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button className="pill" style={{ cursor: 'pointer' }} onClick={() => setCustomizing(true)}>✏️ Customize</button>
           <button className="pill rd-fav" aria-label="Favorite" onClick={toggleFav} style={{ cursor: 'pointer' }}>
             {fav ? '❤️' : '🤍'}
           </button>
+          {steps.length > 0 && (
+            <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(`/meals/recipe/${recipe?.id}/cook`)}>👨‍🍳 Cook</button>
+          )}
           <button className="pill" style={{ cursor: 'pointer' }} onClick={() => setScheduling(true)}>📅 Schedule</button>
           <button className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => addRef.current()}>
             🛒 Add to grocery list
@@ -86,7 +191,7 @@ export function RecipeDetail() {
         </div>
       </div>
     ),
-    [navigate, fav, recipe?.id]
+    [navigate, fav, recipe?.id, steps.length]
   )
 
   if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
@@ -129,10 +234,11 @@ export function RecipeDetail() {
           {recipe.effort && <button className="rd-tag" onClick={() => chip(`q=${enc(recipe.effort!)}`)}>⏱️ {recipe.effort}</button>}
           {recipe.dietary.map((d) => <button key={d} className="rd-tag diet" onClick={() => chip(`diet=${enc(d)}`)}>{d}</button>)}
           {recipe.vegetables.map((v) => <button key={v} className="rd-tag veg" onClick={() => chip(`q=${enc(v)}`)}>🥬 {v}</button>)}
+          {recipe.addedTags.map((t) => <button key={t} className="rd-tag soft" onClick={() => chip(`q=${enc(t)}`)}>#{t}</button>)}
         </div>
-        {(recipe.tags ?? []).length > 0 && (
+        {(recipe.tags ?? []).filter((t) => !recipe.addedTags.includes(t)).length > 0 && (
           <div className="rd-tags">
-            {(recipe.tags ?? []).map((t) => <button key={t} className="rd-tag soft" onClick={() => chip(`q=${enc(t)}`)}>#{t}</button>)}
+            {(recipe.tags ?? []).filter((t) => !recipe.addedTags.includes(t)).map((t) => <button key={t} className="rd-tag soft" onClick={() => chip(`q=${enc(t)}`)}>#{t}</button>)}
           </div>
         )}
 
@@ -152,29 +258,13 @@ export function RecipeDetail() {
             </div>
           </div>
           {ingredients.map((ing) => (
-            <IngredientRow key={ing.id} ing={ing} ratio={ratio} />
+            <IngredientRow key={ing.id} ing={ing} ratio={ratio} onSub={(val) => setSub(ing.name, val)} />
           ))}
-        </div>
-
-        <div className="card rd-notes">
-          <div className="card-h" style={{ fontSize: 16, marginBottom: 8 }}>📝 Your notes</div>
-          <textarea
-            className="rd-notes-input"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            onBlur={saveNotes}
-            placeholder="e.g. Sub chicken for the turkey · use less salt · doubles well. (Kept across re-imports.)"
-          />
-          {recipe.notes && (
-            <details className="rd-srcnotes">
-              <summary>Recipe notes (from the source)</summary>
-              <div className="tiny muted" style={{ whiteSpace: 'pre-wrap', marginTop: 6 }}>{recipe.notes}</div>
-            </details>
-          )}
+          <div className="tiny muted rd-sub-hint">Tap ⇄ to swap an ingredient — your swaps stick across re-imports.</div>
         </div>
       </div>
 
-      {/* right: on-hand banner + method (with per-step ingredients) */}
+      {/* right: on-hand banner + method (with per-step ingredients & notes) */}
       <div className="rd-right">
         <div className="rd-onhand">
           <div className="ai-spark"><span>✦</span></div>
@@ -196,20 +286,25 @@ export function RecipeDetail() {
           <div className="card-h" style={{ marginBottom: 14 }}>Method</div>
           {steps.length === 0 && <div className="muted tiny" style={{ fontWeight: 600 }}>No steps recorded for this recipe.</div>}
           {steps.map((s) => (
-            <div key={s.stepNumber} className="rd-step">
-              <div className="rd-step-n">{s.stepNumber}</div>
-              <div className="rd-step-body">
-                <div className="rd-step-t">{s.instruction}</div>
-                {s.ingredients.length > 0 && (
-                  <div className="rd-step-ings">
-                    {s.ingredients.map((ig, i) => (
-                      <span key={i} className="rd-step-chip">{ig}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+            <StepRow key={s.stepNumber} s={s} onNote={(val) => setStepNote(s.stepNumber, val)} />
           ))}
+
+          <div className="rd-notes">
+            <div className="card-h" style={{ fontSize: 16, margin: '6px 0 8px' }}>📝 Your notes</div>
+            <textarea
+              className="rd-notes-input"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              onBlur={saveNotes}
+              placeholder="e.g. doubles well · use less salt · the kids love this one. (Kept across re-imports.)"
+            />
+            {recipe.notes && (
+              <details className="rd-srcnotes">
+                <summary>Recipe notes (from the source)</summary>
+                <div className="tiny muted" style={{ whiteSpace: 'pre-wrap', marginTop: 6 }}>{recipe.notes}</div>
+              </details>
+            )}
+          </div>
         </div>
       </div>
 
@@ -219,6 +314,9 @@ export function RecipeDetail() {
           onClose={() => setScheduling(false)}
           onScheduled={(label) => setAddedNote(`Scheduled for ${label}.`)}
         />
+      )}
+      {customizing && (
+        <CustomizeModal recipe={recipe} onClose={() => setCustomizing(false)} onSaved={refetch} />
       )}
     </div>
   )

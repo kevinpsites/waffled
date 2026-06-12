@@ -1,6 +1,7 @@
 // Meals & recipes domain — client slice, types, and hooks.
 import { useCallback, useEffect, useState } from 'react'
 import { apiGet, apiSend, apiDelete, localToday } from './client'
+import { tap, useRefetchOn } from './bus'
 
 export interface MealCook {
   personId: string
@@ -85,6 +86,17 @@ export interface RecipeDetail extends RecipeMeta {
   lastCookedAt: string | null
   notes: string | null
   userNotes: string | null
+  addedTags: string[]
+  overrides: RecipeOverrides
+}
+
+export interface RecipeOverrides {
+  meta?: Partial<Record<'mealType' | 'protein' | 'base' | 'cuisine' | 'effort' | 'cookMethod' | 'flavorProfile', string>>
+  dietary?: string[]
+  addedTags?: string[]
+  removedTags?: string[]
+  subs?: Record<string, string>
+  stepNotes?: Record<string, string>
 }
 
 export interface RecipeIngredient {
@@ -98,12 +110,14 @@ export interface RecipeIngredient {
   aisle: string | null
   isStaple: boolean
   sortOrder: number | null
+  sub: string | null
 }
 
 export interface RecipeStep {
   stepNumber: number
   instruction: string
   ingredients: string[]
+  note: string | null
 }
 
 export const mealsApi = {
@@ -111,11 +125,13 @@ export const mealsApi = {
   recipes: () => apiGet<{ recipes: Recipe[] }>('/api/recipes'),
   recipe: (id: string) =>
     apiGet<{ recipe: RecipeDetail; ingredients: RecipeIngredient[]; steps: RecipeStep[] }>(`/api/recipes/${id}`),
-  planSlot: (slot: PlanSlot) => apiSend<{ entry: WeekEntry }>('POST', '/api/meals/plan', slot),
+  planSlot: (slot: PlanSlot) => apiSend<{ entry: WeekEntry }>('POST', '/api/meals/plan', slot).then(tap('meals')),
   clearSlot: (date: string, mealType: string) =>
-    apiDelete(`/api/meals/plan?date=${date}&mealType=${mealType}`),
-  updateRecipe: (id: string, patch: { isFavorite?: boolean; title?: string; rating?: number; userNotes?: string }) =>
-    apiSend<{ recipe: RecipeDetail }>('PATCH', `/api/recipes/${id}`, patch).then((r) => r.recipe),
+    apiDelete(`/api/meals/plan?date=${date}&mealType=${mealType}`).then(tap('meals')),
+  updateRecipe: (
+    id: string,
+    patch: { isFavorite?: boolean; title?: string; rating?: number; userNotes?: string; overrides?: RecipeOverrides },
+  ) => apiSend<{ recipe: RecipeDetail }>('PATCH', `/api/recipes/${id}`, patch).then((r) => r.recipe),
   markCooked: (id: string) => apiSend<{ recipe: RecipeDetail }>('POST', `/api/recipes/${id}/cooked`).then((r) => r.recipe),
 }
 
@@ -144,6 +160,7 @@ export function useMealsWeek(start?: string): MealsState {
       alive = false
     }
   }, [day, nonce])
+  useRefetchOn(['meals'], refetch)
   return { ...state, refetch }
 }
 
@@ -174,16 +191,19 @@ export interface RecipeState {
   steps: RecipeStep[]
   loading: boolean
   error: boolean
+  refetch: () => void
 }
 
 export function useRecipe(id: string | null): RecipeState {
-  const [state, setState] = useState<RecipeState>({
+  const [state, setState] = useState<Omit<RecipeState, 'refetch'>>({
     recipe: null,
     ingredients: [],
     steps: [],
     loading: true,
     error: false,
   })
+  const [nonce, setNonce] = useState(0)
+  const refetch = useCallback(() => setNonce((n) => n + 1), [])
   useEffect(() => {
     if (!id) return
     let alive = true
@@ -195,6 +215,6 @@ export function useRecipe(id: string | null): RecipeState {
     return () => {
       alive = false
     }
-  }, [id])
-  return state
+  }, [id, nonce])
+  return { ...state, refetch }
 }

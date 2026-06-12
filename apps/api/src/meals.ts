@@ -170,14 +170,34 @@ export async function listSteps(
   return rows.map((r) => ({ stepNumber: r.step_number, instruction: r.instruction, ingredients: r.ingredients ?? [] }))
 }
 
+export interface RecipeOverrides {
+  meta?: Partial<Record<'mealType' | 'protein' | 'base' | 'cuisine' | 'effort' | 'cookMethod' | 'flavorProfile', string>>
+  dietary?: string[]
+  addedTags?: string[]
+  removedTags?: string[]
+  subs?: Record<string, string>
+  stepNotes?: Record<string, string>
+}
+
+export function getOverrides(r: RecipeRow): RecipeOverrides {
+  return ((r as { overrides?: unknown }).overrides ?? {}) as RecipeOverrides
+}
+
+// Merge user overrides over the markdown source — overrides win, so in-app edits
+// survive a re-import (which only rewrites the source columns).
 export function presentRecipe(r: RecipeRow) {
+  const ov = getOverrides(r)
+  const m = ov.meta ?? {}
+  const src = r as Record<string, unknown>
+  const sourceTags = (r.tags ?? []) as string[]
+  const removed = new Set((ov.removedTags ?? []).map((t) => t.toLowerCase()))
   return {
     id: r.id,
     title: r.title,
     emoji: r.emoji,
     description: r.description,
     category: r.category,
-    tags: r.tags,
+    tags: [...new Set([...sourceTags, ...(ov.addedTags ?? [])])].filter((t) => !removed.has(t.toLowerCase())),
     prepTimeMinutes: r.prep_time_minutes,
     cookTimeMinutes: r.cook_time_minutes,
     servings: r.servings,
@@ -185,20 +205,22 @@ export function presentRecipe(r: RecipeRow) {
     sourceName: r.source_name,
     isFavorite: r.is_favorite,
     cookedCount: r.cooked_count,
-    lastCookedAt: (r as { last_cooked_at?: string | null }).last_cooked_at ?? null,
-    // rich metadata (markdown frontmatter)
-    mealType: (r as { meal_type?: string | null }).meal_type ?? null,
-    protein: (r as { protein?: string | null }).protein ?? null,
-    base: (r as { base?: string | null }).base ?? null,
-    cuisine: (r as { cuisine?: string | null }).cuisine ?? null,
-    effort: (r as { effort?: string | null }).effort ?? null,
-    cookMethod: (r as { cook_method?: string | null }).cook_method ?? null,
-    flavorProfile: (r as { flavor_profile?: string | null }).flavor_profile ?? null,
-    dietary: (r as { dietary?: string[] | null }).dietary ?? [],
-    vegetables: (r as { vegetables?: string[] | null }).vegetables ?? [],
-    collection: (r as { collection?: string | null }).collection ?? null,
-    notes: (r as { notes?: string | null }).notes ?? null,
-    userNotes: (r as { user_notes?: string | null }).user_notes ?? null,
+    lastCookedAt: (src.last_cooked_at as string | null) ?? null,
+    // metadata: override ?? markdown source
+    mealType: m.mealType ?? (src.meal_type as string | null) ?? null,
+    protein: m.protein ?? (src.protein as string | null) ?? null,
+    base: m.base ?? (src.base as string | null) ?? null,
+    cuisine: m.cuisine ?? (src.cuisine as string | null) ?? null,
+    effort: m.effort ?? (src.effort as string | null) ?? null,
+    cookMethod: m.cookMethod ?? (src.cook_method as string | null) ?? null,
+    flavorProfile: m.flavorProfile ?? (src.flavor_profile as string | null) ?? null,
+    dietary: ov.dietary ?? (src.dietary as string[] | null) ?? [],
+    vegetables: (src.vegetables as string[] | null) ?? [],
+    collection: (src.collection as string | null) ?? null,
+    notes: (src.notes as string | null) ?? null,
+    userNotes: (src.user_notes as string | null) ?? null,
+    addedTags: ov.addedTags ?? [],
+    overrides: ov,
   }
 }
 
@@ -354,9 +376,18 @@ export function registerMealRoutes(api: Api): void {
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     const recipe = await getRecipe(tenant.householdId, id)
     if (!recipe) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
-    const ingredients = await listIngredients(tenant.householdId, id)
-    const steps = await listSteps(tenant.householdId, id)
-    return { recipe: presentRecipe(recipe), ingredients: ingredients.map(presentIngredient), steps }
+    const ov = getOverrides(recipe)
+    const subs = ov.subs ?? {}
+    const stepNotes = ov.stepNotes ?? {}
+    const ingredients = (await listIngredients(tenant.householdId, id)).map((i) => ({
+      ...presentIngredient(i),
+      sub: subs[i.name.trim().toLowerCase()] ?? null,
+    }))
+    const steps = (await listSteps(tenant.householdId, id)).map((s) => ({
+      ...s,
+      note: stepNotes[String(s.stepNumber)] ?? null,
+    }))
+    return { recipe: presentRecipe(recipe), ingredients, steps }
   })
 
   // Update a recipe (favorite toggle, rename, …).
@@ -364,7 +395,7 @@ export function registerMealRoutes(api: Api): void {
     const tenant = await requireTenant(req)
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
-    const body = (req.body ?? {}) as { isFavorite?: boolean; title?: string; rating?: number; userNotes?: string }
+    const body = (req.body ?? {}) as { isFavorite?: boolean; title?: string; rating?: number; userNotes?: string; overrides?: RecipeOverrides }
     const cols: string[] = []
     const vals: unknown[] = []
     let i = 1
@@ -372,6 +403,7 @@ export function registerMealRoutes(api: Api): void {
     if (typeof body.title === 'string' && body.title.trim()) { cols.push(`title = $${i++}`); vals.push(body.title.trim()) }
     if (typeof body.rating === 'number') { cols.push(`rating = $${i++}`); vals.push(body.rating) }
     if (typeof body.userNotes === 'string') { cols.push(`user_notes = $${i++}`); vals.push(body.userNotes.trim() || null) }
+    if (body.overrides && typeof body.overrides === 'object') { cols.push(`overrides = $${i++}`); vals.push(JSON.stringify(body.overrides)) }
     if (cols.length === 0) return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields' })
     vals.push(tenant.householdId, id)
     const { rows } = await query<RecipeRow>(

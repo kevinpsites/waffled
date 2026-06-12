@@ -351,3 +351,86 @@ describe('meal planning api', () => {
     expect((await call('DELETE', '/api/meals/plan?date=nope&mealType=dinner', kevin)).statusCode).toBe(400)
   })
 })
+
+describe('recipe overrides api', () => {
+  let recipeId = ''
+
+  beforeAll(async () => {
+    const r = await call('POST', '/api/recipes', kevin, { title: 'Turkey Chili', emoji: '🌶️', protein: 'turkey', tags: ['bowl', 'spicy'] })
+    recipeId = JSON.parse(r.body).recipe.id
+    await call('POST', `/api/recipes/${recipeId}/ingredients`, kevin, {
+      ingredients: [{ name: 'Ground turkey', amount: 1, unit: 'lb' }],
+    })
+    // seed one step so step-note overrides have something to attach to
+    await withClient((c) =>
+      c.query(
+        `insert into recipe_steps (household_id, recipe_id, step_number, instruction)
+         select household_id, id, 1, 'Brown the meat.' from recipes where id = $1`,
+        [recipeId]
+      )
+    )
+  })
+
+  it('merges metadata + dietary + added tags over the source at read time', async () => {
+    const patch = await call('PATCH', `/api/recipes/${recipeId}`, kevin, {
+      overrides: {
+        meta: { protein: 'chicken' },
+        dietary: ['gluten-free'],
+        addedTags: ['family-favorite'],
+      },
+    })
+    expect(patch.statusCode).toBe(200)
+
+    const detail = JSON.parse((await call('GET', `/api/recipes/${recipeId}`, kevin)).body)
+    expect(detail.recipe.protein).toBe('chicken') // override wins over 'turkey'
+    expect(detail.recipe.dietary).toEqual(['gluten-free'])
+    expect(detail.recipe.tags).toContain('family-favorite')
+    expect(detail.recipe.tags).toContain('bowl') // source tags still present
+    expect(detail.recipe.addedTags).toEqual(['family-favorite'])
+
+    // and the override surfaces on the list shape, so library filters see it
+    const list = JSON.parse((await call('GET', '/api/recipes', kevin)).body)
+    const chili = list.recipes.find((r: { id: string }) => r.id === recipeId)
+    expect(chili.protein).toBe('chicken')
+  })
+
+  it('hides a removed source tag while keeping the rest', async () => {
+    await call('PATCH', `/api/recipes/${recipeId}`, kevin, {
+      overrides: { addedTags: ['family-favorite'], removedTags: ['bowl'] },
+    })
+    const detail = JSON.parse((await call('GET', `/api/recipes/${recipeId}`, kevin)).body)
+    expect(detail.recipe.tags).not.toContain('bowl') // dropped source tag
+    expect(detail.recipe.tags).toContain('spicy') // other source tag stays
+    expect(detail.recipe.tags).toContain('family-favorite')
+    // restore for the subsequent tests
+    await call('PATCH', `/api/recipes/${recipeId}`, kevin, { overrides: { meta: { protein: 'chicken' } } })
+  })
+
+  it('attaches ingredient subs (by name) and step notes (by number)', async () => {
+    await call('PATCH', `/api/recipes/${recipeId}`, kevin, {
+      overrides: {
+        meta: { protein: 'chicken' },
+        subs: { 'ground turkey': 'ground chicken' },
+        stepNotes: { '1': 'we sear it harder' },
+      },
+    })
+    const detail = JSON.parse((await call('GET', `/api/recipes/${recipeId}`, kevin)).body)
+    const ing = detail.ingredients.find((i: { name: string }) => i.name === 'Ground turkey')
+    expect(ing.sub).toBe('ground chicken')
+    expect(detail.steps[0].note).toBe('we sear it harder')
+  })
+
+  it('survives re-importing the source ingredients (sub re-keyed by name)', async () => {
+    // simulate a re-import: delete + recreate the ingredient row (new id)
+    await withClient((c) =>
+      c.query(`delete from recipe_ingredients where recipe_id = $1`, [recipeId])
+    )
+    await call('POST', `/api/recipes/${recipeId}/ingredients`, kevin, {
+      ingredients: [{ name: 'Ground turkey', amount: 1, unit: 'lb' }],
+    })
+    const detail = JSON.parse((await call('GET', `/api/recipes/${recipeId}`, kevin)).body)
+    const ing = detail.ingredients.find((i: { name: string }) => i.name === 'Ground turkey')
+    expect(ing.sub).toBe('ground chicken') // still applied to the re-created ingredient
+    expect(detail.recipe.protein).toBe('chicken')
+  })
+})

@@ -1,0 +1,183 @@
+/* ===== Cook mode (full-screen step-by-step) ===== */
+.cookmode {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0 40px 28px;
+}
+.cm-top-title {
+  font-size: 18px;
+  font-weight: 600;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* progress bar across the top of the stage */
+.cm-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--panel);
+  overflow: hidden;
+  margin: 6px 0 22px;
+}
+.cm-progress span {
+  display: block;
+  height: 100%;
+  background: var(--wally);
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+
+.cm-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 22px;
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+}
+.cm-step-n {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--wally);
+}
+.cm-instruction {
+  font-size: 40px;
+  line-height: 1.28;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.cm-ings {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.cm-ings-label {
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.cm-ings-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.cm-ing-chip {
+  font-size: 16px;
+  font-weight: 600;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: var(--wally-t);
+  color: #167a4a;
+}
+.cm-note {
+  font-size: 17px;
+  font-weight: 600;
+  color: #167a4a;
+  background: var(--wally-t);
+  padding: 12px 16px;
+  border-radius: var(--r-lg);
+  line-height: 1.45;
+}
+
+/* big touch controls along the bottom */
+.cm-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 900px;
+  margin: 18px auto 0;
+  width: 100%;
+}
+.cm-nav {
+  font: inherit;
+  font-size: 19px;
+  font-weight: 700;
+  padding: 18px 30px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--hair);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: var(--sh-1);
+}
+.cm-nav:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.cm-next, .cm-finish {
+  margin-left: auto;
+  border: 0;
+  background: var(--wally);
+  color: #fff;
+}
+.cm-finish {
+  background: var(--wally);
+}
+.cm-allbtn {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 14px 20px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--hair);
+  background: var(--card-2);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.cm-all-list {
+  display: flex;
+  flex-direction: column;
+}
+.cm-all-row {
+  display: flex;
+  gap: 14px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--hair-2);
+  font-size: 15.5px;
+}
+.cm-all-row:last-child {
+  border-bottom: 0;
+}
+.cm-all-amt {
+  width: 96px;
+  flex: none;
+  font-weight: 700;
+}
+
+/* finish screen */
+.cm-done {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 10px;
+}
+.cm-done-emoji {
+  font-size: 72px;
+}
+.cm-done-h {
+  font-size: 34px;
+  font-weight: 600;
+}
+.cm-done-sub {
+  font-size: 16px;
+  font-weight: 600;
+}
+.cm-done-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 22px;
+}

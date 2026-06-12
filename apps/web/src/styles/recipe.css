@@ -454,10 +454,11 @@
   cursor: pointer;
 }
 
-/* your notes */
+/* your notes — now nested under Method */
 .rd-notes {
-  padding: 18px 20px;
-  margin-top: 16px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hair-2);
 }
 .rd-notes-input {
   width: 100%;
@@ -482,3 +483,182 @@
   color: var(--ink-3);
   cursor: pointer;
 }
+
+/* ingredient substitution */
+.ring-row { position: relative; }
+.ring-name { display: flex; flex-direction: column; gap: 1px; flex: 1; }
+.ring-was {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ink-3);
+  text-decoration: none;
+}
+.ring-row.subbed .ring-name { color: var(--ink); font-weight: 600; }
+.ring-sub-btn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  border: 1px solid var(--hair);
+  background: var(--card-2);
+  color: var(--ink-2);
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0.55;
+}
+.ring-sub-btn:hover { opacity: 1; }
+.ring-row.subbed .ring-sub-btn { opacity: 1; border-color: var(--wally); color: var(--wally); }
+.ring-row.editing { gap: 10px; padding: 10px 0; }
+.ring-sub-input {
+  flex: 1;
+  font: inherit;
+  font-size: 14.5px;
+  padding: 8px 11px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--wally);
+  background: #fff;
+  color: var(--ink);
+}
+.ring-sub-ok, .ring-sub-clear {
+  flex: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 13px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.ring-sub-ok { background: var(--wally); border: 0; color: #fff; }
+.ring-sub-clear { background: var(--card-2); border: 1px solid var(--hair); color: var(--ink-2); }
+.rd-sub-hint { margin-top: 12px; }
+
+/* per-step notes */
+.rd-step-note {
+  margin-top: 9px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #167a4a;
+  background: var(--wally-t);
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  line-height: 1.45;
+}
+.rd-step-addnote {
+  margin-top: 8px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  cursor: pointer;
+}
+.rd-step-addnote:hover { color: var(--wally); }
+.rd-step-noteedit { margin-top: 9px; }
+.rd-step-noteedit textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 56px;
+  resize: vertical;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  padding: 9px 11px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--hair);
+  background: var(--card-2);
+  color: var(--ink);
+}
+.rd-step-noteactions { display: flex; gap: 8px; margin-top: 8px; }
+
+/* customize modal */
+.cz-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 14px;
+}
+.cz-f { display: flex; flex-direction: column; gap: 5px; }
+.cz-f > span {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.cz-f input {
+  font: inherit;
+  font-size: 14.5px;
+  padding: 9px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--hair);
+  background: var(--card-2);
+  color: var(--ink);
+}
+.cz-section { margin-top: 16px; }
+.cz-label {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  margin-bottom: 7px;
+}
+.cz-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  padding: 8px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--hair);
+  background: var(--card-2);
+}
+.cz-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 5px 6px 5px 11px;
+  border-radius: 999px;
+  color: var(--ink);
+}
+.cz-chip button {
+  border: 0;
+  background: rgba(0,0,0,0.08);
+  color: var(--ink-2);
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.cz-chips input {
+  flex: 1;
+  min-width: 120px;
+  font: inherit;
+  font-size: 14px;
+  border: 0;
+  background: none;
+  outline: none;
+  color: var(--ink);
+  padding: 5px 4px;
+}
+
+/* customize modal — source vs. user tag distinction */
+.cz-label .cz-hint {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+  margin-left: 8px;
+}
+.cz-chip.src {
+  background: transparent;
+  border: 1px solid var(--hair);
+  color: var(--ink-2);
+}
+.cz-chip-src { font-size: 11px; opacity: 0.8; }
