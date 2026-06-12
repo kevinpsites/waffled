@@ -128,35 +128,31 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   const sections =
     view === 'aisle'
       ? aisleSections(board.items)
-      : board.dinners
-          .filter((d) => d.recipeId)
-          .map((d) => ({ aisle: d.title ?? 'Meal', items: board.items.filter((i) => i.sourceRecipeIds.includes(d.recipeId!)) }))
-          .filter((s) => s.items.length > 0)
-          .concat(
-            (() => {
-              const manual = board.items.filter((i) => i.sourceRecipeIds.length === 0)
-              return manual.length ? [{ aisle: 'Other items', items: manual }] : []
-            })()
-          )
+      : (() => {
+          const dinnerIds = new Set(board.dinners.filter((d) => d.recipeId).map((d) => d.recipeId!))
+          const perMeal = board.dinners
+            .filter((d) => d.recipeId)
+            .map((d) => ({ aisle: d.title ?? 'Meal', items: board.items.filter((i) => i.sourceRecipeIds.includes(d.recipeId!)) }))
+            .filter((s) => s.items.length > 0)
+          // Anything not tied to one of this week's dinners — hand-added items AND
+          // items added from a recipe that isn't planned this week — still needs a
+          // home, or it would vanish in the By-meal view.
+          const leftovers = board.items.filter((i) => !i.sourceRecipeIds.some((id) => dinnerIds.has(id)))
+          return leftovers.length ? [...perMeal, { aisle: 'Other items', items: leftovers }] : perMeal
+        })()
 
   return (
     <div className="grocery-board">
       <div className="grocery-main">
         <div className="grocery-head">
           <div className="card-h nk-serif grocery-title">Grocery list</div>
-          <div className="muted" style={{ fontWeight: 600 }}>
+          <div className="muted grocery-count" style={{ fontWeight: 600 }}>
             {board.items.length} items{inCart > 0 ? ` · ${inCart} in cart` : ''}
           </div>
-          <button type="button" className="pill grocery-refresh" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={rebuild} disabled={refreshing}>
-            ↻ {refreshing ? 'Refreshing…' : 'Refresh from meals'}
-          </button>
-          <div className="seg">
+          <div className="seg" style={{ marginLeft: 'auto' }}>
             <button className={view === 'aisle' ? 'on' : ''} onClick={() => setView('aisle')}>By aisle</button>
             <button className={view === 'meal' ? 'on' : ''} onClick={() => setView('meal')}>By meal</button>
           </div>
-        </div>
-        <div className="tiny muted grocery-note">
-          Auto-built from this week’s dinners — refresh after you change the plan. Items you add yourself and anything you’ve checked off are kept.
         </div>
 
         <form className="ai-bar grocery-add" onSubmit={onAdd}>
@@ -191,7 +187,14 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
 
       <div className="grocery-rail">
         <div className="card grocery-railcard">
-          <div className="card-h" style={{ marginBottom: 12 }}>This week’s dinners</div>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+            <div className="card-h">This week’s dinners</div>
+            {board.dinners.length > 0 && (
+              <button type="button" className="pill grocery-refresh" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={rebuild} disabled={refreshing} title="Rebuild the auto items from these dinners (keeps what you added or checked off)">
+                ↻ {refreshing ? 'Refreshing…' : 'Refresh'}
+              </button>
+            )}
+          </div>
           {board.dinners.length === 0 && <div className="tiny muted" style={{ fontWeight: 600 }}>No dinners planned yet.</div>}
           {board.dinners.map((d) => (
             <div key={d.date} className="gdinner">

@@ -51,10 +51,18 @@
   margin: 0 2px 8px;
 }
 .grocery-section-h .ga-emo {
-  font-size: 15px;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 14px;
 }
 .grocery-section-h .ga-n {
+  margin-left: 2px;
   color: var(--ink-3);
+  font-weight: 700;
 }
 
 .gitem {
@@ -209,16 +217,13 @@
   }
 }
 
-.grocery-note {
-  margin: -4px 2px 14px;
-  font-weight: 600;
+.grocery-count {
+  font-size: 14px;
 }
 .grocery-refresh {
   cursor: pointer;
-}
-.grocery-head {
-  flex-wrap: wrap;
-  row-gap: 8px;
+  font-size: 12.5px;
+  padding: 5px 12px;
 }
 
 /* dinner thumbnail tile (matches the mock's rounded recipe thumb) */

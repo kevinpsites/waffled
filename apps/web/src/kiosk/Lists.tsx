@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Icon } from './icons'
 import { ListsModal } from './components/ListsModal'
 import { ListItemModal } from './components/ListItemModal'
@@ -181,11 +181,32 @@ export function Lists() {
   const [itemModal, setItemModal] = useState<{ item: ListItem | null } | null>(null)
   const [groceryOpen, setGroceryOpen] = useState(false)
 
-  const selected: ListSummary | null = useMemo(
-    () => lists.find((l) => l.id === selectedId) ?? lists[0] ?? null,
-    [lists, selectedId]
-  )
+  // On first load, the grocery list opens straight into its auto-built board
+  // (its primary view) rather than the plain sectioned list. Without this you'd
+  // land on the grocery list rendered as bare sections.
+  const bootstrapped = useRef(false)
+  useEffect(() => {
+    if (bootstrapped.current || lists.length === 0) return
+    bootstrapped.current = true
+    const grocery = lists.find((l) => l.listType === 'grocery')
+    if (grocery && selectedId === null) {
+      setSelectedId(grocery.id)
+      setGroceryOpen(true)
+    }
+  }, [lists, selectedId])
+
+  // The hub (sidebar + list view) never renders the grocery list as plain
+  // sections — opening grocery is a full-screen board takeover instead.
+  const selected: ListSummary | null = useMemo(() => {
+    const byId = lists.find((l) => l.id === selectedId)
+    if (byId && byId.listType !== 'grocery') return byId
+    return lists.find((l) => l.listType !== 'grocery') ?? byId ?? lists[0] ?? null
+  }, [lists, selectedId])
   const { items, loading: itemsLoading, setItems, refetch: refetchItems } = useListDetail(selected?.id ?? null)
+
+  // Stable so GroceryBoard's topbar effect (deps: [onBack]) doesn't re-fire every
+  // render — an inline lambda here caused an infinite setState loop.
+  const closeGrocery = useCallback(() => setGroceryOpen(false), [])
 
   useTopbarRight(
     () => (
@@ -268,7 +289,7 @@ export function Lists() {
 
   // The grocery list opens its dedicated auto-built board (takes over the screen).
   if (groceryOpen) {
-    return <GroceryBoard onBack={() => setGroceryOpen(false)} />
+    return <GroceryBoard onBack={closeGrocery} />
   }
 
   const visibleItems = filterPerson ? items.filter((i) => i.assignee?.personId === filterPerson) : items

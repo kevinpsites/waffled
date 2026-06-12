@@ -3,6 +3,7 @@
 // Grocery card (the original grocery exports are kept intact).
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
 import { apiGet, apiSend, apiDelete } from './client'
+import { tap, useRefetchOn } from './bus'
 
 // ---- grocery (Today dashboard) ---------------------------------------------
 
@@ -71,12 +72,12 @@ export const groceryApi = {
   // grocery (unchanged surface for the Today card)
   grocery: () => apiGet<{ items: GroceryItem[] }>('/api/lists/grocery'),
   addGroceryItem: (name: string) =>
-    apiSend<{ item: GroceryItem }>('POST', '/api/lists/grocery/items', { name }).then((r) => r.item),
+    apiSend<{ item: GroceryItem }>('POST', '/api/lists/grocery/items', { name }).then((r) => r.item).then(tap('grocery')),
   setItemChecked: (id: string, checked: boolean) =>
-    apiSend<{ item: GroceryItem }>('PATCH', `/api/list-items/${id}`, { checked }).then((r) => r.item),
-  deleteItem: (id: string) => apiDelete(`/api/list-items/${id}`),
+    apiSend<{ item: GroceryItem }>('PATCH', `/api/list-items/${id}`, { checked }).then((r) => r.item).then(tap('grocery')),
+  deleteItem: (id: string) => apiDelete(`/api/list-items/${id}`).then(tap('grocery')),
   groceryFromRecipe: (recipeId: string) =>
-    apiSend<{ added: number }>('POST', `/api/lists/grocery/from-recipe/${recipeId}`),
+    apiSend<{ added: number }>('POST', `/api/lists/grocery/from-recipe/${recipeId}`).then(tap('grocery')),
 
   // lists (the Lists screen)
   lists: () => apiGet<{ lists: ListSummary[] }>('/api/lists'),
@@ -92,18 +93,18 @@ export const groceryApi = {
       quantity: input.quantity ?? null,
       category: input.section ?? null,
       assignedTo: input.assignedTo ?? null,
-    }).then((r) => r.item),
+    }).then((r) => r.item).then(tap('grocery')),
   patchListItem: (id: string, patch: PatchItemBody) =>
-    apiSend<{ item: ListItem }>('PATCH', `/api/list-items/${id}`, patchBody(patch)).then((r) => r.item),
+    apiSend<{ item: ListItem }>('PATCH', `/api/list-items/${id}`, patchBody(patch)).then((r) => r.item).then(tap('grocery')),
 
   // grocery board (auto-built view) + pantry staples
   groceryBoard: (weekStart?: string) =>
     apiGet<GroceryBoard>(`/api/lists/grocery/board${weekStart ? `?weekStart=${weekStart}` : ''}`),
   rebuildGrocery: (weekStart?: string) =>
-    apiSend<{ rebuilt: number; board: GroceryBoard }>('POST', `/api/lists/grocery/rebuild${weekStart ? `?weekStart=${weekStart}` : ''}`),
+    apiSend<{ rebuilt: number; board: GroceryBoard }>('POST', `/api/lists/grocery/rebuild${weekStart ? `?weekStart=${weekStart}` : ''}`).then(tap('grocery')),
   pantryStaples: () => apiGet<{ staples: PantryStaple[] }>('/api/pantry-staples'),
-  addStaple: (name: string) => apiSend<{ staple: PantryStaple }>('POST', '/api/pantry-staples', { name }).then((r) => r.staple),
-  removeStaple: (id: string) => apiDelete(`/api/pantry-staples/${id}`),
+  addStaple: (name: string) => apiSend<{ staple: PantryStaple }>('POST', '/api/pantry-staples', { name }).then((r) => r.staple).then(tap('grocery')),
+  removeStaple: (id: string) => apiDelete(`/api/pantry-staples/${id}`).then(tap('grocery')),
 }
 
 export interface GroceryDinner {
@@ -153,6 +154,8 @@ export function useGroceryBoard(weekStart?: string): GroceryBoardState {
       alive = false
     }
   }, [weekStart, nonce])
+  // a dinner being planned changes the board's "this week's dinners" + auto items
+  useRefetchOn(['grocery', 'meals'], () => setNonce((n) => n + 1))
   return { board, loading, error, refetch: () => setNonce((n) => n + 1) }
 }
 
@@ -171,6 +174,7 @@ export function useGrocery(): GroceryState {
   const [items, setItems] = useState<GroceryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [nonce, setNonce] = useState(0)
 
   useEffect(() => {
     let alive = true
@@ -191,7 +195,10 @@ export function useGrocery(): GroceryState {
     return () => {
       alive = false
     }
-  }, [])
+  }, [nonce])
+  // keep the Today grocery card in sync with edits made on the Lists board, a
+  // recipe's "add to grocery", etc.
+  useRefetchOn(['grocery'], () => setNonce((n) => n + 1))
 
   async function add(name: string): Promise<void> {
     const item = await groceryApi.addGroceryItem(name)

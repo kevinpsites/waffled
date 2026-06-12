@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router'
 import { Lists } from './Lists'
 import { ListsModal } from './components/ListsModal'
+import { TopbarSlotProvider, useTopbarSlots } from './topbar-slot'
 
 const grocery = { id: 'g', name: 'Grocery', emoji: '🛒', listType: 'grocery', isAutoBuilt: true, sortMode: 'manual', itemCount: 15 }
 const packing = { id: 'pack', name: 'Lake trip packing', emoji: '🧳', listType: 'custom', isAutoBuilt: false, sortMode: 'manual', itemCount: 3 }
@@ -39,6 +40,10 @@ function mockApi(opts: { lists?: unknown[]; items?: unknown[]; sent?: Sent[]; cr
     if (/\/api\/lists\/[^/]+\/items$/.test(u) && method === 'POST') {
       return { ok: true, json: async () => ({ item: { id: 'new', name: body.name, quantity: null, checked: false, checkedAt: null, section: null, sortOrder: 99, assignee: null } }) }
     }
+    // grocery board (auto-built view) — must precede the bare /api/lists check
+    if (u.includes('/api/lists/grocery/board')) {
+      return { ok: true, json: async () => ({ list: grocery, weekStart: '2026-06-07', dinners: [], items: [], staples: [] }) }
+    }
     if (u.endsWith('/api/lists') && method === 'POST') {
       return { ok: true, json: async () => ({ list: opts.created }) }
     }
@@ -50,23 +55,41 @@ function mockApi(opts: { lists?: unknown[]; items?: unknown[]; sent?: Sent[]; cr
   }) as unknown as typeof fetch
 }
 
+// Renders whatever the active screen pushes into the topbar slot, so the grocery
+// board's "‹ Lists" back button is clickable from tests.
+function Slots() {
+  const { right, full } = useTopbarSlots()
+  return <div>{full}{right}</div>
+}
+
 function renderScreen() {
   return render(
     <MemoryRouter initialEntries={['/lists']}>
-      <Lists />
+      <TopbarSlotProvider>
+        <Slots />
+        <Lists />
+      </TopbarSlotProvider>
     </MemoryRouter>
   )
+}
+
+// The grocery list auto-opens its board on load; the hub tests below first return
+// to the lists hub to exercise custom-list behavior.
+async function exitBoard() {
+  fireEvent.click(await screen.findByRole('button', { name: '‹ Lists' }))
 }
 
 describe('Lists screen', () => {
   it('renders the sidebar, header, summary, suggestions, and sectioned items', async () => {
     mockApi({ lists: [grocery, packing], items: packItems })
     renderScreen()
+    await exitBoard()
 
-    // sidebar: both lists; grocery shows the ✦ auto count
-    fireEvent.click(await screen.findByText('Lake trip packing'))
-    expect(screen.getByText('Grocery')).toBeInTheDocument()
+    // back in the hub, the only non-grocery list (packing) is auto-selected;
+    // sidebar shows both lists with grocery's ✦ auto count
+    expect(await screen.findByText('Grocery')).toBeInTheDocument()
     expect(screen.getByText('✦ 15')).toBeInTheDocument()
+    expect(screen.getAllByText('Lake trip packing').length).toBeGreaterThan(0)
 
     // header: name + "3 items · 1 packed" + filter
     await waitFor(() => expect(screen.getByText('3 items · 1 packed')).toBeInTheDocument())
@@ -89,6 +112,7 @@ describe('Lists screen', () => {
     const sent: Sent[] = []
     mockApi({ lists: [grocery, packing], items: packItems, sent })
     renderScreen()
+    await exitBoard()
 
     fireEvent.click(await screen.findByText('Swimsuits'))
     await waitFor(() => expect(sent.some((s) => s.method === 'PATCH' && /\/api\/list-items\/i1$/.test(s.url))).toBe(true))
@@ -100,6 +124,7 @@ describe('Lists screen', () => {
     const sent: Sent[] = []
     mockApi({ lists: [grocery, packing], items: packItems, sent })
     renderScreen()
+    await exitBoard()
 
     // Sunscreen has no assignee → its "+" assign button opens the menu
     const sunscreen = (await screen.findByText('Sunscreen')).closest('.litem') as HTMLElement
@@ -115,6 +140,7 @@ describe('Lists screen', () => {
     const sent: Sent[] = []
     mockApi({ lists: [grocery, packing], items: packItems, sent })
     renderScreen()
+    await exitBoard()
 
     fireEvent.click(await screen.findByText('Bug spray'))
     await waitFor(() => expect(sent.some((s) => s.method === 'POST' && /\/items$/.test(s.url))).toBe(true))
@@ -126,6 +152,7 @@ describe('Lists screen', () => {
     const sent: Sent[] = []
     mockApi({ lists: [grocery, packing], items: packItems, sent })
     renderScreen()
+    await exitBoard()
 
     const input = await screen.findByLabelText('Add to this list')
     fireEvent.change(input, { target: { value: 'Water bottles' } })

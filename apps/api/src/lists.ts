@@ -8,7 +8,8 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow } from 'pg'
 import { query } from './db'
 import { requireTenant, type Tenant } from './households'
-import { getRecipe, listIngredients } from './meals'
+import { getRecipe, listIngredients, getOverrides } from './meals'
+import { aisleFor, isStaple } from './aisles'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -278,27 +279,66 @@ export async function addRecipeToGrocery(
 
   const list = await getOrCreateGroceryList(tenant)
   const ingredients = await listIngredients(tenant.householdId, recipeId)
-  const existing = await query<{ name: string }>(
-    `select name from list_items where household_id=$1 and list_id=$2 and deleted_at is null`,
+  const subs = getOverrides(recipe).subs ?? {}
+  const existing = await query<{ id: string; name: string; quantity: string | null; source_recipe_ids: string[] | null }>(
+    `select id, name, quantity, source_recipe_ids from list_items
+       where household_id=$1 and list_id=$2 and deleted_at is null`,
     [tenant.householdId, list.id]
   )
-  const have = new Set(existing.rows.map((r) => r.name.trim().toLowerCase()))
+  const have = new Map(existing.rows.map((r) => [r.name.trim().toLowerCase(), r]))
 
   const added: ListItemRow[] = []
   for (const ing of ingredients) {
-    const key = ing.name.trim().toLowerCase()
-    if (have.has(key)) continue
-    have.add(key)
-    const quantity = ing.amount != null && ing.unit ? `${Number(ing.amount)} ${ing.unit}` : null
+    // honor an in-app substitution: shop for the swap, not the original.
+    const sub = subs[ing.name.trim().toLowerCase()]
+    const name = (sub && sub.trim() ? sub.trim() : ing.name).trim()
+    const row = ing as { aisle?: string | null; is_staple?: boolean }
+    // pantry staples are assumed in-house — leave them off the list (matches the
+    // weekly auto-build and the mock's "Pantry check").
+    if (row.is_staple || isStaple(name)) continue
+    const key = name.toLowerCase()
+    const quantity = ing.amount != null && ing.unit ? `${Number(ing.amount)} ${ing.unit}` : ing.amount != null ? `${Number(ing.amount)}` : null
+    const aisle = row.aisle && row.aisle !== 'Other' ? row.aisle : aisleFor(name, ing.unit)
+
+    const dupe = have.get(key)
+    if (dupe) {
+      // already on the list — bump the quantity and credit this recipe too,
+      // rather than silently skipping (so two recipes' limes become "2").
+      const mergedQty = mergeQuantity(dupe.quantity, quantity)
+      const ids = [...new Set([...(dupe.source_recipe_ids ?? []), recipeId])]
+      await query(`update list_items set quantity=$1, source_recipe_ids=$2 where id=$3`, [mergedQty, ids, dupe.id])
+      continue
+    }
+    have.set(key, { id: '', name, quantity, source_recipe_ids: [recipeId] })
     const { rows } = await query<ListItemRow>(
       `insert into list_items
-         (household_id, list_id, name, quantity, source, source_recipe_ids, created_by)
-       values ($1,$2,$3,$4,'auto',$5,$6) returning *`,
-      [tenant.householdId, list.id, ing.name, quantity, [recipeId], tenant.personId]
+         (household_id, list_id, name, quantity, category, source, source_recipe_ids, created_by)
+       values ($1,$2,$3,$4,$5,'auto',$6,$7) returning *`,
+      [tenant.householdId, list.id, name, quantity, aisle, [recipeId], tenant.personId]
     )
     added.push(rows[0])
   }
   return added
+}
+
+// Combine two freeform grocery quantities. Same unit (or both unit-less) → sum
+// the numbers ("1 lb" + "0.5 lb" → "1.5 lb", "1" + "1" → "2"). Otherwise keep
+// both ("1 cup" + "2 tbsp" → "1 cup + 2 tbsp").
+function parseQuantity(q: string | null): { n: number | null; unit: string } {
+  if (!q) return { n: null, unit: '' }
+  const m = q.trim().match(/^([\d.]+)\s*(.*)$/)
+  if (!m) return { n: null, unit: q.trim() }
+  return { n: parseFloat(m[1]), unit: m[2].trim() }
+}
+export function mergeQuantity(a: string | null, b: string | null): string | null {
+  const pa = parseQuantity(a)
+  const pb = parseQuantity(b)
+  if (pa.n != null && pb.n != null && pa.unit.toLowerCase() === pb.unit.toLowerCase()) {
+    const sum = +(pa.n + pb.n).toFixed(2)
+    return pb.unit ? `${sum} ${pb.unit}` : `${sum}`
+  }
+  if (a && b) return `${a} + ${b}`
+  return a ?? b
 }
 
 // ---- pantry staples (assumed in-house; excluded from the auto-build) --------
@@ -351,8 +391,9 @@ function isoAddDays(iso: string, n: number): string {
 export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string): Promise<number> {
   const list = await getOrCreateGroceryList(tenant)
   const weekEnd = isoAddDays(weekStart, 6)
-  const dinners = await query<{ recipe_id: string }>(
-    `select distinct e.recipe_id from meal_plan_entries e
+  const dinners = await query<{ recipe_id: string; overrides: unknown }>(
+    `select distinct e.recipe_id, r.overrides from meal_plan_entries e
+       join recipes r on r.id = e.recipe_id and r.deleted_at is null
       where e.household_id=$1 and e.meal_type='dinner' and e.recipe_id is not null
         and e.deleted_at is null and e.date >= $2 and e.date <= $3`,
     [tenant.householdId, weekStart, weekEnd]
@@ -362,11 +403,14 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
 
   type Agg = { name: string; aisle: string | null; unit: string | null; amount: number | null; recipeIds: Set<string> }
   const byName = new Map<string, Agg>()
-  for (const { recipe_id } of dinners.rows) {
+  for (const { recipe_id, overrides } of dinners.rows) {
+    const subs = ((overrides ?? {}) as { subs?: Record<string, string> }).subs ?? {}
     const ings = await listIngredients(tenant.householdId, recipe_id)
     for (const ing of ings) {
       const row = ing as typeof ing & { aisle?: string | null; is_staple?: boolean }
-      const name = ing.name.trim()
+      // honor an in-app substitution before aggregating / filtering staples.
+      const sub = subs[ing.name.trim().toLowerCase()]
+      const name = sub && sub.trim() ? sub.trim() : ing.name.trim()
       const key = name.toLowerCase()
       if (row.is_staple || staples.has(key)) continue
       const amt = ing.amount == null ? null : Number(ing.amount)
@@ -374,7 +418,8 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
       if (!g) {
         g = { name, aisle: row.aisle ?? 'Other', unit: ing.unit, amount: amt, recipeIds: new Set() }
         byName.set(key, g)
-      } else if (amt != null && ing.unit && ing.unit === g.unit) {
+      } else if (amt != null && (ing.unit ?? '') === (g.unit ?? '')) {
+        // same unit (or both unit-less, e.g. "1 lime" ×2 → "2")
         g.amount = (g.amount ?? 0) + amt
       }
       g.recipeIds.add(recipe_id)
@@ -437,7 +482,9 @@ export async function groceryBoard(tenant: Tenant, weekStart: string) {
   )
   const items = itemRows.rows.map((i) => ({
     ...presentListItem(i),
-    aisle: i.category ?? 'Other',
+    // fall back to name-based classification when a row has no/Other aisle (older
+    // items, hand-added items) so the board stays cleanly grouped like the mock.
+    aisle: i.category && i.category !== 'Other' ? i.category : aisleFor(i.name, i.quantity),
     source: i.source,
     sourceRecipeIds: i.source_recipe_ids ?? [],
   }))

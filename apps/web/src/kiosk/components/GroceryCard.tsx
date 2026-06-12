@@ -34,51 +34,53 @@ export function GroceryCard() {
         <div className="tiny muted" style={{ paddingBottom: 6 }}>Nothing on the list yet.</div>
       )}
 
-      {items.map((item) => (
-        <div key={item.id} className="gitem" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 7 }}>
-          <button
-            type="button"
-            onClick={() => toggle(item.id, !item.checked)}
-            aria-label={`Toggle ${item.name}`}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              flex: 1,
-              minWidth: 0,
-              background: 'none',
-              border: 0,
-              padding: 0,
-              font: 'inherit',
-              textAlign: 'left',
-              cursor: 'pointer',
-            }}
-          >
-            <span className={`gcheck ${item.checked ? 'on' : ''}`} />
-            <span
+      <div className="gc-scroll">
+        {items.map((item) => (
+          <div key={item.id} className="gitem" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 7 }}>
+            <button
+              type="button"
+              onClick={() => toggle(item.id, !item.checked)}
+              aria-label={`Toggle ${item.name}`}
               style={{
-                fontSize: 14,
-                fontWeight: 600,
-                textDecoration: item.checked ? 'line-through' : 'none',
-                color: item.checked ? 'var(--ink-3)' : 'var(--ink)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                flex: 1,
+                minWidth: 0,
+                background: 'none',
+                border: 0,
+                padding: 0,
+                font: 'inherit',
+                textAlign: 'left',
+                cursor: 'pointer',
               }}
             >
-              {item.name}
-            </span>
-          </button>
-          <button
-            type="button"
-            className="gitem-del"
-            onClick={() => remove(item.id)}
-            aria-label={`Remove ${item.name}`}
-          >
-            ×
-          </button>
-        </div>
-      ))}
+              <span className={`gcheck ${item.checked ? 'on' : ''}`} />
+              <span
+                style={{
+                  fontSize: 14,
+                  fontWeight: 600,
+                  textDecoration: item.checked ? 'line-through' : 'none',
+                  color: item.checked ? 'var(--ink-3)' : 'var(--ink)',
+                }}
+              >
+                {item.name}
+              </span>
+            </button>
+            <button
+              type="button"
+              className="gitem-del"
+              onClick={() => remove(item.id)}
+              aria-label={`Remove ${item.name}`}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+      </div>
 
       {!error && (
-        <form onSubmit={submit} style={{ marginTop: 'auto', paddingTop: 8 }}>
+        <form onSubmit={submit} style={{ paddingTop: 8 }}>
           <input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}

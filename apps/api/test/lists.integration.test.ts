@@ -329,6 +329,57 @@ describe('grocery auto-build from a recipe', () => {
         .statusCode
     ).toBe(404)
   })
+
+  it('bumps the quantity when two recipes need the same item (no silent skip)', async () => {
+    const mk = async (title: string) => {
+      const r = await call('POST', '/api/recipes', kevin, { title, emoji: '🍋' })
+      const rid = JSON.parse(r.body).recipe.id
+      await call('POST', `/api/recipes/${rid}/ingredients`, kevin, {
+        ingredients: [{ name: 'Limes', amount: 1, unit: 'count' }],
+      })
+      return rid
+    }
+    const a = await mk('Lime Tart A')
+    const b = await mk('Lime Tart B')
+    await call('POST', `/api/lists/grocery/from-recipe/${a}`, kevin)
+    await call('POST', `/api/lists/grocery/from-recipe/${b}`, kevin)
+    const items = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items
+    const limes = items.filter((i: { name: string }) => i.name === 'Limes')
+    expect(limes).toHaveLength(1) // one row, not two
+    expect(limes[0].quantity).toBe('2 count') // 1 + 1 summed
+  })
+
+  it('leaves pantry staples off the list', async () => {
+    const r = await call('POST', '/api/recipes', kevin, { title: 'Garlic Bread', emoji: '🧄' })
+    const rid = JSON.parse(r.body).recipe.id
+    await call('POST', `/api/recipes/${rid}/ingredients`, kevin, {
+      ingredients: [
+        { name: 'Garlic', amount: 3, unit: 'clove' }, // staple → skipped
+        { name: 'Baguette', amount: 1 },
+      ],
+    })
+    await call('POST', `/api/lists/grocery/from-recipe/${rid}`, kevin)
+    const names = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items.map((i: { name: string }) => i.name)
+    expect(names).toContain('Baguette')
+    expect(names).not.toContain('Garlic')
+  })
+
+  it('shops for the substitution, not the original ingredient', async () => {
+    const r = await call('POST', '/api/recipes', kevin, { title: 'Turkey Burgers', emoji: '🍔' })
+    const rid = JSON.parse(r.body).recipe.id
+    await call('POST', `/api/recipes/${rid}/ingredients`, kevin, {
+      ingredients: [{ name: 'Ground turkey', amount: 1, unit: 'lb' }],
+    })
+    await call('PATCH', `/api/recipes/${rid}`, kevin, { overrides: { subs: { 'ground turkey': 'ground chicken' } } })
+
+    const res = await call('POST', `/api/lists/grocery/from-recipe/${rid}`, kevin)
+    expect(res.statusCode).toBe(201)
+    const names = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items.map(
+      (i: { name: string }) => i.name
+    )
+    expect(names).toContain('ground chicken') // the swap
+    expect(names).not.toContain('Ground turkey') // not the original
+  })
 })
 
 function thisSunday(): string {
