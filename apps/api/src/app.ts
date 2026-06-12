@@ -16,6 +16,7 @@ import { registerChoreRoutes } from './chores'
 import { registerRewardRoutes } from './rewards'
 import { registerMealRoutes } from './meals'
 import { registerEventRoutes } from './events'
+import { registerCalendarRoutes } from './calendars'
 import { registerGoalRoutes } from './goals'
 import { registerOverviewRoutes } from './overview'
 import { registerPhotoRoutes } from './photos'
@@ -24,8 +25,10 @@ import { registerPowerSyncRoutes } from './powersync'
 
 const api = createAPI()
 
-// Routes that skip auth. /api/auth/keys is the JWKS PowerSync fetches.
-const PUBLIC_PATHS = new Set(['/healthz', '/api/auth/keys'])
+// Routes that skip auth. /api/auth/keys is the JWKS PowerSync fetches; the Google
+// calendar callback is hit by Google's browser redirect (no Authorization header)
+// and authenticates via its one-time OAuth state instead.
+const PUBLIC_PATHS = new Set(['/healthz', '/api/auth/keys', '/auth/google/calendar/callback'])
 
 // Auth gate — verifies the token (sets req.principal) for every non-public route.
 api.use(async (req: Request, res: Response, next: NextFunction) => {
@@ -123,6 +126,9 @@ registerMealRoutes(api)
 
 // Calendar events (/api/events…)
 registerEventRoutes(api)
+
+// Google Calendar connect (/api/calendar/google…, /auth/google/calendar/callback)
+registerCalendarRoutes(api)
 
 // Goals (/api/goals…)
 registerGoalRoutes(api)

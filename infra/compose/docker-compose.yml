@@ -61,6 +61,13 @@ services:
       # with host.docker.internal; bare Linux: http://172.17.0.1:11434
       OLLAMA_HOST: ${OLLAMA_HOST:-}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+      # --- Google Calendar OAuth (5.2): "Connect your calendar". Independent of Auth0.
+      # TOKEN_ENCRYPTION_KEY encrypts the stored refresh token (openssl rand -base64 32).
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_CALENDAR_REDIRECT_URI: ${GOOGLE_CALENDAR_REDIRECT_URI:-}
+      GOOGLE_CALENDAR_SCOPES: ${GOOGLE_CALENDAR_SCOPES:-}
       # --- switch to Auth0 (RS256): set these, then restart the api ---
       # AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       # AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}

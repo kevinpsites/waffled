@@ -16,10 +16,26 @@ export interface AiConfig {
   ollama: { host: string | null; defaultModel: string }
 }
 
+/** Google OAuth + Calendar (5.2). One client serves the calendar grant; the
+ *  endpoint URLs are overridable so integration tests can target a local stub. */
+export interface GoogleConfig {
+  clientId: string | null
+  clientSecret: string | null
+  redirectUri: string | null
+  scopes: string
+  authUrl: string
+  tokenUrl: string
+  userinfoUrl: string
+  apiBase: string
+}
+
 export interface AppConfig {
   env: string
   port: number
   ai: AiConfig
+  google: GoogleConfig
+  /** Secrets-at-rest. tokenEncryptionKey encrypts Google refresh tokens (src/crypto.ts). */
+  security: { tokenEncryptionKey: string | null }
   auth: {
     mode: AuthMode
     /** Where household_id lives on the token (Auth0 custom claims must be namespaced URIs). */
@@ -56,6 +72,27 @@ export const config: AppConfig = {
       defaultModel: process.env.OLLAMA_MODEL ?? 'llama3.1',
     },
   },
+
+  // Google Calendar OAuth (5.2). clientId/secret + a registered redirectUri enable
+  // the "Connect your calendar" flow; it's independent of Auth0 (login). The auth/
+  // token/userinfo/api URLs default to Google and are overridable for tests.
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID ?? null,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? null,
+    // Where Google sends the browser after consent. Must be registered on the OAuth
+    // client. Local dev: http://localhost:8080/auth/google/calendar/callback
+    redirectUri: process.env.GOOGLE_CALENDAR_REDIRECT_URI ?? null,
+    // Full calendar read/write by default (covers calendarList + events + write-back).
+    scopes:
+      process.env.GOOGLE_CALENDAR_SCOPES ??
+      'openid email https://www.googleapis.com/auth/calendar',
+    authUrl: process.env.GOOGLE_AUTH_URL ?? 'https://accounts.google.com/o/oauth2/v2/auth',
+    tokenUrl: process.env.GOOGLE_TOKEN_URL ?? 'https://oauth2.googleapis.com/token',
+    userinfoUrl: process.env.GOOGLE_USERINFO_URL ?? 'https://openidconnect.googleapis.com/v1/userinfo',
+    apiBase: process.env.GOOGLE_CALENDAR_API_BASE ?? 'https://www.googleapis.com/calendar/v3',
+  },
+
+  security: { tokenEncryptionKey: process.env.TOKEN_ENCRYPTION_KEY ?? null },
 
   auth: {
     mode,
