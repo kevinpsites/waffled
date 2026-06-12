@@ -36,6 +36,22 @@ function AgendaRow({ event, onClick }: { event: AgendaEvent; onClick: () => void
   )
 }
 
+// When the day is light (≤3 events), show roomier square-ish cards instead of
+// tight rows so the calendar doesn't look sparse.
+function AgendaBigCard({ event, onClick }: { event: AgendaEvent; onClick: () => void }) {
+  const color = event.personColor ?? '#A6A29B'
+  return (
+    <div className="agenda-bigcard" onClick={onClick} role="button" tabIndex={0} style={{ borderTop: `3px solid ${color}` }}>
+      <div className="ab-time" style={{ color }}>{formatTime(event)}</div>
+      <div className="ab-title">{event.title}</div>
+      {event.location && <div className="tiny muted ab-loc">📍 {event.location}</div>}
+      <div className="ab-foot">
+        <Avatars event={event} />
+      </div>
+    </div>
+  )
+}
+
 // Participant avatars (stacked); falls back to the single person for older events.
 function Avatars({ event }: { event: AgendaEvent }) {
   const people =
@@ -83,9 +99,15 @@ export function AgendaCard() {
       {!loading && !error && events.length === 0 && (
         <div className="muted" style={{ padding: '14px 4px' }}>Nothing on the calendar today.</div>
       )}
-      {events.map((e) => (
-        <AgendaRow key={e.id} event={e} onClick={() => setSelected(e)} />
-      ))}
+      {!loading && !error && events.length > 0 && events.length <= 3 ? (
+        <div className="agenda-biggrid">
+          {events.map((e) => (
+            <AgendaBigCard key={e.id} event={e} onClick={() => setSelected(e)} />
+          ))}
+        </div>
+      ) : (
+        events.map((e) => <AgendaRow key={e.id} event={e} onClick={() => setSelected(e)} />)
+      )}
       {selected && <EventModal event={selected} onClose={() => setSelected(null)} onSaved={refetch} />}
     </div>
   )

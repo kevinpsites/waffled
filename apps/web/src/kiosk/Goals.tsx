@@ -4,7 +4,6 @@ import { Icon } from './icons'
 import { LogModal } from './components/LogModal'
 import { ListModal } from './components/ListModal'
 import { useGoalLists, useGoals, type Goal, type GoalList, type GoalListMember, type GoalParticipant } from '../lib/api'
-import { useTopbarRight } from './topbar-slot'
 import { CATEGORIES } from './categories'
 import '../styles/goals.css'
 
@@ -214,15 +213,6 @@ export function Goals() {
   const selected = lists.find((l) => l.id === selectedId) ?? lists[0] ?? null
   const { goals, loading: goalsLoading, refetch } = useGoals(selected?.id ?? null)
 
-  useTopbarRight(
-    () => (
-      <button type="button" className="pill btn-primary topbar-new" onClick={() => navigate('/goals/new')}>
-        <Icon name="plus" />
-        <span>New goal</span>
-      </button>
-    ),
-    [navigate]
-  )
 
   const isIndividual = (selected?.members.length ?? 0) === 1
   const visible = goals.filter(
@@ -269,14 +259,23 @@ export function Goals() {
               {selected ? `${selected.goalCount} goals · ${listSub(selected)}` : `${goals.length} goals`}
             </div>
           </div>
-          {/* All/Shared/Each only makes sense for multi-person lists */}
-          {(selected?.members.length ?? 0) !== 1 && (
-            <div className="seg" style={{ marginLeft: 'auto' }}>
-              <button className={filter === 'all' ? 'on' : ''} onClick={() => setFilter('all')}>All</button>
-              <button className={filter === 'shared' ? 'on' : ''} onClick={() => setFilter('shared')}>Shared</button>
-              <button className={filter === 'each' ? 'on' : ''} onClick={() => setFilter('each')}>Each</button>
-            </div>
-          )}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center' }}>
+            {/* All/Shared/Each only makes sense for multi-person lists */}
+            {(selected?.members.length ?? 0) !== 1 && (
+              <div className="seg">
+                <button className={filter === 'all' ? 'on' : ''} onClick={() => setFilter('all')}>All</button>
+                <button className={filter === 'shared' ? 'on' : ''} onClick={() => setFilter('shared')}>Shared</button>
+                <button className={filter === 'each' ? 'on' : ''} onClick={() => setFilter('each')}>Each</button>
+              </div>
+            )}
+            <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate('/family')}>
+              👨‍👩‍👧 Family
+            </button>
+            <button type="button" className="pill btn-primary" onClick={() => navigate('/goals/new')}>
+              <Icon name="plus" />
+              <span>New goal</span>
+            </button>
+          </div>
         </div>
 
         {featured && <Hero goal={featured} onLog={setLogging} onOpen={() => navigate(`/goals/${featured.id}`)} />}

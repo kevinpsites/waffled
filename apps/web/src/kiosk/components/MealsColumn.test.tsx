@@ -1,6 +1,10 @@
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { MealsColumn } from './MealsColumn'
 import { localToday } from '../../lib/api'
+
+// TonightCard uses useNavigate (View recipe / Cook Mode), so a router is needed.
+const renderCol = () => render(<MealsColumn />, { wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter> })
 
 function mockWeek(entries: unknown[]) {
   globalThis.fetch = vi.fn(async () => ({
@@ -24,7 +28,7 @@ describe('MealsColumn', () => {
   it("shows tonight's dinner and the week's dinners", async () => {
     const today = localToday()
     mockWeek([dinner(today, 'Ravioli Bake', '🍝'), dinner('2026-12-31', 'Chorizo Tacos', '🌮')])
-    render(<MealsColumn />)
+    renderCol()
     // tonight's dinner also appears in the week list, so it shows twice
     expect(await screen.findAllByText('Ravioli Bake')).toHaveLength(2)
     expect(screen.getByText(/Serves 5/)).toBeInTheDocument() // tonight card only
@@ -33,10 +37,27 @@ describe('MealsColumn', () => {
     expect(screen.getByText('2 planned')).toBeInTheDocument()
   })
 
-  it('shows empty states when nothing is planned', async () => {
+  it('drops the tonight card and shows the week empty state when nothing is planned', async () => {
     mockWeek([])
-    render(<MealsColumn />)
-    expect(await screen.findByText(/Nothing planned for tonight/)).toBeInTheDocument()
-    expect(screen.getByText(/No dinners planned yet/)).toBeInTheDocument()
+    renderCol()
+    expect(await screen.findByText(/No dinners planned yet/)).toBeInTheDocument()
+    expect(screen.queryByText(/Tonight · Dinner/)).not.toBeInTheDocument()
+  })
+
+  it('shows a recipe-less dinner instead of hiding it, with a find-recipe action', async () => {
+    const today = localToday()
+    mockWeek([{ id: `${today}-d`, date: today, mealType: 'dinner', title: 'Fish', recipeId: null, recipe: null }])
+    renderCol()
+    expect(await screen.findAllByText('Fish')).toHaveLength(2) // tonight card + week list
+    expect(screen.getByText(/No recipe attached yet/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Find a recipe/ })).toBeInTheDocument()
+  })
+
+  it('renders an eating-out night as "Eating out"', async () => {
+    const today = localToday()
+    mockWeek([{ id: `${today}-d`, date: today, mealType: 'dinner', title: 'Eating out', recipeId: null, recipe: null }])
+    renderCol()
+    expect(await screen.findAllByText('Eating out')).toHaveLength(2) // tonight card + week list
+    expect(screen.getByText(/No cooking tonight/)).toBeInTheDocument()
   })
 })

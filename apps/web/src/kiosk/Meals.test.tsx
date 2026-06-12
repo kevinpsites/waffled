@@ -118,11 +118,10 @@ describe('Meals weekly planner', () => {
     // empty slots render as add buttons (7 days × 4 meals − 2 planned = 26)
     expect(screen.getAllByRole('button', { name: /^Add /i })).toHaveLength(26)
 
-    // topbar actions
-    const topbar = screen.getByTestId('topbar')
-    expect(within(topbar).getByText('Explore recipes')).toBeInTheDocument()
-    expect(within(topbar).getByText('Plan my week')).toBeInTheDocument()
-    expect(within(topbar).getByText('This week')).toBeInTheDocument()
+    // in-page planner controls (moved off the topbar so the capture bar lives there)
+    expect(screen.getByText('Explore recipes')).toBeInTheDocument()
+    expect(screen.getByText('Plan my week')).toBeInTheDocument()
+    expect(screen.getByText('This week')).toBeInTheDocument()
   })
 
   it('filters to dinners only', async () => {
@@ -130,7 +129,7 @@ describe('Meals weekly planner', () => {
     renderMeals()
     await screen.findByText('Ravioli & Sausage Bake')
 
-    fireEvent.click(within(screen.getByTestId('topbar')).getByText('Dinners'))
+    fireEvent.click(screen.getByText('Dinners'))
     expect(screen.queryByText('Breakfast')).not.toBeInTheDocument()
     expect(screen.getByText('Dinner')).toBeInTheDocument()
   })
@@ -181,7 +180,7 @@ describe('Meals weekly planner', () => {
       String(c[0]).includes('/api/meals/week')
     ).length
 
-    fireEvent.click(within(screen.getByTestId('topbar')).getByRole('button', { name: /Next week/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Next week/i }))
     await waitFor(() => {
       const calls1 = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls.filter((c) =>
         String(c[0]).includes('/api/meals/week')

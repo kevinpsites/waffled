@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Icon } from './icons'
 import { RecipeModal } from './components/RecipeModal'
-import { useTopbarRight, useTopbarFull } from './topbar-slot'
+import { useTopbarFull } from './topbar-slot'
 import {
   api,
   useMealsWeek,
@@ -100,6 +100,7 @@ function MealPicker({
   loading,
   onPick,
   onView,
+  onEatingOut,
   onClose,
 }: {
   slot: MealType
@@ -108,6 +109,7 @@ function MealPicker({
   loading: boolean
   onPick?: (recipe: Recipe) => void
   onView?: (recipe: Recipe) => void
+  onEatingOut?: () => void
   onClose: () => void
 }) {
   const browse = !onPick
@@ -164,6 +166,18 @@ function MealPicker({
       </div>
 
       <div className="picker-grid">
+        {onEatingOut && (
+          <div className="rc mp-card" role="button" tabIndex={0} onClick={onEatingOut}>
+            <div className="rc-img" style={{ background: 'linear-gradient(135deg,#d9e7f6,#bcd0e9)', fontSize: 34, display: 'grid', placeItems: 'center' }}>🍴</div>
+            <div className="rc-b" style={{ padding: '12px 14px 14px' }}>
+              <div className="rc-t" style={{ fontSize: 16 }}>Eating out</div>
+              <div className="rc-m"><span>No cooking tonight</span></div>
+              <div className="mp-actions">
+                <button type="button" className="pill btn-primary mp-select" onClick={(e) => { e.stopPropagation(); onEatingOut() }}>Select</button>
+              </div>
+            </div>
+          </div>
+        )}
         {loading && <div className="muted picker-empty">Loading recipes…</div>}
         {!loading && shown.length === 0 && (
           <div className="muted picker-empty">
@@ -221,39 +235,6 @@ export function Meals() {
     return m
   }, [entries])
 
-  useTopbarRight(
-    () => (
-      <>
-        <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate('/meals/recipes')}>
-          <Icon name="recipes" />
-          <span>Explore recipes</span>
-        </button>
-        <button type="button" className="btn btn-ai" style={{ fontSize: 14, padding: '10px 18px' }} onClick={() => {}}>
-          <Icon name="spark" />
-          Plan my week
-        </button>
-        <div className="seg">
-          <button className={filter === 'all' ? 'on' : ''} onClick={() => setFilter('all')}>
-            All meals
-          </button>
-          <button className={filter === 'dinner' ? 'on' : ''} onClick={() => setFilter('dinner')}>
-            Dinners
-          </button>
-        </div>
-        <button type="button" className="pill meals-nav" aria-label="Previous week" onClick={() => setStart((s) => addDays(s, -7))}>
-          <Icon name="cl" />
-        </button>
-        <button type="button" className="pill" onClick={() => setStart(weekStart(new Date()))}>
-          This week
-        </button>
-        <button type="button" className="pill meals-nav" aria-label="Next week" onClick={() => setStart((s) => addDays(s, 7))}>
-          <Icon name="cr" />
-        </button>
-      </>
-    ),
-    [filter]
-  )
-
   async function pick(recipe: Recipe) {
     if (!picking) return
     await api.planSlot({ date: picking.date, mealType: picking.mealType, recipeId: recipe.id })
@@ -263,6 +244,13 @@ export function Meals() {
 
   async function clearMeal(date: string, mealType: MealType) {
     await api.clearSlot(date, mealType)
+    refetch()
+  }
+
+  async function eatOut() {
+    if (!picking) return
+    await api.planSlot({ date: picking.date, mealType: picking.mealType, title: 'Eating out' })
+    setPicking(null)
     refetch()
   }
 
@@ -276,6 +264,7 @@ export function Meals() {
         recipes={recipes}
         loading={recipesLoading}
         onPick={pick}
+        onEatingOut={eatOut}
         onClose={() => setPicking(null)}
       />
     )
@@ -283,6 +272,30 @@ export function Meals() {
 
   return (
     <div className="meals-screen">
+      <div className="meals-head">
+        <div className="card-h nk-serif" style={{ fontSize: 20 }}>Meal plan</div>
+        <div className="seg">
+          <button className={filter === 'all' ? 'on' : ''} onClick={() => setFilter('all')}>All meals</button>
+          <button className={filter === 'dinner' ? 'on' : ''} onClick={() => setFilter('dinner')}>Dinners</button>
+        </div>
+        <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate('/meals/recipes')}>
+          <Icon name="recipes" />
+          <span>Explore recipes</span>
+        </button>
+        <button type="button" className="btn btn-ai" style={{ fontSize: 14, padding: '10px 18px' }} onClick={() => {}}>
+          <Icon name="spark" />
+          Plan my week
+        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button type="button" className="pill meals-nav" aria-label="Previous week" onClick={() => setStart((s) => addDays(s, -7))}>
+            <Icon name="cl" />
+          </button>
+          <button type="button" className="pill" onClick={() => setStart(weekStart(new Date()))}>This week</button>
+          <button type="button" className="pill meals-nav" aria-label="Next week" onClick={() => setStart((s) => addDays(s, 7))}>
+            <Icon name="cr" />
+          </button>
+        </div>
+      </div>
       <div className="meals-hint">Tap a meal for the recipe · tap + to add one · the avatar is who's cooking</div>
 
       <div className="meals-grid" style={{ gridTemplateRows: `auto repeat(${rows.length}, 1fr)` }}>
@@ -345,7 +358,9 @@ function Row({
               key={dateStr}
               entry={entry}
               mealType={mealType}
-              onOpen={() => entry.recipeId && onOpen(entry.recipeId)}
+              // Recipe → open it; recipe-less ("Fish"/eating-out) → open the slot
+              // picker so you can attach a recipe or change the plan.
+              onOpen={() => (entry.recipeId ? onOpen(entry.recipeId) : onAdd(d))}
               onRemove={() => onRemove(dateStr, mealType)}
             />
           )
