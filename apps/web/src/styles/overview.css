@@ -1,0 +1,131 @@
+/* ===== Person profile (the "Person / Wally" mock, extended) ===== */
+.person-profile {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 22px;
+  padding: 4px 30px 28px;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: start;
+}
+.pp-left, .pp-right { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.pp-card { padding: 18px 20px; }
+
+.pp-hero { display: flex; align-items: center; gap: 16px; }
+.pp-av {
+  width: 64px; height: 64px; border-radius: 999px; flex: none;
+  display: grid; place-items: center; font-size: 34px;
+}
+.pp-name { font-size: 30px; font-weight: 600; letter-spacing: -0.01em; }
+.pp-sub { font-size: 14px; font-weight: 600; color: var(--ink-2); margin-top: 2px; }
+
+/* whole-person balance rings */
+.pp-balances {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.pp-bal { text-align: center; }
+.pp-bal.empty { opacity: 0.5; }
+.pp-bal-ring { width: 66px; height: 66px; }
+.pp-bal-track { fill: none; stroke: var(--panel); stroke-width: 6; }
+.pp-bal-fill { fill: none; stroke-width: 6; stroke-linecap: round; transition: stroke-dashoffset 0.4s; }
+.pp-bal-emo { font-size: 20px; }
+.pp-bal-label { font-size: 12px; font-weight: 700; margin-top: 2px; }
+.pp-bal-count { font-size: 11px; font-weight: 600; color: var(--ink-3); }
+
+.cat-physical { stroke: #ec6049; }
+.cat-intellectual { stroke: #2f7fed; }
+.cat-spiritual { stroke: #8b5cf6; }
+.cat-creative { stroke: #e0a500; }
+.cat-social { stroke: #25a368; }
+
+/* insight */
+.pp-insight {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px 16px; border-radius: var(--r-lg);
+  background: linear-gradient(120deg, #efeafc, #f4eefe);
+}
+.pp-insight .ai-spark { width: 32px; height: 32px; flex: none; }
+.pp-insight-t { font-size: 14.5px; font-weight: 700; color: var(--ai); }
+.pp-insight-s { font-size: 13px; font-weight: 600; color: var(--ink-2); margin-top: 4px; }
+.pp-suggest {
+  font: inherit; font-size: 13px; font-weight: 700; color: var(--ai);
+  background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline;
+}
+
+/* goal rows */
+.pp-goal { display: flex; align-items: center; gap: 13px; padding: 11px 0; border-bottom: 1px solid var(--hair-2); }
+.pp-goal:last-child { border-bottom: 0; }
+.pp-goal-emo { font-size: 24px; flex: none; }
+.pp-goal-body { flex: 1; min-width: 0; }
+.pp-goal-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pp-goal-title { font-weight: 600; font-size: 15px; }
+.pp-cat-chip {
+  font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  background: var(--panel); color: var(--ink-2); text-transform: capitalize;
+}
+.pp-cat-chip.cat-physical { background: #fdeae6; color: #c0432c; stroke: none; }
+.pp-cat-chip.cat-intellectual { background: var(--kevin-t); color: #1559b8; }
+.pp-cat-chip.cat-spiritual { background: var(--lottie-t); color: #6a3fc4; }
+.pp-cat-chip.cat-creative { background: #fbf1d6; color: #9a7400; }
+.pp-cat-chip.cat-social { background: var(--wally-t); color: #167a4a; }
+.pp-goal-streak { font-size: 12px; font-weight: 800; color: #d9650a; }
+.pp-goal-bar { height: 7px; border-radius: 999px; background: var(--panel); margin-top: 7px; overflow: hidden; }
+.pp-goal-bar span { display: block; height: 100%; background: var(--wally); border-radius: 999px; }
+.pp-goal-num { flex: none; font-size: 14px; text-align: right; }
+.pp-goal-num b { font-size: 16px; }
+
+/* stars & chores */
+.pp-star-big { font-size: 30px; font-weight: 800; color: var(--lottie); }
+.pp-ledger { display: flex; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--hair-2); font-size: 14px; }
+.pp-ledger:last-child { border-bottom: 0; }
+.pp-ledger-amt { width: 44px; flex: none; font-weight: 800; }
+.pp-ledger-amt.pos { color: #167a4a; }
+.pp-ledger-amt.neg { color: var(--primary); }
+.pp-ledger-r { color: var(--ink-2); font-weight: 600; }
+
+/* redemptions */
+.pp-redeem { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--hair-2); }
+.pp-redeem:last-child { border-bottom: 0; }
+.pp-redeem-emo { font-size: 20px; }
+.pp-redeem-t { flex: 1; font-weight: 600; font-size: 14px; }
+.pp-redeem-status { font-size: 11px; font-weight: 800; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; }
+.st-pending { background: #fff5e0; color: #b07d00; }
+.st-approved { background: var(--wally-t); color: #167a4a; }
+.st-denied { background: var(--panel); color: var(--ink-3); }
+.pp-redeem-cost { font-size: 13px; font-weight: 800; color: var(--lottie); }
+
+@media (max-width: 1000px) {
+  .person-profile { grid-template-columns: 1fr; }
+  .pp-balances { grid-template-columns: repeat(5, 1fr); }
+}
+@media (max-width: 600px) {
+  .person-profile { padding: 4px 16px 22px; }
+  .pp-balances { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ===== Family overview ===== */
+.family-overview { flex: 1; padding: 6px 30px 28px; overflow-y: auto; }
+.fam-title { font-size: 24px; font-weight: 600; margin: 4px 0 16px; }
+.fam-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; align-content: start; }
+.fam-card {
+  text-align: left; font: inherit; cursor: pointer; border: 0; width: 100%;
+  padding: 18px 20px; display: flex; flex-direction: column; gap: 14px;
+  transition: box-shadow 0.12s, transform 0.12s;
+}
+.fam-card:hover { box-shadow: var(--sh-3); }
+.fam-head { display: flex; align-items: center; gap: 12px; }
+.fam-av { width: 46px; height: 46px; border-radius: 999px; flex: none; display: grid; place-items: center; font-size: 24px; }
+.fam-name-wrap { flex: 1; min-width: 0; }
+.fam-name { font-weight: 700; font-size: 17px; }
+.fam-streak { font-size: 13px; font-weight: 800; color: #d9650a; }
+.fam-stats { display: flex; justify-content: space-between; }
+.fam-stat { text-align: center; }
+.fam-stat-n { font-size: 20px; font-weight: 800; }
+.fam-stat-l { font-size: 11px; font-weight: 600; color: var(--ink-3); }
+.fam-bar { height: 7px; border-radius: 999px; background: var(--panel); overflow: hidden; }
+.fam-bar span { display: block; height: 100%; background: var(--wally); border-radius: 999px; }
+@media (max-width: 600px) { .family-overview { padding: 6px 16px 22px; } }

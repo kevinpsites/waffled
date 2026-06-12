@@ -2,7 +2,7 @@
 // instances are materialized on demand; completion awards stars via the ledger.
 // (rrule expansion beyond daily, photo proof, approval, up-for-grabs: later.)
 import createAPI, { type Request, type Response } from 'lambda-api'
-import type { QueryResultRow } from 'pg'
+import type { QueryResultRow, PoolClient } from 'pg'
 import { getPool, query } from './db'
 import { requireTenant, requireAdmin, type Tenant } from './households'
 
@@ -18,6 +18,7 @@ interface ChoreInstanceRow extends QueryResultRow {
   reward_currency: string | null
   reward_amount: number | null
   awarded: boolean
+  requires_approval: boolean
 }
 
 export interface ChoreRow extends QueryResultRow {
@@ -32,8 +33,30 @@ export interface ChoreRow extends QueryResultRow {
   is_active: boolean
 }
 
-export function todayDate(): string {
-  return new Date().toISOString().slice(0, 10)
+// "Today" as a calendar day. With a timezone it's the household-local day (so
+// chores don't roll over at UTC midnight — i.e. early in the evening); without
+// one it falls back to UTC.
+export function todayDate(tz?: string): string {
+  if (!tz) return new Date().toISOString().slice(0, 10)
+  const m: Record<string, string> = {}
+  for (const p of new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())) m[p.type] = p.value
+  return `${m.year}-${m.month}-${m.day}`
+}
+
+export async function householdTz(householdId: string): Promise<string> {
+  const { rows } = await query<{ timezone: string }>(`select timezone from households where id = $1`, [householdId])
+  return rows[0]?.timezone ?? 'UTC'
+}
+
+// The day the Tasks view is asking for: a valid ?date= within ±31 days of `today`,
+// else today. Bounds keep on-demand materialization of future instances cheap.
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+const DAY_MS = 86_400_000
+export function requestedDate(raw: unknown, today: string): string {
+  if (typeof raw !== 'string' || !DATE_RE.test(raw)) return today
+  const diff = Math.round((Date.parse(`${raw}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / DAY_MS)
+  if (Number.isNaN(diff) || diff < -31 || diff > 31) return today
+  return raw
 }
 
 export interface CreateChoreInput {
@@ -43,13 +66,14 @@ export interface CreateChoreInput {
   rewardAmount?: number
   rrule?: string | null
   dueTime?: string | null
+  requiresApproval?: boolean
 }
 
 export async function createChore(tenant: Tenant, input: CreateChoreInput): Promise<ChoreRow> {
   const { rows } = await query<ChoreRow>(
     `insert into chores
-       (household_id, title, emoji, person_id, rrule, reward_currency, reward_amount, due_time)
-     values ($1, $2, $3, $4, coalesce($5,'FREQ=DAILY'), 'stars', coalesce($6,0), $7)
+       (household_id, title, emoji, person_id, rrule, reward_currency, reward_amount, due_time, requires_approval)
+     values ($1, $2, $3, $4, coalesce($5,'FREQ=DAILY'), 'stars', coalesce($6,0), $7, $8)
      returning *`,
     [
       tenant.householdId,
@@ -59,23 +83,44 @@ export async function createChore(tenant: Tenant, input: CreateChoreInput): Prom
       input.rrule ?? null,
       input.rewardAmount ?? 0,
       input.dueTime ?? null,
+      input.requiresApproval ?? false,
     ]
   )
   return rows[0]
 }
 
-// Materialize today's instances for active daily chores (idempotent).
+const WEEKDAY_CODES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
+
+// Materialize today's instances (idempotent) for active chores due today: DAILY
+// always, WEEKLY when today's weekday is in the rrule's BYDAY list. Day codes are
+// all distinct 2-letter tokens, so a substring match within a WEEKLY BYDAY is safe.
 export async function ensureTodayInstances(householdId: string, dueOn: string): Promise<void> {
+  const dow = WEEKDAY_CODES[new Date(dueOn + 'T00:00:00').getDay()]
   await query(
     `insert into chore_instances
-       (household_id, chore_id, person_id, due_on, reward_currency, reward_amount)
-     select household_id, id, person_id, $2::date, reward_currency, reward_amount
+       (household_id, chore_id, person_id, due_on, reward_currency, reward_amount, requires_approval)
+     select household_id, id, person_id, $2::date, reward_currency, reward_amount, requires_approval
        from chores
-      where household_id = $1 and is_active and deleted_at is null
-        and rrule is not null and rrule like '%DAILY%'
+      where household_id = $1 and is_active and deleted_at is null and rrule is not null
+        and (
+          rrule ilike '%FREQ=DAILY%'
+          or (rrule ilike '%FREQ=WEEKLY%' and rrule ~ ('BYDAY=[A-Z,]*' || $3))
+        )
      on conflict (chore_id, due_on) do nothing`,
-    [householdId, dueOn]
+    [householdId, dueOn, dow]
   )
+}
+
+// Claim an up-for-grabs (unassigned) instance for a person — only if still
+// unclaimed, so two kids can't grab the same one.
+export async function claimInstance(tenant: Tenant, id: string, personId: string): Promise<ChoreInstanceRow | null> {
+  const { rows } = await query<ChoreInstanceRow>(
+    `update chore_instances set person_id=$3
+       where household_id=$1 and id=$2 and person_id is null and deleted_at is null
+       returning *`,
+    [tenant.householdId, id, personId]
+  )
+  return rows[0] ?? null
 }
 
 export interface PersonChoreSummary {
@@ -142,12 +187,46 @@ export interface TodayInstance {
   personName: string | null
   status: string
   rewardAmount: number | null
+  rrule: string | null
+  requiresApproval: boolean
+  streak: number
+}
+
+// Per-chore streak: consecutive calendar days (ending today if done, else
+// yesterday) the chore was completed. Day-based — exact for daily chores, an
+// approximation for weekly ones. Computed in JS over the last ~60 days.
+async function streaksByChore(householdId: string, dueOn: string): Promise<Map<string, number>> {
+  const { rows } = await query<{ chore_id: string; due_on: string }>(
+    `select chore_id, due_on::text from chore_instances
+       where household_id=$1 and status='done' and deleted_at is null
+         and due_on > ($2::date - 60) and due_on <= $2::date`,
+    [householdId, dueOn]
+  )
+  const doneByChore = new Map<string, Set<string>>()
+  for (const r of rows) {
+    if (!doneByChore.has(r.chore_id)) doneByChore.set(r.chore_id, new Set())
+    doneByChore.get(r.chore_id)!.add(r.due_on.slice(0, 10))
+  }
+  const dayMs = 86_400_000
+  const out = new Map<string, number>()
+  for (const [choreId, days] of doneByChore) {
+    // start at today if it's done, else yesterday, then walk back while done.
+    let cursor = new Date(dueOn + 'T00:00:00')
+    if (!days.has(dueOn)) cursor = new Date(cursor.getTime() - dayMs)
+    let streak = 0
+    while (days.has(cursor.toISOString().slice(0, 10))) {
+      streak++
+      cursor = new Date(cursor.getTime() - dayMs)
+    }
+    out.set(choreId, streak)
+  }
+  return out
 }
 
 export async function listTodayInstances(householdId: string, dueOn: string): Promise<TodayInstance[]> {
   const { rows } = await query<QueryResultRow>(
-    `select ci.id, ci.status, ci.reward_amount, ci.person_id,
-            c.id as chore_id, c.title as chore_title, c.emoji, p.name as person_name
+    `select ci.id, ci.status, ci.reward_amount, ci.person_id, ci.requires_approval,
+            c.id as chore_id, c.title as chore_title, c.emoji, c.rrule, p.name as person_name
        from chore_instances ci
        join chores c on c.id = ci.chore_id and c.deleted_at is null
        left join persons p on p.id = ci.person_id
@@ -155,6 +234,7 @@ export async function listTodayInstances(householdId: string, dueOn: string): Pr
       order by p.sort_order nulls last, c.due_time nulls last, c.title`,
     [householdId, dueOn]
   )
+  const streaks = await streaksByChore(householdId, dueOn)
   return rows.map((r) => ({
     id: r.id,
     choreId: r.chore_id,
@@ -164,6 +244,9 @@ export async function listTodayInstances(householdId: string, dueOn: string): Pr
     personName: r.person_name,
     status: r.status,
     rewardAmount: r.reward_amount,
+    rrule: r.rrule,
+    requiresApproval: r.requires_approval,
+    streak: streaks.get(r.chore_id) ?? 0,
   }))
 }
 
@@ -174,6 +257,8 @@ const UPDATABLE_CHORE: Record<string, string> = {
   rewardAmount: 'reward_amount',
   dueTime: 'due_time',
   isActive: 'is_active',
+  rrule: 'rrule',
+  requiresApproval: 'requires_approval',
 }
 
 export async function updateChore(
@@ -219,7 +304,20 @@ function presentInstance(i: ChoreInstanceRow) {
   }
 }
 
-// Mark done + award stars (one ledger entry, once). Idempotent if already done.
+// Award a chore's stars once (one positive ledger entry + the awarded flag).
+async function awardStars(client: PoolClient, tenant: Tenant, inst: ChoreInstanceRow, id: string): Promise<boolean> {
+  if (inst.awarded || !inst.reward_amount || !inst.person_id) return false
+  await client.query(
+    `insert into ledger_entries (household_id, person_id, currency, amount, reason, ref_type, ref_id, created_by)
+     values ($1,$2,$3,$4,'chore_completed','chore_instance',$5,$6)`,
+    [tenant.householdId, inst.person_id, inst.reward_currency ?? 'stars', inst.reward_amount, id, tenant.personId]
+  )
+  await client.query(`update chore_instances set awarded=true where id=$1`, [id])
+  return true
+}
+
+// Mark done + award stars. If the chore needs a parent's OK, park it in 'awaiting'
+// (no stars yet — a parent approves later). Idempotent.
 export async function completeInstance(tenant: Tenant, id: string): Promise<ChoreInstanceRow | null> {
   const client = await getPool().connect()
   try {
@@ -233,31 +331,17 @@ export async function completeInstance(tenant: Tenant, id: string): Promise<Chor
       await client.query('rollback')
       return null
     }
-    if (inst.status === 'done') {
+    if (inst.status === 'done' || inst.status === 'awaiting') {
       await client.query('commit')
       return inst
     }
+    const nextStatus = inst.requires_approval ? 'awaiting' : 'done'
     const upd = await client.query<ChoreInstanceRow>(
-      `update chore_instances set status='done', completed_by=$1, completed_at=now() where id=$2 returning *`,
-      [tenant.personId, id]
+      `update chore_instances set status=$2, completed_by=$1, completed_at=now() where id=$3 returning *`,
+      [tenant.personId, nextStatus, id]
     )
     const updated = upd.rows[0]
-    if (!updated.awarded && updated.reward_amount && updated.person_id) {
-      await client.query(
-        `insert into ledger_entries (household_id, person_id, currency, amount, reason, ref_type, ref_id, created_by)
-         values ($1,$2,$3,$4,'chore_completed','chore_instance',$5,$6)`,
-        [
-          tenant.householdId,
-          updated.person_id,
-          updated.reward_currency ?? 'stars',
-          updated.reward_amount,
-          id,
-          tenant.personId,
-        ]
-      )
-      await client.query(`update chore_instances set awarded=true where id=$1`, [id])
-      updated.awarded = true
-    }
+    if (nextStatus === 'done' && (await awardStars(client, tenant, updated, id))) updated.awarded = true
     await client.query('commit')
     return updated
   } catch (err) {
@@ -266,6 +350,45 @@ export async function completeInstance(tenant: Tenant, id: string): Promise<Chor
   } finally {
     client.release()
   }
+}
+
+// Parent approves an 'awaiting' instance → 'done' + award. Idempotent on 'done'.
+export async function approveInstance(tenant: Tenant, id: string): Promise<ChoreInstanceRow | null> {
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    const cur = await client.query<ChoreInstanceRow>(
+      `select * from chore_instances where household_id=$1 and id=$2 and deleted_at is null for update`,
+      [tenant.householdId, id]
+    )
+    const inst = cur.rows[0]
+    if (!inst) { await client.query('rollback'); return null }
+    if (inst.status === 'done') { await client.query('commit'); return inst }
+    const upd = await client.query<ChoreInstanceRow>(
+      `update chore_instances set status='done', completed_at=coalesce(completed_at, now()) where id=$1 returning *`,
+      [id]
+    )
+    const updated = upd.rows[0]
+    if (await awardStars(client, tenant, updated, id)) updated.awarded = true
+    await client.query('commit')
+    return updated
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+// Parent rejects an 'awaiting' instance → back to 'pending' for a redo.
+export async function rejectInstance(tenant: Tenant, id: string): Promise<ChoreInstanceRow | null> {
+  const { rows } = await query<ChoreInstanceRow>(
+    `update chore_instances set status='pending', completed_by=null, completed_at=null
+       where household_id=$1 and id=$2 and status='awaiting' and deleted_at is null
+       returning *`,
+    [tenant.householdId, id]
+  )
+  return rows[0] ?? null
 }
 
 // Revert to pending; if stars were awarded, write a reversing ledger entry.
@@ -324,6 +447,7 @@ export function presentChore(c: ChoreRow) {
     rewardAmount: c.reward_amount,
     dueTime: c.due_time,
     isActive: c.is_active,
+    requiresApproval: (c as { requires_approval?: boolean }).requires_approval ?? false,
   }
 }
 
@@ -369,19 +493,20 @@ export function registerChoreRoutes(api: Api): void {
     return res.status(204).send('')
   })
 
-  // Today's per-person chore summary (rings + stars).
+  // Per-person chore summary (rings + stars) for a day (default today, household-local).
   api.get('/api/chores/today', async (req: Request) => {
     const tenant = await requireTenant(req)
-    const date = todayDate()
+    const date = requestedDate(req.query?.date, todayDate(await householdTz(tenant.householdId)))
     await ensureTodayInstances(tenant.householdId, date)
     const people = await todaySummary(tenant.householdId, date)
     return { date, people }
   })
 
-  // Today's individual chore instances (the Tasks list).
+  // Individual chore instances (the Tasks list) for a day. `?date=YYYY-MM-DD`
+  // (within ±31 days) lets the Tasks screen look ahead; defaults to today (local).
   api.get('/api/chore-instances/today', async (req: Request) => {
     const tenant = await requireTenant(req)
-    const date = todayDate()
+    const date = requestedDate(req.query?.date, todayDate(await householdTz(tenant.householdId)))
     await ensureTodayInstances(tenant.householdId, date)
     const instances = await listTodayInstances(tenant.householdId, date)
     return { date, instances }
@@ -403,6 +528,41 @@ export function registerChoreRoutes(api: Api): void {
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
     const inst = await uncompleteInstance(tenant, id)
     if (!inst) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
+    return { instance: presentInstance(inst) }
+  })
+
+  // Claim an up-for-grabs instance for a person (default: the caller). 409 if
+  // someone already grabbed it.
+  api.post('/api/chore-instances/:id/claim', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
+    const personId = ((req.body ?? {}) as { personId?: string }).personId?.trim() || tenant.personId
+    if (!UUID_RE.test(personId)) return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
+    const inst = await claimInstance(tenant, id, personId)
+    if (!inst) return res.status(409).json({ error: 'Conflict', message: 'already claimed or not found' })
+    return { instance: presentInstance(inst) }
+  })
+
+  // Parent approves a submitted (awaiting) chore → done + award stars (admins).
+  api.post('/api/chore-instances/:id/approve', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
+    const inst = await approveInstance(tenant, id)
+    if (!inst) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
+    return { instance: presentInstance(inst) }
+  })
+
+  // Parent rejects a submitted chore → back to pending for a redo (admins).
+  api.post('/api/chore-instances/:id/reject', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
+    const inst = await rejectInstance(tenant, id)
+    if (!inst) return res.status(409).json({ error: 'Conflict', message: 'not awaiting approval' })
     return { instance: presentInstance(inst) }
   })
 }

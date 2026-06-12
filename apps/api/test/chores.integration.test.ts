@@ -33,12 +33,15 @@ function call(method: string, path: string, token?: string, body?: unknown) {
   const headers: Record<string, string> = {}
   if (token) headers.authorization = `Bearer ${token}`
   if (body !== undefined) headers['content-type'] = 'application/json'
+  const [rawPath, qs] = path.split('?')
+  const queryStringParameters: Record<string, string> = {}
+  if (qs) for (const pair of qs.split('&')) { const [k, v] = pair.split('='); queryStringParameters[k] = decodeURIComponent(v ?? '') }
   return app.run(
     {
       httpMethod: method,
-      path,
+      path: rawPath,
       headers,
-      queryStringParameters: {},
+      queryStringParameters,
       body: body !== undefined ? JSON.stringify(body) : null,
       isBase64Encoded: false,
     },
@@ -47,6 +50,14 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 }
 
 const kevin = mint('dev|kevin')
+
+// The test household is America/Chicago; chores now use the household-local day.
+const TZ = 'America/Chicago'
+function todayInTz(tz: string): string {
+  const m: Record<string, string> = {}
+  for (const p of new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())) m[p.type] = p.value
+  return `${m.year}-${m.month}-${m.day}`
+}
 
 beforeAll(async () => {
   pg = await new PostgreSqlContainer('postgres:16').start()
@@ -258,5 +269,123 @@ describe('chore management (edit/delete)', () => {
     expect((await instances()).some((i) => i.choreId === choreId)).toBe(false)
     expect(await kevinTotal()).toBe(before - 1)
     expect((await call('DELETE', `/api/chores/${choreId}`, kevin)).statusCode).toBe(404)
+  })
+})
+
+describe('weekly schedules + up-for-grabs claim', () => {
+  const CODES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
+  // The server's "today" is the household-local day, so derive the weekday the same way.
+  const dueOn = todayInTz(TZ)
+  const today = CODES[new Date(`${dueOn}T00:00:00`).getDay()]
+  const other = today === 'MO' ? 'TU' : 'MO'
+
+  async function instances() {
+    return JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body).instances as Array<{
+      id: string
+      choreTitle: string
+      personId: string | null
+    }>
+  }
+
+  it('materializes a WEEKLY chore only on a matching weekday', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'WK Today', personId: kevinId, rrule: `FREQ=WEEKLY;BYDAY=${today}` })
+    await call('POST', '/api/chores', kevin, { title: 'WK Other', personId: kevinId, rrule: `FREQ=WEEKLY;BYDAY=${other}` })
+    const titles = (await instances()).map((i) => i.choreTitle)
+    expect(titles).toContain('WK Today')
+    expect(titles).not.toContain('WK Other')
+  })
+
+  it('claims an up-for-grabs instance and rejects a second claim (409)', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Grabby', personId: null, rrule: 'FREQ=DAILY', rewardAmount: 3 })
+    const inst = (await instances()).find((i) => i.choreTitle === 'Grabby')!
+    expect(inst.personId).toBeNull()
+
+    const claim = await call('POST', `/api/chore-instances/${inst.id}/claim`, kevin, { personId: kevinId })
+    expect(claim.statusCode).toBe(200)
+    expect(JSON.parse(claim.body).instance.personId).toBe(kevinId)
+
+    // second claim is rejected — someone already grabbed it
+    expect((await call('POST', `/api/chore-instances/${inst.id}/claim`, kevin, { personId: kevinId })).statusCode).toBe(409)
+  })
+})
+
+describe('parent-approval chores', () => {
+  async function instances() {
+    return JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body).instances as Array<{
+      id: string; choreTitle: string; status: string; streak: number; requiresApproval: boolean
+    }>
+  }
+  async function kevinStars() {
+    return JSON.parse((await call('GET', '/api/balances', kevin)).body).people.find(
+      (p: { personId: string }) => p.personId === kevinId
+    ).stars as number
+  }
+
+  it('completing an approval-gated chore parks it in awaiting with no stars; approve awards', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Mow', personId: kevinId, rewardAmount: 6, requiresApproval: true })
+    const inst = (await instances()).find((i) => i.choreTitle === 'Mow')!
+    expect(inst.requiresApproval).toBe(true)
+
+    const before = await kevinStars()
+    const done = await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin)
+    expect(JSON.parse(done.body).instance.status).toBe('awaiting')
+    expect(await kevinStars()).toBe(before) // no stars yet
+
+    const appr = await call('POST', `/api/chore-instances/${inst.id}/approve`, kevin)
+    expect(appr.statusCode).toBe(200)
+    expect(JSON.parse(appr.body).instance.status).toBe('done')
+    expect(await kevinStars()).toBe(before + 6)
+  })
+
+  it('rejecting an awaiting chore sends it back to pending', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Rake', personId: kevinId, rewardAmount: 2, requiresApproval: true })
+    const inst = (await instances()).find((i) => i.choreTitle === 'Rake')!
+    await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin)
+    const rej = await call('POST', `/api/chore-instances/${inst.id}/reject`, kevin)
+    expect(rej.statusCode).toBe(200)
+    expect(JSON.parse(rej.body).instance.status).toBe('pending')
+    // rejecting a non-awaiting instance 409s
+    expect((await call('POST', `/api/chore-instances/${inst.id}/reject`, kevin)).statusCode).toBe(409)
+  })
+
+  it('reports a streak for a chore done today', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Streaky', personId: kevinId, rewardAmount: 1 })
+    const inst = (await instances()).find((i) => i.choreTitle === 'Streaky')!
+    await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin)
+    const after = (await instances()).find((i) => i.choreTitle === 'Streaky')!
+    expect(after.streak).toBe(1)
+  })
+})
+
+describe('chores look-ahead (date param)', () => {
+  // The local date of the next strictly-future weekday with the given JS dow.
+  function nextDow(dow: number): string {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    const delta = ((dow - d.getDay()) + 7) % 7 || 7
+    d.setDate(d.getDate() + delta)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  it('materializes and lists a future weekly occurrence on its weekday', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Recycling', personId: kevinId, rewardAmount: 2, rrule: 'FREQ=WEEKLY;BYDAY=MO' })
+    const monday = nextDow(1)
+    const res = await call('GET', `/api/chore-instances/today?date=${monday}`, kevin)
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.date).toBe(monday)
+    expect(body.instances.some((i: { choreTitle: string }) => i.choreTitle === 'Recycling')).toBe(true)
+  })
+
+  it('does not show a Monday-only chore on a non-Monday', async () => {
+    const tuesday = nextDow(2)
+    const body = JSON.parse((await call('GET', `/api/chore-instances/today?date=${tuesday}`, kevin)).body)
+    expect(body.instances.some((i: { choreTitle: string }) => i.choreTitle === 'Recycling')).toBe(false)
+  })
+
+  it('clamps an out-of-range date back to today', async () => {
+    const today = todayInTz(TZ)
+    expect(JSON.parse((await call('GET', '/api/chore-instances/today?date=2999-01-01', kevin)).body).date).toBe(today)
+    expect(JSON.parse((await call('GET', '/api/chore-instances/today?date=garbage', kevin)).body).date).toBe(today)
   })
 })

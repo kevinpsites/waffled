@@ -1,6 +1,7 @@
 // Goals domain — client slice, types, and hooks. Matches the goal-lists mocks.
 import { useEffect, useState } from 'react'
 import { apiGet, apiSend, apiDelete } from './client'
+import { tap } from './bus'
 
 export interface GoalListMember {
   personId: string
@@ -87,11 +88,11 @@ export const goalsApi = {
   goals: (listId?: string | null) =>
     apiGet<{ goals: Goal[] }>(listId ? `/api/goals?listId=${listId}` : '/api/goals'),
   goal: (id: string) => apiGet<{ goal: GoalDetail }>(`/api/goals/${id}`),
-  createGoal: (input: Record<string, unknown>) => apiSend<{ goal: { id: string } }>('POST', '/api/goals', input),
-  updateGoal: (id: string, patch: Record<string, unknown>) => apiSend<{ goal: GoalDetail }>('PATCH', `/api/goals/${id}`, patch),
+  createGoal: (input: Record<string, unknown>) => apiSend<{ goal: { id: string } }>('POST', '/api/goals', input).then(tap('goals')),
+  updateGoal: (id: string, patch: Record<string, unknown>) => apiSend<{ goal: GoalDetail }>('PATCH', `/api/goals/${id}`, patch).then(tap('goals')),
   logGoal: (id: string, body: { amount: number; personIds?: string[]; personId?: string | null; note?: string | null }) =>
-    apiSend<{ ok: boolean }>('POST', `/api/goals/${id}/log`, body),
-  deleteGoal: (id: string) => apiDelete(`/api/goals/${id}`),
+    apiSend<{ ok: boolean }>('POST', `/api/goals/${id}/log`, body).then(tap('goals')),
+  deleteGoal: (id: string) => apiDelete(`/api/goals/${id}`).then(tap('goals')),
 }
 
 export interface GoalListsState {

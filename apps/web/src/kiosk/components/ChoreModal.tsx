@@ -7,14 +7,40 @@ export interface ChoreDraft {
   emoji: string | null
   personId: string | null
   rewardAmount: number | null
+  rrule?: string | null
+  requiresApproval?: boolean
+}
+
+const DAYS: Array<[string, string]> = [
+  ['MO', 'Mon'], ['TU', 'Tue'], ['WE', 'Wed'], ['TH', 'Thu'], ['FR', 'Fri'], ['SA', 'Sat'], ['SU', 'Sun'],
+]
+
+function parseRrule(rrule?: string | null): { freq: 'daily' | 'weekly'; days: string[] } {
+  if (rrule && /FREQ=WEEKLY/i.test(rrule)) {
+    const m = rrule.match(/BYDAY=([A-Z,]+)/i)
+    return { freq: 'weekly', days: m ? m[1].toUpperCase().split(',') : [] }
+  }
+  return { freq: 'daily', days: [] }
+}
+
+function buildRrule(freq: 'daily' | 'weekly', days: string[]): string {
+  if (freq === 'weekly' && days.length) {
+    const sorted = DAYS.map((d) => d[0]).filter((d) => days.includes(d))
+    return `FREQ=WEEKLY;BYDAY=${sorted.join(',')}`
+  }
+  return 'FREQ=DAILY'
 }
 
 function initialForm(chore?: ChoreDraft, personId?: string | null) {
+  const sched = parseRrule(chore?.rrule)
   return {
     title: chore?.title ?? '',
     emoji: chore?.emoji ?? '',
     personId: chore?.personId ?? personId ?? '',
     rewardAmount: chore?.rewardAmount ?? 1,
+    freq: sched.freq,
+    days: sched.days,
+    requiresApproval: chore?.requiresApproval ?? false,
   }
 }
 
@@ -46,6 +72,8 @@ export function ChoreModal({
       emoji: form.emoji.trim() || null,
       personId: form.personId || null,
       rewardAmount: Number(form.rewardAmount) || 0,
+      rrule: buildRrule(form.freq, form.days),
+      requiresApproval: form.requiresApproval,
     }
     try {
       if (editing) await api.updateChore(chore!.id, payload)
@@ -95,6 +123,28 @@ export function ChoreModal({
             </label>
           </div>
 
+          <div className="field" style={{ marginBottom: 10 }}>
+            <span>Repeats</span>
+            <div className="seg" style={{ width: 'fit-content' }}>
+              <button type="button" className={form.freq === 'daily' ? 'on' : ''} onClick={() => set('freq', 'daily')}>Every day</button>
+              <button type="button" className={form.freq === 'weekly' ? 'on' : ''} onClick={() => set('freq', 'weekly')}>Certain days</button>
+            </div>
+            {form.freq === 'weekly' && (
+              <div className="chore-days">
+                {DAYS.map(([code, label]) => (
+                  <button
+                    key={code}
+                    type="button"
+                    className={`chore-day ${form.days.includes(code) ? 'on' : ''}`}
+                    onClick={() => set('days', form.days.includes(code) ? form.days.filter((d) => d !== code) : [...form.days, code])}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="field-row">
             <label className="field">
               <span>Who</span>
@@ -119,6 +169,18 @@ export function ChoreModal({
             </label>
           </div>
 
+          <button
+            type="button"
+            className={`chore-approval ${form.requiresApproval ? 'on' : ''}`}
+            onClick={() => set('requiresApproval', !form.requiresApproval)}
+          >
+            <span className="chore-approval-check" aria-hidden>{form.requiresApproval ? '✓' : ''}</span>
+            <span>
+              <span className="chore-approval-t">Needs a parent’s OK</span>
+              <span className="chore-approval-s">Stars are awarded only after a parent approves.</span>
+            </span>
+          </button>
+
           <div style={{ display: 'flex', gap: 9, marginTop: 6, alignItems: 'center' }}>
             {editing && (
               <button
@@ -133,7 +195,7 @@ export function ChoreModal({
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={!form.title.trim() || saving}
+              disabled={!form.title.trim() || saving || (form.freq === 'weekly' && form.days.length === 0)}
               style={{ flex: 1, justifyContent: 'center' }}
             >
               {saving ? 'Saving…' : editing ? 'Save' : 'Add chore'}

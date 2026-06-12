@@ -6,8 +6,11 @@ import { Calendar } from './Calendar'
 import { Goals } from './Goals'
 import { GoalCreate } from './GoalCreate'
 import { GoalDetail } from './GoalDetail'
+import { PersonProfile } from './PersonProfile'
+import { FamilyOverview } from './FamilyOverview'
 import { Meals } from './Meals'
 import { RecipeDetail } from './RecipeDetail'
+import { CookMode } from './CookMode'
 import { RecipesLibrary } from './RecipesLibrary'
 import { Lists } from './Lists'
 import { Photos } from './Photos'
@@ -27,9 +30,12 @@ export function KioskRoutes() {
         <Route path="goals/new" element={<GoalCreate />} />
         <Route path="goals/:id" element={<GoalDetail />} />
         <Route path="goals/:id/edit" element={<GoalCreate />} />
+        <Route path="family" element={<FamilyOverview />} />
+        <Route path="person/:id" element={<PersonProfile />} />
         <Route path="meals" element={<Meals />} />
         <Route path="meals/recipes" element={<RecipesLibrary />} />
         <Route path="meals/recipe/:id" element={<RecipeDetail />} />
+        <Route path="meals/recipe/:id/cook" element={<CookMode />} />
         <Route path="lists" element={<Lists />} />
         <Route path="photos" element={<Photos />} />
         <Route path="settings" element={<Settings />} />
