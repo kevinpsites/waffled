@@ -30,3 +30,6 @@ ios/**/DerivedData/
 
 # docker
 postgres/data/
+
+# claude code agent workspace (local only)
+.claude/
