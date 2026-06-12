@@ -6,28 +6,36 @@
 // then add one `export * from` line and one spread below. That's the only shared
 // touch — keep it append-only.
 export { localToday } from './client'
+export * from './bus'
 export * from './persons'
 export * from './goals'
+export * from './overview'
 export * from './grocery'
 export * from './chores'
+export * from './rewards'
 export * from './events'
 export * from './meals'
 export * from './photos'
+export * from './capture'
 
 import { personsApi } from './persons'
 import { goalsApi } from './goals'
 import { groceryApi } from './grocery'
 import { choresApi } from './chores'
+import { rewardsApi } from './rewards'
 import { eventsApi } from './events'
 import { mealsApi } from './meals'
 import { photosApi } from './photos'
+import { captureApi } from './capture'
 
 export const api = {
   ...personsApi,
   ...goalsApi,
   ...groceryApi,
   ...choresApi,
+  ...rewardsApi,
   ...eventsApi,
   ...mealsApi,
   ...photosApi,
+  ...captureApi,
 }

@@ -49,6 +49,18 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       # Returned by /api/powersync/token so clients know where to connect.
       POWERSYNC_PUBLIC_URL: ${POWERSYNC_PUBLIC_URL:-http://localhost:8090}
+      # --- AI capture bar (6.6): set any subset; pick the active one in Settings.
+      # Hosted providers (keys never leave the server):
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      # OpenAI-compatible local server (LM Studio / llama.cpp / vLLM): point this at it.
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      # Local Ollama (keeps text on your network). On Docker Desktop reach the host
+      # with host.docker.internal; bare Linux: http://172.17.0.1:11434
+      OLLAMA_HOST: ${OLLAMA_HOST:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
       # --- switch to Auth0 (RS256): set these, then restart the api ---
       # AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       # AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}

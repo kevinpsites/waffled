@@ -1,0 +1,15 @@
+{
+  "name": "Nook — Family Hub",
+  "short_name": "Nook",
+  "description": "Your family's shared kiosk: calendar, meals, chores, grocery, goals.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#FBF7F2",
+  "theme_color": "#E8A87C",
+  "icons": [
+    { "src": "/icon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any" },
+    { "src": "/icon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "maskable" }
+  ]
+}

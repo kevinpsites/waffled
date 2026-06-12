@@ -13,10 +13,13 @@ import {
 import { registerPersonRoutes } from './persons'
 import { registerListRoutes } from './lists'
 import { registerChoreRoutes } from './chores'
+import { registerRewardRoutes } from './rewards'
 import { registerMealRoutes } from './meals'
 import { registerEventRoutes } from './events'
 import { registerGoalRoutes } from './goals'
+import { registerOverviewRoutes } from './overview'
 import { registerPhotoRoutes } from './photos'
+import { registerCaptureRoutes } from './capture'
 import { registerPowerSyncRoutes } from './powersync'
 
 const api = createAPI()
@@ -112,6 +115,9 @@ registerListRoutes(api)
 // Chores (/api/chores…)
 registerChoreRoutes(api)
 
+// Rewards + redemptions (/api/rewards, /api/redemptions, /api/balances…)
+registerRewardRoutes(api)
+
 // Meals & recipes (/api/recipes, /api/meals…)
 registerMealRoutes(api)
 
@@ -121,8 +127,14 @@ registerEventRoutes(api)
 // Goals (/api/goals…)
 registerGoalRoutes(api)
 
+// Person + family overviews (/api/persons/:id/overview, /api/family/overview)
+registerOverviewRoutes(api)
+
 // Photos / memories (/api/photos…)
 registerPhotoRoutes(api)
+
+// Capture-bar LLM parsing + provider config (/api/capture…)
+registerCaptureRoutes(api)
 
 // PowerSync auth (JWKS + token endpoint)
 registerPowerSyncRoutes(api)

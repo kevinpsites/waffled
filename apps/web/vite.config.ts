@@ -12,6 +12,14 @@ export default defineConfig({
       '/api': 'http://localhost:3000',
     },
   },
+  // `vite preview` mirrors the dev proxy so a production build can be exercised
+  // against the local api (and the service worker's /api caching verified).
+  preview: {
+    port: 4173,
+    proxy: {
+      '/api': 'http://localhost:3000',
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,

@@ -1,10 +1,11 @@
-import { useState } from 'react'
-import { personsApi, useHouseholdSettings, emitHouseholdChanged, type SettingsMember } from '../lib/api'
+import { useEffect, useState } from 'react'
+import { personsApi, captureApi, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import '../styles/settings.css'
 
 const NAV = [
   { key: 'family', icon: '👨‍👩‍👧‍👦', label: 'Family & people' },
+  { key: 'ai', icon: '✨', label: 'AI & capture' },
   { key: 'accounts', icon: '🔗', label: 'Accounts' },
   { key: 'calendars', icon: '📅', label: 'Calendars' },
   { key: 'chores', icon: '⭐', label: 'Chores & rewards' },
@@ -172,6 +173,130 @@ function FamilyPanel() {
   )
 }
 
+const PROVIDER_META: Record<Provider, { label: string; sub: string; envHint: string }> = {
+  heuristic: { label: 'On-device', sub: 'Built-in parser — no AI, works offline', envHint: '' },
+  anthropic: { label: 'Claude (Anthropic)', sub: 'Most accurate · hosted', envHint: 'ANTHROPIC_API_KEY' },
+  openai: { label: 'OpenAI / compatible', sub: 'Hosted, or a local OpenAI-compatible server', envHint: 'OPENAI_API_KEY' },
+  ollama: { label: 'Local server (Ollama)', sub: 'Private — text stays on your network', envHint: 'OLLAMA_HOST' },
+}
+const PROVIDER_ORDER: Provider[] = ['heuristic', 'ollama', 'anthropic', 'openai']
+
+// AI & capture: pick which engine parses the "Add anything" bar. Credentials live
+// in the server environment (docker-compose / .env) — this only flips the active
+// provider + model. Providers without a key/host configured are disabled here.
+function AiPanel() {
+  const [cfg, setCfg] = useState<CaptureConfig | null>(null)
+  const [provider, setProvider] = useState<Provider>('heuristic')
+  const [model, setModel] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    captureApi
+      .getConfig()
+      .then((c) => {
+        if (!alive) return
+        setCfg(c)
+        setProvider(c.provider)
+        setModel(c.model ?? '')
+      })
+      .catch(() => alive && setError(true))
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  if (error) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Sign this kiosk in to manage AI.</div></div>
+  if (!cfg) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
+
+  function pick(p: Provider) {
+    if (p !== 'heuristic' && !cfg!.available[p]) return
+    setProvider(p)
+    setSaved(false)
+    if (p !== 'heuristic') setModel(cfg!.defaultModels[p as 'anthropic' | 'openai' | 'ollama'])
+    else setModel('')
+  }
+
+  async function save() {
+    setSaving(true)
+    setSaved(false)
+    try {
+      const m = provider === 'heuristic' ? null : model.trim() || null
+      const r = await captureApi.setConfig(provider, m)
+      setCfg({ ...cfg!, provider: r.provider, model: r.model })
+      setSaved(true)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const dirty = provider !== cfg.provider || (provider !== 'heuristic' && (model.trim() || null) !== (cfg.model ?? null))
+
+  return (
+    <div className="set-panel">
+      <div className="set-head">
+        <div className="nk-serif set-head-t">AI &amp; capture</div>
+        <div className="tiny muted" style={{ fontWeight: 600 }}>Powers the “Add anything” bar</div>
+      </div>
+
+      <div className="set-card">
+        {PROVIDER_ORDER.map((p) => {
+          const meta = PROVIDER_META[p]
+          const on = provider === p
+          const enabled = p === 'heuristic' || cfg.available[p]
+          return (
+            <button
+              type="button"
+              key={p}
+              className={`ai-prov ${on ? 'on' : ''}`}
+              onClick={() => pick(p)}
+              disabled={!enabled}
+              aria-pressed={on}
+            >
+              <span className={`ai-radio ${on ? 'on' : ''}`} />
+              <span style={{ flex: 1, textAlign: 'left' }}>
+                <span className="set-row2-t">{meta.label}</span>
+                <span className="tiny muted" style={{ display: 'block', fontWeight: 600 }}>
+                  {enabled ? meta.sub : `Set ${meta.envHint} in the server environment to enable`}
+                </span>
+              </span>
+              {p !== 'heuristic' && (
+                <span className={`ai-badge ${enabled ? 'ok' : ''}`}>{enabled ? 'key detected' : 'not configured'}</span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {provider !== 'heuristic' && (
+        <div className="set-card" style={{ marginTop: 16 }}>
+          <SettingRow icon="🧠" title="Model" sub="Overrides the server default for this provider">
+            <input
+              className="set-inline-input"
+              value={model}
+              onChange={(e) => { setModel(e.target.value); setSaved(false) }}
+              placeholder={cfg.defaultModels[provider as 'anthropic' | 'openai' | 'ollama']}
+              style={{ minWidth: 200 }}
+            />
+          </SettingRow>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
+        <button type="button" className="btn btn-primary" onClick={save} disabled={!dirty || saving}>
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+        <span className="tiny muted" style={{ fontWeight: 600 }}>
+          Keys are read from the server environment and never leave it.
+        </span>
+      </div>
+    </div>
+  )
+}
+
 // Sub-tabs that depend on integrations we haven't built yet render their section
 // honestly rather than faking data. (Defended in the build report.)
 const PLACEHOLDERS: Record<string, { title: string; note: string }> = {
@@ -212,7 +337,9 @@ export function Settings() {
           </button>
         ))}
       </div>
-      <div className="set-content">{tab === 'family' ? <FamilyPanel /> : <Placeholder tab={tab} />}</div>
+      <div className="set-content">
+        {tab === 'family' ? <FamilyPanel /> : tab === 'ai' ? <AiPanel /> : <Placeholder tab={tab} />}
+      </div>
     </div>
   )
 }

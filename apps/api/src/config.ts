@@ -7,9 +7,19 @@ export type AuthMode = 'local' | 'auth0'
 const auth0Domain = process.env.AUTH0_DOMAIN ?? null
 const mode: AuthMode = auth0Domain ? 'auth0' : 'local'
 
+/** A capture-parsing provider is "available" only if its secret/host is in the
+ *  environment. Keys live here (server-side) and are NEVER exposed to clients;
+ *  the *selection* of which provider to use lives in households.settings.ai. */
+export interface AiConfig {
+  anthropic: { apiKey: string | null; defaultModel: string }
+  openai: { apiKey: string | null; baseUrl: string; defaultModel: string }
+  ollama: { host: string | null; defaultModel: string }
+}
+
 export interface AppConfig {
   env: string
   port: number
+  ai: AiConfig
   auth: {
     mode: AuthMode
     /** Where household_id lives on the token (Auth0 custom claims must be namespaced URIs). */
@@ -27,6 +37,25 @@ export interface AppConfig {
 export const config: AppConfig = {
   env: process.env.NODE_ENV ?? 'development',
   port: parseInt(process.env.PORT ?? '3000', 10),
+
+  // Capture-bar (6.6) LLM providers. Set any subset; the active one is chosen
+  // per-household in Settings. An OpenAI-compatible OPENAI_BASE_URL lets a local
+  // server (LM Studio, llama.cpp, vLLM) stand in for the hosted OpenAI API.
+  ai: {
+    anthropic: {
+      apiKey: process.env.ANTHROPIC_API_KEY ?? null,
+      defaultModel: process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001',
+    },
+    openai: {
+      apiKey: process.env.OPENAI_API_KEY ?? null,
+      baseUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
+      defaultModel: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
+    },
+    ollama: {
+      host: process.env.OLLAMA_HOST ?? null,
+      defaultModel: process.env.OLLAMA_MODEL ?? 'llama3.1',
+    },
+  },
 
   auth: {
     mode,

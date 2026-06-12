@@ -171,3 +171,19 @@
     padding: 6px 16px 20px;
   }
 }
+
+/* AI & capture panel (6.6) — provider picker */
+.ai-prov { display: flex; align-items: center; gap: 12px; width: 100%; background: none;
+  border: 0; border-bottom: 1px solid var(--hair-2); padding: 14px 4px; cursor: pointer;
+  font: inherit; text-align: left; }
+.ai-prov:last-child { border-bottom: 0; }
+.ai-prov:disabled { cursor: default; opacity: .55; }
+.ai-prov.on { }
+.ai-radio { width: 20px; height: 20px; flex: none; border-radius: 999px;
+  border: 2px solid var(--hair); position: relative; }
+.ai-radio.on { border-color: var(--ai); }
+.ai-radio.on::after { content: ''; position: absolute; inset: 3px; border-radius: 999px;
+  background: var(--ai); }
+.ai-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+  background: var(--panel); color: var(--ink-3); flex: none; }
+.ai-badge.ok { background: #e7f3ea; color: #2e7d32; }

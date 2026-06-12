@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router'
 import './styles/nook.css'
 import './styles/kiosk.css'
 import { KioskRoutes } from './kiosk/routes'
+import { registerServiceWorker } from './lib/pwa'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -12,3 +13,5 @@ createRoot(document.getElementById('root')!).render(
     </BrowserRouter>
   </StrictMode>
 )
+
+registerServiceWorker()

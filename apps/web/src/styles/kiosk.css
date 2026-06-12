@@ -32,6 +32,17 @@ body {
   overflow-y: auto;
 }
 
+/* Offline strip (PWA 7.1) — shown only when the network drops. */
+.offline-banner {
+  background: #5c4324;
+  color: #fde9cf;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  padding: 7px 14px;
+  flex: none;
+}
+
 /* topbar wraps when it runs out of room */
 .topbar {
   flex-wrap: wrap;
@@ -186,17 +197,71 @@ body {
 .tasks-head .pill {
   cursor: pointer;
 }
+/* Date stepper for the Chores tab (look ahead / back) */
+.tasks-datenav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 30px 10px;
+}
+.tasks-datenav .dn-arrow {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--hair-2);
+  background: var(--card);
+  font-size: 20px;
+  line-height: 1;
+  color: var(--ink-2);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.tasks-datenav .dn-arrow:hover {
+  background: var(--panel);
+}
+.tasks-datenav .dn-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 132px;
+  text-align: center;
+}
+.tasks-datenav .dn-full {
+  font-weight: 700;
+  font-size: 14.5px;
+  color: var(--ink);
+}
+.tasks-datenav .dn-rel {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--lottie, var(--ai));
+}
+.tasks-datenav .dn-today {
+  margin-left: 4px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--hair-2);
+  background: var(--card);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.tasks-datenav .dn-today:hover {
+  background: var(--panel);
+}
 .tasks-screen {
   flex: 1;
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(258px, 1fr));
   gap: 16px;
   padding: 6px 30px 26px;
-  overflow-x: auto;
-  align-items: flex-start;
+  align-content: start;
+  overflow-y: auto;
 }
 .tasks-screen .chore-col {
-  width: 300px;
-  flex: none;
+  width: auto;
+  min-width: 0;
 }
 button.tick {
   padding: 0;
@@ -204,12 +269,7 @@ button.tick {
 }
 @media (max-width: 720px) {
   .tasks-screen {
-    flex-direction: column;
     padding: 6px 16px 22px;
-    overflow-x: visible;
-  }
-  .tasks-screen .chore-col {
-    width: auto;
   }
 }
 
@@ -295,3 +355,176 @@ button.tick {
   font-size: 28px;
   font-weight: 600;
 }
+
+/* ===== Rewards panel (Tasks → Rewards) ===== */
+.rewards-panel { display: flex; flex-direction: column; gap: 18px; padding: 4px 0 24px; }
+
+/* per-kid balances */
+.rw-balances { display: flex; flex-wrap: wrap; gap: 12px; }
+.rw-bal {
+  display: flex; align-items: center; gap: 11px;
+  background: var(--card); border-radius: var(--r-lg); box-shadow: var(--sh-1);
+  padding: 12px 18px 12px 12px;
+}
+.rw-av {
+  width: 40px; height: 40px; border-radius: 999px; flex: none;
+  display: grid; place-items: center; font-size: 20px;
+}
+.rw-bal-name { font-weight: 700; font-size: 14.5px; }
+.rw-bal-stars { display: flex; align-items: center; gap: 5px; font-weight: 800; color: var(--lottie); font-size: 14px; }
+
+/* approvals queue */
+.rw-approvals { padding: 16px 18px; }
+.rw-appr {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--hair-2);
+}
+.rw-appr:last-child { border-bottom: 0; }
+.rw-appr-txt { flex: 1; font-size: 14.5px; }
+.rw-appr-name { font-weight: 700; }
+.rw-appr-reward { font-weight: 700; }
+.rw-appr-cost { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-weight: 800; color: var(--lottie); }
+.rw-appr-actions { display: flex; gap: 8px; }
+.rw-appr-actions .pill { cursor: pointer; }
+
+/* catalog */
+.rw-cat-head { display: flex; align-items: center; }
+.rw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; }
+.rw-card {
+  position: relative;
+  background: var(--card); border-radius: var(--r-lg); box-shadow: var(--sh-1);
+  padding: 18px 16px 14px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.rw-del {
+  position: absolute; top: 8px; right: 9px;
+  width: 22px; height: 22px; border-radius: 999px; border: 0;
+  background: var(--panel); color: var(--ink-3); font-size: 14px; line-height: 1; cursor: pointer;
+  opacity: 0.5;
+}
+.rw-del:hover { opacity: 1; }
+.rw-card-emo { font-size: 38px; }
+.rw-card-title { font-weight: 700; font-size: 15px; }
+.rw-card-cost { display: flex; align-items: center; gap: 5px; font-weight: 800; color: var(--lottie); font-size: 14px; }
+.rw-redeem {
+  margin-top: 6px; font: inherit; font-size: 13.5px; font-weight: 700;
+  padding: 8px 18px; border-radius: 999px; border: 0;
+  background: var(--wally); color: #fff; cursor: pointer;
+}
+.rw-pick { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 6px; }
+.rw-pick-p {
+  width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--hair);
+  background: var(--card-2); font-size: 17px; cursor: pointer;
+}
+.rw-pick-p:disabled { opacity: 0.35; cursor: default; }
+.rw-pick-x { border: 0; background: none; color: var(--ink-3); font-size: 18px; cursor: pointer; }
+
+/* add-reward modal bits */
+.rw-emoji-in { width: 54px; text-align: center; font-size: 22px; padding: 10px 0; border-radius: var(--r-md); border: 1px solid var(--hair); background: var(--card-2); }
+.rw-title-in { flex: 1; font: inherit; font-size: 15px; padding: 10px 13px; border-radius: var(--r-md); border: 1px solid var(--hair); background: var(--card-2); color: var(--ink); }
+.rw-cost-field { display: flex; align-items: center; gap: 12px; }
+.rw-cost-field > span { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
+.rw-cost-stepper { display: inline-flex; align-items: center; gap: 12px; background: var(--panel); border-radius: 999px; padding: 6px 14px; }
+.rw-cost-stepper button { width: 30px; height: 30px; border: 0; border-radius: 999px; background: #fff; box-shadow: var(--sh-1); font-size: 18px; cursor: pointer; color: var(--ink); }
+.rw-cost-stepper > span { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; min-width: 40px; justify-content: center; }
+
+/* chore schedule day-chips (ChoreModal) */
+.chore-days { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.chore-day {
+  font: inherit; font-size: 13px; font-weight: 700;
+  padding: 7px 12px; border-radius: 999px;
+  border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2); cursor: pointer;
+}
+.chore-day.on { background: var(--wally); border-color: var(--wally); color: #fff; }
+
+/* up-for-grabs claim affordance (Tasks) */
+.claim-btn {
+  flex: none; font: inherit; font-size: 12.5px; font-weight: 700;
+  padding: 6px 14px; border-radius: 999px; border: 0;
+  background: var(--wally); color: #fff; cursor: pointer;
+}
+.claim-pick { display: flex; align-items: center; gap: 5px; flex: none; }
+.claim-p {
+  width: 30px; height: 30px; border-radius: 999px; border: 1px solid var(--hair);
+  background: var(--card-2); font-size: 16px; cursor: pointer;
+}
+.claim-x { border: 0; background: none; color: var(--ink-3); font-size: 17px; cursor: pointer; }
+
+/* chore approval toggle (ChoreModal) */
+.chore-approval {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  text-align: left; font: inherit; cursor: pointer;
+  background: var(--card-2); border: 1px solid var(--hair); border-radius: var(--r-md);
+  padding: 11px 13px; margin-top: 4px;
+}
+.chore-approval.on { border-color: var(--wally); background: var(--wally-t); }
+.chore-approval-check {
+  width: 22px; height: 22px; border-radius: 7px; flex: none;
+  border: 2px solid var(--hair); background: #fff;
+  display: grid; place-items: center; font-size: 13px; font-weight: 800; color: #fff;
+}
+.chore-approval.on .chore-approval-check { background: var(--wally); border-color: var(--wally); }
+.chore-approval-t { display: block; font-weight: 700; font-size: 14px; }
+.chore-approval-s { display: block; font-size: 12px; color: var(--ink-3); font-weight: 600; }
+
+/* awaiting state + approve/reject (Tasks) */
+.tick.awaiting {
+  background: #fff5e0; border-color: #e0a500;
+  display: grid; place-items: center; font-size: 12px;
+}
+.chore-awaiting-tag {
+  margin-left: 8px; font-size: 11px; font-weight: 800; color: #b07d00;
+  background: #fff5e0; padding: 2px 7px; border-radius: 999px;
+}
+.chore-approve { display: flex; gap: 7px; flex: none; }
+.ca-approve, .ca-reject {
+  font: inherit; font-size: 12.5px; font-weight: 700;
+  padding: 6px 13px; border-radius: 999px; cursor: pointer;
+}
+.ca-approve { border: 0; background: var(--wally); color: #fff; }
+.ca-reject { border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2); }
+.chore-streak {
+  margin-left: 8px; font-size: 12px; font-weight: 800; color: #d9650a;
+}
+
+/* up-for-grabs: a normal left-side column with a subtle shared tint */
+.chore-col.up-for-grabs { background: linear-gradient(160deg, #f5f1fe, #eef4fe); }
+.chore-grabs-hint { margin: -2px 0 10px; }
+.chore-empty { padding: 8px 2px 12px; opacity: .8; }
+.claim-pick-q { font-size: 12px; font-weight: 800; color: var(--ink-3); margin-right: 3px; align-self: center; }
+.claim-pick { flex-wrap: wrap; }
+
+/* Today grocery card: scroll the item list within the card instead of letting
+   50 items stretch the whole dashboard. Fills available height, capped so it
+   never drags the page down. */
+.gc-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  max-height: clamp(140px, 38vh, 460px);
+  margin-right: -6px;
+  padding-right: 6px;
+}
+
+/* Roomier agenda cards when the day is light (≤3 events) */
+.agenda-biggrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  padding: 8px 0 6px;
+}
+.agenda-bigcard {
+  background: var(--card);
+  border: 1px solid var(--hair-2);
+  border-radius: var(--r-lg);
+  padding: 13px 14px 12px;
+  min-height: 116px;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+}
+.agenda-bigcard:hover { background: var(--panel); }
+.agenda-bigcard .ab-time { font-size: 14px; font-weight: 800; letter-spacing: .02em; }
+.agenda-bigcard .ab-title { font-size: 17px; font-weight: 700; margin-top: 3px; line-height: 1.2; }
+.agenda-bigcard .ab-loc { margin-top: 3px; }
+.agenda-bigcard .ab-foot { margin-top: auto; padding-top: 10px; }

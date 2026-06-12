@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Icon } from '../icons'
 import { useTopbarSlots } from '../topbar-slot'
 import { useHousehold } from '../../lib/api'
+import { CaptureBar } from './CaptureBar'
 
 function useNow(): Date {
   const [now, setNow] = useState(() => new Date())
@@ -23,21 +24,6 @@ function formatTime(d: Date, tz?: string): string {
     .replace(/\s?[AP]M$/i, '')
 }
 
-// The AI "Add anything…" capture bar (static placeholder until 6.6).
-function AiBar() {
-  return (
-    <div className="ai-bar" style={{ flex: 1, maxWidth: 520 }}>
-      <div className="ai-spark">
-        <Icon name="spark" />
-      </div>
-      <div className="ph">Add anything… “Soccer Tue 4pm for Wally”</div>
-      <div className="mic">
-        <Icon name="mic" />
-      </div>
-    </div>
-  )
-}
-
 export function Topbar() {
   const now = useNow()
   const { right, full } = useTopbarSlots()
@@ -52,7 +38,7 @@ export function Topbar() {
         <Icon name="cloud" />
         60°
       </div>
-      <div className="tb-right">{right ?? <AiBar />}</div>
+      <div className="tb-right">{right ?? <CaptureBar />}</div>
     </div>
   )
 }
