@@ -56,6 +56,7 @@ interface CalendarRow extends QueryResultRow {
   color_hex: string | null
   is_primary: boolean
   selected: boolean
+  is_write_target: boolean
   last_synced_at: Date | null
 }
 
@@ -144,7 +145,7 @@ async function listAccounts(householdId: string): Promise<AccountRow[]> {
 async function listHouseholdCalendars(householdId: string): Promise<CalendarRow[]> {
   const { rows } = await query<CalendarRow>(
     `select c.id, c.account_id, c.person_id, c.google_calendar_id, c.summary, c.timezone,
-            c.access_role, c.color_hex, c.is_primary, c.selected, c.last_synced_at,
+            c.access_role, c.color_hex, c.is_primary, c.selected, c.is_write_target, c.last_synced_at,
             p.name as person_name, p.color_hex as person_color
        from calendars c
        left join persons p on p.id = c.person_id and p.deleted_at is null
@@ -172,6 +173,7 @@ function presentCalendar(c: CalendarRow) {
     colorHex: c.color_hex,
     isPrimary: c.is_primary,
     selected: c.selected,
+    isWriteTarget: c.is_write_target,
     personId: c.person_id,
     personName: c.person_name ?? null,
     personColor: c.person_color ?? null,
@@ -292,7 +294,7 @@ export function registerCalendarRoutes(api: Api): void {
     requireAdmin(tenant)
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'calendar not found' })
-    const body = (req.body ?? {}) as { personId?: string | null; selected?: boolean }
+    const body = (req.body ?? {}) as { personId?: string | null; selected?: boolean; isWriteTarget?: boolean }
 
     const sets: string[] = []
     const values: unknown[] = []
@@ -305,8 +307,12 @@ export function registerCalendarRoutes(api: Api): void {
       sets.push(`selected = $${i++}`)
       values.push(!!body.selected)
     }
+    if ('isWriteTarget' in body) {
+      sets.push(`is_write_target = $${i++}`)
+      values.push(!!body.isWriteTarget)
+    }
     if (sets.length === 0) {
-      return res.status(400).json({ error: 'BadRequest', message: 'personId or selected required' })
+      return res.status(400).json({ error: 'BadRequest', message: 'personId, selected, or isWriteTarget required' })
     }
     values.push(tenant.householdId, id)
     const { rowCount } = await query(
@@ -315,6 +321,16 @@ export function registerCalendarRoutes(api: Api): void {
       values
     )
     if (!rowCount) return res.status(404).json({ error: 'NotFound', message: 'calendar not found' })
+    // Only one write target per person: clear the flag on this calendar's siblings.
+    // (Runs after the update so it uses the calendar's final person.)
+    if (body.isWriteTarget === true) {
+      await query(
+        `update calendars set is_write_target = false
+          where household_id = $1 and id <> $2 and deleted_at is null
+            and person_id = (select person_id from calendars where id = $2)`,
+        [tenant.householdId, id]
+      )
+    }
     const calendars = await listHouseholdCalendars(tenant.householdId)
     const updated = calendars.find((c) => c.id === id)
     return { calendar: updated ? presentCalendar(updated) : null }

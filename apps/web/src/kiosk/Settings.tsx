@@ -323,7 +323,7 @@ function CalendarsPanel() {
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [syncedOnly, setSyncedOnly] = useState(false)
-  const [hideReadOnly, setHideReadOnly] = useState(false)
+  const [hideReadOnly, setHideReadOnly] = useState(true)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
 
   function load() {
@@ -377,6 +377,12 @@ function CalendarsPanel() {
     const { calendar } = await calendarsApi.updateCalendar(cal.id, { selected: !cal.selected })
     replaceCal(calendar)
   }
+  // Setting a write target clears the flag on the person's other calendars, so
+  // refetch the whole list rather than patching a single row.
+  async function toggleWriteTarget(cal: CalendarLink) {
+    await calendarsApi.updateCalendar(cal.id, { isWriteTarget: !cal.isWriteTarget })
+    load()
+  }
   async function disconnect(accountId: string) {
     if (!window.confirm('Disconnect this Google account? Its calendars stop syncing (already-imported events stay).')) return
     await calendarsApi.disconnectAccount(accountId)
@@ -394,6 +400,8 @@ function CalendarsPanel() {
   }
 
   function CalRow({ cal }: { cal: CalendarLink }) {
+    // A calendar can be a write target only if it's writable and owned by a person.
+    const canTarget = !!cal.personId && !isReadOnly(cal.accessRole)
     return (
       <div className="set-row2">
         <div className="set-ic2" style={{ background: `${cal.colorHex ?? '#A6A29B'}22` }}>📅</div>
@@ -405,8 +413,20 @@ function CalendarsPanel() {
           <div className="tiny muted" style={{ fontWeight: 600 }}>
             {cal.selected ? `Last synced ${fmtWhen(cal.lastSyncedAt)}` : 'Sync off'}
             {cal.accessRole ? ` · ${cal.accessRole}` : ''}
+            {cal.isWriteTarget && <span style={{ color: 'var(--accent, #4c8bf5)' }}> · ★ new events go here</span>}
           </div>
         </div>
+        {canTarget && (
+          <button
+            type="button"
+            className={`cal-star ${cal.isWriteTarget ? 'on' : ''}`}
+            onClick={() => toggleWriteTarget(cal)}
+            title={cal.isWriteTarget ? 'Default calendar for new events for this person' : 'Make this the default for new events for this person'}
+            aria-pressed={cal.isWriteTarget}
+          >
+            {cal.isWriteTarget ? '★' : '☆'}
+          </button>
+        )}
         <select
           className="sel"
           value={cal.personId ?? ''}

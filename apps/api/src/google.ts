@@ -226,3 +226,66 @@ export async function listCalendars(accessToken: string): Promise<GoogleCalendar
     primary: !!c.primary,
   }))
 }
+
+// ── Event write-back (5.4) ─────────────────────────────────────────────────────
+
+// The Google event shape we send when creating/updating. Mirrors the read side:
+// all-day events use { date }, timed events use { dateTime, timeZone }.
+export interface GoogleEventWrite {
+  summary: string
+  description?: string | null
+  location?: string | null
+  start: { date?: string; dateTime?: string; timeZone?: string }
+  end: { date?: string; dateTime?: string; timeZone?: string }
+}
+
+// What the API returns for a written event — enough to track + reconcile it.
+export interface GoogleWriteResult {
+  id: string
+  etag: string | null
+  sequence: number | null
+  updated: string | null
+}
+
+function toWriteResult(data: Record<string, unknown>): GoogleWriteResult {
+  return {
+    id: String(data.id),
+    etag: (data.etag as string | undefined) ?? null,
+    sequence: typeof data.sequence === 'number' ? data.sequence : null,
+    updated: (data.updated as string | undefined) ?? null,
+  }
+}
+
+async function writeJson(method: string, url: string, accessToken: string, body: unknown): Promise<Record<string, unknown>> {
+  const res = await fetch(url, {
+    method,
+    headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`${method} ${url} -> ${res.status} ${await res.text().catch(() => '')}`)
+  return (await res.json()) as Record<string, unknown>
+}
+
+export async function insertEvent(accessToken: string, calendarId: string, body: GoogleEventWrite): Promise<GoogleWriteResult> {
+  const url = `${config.google.apiBase}/calendars/${encodeURIComponent(calendarId)}/events`
+  return toWriteResult(await writeJson('POST', url, accessToken, body))
+}
+
+export async function patchEvent(
+  accessToken: string,
+  calendarId: string,
+  eventId: string,
+  body: GoogleEventWrite
+): Promise<GoogleWriteResult> {
+  const url = `${config.google.apiBase}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`
+  return toWriteResult(await writeJson('PATCH', url, accessToken, body))
+}
+
+// Delete tolerates 404/410 (already gone on Google) as success — idempotent.
+export async function deleteEvent(accessToken: string, calendarId: string, eventId: string): Promise<void> {
+  const url = `${config.google.apiBase}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`
+  const res = await fetch(url, { method: 'DELETE', headers: { authorization: `Bearer ${accessToken}` } })
+  if (!res.ok && res.status !== 404 && res.status !== 410) {
+    throw new Error(`DELETE ${url} -> ${res.status} ${await res.text().catch(() => '')}`)
+  }
+}

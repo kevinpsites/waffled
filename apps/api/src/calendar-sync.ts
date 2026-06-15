@@ -1,13 +1,16 @@
-// Calendar — inbound Google sync (roadmap 5.3). Pulls events from each connected,
-// selected calendar into the events table. On-demand via POST /api/calendar/sync;
-// the same engine (syncHousehold) is what a scheduled poll will call later.
+// Calendar — Google sync, both directions. Inbound (5.3) pulls events from each
+// connected, selected calendar into the events table; outbound (5.4) pushes
+// Nook-authored events back to Google. On-demand via POST /api/calendar/sync
+// (push pending first, then pull); the same engines back a future scheduled poll.
 //
-// Per calendar we keep an incremental cursor (calendars.sync_token): the first run
-// pulls a bounded window, every run after that fetches only what changed. Recurring
-// events are expanded server-side (singleEvents) so the agenda reads dated instances
-// without an RRULE engine. Google owns the event content (title/time/status — sync
-// overwrites); Nook owns person_id/origin (seeded from the calendar mapping on first
-// import, never clobbered afterward).
+// Inbound: per calendar we keep an incremental cursor (calendars.sync_token); the
+// first run pulls a bounded window, later runs fetch only changes. Recurrences are
+// expanded server-side (singleEvents). Google owns event content (title/time/status
+// — sync overwrites); Nook owns person_id/origin (preserved).
+//
+// Outbound: an event authored in Nook for a person is routed to that person's
+// write-target calendar (resolveWriteTarget) and created/updated/deleted on Google.
+// sync_state tracks it: pending_push → synced, or push_failed (retried next sync).
 import createAPI, { type Request, type Response } from 'lambda-api'
 import type { PoolClient, QueryResultRow } from 'pg'
 import { getPool, query } from './db'
@@ -17,9 +20,14 @@ import {
   googleConfigured,
   refreshAccessToken,
   listEventsPage,
+  insertEvent,
+  patchEvent,
+  deleteEvent,
   SyncTokenInvalidError,
   type GoogleEvent,
   type GoogleEventDateTime,
+  type GoogleEventWrite,
+  type GoogleWriteResult,
 } from './google'
 
 type Api = ReturnType<typeof createAPI>
@@ -315,6 +323,181 @@ export async function syncHousehold(
   }
 }
 
+// ── Outbound (5.4): push Nook-authored events to Google ────────────────────────
+
+export interface WriteTarget {
+  calendarId: string
+  googleCalendarId: string
+  refreshTokenEncrypted: string
+}
+
+// Where a Nook event for this person should be written. Prefers the explicit
+// write-target flag, then the person's primary, then any writable calendar — so a
+// person with a single writable calendar needs no configuration. Read-only
+// calendars (reader/freeBusyReader) are never write targets.
+export async function resolveWriteTarget(householdId: string, personId: string | null): Promise<WriteTarget | null> {
+  if (!personId) return null
+  const { rows } = await query<{ calendar_id: string; google_calendar_id: string; refresh_token_encrypted: string }>(
+    `select c.id as calendar_id, c.google_calendar_id, a.refresh_token_encrypted
+       from calendars c
+       join calendar_accounts a on a.id = c.account_id and a.deleted_at is null
+      where c.household_id = $1 and c.person_id = $2 and c.deleted_at is null
+        and c.access_role in ('owner','writer')
+      order by c.is_write_target desc, c.is_primary desc, c.summary
+      limit 1`,
+    [householdId, personId]
+  )
+  const r = rows[0]
+  return r
+    ? { calendarId: r.calendar_id, googleCalendarId: r.google_calendar_id, refreshTokenEncrypted: r.refresh_token_encrypted }
+    : null
+}
+
+interface PushRow extends QueryResultRow {
+  id: string
+  title: string
+  description: string | null
+  location: string | null
+  all_day: boolean
+  timezone: string
+  starts_at: Date
+  ends_at: Date | null
+  start_date: string
+  end_date: string | null
+  google_event_id: string | null
+  deleted_at: Date | null
+  google_calendar_id: string
+  refresh_token_encrypted: string
+}
+
+// Events joined to their (connected) write calendar + account. all-day dates are
+// rendered in the event's own zone so Google gets the right calendar day.
+const PUSH_SELECT = `
+  select e.id, e.title, e.description, e.location, e.all_day, e.timezone,
+         e.starts_at, e.ends_at, e.google_event_id, e.deleted_at,
+         to_char(e.starts_at at time zone e.timezone, 'YYYY-MM-DD') as start_date,
+         to_char(e.ends_at   at time zone e.timezone, 'YYYY-MM-DD') as end_date,
+         c.google_calendar_id, a.refresh_token_encrypted
+    from events e
+    join calendars c on c.id = e.calendar_id and c.deleted_at is null
+    join calendar_accounts a on a.id = c.account_id and a.deleted_at is null
+   where e.household_id = $1`
+
+function buildWriteBody(ev: PushRow): GoogleEventWrite {
+  if (ev.all_day) {
+    // Google all-day end is exclusive; default to the day after start.
+    const end = ev.end_date ?? new Date(new Date(`${ev.start_date}T00:00:00Z`).getTime() + DAY_MS).toISOString().slice(0, 10)
+    return {
+      summary: ev.title,
+      description: ev.description,
+      location: ev.location,
+      start: { date: ev.start_date },
+      end: { date: end },
+    }
+  }
+  const startIso = ev.starts_at.toISOString()
+  const endIso = (ev.ends_at ?? new Date(ev.starts_at.getTime() + 60 * 60 * 1000)).toISOString()
+  return {
+    summary: ev.title,
+    description: ev.description,
+    location: ev.location,
+    start: { dateTime: startIso, timeZone: ev.timezone },
+    end: { dateTime: endIso, timeZone: ev.timezone },
+  }
+}
+
+// Caches one refreshed access token per refresh-token (i.e. per account) so a
+// batch push doesn't re-exchange for every event. Dedups concurrent callers.
+function makeTokenCache(): (refreshEncrypted: string) => Promise<string> {
+  const m = new Map<string, Promise<string>>()
+  return (refreshEncrypted) => {
+    let p = m.get(refreshEncrypted)
+    if (!p) {
+      p = refreshAccessToken(decryptSecret(refreshEncrypted)).then((t) => t.accessToken)
+      m.set(refreshEncrypted, p)
+    }
+    return p
+  }
+}
+
+async function storeWriteResult(eventId: string, r: GoogleWriteResult): Promise<void> {
+  await query(
+    `update events
+        set google_event_id = $2, etag = $3, sequence = $4, google_updated = $5, sync_state = 'synced'
+      where id = $1`,
+    [eventId, r.id, r.etag, r.sequence, r.updated]
+  )
+}
+
+type PushOutcome = 'created' | 'updated' | 'deleted' | 'skipped' | 'failed'
+
+// Push one event: insert (new), patch (has google_event_id), or delete (soft-
+// deleted). A local-only event (no connected calendar) is skipped. Failures are
+// recorded as push_failed and swallowed so a mutation never fails on Google.
+async function pushById(
+  householdId: string,
+  eventId: string,
+  getToken: (refreshEncrypted: string) => Promise<string>
+): Promise<PushOutcome> {
+  const { rows } = await query<PushRow>(`${PUSH_SELECT} and e.id = $2`, [householdId, eventId])
+  const ev = rows[0]
+  if (!ev) return 'skipped'
+  try {
+    const accessToken = await getToken(ev.refresh_token_encrypted)
+    if (ev.deleted_at) {
+      if (ev.google_event_id) await deleteEvent(accessToken, ev.google_calendar_id, ev.google_event_id)
+      await query(`update events set sync_state = 'synced' where id = $1`, [ev.id])
+      return 'deleted'
+    }
+    const body = buildWriteBody(ev)
+    if (ev.google_event_id) {
+      await storeWriteResult(ev.id, await patchEvent(accessToken, ev.google_calendar_id, ev.google_event_id, body))
+      return 'updated'
+    }
+    await storeWriteResult(ev.id, await insertEvent(accessToken, ev.google_calendar_id, body))
+    return 'created'
+  } catch (err) {
+    console.error('calendar push failed', eventId, err)
+    await query(`update events set sync_state = 'push_failed' where id = $1`, [eventId])
+    return 'failed'
+  }
+}
+
+// Push a single event immediately (called right after a Nook mutation). Safe to
+// call for any event — local-only events resolve to 'skipped'.
+export async function pushEventNow(householdId: string, eventId: string): Promise<PushOutcome> {
+  return pushById(householdId, eventId, makeTokenCache())
+}
+
+export interface PushPendingResult {
+  created: number
+  updated: number
+  deleted: number
+  failed: number
+}
+
+// Retry the queue: every event still pending_push / push_failed (e.g. a mutation
+// whose immediate push failed, or one made while offline). Runs before inbound.
+export async function pushPending(householdId: string): Promise<PushPendingResult> {
+  const getToken = makeTokenCache()
+  const { rows } = await query<{ id: string }>(
+    `select e.id
+       from events e
+       join calendars c on c.id = e.calendar_id and c.deleted_at is null
+       join calendar_accounts a on a.id = c.account_id and a.deleted_at is null
+      where e.household_id = $1 and e.calendar_id is not null
+        and e.sync_state in ('pending_push', 'push_failed')
+      order by e.updated_at`,
+    [householdId]
+  )
+  const counts: PushPendingResult = { created: 0, updated: 0, deleted: 0, failed: 0 }
+  for (const row of rows) {
+    const outcome = await pushById(householdId, row.id, getToken)
+    if (outcome !== 'skipped') counts[outcome]++
+  }
+  return counts
+}
+
 export function registerCalendarSyncRoutes(api: Api): void {
   // Pull connected calendars now. Any household member can refresh; the work is
   // read-from-Google + mirror, gated only on the connection being configured.
@@ -333,7 +516,10 @@ export function registerCalendarSyncRoutes(api: Api): void {
     if (calendarId && !UUID_RE.test(calendarId)) {
       return res.status(400).json({ error: 'BadRequest', message: 'calendarId must be a uuid' })
     }
+    // Push local edits out before pulling, so a Nook change isn't clobbered by an
+    // inbound overwrite of the same event in the same run.
+    const pushed = await pushPending(tenant.householdId)
     const result = await syncHousehold(tenant.householdId, { calendarId })
-    return result
+    return { ...result, pushed }
   })
 }

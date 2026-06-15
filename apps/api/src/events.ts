@@ -1,11 +1,13 @@
-// Calendar — Nook-native events (part 1, no Google). Single events created here
-// and read for the agenda / Calendar screen. "Today" buckets by the household's
-// timezone so a kiosk shows the right local day. events.person_id is the
-// color/owner; event_participants is the broader "who's involved" set.
+// Calendar — Nook-native events. Single events created here and read for the
+// agenda / Calendar screen. "Today" buckets by the household's timezone so a kiosk
+// shows the right local day. events.person_id is the color/owner; event_participants
+// is the broader "who's involved" set. Events authored for a person who has a Google
+// write-target calendar are routed there and pushed back (5.4, via calendar-sync).
 import createAPI, { type Request, type Response } from 'lambda-api'
 import type { PoolClient, QueryResultRow } from 'pg'
 import { getPool, query } from './db'
 import { requireTenant, type Tenant } from './households'
+import { resolveWriteTarget, pushEventNow } from './calendar-sync'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -77,17 +79,22 @@ async function replaceParticipants(
 export async function createEvent(tenant: Tenant, input: CreateEventInput): Promise<EventRow> {
   const personIds = input.participantIds ?? (input.personId ? [input.personId] : [])
   const primary = personIds[0] ?? input.personId ?? null
+  // If the owner has a Google write-target calendar, tag the event to it and
+  // queue a push; otherwise it's a local-only event.
+  const target = await resolveWriteTarget(tenant.householdId, primary)
   const client = await getPool().connect()
   try {
     await client.query('begin')
     const ins = await client.query<EventRow>(
       `insert into events
-         (household_id, title, description, location, starts_at, ends_at, all_day, timezone, person_id, origin)
-       values ($1,$2,$3,$4,$5,$6, coalesce($7,false),
-               coalesce($8, (select timezone from households where id=$1)), $9, 'manual')
+         (household_id, calendar_id, title, description, location, starts_at, ends_at, all_day, timezone,
+          person_id, origin, sync_state)
+       values ($1,$2,$3,$4,$5,$6,$7, coalesce($8,false),
+               coalesce($9, (select timezone from households where id=$1)), $10, 'manual', $11)
        returning *`,
       [
         tenant.householdId,
+        target?.calendarId ?? null,
         input.title,
         input.description ?? null,
         input.location ?? null,
@@ -96,11 +103,15 @@ export async function createEvent(tenant: Tenant, input: CreateEventInput): Prom
         input.allDay ?? false,
         input.timezone ?? null,
         primary,
+        target ? 'pending_push' : 'local_only',
       ]
     )
     const event = ins.rows[0]
     await replaceParticipants(client, tenant.householdId, event.id, personIds)
     await client.query('commit')
+    // Push outside the transaction; failures are recorded as push_failed (retried
+    // on the next sync) and never fail the create.
+    if (target) await pushEventNow(tenant.householdId, event.id)
     return event
   } catch (err) {
     await client.query('rollback')
@@ -203,6 +214,8 @@ export async function updateEvent(
     }
     if (personIds) await replaceParticipants(client, householdId, id, personIds)
     await client.query('commit')
+    // Mirror the edit to Google if this event lives on a connected calendar.
+    if (event.calendar_id) await pushEventNow(householdId, id)
     return event
   } catch (err) {
     await client.query('rollback')
@@ -213,11 +226,19 @@ export async function updateEvent(
 }
 
 export async function softDeleteEvent(householdId: string, id: string): Promise<boolean> {
-  const { rowCount } = await query(
-    `update events set deleted_at = now() where household_id = $1 and id = $2 and deleted_at is null`,
+  const { rows } = await query<{ calendar_id: string | null }>(
+    `update events
+        set deleted_at = now(),
+            sync_state = case when calendar_id is not null then 'pending_push' else sync_state end
+      where household_id = $1 and id = $2 and deleted_at is null
+      returning calendar_id`,
     [householdId, id]
   )
-  return !!rowCount
+  const row = rows[0]
+  if (!row) return false
+  // Mirror the deletion to Google (delete tolerates an already-gone event).
+  if (row.calendar_id) await pushEventNow(householdId, id)
+  return true
 }
 
 export function presentEvent(e: EventRow) {

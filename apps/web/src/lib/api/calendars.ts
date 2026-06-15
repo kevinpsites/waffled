@@ -20,6 +20,7 @@ export interface CalendarLink {
   colorHex: string | null
   isPrimary: boolean
   selected: boolean
+  isWriteTarget: boolean
   personId: string | null
   personName: string | null
   personColor: string | null
@@ -56,7 +57,7 @@ export const calendarsApi = {
   // to (the api callback redirects there after storing the connection).
   connectCalendar: (redirectTo?: string) =>
     apiSend<{ url: string }>('POST', '/api/calendar/google/connect', redirectTo ? { redirectTo } : {}),
-  updateCalendar: (id: string, patch: { personId?: string | null; selected?: boolean }) =>
+  updateCalendar: (id: string, patch: { personId?: string | null; selected?: boolean; isWriteTarget?: boolean }) =>
     apiSend<{ calendar: CalendarLink }>('PATCH', `/api/calendar/google/calendars/${id}`, patch),
   disconnectAccount: (accountId: string) => apiDelete(`/api/calendar/google/accounts/${accountId}`),
   syncCalendars: (calendarId?: string) =>

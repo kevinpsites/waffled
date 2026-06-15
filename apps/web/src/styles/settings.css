@@ -202,6 +202,19 @@
 .linkbtn:hover {
   text-decoration: underline;
 }
+.cal-star {
+  flex: none;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  padding: 4px;
+  color: var(--muted);
+}
+.cal-star.on {
+  color: var(--accent, #4c8bf5);
+}
 
 /* household setting rows */
 .set-row2 {
