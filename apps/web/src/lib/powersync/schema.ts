@@ -33,6 +33,8 @@ const persons = new Table({
   color_hex: column.text,
   avatar_emoji: column.text,
   member_type: column.text,
+  sort_order: column.integer,
+  created_at: column.text,
 })
 
 const households = new Table({
