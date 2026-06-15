@@ -112,6 +112,24 @@
   cursor: pointer;
 }
 
+/* calendar sync toggle (Calendars settings tab) */
+.cal-sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink);
+  cursor: pointer;
+  flex: none;
+}
+.cal-sync input {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--accent, #4c8bf5);
+}
+
 /* household setting rows */
 .set-row2 {
   display: flex;

@@ -14,6 +14,7 @@ export * from './grocery'
 export * from './chores'
 export * from './rewards'
 export * from './events'
+export * from './calendars'
 export * from './meals'
 export * from './photos'
 export * from './capture'
@@ -24,6 +25,7 @@ import { groceryApi } from './grocery'
 import { choresApi } from './chores'
 import { rewardsApi } from './rewards'
 import { eventsApi } from './events'
+import { calendarsApi } from './calendars'
 import { mealsApi } from './meals'
 import { photosApi } from './photos'
 import { captureApi } from './capture'
@@ -35,6 +37,7 @@ export const api = {
   ...choresApi,
   ...rewardsApi,
   ...eventsApi,
+  ...calendarsApi,
   ...mealsApi,
   ...photosApi,
   ...captureApi,

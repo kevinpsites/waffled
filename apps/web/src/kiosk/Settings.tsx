@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { personsApi, captureApi, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider } from '../lib/api'
+import { personsApi, captureApi, calendarsApi, usePersons, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import '../styles/settings.css'
 
@@ -297,11 +297,180 @@ function AiPanel() {
   )
 }
 
+function fmtWhen(iso: string | null): string {
+  if (!iso) return 'never'
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return 'never'
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+// Calendars: connect Google accounts, map each calendar to a person (color/owner),
+// toggle which ones Nook syncs, and pull events on demand. Connect navigates to
+// Google's consent screen; the api callback redirects back here when it's done.
+function CalendarsPanel() {
+  const [status, setStatus] = useState<CalendarStatus | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const { persons } = usePersons()
+  const [connecting, setConnecting] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
+
+  function load() {
+    calendarsApi
+      .calendarStatus()
+      .then((s) => { setStatus(s); setLoading(false); setError(false) })
+      .catch(() => { setError(true); setLoading(false) })
+  }
+  useEffect(load, [])
+
+  if (loading) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
+  if (error || !status) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Sign this kiosk in to manage calendars.</div></div>
+
+  async function connect() {
+    setConnecting(true)
+    try {
+      const { url } = await calendarsApi.connectCalendar(window.location.href)
+      window.location.href = url // full-page handoff to Google's consent screen
+    } catch {
+      setConnecting(false)
+    }
+  }
+
+  async function syncNow() {
+    setSyncing(true)
+    setSyncMsg(null)
+    try {
+      const r = await calendarsApi.syncCalendars()
+      const errs = r.calendars.filter((c) => c.error)
+      setSyncMsg(
+        errs.length
+          ? `Synced with ${errs.length} error${errs.length > 1 ? 's' : ''}: ${errs[0].error}`
+          : `Imported ${r.imported}, updated ${r.updated}, removed ${r.deleted}.`
+      )
+      load()
+    } catch {
+      setSyncMsg('Sync failed — check the server logs.')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  function replaceCal(updated: CalendarLink) {
+    setStatus((s) => (s ? { ...s, calendars: s.calendars.map((c) => (c.id === updated.id ? updated : c)) } : s))
+  }
+  async function setPerson(cal: CalendarLink, personId: string) {
+    const { calendar } = await calendarsApi.updateCalendar(cal.id, { personId: personId || null })
+    replaceCal(calendar)
+  }
+  async function toggleSelected(cal: CalendarLink) {
+    const { calendar } = await calendarsApi.updateCalendar(cal.id, { selected: !cal.selected })
+    replaceCal(calendar)
+  }
+  async function disconnect(accountId: string) {
+    if (!window.confirm('Disconnect this Google account? Its calendars stop syncing (already-imported events stay).')) return
+    await calendarsApi.disconnectAccount(accountId)
+    load()
+  }
+
+  if (!status.configured) {
+    return (
+      <div className="set-panel">
+        <div className="set-head"><div className="nk-serif set-head-t">Calendars</div></div>
+        <div className="set-card" style={{ padding: 22 }}>
+          <div className="muted" style={{ fontWeight: 600 }}>
+            Google Calendar isn’t configured on the server yet. Set <code>GOOGLE_CLIENT_ID</code>,{' '}
+            <code>GOOGLE_CLIENT_SECRET</code>, <code>GOOGLE_CALENDAR_REDIRECT_URI</code> and{' '}
+            <code>TOKEN_ENCRYPTION_KEY</code> in the server environment, then reload.
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="set-panel">
+      <div className="set-head">
+        <div className="nk-serif set-head-t">Calendars</div>
+        {status.connected && (
+          <button type="button" className="btn btn-primary" onClick={syncNow} disabled={syncing}>
+            {syncing ? 'Syncing…' : '↻ Sync now'}
+          </button>
+        )}
+      </div>
+
+      {syncMsg && <div className="tiny" style={{ fontWeight: 700, margin: '0 2px 12px', color: 'var(--ink, #2b2b2b)' }}>{syncMsg}</div>}
+
+      {!status.connected ? (
+        <div className="set-card" style={{ padding: 22 }}>
+          <div className="set-row2-t" style={{ marginBottom: 6 }}>Connect a Google account</div>
+          <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 16 }}>
+            Bring your family’s Google calendars into Nook. You’ll pick which ones sync and who each one belongs to.
+          </div>
+          <button type="button" className="btn btn-primary" onClick={connect} disabled={connecting}>
+            {connecting ? 'Opening Google…' : 'Connect Google Calendar'}
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="set-card">
+            {status.accounts.map((a) => (
+              <SettingRow key={a.id} icon="🔗" title={a.email ?? a.googleSub} sub={`Connected ${fmtWhen(a.connectedAt)}`}>
+                <button type="button" className="btn btn-ghost" onClick={() => disconnect(a.id)}>Disconnect</button>
+              </SettingRow>
+            ))}
+          </div>
+
+          <button type="button" className="btn btn-ghost set-add" onClick={connect} disabled={connecting}>
+            ＋ Connect another account
+          </button>
+
+          <div className="flabel" style={{ margin: '18px 2px 8px' }}>CALENDARS</div>
+          <div className="set-card">
+            {status.calendars.length === 0 && (
+              <div className="muted" style={{ padding: 18, fontWeight: 600 }}>No calendars found on this account.</div>
+            )}
+            {status.calendars.map((cal) => (
+              <div className="set-row2" key={cal.id}>
+                <div className="set-ic2" style={{ background: `${cal.colorHex ?? '#A6A29B'}22` }}>📅</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="set-row2-t">
+                    {cal.summary ?? cal.googleCalendarId}
+                    {cal.isPrimary && <span className="tiny muted" style={{ fontWeight: 600 }}> · primary</span>}
+                  </div>
+                  <div className="tiny muted" style={{ fontWeight: 600 }}>
+                    {cal.selected ? `Last synced ${fmtWhen(cal.lastSyncedAt)}` : 'Sync off'}
+                    {cal.accessRole ? ` · ${cal.accessRole}` : ''}
+                  </div>
+                </div>
+                <select
+                  className="sel"
+                  value={cal.personId ?? ''}
+                  onChange={(e) => setPerson(cal, e.target.value)}
+                  title="Who owns this calendar (sets event color)"
+                >
+                  <option value="">Unassigned</option>
+                  {persons.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <label className="cal-sync" title="Sync this calendar into Nook">
+                  <input type="checkbox" checked={cal.selected} onChange={() => toggleSelected(cal)} />
+                  Sync
+                </label>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // Sub-tabs that depend on integrations we haven't built yet render their section
 // honestly rather than faking data. (Defended in the build report.)
 const PLACEHOLDERS: Record<string, { title: string; note: string }> = {
   accounts: { title: 'Accounts', note: 'Google / Apple sign-in and account linking land with auth (M3.3 / M5).' },
-  calendars: { title: 'Calendars', note: 'Per-person Google Calendar mapping lands with calendar sync (M5).' },
   chores: { title: 'Chores & rewards', note: 'Reward styles & the reward shop build on the chores ledger (6.1 / 6.4).' },
   meals: { title: 'Meals', note: 'Meal preferences & dietary defaults pair with the Meals screen.' },
   lists: { title: 'Lists', note: 'List defaults & sharing pair with the Lists screen.' },
@@ -338,7 +507,7 @@ export function Settings() {
         ))}
       </div>
       <div className="set-content">
-        {tab === 'family' ? <FamilyPanel /> : tab === 'ai' ? <AiPanel /> : <Placeholder tab={tab} />}
+        {tab === 'family' ? <FamilyPanel /> : tab === 'ai' ? <AiPanel /> : tab === 'calendars' ? <CalendarsPanel /> : <Placeholder tab={tab} />}
       </div>
     </div>
   )
