@@ -13,6 +13,17 @@ function toIso(date: string, time: string): string {
   return new Date(`${date}T${time}`).toISOString()
 }
 
+const DURATIONS: Array<{ min: number; label: string }> = [
+  { min: 15, label: '15 min' },
+  { min: 30, label: '30 min' },
+  { min: 45, label: '45 min' },
+  { min: 60, label: '1 hr' },
+  { min: 90, label: '1.5 hr' },
+  { min: 120, label: '2 hr' },
+  { min: 180, label: '3 hr' },
+  { min: 240, label: '4 hr' },
+]
+
 function initialForm(event?: AgendaEvent, date?: string) {
   if (event) {
     const d = new Date(event.startsAt)
@@ -21,16 +32,21 @@ function initialForm(event?: AgendaEvent, date?: string) {
       : event.personId
         ? [event.personId]
         : []
+    const durationMin =
+      event.endsAt && !event.allDay
+        ? Math.max(15, Math.round((new Date(event.endsAt).getTime() - d.getTime()) / 60000))
+        : 60
     return {
       title: event.title,
       day: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
       time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+      durationMin,
       allDay: event.allDay,
       participantIds,
       location: event.location ?? '',
     }
   }
-  return { title: '', day: date ?? localToday(), time: '17:00', allDay: false, participantIds: [] as string[], location: '' }
+  return { title: '', day: date ?? localToday(), time: '17:00', durationMin: 60, allDay: false, participantIds: [] as string[], location: '' }
 }
 
 // Create (pass `date`) or edit (pass `event`) a calendar event.
@@ -91,9 +107,12 @@ export function EventModal({
     e.preventDefault()
     if (!form.title.trim() || saving) return
     setSaving(true)
+    const startsAt = form.allDay ? toIso(form.day, '12:00') : toIso(form.day, form.time)
     const payload = {
       title: form.title.trim(),
-      startsAt: form.allDay ? toIso(form.day, '12:00') : toIso(form.day, form.time),
+      startsAt,
+      // Timed events get start + duration; all-day events have no end.
+      endsAt: form.allDay ? null : new Date(new Date(startsAt).getTime() + form.durationMin * 60000).toISOString(),
       allDay: form.allDay,
       participantIds: form.participantIds,
       location: form.location.trim() || null,
@@ -142,18 +161,28 @@ export function EventModal({
             <input value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="Soccer practice" autoFocus />
           </label>
 
-          <div className="field-row">
-            <label className="field">
-              <span>Date</span>
-              <input type="date" value={form.day} onChange={(e) => set('day', e.target.value)} />
-            </label>
-            {!form.allDay && (
+          <label className="field">
+            <span>Date</span>
+            <input type="date" value={form.day} onChange={(e) => set('day', e.target.value)} />
+          </label>
+          {!form.allDay && (
+            <div className="field-row">
               <label className="field">
                 <span>Time</span>
                 <input type="time" value={form.time} onChange={(e) => set('time', e.target.value)} />
               </label>
-            )}
-          </div>
+              <label className="field">
+                <span>Duration</span>
+                <select value={form.durationMin} onChange={(e) => set('durationMin', Number(e.target.value))}>
+                  {DURATIONS.map((d) => (
+                    <option key={d.min} value={d.min}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
 
           <label className="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input type="checkbox" checked={form.allDay} onChange={(e) => set('allDay', e.target.checked)} style={{ width: 'auto' }} />
