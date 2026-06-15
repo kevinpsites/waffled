@@ -4,6 +4,7 @@
 import http from 'node:http'
 import api from './app'
 import { config } from './config'
+import { startSyncScheduler } from './calendar-sync'
 
 interface RunResult {
   statusCode: number
@@ -38,4 +39,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(config.port, () => {
   console.log(`nook-api listening on :${config.port} (auth mode: ${config.auth.mode})`)
+  // Background poll: pull Google calendar changes into Nook on an interval so
+  // edits/deletes made on the Google side appear without a manual sync.
+  startSyncScheduler()
 })

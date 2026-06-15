@@ -14,3 +14,5 @@ bucket_definitions:
     data:
       - SELECT * FROM households WHERE id = bucket.household_id AND deleted_at IS NULL
       - SELECT * FROM persons WHERE household_id = bucket.household_id AND deleted_at IS NULL
+      - SELECT * FROM events WHERE household_id = bucket.household_id AND deleted_at IS NULL
+      - SELECT * FROM event_participants WHERE household_id = bucket.household_id AND deleted_at IS NULL

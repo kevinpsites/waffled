@@ -26,6 +26,10 @@ const UPDATABLE: Record<string, string> = {
   personId: 'person_id',
 }
 
+// Patch fields Google owns — a change to one of these is worth pushing back to
+// Google. personId/participantIds are Nook-owned and never trigger an outbound push.
+const GOOGLE_OWNED_FIELDS = ['title', 'description', 'location', 'startsAt', 'endsAt', 'allDay']
+
 export interface Participant {
   id: string
   name: string
@@ -214,8 +218,10 @@ export async function updateEvent(
     }
     if (personIds) await replaceParticipants(client, householdId, id, personIds)
     await client.query('commit')
-    // Mirror the edit to Google if this event lives on a connected calendar.
-    if (event.calendar_id) await pushEventNow(householdId, id)
+    // Mirror the edit to Google only when a Google-owned field changed — person/
+    // participants are Nook-owned (Google has no such field), so don't push for them.
+    const touchedGoogle = GOOGLE_OWNED_FIELDS.some((f) => f in patch)
+    if (event.calendar_id && touchedGoogle) await pushEventNow(householdId, id)
     return event
   } catch (err) {
     await client.query('rollback')

@@ -224,4 +224,10 @@ describe('inbound sync', () => {
     const june = await eventsInJune()
     expect(june.find((e) => e.title === 'Standup (moved)')).toBeTruthy()
   })
+
+  it('the scheduled poll syncs every connected household', async () => {
+    const { syncAllHouseholds } = await import('../src/calendar-sync')
+    const res = await syncAllHouseholds()
+    expect(res.households).toBe(1)
+  })
 })

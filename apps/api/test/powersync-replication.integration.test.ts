@@ -37,24 +37,29 @@ describe('powersync replication setup', () => {
     expect(res.rowCount).toBe(1)
   })
 
-  it('publishes households and persons', async () => {
+  it('publishes the synced tables (households, persons, events, event_participants)', async () => {
     const res = await withClient((c) =>
       c.query<{ tablename: string }>(
         `select tablename from pg_publication_tables where pubname = 'powersync'`
       )
     )
-    expect(res.rows.map((r) => r.tablename).sort()).toEqual(['households', 'persons'])
+    expect(res.rows.map((r) => r.tablename).sort()).toEqual([
+      'event_participants',
+      'events',
+      'households',
+      'persons',
+    ])
   })
 
   it('sets REPLICA IDENTITY FULL on the synced tables', async () => {
     const res = await withClient((c) =>
       c.query<{ relname: string; relreplident: string }>(
         `select relname, relreplident from pg_class
-          where relname in ('households','persons') and relkind = 'r'`
+          where relname in ('households','persons','events','event_participants') and relkind = 'r'`
       )
     )
     // 'f' = FULL
     expect(res.rows.every((r) => r.relreplident === 'f')).toBe(true)
-    expect(res.rows).toHaveLength(2)
+    expect(res.rows).toHaveLength(4)
   })
 })

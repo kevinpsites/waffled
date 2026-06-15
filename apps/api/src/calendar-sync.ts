@@ -498,6 +498,56 @@ export async function pushPending(householdId: string): Promise<PushPendingResul
   return counts
 }
 
+// ── Scheduled poll (hop 1) ─────────────────────────────────────────────────────
+
+// Push pending + pull for every household with a connected account. This is the
+// timer's unit of work; a failure on one household is logged and never aborts the
+// rest. Returns how many households were processed (handy for the test/logs).
+export async function syncAllHouseholds(): Promise<{ households: number }> {
+  const { rows } = await query<{ household_id: string }>(
+    `select distinct household_id from calendar_accounts where deleted_at is null`
+  )
+  for (const { household_id } of rows) {
+    try {
+      await pushPending(household_id)
+      await syncHousehold(household_id)
+    } catch (err) {
+      console.error('scheduled calendar sync failed for household', household_id, err)
+    }
+  }
+  return { households: rows.length }
+}
+
+let schedulerTimer: ReturnType<typeof setInterval> | null = null
+
+// Start the background poll (server.ts only — the lambda entrypoint never calls
+// this). Interval is CALENDAR_SYNC_INTERVAL_MS (default 5 min); 0 disables it. A
+// run-in-progress guard prevents overlap if a sync outlasts the interval.
+export function startSyncScheduler(): void {
+  if (schedulerTimer) return
+  const intervalMs = parseInt(process.env.CALENDAR_SYNC_INTERVAL_MS ?? '300000', 10)
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0) return
+  if (!googleConfigured() || !encryptionAvailable()) {
+    console.log('calendar sync scheduler not started (Google/encryption not configured)')
+    return
+  }
+  let running = false
+  schedulerTimer = setInterval(async () => {
+    if (running) return
+    running = true
+    try {
+      await syncAllHouseholds()
+    } catch (err) {
+      console.error('scheduled calendar sync error', err)
+    } finally {
+      running = false
+    }
+  }, intervalMs)
+  // Don't keep the process alive for the timer alone.
+  schedulerTimer.unref?.()
+  console.log(`calendar sync scheduler started (every ${Math.round(intervalMs / 1000)}s)`)
+}
+
 export function registerCalendarSyncRoutes(api: Api): void {
   // Pull connected calendars now. Any household member can refresh; the work is
   // read-from-Google + mirror, gated only on the connection being configured.
