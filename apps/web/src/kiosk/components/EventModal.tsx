@@ -134,7 +134,8 @@ export function EventModal({
       }
       onSaved()
       onClose()
-    } catch {
+    } catch (err) {
+      console.error('event save failed', err)
       setSaving(false)
     }
   }
@@ -150,7 +151,8 @@ export function EventModal({
       if (!(await deleteEventLocal(event!.id))) await api.deleteEvent(event!.id)
       onSaved()
       onClose()
-    } catch {
+    } catch (err) {
+      console.error('event delete failed', err)
       setSaving(false)
     }
   }

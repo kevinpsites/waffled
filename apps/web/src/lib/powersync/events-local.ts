@@ -143,11 +143,13 @@ export async function createEventLocal(draft: EventDraft): Promise<boolean> {
   const hh = await householdRowId()
   const tz = await getHouseholdTz()
   const id = crypto.randomUUID()
+  // Only columns present in the client schema (schema.ts) — sync_state/status are
+  // server-owned and not replicated, so they must not appear here.
   await db.execute(
     `insert into events
        (id, household_id, title, description, location, starts_at, ends_at, all_day, timezone,
-        person_id, calendar_id, origin, sync_state)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', 'local_only')`,
+        person_id, calendar_id, origin)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
     [id, hh, draft.title, null, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, tz, draft.personIds[0] ?? null, draft.calendarId ?? null]
   )
   for (const pid of [...new Set(draft.personIds)]) {
