@@ -6,6 +6,10 @@ import react from '@vitejs/plugin-react'
 // origin (no CORS), exactly like Caddy does in the compose stack.
 export default defineConfig({
   plugins: [react()],
+  // @powersync/web ships its own SQLite WASM + worker; pre-bundling breaks them,
+  // so exclude it from Vite's dep optimizer (PowerSync's documented Vite setup).
+  optimizeDeps: { exclude: ['@powersync/web'] },
+  worker: { format: 'es' },
   server: {
     port: 5173,
     proxy: {

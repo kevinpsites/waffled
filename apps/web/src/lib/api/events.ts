@@ -1,6 +1,10 @@
 // Calendar events domain — client slice, types, and hooks.
 import { useEffect, useState } from 'react'
 import { apiGet, apiSend, apiDelete, localToday } from './client'
+import { onTablesChange } from '../powersync/db'
+
+// Tables whose replicated (PowerSync) changes should refresh an open agenda live.
+const EVENT_TABLES = ['events', 'event_participants', 'persons']
 
 export interface Participant {
   id: string
@@ -59,6 +63,8 @@ export function useEventsToday(): AgendaState & { refetch: () => void } {
       alive = false
     }
   }, [nonce])
+  // Live: refetch when replicated rows change (no-op when PowerSync isn't running).
+  useEffect(() => onTablesChange(EVENT_TABLES, () => setNonce((n) => n + 1)), [])
   return { ...state, refetch: () => setNonce((n) => n + 1) }
 }
 
@@ -76,5 +82,7 @@ export function useEventsRange(from: string, to: string): AgendaState & { refetc
       alive = false
     }
   }, [from, to, nonce])
+  // Live: refetch when replicated rows change (no-op when PowerSync isn't running).
+  useEffect(() => onTablesChange(EVENT_TABLES, () => setNonce((n) => n + 1)), [])
   return { ...state, refetch: () => setNonce((n) => n + 1) }
 }
