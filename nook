@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# nook — one-touch control for the local stack (postgres, api, powersync, caddy).
+#
+#   ./nook up        start everything, building images as needed, then show status
+#   ./nook status    show each container's state + health (✓/✗)
+#   ./nook down      stop & remove the stack
+#   ./nook restart [svc]   restart all (or one) service
+#   ./nook rebuild [svc]   force a rebuild + recreate (all, or one)
+#   ./nook logs [svc]      follow logs (all, or one)
+#   ./nook migrate   apply DB migrations (node-pg-migrate)
+#   ./nook psql      open a psql shell on the database
+#
+# Everything is driven off infra/compose so you never type the long flags.
+set -euo pipefail
+
+# Resolve repo root from this script's location, so it works from anywhere.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMPOSE_FILE="$ROOT/infra/compose/docker-compose.yml"
+ENV_FILE="$ROOT/infra/compose/.env"
+DC=(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE")
+
+# Services we expect to be running, in startup order.
+SERVICES=(postgres api powersync caddy)
+
+c_reset=$'\033[0m'; c_red=$'\033[31m'; c_grn=$'\033[32m'; c_ylw=$'\033[33m'; c_dim=$'\033[2m'
+
+# Read one KEY=value from .env without sourcing it (the file has values with
+# spaces, e.g. GOOGLE_CALENDAR_SCOPES, which `source` chokes on).
+env_val() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true; }
+
+status() {
+  local any_fail=0
+  printf '%-12s %-10s %s\n' "SERVICE" "STATE" "HEALTH"
+  printf '%s\n' "$c_dim--------------------------------------$c_reset"
+  for s in "${SERVICES[@]}"; do
+    local cid state health mark color
+    cid="$("${DC[@]}" ps -q "$s" 2>/dev/null || true)"
+    if [ -z "$cid" ]; then
+      printf '%s✗ %-10s %-10s %s%s\n' "$c_red" "$s" "missing" "not running" "$c_reset"
+      any_fail=1; continue
+    fi
+    state="$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || echo unknown)"
+    health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}—{{end}}' "$cid" 2>/dev/null || echo —)"
+    if [ "$state" = "running" ] && { [ "$health" = "healthy" ] || [ "$health" = "—" ]; }; then
+      color="$c_grn"; mark="✓"
+    else
+      color="$c_red"; mark="✗"; any_fail=1
+    fi
+    printf '%s%s %-10s %-10s %s%s\n' "$color" "$mark" "$s" "$state" "$health" "$c_reset"
+  done
+  [ "$any_fail" -eq 0 ] && echo "${c_grn}All services healthy.${c_reset}" \
+                        || echo "${c_ylw}Some services are not healthy — see 'nook logs <svc>'.${c_reset}"
+  return "$any_fail"
+}
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  up)
+    echo "${c_dim}Starting stack (building as needed)…${c_reset}"
+    "${DC[@]}" up -d --build "$@"
+    echo; status || true
+    ;;
+  down)    "${DC[@]}" down "$@" ;;
+  restart) "${DC[@]}" restart "$@"; echo; status || true ;;
+  rebuild) "${DC[@]}" up -d --build --force-recreate "$@"; echo; status || true ;;
+  logs)    "${DC[@]}" logs -f --tail=120 "$@" ;;
+  status|st|ps) status || true ;;
+  migrate)
+    pg_user="$(env_val POSTGRES_USER)"; pg_pass="$(env_val POSTGRES_PASSWORD)"
+    pg_db="$(env_val POSTGRES_DB)"; pg_port="$(env_val POSTGRES_PORT)"; pg_port="${pg_port:-5432}"
+    echo "${c_dim}Applying migrations…${c_reset}"
+    ( cd "$ROOT/apps/api" && DATABASE_URL="postgres://$pg_user:$pg_pass@localhost:$pg_port/$pg_db" npm run migrate )
+    ;;
+  psql)
+    docker exec -it nook-postgres psql -U "$(env_val POSTGRES_USER)" -d "$(env_val POSTGRES_DB)" ;;
+  help|-h|--help|*)
+    sed -n '2,18p' "$ROOT/nook" | sed 's/^# \{0,1\}//' ;;
+esac
