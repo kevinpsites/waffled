@@ -304,6 +304,12 @@ function fmtWhen(iso: string | null): string {
   return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
+// Subscriptions you can't edit (holidays, other people's calendars) come back as
+// reader / freeBusyReader; owner/writer are your own read-write calendars.
+function isReadOnly(accessRole: string | null): boolean {
+  return accessRole === 'reader' || accessRole === 'freeBusyReader'
+}
+
 // Calendars: connect Google accounts, map each calendar to a person (color/owner),
 // toggle which ones Nook syncs, and pull events on demand. Connect navigates to
 // Google's consent screen; the api callback redirects back here when it's done.
@@ -317,6 +323,7 @@ function CalendarsPanel() {
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [syncedOnly, setSyncedOnly] = useState(false)
+  const [hideReadOnly, setHideReadOnly] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
 
   function load() {
@@ -471,6 +478,10 @@ function CalendarsPanel() {
                 <input type="checkbox" checked={syncedOnly} onChange={() => setSyncedOnly((v) => !v)} />
                 Synced only
               </label>
+              <label className="cal-sync" title="Hide read-only subscriptions (holidays, others’ calendars)">
+                <input type="checkbox" checked={hideReadOnly} onChange={() => setHideReadOnly((v) => !v)} />
+                Hide read-only
+              </label>
             </div>
           )}
 
@@ -480,6 +491,7 @@ function CalendarsPanel() {
             const syncingCount = all.filter((c) => c.selected).length
             const shown = all.filter((c) => {
               if (syncedOnly && !c.selected) return false
+              if (hideReadOnly && !c.selected && isReadOnly(c.accessRole)) return false
               if (q && !(c.summary ?? c.googleCalendarId).toLowerCase().includes(q)) return false
               return true
             })
