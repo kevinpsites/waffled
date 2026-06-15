@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Icon } from '../icons'
 import { useTopbarSlots } from '../topbar-slot'
-import { useHousehold } from '../../lib/api'
+import { useHousehold, useWeather } from '../../lib/api'
 import { CaptureBar } from './CaptureBar'
 
 function useNow(): Date {
@@ -28,16 +27,19 @@ export function Topbar() {
   const now = useNow()
   const { right, full } = useTopbarSlots()
   const { household } = useHousehold()
+  const wx = useWeather()
   const tz = household?.timezone
   if (full) return <div className="topbar">{full}</div>
   return (
     <div className="topbar">
       <div className="tb-date nk-serif">{formatDate(now, tz)}</div>
       <div className="tb-time">{formatTime(now, tz)}</div>
-      <div className="tb-wx">
-        <Icon name="cloud" />
-        60°
-      </div>
+      {wx?.configured && wx.tempF != null && (
+        <div className="tb-wx" title={[wx.label, wx.location].filter(Boolean).join(' · ')}>
+          <span aria-hidden="true">{wx.emoji}</span>
+          {wx.tempF}°
+        </div>
+      )}
       <div className="tb-right">{right ?? <CaptureBar />}</div>
     </div>
   )

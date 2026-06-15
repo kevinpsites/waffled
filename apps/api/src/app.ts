@@ -22,6 +22,7 @@ import { registerGoalRoutes } from './goals'
 import { registerOverviewRoutes } from './overview'
 import { registerPhotoRoutes } from './photos'
 import { registerCaptureRoutes } from './capture'
+import { registerWeatherRoutes } from './weather'
 import { registerPowerSyncRoutes } from './powersync'
 import { registerPowerSyncCrudRoutes } from './powersync-crud'
 
@@ -146,6 +147,9 @@ registerPhotoRoutes(api)
 
 // Capture-bar LLM parsing + provider config (/api/capture…)
 registerCaptureRoutes(api)
+
+// Live weather for the kiosk topbar (/api/weather)
+registerWeatherRoutes(api)
 
 // PowerSync auth (JWKS + token endpoint)
 registerPowerSyncRoutes(api)
