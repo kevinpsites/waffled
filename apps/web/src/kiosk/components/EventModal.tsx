@@ -72,13 +72,19 @@ export function EventModal({
     }
   }, [editing])
 
-  // Default the calendar to the owner's ★ target (then any of their writable
-  // calendars), re-following when the owner changes — until manually overridden.
+  // The calendars offered for an event: the owner's (first-selected person's) own
+  // writable calendars that are syncing — plus their ★ target even if sync is off.
+  const ownerCals = primary
+    ? writableCals.filter((c) => c.personId === primary && (c.selected || c.isWriteTarget))
+    : []
+
+  // Default to the owner's ★ target (then any of their calendars), re-following
+  // when the owner changes — until the user picks manually.
   useEffect(() => {
     if (editing || calTouched) return
-    const mine = writableCals.filter((c) => c.personId === primary)
-    const target = mine.find((c) => c.isWriteTarget) ?? mine[0]
+    const target = ownerCals.find((c) => c.isWriteTarget) ?? ownerCals[0]
     setCalendarId(target?.id ?? '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, calTouched, primary, writableCals])
 
   async function submit(e: FormEvent) {
@@ -94,9 +100,9 @@ export function EventModal({
     }
     try {
       if (editing) await api.updateEvent(event!.id, payload)
-      // Only send calendarId when there are calendars to choose from; otherwise
-      // omit it so the server keeps its default behavior (Nook-only event).
-      else await api.createEvent(writableCals.length ? { ...payload, calendarId: calendarId || null } : payload)
+      // Only send calendarId when the picker was shown (owner has calendars);
+      // otherwise omit it so the server auto-routes to the owner's ★ target.
+      else await api.createEvent(ownerCals.length ? { ...payload, calendarId: calendarId || null } : payload)
       onSaved()
       onClose()
     } catch {
@@ -192,7 +198,7 @@ export function EventModal({
             </div>
           </div>
 
-          {!editing && writableCals.length > 0 && (
+          {!editing && ownerCals.length > 0 && (
             <label className="field">
               <span>Calendar</span>
               <select
@@ -203,13 +209,13 @@ export function EventModal({
                 }}
                 style={{ width: '100%' }}
               >
-                <option value="">Nook only (don’t sync to Google)</option>
-                {writableCals.map((c) => (
+                {ownerCals.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.summary ?? 'Calendar'}
-                    {c.personName ? ` · ${c.personName}` : ''}
+                    {c.isWriteTarget ? ' ★' : ''}
                   </option>
                 ))}
+                <option value="">Nook only (don’t sync to Google)</option>
               </select>
             </label>
           )}
