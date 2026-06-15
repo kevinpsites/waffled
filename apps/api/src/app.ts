@@ -23,6 +23,7 @@ import { registerOverviewRoutes } from './overview'
 import { registerPhotoRoutes } from './photos'
 import { registerCaptureRoutes } from './capture'
 import { registerPowerSyncRoutes } from './powersync'
+import { registerPowerSyncCrudRoutes } from './powersync-crud'
 
 const api = createAPI()
 
@@ -148,6 +149,9 @@ registerCaptureRoutes(api)
 
 // PowerSync auth (JWKS + token endpoint)
 registerPowerSyncRoutes(api)
+
+// PowerSync offline-write upload sink (/api/powersync/crud)
+registerPowerSyncCrudRoutes(api)
 
 // Error handler — lambda-api treats a 4-arg middleware as the error sink.
 api.use(

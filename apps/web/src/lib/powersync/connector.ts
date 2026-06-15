@@ -7,7 +7,7 @@ import type {
   PowerSyncBackendConnector,
   PowerSyncCredentials,
 } from '@powersync/web'
-import { apiGet } from '../api/client'
+import { apiGet, apiSend } from '../api/client'
 
 export class NookConnector implements PowerSyncBackendConnector {
   async fetchCredentials(): Promise<PowerSyncCredentials | null> {
@@ -18,9 +18,15 @@ export class NookConnector implements PowerSyncBackendConnector {
     return { endpoint: powerSyncUrl, token }
   }
 
-  // Read-only client: nothing to upload. (Writes happen via REST, which pushes to
-  // Google and lets the change replicate back down through PowerSync.)
-  async uploadData(_database: AbstractPowerSyncDatabase): Promise<void> {
-    /* no-op */
+  // Drain queued local writes to the server's CRUD sink (offline writes). Each
+  // transaction's row ops are forwarded as-is; the server applies them keyed on the
+  // client id and pushes events to Google. On failure we throw so PowerSync retries
+  // (the queue persists, so writes survive offline/reload).
+  async uploadData(database: AbstractPowerSyncDatabase): Promise<void> {
+    for (let tx = await database.getNextCrudTransaction(); tx; tx = await database.getNextCrudTransaction()) {
+      const ops = tx.crud.map((e) => ({ op: e.op, table: e.table, id: e.id, data: e.opData }))
+      await apiSend('POST', '/api/powersync/crud', { ops })
+      await tx.complete()
+    }
   }
 }

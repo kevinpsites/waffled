@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api, usePersons, calendarsApi, localToday, type AgendaEvent, type CalendarLink } from '../../lib/api'
+import { createEventLocal, updateEventLocal, deleteEventLocal } from '../../lib/powersync/events-local'
 
 // Calendars an event can be written to: writable (owner/writer), not read-only.
 function isWritable(c: CalendarLink): boolean {
@@ -108,20 +109,29 @@ export function EventModal({
     if (!form.title.trim() || saving) return
     setSaving(true)
     const startsAt = form.allDay ? toIso(form.day, '12:00') : toIso(form.day, form.time)
-    const payload = {
+    // Timed events get start + duration; all-day events have no end.
+    const endsAt = form.allDay ? null : new Date(new Date(startsAt).getTime() + form.durationMin * 60000).toISOString()
+    // Calendar choice only when the picker was shown (owner has >1); else auto-route.
+    const chosenCal = !editing && ownerCals.length > 1 ? calendarId || null : null
+    const draft = {
       title: form.title.trim(),
       startsAt,
-      // Timed events get start + duration; all-day events have no end.
-      endsAt: form.allDay ? null : new Date(new Date(startsAt).getTime() + form.durationMin * 60000).toISOString(),
+      endsAt,
       allDay: form.allDay,
-      participantIds: form.participantIds,
       location: form.location.trim() || null,
+      personIds: form.participantIds,
     }
+    const restPayload = { ...draft, participantIds: draft.personIds }
     try {
-      if (editing) await api.updateEvent(event!.id, payload)
-      // Only send calendarId when the picker was shown (owner has >1 calendar);
-      // otherwise omit it so the server auto-routes to the owner's single/★ target.
-      else await api.createEvent(ownerCals.length > 1 ? { ...payload, calendarId } : payload)
+      // Prefer the local DB (instant, offline-capable); fall back to REST when
+      // PowerSync isn't running.
+      if (editing) {
+        if (!(await updateEventLocal(event!.id, draft))) await api.updateEvent(event!.id, restPayload)
+      } else {
+        if (!(await createEventLocal({ ...draft, calendarId: chosenCal }))) {
+          await api.createEvent(ownerCals.length > 1 ? { ...restPayload, calendarId: chosenCal } : restPayload)
+        }
+      }
       onSaved()
       onClose()
     } catch {
@@ -137,7 +147,7 @@ export function EventModal({
     }
     setSaving(true)
     try {
-      await api.deleteEvent(event!.id)
+      if (!(await deleteEventLocal(event!.id))) await api.deleteEvent(event!.id)
       onSaved()
       onClose()
     } catch {

@@ -115,6 +115,80 @@ export async function getHouseholdTz(): Promise<string> {
   }
 }
 
+// ── Local writes (offline-first) ───────────────────────────────────────────────
+// Write straight to the local DB; PowerSync queues + uploads to /api/powersync/crud.
+// The local-first reads pick these up instantly (optimistic, works offline). Each
+// returns false when PowerSync isn't running, so callers fall back to REST.
+
+export interface EventDraft {
+  title: string
+  startsAt: string
+  endsAt: string | null
+  allDay: boolean
+  location: string | null
+  personIds: string[]
+  calendarId?: string | null // create only; null = let the server auto-route
+}
+
+async function householdRowId(): Promise<string | null> {
+  const db = getPowerSyncDb()
+  if (!db) return null
+  const row = await db.getOptional<{ id: string }>('select id from households limit 1')
+  return row?.id ?? null
+}
+
+export async function createEventLocal(draft: EventDraft): Promise<boolean> {
+  const db = getPowerSyncDb()
+  if (!db) return false
+  const hh = await householdRowId()
+  const tz = await getHouseholdTz()
+  const id = crypto.randomUUID()
+  await db.execute(
+    `insert into events
+       (id, household_id, title, description, location, starts_at, ends_at, all_day, timezone,
+        person_id, calendar_id, origin, sync_state)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', 'local_only')`,
+    [id, hh, draft.title, null, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, tz, draft.personIds[0] ?? null, draft.calendarId ?? null]
+  )
+  for (const pid of [...new Set(draft.personIds)]) {
+    await db.execute(`insert into event_participants (id, household_id, event_id, person_id) values (?, ?, ?, ?)`, [
+      crypto.randomUUID(),
+      hh,
+      id,
+      pid,
+    ])
+  }
+  return true
+}
+
+export async function updateEventLocal(id: string, draft: EventDraft): Promise<boolean> {
+  const db = getPowerSyncDb()
+  if (!db) return false
+  const hh = await householdRowId()
+  await db.execute(
+    `update events set title = ?, location = ?, starts_at = ?, ends_at = ?, all_day = ?, person_id = ? where id = ?`,
+    [draft.title, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.personIds[0] ?? null, id]
+  )
+  await db.execute(`delete from event_participants where event_id = ?`, [id])
+  for (const pid of [...new Set(draft.personIds)]) {
+    await db.execute(`insert into event_participants (id, household_id, event_id, person_id) values (?, ?, ?, ?)`, [
+      crypto.randomUUID(),
+      hh,
+      id,
+      pid,
+    ])
+  }
+  return true
+}
+
+export async function deleteEventLocal(id: string): Promise<boolean> {
+  const db = getPowerSyncDb()
+  if (!db) return false
+  await db.execute(`delete from event_participants where event_id = ?`, [id])
+  await db.execute(`delete from events where id = ?`, [id])
+  return true
+}
+
 // Stream agenda rows live from the local DB. Returns a disposer; a no-op disposer
 // when PowerSync isn't running so callers can use it unconditionally.
 export function watchAgendaRows(onRows: (rows: LocalEventRow[]) => void, onError?: (e: unknown) => void): () => void {
