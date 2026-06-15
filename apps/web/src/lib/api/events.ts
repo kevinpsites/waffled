@@ -37,7 +37,9 @@ export const eventsApi = {
     endsAt?: string | null
     allDay?: boolean
     personId?: string | null
+    participantIds?: string[]
     location?: string | null
+    calendarId?: string | null
   }) => apiSend<{ event: AgendaEvent }>('POST', '/api/events', input),
   updateEvent: (id: string, patch: Record<string, unknown>) =>
     apiSend<{ event: AgendaEvent }>('PATCH', `/api/events/${id}`, patch),

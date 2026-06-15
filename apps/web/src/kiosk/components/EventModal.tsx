@@ -1,5 +1,10 @@
-import { useState, type FormEvent } from 'react'
-import { api, usePersons, localToday, type AgendaEvent } from '../../lib/api'
+import { useEffect, useState, type FormEvent } from 'react'
+import { api, usePersons, calendarsApi, localToday, type AgendaEvent, type CalendarLink } from '../../lib/api'
+
+// Calendars an event can be written to: writable (owner/writer), not read-only.
+function isWritable(c: CalendarLink): boolean {
+  return c.accessRole === 'owner' || c.accessRole === 'writer'
+}
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
@@ -47,6 +52,35 @@ export function EventModal({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
 
+  // Calendar picker (create only): which Google calendar the event is written to.
+  // '' = Nook only. Defaults to the owner's ★ calendar and follows the owner until
+  // the user picks manually. Editing keeps the event on its existing calendar.
+  const [writableCals, setWritableCals] = useState<CalendarLink[]>([])
+  const [calendarId, setCalendarId] = useState('')
+  const [calTouched, setCalTouched] = useState(false)
+  const primary = form.participantIds[0] ?? null
+
+  useEffect(() => {
+    if (editing) return
+    let alive = true
+    calendarsApi
+      .calendarStatus()
+      .then((s) => alive && setWritableCals(s.calendars.filter(isWritable)))
+      .catch(() => {}) // no Google / not signed in → no picker
+    return () => {
+      alive = false
+    }
+  }, [editing])
+
+  // Default the calendar to the owner's ★ target (then any of their writable
+  // calendars), re-following when the owner changes — until manually overridden.
+  useEffect(() => {
+    if (editing || calTouched) return
+    const mine = writableCals.filter((c) => c.personId === primary)
+    const target = mine.find((c) => c.isWriteTarget) ?? mine[0]
+    setCalendarId(target?.id ?? '')
+  }, [editing, calTouched, primary, writableCals])
+
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!form.title.trim() || saving) return
@@ -60,7 +94,9 @@ export function EventModal({
     }
     try {
       if (editing) await api.updateEvent(event!.id, payload)
-      else await api.createEvent(payload)
+      // Only send calendarId when there are calendars to choose from; otherwise
+      // omit it so the server keeps its default behavior (Nook-only event).
+      else await api.createEvent(writableCals.length ? { ...payload, calendarId: calendarId || null } : payload)
       onSaved()
       onClose()
     } catch {
@@ -155,6 +191,28 @@ export function EventModal({
               })}
             </div>
           </div>
+
+          {!editing && writableCals.length > 0 && (
+            <label className="field">
+              <span>Calendar</span>
+              <select
+                value={calendarId}
+                onChange={(e) => {
+                  setCalendarId(e.target.value)
+                  setCalTouched(true)
+                }}
+                style={{ width: '100%' }}
+              >
+                <option value="">Nook only (don’t sync to Google)</option>
+                {writableCals.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.summary ?? 'Calendar'}
+                    {c.personName ? ` · ${c.personName}` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <label className="field">
             <span>Location (optional)</span>

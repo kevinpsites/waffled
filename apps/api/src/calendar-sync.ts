@@ -353,6 +353,25 @@ export async function resolveWriteTarget(householdId: string, personId: string |
     : null
 }
 
+// Resolve a specific calendar chosen for an event (the create-time picker). Only
+// returns it if it's a writable, connected calendar in the household — otherwise
+// null, so an invalid/stale choice falls back to a local-only event.
+export async function resolveWriteTargetById(householdId: string, calendarId: string): Promise<WriteTarget | null> {
+  const { rows } = await query<{ calendar_id: string; google_calendar_id: string; refresh_token_encrypted: string }>(
+    `select c.id as calendar_id, c.google_calendar_id, a.refresh_token_encrypted
+       from calendars c
+       join calendar_accounts a on a.id = c.account_id and a.deleted_at is null
+      where c.household_id = $1 and c.id = $2 and c.deleted_at is null
+        and c.access_role in ('owner','writer')
+      limit 1`,
+    [householdId, calendarId]
+  )
+  const r = rows[0]
+  return r
+    ? { calendarId: r.calendar_id, googleCalendarId: r.google_calendar_id, refreshTokenEncrypted: r.refresh_token_encrypted }
+    : null
+}
+
 interface PushRow extends QueryResultRow {
   id: string
   title: string

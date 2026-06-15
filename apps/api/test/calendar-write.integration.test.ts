@@ -196,4 +196,32 @@ describe('outbound write-back', () => {
     expect(retried).toHaveLength(1)
     expect(retried[0].calendar).toBe('work@group.calendar.google.com')
   })
+
+  it('honors an explicit calendarId from the create picker (overrides the ★ target)', async () => {
+    // Work is the write target, but the picker explicitly chooses primary.
+    const status = JSON.parse((await call('GET', '/api/calendar/google/status', kevin)).body)
+    const primaryCal = status.calendars.find((c: { isPrimary: boolean }) => c.isPrimary)
+    const n = writeCalls.length
+    await call('POST', '/api/events', kevin, {
+      title: 'Explicit cal',
+      startsAt: '2026-07-07T15:00:00Z',
+      personId: kevinId,
+      calendarId: primaryCal.id,
+    })
+    const writes = writesSince(n)
+    expect(writes).toHaveLength(1)
+    expect(writes[0]).toMatchObject({ method: 'POST', calendar: 'primary' })
+  })
+
+  it('creates a Nook-only event when calendarId is null (no push)', async () => {
+    const n = writeCalls.length
+    const res = await call('POST', '/api/events', kevin, {
+      title: 'Nook only',
+      startsAt: '2026-07-08T15:00:00Z',
+      personId: kevinId,
+      calendarId: null,
+    })
+    expect(res.statusCode).toBe(201)
+    expect(writesSince(n)).toHaveLength(0)
+  })
 })

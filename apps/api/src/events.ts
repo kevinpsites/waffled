@@ -7,7 +7,7 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import type { PoolClient, QueryResultRow } from 'pg'
 import { getPool, query } from './db'
 import { requireTenant, type Tenant } from './households'
-import { resolveWriteTarget, pushEventNow } from './calendar-sync'
+import { resolveWriteTarget, resolveWriteTargetById, pushEventNow } from './calendar-sync'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -62,6 +62,9 @@ export interface CreateEventInput {
   personId?: string | null
   participantIds?: string[]
   timezone?: string | null
+  // Explicit calendar choice (create-time picker): a calendar id to write to, or
+  // null for "Nook only". Omit entirely to auto-route to the owner's ★ default.
+  calendarId?: string | null
 }
 
 // Replace an event's participants with the given (deduped) people.
@@ -83,9 +86,15 @@ async function replaceParticipants(
 export async function createEvent(tenant: Tenant, input: CreateEventInput): Promise<EventRow> {
   const personIds = input.participantIds ?? (input.personId ? [input.personId] : [])
   const primary = personIds[0] ?? input.personId ?? null
-  // If the owner has a Google write-target calendar, tag the event to it and
-  // queue a push; otherwise it's a local-only event.
-  const target = await resolveWriteTarget(tenant.householdId, primary)
+  // Pick the destination calendar: an explicit picker choice (calendarId present)
+  // wins — a calendar id routes there, null means "Nook only"; when omitted, fall
+  // back to auto-routing to the owner's ★ default. No target ⇒ local-only event.
+  const target =
+    input.calendarId !== undefined
+      ? input.calendarId
+        ? await resolveWriteTargetById(tenant.householdId, input.calendarId)
+        : null
+      : await resolveWriteTarget(tenant.householdId, primary)
   const client = await getPool().connect()
   try {
     await client.query('begin')
