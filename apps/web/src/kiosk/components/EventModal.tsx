@@ -100,9 +100,9 @@ export function EventModal({
     }
     try {
       if (editing) await api.updateEvent(event!.id, payload)
-      // Only send calendarId when the picker was shown (owner has calendars);
-      // otherwise omit it so the server auto-routes to the owner's ★ target.
-      else await api.createEvent(ownerCals.length ? { ...payload, calendarId: calendarId || null } : payload)
+      // Only send calendarId when the picker was shown (owner has >1 calendar);
+      // otherwise omit it so the server auto-routes to the owner's single/★ target.
+      else await api.createEvent(ownerCals.length > 1 ? { ...payload, calendarId } : payload)
       onSaved()
       onClose()
     } catch {
@@ -198,7 +198,9 @@ export function EventModal({
             </div>
           </div>
 
-          {!editing && ownerCals.length > 0 && (
+          {/* Only worth choosing when the owner has more than one calendar; with
+              a single one we just use it. */}
+          {!editing && ownerCals.length > 1 && (
             <label className="field">
               <span>Calendar</span>
               <select
@@ -215,7 +217,6 @@ export function EventModal({
                     {c.isWriteTarget ? ' ★' : ''}
                   </option>
                 ))}
-                <option value="">Nook only (don’t sync to Google)</option>
               </select>
             </label>
           )}
