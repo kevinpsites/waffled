@@ -182,7 +182,8 @@ export function EventModal({
                       gap: 6,
                       padding: '6px 12px',
                       borderRadius: 999,
-                      border: on ? `1.5px solid ${color}` : '1px solid var(--hair)',
+                      // Always 1.5px so toggling only swaps the color — no size shift.
+                      border: `1.5px solid ${on ? color : 'transparent'}`,
                       background: on ? `${color}22` : 'var(--card-2)',
                       color: 'var(--ink)',
                       font: 'inherit',
