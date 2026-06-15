@@ -80,9 +80,19 @@
 .topbar { display: flex; align-items: center; gap: 16px; padding: 22px 30px 14px; }
 .tb-date { font-size: 30px; font-weight: 600; }
 .tb-time { font-size: 21px; color: var(--ink-2); font-weight: 500; }
+.tb-wx-wrap { position: relative; }
 .tb-wx { display: flex; align-items: center; gap: 7px; color: var(--ink-2);
-  font-size: 19px; font-weight: 500; }
+  font-size: 19px; font-weight: 500; border: 0; background: none; font-family: inherit;
+  cursor: pointer; padding: 4px 6px; border-radius: 10px; }
+.tb-wx:hover { background: var(--panel, rgba(0,0,0,.04)); }
 .tb-wx svg { width: 24px; height: 24px; }
+.tb-wx-pop { display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  margin-top: 8px; background: var(--card, #fff); border-radius: 12px; box-shadow: var(--sh-1, 0 8px 30px rgba(0,0,0,.12));
+  padding: 10px 14px; white-space: nowrap; z-index: 50; text-align: center; }
+.tb-wx-pop.open, .tb-wx-wrap:hover .tb-wx-pop { display: block; }
+.tb-wx-pop-t { font-size: 14px; font-weight: 700; color: var(--ink); }
+.tb-wx-pop-s { font-size: 12px; font-weight: 600; color: var(--ink-2); margin-top: 3px; }
+.tb-wx-pop-s.muted { color: var(--muted, #9a958c); }
 .tb-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 
 /* segmented + pill controls */
