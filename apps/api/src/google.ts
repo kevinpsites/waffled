@@ -26,6 +26,111 @@ export interface GoogleCalendarListEntry {
   primary: boolean
 }
 
+// One end of a Google event. All-day events carry `date` (YYYY-MM-DD); timed
+// events carry `dateTime` (RFC3339, usually with an offset) + an optional zone.
+export interface GoogleEventDateTime {
+  date: string | null
+  dateTime: string | null
+  timeZone: string | null
+}
+
+export interface GoogleEvent {
+  id: string
+  status: string | null // confirmed | tentative | cancelled
+  summary: string | null
+  description: string | null
+  location: string | null
+  start: GoogleEventDateTime | null
+  end: GoogleEventDateTime | null
+  iCalUID: string | null
+  etag: string | null
+  sequence: number | null
+  updated: string | null // RFC3339, Google's last-modified
+}
+
+export interface EventsPage {
+  events: GoogleEvent[]
+  nextPageToken: string | null
+  // Only present on the final page of a sync; the cursor for the next sync.
+  nextSyncToken: string | null
+}
+
+// Thrown when Google rejects a stored sync token (HTTP 410). The caller must
+// drop the token and do a fresh full-window sync.
+export class SyncTokenInvalidError extends Error {
+  constructor(message = 'Google sync token is no longer valid') {
+    super(message)
+    this.name = 'SyncTokenInvalidError'
+  }
+}
+
+export interface ListEventsParams {
+  // Incremental: pass the stored cursor and Google returns only what changed.
+  syncToken?: string | null
+  // Full sync window (ignored when syncToken is set).
+  timeMin?: string | null
+  timeMax?: string | null
+  pageToken?: string | null
+}
+
+function toDateTime(v: Record<string, unknown> | null | undefined): GoogleEventDateTime | null {
+  if (!v) return null
+  return {
+    date: (v.date as string | undefined) ?? null,
+    dateTime: (v.dateTime as string | undefined) ?? null,
+    timeZone: (v.timeZone as string | undefined) ?? null,
+  }
+}
+
+// One page of a calendar's events. We always expand recurrences (singleEvents)
+// and ask for deletions (showDeleted) so cancellations come back as tombstones;
+// both must stay constant across an incremental series or Google 410s the token.
+export async function listEventsPage(
+  accessToken: string,
+  calendarId: string,
+  params: ListEventsParams
+): Promise<EventsPage> {
+  const qs = new URLSearchParams({
+    singleEvents: 'true',
+    showDeleted: 'true',
+    maxResults: '250',
+  })
+  if (params.syncToken) {
+    qs.set('syncToken', params.syncToken)
+  } else {
+    if (params.timeMin) qs.set('timeMin', params.timeMin)
+    if (params.timeMax) qs.set('timeMax', params.timeMax)
+  }
+  if (params.pageToken) qs.set('pageToken', params.pageToken)
+
+  const url = `${config.google.apiBase}/calendars/${encodeURIComponent(calendarId)}/events?${qs.toString()}`
+  const res = await fetch(url, { headers: { authorization: `Bearer ${accessToken}` } })
+  if (res.status === 410) throw new SyncTokenInvalidError()
+  if (!res.ok) throw new Error(`events.list -> ${res.status} ${await res.text().catch(() => '')}`)
+  const data = (await res.json()) as {
+    items?: Array<Record<string, unknown>>
+    nextPageToken?: string
+    nextSyncToken?: string
+  }
+  return {
+    events: (data.items ?? []).map((e) => ({
+      id: String(e.id),
+      status: (e.status as string | undefined) ?? null,
+      summary: (e.summary as string | undefined) ?? null,
+      description: (e.description as string | undefined) ?? null,
+      location: (e.location as string | undefined) ?? null,
+      start: toDateTime(e.start as Record<string, unknown> | undefined),
+      end: toDateTime(e.end as Record<string, unknown> | undefined),
+      iCalUID: (e.iCalUID as string | undefined) ?? null,
+      etag: (e.etag as string | undefined) ?? null,
+      sequence: typeof e.sequence === 'number' ? e.sequence : null,
+      updated: (e.updated as string | undefined) ?? null,
+    })),
+    nextPageToken: data.nextPageToken ?? null,
+    nextSyncToken: data.nextSyncToken ?? null,
+  }
+}
+
 // True only when the OAuth client is fully configured. The connect route reports a
 // clear 501 otherwise, rather than bouncing the user to a broken Google screen.
 export function googleConfigured(): boolean {

@@ -17,6 +17,7 @@ import { registerRewardRoutes } from './rewards'
 import { registerMealRoutes } from './meals'
 import { registerEventRoutes } from './events'
 import { registerCalendarRoutes } from './calendars'
+import { registerCalendarSyncRoutes } from './calendar-sync'
 import { registerGoalRoutes } from './goals'
 import { registerOverviewRoutes } from './overview'
 import { registerPhotoRoutes } from './photos'
@@ -129,6 +130,9 @@ registerEventRoutes(api)
 
 // Google Calendar connect (/api/calendar/google…, /auth/google/calendar/callback)
 registerCalendarRoutes(api)
+
+// Google Calendar inbound sync (/api/calendar/sync)
+registerCalendarSyncRoutes(api)
 
 // Goals (/api/goals…)
 registerGoalRoutes(api)
