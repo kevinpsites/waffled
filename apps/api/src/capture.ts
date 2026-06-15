@@ -9,11 +9,17 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from './db'
 import { requireTenant, requireAdmin } from './households'
 import config from './config'
+import {
+  completeJson,
+  getAiConfig,
+  setAiConfig,
+  availability,
+  defaultModel,
+  PROVIDERS,
+  type Provider,
+} from './llm'
 
 type Api = ReturnType<typeof createAPI>
-
-export type Provider = 'anthropic' | 'openai' | 'ollama' | 'heuristic'
-const PROVIDERS: Provider[] = ['anthropic', 'openai', 'ollama', 'heuristic']
 
 // What the model is asked to emit. Mirrors the kiosk's ParsedIntent so the client
 // treats a server parse and a local heuristic parse identically.
@@ -43,47 +49,6 @@ interface CaptureContext {
 
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const BYDAY_INDEX: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 }
-// Generous, because a *local* model may need to cold-load on the first call.
-const TIMEOUT_MS = parseInt(process.env.CAPTURE_TIMEOUT_MS ?? '30000', 10)
-
-// ── Provider availability (env-derived; safe to expose, never the keys) ──────
-export function availability() {
-  return {
-    anthropic: !!config.ai.anthropic.apiKey,
-    openai: !!config.ai.openai.apiKey,
-    ollama: !!config.ai.ollama.host,
-    heuristic: true,
-  }
-}
-
-function defaultModel(p: Provider): string | null {
-  if (p === 'anthropic') return config.ai.anthropic.defaultModel
-  if (p === 'openai') return config.ai.openai.defaultModel
-  if (p === 'ollama') return config.ai.ollama.defaultModel
-  return null
-}
-
-// ── Per-household selection (households.settings.ai) ─────────────────────────
-export async function getAiConfig(householdId: string): Promise<{ provider: Provider; model: string | null }> {
-  const { rows } = await query<{ settings: { ai?: { provider?: string; model?: string | null } } | null }>(
-    `select settings from households where id = $1`,
-    [householdId]
-  )
-  const ai = rows[0]?.settings?.ai
-  const provider = (PROVIDERS as string[]).includes(ai?.provider ?? '') ? (ai!.provider as Provider) : 'heuristic'
-  const model = ai?.model ?? defaultModel(provider)
-  return { provider, model }
-}
-
-export async function setAiConfig(householdId: string, provider: Provider, model: string | null): Promise<void> {
-  // Merge into the existing settings jsonb so other keys are preserved.
-  await query(
-    `update households
-        set settings = coalesce(settings, '{}'::jsonb) || jsonb_build_object('ai', jsonb_build_object('provider', $2::text, 'model', $3::text))
-      where id = $1`,
-    [householdId, provider, model]
-  )
-}
 
 // ── Prompt + JSON schema shared by every provider ────────────────────────────
 const INTENT_SCHEMA = {
@@ -136,89 +101,6 @@ function systemPrompt(ctx: CaptureContext): string {
     '"I want fish for dinner next Thursday" -> {"kind":"meal","title":"Fish","mealType":"dinner","date":"2026-06-18"}',
     '"we\'re eating out Friday" -> {"kind":"meal","title":"Eating out","mealType":"dinner","date":"2026-06-12"}',
   ].join('\n')
-}
-
-// ── Provider adapters: text → raw JSON object ────────────────────────────────
-async function fetchJson(url: string, init: RequestInit): Promise<unknown> {
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
-  try {
-    const res = await fetch(url, { ...init, signal: ctrl.signal })
-    if (!res.ok) throw new Error(`${url} -> ${res.status} ${await res.text().catch(() => '')}`)
-    return res.json()
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
-async function anthropicRaw(text: string, ctx: CaptureContext, model: string): Promise<unknown> {
-  const body = {
-    model,
-    max_tokens: 512,
-    temperature: 0,
-    system: systemPrompt(ctx),
-    tools: [{ name: 'record_intent', description: 'Record the parsed action', input_schema: INTENT_SCHEMA }],
-    tool_choice: { type: 'tool', name: 'record_intent' },
-    messages: [{ role: 'user', content: text }],
-  }
-  const data = (await fetchJson('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': config.ai.anthropic.apiKey ?? '',
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify(body),
-  })) as { content?: Array<{ type: string; input?: unknown }> }
-  const tool = data.content?.find((c) => c.type === 'tool_use')
-  if (!tool?.input) throw new Error('anthropic: no tool_use in response')
-  return tool.input
-}
-
-async function openaiRaw(text: string, ctx: CaptureContext, model: string): Promise<unknown> {
-  const body = {
-    model,
-    temperature: 0,
-    messages: [
-      { role: 'system', content: systemPrompt(ctx) },
-      { role: 'user', content: text },
-    ],
-    response_format: {
-      type: 'json_schema',
-      json_schema: { name: 'intent', schema: { ...INTENT_SCHEMA, required: ['kind'] }, strict: false },
-    },
-  }
-  const data = (await fetchJson(`${config.ai.openai.baseUrl.replace(/\/$/, '')}/chat/completions`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${config.ai.openai.apiKey ?? ''}` },
-    body: JSON.stringify(body),
-  })) as { choices?: Array<{ message?: { content?: string } }> }
-  const content = data.choices?.[0]?.message?.content
-  if (!content) throw new Error('openai: empty response')
-  return JSON.parse(content)
-}
-
-async function ollamaRaw(text: string, ctx: CaptureContext, model: string): Promise<unknown> {
-  const host = (config.ai.ollama.host ?? '').replace(/\/$/, '')
-  const body = {
-    model,
-    stream: false,
-    format: INTENT_SCHEMA,
-    keep_alive: '30m', // stay resident so the capture bar isn't cold-loading
-    options: { temperature: 0 },
-    messages: [
-      { role: 'system', content: systemPrompt(ctx) },
-      { role: 'user', content: text },
-    ],
-  }
-  const data = (await fetchJson(`${host}/api/chat`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  })) as { message?: { content?: string } }
-  const content = data.message?.content
-  if (!content) throw new Error('ollama: empty response')
-  return JSON.parse(content)
 }
 
 // ── Normalize a raw model object into a finished CaptureIntent ────────────────
@@ -394,11 +276,8 @@ function scheduleLabel(rrule: string | null): string {
 
 // ── Orchestrator ─────────────────────────────────────────────────────────────
 export async function parseWithProvider(householdId: string, text: string): Promise<{ intent: CaptureIntent; via: Provider }> {
-  const { provider, model } = await getAiConfig(householdId)
+  const { provider } = await getAiConfig(householdId)
   if (provider === 'heuristic') throw new Error('heuristic provider — defer to client')
-
-  const avail = availability()
-  if (!avail[provider]) throw new Error(`provider ${provider} not configured`)
 
   const { rows } = await query<{ timezone: string }>(`select timezone from households where id = $1`, [householdId])
   const { rows: people } = await query<{ name: string }>(
@@ -412,13 +291,14 @@ export async function parseWithProvider(householdId: string, text: string): Prom
   })
   const ctx: CaptureContext = { now: nowLocal, timezone: tz, people: people.map((p) => p.name) }
 
-  const m = model ?? defaultModel(provider) ?? ''
-  const raw =
-    provider === 'anthropic'
-      ? await anthropicRaw(text, ctx, m)
-      : provider === 'openai'
-        ? await openaiRaw(text, ctx, m)
-        : await ollamaRaw(text, ctx, m)
+  // One shared call across providers (honors the household's toggle + keys).
+  const { data: raw, via } = await completeJson(householdId, {
+    system: systemPrompt(ctx),
+    user: text,
+    schema: INTENT_SCHEMA,
+    schemaName: 'record_intent',
+    maxTokens: 512,
+  })
 
   const intent = finalizeIntent(raw, ctx)
   // Small local models are unreliable at date math: if the meal text clearly
@@ -430,7 +310,7 @@ export async function parseWithProvider(householdId: string, text: string): Prom
       intent.whenLabel = `${mealDayLabel(resolved, ctx.timezone)} · ${cap(intent.mealType ?? 'dinner')}`
     }
   }
-  return { intent, via: provider }
+  return { intent, via }
 }
 
 // Preload a local model so the first real parse isn't a cold start. Best-effort,

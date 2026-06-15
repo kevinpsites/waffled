@@ -4,6 +4,7 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow } from 'pg'
 import { query } from './db'
 import { requireTenant, type Tenant } from './households'
+import { completeJson } from './llm'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -353,6 +354,109 @@ function presentEntry(e: EntryRow) {
   }
 }
 
+// ── AI "Plan my week" (6.3) ──────────────────────────────────────────────────
+// Suggest a dinner for each empty dinner slot in the week, drawing on the family's
+// recipe library + dietary notes via the household's chosen LLM (src/llm.ts).
+// Returns suggestions for review — applied via /api/meals/plan, not auto-saved.
+
+export interface MealSuggestion {
+  date: string
+  mealType: 'dinner'
+  title: string
+  recipeId: string | null
+  note: string | null
+}
+
+const PLAN_WEEK_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    suggestions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          date: { type: 'string', description: 'YYYY-MM-DD — exactly one of the requested dates' },
+          title: { type: 'string', description: 'short dish name (no "for dinner")' },
+          recipeId: { type: ['string', 'null'], description: 'id of a library recipe to reuse, or null for a new dish' },
+          note: { type: ['string', 'null'], description: 'one short reason (optional)' },
+        },
+        required: ['date', 'title'],
+      },
+    },
+  },
+  required: ['suggestions'],
+}
+
+export async function planWeek(tenant: Tenant, start: string): Promise<{ start: string; suggestions: MealSuggestion[]; via: string }> {
+  const entries = await weekEntries(tenant.householdId, start)
+  const plannedDinner = new Set<string>()
+  const plannedTitles: string[] = []
+  for (const e of entries) {
+    const t = e.recipe?.title ?? e.title
+    if (t) plannedTitles.push(t)
+    if (e.mealType === 'dinner') plannedDinner.add(e.date)
+  }
+
+  const base = new Date(`${start}T00:00:00Z`)
+  const emptyDates: string[] = []
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(base)
+    d.setUTCDate(d.getUTCDate() + i)
+    const iso = d.toISOString().slice(0, 10)
+    if (!plannedDinner.has(iso)) emptyDates.push(iso)
+  }
+  if (emptyDates.length === 0) return { start, suggestions: [], via: 'none' }
+
+  const recipes = await listRecipes(tenant.householdId)
+  const lib = recipes.slice(0, 60).map((r) => ({ id: r.id, title: r.title, category: r.category, tags: (r.tags ?? []).slice(0, 4) }))
+  const { rows: people } = await query<{ name: string; dietary_notes: string | null }>(
+    `select name, dietary_notes from persons where household_id = $1 and deleted_at is null order by sort_order, created_at`,
+    [tenant.householdId]
+  )
+  const dietary = people.filter((p) => p.dietary_notes?.trim()).map((p) => `${p.name}: ${p.dietary_notes!.trim()}`)
+
+  const dayLabel = (iso: string) =>
+    new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+  const system = [
+    'You plan family DINNERS for a household meal planner.',
+    'Propose exactly one dinner for EACH requested date. Vary the cuisine across the week and do not repeat a dish already planned this week.',
+    "Prefer reusing a recipe from the family's library when it fits (return its recipeId); otherwise suggest a new dish with a short title and recipeId null.",
+    'Honor every dietary note. Keep titles short. Return JSON only.',
+  ].join('\n')
+  const user = JSON.stringify({
+    datesNeedingDinner: emptyDates.map((d) => ({ date: d, day: dayLabel(d) })),
+    alreadyPlannedThisWeek: plannedTitles,
+    dietaryNotes: dietary,
+    recipeLibrary: lib,
+  })
+
+  const { data, via } = await completeJson(tenant.householdId, {
+    system,
+    user,
+    schema: PLAN_WEEK_SCHEMA,
+    schemaName: 'meal_plan',
+    maxTokens: 1024,
+  })
+
+  const rawList = ((data as { suggestions?: unknown[] })?.suggestions ?? []) as Array<Record<string, unknown>>
+  const libIds = new Set(lib.map((r) => r.id))
+  const wanted = new Set(emptyDates)
+  const seen = new Set<string>()
+  const suggestions: MealSuggestion[] = []
+  for (const s of rawList) {
+    const date = String(s.date ?? '')
+    const title = String(s.title ?? '').trim()
+    if (!wanted.has(date) || seen.has(date) || !title) continue // only requested days, once each
+    seen.add(date)
+    const recipeId = typeof s.recipeId === 'string' && libIds.has(s.recipeId) ? s.recipeId : null
+    suggestions.push({ date, mealType: 'dinner', title, recipeId, note: typeof s.note === 'string' ? s.note : null })
+  }
+  suggestions.sort((a, b) => (a.date < b.date ? -1 : 1))
+  return { start, suggestions, via }
+}
+
 export function registerMealRoutes(api: Api): void {
   api.post('/api/recipes', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
@@ -512,5 +616,18 @@ export function registerMealRoutes(api: Api): void {
     const start = DATE_RE.test(startParam) ? startParam : todayDate()
     const entries = await weekEntries(tenant.householdId, start)
     return { start, entries }
+  })
+
+  // AI "Plan my week": suggest dinners for the empty slots (review, then apply via
+  // POST /api/meals/plan). 501 when no LLM provider is selected/configured.
+  api.post('/api/meals/plan-week', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const startParam = typeof (req.body as { start?: unknown })?.start === 'string' ? (req.body as { start: string }).start : ''
+    const start = DATE_RE.test(startParam) ? startParam : todayDate()
+    try {
+      return await planWeek(tenant, start)
+    } catch (err) {
+      return res.status(501).json({ error: 'AIUnavailable', message: (err as Error).message })
+    }
   })
 }
