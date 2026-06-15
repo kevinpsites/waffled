@@ -130,6 +130,78 @@
   accent-color: var(--accent, #4c8bf5);
 }
 
+/* calendars: search + filter toolbar */
+.cal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 2px 14px;
+}
+.cal-search {
+  flex: 1;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 0;
+  background: var(--panel);
+  color: var(--ink);
+}
+.cal-search::placeholder {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* calendars: collapsible per-account group */
+.cal-acct {
+  margin-bottom: 14px;
+}
+.cal-acct-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  user-select: none;
+}
+.cal-acct-body {
+  margin-top: 4px;
+  border-top: 1px solid var(--hair-2);
+  padding-top: 2px;
+}
+.cal-chev {
+  flex: none;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--muted);
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+}
+.cal-chev.open {
+  transform: rotate(-90deg);
+}
+.cal-bulk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 2px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.linkbtn {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent, #4c8bf5);
+  cursor: pointer;
+}
+.linkbtn:hover {
+  text-decoration: underline;
+}
+
 /* household setting rows */
 .set-row2 {
   display: flex;

@@ -315,6 +315,9 @@ function CalendarsPanel() {
   const [connecting, setConnecting] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [syncedOnly, setSyncedOnly] = useState(false)
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
 
   function load() {
     calendarsApi
@@ -372,6 +375,49 @@ function CalendarsPanel() {
     await calendarsApi.disconnectAccount(accountId)
     load()
   }
+  // Flip every (currently visible) calendar in an account on or off at once.
+  async function setAll(cals: CalendarLink[], selected: boolean) {
+    const toChange = cals.filter((c) => c.selected !== selected)
+    const updated = await Promise.all(toChange.map((c) => calendarsApi.updateCalendar(c.id, { selected })))
+    setStatus((s) => {
+      if (!s) return s
+      const byId = new Map(updated.map((u) => [u.calendar.id, u.calendar]))
+      return { ...s, calendars: s.calendars.map((c) => byId.get(c.id) ?? c) }
+    })
+  }
+
+  function CalRow({ cal }: { cal: CalendarLink }) {
+    return (
+      <div className="set-row2">
+        <div className="set-ic2" style={{ background: `${cal.colorHex ?? '#A6A29B'}22` }}>📅</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="set-row2-t" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {cal.summary ?? cal.googleCalendarId}
+            {cal.isPrimary && <span className="tiny muted" style={{ fontWeight: 600 }}> · primary</span>}
+          </div>
+          <div className="tiny muted" style={{ fontWeight: 600 }}>
+            {cal.selected ? `Last synced ${fmtWhen(cal.lastSyncedAt)}` : 'Sync off'}
+            {cal.accessRole ? ` · ${cal.accessRole}` : ''}
+          </div>
+        </div>
+        <select
+          className="sel"
+          value={cal.personId ?? ''}
+          onChange={(e) => setPerson(cal, e.target.value)}
+          title="Who owns this calendar (sets event color)"
+        >
+          <option value="">Unassigned</option>
+          {persons.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+        <label className="cal-sync" title="Sync this calendar into Nook">
+          <input type="checkbox" checked={cal.selected} onChange={() => toggleSelected(cal)} />
+          Sync
+        </label>
+      </div>
+    )
+  }
 
   if (!status.configured) {
     return (
@@ -413,54 +459,78 @@ function CalendarsPanel() {
         </div>
       ) : (
         <>
-          <div className="set-card">
-            {status.accounts.map((a) => (
-              <SettingRow key={a.id} icon="🔗" title={a.email ?? a.googleSub} sub={`Connected ${fmtWhen(a.connectedAt)}`}>
-                <button type="button" className="btn btn-ghost" onClick={() => disconnect(a.id)}>Disconnect</button>
-              </SettingRow>
-            ))}
-          </div>
+          {status.calendars.length > 6 && (
+            <div className="cal-toolbar">
+              <input
+                className="cal-search"
+                placeholder="Search calendars…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              <label className="cal-sync" title="Hide calendars that aren’t syncing">
+                <input type="checkbox" checked={syncedOnly} onChange={() => setSyncedOnly((v) => !v)} />
+                Synced only
+              </label>
+            </div>
+          )}
+
+          {status.accounts.map((acct) => {
+            const q = query.trim().toLowerCase()
+            const all = status.calendars.filter((c) => c.accountId === acct.id)
+            const syncingCount = all.filter((c) => c.selected).length
+            const shown = all.filter((c) => {
+              if (syncedOnly && !c.selected) return false
+              if (q && !(c.summary ?? c.googleCalendarId).toLowerCase().includes(q)) return false
+              return true
+            })
+            const open = q ? true : !collapsed[acct.id] // searching forces sections open
+
+            return (
+              <div className="set-card cal-acct" key={acct.id}>
+                <div
+                  className="cal-acct-head"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setCollapsed((c) => ({ ...c, [acct.id]: !c[acct.id] }))}
+                >
+                  <span className="set-ic2">🔗</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span className="set-row2-t" style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {acct.email ?? acct.googleSub}
+                    </span>
+                    <span className="tiny muted" style={{ fontWeight: 600 }}>
+                      {syncingCount} of {all.length} syncing · connected {fmtWhen(acct.connectedAt)}
+                    </span>
+                  </span>
+                  <button type="button" className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); disconnect(acct.id) }}>
+                    Disconnect
+                  </button>
+                  <span className={`cal-chev ${open ? 'open' : ''}`}>›</span>
+                </div>
+
+                {open && (
+                  <div className="cal-acct-body">
+                    <div className="cal-bulk">
+                      <button type="button" className="linkbtn" onClick={() => setAll(shown, true)}>Sync all</button>
+                      <span className="muted">·</span>
+                      <button type="button" className="linkbtn" onClick={() => setAll(shown, false)}>Sync none</button>
+                    </div>
+                    {shown.length === 0 ? (
+                      <div className="muted" style={{ padding: '6px 2px 2px', fontWeight: 600 }}>
+                        {all.length === 0 ? 'No calendars on this account.' : 'No calendars match.'}
+                      </div>
+                    ) : (
+                      shown.map((cal) => <CalRow key={cal.id} cal={cal} />)
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
 
           <button type="button" className="btn btn-ghost set-add" onClick={connect} disabled={connecting}>
             ＋ Connect another account
           </button>
-
-          <div className="flabel" style={{ margin: '18px 2px 8px' }}>CALENDARS</div>
-          <div className="set-card">
-            {status.calendars.length === 0 && (
-              <div className="muted" style={{ padding: 18, fontWeight: 600 }}>No calendars found on this account.</div>
-            )}
-            {status.calendars.map((cal) => (
-              <div className="set-row2" key={cal.id}>
-                <div className="set-ic2" style={{ background: `${cal.colorHex ?? '#A6A29B'}22` }}>📅</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="set-row2-t">
-                    {cal.summary ?? cal.googleCalendarId}
-                    {cal.isPrimary && <span className="tiny muted" style={{ fontWeight: 600 }}> · primary</span>}
-                  </div>
-                  <div className="tiny muted" style={{ fontWeight: 600 }}>
-                    {cal.selected ? `Last synced ${fmtWhen(cal.lastSyncedAt)}` : 'Sync off'}
-                    {cal.accessRole ? ` · ${cal.accessRole}` : ''}
-                  </div>
-                </div>
-                <select
-                  className="sel"
-                  value={cal.personId ?? ''}
-                  onChange={(e) => setPerson(cal, e.target.value)}
-                  title="Who owns this calendar (sets event color)"
-                >
-                  <option value="">Unassigned</option>
-                  {persons.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-                <label className="cal-sync" title="Sync this calendar into Nook">
-                  <input type="checkbox" checked={cal.selected} onChange={() => toggleSelected(cal)} />
-                  Sync
-                </label>
-              </div>
-            ))}
-          </div>
         </>
       )}
     </div>
