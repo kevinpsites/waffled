@@ -37,9 +37,18 @@ function dayFormatter(tz: string): Intl.DateTimeFormat {
   return f
 }
 
+// Parse a timestamp from either source format: locally-written rows are JS ISO
+// ('…T…Z'); server-replicated rows are Postgres text ('YYYY-MM-DD HH:MM:SS+00').
+// new Date handles the former everywhere and the latter in Chromium; the replace
+// is a fallback so every engine (and the unit tests) agree.
+function parseInstant(s: string): Date {
+  const d = new Date(s)
+  return Number.isNaN(d.getTime()) ? new Date(s.replace(' ', 'T')) : d
+}
+
 // The local calendar date (YYYY-MM-DD, in tz) an instant falls on.
 export function localDate(iso: string, tz: string): string {
-  return dayFormatter(tz).format(new Date(iso))
+  return dayFormatter(tz).format(parseInstant(iso))
 }
 
 export function rowToAgenda(r: LocalEventRow): AgendaEvent {
@@ -66,7 +75,9 @@ export function rowToAgenda(r: LocalEventRow): AgendaEvent {
   }
 }
 
-const byStart = (a: AgendaEvent, b: AgendaEvent) => (a.startsAt < b.startsAt ? -1 : a.startsAt > b.startsAt ? 1 : 0)
+// Compare by parsed instant, not raw string — the two source formats don't sort
+// lexicographically against each other (a space sorts before 'T').
+const byStart = (a: AgendaEvent, b: AgendaEvent) => parseInstant(a.startsAt).getTime() - parseInstant(b.startsAt).getTime()
 
 // Today's agenda — same order as the server: timed before all-day, then by start.
 export function eventsForDay(rows: LocalEventRow[], tz: string, day: string): AgendaEvent[] {

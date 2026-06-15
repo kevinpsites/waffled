@@ -71,6 +71,14 @@ describe('eventsForDay', () => {
     const out = eventsForDay(rows, tz, '2026-06-24')
     expect(out.map((e) => e.id)).toEqual(['morning', 'noon', 'allday'])
   })
+
+  it('orders correctly across mixed timestamp formats (ISO vs Postgres text)', () => {
+    const mixed = [
+      row({ id: 'five', starts_at: '2026-06-24 22:00:00+00' }), // server (Postgres) format, 5pm CDT
+      row({ id: 'noon', starts_at: '2026-06-24T17:00:00.000Z' }), // local (ISO) format, 12pm CDT
+    ]
+    expect(eventsForDay(mixed, tz, '2026-06-24').map((e) => e.id)).toEqual(['noon', 'five'])
+  })
 })
 
 describe('eventsForRange', () => {
