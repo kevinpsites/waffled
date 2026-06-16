@@ -210,8 +210,8 @@ struct NookAPI: Sendable {
         var name: String
         var quantity: String?
         var checked: Bool
-        let section: String?
-        let assignee: Assignee?
+        var section: String?
+        var assignee: Assignee?
         struct Assignee: Decodable, Sendable {
             let name: String?
             let avatarEmoji: String?
@@ -245,6 +245,18 @@ struct NookAPI: Sendable {
         if let quantity { body["quantity"] = quantity.isEmpty ? .null : .string(quantity) }
         if let checked { body["checked"] = .bool(checked) }
         guard !body.isEmpty else { return }
+        try await send("PATCH", "/api/list-items/\(id)", body: body)
+    }
+
+    /// Full-detail edit (the swipe → Details editor): always sets name, quantity,
+    /// assignee, and section. `assignedTo`/empty section send null to clear.
+    func updateItemDetails(id: String, name: String, quantity: String, assignedTo: String?, section: String) async throws {
+        let body: [String: JSONValue] = [
+            "name": .string(name),
+            "quantity": quantity.isEmpty ? .null : .string(quantity),
+            "assignedTo": assignedTo.map(JSONValue.string) ?? .null,
+            "category": section.isEmpty ? .null : .string(section),
+        ]
         try await send("PATCH", "/api/list-items/\(id)", body: body)
     }
 
