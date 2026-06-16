@@ -174,6 +174,49 @@ private final class Counter { var n = 0 }
     }
 }
 
+@Suite struct TonightMealTests {
+    @Test func detectsEatingOutPhrases() {
+        #expect(TonightMeal.isEatingOut("Takeout"))
+        #expect(TonightMeal.isEatingOut("take-out"))
+        #expect(TonightMeal.isEatingOut("Going out for sushi"))
+        #expect(TonightMeal.isEatingOut("pizza delivery"))
+        #expect(TonightMeal.isEatingOut("order in"))
+        #expect(TonightMeal.isEatingOut("Eating out"))
+    }
+
+    @Test func treatsRealMealsAsCooking() {
+        #expect(!TonightMeal.isEatingOut("Ravioli & Sausage Bake"))
+        #expect(!TonightMeal.isEatingOut("Outback-style steak"))   // "out" inside a word
+        #expect(!TonightMeal.isEatingOut(nil))
+        #expect(!TonightMeal.isEatingOut(""))
+    }
+
+    @Test func recipeEntryDrivesTitleAndMeta() {
+        let entry = NookAPI.WeekEntryDTO(
+            id: "1", date: "2026-06-16", mealType: "dinner", title: nil, recipeId: "r1",
+            recipe: .init(title: "Tacos", emoji: "🌮", cookTimeMinutes: 25, servings: 4)
+        )
+        let meal = TonightMeal(entry)
+        #expect(meal.title == "Tacos")
+        #expect(meal.emoji == "🌮")
+        #expect(meal.hasRecipe)
+        #expect(!meal.eatingOut)
+        #expect(meal.cookTimeMinutes == 25)
+        #expect(meal.servings == 4)
+    }
+
+    @Test func eatingOutEntryShowsEatingOut() {
+        let entry = NookAPI.WeekEntryDTO(
+            id: "2", date: "2026-06-16", mealType: "dinner", title: "Takeout night",
+            recipeId: nil, recipe: nil
+        )
+        let meal = TonightMeal(entry)
+        #expect(meal.eatingOut)
+        #expect(meal.title == "Eating out")
+        #expect(meal.emoji == "🍴")
+    }
+}
+
 @Suite struct CaptureIntentTests {
     private func decode(_ json: String) throws -> CaptureIntent {
         try JSONDecoder().decode(CaptureIntent.self, from: Data(json.utf8))

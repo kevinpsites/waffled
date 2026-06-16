@@ -5,9 +5,14 @@ import SwiftUI
 /// Static sample data in Phase 0; PowerSync-backed in Phase 1+.
 struct TodayView: View {
     @Environment(SyncManager.self) private var sync
+    @State private var dash = DashboardModel()
 
     private var todays: [SyncedEvent] {
         Agenda.forDay(sync.events, day: Agenda.todayKey(sync.householdTz), tz: sync.householdTz)
+    }
+
+    private var greetingMember: SyncedMember? {
+        sync.members.first { ($0.memberType ?? "") == "adult" } ?? sync.members.first
     }
 
     private var greetingDate: String {
@@ -44,6 +49,10 @@ struct TodayView: View {
             .padding(.bottom, 110)   // clear the floating tab bar
         }
         .background(NK.canvas)
+        .refreshable { await dash.load(todayKey: Agenda.todayKey(sync.householdTz)) }
+        .task(id: sync.householdTz) {
+            await dash.load(todayKey: Agenda.todayKey(sync.householdTz))
+        }
     }
 
     // MARK: greeting row
@@ -58,7 +67,11 @@ struct TodayView: View {
                     .foregroundStyle(NK.ink)
             }
             Spacer()
-            Avatar(person: .kelly, emoji: "🦊", size: 46)
+            if let m = greetingMember {
+                Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 46)
+            } else {
+                Avatar(person: .kelly, emoji: "🦊", size: 46)
+            }
         }
     }
 
@@ -90,42 +103,78 @@ struct TodayView: View {
         }
     }
 
-    // MARK: tonight's meal (split media card)
-    private var tonightCard: some View {
-        HStack(spacing: 0) {
-            LinearGradient(colors: [Color(hex: 0xF6D9C6), Color(hex: 0xE9B596)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
-                .frame(width: 104)
-                .overlay(Text("🍝").font(.system(size: 36)))
-            VStack(alignment: .leading, spacing: 4) {
-                Text("TONIGHT")
-                    .font(.system(size: 11, weight: .heavy)).tracking(0.5)
-                    .foregroundStyle(FamilyColor.lottie.solid)
-                Text("Ravioli & Sausage Bake")
-                    .font(NK.serif(18)).foregroundStyle(NK.ink)
-                Text("🕐 35 min · serves 5")
-                    .font(.system(size: 12)).foregroundStyle(NK.ink3)
+    // MARK: tonight's meal (split media card, live from the meal plan)
+    @ViewBuilder private var tonightCard: some View {
+        if let meal = dash.tonight {
+            HStack(spacing: 0) {
+                LinearGradient(colors: meal.eatingOut
+                                   ? [Color(hex: 0xD9E7F6), Color(hex: 0xBCD0E9)]
+                                   : [Color(hex: 0xF6D9C6), Color(hex: 0xE9B596)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                    .frame(width: 104)
+                    .overlay(Text(meal.emoji).font(.system(size: 36)))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("TONIGHT · DINNER")
+                        .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                        .foregroundStyle(FamilyColor.lottie.solid)
+                    Text(meal.title)
+                        .font(NK.serif(18)).foregroundStyle(NK.ink)
+                    if let sub = mealSubtitle(meal) {
+                        Text(sub).font(.system(size: 12)).foregroundStyle(NK.ink3)
+                    }
+                }
+                .padding(.horizontal, 15).padding(.vertical, 13)
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 15).padding(.vertical, 13)
-            Spacer(minLength: 0)
+            .background(NK.card)
+            .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+            .nkShadow1()
+        } else if dash.loaded {
+            NookCard(padding: 15) {
+                HStack(spacing: 12) {
+                    Text("🍽️").font(.system(size: 28))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("No dinner planned").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                        Text("Add one from the capture bar").font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
         }
-        .background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-        .nkShadow1()
     }
 
-    // MARK: chores + grocery summary
+    private func mealSubtitle(_ meal: TonightMeal) -> String? {
+        if meal.eatingOut { return "No cooking tonight 🎉" }
+        var parts: [String] = []
+        if let m = meal.cookTimeMinutes { parts.append("🕐 \(m) min") }
+        if let s = meal.servings { parts.append("serves \(s)") }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    // MARK: chores + grocery summary (live)
     private var choresCard: some View {
         NookCard(padding: 15) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Lottie's chores").font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ink2)
-                HStack(spacing: 8) {
-                    Avatar(person: .lottie, emoji: "🦄", size: 30)
-                    ProgressBar(value: 0.83, tint: FamilyColor.lottie.solid, track: FamilyColor.lottie.tint)
+                Text("Family chores").font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ink2)
+                HStack(spacing: -8) {
+                    ForEach(dash.chores.prefix(3)) { p in
+                        Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 30)
+                    }
+                    if dash.chores.isEmpty {
+                        Avatar(person: .lottie, emoji: "🦄", size: 30).opacity(0.35)
+                    }
+                    Spacer(minLength: 0)
                 }
-                (Text("5 of 6 · ").foregroundStyle(NK.ink3)
-                 + Text("★ 24").foregroundStyle(NK.gold).bold())
-                    .font(.system(size: 12.5))
+                if dash.choreTotal > 0 {
+                    ProgressBar(value: Double(dash.choreDone) / Double(dash.choreTotal),
+                                tint: NK.primary, track: NK.primary.opacity(0.18))
+                    (Text("\(dash.choreDone) of \(dash.choreTotal) · ").foregroundStyle(NK.ink3)
+                     + Text("★ \(dash.choreStars)").foregroundStyle(NK.gold).bold())
+                        .font(.system(size: 12.5))
+                } else {
+                    Text(dash.loaded ? "No chores today" : "Loading…")
+                        .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                }
             }
         }
     }
@@ -134,8 +183,9 @@ struct TodayView: View {
         NookCard(padding: 15) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Grocery").font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ink2)
-                Text("10").font(.system(size: 26, weight: .bold)).foregroundStyle(NK.ink)
-                Text("items · auto-built").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                Text("\(dash.groceryRemaining)").font(.system(size: 26, weight: .bold)).foregroundStyle(NK.ink)
+                Text(dash.groceryRemaining == 1 ? "item to buy" : "items to buy")
+                    .font(.system(size: 12)).foregroundStyle(NK.ink3)
             }
         }
     }

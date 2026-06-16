@@ -108,11 +108,56 @@ struct NookAPI: Sendable {
     /// planning a meal (so "tacos for Friday" links the Tacos recipe when it exists).
     func recipes() async throws -> [RecipeRef] {
         struct Resp: Decodable { let recipes: [RecipeRef] }
-        var req = URLRequest(url: url("/api/recipes"))
-        authorize(&req)
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        try check(resp, data)
-        return try JSONDecoder().decode(Resp.self, from: data).recipes
+        return try await getJSON("/api/recipes", as: Resp.self).recipes
+    }
+
+    // MARK: Today dashboard reads (non-synced domains, fetched over REST)
+
+    /// One dinner/lunch/etc. slot in the planned week (mirrors web `WeekEntry`).
+    struct WeekEntryDTO: Decodable {
+        let id: String
+        let date: String
+        let mealType: String
+        let title: String?
+        let recipeId: String?
+        let recipe: RecipeInfo?
+        struct RecipeInfo: Decodable {
+            let title: String?
+            let emoji: String?
+            let cookTimeMinutes: Int?
+            let servings: Int?
+        }
+    }
+
+    /// A person's chore tally for today (mirrors web `PersonChores`).
+    struct PersonChoresDTO: Decodable, Identifiable, Sendable {
+        let id: String
+        let name: String
+        let avatarEmoji: String?
+        let colorHex: String?
+        let total: Int
+        let done: Int
+        let stars: Int
+    }
+
+    struct GroceryItemDTO: Decodable { let id: String; let checked: Bool }
+
+    /// The planned meals for the week starting `start` (YYYY-MM-DD).
+    func mealsWeek(start: String) async throws -> [WeekEntryDTO] {
+        struct Resp: Decodable { let entries: [WeekEntryDTO] }
+        return try await getJSON("/api/meals/week?start=\(start)", as: Resp.self).entries
+    }
+
+    /// Per-person chore progress for today.
+    func choresToday() async throws -> [PersonChoresDTO] {
+        struct Resp: Decodable { let people: [PersonChoresDTO] }
+        return try await getJSON("/api/chores/today", as: Resp.self).people
+    }
+
+    /// The grocery list items (for the Today summary count).
+    func groceryItems() async throws -> [GroceryItemDTO] {
+        struct Resp: Decodable { let items: [GroceryItemDTO] }
+        return try await getJSON("/api/lists/grocery", as: Resp.self).items
     }
 
     /// Forward a batch of queued local writes to the server's CRUD sink.
@@ -138,6 +183,15 @@ struct NookAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await URLSession.shared.data(for: req)
         try check(resp, data)
+    }
+
+    /// GET `path` and decode the JSON body, throwing on non-2xx.
+    private func getJSON<T: Decodable>(_ path: String, as: T.Type) async throws -> T {
+        var req = URLRequest(url: url(path))
+        authorize(&req)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(resp, data)
+        return try JSONDecoder().decode(T.self, from: data)
     }
 
     private func url(_ path: String) -> URL {
