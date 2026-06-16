@@ -9,6 +9,7 @@
 #   ./nook logs [svc]      follow logs (all, or one)
 #   ./nook migrate   apply DB migrations (node-pg-migrate)
 #   ./nook psql      open a psql shell on the database
+#   ./nook token [sub]     mint a dev JWT for localStorage (default sub: dev|demo)
 #
 # Everything is driven off infra/compose so you never type the long flags.
 set -euo pipefail
@@ -73,6 +74,9 @@ case "$cmd" in
     ;;
   psql)
     docker exec -it nook-postgres psql -U "$(env_val POSTGRES_USER)" -d "$(env_val POSTGRES_DB)" ;;
+  token)
+    sub="${1:-dev|demo}"
+    docker exec nook-api node dist/mint-token.js --sub "$sub" ;;
   help|-h|--help|*)
-    sed -n '2,18p' "$ROOT/nook" | sed 's/^# \{0,1\}//' ;;
+    awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$ROOT/nook" ;;
 esac
