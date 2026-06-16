@@ -60,19 +60,13 @@ final class SyncManager {
     /// front avoids the race, and we retry in case a prior instance is still
     /// releasing its lock.
     private func openDatabase() async {
-        for attempt in 1...6 {
-            do {
-                _ = try await db.getOptional(
-                    sql: "SELECT 1 AS n", parameters: [],
-                    mapper: { try $0.getInt(name: "n") }
-                )
-                lastError = nil
-                return
-            } catch {
-                lastError = "Opening local database (attempt \(attempt))… \(error)"
-                try? await Task.sleep(nanoseconds: 400_000_000)
-            }
+        let failure = await Retry.run(attempts: 6, delay: 400_000_000) { [db] in
+            _ = try await db.getOptional(
+                sql: "SELECT 1 AS n", parameters: [],
+                mapper: { try $0.getInt(name: "n") }
+            )
         }
+        lastError = failure.map { "Couldn't open the local database: \($0)" }
     }
 
     /// (Re)connect with fresh credentials — used by the Settings "Reconnect" button

@@ -114,3 +114,78 @@ private func event(_ id: String, _ raw: String?, allDay: Bool = false) -> Synced
         #expect(Color(hexString: nil) == nil)
     }
 }
+
+private enum BoomError: Error { case boom }
+private final class Counter { var n = 0 }
+
+@Suite struct RetryTests {
+    // Guards the DB-open-lock fix: the first PowerSync open is retried so a
+    // transient "database is locked" doesn't leave the app empty.
+    @Test func succeedsOnFirstTry() async {
+        let c = Counter()
+        let err = await Retry.run(attempts: 3) { c.n += 1 }
+        #expect(err == nil)
+        #expect(c.n == 1)
+    }
+
+    @Test func retriesUntilItSucceeds() async {
+        let c = Counter()
+        let err = await Retry.run(attempts: 5) {
+            c.n += 1
+            if c.n < 3 { throw BoomError.boom }   // fail twice, then succeed
+        }
+        #expect(err == nil)
+        #expect(c.n == 3)
+    }
+
+    @Test func givesUpAfterAllAttempts() async {
+        let c = Counter()
+        let err = await Retry.run(attempts: 4) {
+            c.n += 1
+            throw BoomError.boom
+        }
+        #expect(err != nil)
+        #expect(c.n == 4)
+    }
+}
+
+@Suite struct CaptureIntentTests {
+    private func decode(_ json: String) throws -> CaptureIntent {
+        try JSONDecoder().decode(CaptureIntent.self, from: Data(json.utf8))
+    }
+
+    @Test func decodesEvent() throws {
+        let intent = try decode("""
+        {"kind":"event","title":"Dentist","startsAt":"2026-06-23T20:00:00.000Z",
+         "allDay":false,"personName":"Kevin","whenLabel":"Tue, Jun 23 · 2:00 PM"}
+        """)
+        guard case let .event(title, startsAt, allDay, person, _) = intent else {
+            Issue.record("expected event"); return
+        }
+        #expect(title == "Dentist")
+        #expect(startsAt == "2026-06-23T20:00:00.000Z")
+        #expect(allDay == false)
+        #expect(person == "Kevin")
+    }
+
+    @Test func decodesGroceryAndMeal() throws {
+        guard case let .grocery(name, qty) =
+            try decode(#"{"kind":"grocery","name":"milk","quantity":"2"}"#) else {
+            Issue.record("expected grocery"); return
+        }
+        #expect(name == "milk")
+        #expect(qty == "2")
+
+        guard case let .meal(_, _, mealType, _) =
+            try decode(#"{"kind":"meal","title":"Tacos","date":"2026-06-18","mealType":"dinner","whenLabel":"x"}"#) else {
+            Issue.record("expected meal"); return
+        }
+        #expect(mealType == "dinner")
+    }
+
+    @Test func rejectsUnknownKind() {
+        #expect(throws: (any Error).self) {
+            try decode(#"{"kind":"spaceship"}"#)
+        }
+    }
+}
