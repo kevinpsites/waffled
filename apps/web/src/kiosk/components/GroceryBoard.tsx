@@ -22,6 +22,10 @@ const CHECK = (
   </svg>
 )
 
+// A checked item lingers in place this long (undo window) before tucking into the
+// collapsible "Completed" section, so the active list keeps itself tidy.
+const COMPLETE_GRACE_MS = 15000
+
 function ItemRow({
   item,
   colors,
@@ -89,6 +93,8 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   const [draft, setDraft] = useState('')
   const [editStaples, setEditStaples] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [recent, setRecent] = useState<Set<string>>(new Set()) // just-checked, still lingering in the active list
+  const [showDone, setShowDone] = useState(false)
   const rebuilt = useRef(false)
   const addRef = useRef<HTMLInputElement>(null)
 
@@ -124,10 +130,22 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   if (loading && !board) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
   if (error || !board) return <div className="muted" style={{ padding: 30 }}>Couldn’t load the grocery list.</div>
 
-  const inCart = board.items.filter((i) => i.checked).length
+  // Active = unchecked, or checked within the grace window (still shown in place).
+  // Completed = checked and past the grace window (tucked into the Completed section).
+  const activeItems = board.items.filter((i) => !i.checked || recent.has(i.id))
+  const completedItems = board.items.filter((i) => i.checked && !recent.has(i.id))
 
   async function toggle(item: GroceryBoardItem) {
-    await groceryApi.patchListItem(item.id, { checked: !item.checked })
+    const next = !item.checked
+    if (next) {
+      // keep it visible briefly so an accidental tap is easy to undo, then it
+      // drops into Completed on its own.
+      setRecent((s) => new Set(s).add(item.id))
+      setTimeout(() => setRecent((s) => { const n = new Set(s); n.delete(item.id); return n }), COMPLETE_GRACE_MS)
+    } else {
+      setRecent((s) => { const n = new Set(s); n.delete(item.id); return n })
+    }
+    await groceryApi.patchListItem(item.id, { checked: next })
     refetch()
   }
   async function saveItem(item: GroceryBoardItem, patch: { name: string; quantity: string | null }) {
@@ -138,10 +156,9 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     await groceryApi.deleteItem(item.id)
     refetch()
   }
-  async function clearChecked() {
-    const checked = board!.items.filter((i) => i.checked)
-    if (checked.length === 0) return
-    await Promise.all(checked.map((i) => groceryApi.deleteItem(i.id)))
+  async function clearCompleted() {
+    if (completedItems.length === 0) return
+    await Promise.all(completedItems.map((i) => groceryApi.deleteItem(i.id)))
     refetch()
   }
   async function addItem(name: string) {
@@ -171,17 +188,17 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
 
   const sections =
     view === 'aisle'
-      ? aisleSections(board.items)
+      ? aisleSections(activeItems)
       : (() => {
           const dinnerIds = new Set(board.dinners.filter((d) => d.recipeId).map((d) => d.recipeId!))
           const perMeal = board.dinners
             .filter((d) => d.recipeId)
-            .map((d) => ({ aisle: d.title ?? 'Meal', items: board.items.filter((i) => i.sourceRecipeIds.includes(d.recipeId!)) }))
+            .map((d) => ({ aisle: d.title ?? 'Meal', items: activeItems.filter((i) => i.sourceRecipeIds.includes(d.recipeId!)) }))
             .filter((s) => s.items.length > 0)
           // Anything not tied to one of this week's dinners — hand-added items AND
           // items added from a recipe that isn't planned this week — still needs a
           // home, or it would vanish in the By-meal view.
-          const leftovers = board.items.filter((i) => !i.sourceRecipeIds.some((id) => dinnerIds.has(id)))
+          const leftovers = activeItems.filter((i) => !i.sourceRecipeIds.some((id) => dinnerIds.has(id)))
           return leftovers.length ? [...perMeal, { aisle: 'Other items', items: leftovers }] : perMeal
         })()
 
@@ -191,13 +208,8 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
         <div className="grocery-head">
           <div className="card-h nk-serif grocery-title">Grocery list</div>
           <div className="muted grocery-count" style={{ fontWeight: 600 }}>
-            {board.items.length} items{inCart > 0 ? ` · ${inCart} in cart` : ''}
+            {activeItems.length} to get{completedItems.length > 0 ? ` · ${completedItems.length} done` : ''}
           </div>
-          {inCart > 0 && (
-            <button type="button" className="pill grocery-clear" style={{ marginLeft: 10 }} onClick={clearChecked} title="Remove the checked-off items">
-              Clear {inCart} checked
-            </button>
-          )}
           <div className="seg" style={{ marginLeft: 'auto' }}>
             <button className={view === 'aisle' ? 'on' : ''} onClick={() => setView('aisle')}>By aisle</button>
             <button className={view === 'meal' ? 'on' : ''} onClick={() => setView('meal')}>By meal</button>
@@ -215,29 +227,63 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
             Nothing here yet — plan some dinners in Meals, then it auto-builds, or add items above.
           </div>
         ) : (
-          <div className="grocery-cols">
-            {sections.map((sec, i) => (
-              <div key={i} className="grocery-section">
-                {sec.aisle && (
-                  <div className="grocery-section-h">
-                    {view === 'aisle' && AISLE_EMOJI[sec.aisle] && <span className="ga-emo">{AISLE_EMOJI[sec.aisle]}</span>}
-                    {sec.aisle}
-                    <span className="ga-n">{sec.items.length}</span>
+          <>
+            {activeItems.length === 0 && (
+              <div className="muted" style={{ padding: '20px 2px', fontWeight: 600 }}>
+                All done — everything’s in the cart. 🎉
+              </div>
+            )}
+            {activeItems.length > 0 && (
+              <div className="grocery-cols">
+                {sections.map((sec, i) => (
+                  <div key={i} className="grocery-section">
+                    {sec.aisle && (
+                      <div className="grocery-section-h">
+                        {view === 'aisle' && AISLE_EMOJI[sec.aisle] && <span className="ga-emo">{AISLE_EMOJI[sec.aisle]}</span>}
+                        {sec.aisle}
+                        <span className="ga-n">{sec.items.length}</span>
+                      </div>
+                    )}
+                    {sec.items.map((it) => (
+                      <ItemRow
+                        key={it.id}
+                        item={it}
+                        colors={colorFor(it.sourceRecipeIds)}
+                        onToggle={() => toggle(it)}
+                        onSave={(patch) => saveItem(it, patch)}
+                        onDelete={() => deleteItem(it)}
+                      />
+                    ))}
                   </div>
-                )}
-                {sec.items.map((it) => (
-                  <ItemRow
-                    key={it.id}
-                    item={it}
-                    colors={colorFor(it.sourceRecipeIds)}
-                    onToggle={() => toggle(it)}
-                    onSave={(patch) => saveItem(it, patch)}
-                    onDelete={() => deleteItem(it)}
-                  />
                 ))}
               </div>
-            ))}
-          </div>
+            )}
+
+            {/* Completed — checked items tuck here; collapsible, un-check to restore. */}
+            {completedItems.length > 0 && (
+              <div className="grocery-done">
+                <div className="grocery-done-h" role="button" tabIndex={0} onClick={() => setShowDone((v) => !v)}>
+                  <span className={`cal-chev ${showDone ? 'open' : ''}`}>›</span>
+                  <span>Completed</span>
+                  <span className="ga-n">{completedItems.length}</span>
+                  <button type="button" className="linkbtn" style={{ marginLeft: 'auto' }} onClick={(e) => { e.stopPropagation(); clearCompleted() }}>
+                    Clear
+                  </button>
+                </div>
+                {showDone && (
+                  <div className="grocery-done-list">
+                    {completedItems.map((it) => (
+                      <div key={it.id} className="gitem done" onClick={() => toggle(it)} role="button" tabIndex={0} title="Tap to un-check">
+                        <span className="gck" aria-hidden>{CHECK}</span>
+                        <span className="gnm">{it.name}</span>
+                        {it.quantity && <span className="gqty">{it.quantity}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
 

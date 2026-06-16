@@ -184,6 +184,29 @@
   cursor: pointer;
 }
 
+/* Completed (checked items tuck here) */
+.grocery-done {
+  margin-top: 10px;
+}
+.grocery-done-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 4px;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink-2);
+  border-top: 1px solid var(--hair-2);
+}
+.grocery-done-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 9px;
+  padding-top: 4px;
+}
+
 /* right rail */
 .grocery-rail {
   display: flex;
