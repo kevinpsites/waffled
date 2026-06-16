@@ -3,8 +3,9 @@
 import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow } from 'pg'
 import { query } from './db'
-import { requireTenant, type Tenant } from './households'
+import { requireTenant, requireAdmin, type Tenant } from './households'
 import { completeJson } from './llm'
+import { syncMealEventForEntry, removeMealEventForEntry, getMealSettings, setMealSettings, resyncMealEvents } from './meal-events'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -633,6 +634,9 @@ export function registerMealRoutes(api: Api): void {
       title: body.title ?? null,
       cookPersonId,
     })
+    // Mirror the meal onto the calendar (and Google, if opted in). Never fail the
+    // plan write if the calendar sync hiccups.
+    await syncMealEventForEntry(tenant, entry.id).catch((err) => console.error('meal event sync failed', err))
     return res.status(200).json({ entry: presentEntry(entry) })
   })
 
@@ -646,9 +650,60 @@ export function registerMealRoutes(api: Api): void {
         .status(400)
         .json({ error: 'BadRequest', message: 'date (YYYY-MM-DD) and mealType are required' })
     }
+    // Drop the linked calendar event before clearing the slot.
+    const existing = await query<{ id: string }>(
+      `select id from meal_plan_entries where household_id=$1 and date=$2 and meal_type=$3 and deleted_at is null`,
+      [tenant.householdId, date, mealType]
+    )
+    if (existing.rows[0]) await removeMealEventForEntry(tenant.householdId, existing.rows[0].id).catch((err) => console.error('meal event remove failed', err))
     const cleared = await clearEntry(tenant, date, mealType)
     if (!cleared) return res.status(404).json({ error: 'NotFound', message: 'nothing planned in that slot' })
     return res.status(204).send('')
+  })
+
+  // Meals → calendar settings (per household): whether meals appear on the
+  // calendar, whether they push to Google, whose calendar, who's invited, and the
+  // time each meal type lands at.
+  api.get('/api/meals/calendar-settings', async (req: Request) => {
+    const tenant = await requireTenant(req)
+    return { settings: await getMealSettings(tenant.householdId) }
+  })
+
+  api.put('/api/meals/calendar-settings', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const b = (req.body ?? {}) as Record<string, unknown>
+    const patch: Record<string, unknown> = {}
+    if (typeof b.addToCalendar === 'boolean') patch.addToCalendar = b.addToCalendar
+    if (typeof b.pushToGoogle === 'boolean') patch.pushToGoogle = b.pushToGoogle
+    if (b.calendarPersonId === null || (typeof b.calendarPersonId === 'string' && UUID_RE.test(b.calendarPersonId))) patch.calendarPersonId = b.calendarPersonId
+    if (b.participantIds === null || (Array.isArray(b.participantIds) && b.participantIds.every((p) => typeof p === 'string' && UUID_RE.test(p)))) patch.participantIds = b.participantIds
+    if (b.times && typeof b.times === 'object') {
+      const t: Record<string, string> = {}
+      for (const [k, v] of Object.entries(b.times as Record<string, unknown>)) {
+        if (MEAL_TYPES.has(k) && typeof v === 'string' && /^\d{2}:\d{2}$/.test(v)) t[k] = v
+      }
+      if (Object.keys(t).length) patch.times = t
+    }
+    if (typeof b.durationMinutes === 'number' && b.durationMinutes > 0 && b.durationMinutes <= 600) patch.durationMinutes = Math.round(b.durationMinutes)
+    const settings = await setMealSettings(tenant.householdId, patch)
+    // Apply the new settings to meals already on the plan.
+    await resyncMealEvents(tenant).catch((err) => console.error('meal event resync failed', err))
+    return res.status(200).json({ settings })
+  })
+
+  // Resolve a planned-meal entry to its recipe — the calendar uses this to open
+  // the linked recipe when a meal event is tapped.
+  api.get('/api/meals/entry/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'entry not found' })
+    const { rows } = await query<{ recipe_id: string | null; title: string | null }>(
+      `select recipe_id, title from meal_plan_entries where household_id=$1 and id=$2 and deleted_at is null`,
+      [tenant.householdId, id]
+    )
+    if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'entry not found' })
+    return { recipeId: rows[0].recipe_id, title: rows[0].title }
   })
 
   // The planned week (entries joined to recipes) — powers the kiosk meal card.

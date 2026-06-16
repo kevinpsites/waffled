@@ -22,6 +22,10 @@ export interface AgendaEvent {
   personColor: string | null
   personEmoji: string | null
   participants: Participant[]
+  // origin='meal_plan' events link to a meal_plan_entry via originRefId — the
+  // calendar opens the linked recipe when one is tapped.
+  origin?: string | null
+  originRefId?: string | null
 }
 
 export const eventsApi = {

@@ -214,6 +214,8 @@
   border-radius: 999px; display: grid; place-items: center; }
 .ev { font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 7px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* meal-plan events read as recipes — a dashed edge sets them apart from real events */
+.ev.ev-meal { border: 1px dashed currentColor; }
 .ev.kevin  { background: var(--kevin-t);  color: #1559b8; }
 .ev.kelly  { background: var(--kelly-t);  color: #b22f66; }
 .ev.wally  { background: var(--wally-t);  color: #167a4a; }

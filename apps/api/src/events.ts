@@ -46,6 +46,8 @@ export interface EventRow extends QueryResultRow {
   ends_at: Date | null
   all_day: boolean
   person_id: string | null
+  origin?: string | null
+  origin_ref_id?: string | null
   person_name?: string | null
   person_color?: string | null
   person_emoji?: string | null
@@ -146,6 +148,7 @@ const PARTICIPANTS_SUBQUERY = `
 
 const SELECT_WITH_PERSON = `
   select e.id, e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.person_id,
+         e.origin, e.origin_ref_id,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          ${PARTICIPANTS_SUBQUERY}
     from events e
@@ -266,6 +269,8 @@ export function presentEvent(e: EventRow) {
     endsAt: e.ends_at,
     allDay: e.all_day,
     personId: e.person_id,
+    origin: e.origin ?? null,
+    originRefId: e.origin_ref_id ?? null,
     personName: e.person_name ?? null,
     personColor: e.person_color ?? null,
     personEmoji: e.person_emoji ?? null,

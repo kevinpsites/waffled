@@ -15,6 +15,8 @@ export interface LocalEventRow {
   ends_at: string | null
   all_day: number // SQLite has no bool; 0/1
   person_id: string | null
+  origin: string | null
+  origin_ref_id: string | null
   person_name: string | null
   person_color: string | null
   person_emoji: string | null
@@ -68,6 +70,8 @@ export function rowToAgenda(r: LocalEventRow): AgendaEvent {
     allDay: !!r.all_day,
     location: r.location,
     personId: r.person_id,
+    origin: r.origin,
+    originRefId: r.origin_ref_id,
     personName: r.person_name,
     personColor: r.person_color,
     personEmoji: r.person_emoji,
@@ -102,6 +106,7 @@ export function eventsForRange(rows: LocalEventRow[], tz: string, from: string, 
 // participants. We filter/bucket by date in JS since SQLite tz support is weak.
 const AGENDA_SQL = `
   select e.id, e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.person_id,
+         e.origin, e.origin_ref_id,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          (select json_group_array(json_object(
                    'id', pp.id, 'name', pp.name, 'colorHex', pp.color_hex, 'avatarEmoji', pp.avatar_emoji))

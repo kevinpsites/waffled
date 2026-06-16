@@ -274,6 +274,42 @@ select.sel {
   background: #fff;
   width: 180px;
 }
+.set-inline-input[type='time'] {
+  width: 120px;
+}
+
+/* Meals panel — toggle checkboxes + participant chips */
+.set-check {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--primary, #4c8bf5);
+  cursor: pointer;
+}
+.set-check:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.meal-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 2px 4px;
+}
+.meal-chips .tag {
+  font-size: 13px;
+  padding: 7px 14px;
+  border: 1px solid var(--hair);
+  cursor: pointer;
+}
+.meal-chips .tag.on {
+  background: var(--primary, #4c8bf5);
+  border-color: var(--primary, #4c8bf5);
+  color: #fff;
+}
+.meal-chips .tag:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 @media (max-width: 900px) {
   .settings-screen {

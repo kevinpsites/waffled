@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { Icon } from './icons'
 import { EventModal } from './components/EventModal'
-import { useEventsRange, type AgendaEvent } from '../lib/api'
+import { useEventsRange, mealsApi, type AgendaEvent } from '../lib/api'
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = [
@@ -26,7 +27,25 @@ function monthGrid(year: number, month: number): Date[] {
 
 export function Calendar() {
   const now = new Date()
+  const navigate = useNavigate()
   const [view, setView] = useState({ year: now.getFullYear(), month: now.getMonth() })
+
+  // A meal event opens its linked recipe (resolve entry → recipe). Falls back to
+  // the event modal for non-meal events or meals without a recipe (e.g. takeout).
+  async function openEvent(e: AgendaEvent) {
+    if (e.origin === 'meal_plan' && e.originRefId) {
+      try {
+        const { recipeId } = await mealsApi.entry(e.originRefId)
+        if (recipeId) {
+          navigate(`/meals/recipe/${recipeId}`)
+          return
+        }
+      } catch {
+        /* fall through to the event modal */
+      }
+    }
+    setModal({ event: e })
+  }
 
   const cells = useMemo(() => monthGrid(view.year, view.month), [view])
   const from = ymd(cells[0])
@@ -95,14 +114,16 @@ export function Calendar() {
                 <div className="dn">{d.getDate()}</div>
                 {dayEvents.slice(0, 3).map((e) => {
                   const color = e.personColor ?? '#6B6B70'
+                  const isMeal = e.origin === 'meal_plan'
                   return (
                     <div
                       key={e.id}
-                      className="ev"
+                      className={`ev ${isMeal ? 'ev-meal' : ''}`}
                       style={{ background: `${color}22`, color, cursor: 'pointer' }}
+                      title={isMeal ? 'Open recipe' : undefined}
                       onClick={(ev) => {
                         ev.stopPropagation()
-                        setModal({ event: e })
+                        void openEvent(e)
                       }}
                     >
                       {e.title}

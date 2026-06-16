@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { personsApi, captureApi, calendarsApi, usePersons, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink } from '../lib/api'
+import { personsApi, captureApi, calendarsApi, mealsApi, usePersons, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import '../styles/settings.css'
 
@@ -292,6 +292,125 @@ function AiPanel() {
         <span className="tiny muted" style={{ fontWeight: 600 }}>
           Keys are read from the server environment and never leave it.
         </span>
+      </div>
+    </div>
+  )
+}
+
+const MEAL_TIME_ROWS: Array<{ key: string; label: string; icon: string }> = [
+  { key: 'breakfast', label: 'Breakfast', icon: '🍳' },
+  { key: 'lunch', label: 'Lunch', icon: '🥪' },
+  { key: 'dinner', label: 'Dinner', icon: '🍽️' },
+  { key: 'snack', label: 'Snack', icon: '🍎' },
+]
+
+// Meals: how planned meals show up on the calendar — whether at all, whether they
+// push to Google, whose calendar they belong to, who's invited, and the time each
+// meal type lands at. Changes re-sync meals already on the plan.
+function MealsPanel() {
+  const { persons } = usePersons()
+  const [cfg, setCfg] = useState<MealCalendarSettings | null>(null)
+  const [error, setError] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [dirty, setDirty] = useState(false)
+
+  useEffect(() => {
+    mealsApi
+      .calendarSettings()
+      .then((s) => { setCfg(s); setError(false) })
+      .catch(() => setError(true))
+  }, [])
+
+  function update(patch: Partial<MealCalendarSettings>) {
+    setCfg((c) => (c ? { ...c, ...patch } : c))
+    setDirty(true)
+    setSaved(false)
+  }
+
+  if (error) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Sign this kiosk in to manage meal settings.</div></div>
+  if (!cfg) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
+
+  // null participantIds == the whole family; resolve to concrete ids for the chips.
+  const allIds = persons.map((p) => p.id)
+  const selected = cfg.participantIds ?? allIds
+  function toggleParticipant(id: string) {
+    const next = selected.includes(id) ? selected.filter((p) => p !== id) : [...selected, id]
+    // all selected ⇒ collapse back to "whole family" (null)
+    update({ participantIds: next.length === allIds.length ? null : next })
+  }
+
+  async function save() {
+    if (!cfg) return
+    setSaving(true)
+    try {
+      const s = await mealsApi.setCalendarSettings(cfg)
+      setCfg(s)
+      setDirty(false)
+      setSaved(true)
+    } catch {
+      setError(true)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="set-panel">
+      <div className="set-head"><div className="nk-serif set-head-t">Meals</div></div>
+
+      <div className="set-card">
+        <SettingRow icon="📅" title="Add planned meals to the calendar" sub="Each meal you plan shows on the Nook calendar, linked to its recipe.">
+          <input type="checkbox" className="set-check" checked={cfg.addToCalendar} onChange={(e) => update({ addToCalendar: e.target.checked })} />
+        </SettingRow>
+        <SettingRow icon="🔄" title="Sync them to Google Calendar" sub="Also push meal events to the calendar below, so they show on everyone’s phones.">
+          <input type="checkbox" className="set-check" disabled={!cfg.addToCalendar} checked={cfg.addToCalendar && cfg.pushToGoogle} onChange={(e) => update({ pushToGoogle: e.target.checked })} />
+        </SettingRow>
+        <SettingRow icon="👤" title="Add to this person’s calendar" sub="Meal events use this person’s color and their Google write-target calendar.">
+          <select className="sel" disabled={!cfg.addToCalendar} value={cfg.calendarPersonId ?? ''} onChange={(e) => update({ calendarPersonId: e.target.value || null })}>
+            <option value="">Unassigned</option>
+            {persons.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </SettingRow>
+      </div>
+
+      <div className="set-card" style={{ marginTop: 16 }}>
+        <SettingRow icon="🧑‍🤝‍🧑" title="Who’s invited" sub={cfg.participantIds === null ? 'The whole family' : `${selected.length} ${selected.length === 1 ? 'person' : 'people'}`}>
+          <div />
+        </SettingRow>
+        <div className="meal-chips">
+          <button type="button" className={`tag ${cfg.participantIds === null ? 'on' : ''}`} disabled={!cfg.addToCalendar} onClick={() => update({ participantIds: null })}>Whole family</button>
+          {persons.map((p) => (
+            <button key={p.id} type="button" className={`tag ${selected.includes(p.id) ? 'on' : ''}`} disabled={!cfg.addToCalendar} onClick={() => toggleParticipant(p.id)}>
+              {p.avatarEmoji ? `${p.avatarEmoji} ` : ''}{p.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="set-card" style={{ marginTop: 16 }}>
+        <div className="set-row2-t" style={{ margin: '2px 2px 4px' }}>Meal times</div>
+        <div className="tiny muted" style={{ fontWeight: 600, margin: '0 2px 12px' }}>When each meal lands on the calendar.</div>
+        {MEAL_TIME_ROWS.map((m) => (
+          <SettingRow key={m.key} icon={m.icon} title={m.label}>
+            <input
+              type="time"
+              className="set-inline-input"
+              disabled={!cfg.addToCalendar}
+              value={cfg.times[m.key] ?? ''}
+              onChange={(e) => update({ times: { ...cfg.times, [m.key]: e.target.value } })}
+            />
+          </SettingRow>
+        ))}
+      </div>
+
+      <div className="set-actions" style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
+        <button type="button" className="btn btn-primary" disabled={!dirty || saving} onClick={save}>
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved · existing meals updated</span>}
       </div>
     </div>
   )
@@ -609,7 +728,7 @@ export function Settings() {
         ))}
       </div>
       <div className="set-content">
-        {tab === 'family' ? <FamilyPanel /> : tab === 'ai' ? <AiPanel /> : tab === 'calendars' ? <CalendarsPanel /> : <Placeholder tab={tab} />}
+        {tab === 'family' ? <FamilyPanel /> : tab === 'ai' ? <AiPanel /> : tab === 'calendars' ? <CalendarsPanel /> : tab === 'meals' ? <MealsPanel /> : <Placeholder tab={tab} />}
       </div>
     </div>
   )
