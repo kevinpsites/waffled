@@ -21,6 +21,8 @@ final class SyncManager {
 
     private(set) var status: Status = .idle
     private(set) var members: [SyncedMember] = []
+    private(set) var events: [SyncedEvent] = []
+    private(set) var householdTz: TimeZone = .current
     private(set) var personCount = 0
     private(set) var eventCount = 0
     private(set) var pendingUploads = 0
@@ -31,6 +33,7 @@ final class SyncManager {
     private let connector = NookConnector()
     private var started = false
     private var watchTask: Task<Void, Never>?
+    private var eventsTask: Task<Void, Never>?
     private var statusTask: Task<Void, Never>?
 
     init() {
@@ -42,6 +45,7 @@ final class SyncManager {
         guard !started else { return }
         started = true
         watchMembers()
+        watchEvents()
         observeStatus()
         await connect()
     }
@@ -129,6 +133,41 @@ final class SyncManager {
         }
     }
 
+    private func watchEvents() {
+        eventsTask = Task { [db] in
+            do {
+                let stream = try db.watch(
+                    sql: """
+                    SELECT e.id, e.title, e.starts_at, e.all_day, e.person_id,
+                           p.color_hex AS person_color, p.avatar_emoji AS person_emoji
+                      FROM events e
+                      LEFT JOIN persons p ON p.id = e.person_id
+                    """,
+                    parameters: [],
+                    mapper: { cursor in
+                        let raw = try cursor.getStringOptional(name: "starts_at")
+                        return SyncedEvent(
+                            id: try cursor.getString(name: "id"),
+                            title: (try cursor.getStringOptional(name: "title")) ?? "(untitled)",
+                            startsAtRaw: raw,
+                            startsAt: EventTime.parse(raw),
+                            allDay: (try cursor.getIntOptional(name: "all_day")) == 1,
+                            personId: try cursor.getStringOptional(name: "person_id"),
+                            colorHex: try cursor.getStringOptional(name: "person_color"),
+                            emoji: try cursor.getStringOptional(name: "person_emoji")
+                        )
+                    }
+                )
+                for try await rows in stream {
+                    self.events = rows
+                    self.eventCount = rows.count
+                }
+            } catch {
+                self.lastError = String(describing: error)
+            }
+        }
+    }
+
     private func observeStatus() {
         statusTask = Task { [db] in
             for await s in db.currentStatus.asFlow() {
@@ -146,16 +185,20 @@ final class SyncManager {
     }
 
     private func refreshCounts() async {
-        if let n = try? await db.getOptional(
-            sql: "SELECT count(*) AS n FROM events", parameters: [],
-            mapper: { try $0.getInt(name: "n") }
-        ) { eventCount = n }
-
         // ps_crud is PowerSync's internal upload queue — depth = unsynced writes.
         pendingUploads = (try? await db.getOptional(
             sql: "SELECT count(*) AS n FROM ps_crud", parameters: [],
             mapper: { try $0.getInt(name: "n") }
         )) ?? 0
+
+        // Bucket the agenda by the household's timezone (synced households row),
+        // falling back to the device zone before the first sync.
+        if let tz = try? await db.getOptional(
+            sql: "SELECT timezone FROM households LIMIT 1", parameters: [],
+            mapper: { try $0.getStringOptional(name: "timezone") }
+        ), let id = tz, let zone = TimeZone(identifier: id) {
+            householdTz = zone
+        }
     }
 }
 
