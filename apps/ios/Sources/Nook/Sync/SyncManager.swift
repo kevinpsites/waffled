@@ -44,10 +44,33 @@ final class SyncManager {
     func start() async {
         guard !started else { return }
         started = true
+        await openDatabase()   // serialize the first open before concurrent access
         watchMembers()
         watchEvents()
         observeStatus()
         await connect()
+    }
+
+    /// Force a single, serialized database open before any watches or the sync
+    /// connection run. PowerSync sets WAL journal mode on first access, which needs
+    /// a brief exclusive lock; opening the watch + sync connections concurrently can
+    /// race it and throw "database is locked" (SQLITE_BUSY). Touching the DB once up
+    /// front avoids the race, and we retry in case a prior instance is still
+    /// releasing its lock.
+    private func openDatabase() async {
+        for attempt in 1...6 {
+            do {
+                _ = try await db.getOptional(
+                    sql: "SELECT 1 AS n", parameters: [],
+                    mapper: { try $0.getInt(name: "n") }
+                )
+                lastError = nil
+                return
+            } catch {
+                lastError = "Opening local database (attempt \(attempt))… \(error)"
+                try? await Task.sleep(nanoseconds: 400_000_000)
+            }
+        }
     }
 
     /// (Re)connect with fresh credentials — used by the Settings "Reconnect" button
