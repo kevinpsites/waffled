@@ -1,4 +1,30 @@
 /* ===== Recipe detail (full page — "Recipe / Detail" mock) ===== */
+/* RecipeView wrapper: an action bar above the two-column body. Used full-screen
+   (route) and inside a modal (preview) so a recipe looks the same everywhere. */
+.recipe-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.rd-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 6px 30px 2px;
+}
+/* Wide modal so the two-column view fits; the body scrolls inside. */
+.modal-card.recipe-modal-card {
+  width: min(1080px, 94vw);
+  max-width: none;
+  max-height: 90vh;
+  padding: 14px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 .recipe-detail {
   flex: 1;
   display: grid;

@@ -102,7 +102,7 @@
 .seg button.on { background: #fff; color: var(--ink); box-shadow: var(--sh-1); }
 .pill { display: inline-flex; align-items: center; gap: 7px; background: var(--card);
   border: 1px solid var(--hair); border-radius: 999px; padding: 8px 15px; font-size: 14px;
-  font-weight: 600; color: var(--ink); box-shadow: var(--sh-1); }
+  font-weight: 600; color: var(--ink); box-shadow: var(--sh-1); cursor: pointer; }
 .pill svg { width: 17px; height: 17px; stroke: currentColor; fill:none; stroke-width:1.8;
   stroke-linecap:round; stroke-linejoin:round; }
 .icon-btn { width: 40px; height: 40px; border-radius: 999px; background: var(--card);
