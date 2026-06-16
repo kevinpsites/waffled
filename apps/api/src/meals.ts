@@ -355,16 +355,31 @@ function presentEntry(e: EntryRow) {
 }
 
 // ── AI "Plan my week" (6.3) ──────────────────────────────────────────────────
-// Suggest a dinner for each empty dinner slot in the week, drawing on the family's
-// recipe library + dietary notes via the household's chosen LLM (src/llm.ts).
-// Returns suggestions for review — applied via /api/meals/plan, not auto-saved.
+// Draft a meal for each requested day from the family's "guardrails" (meal type,
+// days, who's cooking for, ingredients to use up, free-text notes) + recipe library
+// + dietary notes, via the household's chosen LLM (src/llm.ts). Returns rich cards
+// for review (emoji, time, serves, a one-line reason) — applied via /api/meals/plan,
+// never auto-saved. Supports reshuffle/swap by passing explicit dates + avoidTitles.
 
-export interface MealSuggestion {
+export interface PlanCard {
   date: string
-  mealType: 'dinner'
+  mealType: string
   title: string
   recipeId: string | null
+  emoji: string | null
+  minutes: number | null
+  servings: number
   note: string | null
+}
+
+export interface PlanWeekInput {
+  start: string
+  mealType?: string
+  dates?: string[] // specific days to fill; default = empty `mealType` slots this week
+  cookingFor?: number | null
+  keepInMind?: string | null
+  useUp?: string[]
+  avoidTitles?: string[] // steer away from these (variety / reshuffle / swap)
 }
 
 const PLAN_WEEK_SCHEMA = {
@@ -380,7 +395,9 @@ const PLAN_WEEK_SCHEMA = {
           date: { type: 'string', description: 'YYYY-MM-DD — exactly one of the requested dates' },
           title: { type: 'string', description: 'short dish name (no "for dinner")' },
           recipeId: { type: ['string', 'null'], description: 'id of a library recipe to reuse, or null for a new dish' },
-          note: { type: ['string', 'null'], description: 'one short reason (optional)' },
+          emoji: { type: ['string', 'null'], description: 'one food emoji for the dish' },
+          minutes: { type: ['integer', 'null'], description: 'rough total cook time in minutes' },
+          note: { type: ['string', 'null'], description: 'one very short reason (e.g. "Meatless Wednesday", "Uses chicken in freezer")' },
         },
         required: ['date', 'title'],
       },
@@ -389,46 +406,59 @@ const PLAN_WEEK_SCHEMA = {
   required: ['suggestions'],
 }
 
-export async function planWeek(tenant: Tenant, start: string): Promise<{ start: string; suggestions: MealSuggestion[]; via: string }> {
+export async function planWeek(tenant: Tenant, input: PlanWeekInput): Promise<{ start: string; mealType: string; suggestions: PlanCard[]; via: string }> {
+  const start = input.start
+  const mealType = input.mealType && MEAL_TYPES.has(input.mealType) ? input.mealType : 'dinner'
+
   const entries = await weekEntries(tenant.householdId, start)
-  const plannedDinner = new Set<string>()
+  const filledForType = new Set<string>()
   const plannedTitles: string[] = []
   for (const e of entries) {
     const t = e.recipe?.title ?? e.title
     if (t) plannedTitles.push(t)
-    if (e.mealType === 'dinner') plannedDinner.add(e.date)
+    if (e.mealType === mealType) filledForType.add(e.date)
   }
 
+  // Window dates (Sun..+6 from start), then the target set.
   const base = new Date(`${start}T00:00:00Z`)
-  const emptyDates: string[] = []
+  const windowDates: string[] = []
   for (let i = 0; i < 7; i++) {
     const d = new Date(base)
     d.setUTCDate(d.getUTCDate() + i)
-    const iso = d.toISOString().slice(0, 10)
-    if (!plannedDinner.has(iso)) emptyDates.push(iso)
+    windowDates.push(d.toISOString().slice(0, 10))
   }
-  if (emptyDates.length === 0) return { start, suggestions: [], via: 'none' }
+  const inWindow = new Set(windowDates)
+  const targetDates = (input.dates && input.dates.length ? input.dates.filter((d) => inWindow.has(d)) : windowDates.filter((d) => !filledForType.has(d)))
+  if (targetDates.length === 0) return { start, mealType, suggestions: [], via: 'none' }
 
   const recipes = await listRecipes(tenant.householdId)
   const lib = recipes.slice(0, 60).map((r) => ({ id: r.id, title: r.title, category: r.category, tags: (r.tags ?? []).slice(0, 4) }))
+  const recipeById = new Map(recipes.map((r) => [r.id, r]))
   const { rows: people } = await query<{ name: string; dietary_notes: string | null }>(
     `select name, dietary_notes from persons where household_id = $1 and deleted_at is null order by sort_order, created_at`,
     [tenant.householdId]
   )
   const dietary = people.filter((p) => p.dietary_notes?.trim()).map((p) => `${p.name}: ${p.dietary_notes!.trim()}`)
+  const servings = input.cookingFor && input.cookingFor > 0 ? input.cookingFor : Math.max(1, people.length)
 
   const dayLabel = (iso: string) =>
     new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
   const system = [
-    'You plan family DINNERS for a household meal planner.',
-    'Propose exactly one dinner for EACH requested date. Vary the cuisine across the week and do not repeat a dish already planned this week.',
+    `You plan family ${mealType.toUpperCase()}S for a household meal planner — cooking for ${servings}.`,
+    'Propose exactly one dish for EACH requested date. Vary the cuisine and do not repeat a dish already planned or listed to avoid.',
     "Prefer reusing a recipe from the family's library when it fits (return its recipeId); otherwise suggest a new dish with a short title and recipeId null.",
-    'Honor every dietary note. Keep titles short. Return JSON only.',
+    'If ingredients are listed to "use up", try to feature them. Honor every dietary note and any "keep in mind" guidance (e.g. busy nights → quick meals).',
+    'Give each a single food emoji, a rough total time in minutes, and ONE very short reason. Keep titles short. Return JSON only.',
   ].join('\n')
   const user = JSON.stringify({
-    datesNeedingDinner: emptyDates.map((d) => ({ date: d, day: dayLabel(d) })),
-    alreadyPlannedThisWeek: plannedTitles,
+    mealType,
+    cookingFor: servings,
+    datesToPlan: targetDates.map((d) => ({ date: d, day: dayLabel(d) })),
+    useUpFirst: input.useUp ?? [],
+    keepInMind: input.keepInMind ?? '',
     dietaryNotes: dietary,
+    alreadyPlannedThisWeek: plannedTitles,
+    avoid: input.avoidTitles ?? [],
     recipeLibrary: lib,
   })
 
@@ -437,24 +467,28 @@ export async function planWeek(tenant: Tenant, start: string): Promise<{ start: 
     user,
     schema: PLAN_WEEK_SCHEMA,
     schemaName: 'meal_plan',
-    maxTokens: 1024,
+    maxTokens: 1200,
   })
 
   const rawList = ((data as { suggestions?: unknown[] })?.suggestions ?? []) as Array<Record<string, unknown>>
   const libIds = new Set(lib.map((r) => r.id))
-  const wanted = new Set(emptyDates)
+  const wanted = new Set(targetDates)
   const seen = new Set<string>()
-  const suggestions: MealSuggestion[] = []
+  const suggestions: PlanCard[] = []
   for (const s of rawList) {
     const date = String(s.date ?? '')
     const title = String(s.title ?? '').trim()
     if (!wanted.has(date) || seen.has(date) || !title) continue // only requested days, once each
     seen.add(date)
     const recipeId = typeof s.recipeId === 'string' && libIds.has(s.recipeId) ? s.recipeId : null
-    suggestions.push({ date, mealType: 'dinner', title, recipeId, note: typeof s.note === 'string' ? s.note : null })
+    const recipe = recipeId ? recipeById.get(recipeId) : undefined
+    // Prefer the library recipe's own emoji/time when reusing one.
+    const emoji = recipe?.emoji ?? (typeof s.emoji === 'string' && s.emoji ? s.emoji : null)
+    const minutes = recipe?.cook_time_minutes ?? (typeof s.minutes === 'number' ? Math.round(s.minutes) : null)
+    suggestions.push({ date, mealType, title, recipeId, emoji, minutes, servings, note: typeof s.note === 'string' ? s.note : null })
   }
   suggestions.sort((a, b) => (a.date < b.date ? -1 : 1))
-  return { start, suggestions, via }
+  return { start, mealType, suggestions, via }
 }
 
 export function registerMealRoutes(api: Api): void {
@@ -622,10 +656,29 @@ export function registerMealRoutes(api: Api): void {
   // POST /api/meals/plan). 501 when no LLM provider is selected/configured.
   api.post('/api/meals/plan-week', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
-    const startParam = typeof (req.body as { start?: unknown })?.start === 'string' ? (req.body as { start: string }).start : ''
-    const start = DATE_RE.test(startParam) ? startParam : todayDate()
+    const b = (req.body ?? {}) as {
+      start?: string
+      mealType?: string
+      dates?: unknown
+      cookingFor?: unknown
+      keepInMind?: unknown
+      useUp?: unknown
+      avoidTitles?: unknown
+    }
+    const start = typeof b.start === 'string' && DATE_RE.test(b.start) ? b.start : todayDate()
+    const dates = Array.isArray(b.dates) ? b.dates.filter((d): d is string => typeof d === 'string' && DATE_RE.test(d)) : undefined
+    const useUp = Array.isArray(b.useUp) ? b.useUp.filter((s): s is string => typeof s === 'string' && !!s.trim()).slice(0, 12) : undefined
+    const avoidTitles = Array.isArray(b.avoidTitles) ? b.avoidTitles.filter((s): s is string => typeof s === 'string').slice(0, 40) : undefined
     try {
-      return await planWeek(tenant, start)
+      return await planWeek(tenant, {
+        start,
+        mealType: typeof b.mealType === 'string' ? b.mealType : undefined,
+        dates,
+        cookingFor: typeof b.cookingFor === 'number' ? b.cookingFor : null,
+        keepInMind: typeof b.keepInMind === 'string' ? b.keepInMind : null,
+        useUp,
+        avoidTitles,
+      })
     } catch (err) {
       return res.status(501).json({ error: 'AIUnavailable', message: (err as Error).message })
     }

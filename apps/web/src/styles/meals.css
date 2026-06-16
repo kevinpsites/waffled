@@ -275,3 +275,231 @@
   background: #fff;
   color: var(--primary);
 }
+
+/* ===== Plan my week (full-screen) ===== */
+.plan-screen {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 24px;
+  align-items: start;
+  height: 100%;
+  overflow: hidden;
+}
+.plan-config {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  max-height: 100%;
+  padding-right: 4px;
+}
+.plan-config .flabel {
+  margin: 8px 2px 0;
+}
+.seg-plantype {
+  width: 100%;
+}
+.plan-days {
+  display: flex;
+  gap: 8px;
+}
+.plan-day-chip {
+  flex: 1;
+  aspect-ratio: 1;
+  border: 0;
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--ink-2);
+  font: inherit;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+}
+.plan-day-chip.on {
+  background: var(--primary);
+  color: #fff;
+}
+.plan-card {
+  background: var(--card);
+  border-radius: var(--r-lg, 16px);
+  box-shadow: var(--sh-1, 0 6px 24px rgba(0, 0, 0, 0.06));
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.plan-card .tiny {
+  font-weight: 700;
+}
+.constraint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.constraint .cl {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--ink);
+}
+.use-up-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.use-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--panel);
+  font-size: 13px;
+  font-weight: 650;
+}
+.use-chip b {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 700;
+}
+.use-add-input {
+  border: 0;
+  background: var(--panel);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  width: 88px;
+}
+.plan-keep {
+  border: 0;
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  resize: vertical;
+  color: var(--ink);
+}
+
+/* right pane */
+.plan-results {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  max-height: 100%;
+  padding-right: 4px;
+}
+.plan-results-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.plan-day {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--card);
+  border-radius: var(--r-lg, 16px);
+  box-shadow: var(--sh-1, 0 6px 24px rgba(0, 0, 0, 0.06));
+  border: 2px solid transparent;
+  padding: 12px 16px;
+}
+.plan-day.locked {
+  border-color: var(--accent, #4c8bf5);
+}
+.pd-day {
+  width: 52px;
+  flex: none;
+  text-align: center;
+}
+.pd-dow {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
+}
+.pd-dt {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.pd-img {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  font-size: 30px;
+  background: linear-gradient(135deg, #f3ead9, #e9dcc4);
+}
+.pd-b {
+  flex: 1;
+  min-width: 0;
+}
+.pd-t {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.pd-m {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 1px;
+}
+.plan-day .reason {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 7px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, #4c8bf5) 12%, transparent);
+  color: var(--accent, #4c8bf5);
+  font-size: 12px;
+  font-weight: 700;
+}
+.plan-day .reason svg {
+  width: 13px;
+  height: 13px;
+}
+.pd-act {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+.pd-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  border: 0;
+  background: var(--panel);
+  font-size: 17px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.pd-icon.on {
+  background: color-mix(in srgb, var(--accent, #4c8bf5) 16%, transparent);
+}
+.plan-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+  padding: 16px;
+  background: var(--card);
+  border-radius: var(--r-lg, 16px);
+  box-shadow: var(--sh-1, 0 6px 24px rgba(0, 0, 0, 0.06));
+}

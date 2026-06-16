@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Icon } from './icons'
 import { RecipeModal } from './components/RecipeModal'
+import { PlanWeek } from './components/PlanWeek'
 import { useTopbarFull } from './topbar-slot'
 import {
   api,
@@ -9,89 +10,8 @@ import {
   useRecipes,
   type Recipe,
   type WeekEntry,
-  type MealSuggestion,
 } from '../lib/api'
 import '../styles/meals.css'
-
-const VIA_LABEL: Record<string, string> = { anthropic: 'Claude', openai: 'OpenAI', ollama: 'local LLM' }
-
-// AI "Plan my week": fetch dinner suggestions for the empty days and let the user
-// accept them (each applies via the normal plan endpoint). Reuses the household's
-// chosen LLM (Settings → AI & capture); 501 means no provider is set.
-function PlanWeekModal({ startStr, onClose, onApplied }: { startStr: string; onClose: () => void; onApplied: () => void }) {
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [via, setVia] = useState('')
-  const [items, setItems] = useState<MealSuggestion[]>([])
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    let alive = true
-    api
-      .planWeek(startStr)
-      .then((r) => alive && (setItems(r.suggestions), setVia(r.via), setLoading(false)))
-      .catch((e: Error) => {
-        if (!alive) return
-        setError(/501/.test(e.message) ? 'Pick an AI provider first in Settings → AI & capture.' : 'Couldn’t plan the week — try again.')
-        setLoading(false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [startStr])
-
-  const dayLabel = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
-
-  async function apply(s: MealSuggestion) {
-    await api.planSlot(s.recipeId ? { date: s.date, mealType: 'dinner', recipeId: s.recipeId } : { date: s.date, mealType: 'dinner', title: s.title })
-    setItems((xs) => xs.filter((x) => x.date !== s.date))
-    onApplied()
-  }
-  async function applyAll() {
-    setBusy(true)
-    for (const s of items) {
-      await api.planSlot(s.recipeId ? { date: s.date, mealType: 'dinner', recipeId: s.recipeId } : { date: s.date, mealType: 'dinner', title: s.title })
-    }
-    onApplied()
-    onClose()
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
-        <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="nk-serif" style={{ fontSize: 22, fontWeight: 600, marginBottom: 4 }}>Plan my week</div>
-        <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
-          {via && VIA_LABEL[via] ? `Dinner ideas via ${VIA_LABEL[via]} — accept the ones you like` : 'Dinner ideas for the empty nights'}
-        </div>
-
-        {loading && <div className="muted" style={{ padding: 16 }}>Thinking up dinners…</div>}
-        {error && <div className="muted" style={{ padding: 16, fontWeight: 600 }}>{error}</div>}
-        {!loading && !error && items.length === 0 && (
-          <div className="muted" style={{ padding: 16, fontWeight: 600 }}>Every dinner this week is already planned. 🎉</div>
-        )}
-
-        {items.map((s) => (
-          <div key={s.date} className="set-row2">
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="set-row2-t">{s.title}{s.recipeId && <span className="tiny muted" style={{ fontWeight: 600 }}> · from your recipes</span>}</div>
-              <div className="tiny muted" style={{ fontWeight: 600 }}>{dayLabel(s.date)}{s.note ? ` · ${s.note}` : ''}</div>
-            </div>
-            <button type="button" className="pill btn-primary" onClick={() => apply(s)}>Add</button>
-          </div>
-        ))}
-
-        {!loading && !error && items.length > 0 && (
-          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-            <button type="button" className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={applyAll} disabled={busy}>
-              {busy ? 'Adding…' : `Add all ${items.length}`}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MEALS = ['breakfast', 'lunch', 'dinner', 'snack'] as const
@@ -338,6 +258,10 @@ export function Meals() {
 
   const rows: MealType[] = filter === 'dinner' ? ['dinner'] : [...MEALS]
 
+  if (planning) {
+    return <PlanWeek startStr={startStr} days={days} onClose={() => setPlanning(false)} onApplied={refetch} />
+  }
+
   if (picking) {
     return (
       <MealPicker
@@ -407,8 +331,6 @@ export function Meals() {
           />
         ))}
       </div>
-
-      {planning && <PlanWeekModal startStr={startStr} onClose={() => setPlanning(false)} onApplied={refetch} />}
     </div>
   )
 }

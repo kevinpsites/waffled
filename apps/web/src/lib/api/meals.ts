@@ -120,18 +120,31 @@ export interface RecipeStep {
   note: string | null
 }
 
-export interface MealSuggestion {
+export interface PlanCard {
   date: string
   mealType: string
   title: string
   recipeId: string | null
+  emoji: string | null
+  minutes: number | null
+  servings: number
   note: string | null
+}
+
+export interface PlanWeekRequest {
+  start: string
+  mealType?: string
+  dates?: string[]
+  cookingFor?: number | null
+  keepInMind?: string | null
+  useUp?: string[]
+  avoidTitles?: string[]
 }
 
 export const mealsApi = {
   mealsWeek: (start: string) => apiGet<{ start: string; entries: WeekEntry[] }>(`/api/meals/week?start=${start}`),
-  planWeek: (start: string) =>
-    apiSend<{ start: string; suggestions: MealSuggestion[]; via: string }>('POST', '/api/meals/plan-week', { start }),
+  planWeek: (req: PlanWeekRequest) =>
+    apiSend<{ start: string; mealType: string; suggestions: PlanCard[]; via: string }>('POST', '/api/meals/plan-week', req),
   recipes: () => apiGet<{ recipes: Recipe[] }>('/api/recipes'),
   recipe: (id: string) =>
     apiGet<{ recipe: RecipeDetail; ingredients: RecipeIngredient[]; steps: RecipeStep[] }>(`/api/recipes/${id}`),
