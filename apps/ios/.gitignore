@@ -1,0 +1,15 @@
+# XcodeGen generates this from project.yml — never commit it.
+Nook.xcodeproj/
+
+# Xcode / build artifacts
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+
+# Swift Package Manager
+.swiftpm/
+.build/
+Packages/
+Package.resolved

@@ -1,0 +1,41 @@
+# XcodeGen project definition — the source of truth for the Xcode project.
+# Edit this file (not the generated .xcodeproj), then run `xcodegen generate`.
+# See README.md. The generated Nook.xcodeproj is gitignored.
+
+name: Nook
+
+options:
+  bundleIdPrefix: ai.lorebooks
+  deploymentTarget:
+    iOS: "18.0"          # SwiftData needs 17+; we run on the iPhone 17 Pro / iOS 26.1 sim
+  developmentLanguage: en
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Swift 5 language mode for the scaffold — avoids strict-concurrency churn while
+    # we stand the app up. Bump to 6 once PowerSync wiring (Phase 1) settles.
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+targets:
+  Nook:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.lorebooks.nook
+        TARGETED_DEVICE_FAMILY: "1"          # iPhone only — this is the phone companion
+        GENERATE_INFOPLIST_FILE: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        INFOPLIST_KEY_CFBundleDisplayName: Nook
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
