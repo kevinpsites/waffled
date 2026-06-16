@@ -198,10 +198,14 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
           const recipeIds = new Set(board.meals.filter((d) => d.recipeId).map((d) => d.recipeId!))
           // One section per planned recipe (deduped — a dish planned in two slots
           // shows once), tagged with the meal type so the breakdown reads
-          // "Dinner · Tomato Pasta".
+          // "Dinner · Tomato Pasta". Grouped by meal type (Breakfast → Lunch →
+          // Dinner → Snack), then by day within each — mirrors the rail's
+          // segment order and how people shop ("everything for the dinners").
+          const ord = (t: string) => MEAL_TYPES.indexOf(t as (typeof MEAL_TYPES)[number])
+          const byMeal = [...board.meals].sort((a, b) => ord(a.mealType) - ord(b.mealType) || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
           const seen = new Set<string>()
           const perMeal: Array<{ aisle: string | null; items: GroceryBoardItem[]; mealType?: string }> = []
-          for (const d of board.meals) {
+          for (const d of byMeal) {
             if (!d.recipeId || seen.has(d.recipeId)) continue
             seen.add(d.recipeId)
             const items = activeItems.filter((i) => i.sourceRecipeIds.includes(d.recipeId!))
