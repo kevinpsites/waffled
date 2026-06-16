@@ -53,7 +53,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## M4 — Offline foundation (de-risk #1)
 - [x] 4.1 Self-hosted `powersync` service + `service.yaml`/`sync-config.yaml` (one `household` bucket scoped by the `household_id` JWT claim); logical-replication publication (4.1a); api as PowerSync token authority — JWKS + `/api/powersync/token` (4.1b); service replicating `households`+`persons`, verified healthy (4.1c). *Client sync E2E lands in 4.2.*
-- [ ] 4.2 iOS skeleton (SwiftUI) + Auth0 login + PowerSync Swift SDK syncing `members`; **demo airplane-mode read/write + reconnect**
+- [x] 4.2 iOS skeleton (SwiftUI) + PowerSync Swift SDK sync; **airplane-mode read/write + reconnect demonstrated**. `apps/ios` XcodeGen project (SwiftUI + SwiftData-for-local + PowerSync), Nook design system ported, 5-tab nav. PowerSync client mirrors `persons`/`events`/`households`/`event_participants` to on-device SQLite (schema + connector mirror the web client); `fetchCredentials` exchanges the session token at `/api/powersync/token`; `uploadData` drains queued writes to `/api/powersync/crud`. **Verified E2E on the iPhone 17 Pro sim against the live stack:** family renders from local SQLite, an event created on-device round-tripped to Postgres, offline read kept working with the backend stopped, an offline write queued and then **drained on reconnect**. Auth via local HS256 dev token (Auth0 login split out to 4.2.1). *Tooling note: pinned to a locally-patched PowerSync 1.14.3 — the released SDK's `weak let` doesn't compile under Xcode 26.1 / Swift 6.2; revert once upstream fixes it.*
+- [ ] 4.2.1 iOS **Auth0 login** (Sign in with Apple + Google) replaces the dev token; the minted JWT keeps the same `household_id` claim shape, so PowerSync sync rules are unchanged. Depends on Terraform Auth0 (1.3).
 
 ## M5 — Calendar (de-risk #2, the core tenet)
 **Part 1 (Nook-native, no Google) — done:** `events` migration, events api (create + today
