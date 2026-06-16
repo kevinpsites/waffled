@@ -278,23 +278,42 @@
 
 /* ===== Plan my week (full-screen) ===== */
 .plan-screen {
-  display: grid;
-  grid-template-columns: 360px 1fr;
-  gap: 24px;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   overflow: hidden;
+  padding: 6px 30px 0;
+}
+.plan-header {
+  margin-bottom: 18px;
+}
+.plan-title {
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.plan-header .tiny {
+  margin-top: 6px;
+  max-width: 520px;
+}
+.plan-body {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 36px;
+  align-items: start;
+  flex: 1;
+  min-height: 0;
 }
 .plan-config {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
   overflow-y: auto;
   max-height: 100%;
-  padding-right: 4px;
+  padding: 2px 6px 24px 2px;
 }
 .plan-config .flabel {
-  margin: 8px 2px 0;
+  margin: 6px 2px 0;
 }
 .seg-plantype {
   width: 100%;
@@ -323,10 +342,10 @@
   background: var(--card);
   border-radius: var(--r-lg, 16px);
   box-shadow: var(--sh-1, 0 6px 24px rgba(0, 0, 0, 0.06));
-  padding: 14px 16px;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 .plan-card .tiny {
   font-weight: 700;
@@ -391,7 +410,7 @@
   flex-direction: column;
   overflow-y: auto;
   max-height: 100%;
-  padding-right: 4px;
+  padding: 2px 4px 24px 0;
 }
 .plan-results-head {
   display: flex;

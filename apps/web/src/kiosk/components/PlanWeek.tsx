@@ -45,13 +45,10 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
 
   useTopbarFull(
     () => (
-      <>
-        <div className="pill" onClick={onClose} style={{ padding: '9px 14px 9px 11px', cursor: 'pointer' }}>
-          <Icon name="cl" />
-          Meals
-        </div>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginLeft: 14 }}>Plan my week</div>
-      </>
+      <div className="pill" onClick={onClose} style={{ padding: '9px 14px 9px 11px', cursor: 'pointer' }}>
+        <Icon name="cl" />
+        Meals
+      </div>
     ),
     []
   )
@@ -143,11 +140,15 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
 
   return (
     <div className="plan-screen">
-      {/* Left: the guardrails */}
-      <div className="plan-config">
+      <div className="plan-header">
+        <div className="plan-title nk-serif">Plan my week</div>
         <div className="tiny muted">Tell Nook the guardrails — it drafts the meals and the grocery list in one go.</div>
+      </div>
 
-        <div className="flabel">Plan which meal?</div>
+      <div className="plan-body">
+        {/* Left: the guardrails */}
+        <div className="plan-config">
+          <div className="flabel">Plan which meal?</div>
         <div className="seg seg-plantype">
           {MEAL_TYPES.map((m) => (
             <button key={m} type="button" className={mealType === m ? 'on' : ''} onClick={() => setMealType(m)}>{MEAL_LABEL[m]}</button>
@@ -260,6 +261,7 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
             </button>
           </div>
         )}
+        </div>
       </div>
     </div>
   )
