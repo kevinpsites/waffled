@@ -45,14 +45,25 @@ export function RecipeBrowser({
 }) {
   const browse = !onPick
   const [filter, setFilter] = useState<'all' | MealType>(browse ? 'all' : slot ?? 'dinner')
+  const [q, setQ] = useState('')
   const [preview, setPreview] = useState<Recipe | null>(null)
-  // 'all' shows everything; a meal filter shows recipes tagged with it (or untagged,
-  // which fit any slot).
-  const shown = filter === 'all' ? recipes : recipes.filter((r) => !r.category || r.category.toLowerCase() === filter)
+  const query = q.trim().toLowerCase()
+  // Free-text search across title + metadata, then the meal-type filter chip.
+  const matchesQuery = (r: Recipe) =>
+    !query ||
+    [r.title, r.cuisine, r.protein, r.base, r.cookMethod, r.category, ...(r.tags ?? []), ...(r.vegetables ?? []), ...(r.dietary ?? []), r.collection]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(query)
+  const shown = recipes.filter((r) => (filter === 'all' || !r.category || r.category.toLowerCase() === filter) && matchesQuery(r))
   const FILTERS: Array<'all' | MealType> = ['all', ...MEALS]
 
   return (
     <div className="meals-picker">
+      <div className="picker-search">
+        <input className="cal-search" placeholder="Search recipes by name, cuisine, ingredient…" value={q} onChange={(e) => setQ(e.target.value)} />
+      </div>
       <div className="picker-filters">
         {FILTERS.map((f) => (
           <div key={f} className={`mp-filter tag ${f === filter ? 'on' : ''}`} onClick={() => setFilter(f)} role="button" tabIndex={0}>

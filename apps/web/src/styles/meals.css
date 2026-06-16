@@ -186,13 +186,17 @@
 
 .picker-grid {
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   grid-auto-rows: min-content;
   gap: 16px;
   align-content: start;
   padding: 0 30px 24px;
+}
+.picker-search {
+  padding: 0 30px 10px;
+  display: flex;
 }
 .picker-filters {
   padding: 0 30px 12px;
