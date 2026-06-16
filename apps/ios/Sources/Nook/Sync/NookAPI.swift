@@ -191,6 +191,24 @@ struct NookAPI: Sendable {
         return try await getJSON("/api/family/overview", as: Resp.self).people
     }
 
+    // MARK: Lists screen (interactive grocery)
+
+    /// The full grocery list (name + quantity + checked) for the Lists destination.
+    func groceryList() async throws -> [GroceryListItem] {
+        struct Resp: Decodable { let items: [GroceryListItem] }
+        return try await getJSON("/api/lists/grocery", as: Resp.self).items
+    }
+
+    /// Check / uncheck a list item.
+    func setListItemChecked(id: String, checked: Bool) async throws {
+        try await send("PATCH", "/api/list-items/\(id)", body: ["checked": .bool(checked)])
+    }
+
+    /// Remove a list item.
+    func deleteListItem(id: String) async throws {
+        try await delete("/api/list-items/\(id)")
+    }
+
     /// Forward a batch of queued local writes to the server's CRUD sink.
     func uploadCrud(_ ops: [CrudOpDTO]) async throws {
         var req = URLRequest(url: url("/api/powersync/crud"))
@@ -223,6 +241,15 @@ struct NookAPI: Sendable {
         let (data, resp) = try await URLSession.shared.data(for: req)
         try check(resp, data)
         return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    /// DELETE `path`, throwing on non-2xx (204 is success).
+    private func delete(_ path: String) async throws {
+        var req = URLRequest(url: url(path))
+        req.httpMethod = "DELETE"
+        authorize(&req)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(resp, data)
     }
 
     private func url(_ path: String) -> URL {

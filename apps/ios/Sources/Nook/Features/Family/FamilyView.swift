@@ -6,11 +6,19 @@ import SwiftUI
 struct FamilyView: View {
     @Environment(SyncManager.self) private var sync
     @State private var hub = FamilyHubModel()
+    @State private var path: [HubRoute] = []
     @State private var showSync = false
     @State private var ranDemo = false
     private let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
     var body: some View {
+        NavigationStack(path: $path) {
+            hubContent
+                .navigationDestination(for: HubRoute.self, destination: destination)
+        }
+    }
+
+    private var hubContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 8) {
@@ -41,27 +49,53 @@ struct FamilyView: View {
 
                 SectionLabel(text: "Everything else").padding(.bottom, 11)
                 LazyVGrid(columns: cols, spacing: 12) {
-                    tile("✅", "Chores", hub.choresSubtitle, FamilyColor.wally.tint)
-                    tile("🎯", "Goals", hub.goalsSubtitle, Color(hex: 0xE8F0E4))
-                    tile("⭐", "Rewards", hub.rewardsSubtitle, Color(hex: 0xFDF0D6))
-                    tile("📋", "Lists", hub.listsSubtitle, FamilyColor.kevin.tint)
-                    tile("📷", "Photos", hub.photosSubtitle, Color(hex: 0xDFF0EF))
-                    tile("⚙️", "Settings", "People, calendars, AI", NK.panel)
+                    tile("✅", "Chores", hub.choresSubtitle, FamilyColor.wally.tint, .chores)
+                    tile("🎯", "Goals", hub.goalsSubtitle, Color(hex: 0xE8F0E4), .goals)
+                    tile("⭐", "Rewards", hub.rewardsSubtitle, Color(hex: 0xFDF0D6), .rewards)
+                    tile("📋", "Lists", hub.listsSubtitle, FamilyColor.kevin.tint, .lists)
+                    tile("📷", "Photos", hub.photosSubtitle, Color(hex: 0xDFF0EF), .photos)
+                    tile("⚙️", "Settings", "People, calendars, AI", NK.panel, .settings)
                 }
             }
             .padding(.horizontal, 18)
             .padding(.bottom, 110)
         }
         .background(NK.canvas)
+        .toolbar(.hidden, for: .navigationBar)   // the screen draws its own "Family" header
         .refreshable { await hub.load() }
         .task { await hub.load() }
         .sheet(isPresented: $showSync) { SyncStatusView() }
         .onAppear(perform: runDemoHooksIfSet)
     }
 
+    private static func route(for name: String) -> HubRoute? {
+        switch name {
+        case "chores": return .chores
+        case "goals": return .goals
+        case "rewards": return .rewards
+        case "lists": return .lists
+        case "photos": return .photos
+        case "settings": return .settings
+        default: return nil
+        }
+    }
+
+    /// Tile destinations: Lists is built out; the rest are live-summary placeholders.
+    @ViewBuilder private func destination(_ route: HubRoute) -> some View {
+        switch route {
+        case .lists:    ListsView()
+        case .chores:   HubPlaceholder(emoji: "✅", title: "Chores", summary: hub.choresSubtitle)
+        case .goals:    HubPlaceholder(emoji: "🎯", title: "Goals", summary: hub.goalsSubtitle)
+        case .rewards:  HubPlaceholder(emoji: "⭐", title: "Rewards", summary: hub.rewardsSubtitle)
+        case .photos:   HubPlaceholder(emoji: "📷", title: "Photos", summary: hub.photosSubtitle)
+        case .settings: HubPlaceholder(emoji: "⚙️", title: "Settings", summary: "People, calendars, AI")
+        }
+    }
+
     /// Headless demo driver (no-op unless NOOK_* env is set) — see DemoHooks.
     private func runDemoHooksIfSet() {
         if DemoHooks.openSync { showSync = true }
+        if let hub = DemoHooks.openHub, let route = Self.route(for: hub) { path = [route] }
         guard DemoHooks.addEvent, !ranDemo else { return }
         ranDemo = true
         Task {
@@ -130,22 +164,25 @@ struct FamilyView: View {
         }
     }
 
-    private func tile(_ emoji: String, _ name: String, _ sub: String, _ accent: Color) -> some View {
-        NookCard(padding: 15) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top) {
-                    Text(emoji).font(.system(size: 21))
-                        .frame(width: 42, height: 42)
-                        .background(accent)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    Spacer()
-                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(NK.ink3)
+    private func tile(_ emoji: String, _ name: String, _ sub: String, _ accent: Color, _ route: HubRoute) -> some View {
+        NavigationLink(value: route) {
+            NookCard(padding: 15) {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(alignment: .top) {
+                        Text(emoji).font(.system(size: 21))
+                            .frame(width: 42, height: 42)
+                            .background(accent)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(NK.ink3)
+                    }
+                    Text(name).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink).padding(.top, 11)
+                    Text(sub).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink3).padding(.top, 2)
                 }
-                Text(name).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink).padding(.top, 11)
-                Text(sub).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink3).padding(.top, 2)
             }
         }
+        .buttonStyle(.plain)
     }
 }
 
