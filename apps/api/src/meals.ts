@@ -468,6 +468,7 @@ export async function planWeek(tenant: Tenant, input: PlanWeekInput): Promise<{ 
     schema: PLAN_WEEK_SCHEMA,
     schemaName: 'meal_plan',
     maxTokens: 1200,
+    timeoutMs: 120_000, // multi-dish draft on a local model can be slow (cold load)
   })
 
   const rawList = ((data as { suggestions?: unknown[] })?.suggestions ?? []) as Array<Record<string, unknown>>
@@ -680,7 +681,15 @@ export function registerMealRoutes(api: Api): void {
         avoidTitles,
       })
     } catch (err) {
-      return res.status(501).json({ error: 'AIUnavailable', message: (err as Error).message })
+      const message = (err as Error).message
+      // No provider chosen / missing creds → 501 (UI: "pick a provider"). Runtime
+      // failures (timeout, network, bad JSON) → 200 with a readable error so the UI
+      // can show what actually went wrong instead of "pick a provider".
+      if (/no ai provider|not configured/i.test(message)) {
+        return res.status(501).json({ error: 'AIUnavailable', message })
+      }
+      const mealType = typeof b.mealType === 'string' ? b.mealType : 'dinner'
+      return { start, mealType, suggestions: [], via: 'none', error: message }
     }
   })
 }

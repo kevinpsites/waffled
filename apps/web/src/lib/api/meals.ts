@@ -144,7 +144,7 @@ export interface PlanWeekRequest {
 export const mealsApi = {
   mealsWeek: (start: string) => apiGet<{ start: string; entries: WeekEntry[] }>(`/api/meals/week?start=${start}`),
   planWeek: (req: PlanWeekRequest) =>
-    apiSend<{ start: string; mealType: string; suggestions: PlanCard[]; via: string }>('POST', '/api/meals/plan-week', req),
+    apiSend<{ start: string; mealType: string; suggestions: PlanCard[]; via: string; error?: string }>('POST', '/api/meals/plan-week', req),
   recipes: () => apiGet<{ recipes: Recipe[] }>('/api/recipes'),
   recipe: (id: string) =>
     apiGet<{ recipe: RecipeDetail; ingredients: RecipeIngredient[]; steps: RecipeStep[] }>(`/api/recipes/${id}`),

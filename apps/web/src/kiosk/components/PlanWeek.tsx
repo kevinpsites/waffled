@@ -8,6 +8,12 @@ const MEAL_TYPES = ['breakfast', 'lunch', 'dinner'] as const
 const MEAL_LABEL: Record<string, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner' }
 const VIA_LABEL: Record<string, string> = { anthropic: 'Claude', openai: 'OpenAI', ollama: 'local LLM' }
 
+function friendlyAiError(msg: string): string {
+  if (/no ai provider|not configured/i.test(msg)) return 'Pick an AI provider in Settings → AI & capture first.'
+  if (/abort|timeout|timed out|ETIMEDOUT/i.test(msg)) return 'The model took too long — try fewer days, or switch to a faster provider in Settings.'
+  return 'Couldn’t draft the week — please try again.'
+}
+
 function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
@@ -64,13 +70,17 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
         useUp,
         avoidTitles: avoid,
       })
+      if (r.error) {
+        setError(friendlyAiError(r.error))
+        return
+      }
       setVia(r.via)
       setCards((prev) => {
         const kept = prev.filter((c) => !dates.includes(c.date)) // keep cards we didn't redraft
         return [...kept, ...r.suggestions].sort((a, b) => (a.date < b.date ? -1 : 1))
       })
     } catch (e) {
-      setError(/501/.test((e as Error).message) ? 'Pick an AI provider in Settings → AI & capture first.' : 'Couldn’t draft the week — try again.')
+      setError(friendlyAiError((e as Error).message))
     } finally {
       setLoading(false)
     }

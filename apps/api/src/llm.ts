@@ -53,9 +53,9 @@ export async function setAiConfig(householdId: string, provider: Provider, model
 }
 
 // ── Generic JSON completion across providers ─────────────────────────────────
-async function fetchJson(url: string, init: RequestInit): Promise<unknown> {
+async function fetchJson(url: string, init: RequestInit, timeoutMs: number): Promise<unknown> {
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
     const res = await fetch(url, { ...init, signal: ctrl.signal })
     if (!res.ok) throw new Error(`${url} -> ${res.status} ${await res.text().catch(() => '')}`)
@@ -71,6 +71,9 @@ export interface LlmJsonRequest {
   schema: object // JSON schema the response must match
   schemaName?: string
   maxTokens?: number
+  // Per-call timeout. Heavier tasks (multi-item drafts on a local model) need
+  // more than the default; defaults to AI_TIMEOUT_MS / 30s.
+  timeoutMs?: number
 }
 
 async function anthropicJson(req: LlmJsonRequest, model: string): Promise<unknown> {
@@ -91,7 +94,7 @@ async function anthropicJson(req: LlmJsonRequest, model: string): Promise<unknow
       tool_choice: { type: 'tool', name },
       messages: [{ role: 'user', content: req.user }],
     }),
-  })) as { content?: Array<{ type: string; input?: unknown }> }
+  }, req.timeoutMs ?? TIMEOUT_MS)) as { content?: Array<{ type: string; input?: unknown }> }
   const tool = data.content?.find((c) => c.type === 'tool_use')
   if (!tool?.input) throw new Error('anthropic: no tool_use in response')
   return tool.input
@@ -114,7 +117,7 @@ async function openaiJson(req: LlmJsonRequest, model: string): Promise<unknown> 
         json_schema: { name: req.schemaName ?? 'response', schema: req.schema, strict: false },
       },
     }),
-  })) as { choices?: Array<{ message?: { content?: string } }> }
+  }, req.timeoutMs ?? TIMEOUT_MS)) as { choices?: Array<{ message?: { content?: string } }> }
   const content = data.choices?.[0]?.message?.content
   if (!content) throw new Error('openai: empty response')
   return JSON.parse(content)
@@ -136,7 +139,7 @@ async function ollamaJson(req: LlmJsonRequest, model: string): Promise<unknown> 
         { role: 'user', content: req.user },
       ],
     }),
-  })) as { message?: { content?: string } }
+  }, req.timeoutMs ?? TIMEOUT_MS)) as { message?: { content?: string } }
   const content = data.message?.content
   if (!content) throw new Error('ollama: empty response')
   return JSON.parse(content)
