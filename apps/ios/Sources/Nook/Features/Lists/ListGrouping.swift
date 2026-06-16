@@ -8,6 +8,26 @@ struct ListSectionGroup: Identifiable {
     var id: String { title ?? "__none__" }
 }
 
+enum MealGrouping {
+    /// Group items under the first meal (by date) whose recipe needs them; anything
+    /// meal-less falls into a trailing "Staples & extras" group (meal == nil). Each
+    /// item appears once.
+    static func sections(items: [NookAPI.ListItemDTO], meals: [NookAPI.GroceryBoardDTO.Meal]) -> [MealGroup] {
+        var groups: [MealGroup] = []
+        var used = Set<String>()
+        for m in meals.sorted(by: { $0.date < $1.date }) {
+            guard let rid = m.recipeId else { continue }
+            let its = items.filter { !used.contains($0.id) && ($0.sourceRecipeIds ?? []).contains(rid) }
+            guard !its.isEmpty else { continue }
+            its.forEach { used.insert($0.id) }
+            groups.append(MealGroup(meal: m, items: its))
+        }
+        let extras = items.filter { !used.contains($0.id) }
+        if !extras.isEmpty { groups.append(MealGroup(meal: nil, items: extras)) }
+        return groups
+    }
+}
+
 enum ListGrouping {
     /// Group items by their section in a *stable* order (independent of item order,
     /// so editing an item's section never reshuffles the headers). Sections in

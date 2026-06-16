@@ -60,4 +60,6 @@ enum DemoHooks {
     static var openList: String? { AppConfig.env("NOOK_OPEN_LIST") }
     /// With openList set, auto-present the first item's Details editor (verification).
     static var openDetails: Bool { AppConfig.env("NOOK_OPEN_DETAILS") == "1" }
+    /// Initial grocery board mode for verification: "meal" switches to By meal.
+    static var groceryMode: String? { AppConfig.env("NOOK_GROCERY_MODE") }
 }

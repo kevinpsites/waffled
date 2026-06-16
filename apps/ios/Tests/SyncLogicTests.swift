@@ -266,6 +266,40 @@ private final class Counter { var n = 0 }
     }
 }
 
+@Suite struct MealGroupingTests {
+    private func gItem(_ id: String, recipes: [String]) -> NookAPI.ListItemDTO {
+        NookAPI.ListItemDTO(id: id, name: id, quantity: nil, checked: false, section: nil,
+                            assignee: nil, aisle: nil, sourceRecipeIds: recipes)
+    }
+    private func meal(_ recipeId: String?, _ title: String, date: String) -> NookAPI.GroceryBoardDTO.Meal {
+        .init(recipeId: recipeId, title: title, emoji: nil, color: "#000000", date: date)
+    }
+
+    @Test func groupsItemsUnderTheirMealInDateOrder() {
+        let meals = [meal("r2", "Tue", date: "2026-06-16"), meal("r1", "Mon", date: "2026-06-15")]
+        let items = [gItem("a", recipes: ["r1"]), gItem("b", recipes: ["r2"]), gItem("c", recipes: ["r1"])]
+        let groups = MealGrouping.sections(items: items, meals: meals)
+        #expect(groups.map { $0.meal?.title } == ["Mon", "Tue"])   // sorted by date
+        #expect(groups[0].items.map(\.id) == ["a", "c"])
+        #expect(groups[1].items.map(\.id) == ["b"])
+    }
+
+    @Test func sharedItemAppearsOnceUnderFirstMeal() {
+        let meals = [meal("r1", "Mon", date: "2026-06-15"), meal("r2", "Tue", date: "2026-06-16")]
+        let groups = MealGrouping.sections(items: [gItem("shared", recipes: ["r1", "r2"])], meals: meals)
+        #expect(groups.count == 1)
+        #expect(groups[0].meal?.title == "Mon")
+    }
+
+    @Test func mealLessItemsGoToTrailingExtrasGroup() {
+        let meals = [meal("r1", "Mon", date: "2026-06-15")]
+        let items = [gItem("milk", recipes: []), gItem("basil", recipes: ["r1"])]
+        let groups = MealGrouping.sections(items: items, meals: meals)
+        #expect(groups.map { $0.meal?.title } == ["Mon", nil])   // extras (nil meal) last
+        #expect(groups.last?.items.map(\.id) == ["milk"])
+    }
+}
+
 @Suite struct CaptureIntentTests {
     private func decode(_ json: String) throws -> CaptureIntent {
         try JSONDecoder().decode(CaptureIntent.self, from: Data(json.utf8))

@@ -1,6 +1,17 @@
 import SwiftUI
 import Observation
 
+/// Grocery board view modes.
+enum GroceryViewMode: Hashable { case aisle, meal }
+
+/// A run of items under one meal in "By meal" mode (`meal == nil` is the trailing
+/// "Staples & extras" group).
+struct MealGroup: Identifiable {
+    let meal: NookAPI.GroceryBoardDTO.Meal?
+    let items: [NookAPI.ListItemDTO]
+    var id: String { meal?.id ?? "__extras__" }
+}
+
 /// One list's items — works for any list (Grocery included). Tapping the circle
 /// toggles done; tapping the row edits it inline (name + a quantity field on the
 /// right). Swipe to delete. Items group by section (aisle for grocery). A checked
@@ -16,8 +27,12 @@ final class ListDetailModel {
     private(set) var loading = true
     private(set) var error = false
 
+    /// This week's meals (grocery board only) — drive the meal grouping + dots.
+    private(set) var meals: [NookAPI.GroceryBoardDTO.Meal] = []
+
     private let api = NookAPI()
-    private var isGrocery: Bool { list.listType.lowercased() == "grocery" }
+    /// Grocery gets the richer board (aisle/meal toggle + meal dots).
+    var isGrocery: Bool { list.listType.lowercased() == "grocery" }
 
     init(list: NookAPI.ListSummary) { self.list = list }
 
@@ -25,12 +40,28 @@ final class ListDetailModel {
     static let groceryAisles = ["Produce", "Pantry", "Dairy & Chilled", "Meat & Seafood", "Bakery", "Frozen", "Other"]
 
     /// Active items: unchecked, plus just-checked ones that haven't settled yet.
-    var activeSections: [ListSectionGroup] {
-        ListGrouping.sections(
-            items.filter { !$0.checked || settling.contains($0.id) },
-            preferredOrder: isGrocery ? Self.groceryAisles : []
-        )
+    private var activeItems: [NookAPI.ListItemDTO] {
+        items.filter { !$0.checked || settling.contains($0.id) }
     }
+
+    /// "By aisle" grouping (also used for non-grocery lists).
+    var activeSections: [ListSectionGroup] {
+        ListGrouping.sections(activeItems, preferredOrder: isGrocery ? Self.groceryAisles : [])
+    }
+
+    /// "By meal" grouping: each active item under its first matching dinner (by
+    /// date), with a trailing "Staples & extras" group for anything meal-less.
+    func mealSections() -> [MealGroup] {
+        MealGrouping.sections(items: activeItems, meals: meals)
+    }
+
+    /// The meal colors for an item's meal dots.
+    func dotColors(for item: NookAPI.ListItemDTO) -> [String] {
+        let ids = Set(item.sourceRecipeIds ?? [])
+        guard !ids.isEmpty else { return [] }
+        return meals.compactMap { m in m.recipeId.flatMap { ids.contains($0) ? m.color : nil } }
+    }
+
     /// Settled, checked items — shown in the collapsed Completed section.
     var completed: [NookAPI.ListItemDTO] { items.filter { $0.checked && !settling.contains($0.id) } }
 
@@ -38,7 +69,13 @@ final class ListDetailModel {
         loading = true
         settling = []
         do {
-            items = try await api.listItems(listId: list.id)
+            if isGrocery {
+                let board = try await api.groceryBoard()
+                meals = board.meals
+                items = board.items.map { var i = $0; if i.section == nil { i.section = i.aisle }; return i }
+            } else {
+                items = try await api.listItems(listId: list.id)
+            }
             error = false
         } catch {
             self.error = true
@@ -156,6 +193,7 @@ struct ListDetailView: View {
     @State private var showCompleted = false
     @State private var detailItem: NookAPI.ListItemDTO?
     @State private var didAutoDetails = false
+    @State private var mode: GroceryViewMode = .aisle
     @FocusState private var focus: Field?
 
     private enum Field: Hashable { case add, editName, editQty }
@@ -171,21 +209,31 @@ struct ListDetailView: View {
                     .font(.system(size: 14)).foregroundStyle(NK.ink3)
                     .listRowSeparator(.hidden).listRowBackground(Color.clear)
             }
-            ForEach(model.activeSections) { group in
-                Section {
-                    ForEach(group.items) { item in itemRow(item) }
-                } header: { sectionHeader(group.title) }
+            if model.isGrocery && mode == .meal {
+                ForEach(model.mealSections()) { group in
+                    Section {
+                        ForEach(group.items) { item in itemRow(item) }
+                    } header: { mealHeader(group.meal) }
+                }
+            } else {
+                ForEach(model.activeSections) { group in
+                    Section {
+                        ForEach(group.items) { item in itemRow(item) }
+                    } header: { sectionHeader(group.title) }
+                }
             }
             completedSection
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(NK.canvas)
+        .safeAreaInset(edge: .top, spacing: 0) { modeToggle }
         .safeAreaInset(edge: .bottom, spacing: 0) { addBar }
         .navigationTitle(model.list.name)
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await model.load()
+            if DemoHooks.groceryMode == "meal" { mode = .meal }
             if DemoHooks.openDetails, !didAutoDetails, let first = model.items.first {
                 didAutoDetails = true
                 detailItem = first
@@ -235,6 +283,46 @@ struct ListDetailView: View {
             Text(title.uppercased())
                 .font(.system(size: 11, weight: .heavy)).tracking(0.5)
                 .foregroundStyle(NK.ink3)
+        }
+    }
+
+    /// Grocery-only By aisle / By meal segmented control, pinned below the nav bar.
+    @ViewBuilder private var modeToggle: some View {
+        if model.isGrocery {
+            Picker("View", selection: $mode.animation()) {
+                Text("By aisle").tag(GroceryViewMode.aisle)
+                Text("By meal").tag(GroceryViewMode.meal)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 8)
+            .background(NK.canvas)
+        }
+    }
+
+    /// "By meal" section header — the meal's color dot + title (or Staples).
+    @ViewBuilder private func mealHeader(_ meal: NookAPI.GroceryBoardDTO.Meal?) -> some View {
+        HStack(spacing: 7) {
+            if let meal {
+                Circle().fill(Color(hexString: meal.color) ?? NK.ink3).frame(width: 9, height: 9)
+                Text("\(meal.emoji ?? "🍽️")  \(meal.title ?? "Meal")".uppercased())
+                    .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+            } else {
+                Text("STAPLES & EXTRAS").font(.system(size: 11, weight: .heavy)).tracking(0.5)
+            }
+            Spacer()
+        }
+        .foregroundStyle(NK.ink3)
+    }
+
+    /// Colored dots showing which dinners need this item (grocery board).
+    @ViewBuilder private func mealDots(for item: NookAPI.ListItemDTO) -> some View {
+        let colors = model.dotColors(for: item)
+        if !colors.isEmpty {
+            HStack(spacing: 3) {
+                ForEach(Array(colors.prefix(4).enumerated()), id: \.offset) { _, hex in
+                    Circle().fill(Color(hexString: hex) ?? NK.ink3).frame(width: 7, height: 7)
+                }
+            }
         }
     }
 
@@ -299,6 +387,7 @@ struct ListDetailView: View {
                             .strikethrough(item.checked, color: NK.ink3)
                             .foregroundStyle(item.checked ? NK.ink3 : NK.ink)
                         Spacer(minLength: 8)
+                        mealDots(for: item)
                         if let q = item.quantity, !q.isEmpty {
                             Text(q).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
                         }

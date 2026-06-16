@@ -205,6 +205,8 @@ struct NookAPI: Sendable {
     }
 
     /// One row in a list detail — section (aisle for grocery), quantity, assignee.
+    /// The grocery *board* endpoint also fills `aisle` and `sourceRecipeIds` (which
+    /// dinners need this item); the plain list endpoint leaves them nil.
     struct ListItemDTO: Decodable, Identifiable, Sendable {
         let id: String
         var name: String
@@ -212,11 +214,33 @@ struct NookAPI: Sendable {
         var checked: Bool
         var section: String?
         var assignee: Assignee?
+        var aisle: String?
+        var sourceRecipeIds: [String]?
         struct Assignee: Decodable, Sendable {
             let name: String?
             let avatarEmoji: String?
             let colorHex: String?
         }
+    }
+
+    /// The grocery board: items tagged with aisle + the meals that need them, plus
+    /// this week's meals (each with a color used for the per-item meal dots).
+    struct GroceryBoardDTO: Decodable, Sendable {
+        let meals: [Meal]
+        let items: [ListItemDTO]
+        struct Meal: Decodable, Sendable, Identifiable {
+            let recipeId: String?
+            let title: String?
+            let emoji: String?
+            let color: String
+            let date: String
+            var id: String { recipeId ?? date }
+        }
+    }
+
+    /// The grocery board (aisle groupings + meal dots + this week's dinners).
+    func groceryBoard() async throws -> GroceryBoardDTO {
+        try await getJSON("/api/lists/grocery/board", as: GroceryBoardDTO.self)
     }
 
     /// All lists in the household (for the Lists index).
