@@ -65,6 +65,35 @@
   font-weight: 700;
 }
 
+/* meal-type badge on by-meal section headers */
+.meal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink-2);
+}
+.meal-badge.mt-breakfast { background: #fdf0d5; color: #9a6b00; }
+.meal-badge.mt-lunch { background: #e6f4ea; color: #1c7a44; }
+.meal-badge.mt-dinner { background: #e8f0fe; color: #1f5fd0; }
+.meal-badge.mt-snack { background: #fce8f3; color: #b83280; }
+
+/* rail meal-type selector */
+.rail-seg {
+  display: flex;
+  width: 100%;
+}
+.rail-seg button {
+  flex: 1;
+  cursor: pointer;
+}
+
 .gitem {
   display: flex;
   align-items: center;

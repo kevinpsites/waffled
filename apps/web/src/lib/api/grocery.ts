@@ -107,8 +107,9 @@ export const groceryApi = {
   removeStaple: (id: string) => apiDelete(`/api/pantry-staples/${id}`).then(tap('grocery')),
 }
 
-export interface GroceryDinner {
+export interface GroceryMeal {
   date: string
+  mealType: string
   recipeId: string | null
   title: string | null
   emoji: string | null
@@ -126,7 +127,7 @@ export interface GroceryBoardItem extends ListItem {
 export interface GroceryBoard {
   list: ListSummary
   weekStart: string
-  dinners: GroceryDinner[]
+  meals: GroceryMeal[]
   items: GroceryBoardItem[]
   staples: PantryStaple[]
 }

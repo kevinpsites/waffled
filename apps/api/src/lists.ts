@@ -385,16 +385,17 @@ function isoAddDays(iso: string, n: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-// Rebuild the auto portion of the grocery list from a week's planned dinners:
-// gather ingredients, drop staples, aggregate same-name (sum same-unit amounts),
-// tag each with the source recipes (for the per-meal dots), set the aisle.
+// Rebuild the auto portion of the grocery list from a week's planned meals
+// (breakfast, lunch, dinner, snack): gather ingredients, drop staples, aggregate
+// same-name (sum same-unit amounts), tag each with source recipes (per-meal
+// dots), set the aisle.
 export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string): Promise<number> {
   const list = await getOrCreateGroceryList(tenant)
   const weekEnd = isoAddDays(weekStart, 6)
   const dinners = await query<{ recipe_id: string; overrides: unknown }>(
     `select distinct e.recipe_id, r.overrides from meal_plan_entries e
        join recipes r on r.id = e.recipe_id and r.deleted_at is null
-      where e.household_id=$1 and e.meal_type='dinner' and e.recipe_id is not null
+      where e.household_id=$1 and e.recipe_id is not null
         and e.deleted_at is null and e.date >= $2 and e.date <= $3`,
     [tenant.householdId, weekStart, weekEnd]
   )
@@ -451,27 +452,37 @@ export async function rebuildGroceryFromWeek(tenant: Tenant, weekStart: string):
 }
 
 const DINNER_COLORS = ['#2F7FED', '#EC6049', '#8B5CF6', '#E0A500', '#25A368', '#EC4899', '#14B8A6']
+const MEAL_ORDER: Record<string, number> = { breakfast: 0, lunch: 1, dinner: 2, snack: 3 }
 
-// The grocery "board": the list items + this week's dinners (with a color each,
-// so items can show per-meal dots) + the pantry staples. Powers the grocery view.
+// The grocery "board": the list items + this week's planned meals (each with a
+// color, so items can show per-meal dots) + the pantry staples. Powers the
+// grocery view. Colors are stable per recipe so a dish keeps one dot color even
+// when it's planned in more than one slot.
 export async function groceryBoard(tenant: Tenant, weekStart: string) {
   const list = await getOrCreateGroceryList(tenant)
   const weekEnd = isoAddDays(weekStart, 6)
-  const dinnerRows = await query<{ date: string; recipe_id: string; title: string | null; emoji: string | null }>(
-    `select e.date, e.recipe_id, coalesce(r.title, e.title) as title, r.emoji
+  const mealRows = await query<{ date: string; meal_type: string; recipe_id: string | null; title: string | null; emoji: string | null }>(
+    `select e.date, e.meal_type, e.recipe_id, coalesce(r.title, e.title) as title, r.emoji
        from meal_plan_entries e left join recipes r on r.id = e.recipe_id and r.deleted_at is null
-      where e.household_id=$1 and e.meal_type='dinner' and e.deleted_at is null
+      where e.household_id=$1 and e.deleted_at is null
         and e.date >= $2 and e.date <= $3
       order by e.date`,
     [tenant.householdId, weekStart, weekEnd]
   )
-  const dinners = dinnerRows.rows.map((d, i) => ({
-    date: d.date,
-    recipeId: d.recipe_id,
-    title: d.title,
-    emoji: d.emoji,
-    color: DINNER_COLORS[i % DINNER_COLORS.length],
-  }))
+  const colorByRecipe = new Map<string, string>()
+  let nextColor = 0
+  const meals = mealRows.rows
+    .map((d) => {
+      let color: string
+      if (d.recipe_id) {
+        if (!colorByRecipe.has(d.recipe_id)) colorByRecipe.set(d.recipe_id, DINNER_COLORS[nextColor++ % DINNER_COLORS.length])
+        color = colorByRecipe.get(d.recipe_id)!
+      } else {
+        color = DINNER_COLORS[nextColor++ % DINNER_COLORS.length]
+      }
+      return { date: d.date, mealType: d.meal_type, recipeId: d.recipe_id, title: d.title, emoji: d.emoji, color }
+    })
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (MEAL_ORDER[a.mealType] ?? 9) - (MEAL_ORDER[b.mealType] ?? 9)))
 
   const itemRows = await query<ListItemRow & { source: string; source_recipe_ids: string[] | null }>(
     `select li.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color
@@ -492,7 +503,7 @@ export async function groceryBoard(tenant: Tenant, weekStart: string) {
   return {
     list: presentList(list),
     weekStart,
-    dinners,
+    meals,
     items,
     staples: await listPantryStaples(tenant.householdId),
   }

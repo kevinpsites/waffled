@@ -26,6 +26,10 @@ const CHECK = (
 // collapsible "Completed" section, so the active list keeps itself tidy.
 const COMPLETE_GRACE_MS = 2000
 
+const MEAL_LABEL: Record<string, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' }
+const MEAL_EMOJI: Record<string, string> = { breakfast: '🍳', lunch: '🥪', dinner: '🍽️', snack: '🍎' }
+const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const
+
 function ItemRow({
   item,
   colors,
@@ -95,14 +99,15 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   const [refreshing, setRefreshing] = useState(false)
   const [recent, setRecent] = useState<Set<string>>(new Set()) // just-checked, still lingering in the active list
   const [showDone, setShowDone] = useState(false)
+  const [railMeal, setRailMeal] = useState<string>('dinner') // which meal type the rail shows
   const rebuilt = useRef(false)
   const addRef = useRef<HTMLInputElement>(null)
 
-  // First time, if nothing auto-built yet but dinners exist, build it.
+  // First time, if nothing auto-built yet but meals are planned, build it.
   useEffect(() => {
     if (rebuilt.current || !board) return
     const hasAuto = board.items.some((i) => i.source === 'auto')
-    if (!hasAuto && board.dinners.length > 0) {
+    if (!hasAuto && board.meals.length > 0) {
       rebuilt.current = true
       groceryApi.rebuildGrocery(board.weekStart).then(refetch).catch(() => {})
     }
@@ -123,7 +128,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
 
   const colorFor = useMemo(() => {
     const m = new Map<string, string>()
-    board?.dinners.forEach((d) => d.recipeId && m.set(d.recipeId, d.color))
+    board?.meals.forEach((d) => d.recipeId && m.set(d.recipeId, d.color))
     return (ids: string[]) => ids.map((id) => m.get(id)).filter(Boolean) as string[]
   }, [board])
 
@@ -186,21 +191,34 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     }
   }
 
-  const sections =
+  const sections: Array<{ aisle: string | null; items: GroceryBoardItem[]; mealType?: string }> =
     view === 'aisle'
       ? aisleSections(activeItems)
       : (() => {
-          const dinnerIds = new Set(board.dinners.filter((d) => d.recipeId).map((d) => d.recipeId!))
-          const perMeal = board.dinners
-            .filter((d) => d.recipeId)
-            .map((d) => ({ aisle: d.title ?? 'Meal', items: activeItems.filter((i) => i.sourceRecipeIds.includes(d.recipeId!)) }))
-            .filter((s) => s.items.length > 0)
-          // Anything not tied to one of this week's dinners — hand-added items AND
+          const recipeIds = new Set(board.meals.filter((d) => d.recipeId).map((d) => d.recipeId!))
+          // One section per planned recipe (deduped — a dish planned in two slots
+          // shows once), tagged with the meal type so the breakdown reads
+          // "Dinner · Tomato Pasta".
+          const seen = new Set<string>()
+          const perMeal: Array<{ aisle: string | null; items: GroceryBoardItem[]; mealType?: string }> = []
+          for (const d of board.meals) {
+            if (!d.recipeId || seen.has(d.recipeId)) continue
+            seen.add(d.recipeId)
+            const items = activeItems.filter((i) => i.sourceRecipeIds.includes(d.recipeId!))
+            if (items.length) perMeal.push({ aisle: d.title ?? 'Meal', items, mealType: d.mealType })
+          }
+          // Anything not tied to one of this week's meals — hand-added items AND
           // items added from a recipe that isn't planned this week — still needs a
           // home, or it would vanish in the By-meal view.
-          const leftovers = activeItems.filter((i) => !i.sourceRecipeIds.some((id) => dinnerIds.has(id)))
+          const leftovers = activeItems.filter((i) => !i.sourceRecipeIds.some((id) => recipeIds.has(id)))
           return leftovers.length ? [...perMeal, { aisle: 'Other items', items: leftovers }] : perMeal
         })()
+
+  // Rail: a segment per meal type that's actually planned this week (defaults to
+  // dinner), showing that type's meals.
+  const availableMealTypes = MEAL_TYPES.filter((t) => board.meals.some((m) => m.mealType === t))
+  const effectiveRailMeal = availableMealTypes.includes(railMeal as (typeof MEAL_TYPES)[number]) ? railMeal : availableMealTypes[0] ?? 'dinner'
+  const railMeals = board.meals.filter((m) => m.mealType === effectiveRailMeal)
 
   return (
     <div className="grocery-board">
@@ -224,7 +242,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
 
         {board.items.length === 0 ? (
           <div className="muted" style={{ padding: '24px 2px', fontWeight: 600 }}>
-            Nothing here yet — plan some dinners in Meals, then it auto-builds, or add items above.
+            Nothing here yet — plan some meals in Meals, then it auto-builds, or add items above.
           </div>
         ) : (
           <>
@@ -240,6 +258,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
                     {sec.aisle && (
                       <div className="grocery-section-h">
                         {view === 'aisle' && AISLE_EMOJI[sec.aisle] && <span className="ga-emo">{AISLE_EMOJI[sec.aisle]}</span>}
+                        {view === 'meal' && sec.mealType && <span className={`meal-badge mt-${sec.mealType}`}>{MEAL_EMOJI[sec.mealType]} {MEAL_LABEL[sec.mealType]}</span>}
                         {sec.aisle}
                         <span className="ga-n">{sec.items.length}</span>
                       </div>
@@ -290,20 +309,27 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
       <div className="grocery-rail">
         <div className="card grocery-railcard">
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-            <div className="card-h">This week’s dinners</div>
-            {board.dinners.length > 0 && (
-              <button type="button" className="pill grocery-refresh" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={rebuild} disabled={refreshing} title="Rebuild the auto items from these dinners (keeps what you added or checked off)">
+            <div className="card-h">This week’s meals</div>
+            {board.meals.length > 0 && (
+              <button type="button" className="pill grocery-refresh" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={rebuild} disabled={refreshing} title="Rebuild the auto items from these meals (keeps what you added or checked off)">
                 ↻ {refreshing ? 'Refreshing…' : 'Refresh'}
               </button>
             )}
           </div>
-          {board.dinners.length === 0 && <div className="tiny muted" style={{ fontWeight: 600 }}>No dinners planned yet.</div>}
-          {board.dinners.map((d) => (
-            <div key={d.date} className="gdinner">
+          {board.meals.length === 0 && <div className="tiny muted" style={{ fontWeight: 600 }}>No meals planned yet.</div>}
+          {availableMealTypes.length > 0 && (
+            <div className="seg rail-seg" style={{ marginBottom: 12 }}>
+              {availableMealTypes.map((t) => (
+                <button key={t} className={t === effectiveRailMeal ? 'on' : ''} onClick={() => setRailMeal(t)}>{MEAL_LABEL[t]}</button>
+              ))}
+            </div>
+          )}
+          {railMeals.map((d) => (
+            <div key={`${d.date}-${d.mealType}-${d.recipeId ?? d.title}`} className="gdinner">
               <span className="gdinner-c" style={{ background: d.color }} />
               <span className="gdinner-day">{new Date(String(d.date).slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</span>
               <span className="gdinner-t">{d.title ?? '—'}</span>
-              <span className="gdinner-e" style={{ background: `${d.color}1f` }}>{d.emoji ?? '🍽️'}</span>
+              <span className="gdinner-e" style={{ background: `${d.color}1f` }}>{d.emoji ?? MEAL_EMOJI[d.mealType] ?? '🍽️'}</span>
             </div>
           ))}
         </div>
