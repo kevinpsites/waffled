@@ -24,7 +24,7 @@ const CHECK = (
 
 // A checked item lingers in place this long (undo window) before tucking into the
 // collapsible "Completed" section, so the active list keeps itself tidy.
-const COMPLETE_GRACE_MS = 15000
+const COMPLETE_GRACE_MS = 6000
 
 function ItemRow({
   item,
