@@ -1,7 +1,37 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, usePersons, type PlanCard } from '../../lib/api'
+import { api, usePersons, useRecipes, type PlanCard, type Recipe } from '../../lib/api'
 import { useTopbarFull } from '../topbar-slot'
 import { Icon } from '../icons'
+import { RecipeModal } from './RecipeModal'
+
+// Small modal to manually pick a library recipe for one night.
+function DishPicker({ recipes, onPick, onClose }: { recipes: Recipe[]; onPick: (r: Recipe) => void; onClose: () => void }) {
+  const [q, setQ] = useState('')
+  const shown = q ? recipes.filter((r) => r.title.toLowerCase().includes(q.toLowerCase())) : recipes
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+        <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
+        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 10 }}>Choose a recipe</div>
+        <input className="cal-search" placeholder="Search recipes…" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginBottom: 12 }} autoFocus />
+        <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {shown.length === 0 && <div className="muted" style={{ padding: 12, fontWeight: 600 }}>No recipes match.</div>}
+          {shown.map((r) => (
+            <button key={r.id} type="button" className="dish-pick-row" onClick={() => onPick(r)}>
+              <span className="dish-pick-emoji">{r.emoji ?? '🍽️'}</span>
+              <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                <span className="set-row2-t" style={{ display: 'block' }}>{r.title}</span>
+                <span className="tiny muted" style={{ fontWeight: 600 }}>
+                  {[r.cookTimeMinutes ? `${r.cookTimeMinutes} min` : null, r.category].filter(Boolean).join(' · ')}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner'] as const
@@ -41,6 +71,9 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
   // Dishes the user has shuffled away from — accumulated so they don't come back
   // on later reshuffles (until the week is applied / the planner closes).
   const rejected = useRef<Set<string>>(new Set())
+  const { recipes } = useRecipes()
+  const [viewRecipeId, setViewRecipeId] = useState<string | null>(null) // RecipeModal (preserves plan state)
+  const [pickForDate, setPickForDate] = useState<string | null>(null) // manual recipe picker
   const [loading, setLoading] = useState(false)
   const [via, setVia] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -108,6 +141,19 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
     rejected.current.add(card.title)
     const others = cards.filter((c) => c.date !== card.date).map((c) => c.title)
     void draft([card.date], [...rejected.current, ...others])
+  }
+  // Manually replace one night with a chosen library recipe.
+  function pickRecipe(date: string, r: Recipe) {
+    const old = cards.find((c) => c.date === date)
+    if (old) rejected.current.add(old.title)
+    setCards((prev) =>
+      prev.map((c) =>
+        c.date === date
+          ? { date, mealType, title: r.title, recipeId: r.id, emoji: r.emoji, minutes: r.cookTimeMinutes, servings: c.servings, note: 'Your pick' }
+          : c
+      )
+    )
+    setPickForDate(null)
   }
   function toggleLock(date: string) {
     setLocked((s) => {
@@ -239,17 +285,27 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
                   <div className="pd-dow">{lab.dow}</div>
                   <div className="pd-dt">{lab.dt}</div>
                 </div>
-                <div className="pd-img">{c.emoji ?? '🍽️'}</div>
-                <div className="pd-b">
-                  <div className="pd-t">{c.title}</div>
-                  <div className="pd-m">
-                    {[c.minutes ? `${c.minutes} min` : null, `Serves ${c.servings}`].filter(Boolean).join(' · ')}
-                    {c.recipeId ? ' · from your recipes' : ''}
+                <div
+                  className={`pd-main ${c.recipeId ? 'clickable' : ''}`}
+                  onClick={() => c.recipeId && setViewRecipeId(c.recipeId)}
+                  role={c.recipeId ? 'button' : undefined}
+                  title={c.recipeId ? 'View recipe' : undefined}
+                >
+                  <div className="pd-img">{c.emoji ?? '🍽️'}</div>
+                  <div className="pd-b">
+                    <div className="pd-t">{c.title}</div>
+                    <div className="pd-m">
+                      {[c.minutes ? `${c.minutes} min` : null, `Serves ${c.servings}`].filter(Boolean).join(' · ')}
+                      {c.recipeId ? ' · from your recipes' : ''}
+                    </div>
+                    {c.note && <div className="reason"><Icon name="spark" />{c.note}</div>}
                   </div>
-                  {c.note && <div className="reason"><Icon name="spark" />{c.note}</div>}
                 </div>
                 <div className="pd-act">
-                  <button type="button" className="pd-icon" title="Swap this dish" onClick={() => swap(c)} disabled={loading}>⟳</button>
+                  <button type="button" className="pd-icon" title="Swap — let AI pick another" onClick={() => swap(c)} disabled={loading}>⟳</button>
+                  <button type="button" className="pd-icon" title="Choose a recipe yourself" onClick={() => setPickForDate(c.date)}>
+                    <Icon name="recipes" />
+                  </button>
                   <button type="button" className={`pd-icon ${isLocked ? 'on' : ''}`} title={isLocked ? 'Locked — won’t reshuffle' : 'Lock this night'} onClick={() => toggleLock(c.date)}>
                     {isLocked ? '🔒' : '🔓'}
                   </button>
@@ -271,6 +327,11 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
           </div>
         )}
       </div>
+
+      {viewRecipeId && <RecipeModal recipeId={viewRecipeId} onClose={() => setViewRecipeId(null)} />}
+      {pickForDate && (
+        <DishPicker recipes={recipes} onClose={() => setPickForDate(null)} onPick={(r) => pickRecipe(pickForDate, r)} />
+      )}
     </div>
   )
 }

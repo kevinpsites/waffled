@@ -254,6 +254,16 @@
   border: 0;
   cursor: pointer;
 }
+/* Native <select> draws its chevron flush to the edge; replace it with our own
+   so there's breathing room on the right (Cooking for, week-start, timezone…). */
+select.sel {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%232b2b2b' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+}
 .set-inline-input {
   font: inherit;
   font-size: 14px;

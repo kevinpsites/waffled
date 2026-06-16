@@ -523,6 +523,47 @@
   box-shadow: var(--sh-1, 0 6px 24px rgba(0, 0, 0, 0.06));
 }
 
+.pd-main {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  min-width: 0;
+}
+.pd-main.clickable {
+  cursor: pointer;
+}
+.pd-main.clickable:hover .pd-t {
+  text-decoration: underline;
+}
+
+/* manual recipe picker rows */
+.dish-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  padding: 9px 8px;
+  border-radius: 12px;
+}
+.dish-pick-row:hover {
+  background: var(--panel);
+}
+.dish-pick-emoji {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  background: linear-gradient(135deg, #f3ead9, #e9dcc4);
+}
+
 /* Narrow / mobile: stack the two panes and let the whole screen scroll. */
 @media (max-width: 860px) {
   .plan-screen {
