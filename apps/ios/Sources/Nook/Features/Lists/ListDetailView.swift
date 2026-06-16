@@ -21,9 +21,15 @@ final class ListDetailModel {
 
     init(list: NookAPI.ListSummary) { self.list = list }
 
+    /// Canonical grocery aisles in shopping order (mirrors the server's aisles.ts).
+    static let groceryAisles = ["Produce", "Pantry", "Dairy & Chilled", "Meat & Seafood", "Bakery", "Frozen", "Other"]
+
     /// Active items: unchecked, plus just-checked ones that haven't settled yet.
     var activeSections: [ListSectionGroup] {
-        ListGrouping.sections(items.filter { !$0.checked || settling.contains($0.id) })
+        ListGrouping.sections(
+            items.filter { !$0.checked || settling.contains($0.id) },
+            preferredOrder: isGrocery ? Self.groceryAisles : []
+        )
     }
     /// Settled, checked items — shown in the collapsed Completed section.
     var completed: [NookAPI.ListItemDTO] { items.filter { $0.checked && !settling.contains($0.id) } }
@@ -197,13 +203,10 @@ struct ListDetailView: View {
         }
     }
 
-    /// Canonical grocery aisles (mirrors the server's aisles.ts taxonomy).
-    private static let groceryAisles = ["Produce", "Pantry", "Dairy & Chilled", "Meat & Seafood", "Bakery", "Frozen", "Other"]
-
     /// Section chips offered in the editor: the grocery aisle taxonomy (for grocery
     /// lists) plus any sections already in use on this list, deduped.
     private var sectionSuggestions: [String] {
-        var result = model.list.listType.lowercased() == "grocery" ? Self.groceryAisles : []
+        var result = model.list.listType.lowercased() == "grocery" ? ListDetailModel.groceryAisles : []
         for s in model.items.compactMap(\.section) where !s.isEmpty && !result.contains(s) {
             result.append(s)
         }

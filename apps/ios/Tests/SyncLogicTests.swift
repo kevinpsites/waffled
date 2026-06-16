@@ -222,15 +222,27 @@ private final class Counter { var n = 0 }
         NookAPI.ListItemDTO(id: id, name: id, quantity: nil, checked: false, section: section, assignee: nil)
     }
 
-    @Test func groupsBySectionPreservingFirstSeenOrder() {
+    @Test func groupsAlphabeticallyByDefaultPreservingItemOrder() {
         let items = [
             item("a", section: "Produce"), item("b", section: "Pantry"),
             item("c", section: "Produce"), item("d", section: "Pantry"),
         ]
         let groups = ListGrouping.sections(items)
-        #expect(groups.map(\.title) == ["Produce", "Pantry"])
-        #expect(groups[0].items.map(\.id) == ["a", "c"])
-        #expect(groups[1].items.map(\.id) == ["b", "d"])
+        #expect(groups.map(\.title) == ["Pantry", "Produce"])   // sections alphabetical
+        #expect(groups.first { $0.title == "Produce" }?.items.map(\.id) == ["a", "c"])
+        #expect(groups.first { $0.title == "Pantry" }?.items.map(\.id) == ["b", "d"])
+    }
+
+    @Test func preferredOrderComesFirstThenAlphabetical() {
+        // Section order must be stable regardless of item order (the edit-reshuffle bug).
+        let items = [
+            item("z", section: "Meat & Seafood"), item("a", section: "Snacks"),
+            item("p", section: "Produce"), item("b", section: "Bakery"),
+        ]
+        let aisles = ["Produce", "Pantry", "Dairy & Chilled", "Meat & Seafood", "Bakery", "Frozen", "Other"]
+        let groups = ListGrouping.sections(items, preferredOrder: aisles)
+        // canonical aisles in shopping order first, then non-aisle sections alphabetically
+        #expect(groups.map(\.title) == ["Produce", "Meat & Seafood", "Bakery", "Snacks"])
     }
 
     @Test func ungroupedItemsFallIntoTrailingItemsGroup() {
