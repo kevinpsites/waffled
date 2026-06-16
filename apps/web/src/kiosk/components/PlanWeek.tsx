@@ -159,6 +159,10 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
       for (const c of shown) {
         await api.planSlot(c.recipeId ? { date: c.date, mealType: c.mealType, recipeId: c.recipeId } : { date: c.date, mealType: c.mealType, title: c.title })
       }
+      // "& build list": rebuild the grocery from the new week's dinners so items
+      // are linked to the planned recipes (otherwise the By-meal view stays empty
+      // / shows stale items from a previous plan).
+      await api.rebuildGrocery(startStr).catch(() => {})
       onApplied()
       onClose()
     } finally {
