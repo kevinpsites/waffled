@@ -5,6 +5,7 @@ import SwiftUI
 /// becomes the first PowerSync-backed surface in Phase 1.
 struct FamilyView: View {
     @Environment(SyncManager.self) private var sync
+    @State private var hub = FamilyHubModel()
     @State private var showSync = false
     @State private var ranDemo = false
     private let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
@@ -40,11 +41,11 @@ struct FamilyView: View {
 
                 SectionLabel(text: "Everything else").padding(.bottom, 11)
                 LazyVGrid(columns: cols, spacing: 12) {
-                    tile("✅", "Chores", "8 to do today", FamilyColor.wally.tint)
-                    tile("🎯", "Goals", "7 active · 1 featured", Color(hex: 0xE8F0E4))
-                    tile("⭐", "Rewards", "Lottie 24 · Wally 31", Color(hex: 0xFDF0D6))
-                    tile("📋", "Lists", "5 lists · groceries +2", FamilyColor.kevin.tint)
-                    tile("📷", "Photos", "“Lake Day” +18 new", Color(hex: 0xDFF0EF))
+                    tile("✅", "Chores", hub.choresSubtitle, FamilyColor.wally.tint)
+                    tile("🎯", "Goals", hub.goalsSubtitle, Color(hex: 0xE8F0E4))
+                    tile("⭐", "Rewards", hub.rewardsSubtitle, Color(hex: 0xFDF0D6))
+                    tile("📋", "Lists", hub.listsSubtitle, FamilyColor.kevin.tint)
+                    tile("📷", "Photos", hub.photosSubtitle, Color(hex: 0xDFF0EF))
                     tile("⚙️", "Settings", "People, calendars, AI", NK.panel)
                 }
             }
@@ -52,6 +53,8 @@ struct FamilyView: View {
             .padding(.bottom, 110)
         }
         .background(NK.canvas)
+        .refreshable { await hub.load() }
+        .task { await hub.load() }
         .sheet(isPresented: $showSync) { SyncStatusView() }
         .onAppear(perform: runDemoHooksIfSet)
     }

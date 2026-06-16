@@ -160,6 +160,37 @@ struct NookAPI: Sendable {
         return try await getJSON("/api/lists/grocery", as: Resp.self).items
     }
 
+    // MARK: Family hub tile counts (non-synced domains, fetched over REST)
+
+    struct GoalDTO: Decodable { let id: String; let isFeatured: Bool }
+    struct PhotoDTO: Decodable { let id: String; let memory: String? }
+    struct ListRefDTO: Decodable { let id: String }
+    struct FamilyStarsDTO: Decodable, Sendable { let name: String?; let stars: Int }
+
+    /// Active goals across the household (for the Goals tile count).
+    func goals() async throws -> [GoalDTO] {
+        struct Resp: Decodable { let goals: [GoalDTO] }
+        return try await getJSON("/api/goals", as: Resp.self).goals
+    }
+
+    /// All photos (for the Photos tile count + latest memory).
+    func photos() async throws -> [PhotoDTO] {
+        struct Resp: Decodable { let photos: [PhotoDTO] }
+        return try await getJSON("/api/photos", as: Resp.self).photos
+    }
+
+    /// The household's lists (for the Lists tile count).
+    func lists() async throws -> [ListRefDTO] {
+        struct Resp: Decodable { let lists: [ListRefDTO] }
+        return try await getJSON("/api/lists", as: Resp.self).lists
+    }
+
+    /// Per-person star balances (for the Rewards tile).
+    func familyStars() async throws -> [FamilyStarsDTO] {
+        struct Resp: Decodable { let people: [FamilyStarsDTO] }
+        return try await getJSON("/api/family/overview", as: Resp.self).people
+    }
+
     /// Forward a batch of queued local writes to the server's CRUD sink.
     func uploadCrud(_ ops: [CrudOpDTO]) async throws {
         var req = URLRequest(url: url("/api/powersync/crud"))
