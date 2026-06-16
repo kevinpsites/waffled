@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { api, usePersons, useRecipes, type PlanCard, type Recipe } from '../../lib/api'
 import { useTopbarFull } from '../topbar-slot'
 import { Icon } from '../icons'
@@ -47,9 +47,11 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
   const [viewRecipeId, setViewRecipeId] = useState<string | null>(null) // RecipeModal (preserves plan state)
   const [pickForDate, setPickForDate] = useState<string | null>(null) // manual recipe picker
   const [loading, setLoading] = useState(false)
+  const [draftingDates, setDraftingDates] = useState<Set<string>>(new Set()) // nights currently being (re)drafted
   const [via, setVia] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
+  const started = cards.length > 0 || loading || !!error
 
   useTopbarFull(
     () => (
@@ -70,6 +72,7 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
     if (dates.length === 0) return
     setLoading(true)
     setError(null)
+    setDraftingDates(new Set(dates))
     try {
       const r = await api.planWeek({
         start: startStr,
@@ -93,14 +96,14 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
       setError(friendlyAiError((e as Error).message))
     } finally {
       setLoading(false)
+      setDraftingDates(new Set())
     }
   }
 
-  // Initial draft on open.
-  useEffect(() => {
-    void draft([...selectedDays].sort(), [])
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // Draft only when the user asks (after setting the guardrails) — no auto-kickoff.
+  function planAll() {
+    void draft([...selectedDays].sort(), [...rejected.current])
+  }
 
   function reshuffle() {
     const dates = [...selectedDays].filter((d) => !locked.has(d)).sort()
@@ -235,14 +238,42 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
       <div className="plan-results">
         <div className="plan-results-head">
           <div className="card-h nk-serif">Here’s your week</div>
-          <button type="button" className="pill" onClick={reshuffle} disabled={loading}>
-            <Icon name="spark" /> Reshuffle
-          </button>
+          {cards.length > 0 && (
+            <button type="button" className="pill" onClick={reshuffle} disabled={loading}>
+              {loading ? <><span className="spinner" /> Reshuffling…</> : <><Icon name="spark" /> Reshuffle</>}
+            </button>
+          )}
         </div>
-        {via && VIA_LABEL[via] && <div className="tiny muted" style={{ margin: '-4px 2px 12px' }}>Drafted via {VIA_LABEL[via]}</div>}
+        {via && VIA_LABEL[via] && cards.length > 0 && <div className="tiny muted" style={{ margin: '-4px 2px 12px' }}>Drafted via {VIA_LABEL[via]}</div>}
 
-        {loading && cards.length === 0 && <div className="muted" style={{ padding: 16 }}>Drafting your week…</div>}
-        {error && <div className="muted" style={{ padding: 16, fontWeight: 600 }}>{error}</div>}
+        {/* Before drafting: configure on the left, then kick it off here. */}
+        {!started && (
+          <div className="plan-empty">
+            <div className="plan-empty-emoji">🍽️</div>
+            <div className="set-row2-t">Ready when you are</div>
+            <div className="tiny muted" style={{ maxWidth: 340, margin: '4px 0 18px' }}>
+              Set the guardrails on the left, then draft a week of {MEAL_LABEL[mealType].toLowerCase()}s.
+            </div>
+            <button type="button" className="btn btn-primary" onClick={planAll} disabled={selectedDays.size === 0}>
+              <Icon name="spark" /> Plan my week
+            </button>
+          </div>
+        )}
+
+        {loading && cards.length === 0 && (
+          <div className="plan-empty">
+            <span className="spinner lg" />
+            <div className="tiny muted" style={{ marginTop: 14 }}>Drafting your week…</div>
+          </div>
+        )}
+
+        {error && (
+          <div className="plan-empty">
+            <div className="muted" style={{ fontWeight: 600, marginBottom: 16, maxWidth: 360 }}>{error}</div>
+            <button type="button" className="btn btn-primary" onClick={planAll}><Icon name="spark" /> Try again</button>
+          </div>
+        )}
+
         {!loading && !error && cards.length > 0 && shown.length === 0 && (
           <div className="muted" style={{ padding: 16, fontWeight: 600 }}>Pick some days on the left to plan.</div>
         )}
@@ -253,6 +284,9 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
             const isLocked = locked.has(c.date)
             return (
               <div key={c.date} className={`plan-day ${isLocked ? 'locked' : ''}`}>
+                {draftingDates.has(c.date) && (
+                  <div className="pd-loading"><span className="spinner" /></div>
+                )}
                 <div className="pd-day">
                   <div className="pd-dow">{lab.dow}</div>
                   <div className="pd-dt">{lab.dt}</div>

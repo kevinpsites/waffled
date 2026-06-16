@@ -429,6 +429,7 @@
   gap: 12px;
 }
 .plan-day {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -437,6 +438,52 @@
   box-shadow: var(--sh-1, 0 6px 24px rgba(0, 0, 0, 0.06));
   border: 2px solid transparent;
   padding: 12px 16px;
+}
+
+/* loading bits */
+.spinner {
+  display: inline-block;
+  vertical-align: middle;
+  width: 16px;
+  height: 16px;
+  border: 2.5px solid var(--hair, rgba(0, 0, 0, 0.12));
+  border-top-color: var(--primary, #e0664b);
+  border-radius: 50%;
+  animation: nook-spin 0.7s linear infinite;
+}
+.spinner.lg {
+  width: 40px;
+  height: 40px;
+  border-width: 4px;
+}
+@keyframes nook-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.pd-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-lg, 16px);
+  background: color-mix(in srgb, var(--card, #fff) 72%, transparent);
+}
+.plan-empty {
+  flex: 1;
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 20px;
+  gap: 2px;
+}
+.plan-empty-emoji {
+  font-size: 44px;
+  margin-bottom: 8px;
 }
 .plan-day.locked {
   border-color: var(--accent, #4c8bf5);
