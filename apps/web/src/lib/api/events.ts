@@ -1,6 +1,7 @@
 // Calendar events domain — client slice, types, and hooks.
 import { useEffect, useRef, useState } from 'react'
 import { apiGet, apiSend, apiDelete, localToday } from './client'
+import { useRefetchOn } from './bus'
 import { watchAgendaRows, eventsForDay, eventsForRange, getHouseholdTz } from '../powersync/events-local'
 
 export interface Participant {
@@ -99,6 +100,10 @@ export function useEventsToday(): AgendaState & { refetch: () => void } {
     }
   }, [date, nonce])
 
+  // Planning a meal now creates a calendar event — refresh the agenda when meals
+  // change (covers the REST path; PowerSync streams it live on its own).
+  useRefetchOn(['meals'], () => setNonce((n) => n + 1))
+
   return { ...state, refetch: () => setNonce((n) => n + 1) }
 }
 
@@ -142,6 +147,10 @@ export function useEventsRange(from: string, to: string): AgendaState & { refetc
       alive = false
     }
   }, [from, to, nonce])
+
+  // Planning a meal now creates a calendar event — refresh when meals change
+  // (covers the REST path; PowerSync streams it live on its own).
+  useRefetchOn(['meals'], () => setNonce((n) => n + 1))
 
   return { ...state, refetch: () => setNonce((n) => n + 1) }
 }

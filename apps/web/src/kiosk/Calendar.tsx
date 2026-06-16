@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Icon } from './icons'
 import { EventModal } from './components/EventModal'
-import { useEventsRange, mealsApi, type AgendaEvent } from '../lib/api'
+import { useEventsRange, useHousehold, mealsApi, type AgendaEvent } from '../lib/api'
+import { localDate } from '../lib/powersync/events-local'
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = [
@@ -53,14 +54,20 @@ export function Calendar() {
   const { events, refetch } = useEventsRange(from, to)
   const [modal, setModal] = useState<{ date?: string; event?: AgendaEvent } | null>(null)
 
+  // Bucket events by the household timezone (matching the data layer), not the
+  // device's — otherwise a kiosk in a different zone shifts evening events (a 6pm
+  // dinner is near midnight UTC) onto the wrong day.
+  const { household } = useHousehold()
+  const tz = household?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+
   const byDate = useMemo(() => {
     const map: Record<string, AgendaEvent[]> = {}
     for (const e of events) {
-      const key = new Date(e.startsAt).toLocaleDateString('en-CA') // YYYY-MM-DD local
+      const key = localDate(e.startsAt, tz) // YYYY-MM-DD in the household's zone
       ;(map[key] ??= []).push(e)
     }
     return map
-  }, [events])
+  }, [events, tz])
 
   const today = ymd(now)
 
