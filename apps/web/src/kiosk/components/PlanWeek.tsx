@@ -3,35 +3,7 @@ import { api, usePersons, useRecipes, type PlanCard, type Recipe } from '../../l
 import { useTopbarFull } from '../topbar-slot'
 import { Icon } from '../icons'
 import { RecipeModal } from './RecipeModal'
-
-// Small modal to manually pick a library recipe for one night.
-function DishPicker({ recipes, onPick, onClose }: { recipes: Recipe[]; onPick: (r: Recipe) => void; onClose: () => void }) {
-  const [q, setQ] = useState('')
-  const shown = q ? recipes.filter((r) => r.title.toLowerCase().includes(q.toLowerCase())) : recipes
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
-        <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 10 }}>Choose a recipe</div>
-        <input className="cal-search" placeholder="Search recipes…" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginBottom: 12 }} autoFocus />
-        <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {shown.length === 0 && <div className="muted" style={{ padding: 12, fontWeight: 600 }}>No recipes match.</div>}
-          {shown.map((r) => (
-            <button key={r.id} type="button" className="dish-pick-row" onClick={() => onPick(r)}>
-              <span className="dish-pick-emoji">{r.emoji ?? '🍽️'}</span>
-              <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-                <span className="set-row2-t" style={{ display: 'block' }}>{r.title}</span>
-                <span className="tiny muted" style={{ fontWeight: 600 }}>
-                  {[r.cookTimeMinutes ? `${r.cookTimeMinutes} min` : null, r.category].filter(Boolean).join(' · ')}
-                </span>
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
+import { RecipeBrowser, type MealType } from './RecipeBrowser'
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner'] as const
@@ -286,10 +258,10 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
                   <div className="pd-dt">{lab.dt}</div>
                 </div>
                 <div
-                  className={`pd-main ${c.recipeId ? 'clickable' : ''}`}
-                  onClick={() => c.recipeId && setViewRecipeId(c.recipeId)}
-                  role={c.recipeId ? 'button' : undefined}
-                  title={c.recipeId ? 'View recipe' : undefined}
+                  className="pd-main clickable"
+                  onClick={() => (c.recipeId ? setViewRecipeId(c.recipeId) : setPickForDate(c.date))}
+                  role="button"
+                  title={c.recipeId ? 'View recipe' : 'Choose a recipe'}
                 >
                   <div className="pd-img">{c.emoji ?? '🍽️'}</div>
                   <div className="pd-b">
@@ -329,8 +301,27 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
       </div>
 
       {viewRecipeId && <RecipeModal recipeId={viewRecipeId} onClose={() => setViewRecipeId(null)} />}
+
+      {/* Manual swap: reuse the full recipe browser (filters + grid + View) in an
+          overlay so the plan state stays intact behind it. */}
       {pickForDate && (
-        <DishPicker recipes={recipes} onClose={() => setPickForDate(null)} onPick={(r) => pickRecipe(pickForDate, r)} />
+        <div className="plan-pick-overlay">
+          <div className="plan-pick-head">
+            <button type="button" className="pill" onClick={() => setPickForDate(null)} style={{ cursor: 'pointer' }}>
+              <Icon name="cl" /> Back
+            </button>
+            <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginLeft: 14 }}>
+              Choose a recipe · {labelFor(pickForDate).dow} {labelFor(pickForDate).dt}
+            </div>
+          </div>
+          <RecipeBrowser
+            recipes={recipes}
+            loading={false}
+            slot={mealType as MealType}
+            onPick={(r) => pickRecipe(pickForDate, r)}
+            selectLabel="Use this"
+          />
+        </div>
       )}
     </div>
   )

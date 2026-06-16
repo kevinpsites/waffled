@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Icon } from './icons'
-import { RecipeModal } from './components/RecipeModal'
 import { PlanWeek } from './components/PlanWeek'
+import { RecipeBrowser, MEALS, MEAL_LABEL, type MealType } from './components/RecipeBrowser'
 import { useTopbarFull } from './topbar-slot'
 import {
   api,
@@ -14,14 +14,6 @@ import {
 import '../styles/meals.css'
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const MEALS = ['breakfast', 'lunch', 'dinner', 'snack'] as const
-const MEAL_LABEL: Record<string, string> = {
-  breakfast: 'Breakfast',
-  lunch: 'Lunch',
-  dinner: 'Dinner',
-  snack: 'Snack',
-}
-type MealType = (typeof MEALS)[number]
 
 // Local YYYY-MM-DD (kiosk timezone).
 function ymd(d: Date): string {
@@ -38,19 +30,6 @@ function addDays(d: Date, n: number): Date {
   const x = new Date(d)
   x.setDate(x.getDate() + n)
   return x
-}
-
-// Map a recipe/category to one of nook.css's food gradient classes so picker
-// cards and avatars echo the mock's tinted tiles.
-const GRAD_BY_CATEGORY: Record<string, string> = {
-  breakfast: 'g-pan',
-  lunch: 'g-veg',
-  dinner: 'g-pasta',
-  snack: 'g-cookie',
-  dessert: 'g-cookie',
-}
-function gradClass(r: { category: string | null }): string {
-  return (r.category && GRAD_BY_CATEGORY[r.category.toLowerCase()]) || 'g-veg'
 }
 
 function PlannedCell({ entry, mealType, onOpen, onRemove }: { entry: WeekEntry; mealType: MealType; onOpen: () => void; onRemove: () => void }) {
@@ -114,12 +93,6 @@ function MealPicker({
   onClose: () => void
 }) {
   const browse = !onPick
-  const [filter, setFilter] = useState<'all' | MealType>(browse ? 'all' : slot)
-  const [preview, setPreview] = useState<Recipe | null>(null)
-  // 'all' shows everything; a meal filter shows recipes tagged with it (or untagged,
-  // which fit any slot). No more "fall back to all" when a filter has no matches.
-  const shown = filter === 'all' ? recipes : recipes.filter((r) => !r.category || r.category.toLowerCase() === filter)
-  const FILTERS: Array<'all' | MealType> = ['all', ...MEALS]
 
   useTopbarFull(
     () => (
@@ -147,73 +120,15 @@ function MealPicker({
   )
 
   return (
-    <div className="meals-picker">
-      <div className="picker-filters">
-        {FILTERS.map((f) => (
-          <div
-            key={f}
-            className={`mp-filter tag ${f === filter ? 'on' : ''}`}
-            onClick={() => setFilter(f)}
-            role="button"
-            tabIndex={0}
-          >
-            {f === 'all' ? 'All' : MEAL_LABEL[f]}
-          </div>
-        ))}
-        <div className="tiny muted picker-count">
-          {shown.length} {filter === 'all' ? 'recipe' : MEAL_LABEL[filter].toLowerCase() + ' idea'}
-          {shown.length === 1 ? '' : 's'}
-        </div>
-      </div>
-
-      <div className="picker-grid">
-        {onEatingOut && (
-          <div className="rc mp-card" role="button" tabIndex={0} onClick={onEatingOut}>
-            <div className="rc-img" style={{ background: 'linear-gradient(135deg,#d9e7f6,#bcd0e9)', fontSize: 34, display: 'grid', placeItems: 'center' }}>🍴</div>
-            <div className="rc-b" style={{ padding: '12px 14px 14px' }}>
-              <div className="rc-t" style={{ fontSize: 16 }}>Eating out</div>
-              <div className="rc-m"><span>No cooking tonight</span></div>
-              <div className="mp-actions">
-                <button type="button" className="pill btn-primary mp-select" onClick={(e) => { e.stopPropagation(); onEatingOut() }}>Select</button>
-              </div>
-            </div>
-          </div>
-        )}
-        {loading && <div className="muted picker-empty">Loading recipes…</div>}
-        {!loading && shown.length === 0 && (
-          <div className="muted picker-empty">
-            {filter === 'all' ? 'No recipes yet.' : `No ${MEAL_LABEL[filter].toLowerCase()} recipes yet — tag a recipe with this meal to see it here.`}
-          </div>
-        )}
-        {shown.map((r) => (
-          <div key={r.id} className="rc mp-card" role="button" tabIndex={0} onClick={() => (onView ? onView(r) : setPreview(r))}>
-            <div className={`rc-img ${gradClass(r)}`}>{r.emoji ?? '🍽️'}</div>
-            <div className="rc-b" style={{ padding: '12px 14px 14px' }}>
-              <div className="rc-t" style={{ fontSize: 16 }}>{r.title}</div>
-              <div className="rc-m">
-                {r.cookTimeMinutes != null && <span>🕐 {r.cookTimeMinutes} min</span>}
-                {r.category && <span>{r.category}</span>}
-              </div>
-              <div className="mp-actions">
-                <button type="button" className="pill" onClick={(e) => { e.stopPropagation(); onView ? onView(r) : setPreview(r) }}>View</button>
-                {onPick && (
-                  <button type="button" className="pill btn-primary mp-select" onClick={(e) => { e.stopPropagation(); onPick(r) }}>Select</button>
-                )}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {preview && (
-        <RecipeModal
-          recipeId={preview.id}
-          onClose={() => setPreview(null)}
-          onSelect={onPick ? () => onPick(preview) : undefined}
-          selectLabel={onPick ? `Select for ${MEAL_LABEL[slot]}` : undefined}
-        />
-      )}
-    </div>
+    <RecipeBrowser
+      recipes={recipes}
+      loading={loading}
+      slot={slot}
+      onPick={onPick}
+      onView={onView}
+      onEatingOut={onEatingOut}
+      selectLabel={`Select for ${MEAL_LABEL[slot]}`}
+    />
   )
 }
 

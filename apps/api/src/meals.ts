@@ -434,6 +434,10 @@ export async function planWeek(tenant: Tenant, input: PlanWeekInput): Promise<{ 
   const recipes = await listRecipes(tenant.householdId)
   const lib = recipes.slice(0, 60).map((r) => ({ id: r.id, title: r.title, category: r.category, tags: (r.tags ?? []).slice(0, 4) }))
   const recipeById = new Map(recipes.map((r) => [r.id, r]))
+  // Small models reliably echo a library title but drop the recipeId — so match
+  // titles back to recipes to relink them (normalize: lowercase, alphanumeric only).
+  const normTitle = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const recipeByTitle = new Map(recipes.map((r) => [normTitle(r.title), r]))
   const { rows: people } = await query<{ name: string; dietary_notes: string | null }>(
     `select name, dietary_notes from persons where household_id = $1 and deleted_at is null order by sort_order, created_at`,
     [tenant.householdId]
@@ -481,12 +485,15 @@ export async function planWeek(tenant: Tenant, input: PlanWeekInput): Promise<{ 
     const title = String(s.title ?? '').trim()
     if (!wanted.has(date) || seen.has(date) || !title) continue // only requested days, once each
     seen.add(date)
-    const recipeId = typeof s.recipeId === 'string' && libIds.has(s.recipeId) ? s.recipeId : null
-    const recipe = recipeId ? recipeById.get(recipeId) : undefined
-    // Prefer the library recipe's own emoji/time when reusing one.
+    // Resolve to a library recipe by id, else by matching title — so a dish the
+    // model copied from the library gets linked (viewable) even with a null id.
+    let recipe = typeof s.recipeId === 'string' && libIds.has(s.recipeId) ? recipeById.get(s.recipeId) : undefined
+    if (!recipe) recipe = recipeByTitle.get(normTitle(title))
+    const finalTitle = recipe ? recipe.title : title
+    // Prefer the library recipe's own emoji/time when it's one of ours.
     const emoji = recipe?.emoji ?? (typeof s.emoji === 'string' && s.emoji ? s.emoji : null)
     const minutes = recipe?.cook_time_minutes ?? (typeof s.minutes === 'number' ? Math.round(s.minutes) : null)
-    suggestions.push({ date, mealType, title, recipeId, emoji, minutes, servings, note: typeof s.note === 'string' ? s.note : null })
+    suggestions.push({ date, mealType, title: finalTitle, recipeId: recipe?.id ?? null, emoji, minutes, servings, note: typeof s.note === 'string' ? s.note : null })
   }
   suggestions.sort((a, b) => (a.date < b.date ? -1 : 1))
   return { start, mealType, suggestions, via }

@@ -278,6 +278,7 @@
 
 /* ===== Plan my week (full-screen) ===== */
 .plan-screen {
+  position: relative;
   display: grid;
   grid-template-columns: 380px 1fr;
   gap: 40px;
@@ -537,31 +538,26 @@
   text-decoration: underline;
 }
 
-/* manual recipe picker rows */
-.dish-pick-row {
+/* manual swap: full-cover overlay hosting the shared recipe browser */
+.plan-pick-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: var(--bg, #faf7f2);
+  display: flex;
+  flex-direction: column;
+  padding: 6px 30px 0;
+  overflow: hidden;
+}
+.plan-pick-head {
   display: flex;
   align-items: center;
-  gap: 12px;
-  width: 100%;
-  border: 0;
-  background: none;
-  font: inherit;
-  cursor: pointer;
-  padding: 9px 8px;
-  border-radius: 12px;
-}
-.dish-pick-row:hover {
-  background: var(--panel);
-}
-.dish-pick-emoji {
-  width: 40px;
-  height: 40px;
+  margin-bottom: 12px;
   flex: none;
-  border-radius: 11px;
-  display: grid;
-  place-items: center;
-  font-size: 22px;
-  background: linear-gradient(135deg, #f3ead9, #e9dcc4);
+}
+.plan-pick-overlay .meals-picker {
+  flex: 1;
+  min-height: 0;
 }
 
 /* Narrow / mobile: stack the two panes and let the whole screen scroll. */
