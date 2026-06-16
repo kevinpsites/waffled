@@ -123,6 +123,67 @@
   text-align: right;
 }
 
+/* per-item edit / delete + clear-checked */
+.gitem-acts {
+  display: flex;
+  gap: 2px;
+  flex: none;
+}
+.gact {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 5px 7px;
+  border-radius: 8px;
+  color: var(--ink-2);
+  opacity: 0.5;
+}
+.gact:hover {
+  opacity: 1;
+  background: var(--panel);
+}
+.gact.ok {
+  color: #fff;
+  background: var(--primary);
+  opacity: 1;
+}
+.gitem.editing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  background: var(--card);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
+  margin-bottom: 9px;
+}
+.gedit-name {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  border: 0;
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+.gedit-qty {
+  width: 72px;
+  flex: none;
+  font: inherit;
+  font-size: 14px;
+  border: 0;
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.grocery-clear {
+  cursor: pointer;
+}
+
 /* right rail */
 .grocery-rail {
   display: flex;

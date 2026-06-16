@@ -22,7 +22,33 @@ const CHECK = (
   </svg>
 )
 
-function ItemRow({ item, colors, onToggle }: { item: GroceryBoardItem; colors: string[]; onToggle: () => void }) {
+function ItemRow({
+  item,
+  colors,
+  onToggle,
+  onSave,
+  onDelete,
+}: {
+  item: GroceryBoardItem
+  colors: string[]
+  onToggle: () => void
+  onSave: (patch: { name: string; quantity: string | null }) => void
+  onDelete: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState(item.name)
+  const [qty, setQty] = useState(item.quantity ?? '')
+
+  if (editing) {
+    return (
+      <div className="gitem editing">
+        <input className="gedit-name" value={name} autoFocus onChange={(e) => setName(e.target.value)} placeholder="item" />
+        <input className="gedit-qty" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="qty" />
+        <button type="button" className="gact ok" title="Save" onClick={() => { onSave({ name: name.trim() || item.name, quantity: qty.trim() || null }); setEditing(false) }}>✓</button>
+        <button type="button" className="gact" title="Cancel" onClick={() => setEditing(false)}>×</button>
+      </div>
+    )
+  }
   return (
     <div className={`gitem ${item.checked ? 'done' : ''}`} onClick={onToggle} role="button" tabIndex={0}>
       <span className="gck" aria-hidden>{item.checked ? CHECK : null}</span>
@@ -33,6 +59,10 @@ function ItemRow({ item, colors, onToggle }: { item: GroceryBoardItem; colors: s
         ))}
       </span>
       {item.quantity && <span className="gqty">{item.quantity}</span>}
+      <span className="gitem-acts" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="gact" title="Edit" onClick={() => { setName(item.name); setQty(item.quantity ?? ''); setEditing(true) }}>✎</button>
+        <button type="button" className="gact" title="Remove" onClick={onDelete}>🗑</button>
+      </span>
     </div>
   )
 }
@@ -100,6 +130,20 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     await groceryApi.patchListItem(item.id, { checked: !item.checked })
     refetch()
   }
+  async function saveItem(item: GroceryBoardItem, patch: { name: string; quantity: string | null }) {
+    await groceryApi.patchListItem(item.id, patch)
+    refetch()
+  }
+  async function deleteItem(item: GroceryBoardItem) {
+    await groceryApi.deleteItem(item.id)
+    refetch()
+  }
+  async function clearChecked() {
+    const checked = board!.items.filter((i) => i.checked)
+    if (checked.length === 0) return
+    await Promise.all(checked.map((i) => groceryApi.deleteItem(i.id)))
+    refetch()
+  }
   async function addItem(name: string) {
     const n = name.trim()
     if (!n) return
@@ -149,6 +193,11 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
           <div className="muted grocery-count" style={{ fontWeight: 600 }}>
             {board.items.length} items{inCart > 0 ? ` · ${inCart} in cart` : ''}
           </div>
+          {inCart > 0 && (
+            <button type="button" className="pill grocery-clear" style={{ marginLeft: 10 }} onClick={clearChecked} title="Remove the checked-off items">
+              Clear {inCart} checked
+            </button>
+          )}
           <div className="seg" style={{ marginLeft: 'auto' }}>
             <button className={view === 'aisle' ? 'on' : ''} onClick={() => setView('aisle')}>By aisle</button>
             <button className={view === 'meal' ? 'on' : ''} onClick={() => setView('meal')}>By meal</button>
@@ -177,7 +226,14 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
                   </div>
                 )}
                 {sec.items.map((it) => (
-                  <ItemRow key={it.id} item={it} colors={colorFor(it.sourceRecipeIds)} onToggle={() => toggle(it)} />
+                  <ItemRow
+                    key={it.id}
+                    item={it}
+                    colors={colorFor(it.sourceRecipeIds)}
+                    onToggle={() => toggle(it)}
+                    onSave={(patch) => saveItem(it, patch)}
+                    onDelete={() => deleteItem(it)}
+                  />
                 ))}
               </div>
             ))}
