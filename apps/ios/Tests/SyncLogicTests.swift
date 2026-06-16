@@ -217,6 +217,43 @@ private final class Counter { var n = 0 }
     }
 }
 
+@Suite struct ListGroupingTests {
+    private func item(_ id: String, section: String?) -> NookAPI.ListItemDTO {
+        NookAPI.ListItemDTO(id: id, name: id, quantity: nil, checked: false, section: section, assignee: nil)
+    }
+
+    @Test func groupsBySectionPreservingFirstSeenOrder() {
+        let items = [
+            item("a", section: "Produce"), item("b", section: "Pantry"),
+            item("c", section: "Produce"), item("d", section: "Pantry"),
+        ]
+        let groups = ListGrouping.sections(items)
+        #expect(groups.map(\.title) == ["Produce", "Pantry"])
+        #expect(groups[0].items.map(\.id) == ["a", "c"])
+        #expect(groups[1].items.map(\.id) == ["b", "d"])
+    }
+
+    @Test func ungroupedItemsFallIntoTrailingItemsGroup() {
+        let items = [
+            item("x", section: nil), item("y", section: "Gear"), item("z", section: nil),
+        ]
+        let groups = ListGrouping.sections(items)
+        #expect(groups.map(\.title) == ["Gear", "Items"])   // ungrouped always last
+        #expect(groups.last?.items.map(\.id) == ["x", "z"])
+    }
+
+    @Test func noSectionsMeansOneHeaderlessGroup() {
+        let groups = ListGrouping.sections([item("a", section: nil), item("b", section: "")])
+        #expect(groups.count == 1)
+        #expect(groups[0].title == nil)
+        #expect(groups[0].items.count == 2)
+    }
+
+    @Test func emptyInputYieldsNoGroups() {
+        #expect(ListGrouping.sections([]).isEmpty)
+    }
+}
+
 @Suite struct CaptureIntentTests {
     private func decode(_ json: String) throws -> CaptureIntent {
         try JSONDecoder().decode(CaptureIntent.self, from: Data(json.utf8))

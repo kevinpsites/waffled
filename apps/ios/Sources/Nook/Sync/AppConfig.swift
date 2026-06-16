@@ -56,4 +56,6 @@ enum DemoHooks {
     static var captureCommit: Bool { AppConfig.env("NOOK_DEMO_CAPTURE_COMMIT") == "1" }
     /// Deep-link a Family hub tile on launch: chores | goals | rewards | lists | photos | settings.
     static var openHub: String? { AppConfig.env("NOOK_OPEN_HUB") }
+    /// With openHub=lists, also open a specific list by type or name (e.g. "grocery").
+    static var openList: String? { AppConfig.env("NOOK_OPEN_LIST") }
 }

@@ -78,10 +78,12 @@ struct NookAPI: Sendable {
     // events (written to the local mirror) these commit straight to the server —
     // mirroring the web kiosk's CaptureBar.commit() contract exactly.
 
-    /// Add a grocery item. `name` already folds in the quantity (e.g. "milk (2)"),
-    /// matching the web `addGroceryItem(label)`.
-    func addGroceryItem(name: String) async throws {
-        try await send("POST", "/api/lists/grocery/items", body: ["name": .string(name)])
+    /// Add a grocery item. Capture folds the quantity into `name` ("milk (2)"); the
+    /// Lists screen passes a separate `quantity` so the aisle/board keeps it tidy.
+    func addGroceryItem(name: String, quantity: String? = nil) async throws {
+        var body: [String: JSONValue] = ["name": .string(name)]
+        if let q = quantity, !q.isEmpty { body["quantity"] = .string(q) }
+        try await send("POST", "/api/lists/grocery/items", body: body)
     }
 
     /// Create a chore (the "task" intent). personId resolves the assignee; stars map
@@ -191,17 +193,59 @@ struct NookAPI: Sendable {
         return try await getJSON("/api/family/overview", as: Resp.self).people
     }
 
-    // MARK: Lists screen (interactive grocery)
+    // MARK: Lists (index + generic detail)
 
-    /// The full grocery list (name + quantity + checked) for the Lists destination.
-    func groceryList() async throws -> [GroceryListItem] {
-        struct Resp: Decodable { let items: [GroceryListItem] }
-        return try await getJSON("/api/lists/grocery", as: Resp.self).items
+    /// A list in the household's index (Grocery, packing lists, …).
+    struct ListSummary: Decodable, Identifiable, Hashable, Sendable {
+        let id: String
+        let name: String
+        let emoji: String?
+        let listType: String
+        let itemCount: Int
     }
 
-    /// Check / uncheck a list item.
-    func setListItemChecked(id: String, checked: Bool) async throws {
-        try await send("PATCH", "/api/list-items/\(id)", body: ["checked": .bool(checked)])
+    /// One row in a list detail — section (aisle for grocery), quantity, assignee.
+    struct ListItemDTO: Decodable, Identifiable, Sendable {
+        let id: String
+        var name: String
+        var quantity: String?
+        var checked: Bool
+        let section: String?
+        let assignee: Assignee?
+        struct Assignee: Decodable, Sendable {
+            let name: String?
+            let avatarEmoji: String?
+            let colorHex: String?
+        }
+    }
+
+    /// All lists in the household (for the Lists index).
+    func listSummaries() async throws -> [ListSummary] {
+        struct Resp: Decodable { let lists: [ListSummary] }
+        return try await getJSON("/api/lists", as: Resp.self).lists
+    }
+
+    /// The items in a list (works for any list, grocery included).
+    func listItems(listId: String) async throws -> [ListItemDTO] {
+        struct Resp: Decodable { let items: [ListItemDTO] }
+        return try await getJSON("/api/lists/\(listId)", as: Resp.self).items
+    }
+
+    /// Add an item to a non-grocery list.
+    func addListItem(listId: String, name: String, quantity: String?) async throws {
+        var body: [String: JSONValue] = ["name": .string(name)]
+        if let q = quantity, !q.isEmpty { body["quantity"] = .string(q) }
+        try await send("POST", "/api/lists/\(listId)/items", body: body)
+    }
+
+    /// Edit a list item (name / quantity / checked). Empty quantity clears it.
+    func patchListItem(id: String, name: String? = nil, quantity: String? = nil, checked: Bool? = nil) async throws {
+        var body: [String: JSONValue] = [:]
+        if let name { body["name"] = .string(name) }
+        if let quantity { body["quantity"] = quantity.isEmpty ? .null : .string(quantity) }
+        if let checked { body["checked"] = .bool(checked) }
+        guard !body.isEmpty else { return }
+        try await send("PATCH", "/api/list-items/\(id)", body: body)
     }
 
     /// Remove a list item.

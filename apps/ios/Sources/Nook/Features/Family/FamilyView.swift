@@ -83,12 +83,13 @@ struct FamilyView: View {
     /// Tile destinations: Lists is built out; the rest are live-summary placeholders.
     @ViewBuilder private func destination(_ route: HubRoute) -> some View {
         switch route {
-        case .lists:    ListsView()
-        case .chores:   HubPlaceholder(emoji: "✅", title: "Chores", summary: hub.choresSubtitle)
-        case .goals:    HubPlaceholder(emoji: "🎯", title: "Goals", summary: hub.goalsSubtitle)
-        case .rewards:  HubPlaceholder(emoji: "⭐", title: "Rewards", summary: hub.rewardsSubtitle)
-        case .photos:   HubPlaceholder(emoji: "📷", title: "Photos", summary: hub.photosSubtitle)
-        case .settings: HubPlaceholder(emoji: "⚙️", title: "Settings", summary: "People, calendars, AI")
+        case .lists:           ListsIndexView(path: $path)
+        case let .list(list):  ListDetailView(list: list)
+        case .chores:          HubPlaceholder(emoji: "✅", title: "Chores", summary: hub.choresSubtitle)
+        case .goals:           HubPlaceholder(emoji: "🎯", title: "Goals", summary: hub.goalsSubtitle)
+        case .rewards:         HubPlaceholder(emoji: "⭐", title: "Rewards", summary: hub.rewardsSubtitle)
+        case .photos:          HubPlaceholder(emoji: "📷", title: "Photos", summary: hub.photosSubtitle)
+        case .settings:        HubPlaceholder(emoji: "⚙️", title: "Settings", summary: "People, calendars, AI")
         }
     }
 
