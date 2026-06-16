@@ -48,6 +48,17 @@ xcodebuild -project Nook.xcodeproj -scheme Nook \
 Whenever you **add or remove a Swift file**, re-run `xcodegen generate` (sources
 are folder-globbed, so you don't list files individually).
 
+### Tests
+
+Unit tests (Swift Testing) live in `Tests/` and cover the pure sync logic —
+timestamp parsing, timezone day-bucketing, agenda ordering, the CRUD-upload
+shape, hex parsing. SwiftUI views are exercised manually on the sim.
+
+```bash
+xcodebuild test -project Nook.xcodeproj -scheme Nook \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+```
+
 ### Vendored PowerSync SDK (temporary)
 
 PowerSync 1.14.3 doesn't compile under Xcode 26.1 / Swift 6.2 (`weak let` is now a
