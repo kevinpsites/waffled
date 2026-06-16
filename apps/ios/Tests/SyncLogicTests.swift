@@ -272,7 +272,7 @@ private final class Counter { var n = 0 }
                             assignee: nil, aisle: nil, sourceRecipeIds: recipes)
     }
     private func meal(_ recipeId: String?, _ title: String, date: String) -> NookAPI.GroceryBoardDTO.Meal {
-        .init(recipeId: recipeId, title: title, emoji: nil, color: "#000000", date: date)
+        .init(recipeId: recipeId, title: title, emoji: nil, color: "#000000", date: date, mealType: "dinner")
     }
 
     @Test func groupsItemsUnderTheirMealInDateOrder() {

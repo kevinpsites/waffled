@@ -234,7 +234,8 @@ struct NookAPI: Sendable {
             let emoji: String?
             let color: String
             let date: String
-            var id: String { recipeId ?? date }
+            let mealType: String?
+            var id: String { (recipeId ?? "") + "|" + date + "|" + (mealType ?? "") }
         }
     }
 

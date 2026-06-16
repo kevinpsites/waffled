@@ -55,11 +55,15 @@ final class ListDetailModel {
         MealGrouping.sections(items: activeItems, meals: meals)
     }
 
-    /// The meal colors for an item's meal dots.
+    /// One meal-color dot per *distinct recipe* the item belongs to (a recipe planned
+    /// in two slots is the same dot, not two).
     func dotColors(for item: NookAPI.ListItemDTO) -> [String] {
-        let ids = Set(item.sourceRecipeIds ?? [])
-        guard !ids.isEmpty else { return [] }
-        return meals.compactMap { m in m.recipeId.flatMap { ids.contains($0) ? m.color : nil } }
+        var seen = Set<String>()
+        var colors: [String] = []
+        for rid in (item.sourceRecipeIds ?? []) where seen.insert(rid).inserted {
+            if let m = meals.first(where: { $0.recipeId == rid }) { colors.append(m.color) }
+        }
+        return colors
     }
 
     /// Settled, checked items — shown in the collapsed Completed section.
@@ -213,7 +217,7 @@ struct ListDetailView: View {
                 ForEach(model.mealSections()) { group in
                     Section {
                         ForEach(group.items) { item in itemRow(item) }
-                    } header: { mealHeader(group.meal) }
+                    } header: { mealHeader(group) }
                 }
             } else {
                 ForEach(model.activeSections) { group in
@@ -299,19 +303,33 @@ struct ListDetailView: View {
         }
     }
 
-    /// "By meal" section header — the meal's color dot + title (or Staples).
-    @ViewBuilder private func mealHeader(_ meal: NookAPI.GroceryBoardDTO.Meal?) -> some View {
-        HStack(spacing: 7) {
-            if let meal {
-                Circle().fill(Color(hexString: meal.color) ?? NK.ink3).frame(width: 9, height: 9)
-                Text("\(meal.emoji ?? "🍽️")  \(meal.title ?? "Meal")".uppercased())
+    /// "By meal" section header — a meal-type tag (tinted with the meal's color, so
+    /// it doubles as the legend for the item dots) + the meal name + item count.
+    @ViewBuilder private func mealHeader(_ group: MealGroup) -> some View {
+        HStack(spacing: 8) {
+            if let meal = group.meal {
+                let color = Color(hexString: meal.color) ?? NK.ink3
+                if let type = meal.mealType, !type.isEmpty {
+                    Text(type.uppercased())
+                        .font(.system(size: 9.5, weight: .heavy)).tracking(0.4)
+                        .foregroundStyle(color)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(color.opacity(0.15))
+                        .clipShape(Capsule())
+                }
+                Text((meal.title ?? "Meal").uppercased())
                     .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                    .foregroundStyle(NK.ink3)
+                    .lineLimit(1)
             } else {
-                Text("STAPLES & EXTRAS").font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                Text("STAPLES & EXTRAS")
+                    .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                    .foregroundStyle(NK.ink3)
             }
-            Spacer()
+            Spacer(minLength: 6)
+            Text("\(group.items.count)")
+                .font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
         }
-        .foregroundStyle(NK.ink3)
     }
 
     /// Colored dots showing which dinners need this item (grocery board).
