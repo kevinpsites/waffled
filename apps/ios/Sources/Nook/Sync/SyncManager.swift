@@ -31,6 +31,8 @@ final class SyncManager {
 
     private let db: PowerSyncDatabaseProtocol
     private let connector = NookConnector()
+    private let api = NookAPI()
+    static let iso8601 = ISO8601DateFormatter()
     private var started = false
     private var watchTask: Task<Void, Never>?
     private var eventsTask: Task<Void, Never>?
@@ -126,6 +128,56 @@ final class SyncManager {
         } catch {
             lastError = String(describing: error)
         }
+    }
+
+    // MARK: capture ("Add anything")
+
+    /// Parse free text into an intent via the server's pluggable LLM.
+    func resolveCapture(_ text: String) async throws -> NookAPI.CaptureResponse {
+        try await api.capture(text: text)
+    }
+
+    /// Warm the model so the first parse isn't a cold start (fire-and-forget).
+    func warmCapture() async { await api.warmCapture() }
+
+    /// Commit a captured event by writing it to the local mirror. The resolved
+    /// person_id drives server-side calendar routing + the Google push (the phone
+    /// never talks to Google). Returns false on failure.
+    func commitEvent(title: String, startsAtISO: String, allDay: Bool, personName: String?) async -> Bool {
+        let householdId = (try? await db.getOptional(
+            sql: "SELECT id FROM households LIMIT 1", parameters: [],
+            mapper: { try $0.getString(name: "id") })) ?? nil
+        guard let householdId else {
+            lastError = "No household synced yet."
+            return false
+        }
+        let personId = personName.flatMap { name in
+            members.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }?.id
+        }
+        let id = UUID().uuidString.lowercased()
+        let ends: String? = allDay
+            ? nil
+            : EventTime.parse(startsAtISO).map { SyncManager.iso8601.string(from: $0.addingTimeInterval(3600)) }
+        do {
+            try await db.execute(
+                sql: """
+                INSERT INTO events (id, household_id, title, starts_at, ends_at, all_day, person_id, origin)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'manual')
+                """,
+                parameters: [id, householdId, title, startsAtISO, ends, allDay ? 1 : 0, personId]
+            )
+            await refreshCounts()
+            return true
+        } catch {
+            lastError = String(describing: error)
+            return false
+        }
+    }
+
+    /// The person a captured name resolves to (for the preview chip + routing hint).
+    func member(named name: String?) -> SyncedMember? {
+        guard let name else { return nil }
+        return members.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
     }
 
     // MARK: live state

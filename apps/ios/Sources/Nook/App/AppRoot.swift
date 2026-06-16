@@ -43,6 +43,7 @@ struct AppRoot: View {
             CaptureSheet()
                 .presentationDragIndicator(.visible)
         }
+        .onAppear { if DemoHooks.openCapture { showCapture = true } }
     }
 }
 

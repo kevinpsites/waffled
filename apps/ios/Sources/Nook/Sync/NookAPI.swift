@@ -28,6 +28,34 @@ struct NookAPI: Sendable {
         return try JSONDecoder().decode(TokenResponse.self, from: data)
     }
 
+    struct CaptureResponse: Decodable {
+        let intent: CaptureIntent?
+        let via: String
+        let fallback: Bool
+    }
+
+    /// Parse free text into an intent via the server's pluggable-LLM endpoint.
+    func capture(text: String) async throws -> CaptureResponse {
+        var req = URLRequest(url: url("/api/capture"))
+        req.httpMethod = "POST"
+        authorize(&req)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(["text": text])
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(resp, data)
+        return try JSONDecoder().decode(CaptureResponse.self, from: data)
+    }
+
+    /// Preload the model (fire-and-forget) so the first parse isn't a cold start.
+    func warmCapture() async {
+        var req = URLRequest(url: url("/api/capture/warm"))
+        req.httpMethod = "POST"
+        authorize(&req)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = "{}".data(using: .utf8)
+        _ = try? await URLSession.shared.data(for: req)
+    }
+
     /// Forward a batch of queued local writes to the server's CRUD sink.
     func uploadCrud(_ ops: [CrudOpDTO]) async throws {
         var req = URLRequest(url: url("/api/powersync/crud"))

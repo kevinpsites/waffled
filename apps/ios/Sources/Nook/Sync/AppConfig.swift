@@ -48,4 +48,10 @@ enum DemoHooks {
     static var openSync: Bool { AppConfig.env("NOOK_OPEN_SYNC") == "1" }
     /// Insert one offline test event once members have synced.
     static var addEvent: Bool { AppConfig.env("NOOK_DEMO_ADD_EVENT") == "1" }
+    /// Auto-present the capture sheet on launch.
+    static var openCapture: Bool { AppConfig.env("NOOK_OPEN_CAPTURE") == "1" }
+    /// Prefill the capture sheet with this text and auto-parse it.
+    static var captureText: String? { AppConfig.env("NOOK_DEMO_CAPTURE") }
+    /// Also auto-commit the parsed capture (use with captureText).
+    static var captureCommit: Bool { AppConfig.env("NOOK_DEMO_CAPTURE_COMMIT") == "1" }
 }
