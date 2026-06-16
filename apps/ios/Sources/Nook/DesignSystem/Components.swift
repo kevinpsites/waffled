@@ -44,17 +44,37 @@ struct Pill: View {
     }
 }
 
-/// A person avatar (`.av`) — emoji on the person's soft tint.
+/// A person avatar (`.av`) — emoji on a soft tint. Works from either a design
+/// `FamilyColor` (static screens) or a real `color_hex` string (synced data).
 struct Avatar: View {
-    let person: FamilyColor
+    let tint: Color
     let emoji: String
     var size: CGFloat = 34
+
+    init(person: FamilyColor, emoji: String, size: CGFloat = 34) {
+        self.tint = person.tint
+        self.emoji = emoji
+        self.size = size
+    }
+
+    init(tint: Color, emoji: String, size: CGFloat = 34) {
+        self.tint = tint
+        self.emoji = emoji
+        self.size = size
+    }
+
+    /// Synced member: derive a soft tint from the stored hex (falls back to panel).
+    init(colorHex: String?, emoji: String, size: CGFloat = 34) {
+        self.tint = Color(hexString: colorHex)?.opacity(0.16) ?? NK.panel
+        self.emoji = emoji
+        self.size = size
+    }
 
     var body: some View {
         Text(emoji)
             .font(.system(size: size * 0.52))
             .frame(width: size, height: size)
-            .background(person.tint)
+            .background(tint)
             .clipShape(Circle())
     }
 }

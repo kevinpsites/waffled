@@ -1,5 +1,6 @@
-# XcodeGen generates this from project.yml — never commit it.
+# XcodeGen generates these from project.yml — never commit them.
 Nook.xcodeproj/
+Nook-Info.plist
 
 # Xcode / build artifacts
 build/
@@ -7,6 +8,9 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 .DS_Store
+
+# Vendored, patched PowerSync SDK — fetch via Scripts/vendor-powersync.sh
+Vendor/
 
 # Swift Package Manager
 .swiftpm/

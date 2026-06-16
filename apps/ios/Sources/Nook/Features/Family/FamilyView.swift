@@ -4,14 +4,28 @@ import SwiftUI
 /// plus a launcher grid for every overflow area. Static in Phase 0; the people row
 /// becomes the first PowerSync-backed surface in Phase 1.
 struct FamilyView: View {
+    @Environment(SyncManager.self) private var sync
+    @State private var showSync = false
+    @State private var ranDemo = false
     private let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                HStack {
+                HStack(spacing: 8) {
                     Text("Family").font(NK.serif(30)).foregroundStyle(NK.ink)
                     Spacer()
+                    Button { showSync = true } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 16)).foregroundStyle(NK.ink2)
+                            .frame(width: 36, height: 36)
+                            .background(NK.panel).clipShape(Circle())
+                            .overlay(alignment: .topTrailing) {
+                                Circle().fill(syncDotColor).frame(width: 9, height: 9)
+                                    .overlay(Circle().stroke(NK.canvas, lineWidth: 1.5))
+                            }
+                    }
+                    .buttonStyle(.plain)
                     Image(systemName: "gearshape")
                         .font(.system(size: 18)).foregroundStyle(NK.ink2)
                         .frame(width: 36, height: 36)
@@ -38,23 +52,43 @@ struct FamilyView: View {
             .padding(.bottom, 110)
         }
         .background(NK.canvas)
+        .sheet(isPresented: $showSync) { SyncStatusView() }
+        .onAppear(perform: runDemoHooksIfSet)
     }
 
+    /// Headless demo driver (no-op unless NOOK_* env is set) — see DemoHooks.
+    private func runDemoHooksIfSet() {
+        if DemoHooks.openSync { showSync = true }
+        guard DemoHooks.addEvent, !ranDemo else { return }
+        ranDemo = true
+        Task {
+            for _ in 0..<40 {
+                if !sync.members.isEmpty { break }
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+            await sync.addTestEvent()
+        }
+    }
+
+    // Live from the local SQLite mirror once synced; the static sample until then,
+    // so the design still reads pre-sync.
     private var peopleRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                ForEach(Sample.members) { m in
-                    VStack(spacing: 7) {
-                        Avatar(person: m.color, emoji: m.emoji, size: 46)
-                            .overlay(alignment: .bottomTrailing) {
-                                Circle().fill(m.color.solid)
-                                    .frame(width: 14, height: 14)
-                                    .overlay(Circle().stroke(NK.card, lineWidth: 2))
-                            }
-                        Text(m.name).font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ink)
-                        Text(m.sub).font(.system(size: 10.5, weight: .semibold)).foregroundStyle(NK.ink3)
+                if sync.members.isEmpty {
+                    ForEach(Sample.members) { m in
+                        personChip(name: m.name, sub: m.sub, dot: m.color.solid) {
+                            Avatar(person: m.color, emoji: m.emoji, size: 46)
+                        }
                     }
-                    .frame(width: 64)
+                } else {
+                    ForEach(sync.members) { m in
+                        personChip(name: m.name,
+                                   sub: m.memberType?.capitalized ?? "",
+                                   dot: Color(hexString: m.colorHex) ?? NK.ink3) {
+                            Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 46)
+                        }
+                    }
                 }
                 VStack(spacing: 7) {
                     Image(systemName: "plus")
@@ -67,6 +101,29 @@ struct FamilyView: View {
                 }
                 .frame(width: 64)
             }
+        }
+    }
+
+    private func personChip<A: View>(name: String, sub: String, dot: Color,
+                                     @ViewBuilder avatar: () -> A) -> some View {
+        VStack(spacing: 7) {
+            avatar()
+                .overlay(alignment: .bottomTrailing) {
+                    Circle().fill(dot)
+                        .frame(width: 14, height: 14)
+                        .overlay(Circle().stroke(NK.card, lineWidth: 2))
+                }
+            Text(name).font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ink)
+            Text(sub).font(.system(size: 10.5, weight: .semibold)).foregroundStyle(NK.ink3)
+        }
+        .frame(width: 64)
+    }
+
+    private var syncDotColor: Color {
+        switch sync.status {
+        case .connected: return FamilyColor.wally.solid
+        case .connecting: return NK.gold
+        case .offline, .idle: return NK.ink3
         }
     }
 
@@ -89,4 +146,4 @@ struct FamilyView: View {
     }
 }
 
-#Preview { FamilyView() }
+#Preview { FamilyView().environment(SyncManager()) }

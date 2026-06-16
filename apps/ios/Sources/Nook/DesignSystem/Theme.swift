@@ -86,4 +86,13 @@ extension Color {
         let b = Double(hex & 0xFF) / 255
         self.init(.sRGB, red: r, green: g, blue: b, opacity: 1)
     }
+
+    /// Build a Color from a "#RRGGBB" string (real `persons.color_hex` data).
+    /// Returns nil for malformed input so callers can fall back.
+    init?(hexString: String?) {
+        guard var s = hexString else { return nil }
+        if s.hasPrefix("#") { s.removeFirst() }
+        guard s.count == 6, let v = UInt32(s, radix: 16) else { return nil }
+        self.init(hex: v)
+    }
 }

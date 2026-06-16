@@ -35,21 +35,51 @@ apps/ios/
 ## Develop
 
 ```bash
-brew install xcodegen          # one-time
+brew install xcodegen           # one-time
 cd apps/ios
-xcodegen generate              # regenerate Nook.xcodeproj after any file/yml change
-open Nook.xcodeproj            # or build from the CLI:
+./Scripts/vendor-powersync.sh   # one-time: fetch + patch the PowerSync SDK (see below)
+xcodegen generate               # regenerate Nook.xcodeproj after any file/yml change
+open Nook.xcodeproj             # or build from the CLI:
 
-xcodebuild -scheme Nook \
+xcodebuild -project Nook.xcodeproj -scheme Nook \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 ```
 
 Whenever you **add or remove a Swift file**, re-run `xcodegen generate` (sources
 are folder-globbed, so you don't list files individually).
 
+### Vendored PowerSync SDK (temporary)
+
+PowerSync 1.14.3 doesn't compile under Xcode 26.1 / Swift 6.2 (`weak let` is now a
+hard error). `Scripts/vendor-powersync.sh` clones the SDK into `Vendor/`
+(gitignored) and applies a two-line patch; `project.yml` points the SPM
+dependency at that local copy. Revert to the remote pin once upstream fixes it.
+
+## Run the Phase 1 sync demo
+
+Bring up the backend (`docker compose … up -d` / `just up`), mint a dev token
+(`just token` / `nook token`), then launch the app pointed at the local stack.
+Config comes from the launch environment (or the in-app Sync → Connection panel):
+
+```bash
+TOKEN=$(…/mint-token.js --sub 'dev|demo')
+SIMCTL_CHILD_NOOK_API_URL=http://localhost:3000 \
+SIMCTL_CHILD_NOOK_DEV_TOKEN="$TOKEN" \
+  xcrun simctl launch booted ai.lorebooks.nook
+```
+
+The iOS simulator reaches the host Mac on `localhost`. Open **Family → ↻ (Sync)**
+to see connection state, mirrored row counts, the pending-upload queue, and an
+"Add offline test event" button. Optional headless demo switches:
+`NOOK_START_TAB=family`, `NOOK_OPEN_SYNC=1`, `NOOK_DEMO_ADD_EVENT=1`.
+
 ## Status
 
 - **Phase 0 — scaffold:** app shell, Nook design system, 5-tab navigation,
-  static Today screen. ← current
-- **Phase 1 — sync de-risk (roadmap M4.2):** PowerSync + dev-token auth, mirror
-  `persons`, Family screen from local SQLite, airplane-mode read/write/reconnect.
+  static Today screen. ✅
+- **Phase 1 — sync de-risk (roadmap M4.2):** PowerSync Swift SDK + dev-token auth,
+  `persons`/`events` mirrored to local SQLite, Family people-row from the mirror,
+  offline read + queued write + reconnect — verified end-to-end on the iPhone 17
+  Pro sim against the live stack. ✅
+- **Next — Phase 2:** the "Add anything" capture flow wired to `POST /api/capture`
+  (+ SwiftData for offline capture drafts).

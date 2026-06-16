@@ -1,6 +1,6 @@
 # XcodeGen project definition — the source of truth for the Xcode project.
 # Edit this file (not the generated .xcodeproj), then run `xcodegen generate`.
-# See README.md. The generated Nook.xcodeproj is gitignored.
+# See README.md. The generated Nook.xcodeproj + Nook-Info.plist are gitignored.
 
 name: Nook
 
@@ -17,10 +17,17 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     # Swift 5 language mode for the scaffold — avoids strict-concurrency churn while
-    # we stand the app up. Bump to 6 once PowerSync wiring (Phase 1) settles.
+    # we stand the app up. Bump to 6 once the sync layer settles.
     SWIFT_VERSION: "5.0"
     SWIFT_STRICT_CONCURRENCY: minimal
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+packages:
+  # Local, one-line-patched copy of PowerSync 1.14.3 (weak let -> weak var) for
+  # Xcode 26.1 / Swift 6.2 compatibility. Run Scripts/vendor-powersync.sh to fetch
+  # it; revert to the remote pin once upstream ships a fix.
+  PowerSync:
+    path: Vendor/powersync-swift
 
 targets:
   Nook:
@@ -28,14 +35,23 @@ targets:
     platform: iOS
     sources:
       - path: Sources
+    dependencies:
+      - package: PowerSync
+        product: PowerSync
+    info:
+      path: Nook-Info.plist
+      properties:
+        CFBundleDisplayName: Nook
+        UILaunchScreen: {}
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        # Dev only: allow plain-HTTP to localhost/the tailnet (no TLS in local stack).
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.lorebooks.nook
         TARGETED_DEVICE_FAMILY: "1"          # iPhone only — this is the phone companion
-        GENERATE_INFOPLIST_FILE: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        INFOPLIST_KEY_CFBundleDisplayName: Nook
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
-        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait

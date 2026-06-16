@@ -9,8 +9,17 @@ enum Tab: Hashable {
 /// Root navigation: the current screen filling the canvas, with a custom bottom
 /// tab bar whose raised center button opens the AI capture sheet.
 struct AppRoot: View {
-    @State private var tab: Tab = .today
+    @State private var tab: Tab = AppRoot.initialTab
     @State private var showCapture = false
+
+    private static var initialTab: Tab {
+        switch DemoHooks.startTab {
+        case "calendar": return .calendar
+        case "meals": return .meals
+        case "family": return .family
+        default: return .today
+        }
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -93,5 +102,5 @@ struct NookTabBar: View {
 }
 
 #Preview {
-    AppRoot().tint(NK.primary)
+    AppRoot().tint(NK.primary).environment(SyncManager())
 }
