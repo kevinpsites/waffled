@@ -149,6 +149,7 @@ struct ListDetailView: View {
     @State private var editQty = ""
     @State private var showCompleted = false
     @State private var detailItem: NookAPI.ListItemDTO?
+    @State private var didAutoDetails = false
     @FocusState private var focus: Field?
 
     private enum Field: Hashable { case add, editName, editQty }
@@ -177,17 +178,36 @@ struct ListDetailView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { addBar }
         .navigationTitle(model.list.name)
         .navigationBarTitleDisplayMode(.inline)
-        .task { await model.load() }
+        .task {
+            await model.load()
+            if DemoHooks.openDetails, !didAutoDetails, let first = model.items.first {
+                didAutoDetails = true
+                detailItem = first
+            }
+        }
         .refreshable { await model.load() }
         .onChange(of: focus) { _, new in
             // Tapping away from an inline edit commits it.
             if editingId != nil, new != .editName, new != .editQty { commitEdit() }
         }
         .sheet(item: $detailItem) { item in
-            ItemDetailEditor(item: item, members: sync.members) { name, qty, member, section in
+            ItemDetailEditor(item: item, members: sync.members, suggestions: sectionSuggestions) { name, qty, member, section in
                 Task { await model.editDetails(item.id, name: name, quantity: qty, member: member, section: section) }
             }
         }
+    }
+
+    /// Canonical grocery aisles (mirrors the server's aisles.ts taxonomy).
+    private static let groceryAisles = ["Produce", "Pantry", "Dairy & Chilled", "Meat & Seafood", "Bakery", "Frozen", "Other"]
+
+    /// Section chips offered in the editor: the grocery aisle taxonomy (for grocery
+    /// lists) plus any sections already in use on this list, deduped.
+    private var sectionSuggestions: [String] {
+        var result = model.list.listType.lowercased() == "grocery" ? Self.groceryAisles : []
+        for s in model.items.compactMap(\.section) where !s.isEmpty && !result.contains(s) {
+            result.append(s)
+        }
+        return result
     }
 
     /// A row plus its swipe actions (Delete + Details), shared by the active and
@@ -341,9 +361,12 @@ struct ListDetailView: View {
 
 /// The fuller "Details" editor reached by swiping a row — name, quantity, assignee,
 /// and section. The 90% case stays on the inline row editor; this is for the rest.
+/// Styled to match the app (NK cards on canvas) rather than the stock iOS Form.
 struct ItemDetailEditor: View {
     @Environment(\.dismiss) private var dismiss
+    let originalName: String
     let members: [SyncedMember]
+    let suggestions: [String]
     let onSave: (String, String, SyncedMember?, String) -> Void
 
     @State private var name: String
@@ -351,9 +374,11 @@ struct ItemDetailEditor: View {
     @State private var assigneeId: String?
     @State private var section: String
 
-    init(item: NookAPI.ListItemDTO, members: [SyncedMember],
+    init(item: NookAPI.ListItemDTO, members: [SyncedMember], suggestions: [String],
          onSave: @escaping (String, String, SyncedMember?, String) -> Void) {
+        self.originalName = item.name
         self.members = members
+        self.suggestions = suggestions
         self.onSave = onSave
         _name = State(initialValue: item.name)
         _quantity = State(initialValue: item.quantity ?? "")
@@ -365,18 +390,26 @@ struct ItemDetailEditor: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section { TextField("Name", text: $name) }
-                Section("Quantity") { TextField("e.g. 2 lb", text: $quantity) }
-                Section("Assigned to") {
-                    Picker("Assignee", selection: $assigneeId) {
-                        Text("Unassigned").tag(String?.none)
-                        ForEach(members) { m in Text(m.name).tag(Optional(m.id)) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    field("Name") { TextField("Item", text: $name).textInputAutocapitalization(.words) }
+                    field("Quantity") { TextField("e.g. 2 lb", text: $quantity) }
+
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "Assigned to")
+                        assigneeRow
+                    }
+
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "Section")
+                        if !suggestions.isEmpty { sectionChips }
+                        inputCard { TextField("e.g. Produce", text: $section) }
                     }
                 }
-                Section("Section") { TextField("e.g. Produce", text: $section) }
+                .padding(20)
             }
-            .navigationTitle("Edit item")
+            .background(NK.canvas)
+            .navigationTitle("Edit \(originalName)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -385,10 +418,85 @@ struct ItemDetailEditor: View {
                         onSave(name, quantity, members.first { $0.id == assigneeId }, section)
                         dismiss()
                     }
+                    .fontWeight(.semibold)
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large])
+    }
+
+    // MARK: pieces
+
+    private func field<Content: View>(_ label: String, @ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            SectionLabel(text: label)
+            inputCard(content)
+        }
+    }
+
+    private func inputCard<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .font(.system(size: 16, weight: .semibold))
+            .padding(.horizontal, 15).padding(.vertical, 13)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(NK.card)
+            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    private var assigneeRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                assigneePill(member: nil, label: "Anyone", selected: assigneeId == nil) { assigneeId = nil }
+                ForEach(members) { m in
+                    assigneePill(member: m, label: m.name, selected: assigneeId == m.id) { assigneeId = m.id }
+                }
+            }
+            .padding(.vertical, 1)
+        }
+    }
+
+    private func assigneePill(member: SyncedMember?, label: String, selected: Bool, _ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            HStack(spacing: 7) {
+                if let m = member {
+                    Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 24)
+                } else {
+                    Image(systemName: "person.2")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(NK.ink3)
+                        .frame(width: 24, height: 24)
+                        .background(NK.panel).clipShape(Circle())
+                }
+                Text(label).font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(selected ? NK.ink : NK.ink2)
+            }
+            .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
+            .background(selected ? NK.primary.opacity(0.12) : NK.card)
+            .overlay(Capsule().strokeBorder(selected ? NK.primary : NK.hair, lineWidth: selected ? 1.5 : 1))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var sectionChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(suggestions, id: \.self) { s in
+                    let selected = section.caseInsensitiveCompare(s) == .orderedSame
+                    Button { section = s } label: {
+                        Text(s).font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(selected ? NK.ink : NK.ink2)
+                            .padding(.horizontal, 12).padding(.vertical, 7)
+                            .background(selected ? NK.primary.opacity(0.12) : NK.card)
+                            .overlay(Capsule().strokeBorder(selected ? NK.primary : NK.hair, lineWidth: selected ? 1.5 : 1))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 1)
+        }
     }
 }

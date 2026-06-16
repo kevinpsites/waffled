@@ -58,4 +58,6 @@ enum DemoHooks {
     static var openHub: String? { AppConfig.env("NOOK_OPEN_HUB") }
     /// With openHub=lists, also open a specific list by type or name (e.g. "grocery").
     static var openList: String? { AppConfig.env("NOOK_OPEN_LIST") }
+    /// With openList set, auto-present the first item's Details editor (verification).
+    static var openDetails: Bool { AppConfig.env("NOOK_OPEN_DETAILS") == "1" }
 }
