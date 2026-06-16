@@ -103,6 +103,31 @@ private func event(_ id: String, _ raw: String?, allDay: Bool = false) -> Synced
         #expect(d["title"] as? String == "Hi")
         #expect(d["person_id"] is NSNull)   // nil column → JSON null (server reads as null)
     }
+
+    @Test func jsonValueEncodesMixedTypesAndNull() throws {
+        // The capture-commit bodies mix strings, ints, and explicit nulls; the
+        // server distinguishes a null personId from an absent one.
+        let body: [String: JSONValue] = [
+            "title": .string("Dishes"), "personId": .null, "rewardAmount": .int(2),
+        ]
+        let data = try JSONEncoder().encode(body)
+        let obj = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(obj["title"] as? String == "Dishes")
+        #expect(obj["rewardAmount"] as? Int == 2)
+        #expect(obj["personId"] is NSNull)
+    }
+}
+
+@Suite struct GroceryLabelTests {
+    @Test func foldsQuantityIntoLabel() {
+        #expect(SyncManager.groceryLabel(name: "milk", quantity: "2") == "milk (2)")
+    }
+
+    @Test func dropsMissingOrBlankQuantity() {
+        #expect(SyncManager.groceryLabel(name: "milk", quantity: nil) == "milk")
+        #expect(SyncManager.groceryLabel(name: "milk", quantity: "") == "milk")
+        #expect(SyncManager.groceryLabel(name: "milk", quantity: "  ") == "milk")
+    }
 }
 
 @Suite struct ColorTests {

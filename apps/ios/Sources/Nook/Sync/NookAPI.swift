@@ -9,6 +9,22 @@ struct CrudOpDTO: Encodable {
     let data: [String: String?]?
 }
 
+/// A minimal JSON value so a single body dict can mix strings, ints, and explicit
+/// nulls (the server distinguishes "absent" from `null` for some fields).
+enum JSONValue: Encodable {
+    case string(String), int(Int), bool(Bool), null
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case let .string(s): try c.encode(s)
+        case let .int(i): try c.encode(i)
+        case let .bool(b): try c.encode(b)
+        case .null: try c.encodeNil()
+        }
+    }
+}
+
 /// Tiny HTTP client for the two endpoints the sync layer needs. Stateless — reads
 /// `AppConfig` at call time so a token edit takes effect on the next request.
 struct NookAPI: Sendable {
@@ -56,6 +72,49 @@ struct NookAPI: Sendable {
         _ = try? await URLSession.shared.data(for: req)
     }
 
+    // MARK: capture commits (non-synced tables go over REST)
+    //
+    // Grocery / chore / meal-plan rows aren't in the PowerSync schema, so unlike
+    // events (written to the local mirror) these commit straight to the server —
+    // mirroring the web kiosk's CaptureBar.commit() contract exactly.
+
+    /// Add a grocery item. `name` already folds in the quantity (e.g. "milk (2)"),
+    /// matching the web `addGroceryItem(label)`.
+    func addGroceryItem(name: String) async throws {
+        try await send("POST", "/api/lists/grocery/items", body: ["name": .string(name)])
+    }
+
+    /// Create a chore (the "task" intent). personId resolves the assignee; stars map
+    /// to the reward amount; rrule carries a recurrence if the LLM inferred one.
+    func createChore(title: String, personId: String?, rewardAmount: Int?, rrule: String?) async throws {
+        var body: [String: JSONValue] = ["title": .string(title)]
+        body["personId"] = personId.map(JSONValue.string) ?? .null
+        if let rewardAmount { body["rewardAmount"] = .int(rewardAmount) }
+        if let rrule, !rrule.isEmpty { body["rrule"] = .string(rrule) }
+        try await send("POST", "/api/chores", body: body)
+    }
+
+    /// Plan a meal slot. recipeId links a known recipe; otherwise title is a one-off.
+    func planMeal(date: String, mealType: String, recipeId: String?, title: String?) async throws {
+        var body: [String: JSONValue] = ["date": .string(date), "mealType": .string(mealType)]
+        if let recipeId { body["recipeId"] = .string(recipeId) }
+        if let title { body["title"] = .string(title) }
+        try await send("POST", "/api/meals/plan", body: body)
+    }
+
+    struct RecipeRef: Decodable { let id: String; let title: String? }
+
+    /// The household's recipes — used for best-effort title→recipe matching before
+    /// planning a meal (so "tacos for Friday" links the Tacos recipe when it exists).
+    func recipes() async throws -> [RecipeRef] {
+        struct Resp: Decodable { let recipes: [RecipeRef] }
+        var req = URLRequest(url: url("/api/recipes"))
+        authorize(&req)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(resp, data)
+        return try JSONDecoder().decode(Resp.self, from: data).recipes
+    }
+
     /// Forward a batch of queued local writes to the server's CRUD sink.
     func uploadCrud(_ ops: [CrudOpDTO]) async throws {
         var req = URLRequest(url: url("/api/powersync/crud"))
@@ -68,6 +127,18 @@ struct NookAPI: Sendable {
     }
 
     // MARK: helpers
+
+    /// POST/PATCH a JSON body to `path`, throwing on non-2xx. The response body is
+    /// ignored — capture commits only care that the write succeeded.
+    private func send(_ method: String, _ path: String, body: [String: JSONValue]) async throws {
+        var req = URLRequest(url: url(path))
+        req.httpMethod = method
+        authorize(&req)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(body)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(resp, data)
+    }
 
     private func url(_ path: String) -> URL {
         URL(string: AppConfig.apiBaseURL + path)!

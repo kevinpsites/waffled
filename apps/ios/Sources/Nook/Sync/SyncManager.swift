@@ -168,6 +168,76 @@ final class SyncManager {
         }
     }
 
+    /// Commit a captured grocery item via REST (not a synced table). The quantity is
+    /// folded into the label the same way the web kiosk does ("milk (2)").
+    func commitGrocery(name: String, quantity: String?) async -> Bool {
+        await restCommit { try await api.addGroceryItem(name: SyncManager.groceryLabel(name: name, quantity: quantity)) }
+    }
+
+    /// Fold an optional quantity into the grocery label ("milk" + "2" → "milk (2)"),
+    /// matching the web kiosk. An empty/whitespace quantity is dropped.
+    nonisolated static func groceryLabel(name: String, quantity: String?) -> String {
+        guard let q = quantity?.trimmingCharacters(in: .whitespaces), !q.isEmpty else { return name }
+        return "\(name) (\(q))"
+    }
+
+    /// Commit a captured task as a chore via REST. The assignee name resolves to a
+    /// synced person; stars become the reward amount.
+    func commitTask(title: String, personName: String?, stars: Int?, rrule: String?) async -> Bool {
+        await restCommit {
+            try await api.createChore(
+                title: title, personId: personId(for: personName), rewardAmount: stars, rrule: rrule
+            )
+        }
+    }
+
+    /// Commit a captured meal to the plan via REST. Best-effort matches a known
+    /// recipe by title (exact, then contains) so the slot links it; otherwise the
+    /// title is planned as a one-off — mirroring the web kiosk.
+    func commitMeal(title: String, date: String?, mealType: String) async -> Bool {
+        let day = date ?? localToday()
+        let recipeId = await matchRecipe(title)
+        return await restCommit {
+            try await api.planMeal(
+                date: day, mealType: mealType,
+                recipeId: recipeId, title: recipeId == nil ? title : nil
+            )
+        }
+    }
+
+    /// Today's date (YYYY-MM-DD) in the household timezone — the meal-plan default.
+    private func localToday() -> String {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = householdTz
+        let c = cal.dateComponents([.year, .month, .day], from: Date())
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+
+    private func matchRecipe(_ title: String) async -> String? {
+        guard let recipes = try? await api.recipes() else { return nil }
+        let n = title.lowercased()
+        return recipes.first { ($0.title ?? "").lowercased() == n }?.id
+            ?? recipes.first { ($0.title ?? "").lowercased().contains(n) }?.id
+    }
+
+    private func personId(for name: String?) -> String? {
+        name.flatMap { n in
+            members.first { $0.name.caseInsensitiveCompare(n) == .orderedSame }?.id
+        }
+    }
+
+    /// Run a REST capture commit, surfacing any failure via `lastError`. Returns
+    /// false on throw so the sheet can keep the preview up and show the error.
+    private func restCommit(_ op: () async throws -> Void) async -> Bool {
+        do {
+            try await op()
+            return true
+        } catch {
+            lastError = String(describing: error)
+            return false
+        }
+    }
+
     /// The person a captured name resolves to (for the preview chip + routing hint).
     func member(named name: String?) -> SyncedMember? {
         guard let name else { return nil }

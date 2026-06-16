@@ -188,16 +188,21 @@ struct CaptureSheet: View {
         guard let intent else { return }
         error = nil; phase = .committing
         Task {
+            let ok: Bool
             switch intent {
             case let .event(title, startsAt, allDay, personName, _):
-                if await sync.commitEvent(title: title, startsAtISO: startsAt, allDay: allDay, personName: personName) {
-                    dismiss()
-                } else {
-                    error = sync.lastError ?? "Couldn't add that."; phase = .preview
-                }
-            default:
-                error = "\(CaptureSummary(intent).kind) capture is coming next — only events can be added here for now."
-                phase = .preview
+                ok = await sync.commitEvent(title: title, startsAtISO: startsAt, allDay: allDay, personName: personName)
+            case let .grocery(name, quantity):
+                ok = await sync.commitGrocery(name: name, quantity: quantity)
+            case let .task(title, personName, stars, rrule, _):
+                ok = await sync.commitTask(title: title, personName: personName, stars: stars, rrule: rrule)
+            case let .meal(title, date, mealType, _):
+                ok = await sync.commitMeal(title: title, date: date, mealType: mealType)
+            }
+            if ok {
+                dismiss()
+            } else {
+                error = sync.lastError ?? "Couldn't add that."; phase = .preview
             }
         }
     }
