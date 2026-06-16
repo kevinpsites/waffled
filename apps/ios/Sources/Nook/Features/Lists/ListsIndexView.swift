@@ -27,7 +27,11 @@ final class ListsIndexModel {
 struct ListsIndexView: View {
     @Binding var path: [HubRoute]
     @State private var model = ListsIndexModel()
-    @State private var deepLinked = false
+
+    /// Fire the headless deep-link at most once per process — the index view is
+    /// recreated when you pop back to it, so a per-view flag would re-fire and trap
+    /// you on the detail screen.
+    private static var didDeepLink = false
 
     var body: some View {
         ScrollView {
@@ -72,13 +76,13 @@ struct ListsIndexView: View {
     }
 
     /// Headless verification: NOOK_OPEN_LIST=grocery (or a list name) pushes that
-    /// list's detail once the index has loaded.
+    /// list's detail once per process, after the index has loaded.
     private func deepLinkIfNeeded() {
-        guard !deepLinked, let want = DemoHooks.openList?.lowercased() else { return }
+        guard !Self.didDeepLink, let want = DemoHooks.openList?.lowercased() else { return }
         if let match = model.lists.first(where: {
             $0.listType.lowercased() == want || $0.name.lowercased() == want
         }) {
-            deepLinked = true
+            Self.didDeepLink = true
             path.append(.list(match))
         }
     }

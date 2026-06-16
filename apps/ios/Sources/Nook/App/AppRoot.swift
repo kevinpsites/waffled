@@ -11,6 +11,9 @@ enum Tab: Hashable {
 struct AppRoot: View {
     @State private var tab: Tab = AppRoot.initialTab
     @State private var showCapture = false
+    /// Bumped when the Family tab is re-tapped while active — changing FamilyView's
+    /// id pops its NavigationStack back to the hub root.
+    @State private var familyNav = 0
 
     private static var initialTab: Tab {
         switch DemoHooks.startTab {
@@ -32,12 +35,13 @@ struct AppRoot: View {
                 case .today:    TodayView()
                 case .calendar: CalendarView()
                 case .meals:    MealsView()
-                case .family:   FamilyView()
+                case .family:   FamilyView().id(familyNav)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            NookTabBar(tab: $tab, onCapture: { showCapture = true })
+            NookTabBar(tab: $tab, onCapture: { showCapture = true },
+                       onReselect: { if $0 == .family { familyNav += 1 } })
         }
         .sheet(isPresented: $showCapture) {
             CaptureSheet()
@@ -52,6 +56,7 @@ struct AppRoot: View {
 struct NookTabBar: View {
     @Binding var tab: Tab
     var onCapture: () -> Void
+    var onReselect: (Tab) -> Void = { _ in }
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 0) {
@@ -73,7 +78,7 @@ struct NookTabBar: View {
     private func item(_ t: Tab, _ icon: String, _ label: String) -> some View {
         let on = tab == t
         return Button {
-            tab = t
+            if tab == t { onReselect(t) } else { tab = t }
         } label: {
             VStack(spacing: 4) {
                 Image(systemName: icon).font(.system(size: 20))

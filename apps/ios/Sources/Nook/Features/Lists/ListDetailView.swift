@@ -2,14 +2,17 @@ import SwiftUI
 import Observation
 
 /// One list's items — works for any list (Grocery included). Tapping the circle
-/// toggles done; tapping the row opens an editor (name + quantity). Swipe to
-/// delete. Items are grouped by section (aisle for grocery). Online-only (lists
-/// aren't a synced table).
+/// toggles done; tapping the row edits it inline (name + a quantity field on the
+/// right). Swipe to delete. Items group by section (aisle for grocery). A checked
+/// item lingers in place for a moment, then drops into a collapsed "Completed"
+/// section. Online-only (lists aren't a synced table).
 @MainActor
 @Observable
 final class ListDetailModel {
     let list: NookAPI.ListSummary
     private(set) var items: [NookAPI.ListItemDTO] = []
+    /// Checked items still shown in place (before they settle into Completed).
+    private(set) var settling: Set<String> = []
     private(set) var loading = true
     private(set) var error = false
 
@@ -18,11 +21,16 @@ final class ListDetailModel {
 
     init(list: NookAPI.ListSummary) { self.list = list }
 
-    var remaining: Int { items.filter { !$0.checked }.count }
-    var sections: [ListSectionGroup] { ListGrouping.sections(items) }
+    /// Active items: unchecked, plus just-checked ones that haven't settled yet.
+    var activeSections: [ListSectionGroup] {
+        ListGrouping.sections(items.filter { !$0.checked || settling.contains($0.id) })
+    }
+    /// Settled, checked items — shown in the collapsed Completed section.
+    var completed: [NookAPI.ListItemDTO] { items.filter { $0.checked && !settling.contains($0.id) } }
 
     func load() async {
         loading = true
+        settling = []
         do {
             items = try await api.listItems(listId: list.id)
             error = false
@@ -42,31 +50,53 @@ final class ListDetailModel {
             } else {
                 try await api.addListItem(listId: list.id, name: name, quantity: qty.isEmpty ? nil : qty)
             }
-            await load()   // server assigns id / section / aisle
+            await load()
         } catch {
             self.error = true
         }
     }
 
-    /// Optimistic toggle; revert on failure.
+    /// Optimistic toggle. Checking keeps the row in place briefly (settling), then
+    /// it animates down into Completed; unchecking returns it to its section now.
     func toggle(_ id: String) async {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         let target = !items[idx].checked
-        items[idx].checked = target
+        withAnimation { items[idx].checked = target }
+        if target {
+            settling.insert(id)
+            scheduleSettle(id)
+        } else {
+            settling.remove(id)
+        }
         do {
             try await api.patchListItem(id: id, checked: target)
         } catch {
-            if let i = items.firstIndex(where: { $0.id == id }) { items[i].checked = !target }
+            if let i = items.firstIndex(where: { $0.id == id }) {
+                withAnimation { items[i].checked = !target }
+            }
+            settling.remove(id)
         }
     }
 
-    /// Optimistic edit; revert on failure.
+    private func scheduleSettle(_ id: String) {
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard let self else { return }
+            // Only settle if it's still checked (the user may have toggled it back).
+            if self.items.first(where: { $0.id == id })?.checked == true {
+                withAnimation { _ = self.settling.remove(id) }
+            }
+        }
+    }
+
+    /// Optimistic inline edit; revert on failure.
     func edit(_ id: String, name rawName: String, quantity rawQty: String) async {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
         let qty = rawQty.trimmingCharacters(in: .whitespacesAndNewlines)
         let prev = items[idx]
+        guard name != prev.name || qty != (prev.quantity ?? "") else { return }
         items[idx].name = name
         items[idx].quantity = qty.isEmpty ? nil : qty
         do {
@@ -79,7 +109,7 @@ final class ListDetailModel {
     /// Optimistic removal; restore on failure.
     func remove(_ id: String) async {
         let snapshot = items
-        items.removeAll { $0.id == id }
+        withAnimation { items.removeAll { $0.id == id } }
         do {
             try await api.deleteListItem(id: id)
         } catch {
@@ -92,8 +122,13 @@ struct ListDetailView: View {
     @State private var model: ListDetailModel
     @State private var draftName = ""
     @State private var draftQty = ""
-    @State private var editing: NookAPI.ListItemDTO?
-    @FocusState private var addingName: Bool
+    @State private var editingId: String?
+    @State private var editName = ""
+    @State private var editQty = ""
+    @State private var showCompleted = false
+    @FocusState private var focus: Field?
+
+    private enum Field: Hashable { case add, editName, editQty }
 
     init(list: NookAPI.ListSummary) {
         _model = State(initialValue: ListDetailModel(list: list))
@@ -106,7 +141,7 @@ struct ListDetailView: View {
                     .font(.system(size: 14)).foregroundStyle(NK.ink3)
                     .listRowSeparator(.hidden).listRowBackground(Color.clear)
             }
-            ForEach(model.sections) { group in
+            ForEach(model.activeSections) { group in
                 Section {
                     ForEach(group.items) { item in
                         row(item)
@@ -117,14 +152,9 @@ struct ListDetailView: View {
                                 } label: { Label("Delete", systemImage: "trash") }
                             }
                     }
-                } header: {
-                    if let title = group.title {
-                        Text(title.uppercased())
-                            .font(.system(size: 11, weight: .heavy)).tracking(0.5)
-                            .foregroundStyle(NK.ink3)
-                    }
-                }
+                } header: { sectionHeader(group.title) }
             }
+            completedSection
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -134,47 +164,100 @@ struct ListDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }
         .refreshable { await model.load() }
-        .sheet(item: $editing) { item in
-            EditItemSheet(name: item.name, quantity: item.quantity ?? "") { name, qty in
-                Task { await model.edit(item.id, name: name, quantity: qty) }
+        .onChange(of: focus) { _, new in
+            // Tapping away from an inline edit commits it.
+            if editingId != nil, new != .editName, new != .editQty { commitEdit() }
+        }
+    }
+
+    @ViewBuilder private func sectionHeader(_ title: String?) -> some View {
+        if let title {
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                .foregroundStyle(NK.ink3)
+        }
+    }
+
+    @ViewBuilder private var completedSection: some View {
+        if !model.completed.isEmpty {
+            Section {
+                if showCompleted {
+                    ForEach(model.completed) { item in
+                        row(item)
+                            .listRowBackground(Color.clear)
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    Task { await model.remove(item.id) }
+                                } label: { Label("Delete", systemImage: "trash") }
+                            }
+                    }
+                }
+            } header: {
+                Button {
+                    withAnimation { showCompleted.toggle() }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: showCompleted ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 10, weight: .heavy))
+                        Text("COMPLETED (\(model.completed.count))")
+                            .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                        Spacer()
+                    }
+                    .foregroundStyle(NK.ink3)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
     }
 
-    private func row(_ item: NookAPI.ListItemDTO) -> some View {
+    @ViewBuilder private func row(_ item: NookAPI.ListItemDTO) -> some View {
         HStack(spacing: 12) {
-            // Circle: tap to complete (separate hit target from the row).
+            // Circle: tap to complete (separate hit target).
             Button {
+                if editingId != nil { commitEdit() }
                 Task { await model.toggle(item.id) }
             } label: {
                 Image(systemName: item.checked ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 21))
                     .foregroundStyle(item.checked ? NK.primary : NK.ink3)
-                    .contentShape(Rectangle())
                     .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
-            // Row body: tap to edit.
-            Button {
-                editing = item
-            } label: {
-                HStack(spacing: 8) {
-                    Text(item.name)
-                        .font(.system(size: 16, weight: .semibold))
-                        .strikethrough(item.checked, color: NK.ink3)
-                        .foregroundStyle(item.checked ? NK.ink3 : NK.ink)
-                    Spacer(minLength: 8)
-                    if let q = item.quantity, !q.isEmpty {
-                        Text(q).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+            if editingId == item.id {
+                TextField("Name", text: $editName)
+                    .font(.system(size: 16, weight: .semibold))
+                    .focused($focus, equals: .editName)
+                    .submitLabel(.next)
+                    .onSubmit { focus = .editQty }
+                TextField("Qty", text: $editQty)
+                    .font(.system(size: 14, weight: .semibold))
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 70)
+                    .focused($focus, equals: .editQty)
+                    .submitLabel(.done)
+                    .onSubmit { commitEdit() }
+            } else {
+                Button { startEdit(item) } label: {
+                    HStack(spacing: 8) {
+                        Text(item.name)
+                            .font(.system(size: 16, weight: .semibold))
+                            .strikethrough(item.checked, color: NK.ink3)
+                            .foregroundStyle(item.checked ? NK.ink3 : NK.ink)
+                        Spacer(minLength: 8)
+                        if let q = item.quantity, !q.isEmpty {
+                            Text(q).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                        }
+                        if let a = item.assignee, a.avatarEmoji != nil || a.colorHex != nil {
+                            Avatar(colorHex: a.colorHex, emoji: a.avatarEmoji ?? "🙂", size: 24)
+                        }
                     }
-                    if let a = item.assignee, a.avatarEmoji != nil || a.colorHex != nil {
-                        Avatar(colorHex: a.colorHex, emoji: a.avatarEmoji ?? "🙂", size: 24)
-                    }
+                    .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.vertical, 2)
     }
@@ -184,13 +267,14 @@ struct ListDetailView: View {
             Image(systemName: "plus.circle.fill").font(.system(size: 20)).foregroundStyle(NK.primary)
             TextField("Add item", text: $draftName)
                 .font(.system(size: 16, weight: .semibold))
-                .focused($addingName)
+                .focused($focus, equals: .add)
                 .submitLabel(.next)
                 .onSubmit(submit)
             TextField("Qty", text: $draftQty)
                 .font(.system(size: 15, weight: .semibold))
                 .multilineTextAlignment(.trailing)
                 .frame(width: 64)
+                .focused($focus, equals: .add)
                 .submitLabel(.done)
                 .onSubmit(submit)
         }
@@ -204,36 +288,24 @@ struct ListDetailView: View {
         .background(NK.canvas)           // opaque strip so rows don't show through
     }
 
+    private func startEdit(_ item: NookAPI.ListItemDTO) {
+        if editingId != nil, editingId != item.id { commitEdit() }
+        editName = item.name
+        editQty = item.quantity ?? ""
+        editingId = item.id
+        focus = .editName
+    }
+
+    private func commitEdit() {
+        guard let id = editingId else { return }
+        let n = editName, q = editQty
+        editingId = nil
+        Task { await model.edit(id, name: n, quantity: q) }
+    }
+
     private func submit() {
         let name = draftName, qty = draftQty
         draftName = ""; draftQty = ""
         Task { await model.add(name: name, quantity: qty) }
-    }
-}
-
-/// A small editor for a list item's name + quantity.
-struct EditItemSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @State var name: String
-    @State var quantity: String
-    let onSave: (String, String) -> Void
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section { TextField("Name", text: $name) }
-                Section("Quantity") { TextField("e.g. 2 lb", text: $quantity) }
-            }
-            .navigationTitle("Edit item")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { onSave(name, quantity); dismiss() }
-                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-        }
-        .presentationDetents([.height(280)])
     }
 }
