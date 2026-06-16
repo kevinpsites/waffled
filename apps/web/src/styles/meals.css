@@ -278,31 +278,23 @@
 
 /* ===== Plan my week (full-screen) ===== */
 .plan-screen {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 40px;
+  align-items: start;
   height: 100%;
   overflow: hidden;
   padding: 6px 30px 0;
-}
-.plan-header {
-  margin-bottom: 18px;
 }
 .plan-title {
   font-size: 30px;
   font-weight: 600;
   line-height: 1.1;
 }
-.plan-header .tiny {
-  margin-top: 6px;
-  max-width: 520px;
-}
-.plan-body {
-  display: grid;
-  grid-template-columns: 380px 1fr;
-  gap: 36px;
-  align-items: start;
-  flex: 1;
-  min-height: 0;
+.plan-sub {
+  margin-top: 4px;
+  margin-bottom: 4px;
+  max-width: 360px;
 }
 .plan-config {
   display: flex;
@@ -316,7 +308,11 @@
   margin: 6px 2px 0;
 }
 .seg-plantype {
+  display: flex;
   width: 100%;
+}
+.seg-plantype button {
+  flex: 1;
 }
 .plan-days {
   display: flex;
@@ -350,11 +346,15 @@
 .plan-card .tiny {
   font-weight: 700;
 }
-.constraint {
+/* Inside a plan card it's a single row — drop nook.css's divider/padding so there's
+   no orphan line under "Cooking for". */
+.plan-card .constraint {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  padding: 2px 0;
+  border-bottom: 0;
 }
 .constraint .cl {
   font-size: 14px;
@@ -521,4 +521,37 @@
   background: var(--card);
   border-radius: var(--r-lg, 16px);
   box-shadow: var(--sh-1, 0 6px 24px rgba(0, 0, 0, 0.06));
+}
+
+/* Narrow / mobile: stack the two panes and let the whole screen scroll. */
+@media (max-width: 860px) {
+  .plan-screen {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+    padding: 6px 16px 16px;
+    gap: 18px;
+  }
+  .plan-config,
+  .plan-results {
+    overflow: visible;
+    max-height: none;
+    padding: 0;
+  }
+  .plan-day {
+    gap: 12px;
+    padding: 12px;
+  }
+  .pd-img {
+    width: 48px;
+    height: 48px;
+    font-size: 26px;
+  }
+  .plan-foot {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .plan-foot .btn {
+    width: 100%;
+    justify-content: center;
+  }
 }

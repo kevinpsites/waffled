@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, usePersons, type PlanCard } from '../../lib/api'
 import { useTopbarFull } from '../topbar-slot'
 import { Icon } from '../icons'
@@ -38,6 +38,9 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
 
   const [cards, setCards] = useState<PlanCard[]>([])
   const [locked, setLocked] = useState<Set<string>>(new Set())
+  // Dishes the user has shuffled away from — accumulated so they don't come back
+  // on later reshuffles (until the week is applied / the planner closes).
+  const rejected = useRef<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [via, setVia] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -45,10 +48,15 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
 
   useTopbarFull(
     () => (
-      <div className="pill" onClick={onClose} style={{ padding: '9px 14px 9px 11px', cursor: 'pointer' }}>
-        <Icon name="cl" />
-        Meals
-      </div>
+      <>
+        <div className="pill" onClick={onClose} style={{ padding: '9px 14px 9px 11px', cursor: 'pointer' }}>
+          <Icon name="cl" />
+          Meals
+        </div>
+        <button type="button" className="pill" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={onClose}>
+          Cancel
+        </button>
+      </>
     ),
     []
   )
@@ -91,10 +99,15 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
 
   function reshuffle() {
     const dates = [...selectedDays].filter((d) => !locked.has(d)).sort()
-    void draft(dates, cards.map((c) => c.title))
+    // Reject the dishes currently on those nights so they don't reappear.
+    for (const c of cards) if (dates.includes(c.date)) rejected.current.add(c.title)
+    const lockedTitles = cards.filter((c) => locked.has(c.date)).map((c) => c.title)
+    void draft(dates, [...rejected.current, ...lockedTitles])
   }
   function swap(card: PlanCard) {
-    void draft([card.date], cards.map((c) => c.title))
+    rejected.current.add(card.title)
+    const others = cards.filter((c) => c.date !== card.date).map((c) => c.title)
+    void draft([card.date], [...rejected.current, ...others])
   }
   function toggleLock(date: string) {
     setLocked((s) => {
@@ -140,15 +153,11 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
 
   return (
     <div className="plan-screen">
-      <div className="plan-header">
+      {/* Left: the guardrails (headed by the screen title, per the mock) */}
+      <div className="plan-config">
         <div className="plan-title nk-serif">Plan my week</div>
-        <div className="tiny muted">Tell Nook the guardrails — it drafts the meals and the grocery list in one go.</div>
-      </div>
-
-      <div className="plan-body">
-        {/* Left: the guardrails */}
-        <div className="plan-config">
-          <div className="flabel">Plan which meal?</div>
+        <div className="tiny muted plan-sub">Tell Nook the guardrails — it drafts the meals and the grocery list in one go.</div>
+        <div className="flabel">Plan which meal?</div>
         <div className="seg seg-plantype">
           {MEAL_TYPES.map((m) => (
             <button key={m} type="button" className={mealType === m ? 'on' : ''} onClick={() => setMealType(m)}>{MEAL_LABEL[m]}</button>
@@ -261,7 +270,6 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
             </button>
           </div>
         )}
-        </div>
       </div>
     </div>
   )
