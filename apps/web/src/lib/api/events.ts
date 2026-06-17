@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { apiGet, apiSend, apiDelete, localToday } from './client'
 import { useRefetchOn } from './bus'
-import { watchAgendaRows, eventsForDay, eventsForRange, getHouseholdTz, getLocalEvent } from '../powersync/events-local'
+import { watchAgendaRows, eventsForDay, eventsForRange, getHouseholdTz, getLocalEvent, dropTombstoned, isEventTombstoned } from '../powersync/events-local'
 
 export interface Participant {
   id: string
@@ -100,7 +100,7 @@ export function useEventsToday(): AgendaState & { refetch: () => void } {
     let alive = true
     eventsApi
       .eventsToday(date)
-      .then((d) => alive && !localActive.current && setState({ events: d.events, loading: false, error: false }))
+      .then((d) => alive && !localActive.current && setState({ events: dropTombstoned(d.events), loading: false, error: false }))
       .catch(() => alive && !localActive.current && setState({ events: [], loading: false, error: true }))
     return () => {
       alive = false
@@ -148,7 +148,7 @@ export function useEventsRange(from: string, to: string): AgendaState & { refetc
     setState((s) => ({ ...s, loading: true }))
     eventsApi
       .eventsRange(from, to)
-      .then((d) => alive && !localActive.current && setState({ events: d.events, loading: false, error: false }))
+      .then((d) => alive && !localActive.current && setState({ events: dropTombstoned(d.events), loading: false, error: false }))
       .catch(() => alive && !localActive.current && setState({ events: [], loading: false, error: true }))
     return () => {
       alive = false
@@ -191,6 +191,9 @@ export function useEvent(id: string): { event: AgendaEvent | null; loading: bool
       .then((d) => {
         if (!alive) return
         restLoaded.current = true
+        // A just-deleted event can still come back from a stale read inside the
+        // replication window — treat a tombstoned id as gone.
+        if (isEventTombstoned(id)) { setNotFound(true); setLoading(false); return }
         setEvent(d.event)
         setLoading(false)
       })

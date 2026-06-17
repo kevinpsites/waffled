@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router'
 import { EventModal } from './components/EventModal'
 import { useTopbarFull } from './topbar-slot'
 import { api, useEvent, useEventsRange, useHousehold, mealsApi, type AgendaEvent } from '../lib/api'
-import { deleteEventLocal } from '../lib/powersync/events-local'
+import { deleteEventLocal, tombstoneEvent } from '../lib/powersync/events-local'
 import { DOW_FULL, MONTHS, fmtTime, durationMin, eventPeople, localDate } from './components/cal-utils'
 
 function durationLabel(mins: number): string {
@@ -98,7 +98,10 @@ export function EventDetail() {
     }
     setDeleting(true)
     try {
-      if (!(await deleteEventLocal(id))) await api.deleteEvent(id)
+      if (!(await deleteEventLocal(id))) {
+        await api.deleteEvent(id)
+        tombstoneEvent(id)
+      }
       navigate('/calendar')
     } catch {
       setDeleting(false)

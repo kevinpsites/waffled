@@ -5,6 +5,57 @@
 import type { AgendaEvent, Participant } from '../api/events'
 import { getPowerSyncDb } from './db'
 
+// ── Delete tombstones ────────────────────────────────────────────────────────
+// A locally-deleted event can briefly reappear: PowerSync acks the CRUD upload
+// (clearing the pending local delete) before the server's soft-delete replicates
+// back into the sync bucket, so the stale row resurfaces in the watch until
+// replication catches up. We tombstone a deleted id and filter it out of every
+// read until the window passes — persisted to localStorage so it also survives a
+// reload inside that window. (Event ids are UUIDs, so a tombstone never hides a
+// future event.)
+const TOMBSTONE_KEY = 'nook.deletedEvents'
+const TOMBSTONE_MS = 5 * 60_000
+
+function loadTombstones(): Map<string, number> {
+  const m = new Map<string, number>()
+  try {
+    const raw = JSON.parse(localStorage.getItem(TOMBSTONE_KEY) || '{}') as Record<string, number>
+    const now = Date.now()
+    for (const [id, exp] of Object.entries(raw)) if (exp > now) m.set(id, exp)
+  } catch {
+    /* no localStorage (SSR/tests) or bad JSON → empty */
+  }
+  return m
+}
+const tombstones = loadTombstones()
+function saveTombstones(): void {
+  try {
+    localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(Object.fromEntries(tombstones)))
+  } catch {
+    /* ignore */
+  }
+}
+function pruneTombstones(): void {
+  const now = Date.now()
+  let changed = false
+  for (const [id, exp] of tombstones) if (exp <= now) { tombstones.delete(id); changed = true }
+  if (changed) saveTombstones()
+}
+export function tombstoneEvent(id: string): void {
+  tombstones.set(id, Date.now() + TOMBSTONE_MS)
+  saveTombstones()
+}
+// Filter out tombstoned rows/events (local or REST) — keeps a just-deleted event
+// hidden across the replication window.
+export function dropTombstoned<T extends { id: string }>(items: T[]): T[] {
+  pruneTombstones()
+  return tombstones.size ? items.filter((it) => !tombstones.has(it.id)) : items
+}
+export function isEventTombstoned(id: string): boolean {
+  pruneTombstones()
+  return tombstones.has(id)
+}
+
 // One row from AGENDA_SQL — events joined to their owner, with participants as JSON.
 export interface LocalEventRow {
   id: string
@@ -123,6 +174,7 @@ const AGENDA_SQL = `
 // paint). Returns null when PowerSync isn't running or the row isn't local yet —
 // the caller then leans on REST. tz is accepted for signature symmetry.
 export async function getLocalEvent(id: string, _tz: string): Promise<AgendaEvent | null> {
+  if (isEventTombstoned(id)) return null
   const db = getPowerSyncDb()
   if (!db) return null
   try {
@@ -199,10 +251,13 @@ export async function updateEventLocal(id: string, draft: EventDraft): Promise<b
   const db = getPowerSyncDb()
   if (!db) return false
   const hh = await householdRowId()
-  await db.execute(
+  const res = await db.execute(
     `update events set title = ?, location = ?, starts_at = ?, ends_at = ?, all_day = ?, person_id = ? where id = ?`,
     [draft.title, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.personIds[0] ?? null, id]
   )
+  // Row not in the local DB yet (PowerSync hasn't synced it) → the update matched
+  // nothing and would never upload. Bail so the caller saves via REST instead.
+  if ((res.rowsAffected ?? 0) === 0) return false
   await db.execute(`delete from event_participants where event_id = ?`, [id])
   for (const pid of [...new Set(draft.personIds)]) {
     await db.execute(`insert into event_participants (id, household_id, event_id, person_id) values (?, ?, ?, ?)`, [
@@ -219,7 +274,15 @@ export async function deleteEventLocal(id: string): Promise<boolean> {
   const db = getPowerSyncDb()
   if (!db) return false
   await db.execute(`delete from event_participants where event_id = ?`, [id])
-  await db.execute(`delete from events where id = ?`, [id])
+  const res = await db.execute(`delete from events where id = ?`, [id])
+  // Only a row that's actually in the local DB queues a CRUD op that uploads the
+  // delete. If PowerSync hasn't synced this event yet (rowsAffected 0), the local
+  // delete is a no-op that would NEVER reach the server — report failure so the
+  // caller falls back to the REST delete instead of silently dropping it.
+  if ((res.rowsAffected ?? 0) === 0) return false
+  // Real local delete in flight (crud upload, retried by PowerSync) — tombstone so
+  // it stays hidden across the replication window instead of briefly reappearing.
+  tombstoneEvent(id)
   return true
 }
 
@@ -234,7 +297,7 @@ export function watchAgendaRows(onRows: (rows: LocalEventRow[]) => void, onError
       AGENDA_SQL,
       [],
       {
-        onResult: (result) => onRows(((result.rows?._array ?? []) as LocalEventRow[])),
+        onResult: (result) => onRows(dropTombstoned((result.rows?._array ?? []) as LocalEventRow[])),
         onError: (e) => onError?.(e),
       },
       { signal: controller.signal, tables: ['events', 'event_participants', 'persons'] }

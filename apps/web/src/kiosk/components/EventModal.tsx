@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { api, usePersons, calendarsApi, mealsApi, localToday, type AgendaEvent, type CalendarLink } from '../../lib/api'
-import { createEventLocal, updateEventLocal, deleteEventLocal } from '../../lib/powersync/events-local'
+import { createEventLocal, updateEventLocal, deleteEventLocal, tombstoneEvent } from '../../lib/powersync/events-local'
 
 // Calendars an event can be written to: writable (owner/writer), not read-only.
 function isWritable(c: CalendarLink): boolean {
@@ -162,7 +162,13 @@ export function EventModal({
     }
     setSaving(true)
     try {
-      if (!(await deleteEventLocal(event!.id))) await api.deleteEvent(event!.id)
+      // Prefer the local delete (instant, offline); when the row isn't in the local
+      // DB yet it returns false and we delete via REST, tombstoning on success so
+      // the UI hides it through the refetch/replication window.
+      if (!(await deleteEventLocal(event!.id))) {
+        await api.deleteEvent(event!.id)
+        tombstoneEvent(event!.id)
+      }
       onSaved()
       onClose()
     } catch (err) {
