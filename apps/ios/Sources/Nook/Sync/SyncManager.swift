@@ -168,6 +168,77 @@ final class SyncManager {
         }
     }
 
+    // MARK: calendar event writes (synced table → local mirror, queued for upload)
+
+    /// The id of the synced household row, or nil before the first sync.
+    private func householdRowId() async -> String? {
+        (try? await db.getOptional(
+            sql: "SELECT id FROM households LIMIT 1", parameters: [],
+            mapper: { try $0.getString(name: "id") })) ?? nil
+    }
+
+    /// The participant person ids on an event — used to prefill the editor.
+    func eventParticipantIds(_ eventId: String) async -> [String] {
+        (try? await db.getAll(
+            sql: "SELECT person_id FROM event_participants WHERE event_id = ?",
+            parameters: [eventId],
+            mapper: { try $0.getString(name: "person_id") })) ?? []
+    }
+
+    private func replaceParticipants(eventId: String, householdId: String, personIds: [String]) async throws {
+        try await db.execute(sql: "DELETE FROM event_participants WHERE event_id = ?", parameters: [eventId])
+        for pid in Array(Set(personIds)) {
+            try await db.execute(
+                sql: "INSERT INTO event_participants (id, household_id, event_id, person_id) VALUES (?, ?, ?, ?)",
+                parameters: [UUID().uuidString.lowercased(), householdId, eventId, pid])
+        }
+    }
+
+    /// Create a calendar event in the local mirror (PowerSync uploads it). `person_id`
+    /// is the first participant — the server uses it for calendar routing.
+    func createCalendarEvent(title: String, startsAtISO: String, endsAtISO: String?,
+                             allDay: Bool, location: String?, personIds: [String]) async -> Bool {
+        guard let hh = await householdRowId() else { lastError = "No household synced yet."; return false }
+        let id = UUID().uuidString.lowercased()
+        do {
+            try await db.execute(
+                sql: """
+                INSERT INTO events (id, household_id, title, description, location, starts_at, ends_at,
+                                    all_day, timezone, person_id, origin)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')
+                """,
+                parameters: [id, hh, title, nil, location, startsAtISO, endsAtISO,
+                             allDay ? 1 : 0, householdTz.identifier, personIds.first])
+            try await replaceParticipants(eventId: id, householdId: hh, personIds: personIds)
+            await refreshCounts()
+            return true
+        } catch { lastError = String(describing: error); return false }
+    }
+
+    /// Update an event + its participants in the local mirror.
+    func updateEvent(id: String, title: String, startsAtISO: String, endsAtISO: String?,
+                     allDay: Bool, location: String?, personIds: [String]) async -> Bool {
+        guard let hh = await householdRowId() else { lastError = "No household synced yet."; return false }
+        do {
+            try await db.execute(
+                sql: "UPDATE events SET title = ?, location = ?, starts_at = ?, ends_at = ?, all_day = ?, person_id = ? WHERE id = ?",
+                parameters: [title, location, startsAtISO, endsAtISO, allDay ? 1 : 0, personIds.first, id])
+            try await replaceParticipants(eventId: id, householdId: hh, personIds: personIds)
+            await refreshCounts()
+            return true
+        } catch { lastError = String(describing: error); return false }
+    }
+
+    /// Delete an event + its participants from the local mirror.
+    func deleteEvent(id: String) async -> Bool {
+        do {
+            try await db.execute(sql: "DELETE FROM event_participants WHERE event_id = ?", parameters: [id])
+            try await db.execute(sql: "DELETE FROM events WHERE id = ?", parameters: [id])
+            await refreshCounts()
+            return true
+        } catch { lastError = String(describing: error); return false }
+    }
+
     /// Commit a captured grocery item via REST (not a synced table). The quantity is
     /// folded into the label the same way the web kiosk does ("milk (2)").
     func commitGrocery(name: String, quantity: String?) async -> Bool {
@@ -277,7 +348,7 @@ final class SyncManager {
             do {
                 let stream = try db.watch(
                     sql: """
-                    SELECT e.id, e.title, e.starts_at, e.all_day, e.person_id,
+                    SELECT e.id, e.title, e.starts_at, e.ends_at, e.all_day, e.location, e.person_id,
                            p.color_hex AS person_color, p.avatar_emoji AS person_emoji
                       FROM events e
                       LEFT JOIN persons p ON p.id = e.person_id
@@ -293,7 +364,9 @@ final class SyncManager {
                             allDay: (try cursor.getIntOptional(name: "all_day")) == 1,
                             personId: try cursor.getStringOptional(name: "person_id"),
                             colorHex: try cursor.getStringOptional(name: "person_color"),
-                            emoji: try cursor.getStringOptional(name: "person_emoji")
+                            emoji: try cursor.getStringOptional(name: "person_emoji"),
+                            endsAt: EventTime.parse(try cursor.getStringOptional(name: "ends_at")),
+                            location: try cursor.getStringOptional(name: "location")
                         )
                     }
                 )

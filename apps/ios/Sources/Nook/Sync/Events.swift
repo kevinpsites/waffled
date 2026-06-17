@@ -10,6 +10,8 @@ struct SyncedEvent: Identifiable, Sendable, Equatable {
     let personId: String?
     let colorHex: String?
     let emoji: String?
+    var endsAt: Date? = nil
+    var location: String? = nil
 }
 
 /// Timestamp handling that mirrors the web client (`events-local.ts`): server-
