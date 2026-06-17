@@ -117,5 +117,19 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     duration / all-day / participants / Google-calendar picker / location,
     create + delete — all offline-first writes to the synced events mirror. ✅
   - Rewards / Photos / Settings: still live-summary placeholders.
-- **Next:** Day & Week calendar views; another hub tile (Rewards/Photos/
-  Settings); Auth0 login (roadmap 4.2.1) to replace the dev token.
+- **Next:** Day view shipped; Week view skipped (≈ Month). Remaining: a hub
+  tile (Rewards/Photos/Settings); the Family per-person view; Meals tab;
+  Auth0 login (roadmap 4.2.1) to replace the dev token.
+
+## Known follow-ups / bugs
+
+- **Capture → custom lists** (needs backend, do on `main` not this worktree):
+  the capture parser only has `event/grocery/task/meal` intents, so "add towels
+  to the lake packing trip" misroutes to grocery (the list name is dropped).
+  Fix has two parts: (1) **server** — add a `list` intent (item + target list,
+  resolved by name; default Grocery) to the parser schema + commit path; (2)
+  **iOS** — make the "Nook understood" preview *correctable*: a type switcher
+  (Event·Task·Grocery·List·Meal) + an "Add to: [list ▾]" picker for grocery/
+  list, and rename "Edit" → "Edit text" (it currently re-opens the text box,
+  which reads as "edit the interpretation"). The iOS-only half (picker + relabel)
+  can ship here; the `list` intent must land on `main` first.
