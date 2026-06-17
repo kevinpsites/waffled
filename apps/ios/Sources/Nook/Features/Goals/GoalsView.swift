@@ -157,6 +157,7 @@ struct AvatarStack: View {
 }
 
 struct GoalsView: View {
+    @Binding var path: [HubRoute]
     @State private var model = GoalsModel()
     @State private var logging: NookAPI.Goal?
     @State private var creating = false
@@ -302,6 +303,8 @@ struct GoalsView: View {
         .padding(16)
         .background(Self.heroGreen)
         .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+        .contentShape(Rectangle())
+        .onTapGesture { path.append(.goal(g)) }
     }
 
     private func eachHero(_ g: NookAPI.Goal) -> some View {
@@ -337,6 +340,8 @@ struct GoalsView: View {
         .padding(16)
         .background(Self.heroOrange)
         .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+        .contentShape(Rectangle())
+        .onTapGesture { path.append(.goal(g)) }
     }
 
     private func heroPill(_ text: String) -> some View {
@@ -384,7 +389,7 @@ struct GoalsView: View {
     private func moreCard(_ g: NookAPI.Goal) -> some View {
         let c = GoalStyle.color(g.category)
         let frac = g.target.map { $0 > 0 ? min(g.totalProgress / $0, 1) : 0 } ?? 0
-        return Button { logging = g } label: {
+        return Button { path.append(.goal(g)) } label: {
             VStack(alignment: .leading, spacing: 11) {
                 HStack(spacing: 12) {
                     Text(g.emoji ?? GoalStyle.emoji(g.category)).font(.system(size: 20))
@@ -865,5 +870,274 @@ struct GoalCreateSheet: View {
     private func isoDay(_ d: Date) -> String {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
         return f.string(from: d)
+    }
+}
+
+// MARK: - Goal detail
+
+@MainActor
+@Observable
+final class GoalDetailModel {
+    let goal: NookAPI.Goal
+    private(set) var detail: NookAPI.GoalDetail?
+    private(set) var loading = true
+    private(set) var error = false
+    private let api = NookAPI()
+
+    init(goal: NookAPI.Goal) { self.goal = goal }
+
+    func load() async {
+        do { detail = try await api.goalDetail(id: goal.id); error = false }
+        catch { self.error = true }
+        loading = false
+    }
+
+    func log(amount: Double, personIds: [String], note: String) async {
+        do {
+            try await api.logGoalProgress(goalId: goal.id, amount: amount, personIds: personIds, note: note)
+            await load()
+        } catch { self.error = true }
+    }
+
+    func delete() async -> Bool {
+        do { try await api.deleteGoal(id: goal.id); return true }
+        catch { self.error = true; return false }
+    }
+}
+
+/// One goal's detail: hero (ring + started/streak/this-week), the milestone ladder,
+/// progress by person, and the recent-activity log. Log from the toolbar; delete
+/// (tap-twice) pops back. Mirrors the web GoalDetail.
+struct GoalDetailView: View {
+    let goal: NookAPI.Goal
+    @Binding var path: [HubRoute]
+    @State private var model: GoalDetailModel
+    @State private var logging = false
+    @State private var confirmDelete = false
+
+    private static let heroGreen = LinearGradient(colors: [Color(hex: 0x2BA86B), Color(hex: 0x1C8A56)],
+                                                  startPoint: .topLeading, endPoint: .bottomTrailing)
+
+    init(goal: NookAPI.Goal, path: Binding<[HubRoute]>) {
+        self.goal = goal
+        _path = path
+        _model = State(initialValue: GoalDetailModel(goal: goal))
+    }
+
+    // Prefer the freshly-loaded detail, fall back to the goal we were handed.
+    private var unit: String? { model.detail?.unit ?? goal.unit }
+    private var target: Double? { model.detail?.target ?? goal.target }
+    private var progress: Double { model.detail?.totalProgress ?? goal.totalProgress }
+    private var participants: [NookAPI.Goal.Participant] { model.detail?.participants ?? goal.participants }
+    private var pct: Int { (target ?? 0) > 0 ? min(Int((progress / target!) * 100), 100) : 0 }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                hero
+                if let ms = model.detail?.milestones, !ms.isEmpty { milestoneCard(ms) }
+                if !participants.isEmpty { byPersonCard }
+                recentCard
+                deleteButton
+            }
+            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 110)
+        }
+        .background(NK.canvas)
+        .navigationTitle(goal.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { logging = true } label: {
+                    Label("Log", systemImage: "plus").labelStyle(.titleAndIcon).fontWeight(.semibold)
+                }
+            }
+        }
+        .task { await model.load() }
+        .refreshable { await model.load() }
+        .sheet(isPresented: $logging) {
+            GoalLogSheet(goal: goal) { amount, ids, note in
+                Task { await model.log(amount: amount, personIds: ids, note: note) }
+            }
+        }
+    }
+
+    // MARK: hero
+
+    private var hero: some View {
+        let frac = (target ?? 0) > 0 ? min(progress / target!, 1) : 0
+        return HStack(alignment: .top, spacing: 14) {
+            GoalRing(value: frac, size: 104, lineWidth: 9, stroke: .white, track: .white.opacity(0.25)) {
+                VStack(spacing: 0) {
+                    Text(goalFmt(progress)).font(.system(size: 26, weight: .heavy)).foregroundStyle(.white)
+                    Text("of \(goalFmt(target))\(unit.map { " \($0)" } ?? "")")
+                        .font(.system(size: 9, weight: .bold)).foregroundStyle(.white.opacity(0.85))
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text(model.detail?.category.map { "\(GoalStyle.emoji($0)) \($0.capitalized)" } ?? "⭐ Featured")
+                    .font(.system(size: 10.5, weight: .heavy)).foregroundStyle(.white)
+                    .padding(.horizontal, 9).padding(.vertical, 4)
+                    .background(.white.opacity(0.2)).clipShape(Capsule())
+                Text(goal.title).font(NK.serif(20)).foregroundStyle(.white).lineLimit(3)
+                Text(heroSub).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
+                Spacer(minLength: 0)
+                HStack(spacing: 4) {
+                    Text("THIS WEEK").font(.system(size: 9, weight: .heavy)).tracking(0.5).foregroundStyle(.white.opacity(0.8))
+                    Text("\(goalFmt(model.detail?.thisWeek ?? 0))\(unit.map { " \($0)" } ?? "")")
+                        .font(.system(size: 12, weight: .heavy)).foregroundStyle(.white)
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Self.heroGreen)
+        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+    }
+
+    private var heroSub: String {
+        var parts: [String] = []
+        if let c = model.detail?.createdAt { parts.append("Started \(monthDay(c))") }
+        parts.append("\(pct)% complete")
+        let streak = model.detail?.streakDays ?? goal.streakDays
+        if streak > 0 { parts.append("🔥 \(streak)-day streak") }
+        if let d = model.detail?.deadline ?? goal.deadline { parts.append("by \(monthDay(d))") }
+        return parts.joined(separator: " · ")
+    }
+
+    // MARK: milestones
+
+    private func milestoneCard(_ ms: [NookAPI.GoalDetail.Milestone]) -> some View {
+        let firstUnreached = ms.firstIndex { !$0.reached }
+        return detailCard {
+            Text("Milestones").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+            VStack(spacing: 0) {
+                ForEach(Array(ms.enumerated()), id: \.element.id) { i, m in
+                    let isNow = i == firstUnreached
+                    HStack(spacing: 12) {
+                        Text(m.emoji ?? "⛳").font(.system(size: 16))
+                            .frame(width: 34, height: 34)
+                            .background(m.reached ? FamilyColor.wally.solid.opacity(0.18) : (isNow ? NK.primary.opacity(0.12) : NK.panel))
+                            .clipShape(Circle())
+                            .overlay(Circle().strokeBorder(m.reached ? FamilyColor.wally.solid : (isNow ? NK.primary : Color.clear), lineWidth: 1.5))
+                        Text(m.label ?? goalFmt(m.threshold))
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(m.reached || isNow ? NK.ink : NK.ink2)
+                        Spacer(minLength: 6)
+                        Text(m.reached ? "reached"
+                                : isNow ? "\(goalFmt(m.threshold - progress)) to go"
+                                : (m.rewardText ?? "—"))
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(m.reached ? FamilyColor.wally.solid : (isNow ? NK.primary : NK.ink3))
+                            .lineLimit(1)
+                    }
+                    .padding(.vertical, 7)
+                    if i < ms.count - 1 { Divider().background(NK.hair) }
+                }
+            }
+        }
+    }
+
+    // MARK: by person
+
+    private var byPersonCard: some View {
+        let maxProg = max(1, participants.map(\.progress).max() ?? 1)
+        return detailCard {
+            Text(unit.map { "\($0.prefix(1).uppercased())\($0.dropFirst()) by person" } ?? "By person")
+                .font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+            VStack(spacing: 11) {
+                ForEach(participants, id: \.personId) { p in
+                    let color = Color(hexString: p.colorHex) ?? FamilyColor.kevin.solid
+                    HStack(spacing: 10) {
+                        Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 26)
+                        Text(goalFirstName(p.name)).font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(NK.ink).frame(width: 64, alignment: .leading).lineLimit(1)
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(NK.hair)
+                                Capsule().fill(color).frame(width: geo.size.width * min(p.progress / maxProg, 1))
+                            }
+                        }
+                        .frame(height: 8)
+                        Text("\(goalFmt(p.progress))\(unit.map { " \($0)" } ?? "")")
+                            .font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
+                            .frame(width: 64, alignment: .trailing).lineLimit(1).minimumScaleFactor(0.7)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: recent activity
+
+    private var recentCard: some View {
+        detailCard {
+            Text("Recent activity").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+            if let r = model.detail?.recent, !r.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(Array(r.enumerated()), id: \.element.id) { i, log in
+                        HStack(spacing: 10) {
+                            Text(weekday(log.loggedAt)).font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(NK.ink3).frame(width: 34, alignment: .leading)
+                            Avatar(colorHex: log.colorHex, emoji: log.avatarEmoji ?? "🙂", size: 24)
+                            Text(log.note?.isEmpty == false ? log.note! : "Logged progress")
+                                .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                            Spacer(minLength: 6)
+                            Text("+\(goalFmt(log.amount))\(unit.map { " \($0)" } ?? "")")
+                                .font(.system(size: 13, weight: .bold)).foregroundStyle(FamilyColor.wally.solid)
+                        }
+                        .padding(.vertical, 8)
+                        if i < r.count - 1 { Divider().background(NK.hair) }
+                    }
+                }
+            } else {
+                Text("No activity yet — log some progress.")
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3).padding(.vertical, 6)
+            }
+        }
+    }
+
+    private var deleteButton: some View {
+        Button {
+            if confirmDelete {
+                Task { if await model.delete() { if !path.isEmpty { path.removeLast() } } }
+            } else {
+                withAnimation { confirmDelete = true }
+            }
+        } label: {
+            Text(confirmDelete ? "Tap again to delete this goal" : "Delete goal")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(confirmDelete ? NK.primary : NK.ink3)
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 4).padding(.leading, 2)
+    }
+
+    // MARK: helpers
+
+    private func detailCard<V: View>(@ViewBuilder _ content: () -> V) -> some View {
+        VStack(alignment: .leading, spacing: 12) { content() }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(NK.card)
+            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    private func monthDay(_ iso: String) -> String { fmtDate(iso, "MMM d") }
+    private func weekday(_ iso: String) -> String { fmtDate(iso, "EEE") }
+    private func fmtDate(_ iso: String, _ fmt: String) -> String {
+        let inF = ISO8601DateFormatter()
+        inF.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = inF.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
+        guard let date else {
+            // Fall back to a plain yyyy-MM-dd date string.
+            let d2 = DateFormatter(); d2.dateFormat = "yyyy-MM-dd"; d2.timeZone = TimeZone(identifier: "UTC")
+            guard let parsed = d2.date(from: String(iso.prefix(10))) else { return "" }
+            let out = DateFormatter(); out.dateFormat = fmt
+            return out.string(from: parsed)
+        }
+        let out = DateFormatter(); out.dateFormat = fmt
+        return out.string(from: date)
     }
 }

@@ -357,6 +357,53 @@ struct NookAPI: Sendable {
         }
     }
 
+    /// A goal's full detail read: the goal fields plus its milestone ladder, recent
+    /// activity log, this-week total, and start date.
+    struct GoalDetail: Decodable, Sendable {
+        let id: String
+        let title: String
+        let emoji: String?
+        let category: String?
+        let unit: String?
+        let target: Double?
+        let totalProgress: Double
+        let streakDays: Int
+        let deadline: String?
+        let createdAt: String
+        let thisWeek: Double
+        let participants: [Goal.Participant]
+        let milestones: [Milestone]
+        let recent: [LogEntry]
+        struct Milestone: Decodable, Identifiable, Sendable {
+            let id: String
+            let threshold: Double
+            let emoji: String?
+            let label: String?
+            let rewardText: String?
+            let reached: Bool
+        }
+        struct LogEntry: Decodable, Identifiable, Sendable {
+            let id: String
+            let amount: Double
+            let loggedAt: String
+            let note: String?
+            let name: String?
+            let avatarEmoji: String?
+            let colorHex: String?
+        }
+    }
+
+    /// One goal's full detail (milestones, recent activity, this-week, streak).
+    func goalDetail(id: String) async throws -> GoalDetail {
+        struct Resp: Decodable { let goal: GoalDetail }
+        return try await getJSON("/api/goals/\(id)", as: Resp.self).goal
+    }
+
+    /// Delete a goal (soft-delete server-side).
+    func deleteGoal(id: String) async throws {
+        try await delete("/api/goals/\(id)")
+    }
+
     /// The household's goal lists (the membership picker).
     func goalLists() async throws -> [GoalList] {
         struct Resp: Decodable { let lists: [GoalList] }

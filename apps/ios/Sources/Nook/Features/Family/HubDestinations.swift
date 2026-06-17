@@ -6,6 +6,7 @@ import SwiftUI
 enum HubRoute: Hashable {
     case chores, goals, rewards, lists, photos, settings
     case list(NookAPI.ListSummary)   // a specific list pushed from the Lists index
+    case goal(NookAPI.Goal)          // a specific goal pushed from the Goals screen
 }
 
 /// A consistent "screen coming soon" destination that still surfaces the tile's
