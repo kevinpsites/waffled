@@ -45,6 +45,7 @@ export interface TodayInstance {
   personName: string | null
   status: string
   rewardAmount: number | null
+  rewardCurrency: string | null
   rrule: string | null
   requiresApproval: boolean
   streak: number

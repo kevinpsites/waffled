@@ -178,7 +178,7 @@ async function streaksByChore(householdId: string, dueOn: string): Promise<Map<s
 
 export async function listTodayInstances(householdId: string, dueOn: string): Promise<TodayInstance[]> {
   const { rows } = await query<QueryResultRow>(
-    `select ci.id, ci.status, ci.reward_amount, ci.person_id, ci.requires_approval,
+    `select ci.id, ci.status, ci.reward_amount, ci.reward_currency, ci.person_id, ci.requires_approval,
             c.id as chore_id, c.title as chore_title, c.emoji, c.rrule, p.name as person_name
        from chore_instances ci
        join chores c on c.id = ci.chore_id and c.deleted_at is null
@@ -197,6 +197,7 @@ export async function listTodayInstances(householdId: string, dueOn: string): Pr
     personName: r.person_name,
     status: r.status,
     rewardAmount: r.reward_amount,
+    rewardCurrency: r.reward_currency,
     rrule: r.rrule,
     requiresApproval: r.requires_approval,
     streak: streaks.get(r.chore_id) ?? 0,

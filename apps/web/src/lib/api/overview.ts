@@ -30,6 +30,7 @@ export interface CategoryBalance {
 export interface OverviewLedgerEntry {
   amount: number
   reason: string
+  currency: string
   createdAt: string
 }
 
@@ -38,8 +39,20 @@ export interface PersonRedemption {
   title: string
   emoji: string | null
   cost: number
+  currency: string
   status: string
   createdAt: string
+}
+
+export interface OverviewCurrency {
+  id: string
+  key: string
+  label: string
+  symbol: string | null
+  color: string | null
+  isDefault: boolean
+  spendable: boolean
+  sortOrder: number
 }
 
 export interface PersonOverview {
@@ -47,6 +60,8 @@ export interface PersonOverview {
   activeGoals: number
   topStreak: number
   stars: number
+  currencies: OverviewCurrency[]
+  balances: { currency: string; balance: number }[]
   goals: OverviewGoal[]
   categoryBalance: CategoryBalance[]
   insight: { lean: string[]; light: string[]; suggestions: string[]; text: string }

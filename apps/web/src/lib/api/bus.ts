@@ -4,7 +4,7 @@
 // week's dinners"). Mutations `emit(topic)`; data hooks `useRefetchOn(topics, …)`.
 import { useEffect, useRef } from 'react'
 
-export type Topic = 'grocery' | 'meals' | 'chores' | 'rewards' | 'goals'
+export type Topic = 'grocery' | 'meals' | 'chores' | 'rewards' | 'goals' | 'currencies'
 
 export function emit(topic: Topic): void {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(`nook:${topic}`))

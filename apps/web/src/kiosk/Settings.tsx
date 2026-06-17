@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { personsApi, captureApi, calendarsApi, mealsApi, usePersons, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings } from '../lib/api'
+import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, usePersons, useCurrencies, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import '../styles/settings.css'
 
@@ -714,6 +714,74 @@ function Placeholder({ tab }: { tab: string }) {
   )
 }
 
+// Currency catalog management (the "spend"/economy config). Admin-only writes;
+// inline edits save on blur, default/spendable toggle immediately.
+function CurrencyRow({ c, canDelete }: { c: Currency; canDelete: boolean }) {
+  const [label, setLabel] = useState(c.label)
+  const [symbol, setSymbol] = useState(c.symbol ?? '')
+  const [confirmDel, setConfirmDel] = useState(false)
+  const save = (patch: Record<string, unknown>) => currenciesApi.update(c.id, patch).catch(() => {})
+  return (
+    <div className="cur-row">
+      <input className="cur-sym" value={symbol} maxLength={2} aria-label="Symbol"
+        onChange={(e) => setSymbol(e.target.value)} onBlur={() => symbol !== (c.symbol ?? '') && save({ symbol: symbol || null })} />
+      <input className="cur-label" value={label} aria-label="Label"
+        onChange={(e) => setLabel(e.target.value)} onBlur={() => label.trim() && label !== c.label && save({ label: label.trim() })} />
+      <button type="button" className={`cur-flag ${c.isDefault ? 'on' : ''}`} title="Default earn currency"
+        onClick={() => !c.isDefault && save({ isDefault: true })}>{c.isDefault ? '★ Default' : 'Make default'}</button>
+      <button type="button" className={`cur-flag ${c.spendable ? 'on' : ''}`} title="Can be spent on rewards"
+        onClick={() => save({ spendable: !c.spendable })}>{c.spendable ? 'Spendable' : 'Earn-only'}</button>
+      {canDelete && !c.isDefault ? (
+        <button type="button" className="cur-del" aria-label={`Delete ${c.label}`}
+          onClick={() => (confirmDel ? currenciesApi.remove(c.id).catch(() => {}) : setConfirmDel(true))}>
+          {confirmDel ? 'Tap to confirm' : '×'}
+        </button>
+      ) : <span className="cur-del-sp" />}
+    </div>
+  )
+}
+
+function RewardsSettingsPanel() {
+  const { currencies, loading } = useCurrencies()
+  const [newLabel, setNewLabel] = useState('')
+  const [newSymbol, setNewSymbol] = useState('')
+  const [adding, setAdding] = useState(false)
+  async function add() {
+    if (!newLabel.trim()) return
+    setAdding(true)
+    try {
+      await currenciesApi.create({ label: newLabel.trim(), symbol: newSymbol.trim() || null })
+      setNewLabel(''); setNewSymbol('')
+    } finally {
+      setAdding(false)
+    }
+  }
+  return (
+    <div className="set-panel">
+      <div className="set-head">
+        <div className="nk-serif set-head-t">Chores &amp; rewards</div>
+        <div className="tiny muted" style={{ fontWeight: 600 }}>The currencies your family earns &amp; spends</div>
+      </div>
+      <div className="set-card" style={{ padding: 18 }}>
+        <div className="card-h" style={{ marginBottom: 4 }}>Currencies</div>
+        <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
+          Rename stars, add your own, or run several. The <b>default</b> is what new chores award; <b>spendable</b> ones can buy rewards. (Trading one currency for another is coming soon.)
+        </div>
+        {loading ? (
+          <div className="muted" style={{ fontWeight: 600 }}>Loading…</div>
+        ) : (
+          currencies.map((c) => <CurrencyRow key={c.id} c={c} canDelete={currencies.length > 1} />)
+        )}
+        <div className="cur-add">
+          <input className="cur-sym" value={newSymbol} maxLength={2} placeholder="⭐" aria-label="New symbol" onChange={(e) => setNewSymbol(e.target.value)} />
+          <input className="cur-label" value={newLabel} placeholder="Add a currency (e.g. Family Dollars)" aria-label="New label" onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
+          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={adding || !newLabel.trim()} onClick={add}>＋ Add</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Settings() {
   const [tab, setTab] = useState('family')
   return (
@@ -728,7 +796,7 @@ export function Settings() {
         ))}
       </div>
       <div className="set-content">
-        {tab === 'family' ? <FamilyPanel /> : tab === 'ai' ? <AiPanel /> : tab === 'calendars' ? <CalendarsPanel /> : tab === 'meals' ? <MealsPanel /> : <Placeholder tab={tab} />}
+        {tab === 'family' ? <FamilyPanel /> : tab === 'ai' ? <AiPanel /> : tab === 'calendars' ? <CalendarsPanel /> : tab === 'meals' ? <MealsPanel /> : tab === 'chores' ? <RewardsSettingsPanel /> : <Placeholder tab={tab} />}
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { api, usePersons } from '../../lib/api'
+import { api, usePersons, useCurrencies } from '../../lib/api'
 
 export interface ChoreDraft {
   id: string
@@ -7,6 +7,7 @@ export interface ChoreDraft {
   emoji: string | null
   personId: string | null
   rewardAmount: number | null
+  rewardCurrency?: string | null
   rrule?: string | null
   requiresApproval?: boolean
 }
@@ -38,6 +39,7 @@ function initialForm(chore?: ChoreDraft, personId?: string | null) {
     emoji: chore?.emoji ?? '',
     personId: chore?.personId ?? personId ?? '',
     rewardAmount: chore?.rewardAmount ?? 1,
+    rewardCurrency: chore?.rewardCurrency ?? '',
     freq: sched.freq,
     days: sched.days,
     requiresApproval: chore?.requiresApproval ?? false,
@@ -58,7 +60,10 @@ export function ChoreModal({
 }) {
   const editing = !!chore
   const { persons } = usePersons()
+  const { currencies, defaultCurrency } = useCurrencies()
   const [form, setForm] = useState(() => initialForm(chore, personId))
+  const curKey = form.rewardCurrency || defaultCurrency?.key || 'stars'
+  const selectedCur = currencies.find((c) => c.key === curKey)
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
@@ -72,6 +77,7 @@ export function ChoreModal({
       emoji: form.emoji.trim() || null,
       personId: form.personId || null,
       rewardAmount: Number(form.rewardAmount) || 0,
+      rewardCurrency: curKey,
       rrule: buildRrule(form.freq, form.days),
       requiresApproval: form.requiresApproval,
     }
@@ -159,7 +165,7 @@ export function ChoreModal({
               </select>
             </label>
             <label className="field">
-              <span>Stars</span>
+              <span>{selectedCur?.label ?? 'Stars'}</span>
               <input
                 type="number"
                 min={0}
@@ -168,6 +174,26 @@ export function ChoreModal({
               />
             </label>
           </div>
+
+          {/* currency picker — only when the family runs more than one currency */}
+          {currencies.length > 1 && (
+            <div className="field" style={{ marginBottom: 10 }}>
+              <span>Currency</span>
+              <div className="rw-cur-pick">
+                {currencies.map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    className={`rw-cur-chip ${c.key === curKey ? 'on' : ''}`}
+                    style={c.key === curKey && c.color ? { borderColor: c.color, color: c.color, background: `${c.color}18` } : undefined}
+                    onClick={() => set('rewardCurrency', c.key)}
+                  >
+                    {c.symbol ?? '⭐'} {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <button
             type="button"

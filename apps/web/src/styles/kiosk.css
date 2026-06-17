@@ -365,15 +365,27 @@ button.tick {
 .rw-balances { display: flex; flex-wrap: wrap; gap: 12px; }
 .rw-bal {
   display: flex; align-items: center; gap: 11px;
-  background: var(--card); border-radius: var(--r-lg); box-shadow: var(--sh-1);
-  padding: 12px 18px 12px 12px;
+  background: var(--card); border: 0; border-radius: var(--r-lg); box-shadow: var(--sh-1);
+  padding: 12px 18px 12px 12px; cursor: pointer; font: inherit; text-align: left;
+  transition: box-shadow 0.12s ease;
 }
+.rw-bal:hover { box-shadow: var(--sh-2); }
 .rw-av {
   width: 40px; height: 40px; border-radius: 999px; flex: none;
   display: grid; place-items: center; font-size: 20px;
 }
 .rw-bal-name { font-weight: 700; font-size: 14.5px; }
-.rw-bal-stars { display: flex; align-items: center; gap: 5px; font-weight: 800; color: var(--lottie); font-size: 14px; }
+.rw-bal-coins { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 1px; }
+.rw-coin { display: inline-flex; align-items: center; gap: 4px; font-weight: 800; font-size: 14px; color: var(--lottie); }
+.rw-coin-sym { font-size: 13px; }
+
+/* currency picker (Add reward) */
+.rw-cur-pick { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.rw-cur-chip {
+  font: inherit; font-size: 13px; font-weight: 700; padding: 7px 12px; border-radius: 999px;
+  border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2); cursor: pointer;
+}
+.rw-cur-chip.on { border-color: var(--wally); color: var(--wally); }
 
 /* approvals queue */
 .rw-approvals { padding: 16px 18px; }
