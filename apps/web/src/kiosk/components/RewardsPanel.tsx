@@ -87,7 +87,14 @@ export function RewardsPanel() {
         <button type="button" className="pill" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={() => setAdding(true)}>＋ Add reward</button>
       </div>
       {rewards.length === 0 ? (
-        <div className="muted" style={{ padding: '6px 2px', fontWeight: 600 }}>No rewards yet — add one the kids can save up for.</div>
+        <div className="rw-empty">
+          <div className="rw-empty-emo">🎁</div>
+          <div className="rw-empty-h">No rewards yet</div>
+          <div className="rw-empty-b">Add something the kids can save their stars up for — movie night, extra screen time, a trip to the park.</div>
+          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} onClick={() => setAdding(true)}>
+            ＋ Add a reward
+          </button>
+        </div>
       ) : (
         <div className="rw-grid">
           {rewards.map((r) => (
