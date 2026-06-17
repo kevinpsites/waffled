@@ -108,6 +108,10 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     (shared-ring / each-together), log progress, **create**, **detail**
     (milestone ladder, by-person, recent activity, this-week, streak), **edit**
     (PATCH), and **goal-list creation** (＋ New group: name/emoji/members/private). ✅
-  - Chores / Rewards / Photos / Settings: still live-summary placeholders.
-- **Next:** another hub tile (Chores/Rewards/Photos/Settings) and Auth0 login
+  - **Chores** built out: by-person board (+ Up for grabs) with a date stepper,
+    complete/uncomplete, up-for-grabs claim ("who did it?"), parent
+    approve/reject, streaks + star rewards, and create/edit/delete chores
+    (schedule, who, stars, approval). ✅
+  - Rewards / Photos / Settings: still live-summary placeholders.
+- **Next:** another hub tile (Rewards/Photos/Settings) and Auth0 login
   (roadmap 4.2.1) to replace the dev token.
