@@ -13,7 +13,7 @@ struct CrudOpDTO: Encodable {
 /// nulls (the server distinguishes "absent" from `null` for some fields).
 enum JSONValue: Encodable {
     case string(String), int(Int), double(Double), bool(Bool), null
-    case array([JSONValue])
+    case array([JSONValue]), object([String: JSONValue])
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.singleValueContainer()
@@ -24,6 +24,7 @@ enum JSONValue: Encodable {
         case let .bool(b): try c.encode(b)
         case .null: try c.encodeNil()
         case let .array(a): try c.encode(a)
+        case let .object(o): try c.encode(o)
         }
     }
 }

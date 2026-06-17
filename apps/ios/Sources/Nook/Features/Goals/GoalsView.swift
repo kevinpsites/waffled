@@ -64,6 +64,16 @@ final class GoalsModel {
             await loadGoals()
         } catch { self.error = true }
     }
+
+    /// Create a goal, then reselect its list so it shows up. Returns success.
+    func create(_ body: [String: JSONValue], listId: String?) async -> Bool {
+        do {
+            try await api.createGoal(body)
+            if let listId { selectedListId = listId }
+            await loadLists()
+            return true
+        } catch { self.error = true; return false }
+    }
 }
 
 // MARK: category styling (mirror the web CATEGORIES → person palette)
@@ -149,6 +159,7 @@ struct AvatarStack: View {
 struct GoalsView: View {
     @State private var model = GoalsModel()
     @State private var logging: NookAPI.Goal?
+    @State private var creating = false
 
     private static let heroGreen = LinearGradient(colors: [Color(hex: 0x2BA86B), Color(hex: 0x1C8A56)],
                                                   startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -178,11 +189,21 @@ struct GoalsView: View {
         .background(NK.canvas)
         .navigationTitle("Goals")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { creating = true } label: { Image(systemName: "plus") }
+            }
+        }
         .task { if model.lists.isEmpty { await model.loadLists() } }
         .refreshable { await model.loadLists() }
         .sheet(item: $logging) { g in
             GoalLogSheet(goal: g) { amount, ids, note in
                 Task { await model.log(goalId: g.id, amount: amount, personIds: ids, note: note) }
+            }
+        }
+        .sheet(isPresented: $creating) {
+            GoalCreateSheet(lists: model.lists, defaultListId: model.selectedList?.id) { body, listId in
+                Task { await model.create(body, listId: listId) }
             }
         }
     }
@@ -552,5 +573,297 @@ struct GoalLogSheet: View {
             }
             .padding(.vertical, 1)
         }
+    }
+}
+
+/// New goal — title, who-it's-for (goal list), shared/each, type + measure,
+/// category, feature + rewards toggles with an inline milestone editor. Mirrors the
+/// web GoalCreate, folded into one scrollable sheet. NK-styled.
+struct GoalCreateSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let lists: [NookAPI.GoalList]
+    let defaultListId: String?
+    let onCreate: ([String: JSONValue], String?) -> Void
+
+    private struct TypeOpt { let key, emoji, title, desc: String }
+    private static let types = [
+        TypeOpt(key: "count", emoji: "🔢", title: "Count", desc: "Reach a number"),
+        TypeOpt(key: "total", emoji: "⏱️", title: "Total amount", desc: "Add up over time"),
+        TypeOpt(key: "habit", emoji: "🔁", title: "Habit", desc: "Repeat on a cadence"),
+        TypeOpt(key: "checklist", emoji: "🪜", title: "Milestones", desc: "A checklist of steps"),
+    ]
+    private static let categories = ["physical", "intellectual", "spiritual", "creative", "social"]
+    private static let categoryLabel = ["physical": "Physical", "intellectual": "Intellectual",
+                                        "spiritual": "Spiritual", "creative": "Creative", "social": "Social"]
+
+    struct Milestone: Identifiable { let id = UUID(); var emoji: String; var threshold: String; var reward: String }
+
+    @State private var title = ""
+    @State private var goalListId: String?
+    @State private var trackingMode = "shared_total"
+    @State private var goalType = "total"
+    @State private var target = "1000"
+    @State private var unit = "hours"
+    @State private var habitPeriod = "week"
+    @State private var habitPer = "5"
+    @State private var category = "physical"
+    @State private var hasDeadline = false
+    @State private var deadline = Date()
+    @State private var isFeatured = true
+    @State private var hasRewards = false
+    @State private var milestones: [Milestone] = [
+        .init(emoji: "🌱", threshold: "250", reward: "+25 ★ bonus"),
+        .init(emoji: "⛺", threshold: "500", reward: "Family movie night"),
+        .init(emoji: "🏆", threshold: "1000", reward: "Big reward"),
+    ]
+
+    private var isHabit: Bool { goalType == "habit" }
+    private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    section("What’s the goal?") {
+                        TextField("1,000 Hours Outside", text: $title)
+                            .font(NK.serif(20)).textInputAutocapitalization(.words)
+                            .padding(.horizontal, 15).padding(.vertical, 13)
+                            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                    }
+
+                    if !lists.isEmpty {
+                        section("Who’s it for?") {
+                            ChipFlow(spacing: 8, lineSpacing: 8) {
+                                ForEach(lists) { l in
+                                    let on = goalListId == l.id
+                                    Button { goalListId = l.id } label: {
+                                        Text("\(l.members.first?.avatarEmoji ?? l.emoji ?? "👥") \(l.name)")
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundStyle(on ? NK.ink : NK.ink2)
+                                            .padding(.horizontal, 12).padding(.vertical, 7)
+                                            .background(on ? NK.primary.opacity(0.12) : NK.card)
+                                            .overlay(Capsule().strokeBorder(on ? NK.primary : NK.hair, lineWidth: on ? 1.5 : 1))
+                                            .clipShape(Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+
+                    section("Shared, or each on their own?") {
+                        Picker("Tracking", selection: $trackingMode) {
+                            Text("One shared total").tag("shared_total")
+                            Text("Each tracks own").tag("each_tracks")
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
+                    section("How do you measure it?") {
+                        VStack(spacing: 8) {
+                            ForEach(Self.types, id: \.key) { t in typeCard(t) }
+                        }
+                        measureRow.padding(.top, 4)
+                    }
+
+                    section("Category") {
+                        ChipFlow(spacing: 8, lineSpacing: 8) {
+                            ForEach(Self.categories, id: \.self) { k in
+                                let on = category == k
+                                let c = GoalStyle.color(k)
+                                Button { category = k } label: {
+                                    Text("\(GoalStyle.emoji(k)) \(Self.categoryLabel[k] ?? k)")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(on ? c : NK.ink2)
+                                        .padding(.horizontal, 12).padding(.vertical, 7)
+                                        .background(on ? c.opacity(0.14) : NK.card)
+                                        .overlay(Capsule().strokeBorder(on ? c : NK.hair, lineWidth: on ? 1.5 : 1))
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    toggleRow("⭐", "Feature on the home screen", "Shows big on the family hub", $isFeatured)
+                    toggleRow("🏆", "Milestones & rewards", "Bonus stars at custom thresholds", $hasRewards)
+                    if hasRewards { milestoneEditor }
+
+                    Text("Rewards are off by default — goals stay about growth, not points. Turn them on per goal when a little extra motivation helps.")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(20)
+            }
+            .background(NK.canvas)
+            .navigationTitle("New goal")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") { submit() }.fontWeight(.semibold).disabled(!canSave)
+                }
+            }
+            .onAppear { if goalListId == nil { goalListId = defaultListId ?? lists.first?.id } }
+        }
+        .presentationDetents([.large])
+    }
+
+    // MARK: pieces
+
+    private func section<V: View>(_ label: String, @ViewBuilder _ content: () -> V) -> some View {
+        VStack(alignment: .leading, spacing: 10) { SectionLabel(text: label); content() }
+    }
+
+    private func typeCard(_ t: TypeOpt) -> some View {
+        let on = goalType == t.key
+        return Button { goalType = t.key } label: {
+            HStack(spacing: 12) {
+                Text(t.emoji).font(.system(size: 20)).frame(width: 38, height: 38)
+                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(t.title).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                    Text(t.desc).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                }
+                Spacer()
+                if on { Image(systemName: "checkmark.circle.fill").font(.system(size: 18)).foregroundStyle(NK.primary) }
+            }
+            .padding(12)
+            .background(on ? NK.primary.opacity(0.08) : NK.card)
+            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(on ? NK.primary : NK.hair, lineWidth: on ? 1.5 : 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder private var measureRow: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                if isHabit {
+                    numField($habitPer, width: 70)
+                    Text("× a").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
+                    Picker("Period", selection: $habitPeriod) {
+                        Text("day").tag("day"); Text("week").tag("week"); Text("month").tag("month")
+                    }
+                    .pickerStyle(.menu).tint(NK.ink)
+                    Spacer()
+                } else {
+                    numField($target, width: 90)
+                    plainField("hours", text: $unit)
+                }
+            }
+            Toggle(isOn: $hasDeadline.animation()) {
+                Text("Set a deadline").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
+            }
+            .tint(FamilyColor.wally.solid)
+            if hasDeadline {
+                DatePicker("Deadline", selection: $deadline, displayedComponents: .date)
+                    .datePickerStyle(.compact).labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private func numField(_ text: Binding<String>, width: CGFloat) -> some View {
+        TextField("", text: text).keyboardType(.numberPad)
+            .font(.system(size: 16, weight: .semibold)).multilineTextAlignment(.center)
+            .frame(width: width).padding(.vertical, 11)
+            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    private func plainField(_ placeholder: String, text: Binding<String>) -> some View {
+        TextField(placeholder, text: text)
+            .font(.system(size: 16, weight: .semibold))
+            .padding(.horizontal, 13).padding(.vertical, 11)
+            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    private func toggleRow(_ icon: String, _ title: String, _ sub: String, _ on: Binding<Bool>) -> some View {
+        HStack(spacing: 12) {
+            Text(icon).font(.system(size: 22)).frame(width: 38)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 14.5, weight: .bold)).foregroundStyle(NK.ink)
+                Text(sub).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+            }
+            Spacer()
+            Toggle("", isOn: on.animation()).labelsHidden().tint(FamilyColor.wally.solid)
+        }
+        .padding(13)
+        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    private var milestoneEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel(text: "Milestones & rewards")
+            ForEach($milestones) { $m in
+                HStack(spacing: 8) {
+                    TextField("🎯", text: $m.emoji).frame(width: 38).multilineTextAlignment(.center)
+                        .padding(.vertical, 9).background(NK.card)
+                        .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                    TextField("0", text: $m.threshold).keyboardType(.numberPad).frame(width: 64)
+                        .multilineTextAlignment(.center).font(.system(size: 14, weight: .semibold))
+                        .padding(.vertical, 9).background(NK.card)
+                        .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                    TextField("reward", text: $m.reward).font(.system(size: 14, weight: .semibold))
+                        .padding(.horizontal, 11).padding(.vertical, 9).background(NK.card)
+                        .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                    Button { milestones.removeAll { $0.id == m.id } } label: {
+                        Image(systemName: "minus.circle.fill").font(.system(size: 18)).foregroundStyle(NK.ink3)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            Button { milestones.append(.init(emoji: "🎯", threshold: "0", reward: "")) } label: {
+                Label("Add milestone", systemImage: "plus").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ai)
+            }
+            .buttonStyle(.plain).padding(.top, 2)
+        }
+    }
+
+    private func submit() {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        var body: [String: JSONValue] = [
+            "title": .string(trimmed),
+            "goalListId": goalListId.map(JSONValue.string) ?? .null,
+            "category": .string(category),
+            "goalType": .string(goalType),
+            "trackingMode": .string(trackingMode),
+            "logMethod": .string("quick_log"),
+            "isFeatured": .bool(isFeatured),
+            "hasRewards": .bool(hasRewards),
+            "unit": isHabit ? .null : (unit.trimmingCharacters(in: .whitespaces).isEmpty ? .null : .string(unit.trimmingCharacters(in: .whitespaces))),
+            "deadline": hasDeadline ? .string(isoDay(deadline)) : .null,
+        ]
+        if isHabit {
+            let n = Int(habitPer) ?? 0
+            body["targetValue"] = .int(n)
+            body["habitPeriod"] = .string(habitPeriod)
+            body["habitTargetPerPeriod"] = .int(n)
+        } else {
+            body["targetValue"] = Double(target).map(JSONValue.double) ?? .null
+        }
+        let members = lists.first { $0.id == goalListId }?.members ?? []
+        body["participantIds"] = .array(members.map { .string($0.personId) })
+        body["milestones"] = .array(hasRewards ? milestones.map { m in
+            .object([
+                "threshold": .int(Int(m.threshold) ?? 0),
+                "emoji": .string(m.emoji),
+                "label": .string(m.threshold),
+                "rewardText": .string(m.reward),
+            ])
+        } : [])
+        onCreate(body, goalListId)
+        dismiss()
+    }
+
+    private func isoDay(_ d: Date) -> String {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
+        return f.string(from: d)
     }
 }
