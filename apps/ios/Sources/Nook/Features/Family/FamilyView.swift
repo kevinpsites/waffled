@@ -35,10 +35,6 @@ struct FamilyView: View {
                             }
                     }
                     .buttonStyle(.plain)
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 18)).foregroundStyle(NK.ink2)
-                        .frame(width: 36, height: 36)
-                        .background(NK.panel).clipShape(Circle())
                 }
                 .padding(.top, 8)
 

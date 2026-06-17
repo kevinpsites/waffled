@@ -429,6 +429,14 @@ struct NookAPI: Sendable {
         return try await getJSON("/api/lists", as: Resp.self).lists
     }
 
+    /// Create a custom list. Returns the new list summary.
+    func addList(name: String, emoji: String?) async throws -> ListSummary {
+        var body: [String: JSONValue] = ["name": .string(name)]
+        body["emoji"] = emoji.map(JSONValue.string) ?? .null
+        struct Resp: Decodable { let list: ListSummary }
+        return try await sendReturning("POST", "/api/lists", body: body, as: Resp.self).list
+    }
+
     /// The items in a list (works for any list, grocery included).
     func listItems(listId: String) async throws -> [ListItemDTO] {
         struct Resp: Decodable { let items: [ListItemDTO] }

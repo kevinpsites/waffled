@@ -22,11 +22,24 @@ final class ListsIndexModel {
         }
         loading = false
     }
+
+    func create(name: String, emoji: String) async {
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !n.isEmpty else { return }
+        do {
+            _ = try await api.addList(name: n, emoji: emoji.isEmpty ? nil : emoji)
+            await load()
+        } catch { self.error = true }
+    }
 }
 
 struct ListsIndexView: View {
     @Binding var path: [HubRoute]
+    @Environment(SyncManager.self) private var sync
     @State private var model = ListsIndexModel()
+    @State private var showCapture = false
+    @State private var dictateOnOpen = false
+    @State private var creatingList = false
 
     /// Fire the headless deep-link at most once per process — the index view is
     /// recreated when you pop back to it, so a per-view flag would re-fire and trap
@@ -36,8 +49,15 @@ struct ListsIndexView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 10) {
+                AICaptureBar(placeholder: "Add milk & eggs to groceries…",
+                             onTap: { dictateOnOpen = false; showCapture = true },
+                             onMic: { dictateOnOpen = true; showCapture = true })
+                    .padding(.bottom, 4)
+                if !model.lists.isEmpty || model.loading {
+                    SectionLabel(text: "Your lists").frame(maxWidth: .infinity, alignment: .leading)
+                }
                 if model.lists.isEmpty && !model.loading {
-                    Text(model.error ? "Couldn’t load your lists." : "No lists yet.")
+                    Text(model.error ? "Couldn’t load your lists." : "No lists yet — add one with ＋.")
                         .font(.system(size: 14)).foregroundStyle(NK.ink3)
                         .padding(.top, 24)
                 }
@@ -53,11 +73,22 @@ struct ListsIndexView: View {
         .background(NK.canvas)
         .navigationTitle("Lists")
         .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { creatingList = true } label: { Image(systemName: "plus") }
+            }
+        }
         .task {
             await model.load()
             deepLinkIfNeeded()
         }
         .refreshable { await model.load() }
+        .sheet(isPresented: $showCapture) {
+            CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $creatingList) {
+            NewListSheet { name, emoji in Task { await model.create(name: name, emoji: emoji) } }
+        }
     }
 
     private func row(_ list: NookAPI.ListSummary) -> some View {
@@ -85,5 +116,51 @@ struct ListsIndexView: View {
             Self.didDeepLink = true
             path.append(.list(match))
         }
+    }
+}
+
+/// New custom list — name + optional emoji. NK-styled.
+struct NewListSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let onCreate: (String, String) -> Void
+    @State private var name = ""
+    @State private var emoji = ""
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "List name")
+                        TextField("Camping gear", text: $name)
+                            .font(.system(size: 16, weight: .semibold)).textInputAutocapitalization(.words)
+                            .padding(.horizontal, 13).padding(.vertical, 12)
+                            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                    }
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "Emoji")
+                        TextField("📝", text: $emoji)
+                            .font(.system(size: 16, weight: .semibold)).multilineTextAlignment(.center)
+                            .frame(width: 60).padding(.vertical, 12)
+                            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                            .onChange(of: emoji) { _, v in if v.count > 2 { emoji = String(v.prefix(2)) } }
+                    }
+                }
+                .padding(20)
+            }
+            .background(NK.canvas)
+            .navigationTitle("New list")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") { onCreate(name, emoji.trimmingCharacters(in: .whitespaces)); dismiss() }
+                        .fontWeight(.semibold).disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.height(200), .medium])
     }
 }

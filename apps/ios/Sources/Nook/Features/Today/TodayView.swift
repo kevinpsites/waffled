@@ -49,8 +49,9 @@ struct TodayView: View {
                 tonightCard
                 HStack(spacing: 12) {
                     Button { openFamily(.chores) } label: { choresCard }.buttonStyle(.plain)
-                    Button { openFamily(.lists) } label: { groceryCard }.buttonStyle(.plain)
+                    Button { openFamily(grocerySummary) } label: { groceryCard }.buttonStyle(.plain)
                 }
+                .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 18)
             .padding(.top, 8)
@@ -83,7 +84,10 @@ struct TodayView: View {
             }
             Spacer()
             if let m = greetingMember {
-                Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 46)
+                Button { openFamily(.person(m.id)) } label: {
+                    Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 46)
+                }
+                .buttonStyle(.plain)
             } else {
                 Avatar(person: .kelly, emoji: "🦊", size: 46)
             }
@@ -179,6 +183,14 @@ struct TodayView: View {
     }
 
     // MARK: chores + grocery summary (live)
+
+    /// A synthetic grocery list so the Today grocery card opens the board directly
+    /// (ListDetailView loads the grocery board by type, not by id).
+    private var grocerySummary: HubRoute {
+        .list(NookAPI.ListSummary(id: "grocery", name: "Grocery", emoji: "🛒",
+                                  listType: "grocery", itemCount: dash.groceryRemaining))
+    }
+
     private var choresCard: some View {
         NookCard(padding: 15) {
             VStack(alignment: .leading, spacing: 8) {
@@ -203,6 +215,7 @@ struct TodayView: View {
                         .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
@@ -213,7 +226,9 @@ struct TodayView: View {
                 Text("\(dash.groceryRemaining)").font(.system(size: 26, weight: .bold)).foregroundStyle(NK.ink)
                 Text(dash.groceryRemaining == 1 ? "item to buy" : "items to buy")
                     .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                Spacer(minLength: 0)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 

@@ -134,9 +134,11 @@ struct CalendarView: View {
             .frame(maxWidth: .infinity).padding(.top, 56)
         } else {
             ForEach(groups, id: \.day) { group in
-                dayHeading(group.day).padding(.top, 2)
-                ForEach(group.items) { ev in
-                    EventCard(event: ev, tz: tz) { editing = .edit(ev) }
+                VStack(alignment: .leading, spacing: 8) {
+                    dayHeading(group.day)
+                    ForEach(group.items) { ev in
+                        EventCard(event: ev, tz: tz) { editing = .edit(ev) }
+                    }
                 }
             }
         }
@@ -207,7 +209,9 @@ struct CalendarView: View {
             }
             .buttonStyle(.plain)
         } else {
-            ForEach(dayItems) { ev in EventCard(event: ev, tz: tz) { editing = .edit(ev) } }
+            VStack(spacing: 8) {
+                ForEach(dayItems) { ev in EventCard(event: ev, tz: tz) { editing = .edit(ev) } }
+            }
         }
     }
 
