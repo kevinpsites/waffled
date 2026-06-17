@@ -39,3 +39,11 @@ export function Star({ size = 14 }: { size?: number }) {
     </svg>
   )
 }
+
+export function Check({ size = 14 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} style={{ fill: 'none', stroke: 'currentColor', strokeWidth: 3, strokeLinecap: 'round', strokeLinejoin: 'round' }}>
+      <path d="M5 12.5l4.5 4.5L19 6.5" />
+    </svg>
+  )
+}

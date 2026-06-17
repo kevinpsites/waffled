@@ -387,6 +387,19 @@ button.tick {
 }
 .rw-cur-chip.on { border-color: var(--wally); color: var(--wally); }
 
+/* archived rewards (admin, collapsed) */
+.rw-archived { margin-top: 4px; }
+.rw-arch-head { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; font: inherit;
+  font-size: 13.5px; font-weight: 700; color: var(--ink-3); cursor: pointer; padding: 6px 0; }
+.rw-arch-caret { display: inline-block; transition: transform 0.12s ease; }
+.rw-arch-caret.open { transform: rotate(90deg); }
+.rw-arch-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.rw-arch-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--r-md); background: var(--card-2); }
+.rw-arch-emo { font-size: 18px; flex: none; opacity: 0.7; }
+.rw-arch-t { flex: 1; min-width: 0; font-weight: 600; font-size: 14px; color: var(--ink-2); }
+.rw-arch-cost { flex: none; opacity: 0.7; }
+.rw-arch-row .pill { flex: none; cursor: pointer; }
+
 /* approvals queue */
 .rw-approvals { padding: 16px 18px; }
 .rw-appr {

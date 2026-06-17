@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Icon, Star } from './icons'
+import { Icon, Check } from './icons'
 import { ChoreModal, type ChoreDraft } from './components/ChoreModal'
 import { RewardsPanel } from './components/RewardsPanel'
 import { choresApi, usePersons, useDayInstances, useCurrencies, localToday, type ChoreInstance } from '../lib/api'
@@ -143,8 +143,8 @@ export function Tasks() {
                     </>
                   )}
                 </span>
-                <span className="badge">
-                  <Star size={13} /> {done}/{g.items.length}
+                <span className="badge" title="Chores done">
+                  <Check size={13} /> {done}/{g.items.length}
                 </span>
               </div>
               {upForGrabs && g.items.length > 0 && (

@@ -58,7 +58,9 @@ export const rewardsApi = {
     apiSend<{ reward: Reward }>('POST', '/api/rewards', body).then((r) => r.reward),
   updateReward: (id: string, patch: { title?: string; emoji?: string | null; cost?: number; currency?: string }) =>
     apiSend<{ reward: Reward }>('PATCH', `/api/rewards/${id}`, patch).then((r) => r.reward),
-  deleteReward: (id: string) => apiDelete(`/api/rewards/${id}`),
+  deleteReward: (id: string) => apiDelete(`/api/rewards/${id}`), // soft archive
+  archivedRewards: () => apiGet<{ rewards: Reward[] }>('/api/rewards/archived'), // admin only
+  restoreReward: (id: string) => apiSend<{ reward: Reward }>('POST', `/api/rewards/${id}/restore`).then((r) => r.reward),
   balances: () => apiGet<{ currencies: Currency[]; people: PersonBalance[] }>('/api/balances'),
   redemptions: (status?: string) =>
     apiGet<{ redemptions: Redemption[] }>(`/api/redemptions${status ? `?status=${status}` : ''}`),

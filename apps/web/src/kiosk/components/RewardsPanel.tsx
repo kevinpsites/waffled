@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { rewardsApi, useRewardsHub, type Reward, type Currency } from '../../lib/api'
+import { rewardsApi, useRewardsHub, useHousehold, type Reward, type Currency } from '../../lib/api'
 
 function Avatar({ emoji, color, name }: { emoji: string | null; color: string | null; name: string | null }) {
   return (
@@ -25,11 +25,27 @@ function Coin({ currency, amount }: { currency: Currency | undefined; amount: nu
 // rewards) — one-currency families just see one balance.
 export function RewardsPanel() {
   const { rewards, balances, currencies, pending, loading, error, refetch } = useRewardsHub()
+  const { person } = useHousehold()
+  const isAdmin = !!person?.isAdmin
   const navigate = useNavigate()
   const [redeemFor, setRedeemFor] = useState<Reward | null>(null)
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<Reward | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+
+  // Archived (soft-deleted) rewards — admin only, shown in a collapsed section.
+  const [archived, setArchived] = useState<Reward[]>([])
+  const [showArchived, setShowArchived] = useState(false)
+  const loadArchived = useCallback(() => {
+    if (!isAdmin) return
+    rewardsApi.archivedRewards().then((d) => setArchived(d.rewards)).catch(() => setArchived([]))
+  }, [isAdmin])
+  useEffect(() => { loadArchived() }, [loadArchived, rewards.length])
+  const afterCatalogChange = () => { refetch(); loadArchived() }
+  async function restore(id: string) {
+    setBusy(id)
+    try { await rewardsApi.restoreReward(id); afterCatalogChange() } finally { setBusy(null) }
+  }
 
   const curOf = (key: string) => currencies.find((c) => c.key === key)
   const balanceOf = (personId: string, key: string) =>
@@ -150,12 +166,34 @@ export function RewardsPanel() {
         </div>
       )}
 
+      {/* archived rewards — admin only, collapsed; archiving keeps redemption history */}
+      {isAdmin && archived.length > 0 && (
+        <div className="rw-archived">
+          <button type="button" className="rw-arch-head" onClick={() => setShowArchived((v) => !v)}>
+            <span className={`rw-arch-caret ${showArchived ? 'open' : ''}`}>›</span>
+            Archived ({archived.length})
+          </button>
+          {showArchived && (
+            <div className="rw-arch-list">
+              {archived.map((r) => (
+                <div key={r.id} className="rw-arch-row">
+                  <span className="rw-arch-emo">{r.emoji ?? '🎁'}</span>
+                  <span className="rw-arch-t">{r.title}</span>
+                  <span className="rw-arch-cost"><Coin currency={curOf(r.currency)} amount={r.cost} /></span>
+                  <button type="button" className="pill" disabled={busy === r.id} onClick={() => restore(r.id)}>Restore</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {(adding || editing) && (
         <RewardModal
           reward={editing ?? undefined}
           currencies={currencies}
           onClose={() => { setAdding(false); setEditing(null) }}
-          onSaved={refetch}
+          onSaved={afterCatalogChange}
         />
       )}
     </div>
@@ -233,9 +271,9 @@ function RewardModal({ reward, currencies, onClose, onSaved }: { reward?: Reward
         </label>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 18 }}>
           {editing && (
-            <button type="button" onClick={del} disabled={saving}
+            <button type="button" onClick={del} disabled={saving} title="Archived rewards keep their redemption history and can be restored"
               style={{ border: 0, background: 'none', font: 'inherit', fontWeight: 700, fontSize: 14, color: 'var(--primary)', cursor: 'pointer', padding: '8px 4px' }}>
-              {confirmDel ? 'Tap again to delete' : 'Delete'}
+              {confirmDel ? 'Tap again to archive' : 'Archive'}
             </button>
           )}
           <button type="button" className="pill" style={{ marginLeft: 'auto' }} onClick={onClose}>Cancel</button>

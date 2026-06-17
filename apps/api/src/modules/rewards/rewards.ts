@@ -250,6 +250,33 @@ export function registerRewardRoutes(api: Api): void {
     return res.status(204).send('')
   })
 
+  // Archived (soft-deleted) rewards — admin only; powers the collapsed "Archived"
+  // section. Deleting is a soft archive, so redemption history + ledger entries
+  // (which snapshot title/cost) are untouched and a reward can be restored.
+  api.get('/api/rewards/archived', async (req: Request) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const { rows } = await query<RewardRow>(
+      `select * from rewards where household_id=$1 and deleted_at is not null order by deleted_at desc`,
+      [tenant.householdId]
+    )
+    return { rewards: rows.map(presentReward) }
+  })
+
+  // Restore an archived reward to the catalog (admin).
+  api.post('/api/rewards/:id/restore', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
+    const { rows } = await query<RewardRow>(
+      `update rewards set deleted_at=null where household_id=$1 and id=$2 and deleted_at is not null returning *`,
+      [tenant.householdId, id]
+    )
+    if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
+    return { reward: presentReward(rows[0]) }
+  })
+
   // Balances + history
   api.get('/api/balances', async (req: Request) => {
     const tenant = await requireTenant(req)

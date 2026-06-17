@@ -37,7 +37,7 @@ export const personsApi = {
   createPerson: (input: Record<string, unknown>) => apiSend<{ person: Person }>('POST', '/api/persons', input).then((r) => r.person),
   updatePerson: (id: string, patch: Record<string, unknown>) => apiSend<{ person: Person }>('PATCH', `/api/persons/${id}`, patch).then((r) => r.person),
   deletePerson: (id: string) => apiDelete(`/api/persons/${id}`),
-  household: () => apiGet<{ provisioned: boolean; household?: Household }>('/api/household'),
+  household: () => apiGet<{ provisioned: boolean; household?: Household; person?: Person }>('/api/household'),
   householdSettings: () => apiGet<{ household: Household; members: SettingsMember[] }>('/api/household/settings'),
   updateHousehold: (patch: Record<string, unknown>) => apiSend<{ household: Household }>('PATCH', '/api/household', patch).then((r) => r.household),
 }
@@ -54,14 +54,15 @@ export function emitHouseholdChanged(): void {
 
 // Lightweight household fetch (timezone, name) for the global chrome. Refetches
 // when household basics are edited in Settings.
-export function useHousehold(): { household: Household | null } {
+export function useHousehold(): { household: Household | null; person: Person | null } {
   const [household, setHousehold] = useState<Household | null>(null)
+  const [person, setPerson] = useState<Person | null>(null)
   useEffect(() => {
     let alive = true
     const load = () =>
       personsApi
         .household()
-        .then((d) => alive && setHousehold(d.household ?? null))
+        .then((d) => alive && (setHousehold(d.household ?? null), setPerson(d.person ?? null)))
         .catch(() => {})
     load()
     window.addEventListener(HOUSEHOLD_CHANGED, load)
@@ -70,7 +71,7 @@ export function useHousehold(): { household: Household | null } {
       window.removeEventListener(HOUSEHOLD_CHANGED, load)
     }
   }, [])
-  return { household }
+  return { household, person }
 }
 
 export interface PersonsState {
