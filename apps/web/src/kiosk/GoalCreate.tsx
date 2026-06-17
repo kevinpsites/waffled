@@ -243,7 +243,8 @@ export function GoalCreate() {
               ))}
               <div className="gc-measure" style={{ marginTop: 4 }}>
                 <button type="button" className="btn btn-ghost gc-addms" onClick={() => setSteps((ss) => [...ss, { label: '' }])}>＋ Add step</button>
-                <input className="gc-input gc-date" type="date" value={form.deadline} onChange={(e) => set('deadline', e.target.value)} />
+                <span className="gc-x" style={{ marginLeft: 'auto' }}>finish by</span>
+                <input className="gc-input gc-date" type="date" title="Target date (optional)" value={form.deadline} onChange={(e) => set('deadline', e.target.value)} />
               </div>
             </div>
           ) : (
@@ -264,7 +265,8 @@ export function GoalCreate() {
                   <input className="gc-input gc-select" value={form.unit} onChange={(e) => set('unit', e.target.value)} placeholder="hours" />
                 </>
               )}
-              <input className="gc-input gc-date" type="date" value={form.deadline} onChange={(e) => set('deadline', e.target.value)} />
+              <span className="gc-x">{form.goalType === 'habit' ? 'keep up until' : 'reach by'}</span>
+              <input className="gc-input gc-date" type="date" title="Target date (optional)" value={form.deadline} onChange={(e) => set('deadline', e.target.value)} />
             </div>
           )}
         </div>
