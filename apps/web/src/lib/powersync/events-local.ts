@@ -69,6 +69,7 @@ export function rowToAgenda(r: LocalEventRow): AgendaEvent {
     endsAt: r.ends_at,
     allDay: !!r.all_day,
     location: r.location,
+    description: r.description,
     personId: r.person_id,
     origin: r.origin,
     originRefId: r.origin_ref_id,
@@ -117,6 +118,20 @@ const AGENDA_SQL = `
     from events e
     left join persons p on p.id = e.person_id
 `
+
+// A single event by id from the local DB (the detail screen's instant/offline
+// paint). Returns null when PowerSync isn't running or the row isn't local yet —
+// the caller then leans on REST. tz is accepted for signature symmetry.
+export async function getLocalEvent(id: string, _tz: string): Promise<AgendaEvent | null> {
+  const db = getPowerSyncDb()
+  if (!db) return null
+  try {
+    const row = await db.getOptional<LocalEventRow>(`${AGENDA_SQL} where e.id = ?`, [id])
+    return row ? rowToAgenda(row) : null
+  } catch {
+    return null
+  }
+}
 
 // The household timezone the kiosk should bucket by (synced households row), with
 // the device zone as a fallback before the first sync.

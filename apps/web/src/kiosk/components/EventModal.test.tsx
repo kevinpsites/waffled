@@ -1,5 +1,10 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
+import type { ReactElement } from 'react'
 import { EventModal } from './EventModal'
+
+// EventModal uses useNavigate (the "View recipe" jump), so it needs a Router.
+const renderModal = (ui: ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter>)
 
 describe('EventModal', () => {
   it('creates an event with the entered details', async () => {
@@ -17,7 +22,7 @@ describe('EventModal', () => {
 
     const onClose = vi.fn()
     const onSaved = vi.fn()
-    render(<EventModal date="2026-06-09" onClose={onClose} onSaved={onSaved} />)
+    renderModal(<EventModal date="2026-06-09" onClose={onClose} onSaved={onSaved} />)
 
     fireEvent.change(screen.getByPlaceholderText('Soccer practice'), { target: { value: 'Dentist' } })
     fireEvent.click(screen.getByRole('button', { name: /Add event/ }))
@@ -62,7 +67,7 @@ describe('EventModal', () => {
   it('edits an existing event (PATCH)', async () => {
     const patched: unknown[] = []
     mockEventApi(patched, [])
-    render(<EventModal event={sampleEvent} onClose={vi.fn()} onSaved={vi.fn()} />)
+    renderModal(<EventModal event={sampleEvent} onClose={vi.fn()} onSaved={vi.fn()} />)
     fireEvent.change(screen.getByDisplayValue('Old title'), { target: { value: 'New title' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(patched).toHaveLength(1))
@@ -72,7 +77,7 @@ describe('EventModal', () => {
   it('deletes only after a confirm tap', async () => {
     const deleted: string[] = []
     mockEventApi([], deleted)
-    render(<EventModal event={sampleEvent} onClose={vi.fn()} onSaved={vi.fn()} />)
+    renderModal(<EventModal event={sampleEvent} onClose={vi.fn()} onSaved={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
     expect(deleted).toHaveLength(0) // first tap just confirms
     fireEvent.click(screen.getByRole('button', { name: 'Tap again to delete' }))

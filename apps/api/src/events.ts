@@ -46,6 +46,9 @@ export interface EventRow extends QueryResultRow {
   ends_at: Date | null
   all_day: boolean
   person_id: string | null
+  rrule?: string | null
+  sync_state?: string | null
+  calendar_name?: string | null
   origin?: string | null
   origin_ref_id?: string | null
   person_name?: string | null
@@ -148,12 +151,13 @@ const PARTICIPANTS_SUBQUERY = `
 
 const SELECT_WITH_PERSON = `
   select e.id, e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.person_id,
-         e.origin, e.origin_ref_id,
+         e.rrule, e.sync_state, e.origin, e.origin_ref_id, c.summary as calendar_name,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          ${PARTICIPANTS_SUBQUERY}
     from events e
     join households h on h.id = e.household_id
     left join persons p on p.id = e.person_id and p.deleted_at is null
+    left join calendars c on c.id = e.calendar_id and c.deleted_at is null
    where e.household_id = $1 and e.deleted_at is null`
 
 export async function todayEvents(householdId: string, date: string): Promise<EventRow[]> {
@@ -174,6 +178,11 @@ export async function rangeEvents(householdId: string, from: string, to: string)
     [householdId, from, to]
   )
   return rows
+}
+
+export async function getEventById(householdId: string, id: string): Promise<EventRow | null> {
+  const { rows } = await query<EventRow>(`${SELECT_WITH_PERSON} and e.id = $2`, [householdId, id])
+  return rows[0] ?? null
 }
 
 export async function updateEvent(
@@ -269,6 +278,11 @@ export function presentEvent(e: EventRow) {
     endsAt: e.ends_at,
     allDay: e.all_day,
     personId: e.person_id,
+    rrule: e.rrule ?? null,
+    // The Google calendar this event lives on (its name) + whether it's pushed —
+    // drives the detail screen's "Calendar · synced from Google" row.
+    calendarName: e.calendar_name ?? null,
+    syncState: e.sync_state ?? null,
     origin: e.origin ?? null,
     originRefId: e.origin_ref_id ?? null,
     personName: e.person_name ?? null,
@@ -315,6 +329,16 @@ export function registerEventRoutes(api: Api): void {
     }
     const events = await rangeEvents(tenant.householdId, from, to)
     return { from, to, events: events.map(presentEvent) }
+  })
+
+  // A single event with its full detail (rrule, calendar) — the detail screen.
+  api.get('/api/events/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
+    const event = await getEventById(tenant.householdId, id)
+    if (!event) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
+    return { event: presentEvent(event) }
   })
 
   api.patch('/api/events/:id', async (req: Request, res: Response) => {

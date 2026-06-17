@@ -3,6 +3,7 @@ import { KioskLayout } from './KioskLayout'
 import { Today } from './Today'
 import { Tasks } from './Tasks'
 import { Calendar } from './Calendar'
+import { EventDetail } from './EventDetail'
 import { Goals } from './Goals'
 import { GoalCreate } from './GoalCreate'
 import { GoalDetail } from './GoalDetail'
@@ -26,6 +27,7 @@ export function KioskRoutes() {
         <Route index element={<Today />} />
         <Route path="tasks" element={<Tasks />} />
         <Route path="calendar" element={<Calendar />} />
+        <Route path="calendar/event/:id" element={<EventDetail />} />
         <Route path="goals" element={<Goals />} />
         <Route path="goals/new" element={<GoalCreate />} />
         <Route path="goals/:id" element={<GoalDetail />} />

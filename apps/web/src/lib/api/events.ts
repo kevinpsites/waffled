@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { apiGet, apiSend, apiDelete, localToday } from './client'
 import { useRefetchOn } from './bus'
-import { watchAgendaRows, eventsForDay, eventsForRange, getHouseholdTz } from '../powersync/events-local'
+import { watchAgendaRows, eventsForDay, eventsForRange, getHouseholdTz, getLocalEvent } from '../powersync/events-local'
 
 export interface Participant {
   id: string
@@ -23,6 +23,12 @@ export interface AgendaEvent {
   personColor: string | null
   personEmoji: string | null
   participants: Participant[]
+  // Detail-screen fields (present on the single-event fetch; description also
+  // streams from the local DB). rrule/calendar are REST-only for now.
+  description?: string | null
+  rrule?: string | null
+  calendarName?: string | null
+  syncState?: string | null
   // origin='meal_plan' events link to a meal_plan_entry via originRefId — the
   // calendar opens the linked recipe when one is tapped.
   origin?: string | null
@@ -33,6 +39,7 @@ export const eventsApi = {
   eventsToday: (date: string) => apiGet<{ date: string; events: AgendaEvent[] }>(`/api/events/today?date=${date}`),
   eventsRange: (from: string, to: string) =>
     apiGet<{ from: string; to: string; events: AgendaEvent[] }>(`/api/events?from=${from}&to=${to}`),
+  event: (id: string) => apiGet<{ event: AgendaEvent }>(`/api/events/${id}`),
   createEvent: (input: {
     title: string
     startsAt: string
@@ -153,4 +160,52 @@ export function useEventsRange(from: string, to: string): AgendaState & { refetc
   useRefetchOn(['meals'], () => setNonce((n) => n + 1))
 
   return { ...state, refetch: () => setNonce((n) => n + 1) }
+}
+
+// One event with its full detail (the EventDetail screen). Paints instantly from
+// the local DB when available, then REST fills the richer fields (rrule, calendar
+// name) the local schema doesn't carry. `notFound` distinguishes a deleted event
+// from a slow load.
+export function useEvent(id: string): { event: AgendaEvent | null; loading: boolean; notFound: boolean; refetch: () => void } {
+  const [event, setEvent] = useState<AgendaEvent | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [notFound, setNotFound] = useState(false)
+  const [nonce, setNonce] = useState(0)
+  const restLoaded = useRef(false)
+
+  useEffect(() => {
+    let alive = true
+    restLoaded.current = false
+    setLoading(true)
+    setNotFound(false)
+    // Local-first paint (instant, offline). It must NOT clobber the REST result —
+    // the local row lacks the richer fields (calendar name, rrule) — so it only
+    // fills in before REST lands (the two race; local can resolve last).
+    void (async () => {
+      const tz = await getHouseholdTz()
+      const local = await getLocalEvent(id, tz)
+      if (alive && local && !restLoaded.current) setEvent((cur) => cur ?? local)
+    })()
+    eventsApi
+      .event(id)
+      .then((d) => {
+        if (!alive) return
+        restLoaded.current = true
+        setEvent(d.event)
+        setLoading(false)
+      })
+      .catch((err: unknown) => {
+        if (!alive) return
+        // 404 → gone; other errors (offline) keep whatever local gave us.
+        if (err instanceof Error && /->\s*404/.test(err.message)) setNotFound(true)
+        setLoading(false)
+      })
+    return () => {
+      alive = false
+    }
+  }, [id, nonce])
+
+  useRefetchOn(['meals'], () => setNonce((n) => n + 1))
+
+  return { event, loading, notFound, refetch: () => setNonce((n) => n + 1) }
 }

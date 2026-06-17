@@ -26,7 +26,7 @@ const DURATIONS: Array<{ min: number; label: string }> = [
   { min: 240, label: '4 hr' },
 ]
 
-function initialForm(event?: AgendaEvent, date?: string) {
+function initialForm(event?: AgendaEvent, date?: string, time?: string) {
   if (event) {
     const d = new Date(event.startsAt)
     const participantIds = event.participants.length
@@ -48,25 +48,27 @@ function initialForm(event?: AgendaEvent, date?: string) {
       location: event.location ?? '',
     }
   }
-  return { title: '', day: date ?? localToday(), time: '17:00', durationMin: 60, allDay: false, participantIds: [] as string[], location: '' }
+  return { title: '', day: date ?? localToday(), time: time ?? '17:00', durationMin: 60, allDay: false, participantIds: [] as string[], location: '' }
 }
 
-// Create (pass `date`) or edit (pass `event`) a calendar event.
+// Create (pass `date`, optional `time`) or edit (pass `event`) a calendar event.
 export function EventModal({
   event,
   date,
+  time,
   onClose,
   onSaved,
 }: {
   event?: AgendaEvent
   date?: string
+  time?: string
   onClose: () => void
   onSaved: () => void
 }) {
   const editing = !!event
   const navigate = useNavigate()
   const { persons } = usePersons()
-  const [form, setForm] = useState(() => initialForm(event, date))
+  const [form, setForm] = useState(() => initialForm(event, date, time))
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
