@@ -437,6 +437,9 @@ struct NookAPI: Sendable {
         return try await sendReturning("POST", "/api/lists", body: body, as: Resp.self).list
     }
 
+    /// Delete a custom list.
+    func deleteList(id: String) async throws { try await delete("/api/lists/\(id)") }
+
     /// The items in a list (works for any list, grocery included).
     func listItems(listId: String) async throws -> [ListItemDTO] {
         struct Resp: Decodable { let items: [ListItemDTO] }

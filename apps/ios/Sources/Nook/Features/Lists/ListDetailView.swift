@@ -301,6 +301,7 @@ struct ListDetailView: View {
         }
         .refreshable { await model.load() }
         .onChange(of: sync.groceryRev) { _, _ in if model.isGrocery { Task { await model.load() } } }
+        .onChange(of: sync.listsRev) { _, _ in if !model.isGrocery { Task { await model.load() } } }
         .onChange(of: focus) { _, new in
             // Tapping away from an inline edit commits it.
             if editingId != nil, new != .editName, new != .editQty { commitEdit() }

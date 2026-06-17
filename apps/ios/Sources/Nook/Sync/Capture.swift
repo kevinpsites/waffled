@@ -9,12 +9,14 @@ enum CaptureIntent: Sendable, Equatable {
     case grocery(name: String, quantity: String?)
     case task(title: String, personName: String?, stars: Int?, rrule: String?, scheduleLabel: String)
     case meal(title: String, date: String?, mealType: String, whenLabel: String)
+    case list(itemName: String, listName: String?, quantity: String?)
 }
 
 extension CaptureIntent: Decodable {
     private enum K: String, CodingKey {
         case kind, title, startsAt, allDay, personName, whenLabel
         case name, quantity, stars, rrule, scheduleLabel, date, mealType
+        case itemName, listName
     }
 
     init(from decoder: Decoder) throws {
@@ -48,6 +50,12 @@ extension CaptureIntent: Decodable {
                 mealType: (try? c.decode(String.self, forKey: .mealType)) ?? "dinner",
                 whenLabel: (try? c.decode(String.self, forKey: .whenLabel)) ?? ""
             )
+        case "list":
+            self = .list(
+                itemName: try c.decode(String.self, forKey: .itemName),
+                listName: try c.decodeIfPresent(String.self, forKey: .listName),
+                quantity: try c.decodeIfPresent(String.self, forKey: .quantity)
+            )
         case let other:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c,
                 debugDescription: "Unknown intent kind: \(other)")
@@ -78,6 +86,10 @@ struct CaptureSummary {
                 .filter { !$0.isEmpty }.joined(separator: " · ")
         case let .meal(title, _, _, whenLabel):
             icon = "🍽️"; kind = "Meal"; primary = title; detail = "\(whenLabel) · meal plan"
+        case let .list(itemName, listName, quantity):
+            icon = "📝"; kind = "List"
+            primary = [quantity, itemName].compactMap { $0 }.joined(separator: " ")
+            detail = listName.map { "Adds to \($0)" } ?? "Adds to a list"
         }
     }
 }

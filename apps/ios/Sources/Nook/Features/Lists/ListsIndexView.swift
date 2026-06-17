@@ -23,13 +23,23 @@ final class ListsIndexModel {
         loading = false
     }
 
-    func create(name: String, emoji: String) async {
+    /// Create a list and return it (so the caller can open it), reloading the index.
+    func create(name: String, emoji: String) async -> NookAPI.ListSummary? {
         let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !n.isEmpty else { return }
+        guard !n.isEmpty else { return nil }
         do {
-            _ = try await api.addList(name: n, emoji: emoji.isEmpty ? nil : emoji)
+            let new = try await api.addList(name: n, emoji: emoji.isEmpty ? nil : emoji)
             await load()
-        } catch { self.error = true }
+            return new
+        } catch { self.error = true; return nil }
+    }
+
+    /// Optimistic delete; restore on failure.
+    func delete(_ list: NookAPI.ListSummary) async {
+        let snapshot = lists
+        withAnimation { lists.removeAll { $0.id == list.id } }
+        do { try await api.deleteList(id: list.id) }
+        catch { lists = snapshot; self.error = true }
     }
 }
 
@@ -47,29 +57,39 @@ struct ListsIndexView: View {
     private static var didDeepLink = false
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 10) {
-                AICaptureBar(placeholder: "Add milk & eggs to groceries…",
-                             onTap: { dictateOnOpen = false; showCapture = true },
-                             onMic: { dictateOnOpen = true; showCapture = true })
-                    .padding(.bottom, 4)
-                if !model.lists.isEmpty || model.loading {
-                    SectionLabel(text: "Your lists").frame(maxWidth: .infinity, alignment: .leading)
-                }
-                if model.lists.isEmpty && !model.loading {
-                    Text(model.error ? "Couldn’t load your lists." : "No lists yet — add one with ＋.")
-                        .font(.system(size: 14)).foregroundStyle(NK.ink3)
-                        .padding(.top, 24)
-                }
-                ForEach(model.lists) { list in
-                    NavigationLink(value: HubRoute.list(list)) { row(list) }
-                        .buttonStyle(.plain)
-                }
+        List {
+            AICaptureBar(placeholder: "Add milk & eggs to groceries…",
+                         onTap: { dictateOnOpen = false; showCapture = true },
+                         onMic: { dictateOnOpen = true; showCapture = true })
+                .listRowInsets(EdgeInsets(top: 8, leading: 18, bottom: 8, trailing: 18))
+                .listRowBackground(Color.clear).listRowSeparator(.hidden)
+
+            if !model.lists.isEmpty {
+                SectionLabel(text: "Your lists")
+                    .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 2, trailing: 18))
+                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 8)
-            .padding(.bottom, 110)
+            if model.lists.isEmpty && !model.loading {
+                Text(model.error ? "Couldn’t load your lists." : "No lists yet — add one with ＋.")
+                    .font(.system(size: 14)).foregroundStyle(NK.ink3)
+                    .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 8, trailing: 18))
+                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
+            }
+            ForEach(model.lists) { list in
+                NavigationLink(value: HubRoute.list(list)) { row(list) }
+                    .listRowInsets(EdgeInsets(top: 5, leading: 18, bottom: 5, trailing: 18))
+                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                    .swipeActions(edge: .trailing) {
+                        if list.listType.lowercased() != "grocery" {
+                            Button(role: .destructive) { Task { await model.delete(list) } } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                    }
+            }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
         .background(NK.canvas)
         .navigationTitle("Lists")
         .navigationBarTitleDisplayMode(.large)
@@ -83,11 +103,14 @@ struct ListsIndexView: View {
             deepLinkIfNeeded()
         }
         .refreshable { await model.load() }
+        .onChange(of: sync.listsRev) { _, _ in Task { await model.load() } }
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $creatingList) {
-            NewListSheet { name, emoji in Task { await model.create(name: name, emoji: emoji) } }
+            NewListSheet { name, emoji in
+                Task { if let new = await model.create(name: name, emoji: emoji) { path.append(.list(new)) } }
+            }
         }
     }
 
@@ -101,7 +124,6 @@ struct ListsIndexView: View {
                 Text(list.name).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
                 Spacer(minLength: 8)
                 Text("\(list.itemCount)").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
-                Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
             }
         }
     }

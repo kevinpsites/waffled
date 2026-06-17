@@ -219,6 +219,8 @@ struct CaptureSheet: View {
                 ok = await sync.commitTask(title: title, personName: personName, stars: stars, rrule: rrule)
             case let .meal(title, date, mealType, _):
                 ok = await sync.commitMeal(title: title, date: date, mealType: mealType)
+            case let .list(itemName, listName, quantity):
+                ok = await sync.commitListItem(item: itemName, listName: listName, quantity: quantity)
             }
             if ok {
                 dismiss()

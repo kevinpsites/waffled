@@ -34,6 +34,7 @@ final class SyncManager {
     private(set) var choresRev = 0
     private(set) var groceryRev = 0
     private(set) var mealsRev = 0
+    private(set) var listsRev = 0
 
     /// The household's reward currencies, loaded once (for chore/goal reward symbols).
     private(set) var currencies: [NookAPI.Currency] = []
@@ -299,6 +300,24 @@ final class SyncManager {
         }
         if ok { mealsRev += 1 }
         return ok
+    }
+
+    /// Commit a captured "add X to <list>" intent: resolve the named list and add
+    /// the item. Mirrors the web kiosk's list-intent commit.
+    func commitListItem(item: String, listName: String?, quantity: String?) async -> Bool {
+        do {
+            let lists = try await api.listSummaries()
+            let target = listName.flatMap { name in
+                lists.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+            }
+            guard let target else {
+                lastError = listName.map { "No list named “\($0)”." } ?? "No matching list."
+                return false
+            }
+            try await api.addListItem(listId: target.id, name: item, quantity: quantity)
+            listsRev += 1
+            return true
+        } catch { lastError = String(describing: error); return false }
     }
 
     /// Today's date (YYYY-MM-DD) in the household timezone — the meal-plan default.
