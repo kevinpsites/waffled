@@ -107,7 +107,7 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
   - **Goals** built out: list picker + All/Shared/Each, featured hero
     (shared-ring / each-together), log progress, **create**, **detail**
     (milestone ladder, by-person, recent activity, this-week, streak), **edit**
-    (PATCH). ✅
+    (PATCH), and **goal-list creation** (＋ New group: name/emoji/members/private). ✅
   - Chores / Rewards / Photos / Settings: still live-summary placeholders.
-- **Next:** another hub tile (Chores/Rewards/Photos/Settings), goal-list
-  creation, and Auth0 login (roadmap 4.2.1) to replace the dev token.
+- **Next:** another hub tile (Chores/Rewards/Photos/Settings) and Auth0 login
+  (roadmap 4.2.1) to replace the dev token.
