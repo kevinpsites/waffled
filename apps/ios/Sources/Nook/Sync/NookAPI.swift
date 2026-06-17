@@ -12,15 +12,18 @@ struct CrudOpDTO: Encodable {
 /// A minimal JSON value so a single body dict can mix strings, ints, and explicit
 /// nulls (the server distinguishes "absent" from `null` for some fields).
 enum JSONValue: Encodable {
-    case string(String), int(Int), bool(Bool), null
+    case string(String), int(Int), double(Double), bool(Bool), null
+    case array([JSONValue])
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.singleValueContainer()
         switch self {
         case let .string(s): try c.encode(s)
         case let .int(i): try c.encode(i)
+        case let .double(d): try c.encode(d)
         case let .bool(b): try c.encode(b)
         case .null: try c.encodeNil()
+        case let .array(a): try c.encode(a)
         }
     }
 }
@@ -302,6 +305,83 @@ struct NookAPI: Sendable {
     /// Remove a list item.
     func deleteListItem(id: String) async throws {
         try await delete("/api/list-items/\(id)")
+    }
+
+    // MARK: Goals (lists + goals + log/create; non-synced, fetched over REST)
+
+    /// A goal-list membership group (Family, an individual, a couple…). `members`
+    /// drives the avatar stack and the "Personal / Kevin & Kelly / Everyone" subline.
+    struct GoalList: Decodable, Identifiable, Hashable, Sendable {
+        let id: String
+        let name: String
+        let emoji: String?
+        let colorHex: String?
+        let goalCount: Int
+        let members: [Member]
+        struct Member: Decodable, Hashable, Sendable {
+            let personId: String
+            let name: String
+            let avatarEmoji: String?
+            let colorHex: String?
+        }
+    }
+
+    /// A goal with its rolled-up progress + per-person contributions.
+    struct Goal: Decodable, Identifiable, Hashable, Sendable {
+        let id: String
+        let goalListId: String?
+        let title: String
+        let emoji: String?
+        let category: String?
+        let goalType: String
+        let unit: String?
+        let habitPeriod: String?
+        let habitTargetPerPeriod: Int?
+        let trackingMode: String
+        let deadline: String?
+        let isFeatured: Bool
+        let target: Double?
+        let totalProgress: Double
+        let milestoneTotal: Int
+        let milestoneReached: Int
+        let streakDays: Int
+        let participants: [Participant]
+        struct Participant: Decodable, Hashable, Sendable {
+            let personId: String
+            let name: String
+            let colorHex: String?
+            let avatarEmoji: String?
+            let target: Double?
+            let progress: Double
+        }
+    }
+
+    /// The household's goal lists (the membership picker).
+    func goalLists() async throws -> [GoalList] {
+        struct Resp: Decodable { let lists: [GoalList] }
+        return try await getJSON("/api/goal-lists", as: Resp.self).lists
+    }
+
+    /// The goals in a list (nil = every goal across the household).
+    func goalsIn(listId: String?) async throws -> [Goal] {
+        struct Resp: Decodable { let goals: [Goal] }
+        let path = listId.map { "/api/goals?listId=\($0)" } ?? "/api/goals"
+        return try await getJSON(path, as: Resp.self).goals
+    }
+
+    /// Log progress against a goal: `amount` (can be negative to correct), credited
+    /// to `personIds` (one log per person; empty = unattributed pool).
+    func logGoalProgress(goalId: String, amount: Double, personIds: [String], note: String?) async throws {
+        var body: [String: JSONValue] = ["amount": .int(Int(amount))]
+        if !personIds.isEmpty { body["personIds"] = .array(personIds.map(JSONValue.string)) }
+        if let note, !note.isEmpty { body["note"] = .string(note) }
+        try await send("POST", "/api/goals/\(goalId)/log", body: body)
+    }
+
+    /// Create a goal. Required: title, goalType (count|total|habit|checklist),
+    /// trackingMode (shared_total|each_tracks). The rest are optional refinements.
+    func createGoal(_ body: [String: JSONValue]) async throws {
+        try await send("POST", "/api/goals", body: body)
     }
 
     /// Forward a batch of queued local writes to the server's CRUD sink.
