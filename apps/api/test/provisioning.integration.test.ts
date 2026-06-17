@@ -52,7 +52,7 @@ beforeAll(async () => {
   process.env.DATABASE_URL = url
   delete process.env.AUTH0_DOMAIN // ensure local HS256 mode in this fork
   app = (await import('../src/app')).default
-  closePool = (await import('../src/db')).closePool
+  closePool = (await import('../src/platform/db')).closePool
 })
 
 afterAll(async () => {

@@ -6,9 +6,9 @@
 // times out, the route signals `fallback` and the kiosk uses its on-device
 // heuristic parser — so the bar always works, even offline.
 import createAPI, { type Request, type Response } from 'lambda-api'
-import { query } from './db'
-import { requireTenant, requireAdmin } from './households'
-import config from './config'
+import { query } from '../../platform/db'
+import { requireTenant, requireAdmin } from '../households/households'
+import config from '../../platform/config'
 import {
   completeJson,
   getAiConfig,
@@ -17,7 +17,7 @@ import {
   defaultModel,
   PROVIDERS,
   type Provider,
-} from './llm'
+} from '../../platform/llm'
 
 type Api = ReturnType<typeof createAPI>
 

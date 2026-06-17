@@ -9,10 +9,10 @@
 // household guard. Google pushes are best-effort (pushEventNow records push_failed
 // and the scheduler retries), so a write succeeds even when Google is unreachable.
 import createAPI, { type Request, type Response } from 'lambda-api'
-import { query } from './db'
-import { requireTenant, type Tenant } from './households'
-import { resolveWriteTarget, resolveWriteTargetById, pushEventNow } from './calendar-sync'
-import { updateEvent, softDeleteEvent } from './events'
+import { query } from '../../platform/db'
+import { requireTenant, type Tenant } from '../households/households'
+import { resolveWriteTarget, resolveWriteTargetById, pushEventNow } from '../calendar/calendar-sync'
+import { updateEvent, softDeleteEvent } from '../events/events'
 
 type Api = ReturnType<typeof createAPI>
 

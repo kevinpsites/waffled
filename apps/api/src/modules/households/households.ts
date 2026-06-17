@@ -3,8 +3,8 @@
 // (not the JWT) is the authority for which household a caller belongs to.
 import type { QueryResultRow } from 'pg'
 import type { Request } from 'lambda-api'
-import { getPool, query } from './db'
-import { AuthError } from './auth'
+import { getPool, query } from '../../platform/db'
+import { AuthError } from '../../platform/auth'
 
 export interface Tenant {
   sub: string

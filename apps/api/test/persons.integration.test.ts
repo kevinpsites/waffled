@@ -55,7 +55,7 @@ beforeAll(async () => {
   process.env.DATABASE_URL = url
   delete process.env.AUTH0_DOMAIN
   app = (await import('../src/app')).default
-  closePool = (await import('../src/db')).closePool
+  closePool = (await import('../src/platform/db')).closePool
 
   // Two separate households to prove isolation.
   const k = await call('POST', '/api/households', kevin, {
@@ -74,7 +74,7 @@ beforeAll(async () => {
 
 // Seed a logged-in non-admin (teen) directly — the API has no invite flow yet.
 async function seedNonAdmin(sub: string, householdId: string): Promise<void> {
-  const { query } = await import('../src/db')
+  const { query } = await import('../src/platform/db')
   const p = await query<{ id: string }>(
     `insert into persons (household_id, name, member_type, is_admin)
      values ($1,'Teen','teen',false) returning id`,

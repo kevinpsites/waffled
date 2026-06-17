@@ -4,8 +4,8 @@
 // so a wall of kiosks polling doesn't hammer the service. Endpoint URLs are env-
 // overridable for tests. Fahrenheit for now (US household); easy to make a setting.
 import createAPI, { type Request, type Response } from 'lambda-api'
-import { query } from './db'
-import { requireTenant } from './households'
+import { query } from '../platform/db'
+import { requireTenant } from '../modules/households/households'
 
 type Api = ReturnType<typeof createAPI>
 

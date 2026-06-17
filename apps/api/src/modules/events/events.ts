@@ -5,9 +5,9 @@
 // write-target calendar are routed there and pushed back (5.4, via calendar-sync).
 import createAPI, { type Request, type Response } from 'lambda-api'
 import type { PoolClient, QueryResultRow } from 'pg'
-import { getPool, query } from './db'
-import { requireTenant, type Tenant } from './households'
-import { resolveWriteTarget, resolveWriteTargetById, pushEventNow } from './calendar-sync'
+import { getPool, query } from '../../platform/db'
+import { requireTenant, type Tenant } from '../households/households'
+import { resolveWriteTarget, resolveWriteTargetById, pushEventNow } from '../calendar/calendar-sync'
 
 type Api = ReturnType<typeof createAPI>
 

@@ -11,7 +11,7 @@ import {
 } from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import createAPI, { type Request, type Response } from 'lambda-api'
-import { requireTenant } from './households'
+import { requireTenant } from '../households/households'
 
 type Api = ReturnType<typeof createAPI>
 

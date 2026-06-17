@@ -63,7 +63,7 @@ beforeAll(async () => {
   process.env.OPEN_METEO_FORECAST_URL = `http://127.0.0.1:${port}/forecast`
 
   app = (await import('../src/app')).default
-  closePool = (await import('../src/db')).closePool
+  closePool = (await import('../src/platform/db')).closePool
   await call('POST', '/api/households', kevin, { name: 'Sites', timezone: 'America/Chicago', person: { name: 'Kevin' } })
 }, 60_000)
 

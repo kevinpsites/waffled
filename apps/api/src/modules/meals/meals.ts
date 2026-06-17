@@ -2,9 +2,9 @@
 // in the next chunk) schedule recipes onto days and power the kiosk meal card.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow } from 'pg'
-import { query } from './db'
-import { requireTenant, requireAdmin, type Tenant } from './households'
-import { completeJson } from './llm'
+import { query } from '../../platform/db'
+import { requireTenant, requireAdmin, type Tenant } from '../households/households'
+import { completeJson } from '../../platform/llm'
 import { syncMealEventForEntry, removeMealEventForEntry, getMealSettings, setMealSettings, resyncMealEvents } from './meal-events'
 
 type Api = ReturnType<typeof createAPI>

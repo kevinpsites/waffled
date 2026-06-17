@@ -4,8 +4,8 @@
 // ledger remains the single source of truth for every balance.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow } from 'pg'
-import { getPool, query } from './db'
-import { requireTenant, requireAdmin, type Tenant } from './households'
+import { getPool, query } from '../../platform/db'
+import { requireTenant, requireAdmin, type Tenant } from '../households/households'
 
 type Api = ReturnType<typeof createAPI>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

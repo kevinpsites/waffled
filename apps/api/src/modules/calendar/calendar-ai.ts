@@ -5,10 +5,10 @@
 // so when the provider is heuristic / offline / errors we still return a real,
 // useful card instead of a blank one — the AI just rephrases the facts warmly.
 import createAPI, { type Request, type Response } from 'lambda-api'
-import { query } from './db'
-import { requireTenant } from './households'
-import { completeJson } from './llm'
-import { rangeEvents, getEventById, type EventRow } from './events'
+import { query } from '../../platform/db'
+import { requireTenant } from '../households/households'
+import { completeJson } from '../../platform/llm'
+import { rangeEvents, getEventById, type EventRow } from '../events/events'
 
 type Api = ReturnType<typeof createAPI>
 

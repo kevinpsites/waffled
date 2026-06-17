@@ -3,8 +3,8 @@
 // (rrule expansion beyond daily, photo proof, approval, up-for-grabs: later.)
 import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow, PoolClient } from 'pg'
-import { getPool, query } from './db'
-import { requireTenant, requireAdmin, type Tenant } from './households'
+import { getPool, query } from '../../platform/db'
+import { requireTenant, requireAdmin, type Tenant } from '../households/households'
 
 type Api = ReturnType<typeof createAPI>
 

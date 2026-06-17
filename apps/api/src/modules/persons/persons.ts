@@ -1,7 +1,7 @@
 // Members (persons) CRUD, always scoped to the caller's household.
 import createAPI, { type Request, type Response } from 'lambda-api'
-import { query } from './db'
-import { requireTenant, requireAdmin, presentPerson, presentHousehold, type PersonRow, type HouseholdRow } from './households'
+import { query } from '../../platform/db'
+import { requireTenant, requireAdmin, presentPerson, presentHousehold, type PersonRow, type HouseholdRow } from '../households/households'
 
 type Api = ReturnType<typeof createAPI>
 

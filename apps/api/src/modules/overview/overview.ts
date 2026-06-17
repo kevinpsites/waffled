@@ -2,9 +2,9 @@
 // the person profile (the "Person / Wally" mock) and the family dashboard. Pure
 // aggregation over goals + the stars ledger + reward redemptions; no new tables.
 import createAPI, { type Request, type Response } from 'lambda-api'
-import { query } from './db'
-import { requireTenant } from './households'
-import { listGoals } from './goals'
+import { query } from '../../platform/db'
+import { requireTenant } from '../households/households'
+import { listGoals } from '../goals/goals'
 
 type Api = ReturnType<typeof createAPI>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

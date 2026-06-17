@@ -10,8 +10,8 @@
 // title (idempotent). Requires DATABASE_URL.
 import { readdir, readFile } from 'node:fs/promises'
 import { join, basename } from 'node:path'
-import { query, getPool, closePool } from '../src/db'
-import { aisleFor, isStaple } from '../src/aisles'
+import { query, getPool, closePool } from '../src/platform/db'
+import { aisleFor, isStaple } from '../src/modules/lists/aisles'
 
 // ---- ingredient line parsing ---------------------------------------------
 

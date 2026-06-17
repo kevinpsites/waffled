@@ -4,8 +4,8 @@
 // read model (hours-by-person, recent activity, streak, this-week).
 import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow } from 'pg'
-import { getPool, query } from './db'
-import { requireTenant, type Tenant } from './households'
+import { getPool, query } from '../../platform/db'
+import { requireTenant, type Tenant } from '../households/households'
 
 type Api = ReturnType<typeof createAPI>
 

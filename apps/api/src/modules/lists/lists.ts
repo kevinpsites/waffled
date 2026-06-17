@@ -6,9 +6,9 @@
 // get-or-create endpoints (the Today dashboard's Grocery card depends on them).
 import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow } from 'pg'
-import { query } from './db'
-import { requireTenant, type Tenant } from './households'
-import { getRecipe, listIngredients, getOverrides } from './meals'
+import { query } from '../../platform/db'
+import { requireTenant, type Tenant } from '../households/households'
+import { getRecipe, listIngredients, getOverrides } from '../meals/meals'
 import { aisleFor, isStaple } from './aisles'
 
 type Api = ReturnType<typeof createAPI>

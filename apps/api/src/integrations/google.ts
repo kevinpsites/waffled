@@ -1,7 +1,7 @@
 // Google OAuth + Calendar API — thin fetch wrappers (no googleapis dependency).
 // Endpoint URLs come from config so tests can point them at an in-process stub.
 // Used by the calendar connect flow (5.2) and, later, inbound/outbound sync (5.3/5.4).
-import { config } from './config'
+import { config } from '../platform/config'
 
 export interface GoogleTokens {
   accessToken: string

@@ -13,9 +13,9 @@
 // sync_state tracks it: pending_push → synced, or push_failed (retried next sync).
 import createAPI, { type Request, type Response } from 'lambda-api'
 import type { PoolClient, QueryResultRow } from 'pg'
-import { getPool, query } from './db'
-import { requireTenant } from './households'
-import { decryptSecret, encryptionAvailable } from './crypto'
+import { getPool, query } from '../../platform/db'
+import { requireTenant } from '../households/households'
+import { decryptSecret, encryptionAvailable } from '../../platform/crypto'
 import {
   googleConfigured,
   refreshAccessToken,
@@ -28,7 +28,7 @@ import {
   type GoogleEventDateTime,
   type GoogleEventWrite,
   type GoogleWriteResult,
-} from './google'
+} from '../../integrations/google'
 
 type Api = ReturnType<typeof createAPI>
 

@@ -8,8 +8,8 @@
 // screensaver and detail all draw an emoji-on-gradient tile when image_url is null.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow } from 'pg'
-import { query } from './db'
-import { requireTenant, type Tenant } from './households'
+import { query } from '../../platform/db'
+import { requireTenant, type Tenant } from '../households/households'
 
 type Api = ReturnType<typeof createAPI>
 

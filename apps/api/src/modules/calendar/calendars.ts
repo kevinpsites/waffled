@@ -15,9 +15,9 @@
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { randomBytes } from 'node:crypto'
 import type { QueryResultRow } from 'pg'
-import { getPool, query } from './db'
-import { requireTenant, requireAdmin } from './households'
-import { encryptSecret, encryptionAvailable } from './crypto'
+import { getPool, query } from '../../platform/db'
+import { requireTenant, requireAdmin } from '../households/households'
+import { encryptSecret, encryptionAvailable } from '../../platform/crypto'
 import {
   googleConfigured,
   buildAuthUrl,
@@ -27,7 +27,7 @@ import {
   type GoogleTokens,
   type GoogleUserinfo,
   type GoogleCalendarListEntry,
-} from './google'
+} from '../../integrations/google'
 
 type Api = ReturnType<typeof createAPI>
 

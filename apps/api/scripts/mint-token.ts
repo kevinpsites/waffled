@@ -7,7 +7,7 @@
 //   (in the container: node dist/mint-token.js ...)
 // Prints just the token, so:  export TOKEN=$(npm run -s token)
 import jwt from 'jsonwebtoken'
-import { config } from '../src/config'
+import { config } from '../src/platform/config'
 
 function arg(flag: string, fallback: string): string {
   const i = process.argv.indexOf(flag)

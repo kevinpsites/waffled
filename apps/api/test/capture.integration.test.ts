@@ -5,7 +5,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
-import { finalizeIntent, resolveDayFromText } from '../src/capture'
+import { finalizeIntent, resolveDayFromText } from '../src/modules/capture/capture'
 
 const SECRET = 'nook-local-dev-secret-change-me'
 let pg: StartedPostgreSqlContainer
@@ -34,7 +34,7 @@ beforeAll(async () => {
   process.env.DATABASE_URL = url
   delete process.env.AUTH0_DOMAIN
   app = (await import('../src/app')).default
-  closePool = (await import('../src/db')).closePool
+  closePool = (await import('../src/platform/db')).closePool
   await call('POST', '/api/households', kevin, { name: 'Sites', timezone: 'America/Chicago', person: { name: 'Kevin' } })
 }, 60_000)
 

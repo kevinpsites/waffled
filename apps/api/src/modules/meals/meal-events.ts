@@ -4,10 +4,10 @@
 // chosen person's Google write-target calendar (5.4). Behaviour is per-household
 // settings (households.settings.meals): whether to add at all, whether to push to
 // Google, whose calendar, who's invited, and the time each meal type lands at.
-import { getPool, query } from './db'
-import { resolveWriteTarget, pushEventNow } from './calendar-sync'
-import { softDeleteEvent } from './events'
-import type { Tenant } from './households'
+import { getPool, query } from '../../platform/db'
+import { resolveWriteTarget, pushEventNow } from '../calendar/calendar-sync'
+import { softDeleteEvent } from '../events/events'
+import type { Tenant } from '../households/households'
 
 const MEAL_LABEL: Record<string, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' }
 const DEFAULT_TIMES: Record<string, string> = { breakfast: '08:00', lunch: '12:00', dinner: '18:00', snack: '15:00' }
