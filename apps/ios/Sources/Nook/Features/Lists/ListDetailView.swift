@@ -334,16 +334,29 @@ struct ListDetailView: View {
 
     @ViewBuilder private func sectionHeader(_ title: String?) -> some View {
         if let title {
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .heavy)).tracking(0.5)
-                .foregroundStyle(NK.ink3)
+            headerChrome {
+                Text(title.uppercased())
+                    .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                    .foregroundStyle(NK.ink3)
+            }
         }
+    }
+
+    /// Shared section-header chrome: an opaque tan (canvas) strip spanning the full
+    /// width so that, while the header is pinned during scroll, row text doesn't
+    /// bleed through behind it.
+    private func headerChrome<V: View>(@ViewBuilder _ content: () -> V) -> some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 6)
+            .background(NK.canvas)
+            .listRowInsets(EdgeInsets())
     }
 
     /// Grocery-only By aisle / By meal segmented control, pinned below the nav bar.
     @ViewBuilder private var modeToggle: some View {
         if model.isGrocery {
-            Picker("View", selection: $mode.animation()) {
+            Picker("View", selection: $mode) {
                 Text("By aisle").tag(GroceryViewMode.aisle)
                 Text("By meal").tag(GroceryViewMode.meal)
             }
@@ -356,29 +369,31 @@ struct ListDetailView: View {
     /// "By meal" section header — a meal-type tag (tinted with the meal's color, so
     /// it doubles as the legend for the item dots) + the meal name + item count.
     @ViewBuilder private func mealHeader(_ group: MealGroup) -> some View {
-        HStack(spacing: 8) {
-            if let meal = group.meal {
-                let color = Color(hexString: meal.color) ?? NK.ink3
-                if let type = meal.mealType, !type.isEmpty {
-                    Text(type.uppercased())
-                        .font(.system(size: 9.5, weight: .heavy)).tracking(0.4)
-                        .foregroundStyle(color)
-                        .padding(.horizontal, 7).padding(.vertical, 3)
-                        .background(color.opacity(0.15))
-                        .clipShape(Capsule())
+        headerChrome {
+            HStack(spacing: 8) {
+                if let meal = group.meal {
+                    let color = Color(hexString: meal.color) ?? NK.ink3
+                    if let type = meal.mealType, !type.isEmpty {
+                        Text(type.uppercased())
+                            .font(.system(size: 9.5, weight: .heavy)).tracking(0.4)
+                            .foregroundStyle(color)
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(color.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
+                    Text((meal.title ?? "Meal").uppercased())
+                        .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                        .foregroundStyle(NK.ink3)
+                        .lineLimit(1)
+                } else {
+                    Text("STAPLES & EXTRAS")
+                        .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                        .foregroundStyle(NK.ink3)
                 }
-                Text((meal.title ?? "Meal").uppercased())
-                    .font(.system(size: 11, weight: .heavy)).tracking(0.5)
-                    .foregroundStyle(NK.ink3)
-                    .lineLimit(1)
-            } else {
-                Text("STAPLES & EXTRAS")
-                    .font(.system(size: 11, weight: .heavy)).tracking(0.5)
-                    .foregroundStyle(NK.ink3)
+                Spacer(minLength: 6)
+                Text("\(group.items.count)")
+                    .font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
             }
-            Spacer(minLength: 6)
-            Text("\(group.items.count)")
-                .font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
         }
     }
 
@@ -437,7 +452,7 @@ struct ListDetailView: View {
             }
 
             if availableMealTypes.count > 1 {
-                Picker("Meal", selection: $railMeal.animation()) {
+                Picker("Meal", selection: $railMeal) {
                     ForEach(availableMealTypes, id: \.self) { t in
                         Text(Self.mealTypeLabel[t] ?? t.capitalized).tag(t)
                     }
@@ -524,20 +539,22 @@ struct ListDetailView: View {
                     ForEach(model.completed) { item in itemRow(item) }
                 }
             } header: {
-                Button {
-                    withAnimation { showCompleted.toggle() }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: showCompleted ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 10, weight: .heavy))
-                        Text("COMPLETED (\(model.completed.count))")
-                            .font(.system(size: 11, weight: .heavy)).tracking(0.5)
-                        Spacer()
+                headerChrome {
+                    Button {
+                        withAnimation { showCompleted.toggle() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: showCompleted ? "chevron.down" : "chevron.right")
+                                .font(.system(size: 10, weight: .heavy))
+                            Text("COMPLETED (\(model.completed.count))")
+                                .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                            Spacer()
+                        }
+                        .foregroundStyle(NK.ink3)
+                        .contentShape(Rectangle())
                     }
-                    .foregroundStyle(NK.ink3)
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
     }
