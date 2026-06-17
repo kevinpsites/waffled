@@ -66,7 +66,7 @@ beforeAll(async () => {
   process.env.DATABASE_URL = url
   delete process.env.AUTH0_DOMAIN
   app = (await import('../src/app')).default
-  closePool = (await import('../src/db')).closePool
+  closePool = (await import('../src/platform/db')).closePool
 
   const h = await call('POST', '/api/households', kevin, {
     name: 'Sites',
@@ -282,6 +282,7 @@ describe('weekly schedules + up-for-grabs claim', () => {
   async function instances() {
     return JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body).instances as Array<{
       id: string
+      choreId: string
       choreTitle: string
       personId: string | null
     }>
@@ -306,6 +307,20 @@ describe('weekly schedules + up-for-grabs claim', () => {
 
     // second claim is rejected — someone already grabbed it
     expect((await call('POST', `/api/chore-instances/${inst.id}/claim`, kevin, { personId: kevinId })).statusCode).toBe(409)
+  })
+
+  it('editing a chore’s assignee moves its pending instance (incl. back to up-for-grabs)', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Reassign me', personId: kevinId, rrule: 'FREQ=DAILY' })
+    const choreId = (await instances()).find((i) => i.choreTitle === 'Reassign me')!
+    expect(choreId.personId).toBe(kevinId)
+
+    // edit → up for grabs: the pending instance follows to person_id null
+    expect((await call('PATCH', `/api/chores/${choreId.choreId}`, kevin, { personId: null })).statusCode).toBe(200)
+    expect((await instances()).find((i) => i.choreTitle === 'Reassign me')!.personId).toBeNull()
+
+    // edit → a person: the pending instance follows to them
+    expect((await call('PATCH', `/api/chores/${choreId.choreId}`, kevin, { personId: kevinId })).statusCode).toBe(200)
+    expect((await instances()).find((i) => i.choreTitle === 'Reassign me')!.personId).toBe(kevinId)
   })
 })
 

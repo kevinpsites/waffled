@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { Star } from '../icons'
-import { rewardsApi, useRewardsHub, type Reward } from '../../lib/api'
+import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router'
+import { rewardsApi, useRewardsHub, useHousehold, type Reward, type Currency } from '../../lib/api'
 
 function Avatar({ emoji, color, name }: { emoji: string | null; color: string | null; name: string | null }) {
   return (
@@ -10,14 +10,46 @@ function Avatar({ emoji, color, name }: { emoji: string | null; color: string | 
   )
 }
 
-// The "spend" side of stars: per-kid balances, a parent-approval queue, and a
-// rewards catalog kids redeem against. No handoff mock existed for rewards, so
-// this follows the design system (cards, pills, star chips).
+// A balance/cost rendered with its currency's symbol + color (falls back to ⭐).
+function Coin({ currency, amount }: { currency: Currency | undefined; amount: number }) {
+  return (
+    <span className="rw-coin" style={currency?.color ? { color: currency.color } : undefined}>
+      <span className="rw-coin-sym">{currency?.symbol ?? '⭐'}</span> {amount}
+    </span>
+  )
+}
+
+// The "spend" side of the economy: per-kid balances (per currency), a parent-
+// approval queue, and a rewards catalog kids redeem against. Tap a reward to edit
+// or remove it. Currencies come from the household catalog (Settings → Chores &
+// rewards) — one-currency families just see one balance.
 export function RewardsPanel() {
-  const { rewards, balances, pending, loading, error, refetch } = useRewardsHub()
+  const { rewards, balances, currencies, pending, loading, error, refetch } = useRewardsHub()
+  const { person } = useHousehold()
+  const isAdmin = !!person?.isAdmin
+  const navigate = useNavigate()
   const [redeemFor, setRedeemFor] = useState<Reward | null>(null)
   const [adding, setAdding] = useState(false)
+  const [editing, setEditing] = useState<Reward | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+
+  // Archived (soft-deleted) rewards — admin only, shown in a collapsed section.
+  const [archived, setArchived] = useState<Reward[]>([])
+  const [showArchived, setShowArchived] = useState(false)
+  const loadArchived = useCallback(() => {
+    if (!isAdmin) return
+    rewardsApi.archivedRewards().then((d) => setArchived(d.rewards)).catch(() => setArchived([]))
+  }, [isAdmin])
+  useEffect(() => { loadArchived() }, [loadArchived, rewards.length])
+  const afterCatalogChange = () => { refetch(); loadArchived() }
+  async function restore(id: string) {
+    setBusy(id)
+    try { await rewardsApi.restoreReward(id); afterCatalogChange() } finally { setBusy(null) }
+  }
+
+  const curOf = (key: string) => currencies.find((c) => c.key === key)
+  const balanceOf = (personId: string, key: string) =>
+    balances.find((b) => b.personId === personId)?.balances.find((x) => x.currency === key)?.balance ?? 0
 
   async function redeem(reward: Reward, personId: string) {
     setBusy(reward.id)
@@ -35,7 +67,6 @@ export function RewardsPanel() {
       await (approve ? rewardsApi.approve(id) : rewardsApi.deny(id))
       refetch()
     } catch {
-      /* 409 when over-budget — refetch keeps it in the queue */
       refetch()
     } finally {
       setBusy(null)
@@ -47,16 +78,18 @@ export function RewardsPanel() {
 
   return (
     <div className="rewards-panel">
-      {/* balances */}
+      {/* balances — tap a kid to see how they've earned & spent */}
       <div className="rw-balances">
         {balances.map((b) => (
-          <div key={b.personId} className="rw-bal">
+          <button key={b.personId} type="button" className="rw-bal" onClick={() => navigate(`/person/${b.personId}`)} title={`${b.name}’s history`}>
             <Avatar emoji={b.avatarEmoji} color={b.colorHex} name={b.name} />
             <div className="rw-bal-meta">
               <div className="rw-bal-name">{b.name}</div>
-              <div className="rw-bal-stars"><Star size={13} /> {b.stars}</div>
+              <div className="rw-bal-coins">
+                {b.balances.map((cb) => <Coin key={cb.currency} currency={curOf(cb.currency)} amount={cb.balance} />)}
+              </div>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -70,7 +103,7 @@ export function RewardsPanel() {
               <div className="rw-appr-txt">
                 <span className="rw-appr-name">{p.personName}</span> wants{' '}
                 <span className="rw-appr-reward">{p.emoji ? `${p.emoji} ` : ''}{p.title}</span>
-                <span className="rw-appr-cost"><Star size={11} /> {p.cost}</span>
+                <span className="rw-appr-cost"><Coin currency={curOf(p.currency)} amount={p.cost} /></span>
               </div>
               <div className="rw-appr-actions">
                 <button type="button" className="pill" disabled={busy === p.id} onClick={() => decide(p.id, false)}>Deny</button>
@@ -87,29 +120,42 @@ export function RewardsPanel() {
         <button type="button" className="pill" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={() => setAdding(true)}>＋ Add reward</button>
       </div>
       {rewards.length === 0 ? (
-        <div className="muted" style={{ padding: '6px 2px', fontWeight: 600 }}>No rewards yet — add one the kids can save up for.</div>
+        <div className="rw-empty">
+          <div className="rw-empty-emo">🎁</div>
+          <div className="rw-empty-h">No rewards yet</div>
+          <div className="rw-empty-b">Add something the kids can save up for — movie night, extra screen time, a trip to the park.</div>
+          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} onClick={() => setAdding(true)}>
+            ＋ Add a reward
+          </button>
+        </div>
       ) : (
         <div className="rw-grid">
           {rewards.map((r) => (
             <div key={r.id} className="rw-card">
-              <button type="button" className="rw-del" aria-label={`Remove ${r.title}`} onClick={() => rewardsApi.deleteReward(r.id).then(refetch)}>×</button>
-              <div className="rw-card-emo">{r.emoji ?? '🎁'}</div>
-              <div className="rw-card-title">{r.title}</div>
-              <div className="rw-card-cost"><Star size={13} /> {r.cost}</div>
+              {/* tap the card to edit / remove */}
+              <button type="button" className="rw-card-main" onClick={() => setEditing(r)} title="Edit reward">
+                <div className="rw-card-emo">{r.emoji ?? '🎁'}</div>
+                <div className="rw-card-title">{r.title}</div>
+                <div className="rw-card-cost"><Coin currency={curOf(r.currency)} amount={r.cost} /></div>
+                <div className="rw-card-edit-hint">Edit</div>
+              </button>
               {redeemFor?.id === r.id ? (
                 <div className="rw-pick">
-                  {balances.map((b) => (
-                    <button
-                      key={b.personId}
-                      type="button"
-                      className="rw-pick-p"
-                      disabled={busy === r.id || b.stars < r.cost}
-                      title={b.stars < r.cost ? `${b.name} needs ${r.cost - b.stars} more` : `Redeem for ${b.name}`}
-                      onClick={() => redeem(r, b.personId)}
-                    >
-                      {b.avatarEmoji ?? '🙂'}
-                    </button>
-                  ))}
+                  {balances.map((b) => {
+                    const bal = balanceOf(b.personId, r.currency)
+                    return (
+                      <button
+                        key={b.personId}
+                        type="button"
+                        className="rw-pick-p"
+                        disabled={busy === r.id || bal < r.cost}
+                        title={bal < r.cost ? `${b.name} needs ${r.cost - bal} more` : `Redeem for ${b.name}`}
+                        onClick={() => redeem(r, b.personId)}
+                      >
+                        {b.avatarEmoji ?? '🙂'}
+                      </button>
+                    )
+                  })}
                   <button type="button" className="rw-pick-x" onClick={() => setRedeemFor(null)}>×</button>
                 </div>
               ) : (
@@ -120,48 +166,120 @@ export function RewardsPanel() {
         </div>
       )}
 
-      {adding && <AddRewardModal onClose={() => setAdding(false)} onSaved={refetch} />}
+      {/* archived rewards — admin only, collapsed; archiving keeps redemption history */}
+      {isAdmin && archived.length > 0 && (
+        <div className="rw-archived">
+          <button type="button" className="rw-arch-head" onClick={() => setShowArchived((v) => !v)}>
+            <span className={`rw-arch-caret ${showArchived ? 'open' : ''}`}>›</span>
+            Archived ({archived.length})
+          </button>
+          {showArchived && (
+            <div className="rw-arch-list">
+              {archived.map((r) => (
+                <div key={r.id} className="rw-arch-row">
+                  <span className="rw-arch-emo">{r.emoji ?? '🎁'}</span>
+                  <span className="rw-arch-t">{r.title}</span>
+                  <span className="rw-arch-cost"><Coin currency={curOf(r.currency)} amount={r.cost} /></span>
+                  <button type="button" className="pill" disabled={busy === r.id} onClick={() => restore(r.id)}>Restore</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {(adding || editing) && (
+        <RewardModal
+          reward={editing ?? undefined}
+          currencies={currencies}
+          onClose={() => { setAdding(false); setEditing(null) }}
+          onSaved={afterCatalogChange}
+        />
+      )}
+
     </div>
   )
 }
 
-function AddRewardModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [title, setTitle] = useState('')
-  const [emoji, setEmoji] = useState('🎁')
-  const [cost, setCost] = useState(10)
+function RewardModal({ reward, currencies, onClose, onSaved }: { reward?: Reward; currencies: Currency[]; onClose: () => void; onSaved: () => void }) {
+  const editing = !!reward
+  const spendable = currencies.filter((c) => c.spendable)
+  const [title, setTitle] = useState(reward?.title ?? '')
+  const [emoji, setEmoji] = useState(reward?.emoji ?? '🎁')
+  const [cost, setCost] = useState(reward?.cost ?? 10)
+  const [currencyKey, setCurrencyKey] = useState(() => reward?.currency ?? (spendable.find((c) => c.isDefault) ?? spendable[0])?.key ?? 'stars')
   const [saving, setSaving] = useState(false)
+  const [confirmDel, setConfirmDel] = useState(false)
+  const selected = currencies.find((c) => c.key === currencyKey)
+
   async function save() {
     if (!title.trim()) return
     setSaving(true)
     try {
-      await rewardsApi.createReward({ title: title.trim(), emoji: emoji.trim() || null, cost })
+      const body = { title: title.trim(), emoji: emoji.trim() || null, cost: Math.max(0, Math.round(cost || 0)), currency: currencyKey }
+      if (editing) await rewardsApi.updateReward(reward!.id, body)
+      else await rewardsApi.createReward(body)
       onSaved()
       onClose()
     } catch {
       setSaving(false)
     }
   }
+  async function del() {
+    if (!reward) return
+    if (!confirmDel) { setConfirmDel(true); return }
+    setSaving(true)
+    try {
+      await rewardsApi.deleteReward(reward.id)
+      onSaved()
+      onClose()
+    } catch {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>Add a reward</div>
+        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>{editing ? 'Edit reward' : 'Add a reward'}</div>
         <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
           <input className="rw-emoji-in" value={emoji} onChange={(e) => setEmoji(e.target.value)} aria-label="Emoji" maxLength={2} />
           <input className="rw-title-in" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Movie night, 30 min screen time…" aria-label="Reward title" autoFocus />
         </div>
+        {/* currency picker — only when the family has more than one spendable currency */}
+        {spendable.length > 1 && (
+          <div className="rw-cur-pick">
+            {spendable.map((c) => (
+              <button
+                key={c.key}
+                type="button"
+                className={`rw-cur-chip ${c.key === currencyKey ? 'on' : ''}`}
+                style={c.key === currencyKey && c.color ? { borderColor: c.color, color: c.color, background: `${c.color}18` } : undefined}
+                onClick={() => setCurrencyKey(c.key)}
+              >
+                {c.symbol ?? '⭐'} {c.label}
+              </button>
+            ))}
+          </div>
+        )}
         <label className="rw-cost-field">
           <span>Cost</span>
-          <div className="rw-cost-stepper">
-            <button type="button" onClick={() => setCost((c) => Math.max(0, c - 5))}>−</button>
-            <span><Star size={14} /> {cost}</span>
-            <button type="button" onClick={() => setCost((c) => c + 5)}>+</button>
+          <div className="rw-cost-input">
+            <span className="rw-cost-sym">{selected?.symbol ?? '⭐'}</span>
+            <input type="number" min={0} value={cost} onChange={(e) => setCost(Number(e.target.value))} aria-label="Cost" />
           </div>
         </label>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
-          <button type="button" className="pill" onClick={onClose}>Cancel</button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 18 }}>
+          {editing && (
+            <button type="button" onClick={del} disabled={saving} title="Archived rewards keep their redemption history and can be restored"
+              style={{ border: 0, background: 'none', font: 'inherit', fontWeight: 700, fontSize: 14, color: 'var(--primary)', cursor: 'pointer', padding: '8px 4px' }}>
+              {confirmDel ? 'Tap again to archive' : 'Archive'}
+            </button>
+          )}
+          <button type="button" className="pill" style={{ marginLeft: 'auto' }} onClick={onClose}>Cancel</button>
           <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={saving || !title.trim()} onClick={save}>
-            {saving ? 'Saving…' : 'Add reward'}
+            {saving ? 'Saving…' : editing ? 'Save' : 'Add reward'}
           </button>
         </div>
       </div>

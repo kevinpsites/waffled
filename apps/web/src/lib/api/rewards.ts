@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiGet, apiSend, apiDelete } from './client'
 import { tap, useRefetchOn } from './bus'
+import type { Currency } from './currencies'
 
 export interface Reward {
   id: string
@@ -16,7 +17,13 @@ export interface Reward {
 export interface LedgerEntry {
   amount: number
   reason: string
+  currency: string
   createdAt: string
+}
+
+export interface CurrencyBalance {
+  currency: string // currency key
+  balance: number
 }
 
 export interface PersonBalance {
@@ -24,7 +31,8 @@ export interface PersonBalance {
   name: string | null
   avatarEmoji: string | null
   colorHex: string | null
-  stars: number
+  stars: number // default-currency total (back-compat)
+  balances: CurrencyBalance[]
   recent: LedgerEntry[]
 }
 
@@ -46,10 +54,14 @@ export interface Redemption {
 
 export const rewardsApi = {
   rewards: () => apiGet<{ rewards: Reward[] }>('/api/rewards'),
-  createReward: (body: { title: string; emoji?: string | null; cost: number }) =>
+  createReward: (body: { title: string; emoji?: string | null; cost: number; currency?: string }) =>
     apiSend<{ reward: Reward }>('POST', '/api/rewards', body).then((r) => r.reward),
-  deleteReward: (id: string) => apiDelete(`/api/rewards/${id}`),
-  balances: () => apiGet<{ people: PersonBalance[] }>('/api/balances'),
+  updateReward: (id: string, patch: { title?: string; emoji?: string | null; cost?: number; currency?: string }) =>
+    apiSend<{ reward: Reward }>('PATCH', `/api/rewards/${id}`, patch).then((r) => r.reward),
+  deleteReward: (id: string) => apiDelete(`/api/rewards/${id}`), // soft archive
+  archivedRewards: () => apiGet<{ rewards: Reward[] }>('/api/rewards/archived'), // admin only
+  restoreReward: (id: string) => apiSend<{ reward: Reward }>('POST', `/api/rewards/${id}/restore`).then((r) => r.reward),
+  balances: () => apiGet<{ currencies: Currency[]; people: PersonBalance[] }>('/api/balances'),
   redemptions: (status?: string) =>
     apiGet<{ redemptions: Redemption[] }>(`/api/redemptions${status ? `?status=${status}` : ''}`),
   redeem: (rewardId: string, personId: string) =>
@@ -61,6 +73,7 @@ export const rewardsApi = {
 export interface RewardsHubState {
   rewards: Reward[]
   balances: PersonBalance[]
+  currencies: Currency[]
   pending: Redemption[]
   loading: boolean
   error: boolean
@@ -73,6 +86,7 @@ export function useRewardsHub(): RewardsHubState {
   const [state, setState] = useState<Omit<RewardsHubState, 'refetch'>>({
     rewards: [],
     balances: [],
+    currencies: [],
     pending: [],
     loading: true,
     error: false,
@@ -83,13 +97,14 @@ export function useRewardsHub(): RewardsHubState {
     let alive = true
     setState((s) => ({ ...s, loading: true }))
     Promise.all([rewardsApi.rewards(), rewardsApi.balances(), rewardsApi.redemptions('pending')])
-      .then(([r, b, p]) => alive && setState({ rewards: r.rewards, balances: b.people, pending: p.redemptions, loading: false, error: false }))
-      .catch(() => alive && setState({ rewards: [], balances: [], pending: [], loading: false, error: true }))
+      .then(([r, b, p]) => alive && setState({ rewards: r.rewards, balances: b.people, currencies: b.currencies, pending: p.redemptions, loading: false, error: false }))
+      .catch(() => alive && setState({ rewards: [], balances: [], currencies: [], pending: [], loading: false, error: true }))
     return () => {
       alive = false
     }
   }, [nonce])
-  // balances shift when chores award stars; rewards change on redeem/approve/deny
-  useRefetchOn(['rewards', 'chores'], refetch)
+  // balances shift when chores award stars; rewards change on redeem/approve/deny;
+  // currencies change when the catalog is edited in Settings
+  useRefetchOn(['rewards', 'chores', 'currencies'], refetch)
   return { ...state, refetch }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { api, usePersons, calendarsApi, localToday, type AgendaEvent, type CalendarLink } from '../../lib/api'
-import { createEventLocal, updateEventLocal, deleteEventLocal } from '../../lib/powersync/events-local'
+import { useNavigate } from 'react-router'
+import { api, usePersons, calendarsApi, mealsApi, localToday, invalidateGetCache, type AgendaEvent, type CalendarLink } from '../../lib/api'
+import { createEventLocal, updateEventLocal, deleteEventLocal, tombstoneEvent } from '../../lib/powersync/events-local'
 
 // Calendars an event can be written to: writable (owner/writer), not read-only.
 function isWritable(c: CalendarLink): boolean {
@@ -25,7 +26,7 @@ const DURATIONS: Array<{ min: number; label: string }> = [
   { min: 240, label: '4 hr' },
 ]
 
-function initialForm(event?: AgendaEvent, date?: string) {
+function initialForm(event?: AgendaEvent, date?: string, time?: string) {
   if (event) {
     const d = new Date(event.startsAt)
     const participantIds = event.participants.length
@@ -47,27 +48,40 @@ function initialForm(event?: AgendaEvent, date?: string) {
       location: event.location ?? '',
     }
   }
-  return { title: '', day: date ?? localToday(), time: '17:00', durationMin: 60, allDay: false, participantIds: [] as string[], location: '' }
+  return { title: '', day: date ?? localToday(), time: time ?? '17:00', durationMin: 60, allDay: false, participantIds: [] as string[], location: '' }
 }
 
-// Create (pass `date`) or edit (pass `event`) a calendar event.
+// Create (pass `date`, optional `time`) or edit (pass `event`) a calendar event.
 export function EventModal({
   event,
   date,
+  time,
   onClose,
   onSaved,
 }: {
   event?: AgendaEvent
   date?: string
+  time?: string
   onClose: () => void
   onSaved: () => void
 }) {
   const editing = !!event
+  const navigate = useNavigate()
   const { persons } = usePersons()
-  const [form, setForm] = useState(() => initialForm(event, date))
+  const [form, setForm] = useState(() => initialForm(event, date, time))
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
+
+  // For a planned-meal event, resolve its recipe so we can offer "View recipe".
+  const isMeal = event?.origin === 'meal_plan'
+  const [recipeId, setRecipeId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!isMeal || !event?.originRefId) return
+    let alive = true
+    mealsApi.entry(event.originRefId).then((r) => alive && setRecipeId(r.recipeId)).catch(() => {})
+    return () => { alive = false }
+  }, [isMeal, event?.originRefId])
 
   // Calendar picker (create only): which Google calendar the event is written to.
   // '' = Nook only. Defaults to the owner's ★ calendar and follows the owner until
@@ -127,11 +141,14 @@ export function EventModal({
       // PowerSync isn't running.
       if (editing) {
         if (!(await updateEventLocal(event!.id, draft))) await api.updateEvent(event!.id, restPayload)
+        invalidateGetCache(`/api/events/${event!.id}/insight`)
       } else {
         if (!(await createEventLocal({ ...draft, calendarId: chosenCal }))) {
           await api.createEvent(ownerCals.length > 1 ? { ...restPayload, calendarId: chosenCal } : restPayload)
         }
       }
+      // The week digest reflects this event — refresh it next time it's shown.
+      invalidateGetCache('/api/calendar/heads-up')
       onSaved()
       onClose()
     } catch (err) {
@@ -148,7 +165,14 @@ export function EventModal({
     }
     setSaving(true)
     try {
-      if (!(await deleteEventLocal(event!.id))) await api.deleteEvent(event!.id)
+      // Prefer the local delete (instant, offline); when the row isn't in the local
+      // DB yet it returns false and we delete via REST, tombstoning on success so
+      // the UI hides it through the refetch/replication window.
+      if (!(await deleteEventLocal(event!.id))) {
+        await api.deleteEvent(event!.id)
+        tombstoneEvent(event!.id)
+      }
+      invalidateGetCache('/api/calendar/heads-up')
       onSaved()
       onClose()
     } catch (err) {
@@ -164,8 +188,19 @@ export function EventModal({
           ×
         </button>
         <div className="nk-serif" style={{ fontSize: 22, fontWeight: 600, marginBottom: 14 }}>
-          {editing ? 'Edit event' : 'New event'}
+          {editing ? (isMeal ? 'Planned meal' : 'Edit event') : 'New event'}
         </div>
+
+        {isMeal && recipeId && (
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ width: '100%', justifyContent: 'center', marginBottom: 14 }}
+            onClick={() => { onClose(); navigate(`/meals/recipe/${recipeId}`) }}
+          >
+            📖 View recipe
+          </button>
+        )}
 
         <form onSubmit={submit}>
           <label className="field">

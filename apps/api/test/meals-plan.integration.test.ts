@@ -56,7 +56,7 @@ beforeAll(async () => {
   process.env.OPENAI_BASE_URL = `http://127.0.0.1:${port}`
 
   app = (await import('../src/app')).default
-  closePool = (await import('../src/db')).closePool
+  closePool = (await import('../src/platform/db')).closePool
   await call('POST', '/api/households', kevin, { name: 'Sites', timezone: 'America/Chicago', person: { name: 'Kevin' } })
 }, 60_000)
 
@@ -95,6 +95,15 @@ describe('plan my week', () => {
     expect(byDate['2026-07-02']).toMatchObject({ title: 'Lentil Soup', recipeId: null })
     expect(byDate['2026-07-03']).toMatchObject({ title: 'Bad ref', recipeId: null }) // invalid id dropped
     expect(byDate['1999-01-01']).toBeUndefined()
+  })
+
+  it('links a suggestion to a library recipe by title when the model omits the id', async () => {
+    const quiche = JSON.parse((await call('POST', '/api/recipes', kevin, { title: 'Veggie Quiche', emoji: '🥧' })).body).recipe
+    // model echoes the library title but returns recipeId null (what small models do)
+    nextSuggestions = [{ date: '2026-07-05', title: 'veggie quiche', recipeId: null }]
+    const res = await call('POST', '/api/meals/plan-week', kevin, { start: '2026-07-01' })
+    const card = JSON.parse(res.body).suggestions.find((s: { date: string }) => s.date === '2026-07-05')
+    expect(card).toMatchObject({ recipeId: quiche.id, title: 'Veggie Quiche', emoji: '🥧' }) // relinked + canonical title/emoji
   })
 
   it('skips days that already have a dinner planned', async () => {

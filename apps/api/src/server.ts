@@ -3,8 +3,8 @@
 // On AWS this file is unused — lambda.ts is the handler instead.
 import http from 'node:http'
 import api from './app'
-import { config } from './config'
-import { startSyncScheduler } from './calendar-sync'
+import { config } from './platform/config'
+import { startSyncScheduler } from './modules/calendar/calendar-sync.service'
 
 interface RunResult {
   statusCode: number

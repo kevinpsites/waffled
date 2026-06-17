@@ -54,7 +54,7 @@ beforeAll(async () => {
   process.env.DATABASE_URL = url
   delete process.env.AUTH0_DOMAIN
   app = (await import('../src/app')).default
-  closePool = (await import('../src/db')).closePool
+  closePool = (await import('../src/platform/db')).closePool
 
   await call('POST', '/api/households', kevin, {
     name: 'Sites',
@@ -427,7 +427,7 @@ describe('grocery auto-build + pantry staples', () => {
     const salmon = board.items.find((i: { name: string }) => i.name === 'Salmon fillets')
     expect(salmon).toMatchObject({ aisle: 'Meat & Seafood', quantity: '1.5 lb', source: 'auto' })
     expect(salmon.sourceRecipeIds).toContain(recipeId)
-    expect(board.dinners.some((d: { recipeId: string }) => d.recipeId === recipeId)).toBe(true)
+    expect(board.meals.some((d: { recipeId: string; mealType: string }) => d.recipeId === recipeId && d.mealType === 'dinner')).toBe(true)
   })
 
   it('manages pantry staples (defaults, add, delete)', async () => {

@@ -102,7 +102,7 @@
 .seg button.on { background: #fff; color: var(--ink); box-shadow: var(--sh-1); }
 .pill { display: inline-flex; align-items: center; gap: 7px; background: var(--card);
   border: 1px solid var(--hair); border-radius: 999px; padding: 8px 15px; font-size: 14px;
-  font-weight: 600; color: var(--ink); box-shadow: var(--sh-1); }
+  font-weight: 600; color: var(--ink); box-shadow: var(--sh-1); cursor: pointer; }
 .pill svg { width: 17px; height: 17px; stroke: currentColor; fill:none; stroke-width:1.8;
   stroke-linecap:round; stroke-linejoin:round; }
 .icon-btn { width: 40px; height: 40px; border-radius: 999px; background: var(--card);
@@ -157,7 +157,10 @@
 .cap-trigger-text.ph { color: var(--ink-3); }
 .cap-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(20,16,12,.30);
   backdrop-filter: blur(2px); display: flex; align-items: flex-start; justify-content: center;
-  padding: 16vh 20px 20px; }
+  padding: 16vh 20px 20px;
+  /* portal'd to <body> (outside .nk), so set the sans stack explicitly — otherwise
+     `font: inherit` falls back to the browser default serif. */
+  font-family: var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
 .cap-composer { width: min(680px, 94vw); background: var(--card); border-radius: 22px;
   box-shadow: 0 28px 70px rgba(0,0,0,.30); border: 1px solid var(--hair-2); padding: 16px 18px; }
 .cap-comp-row { display: flex; align-items: flex-start; gap: 12px; }
@@ -194,6 +197,42 @@
 .cap-flash.ok { color: var(--ink); }
 .cap-flash.err { color: var(--danger, #c0392b); }
 
+/* inline edit of the parsed result (fix the text / re-route the type) */
+.cap-preview.editing { align-items: flex-start; }
+.cap-primary-btn { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; background: none;
+  border: 0; font: inherit; cursor: pointer; padding: 0; text-align: left; }
+.cap-edit-pencil { font-size: 12px; color: var(--ink-3); opacity: 0; transition: opacity .12s ease; flex: none; }
+.cap-primary-btn:hover .cap-edit-pencil { opacity: 1; }
+.cap-edit { display: flex; flex-direction: column; gap: 8px; }
+.cap-edit-input, .cap-edit-sub { font: inherit; color: var(--ink); border: 1px solid var(--hair);
+  border-radius: 8px; background: var(--card-2); padding: 7px 10px; width: 100%; }
+.cap-edit-input { font-size: 15px; font-weight: 700; }
+.cap-edit-sub { font-size: 13.5px; font-weight: 600; }
+.cap-edit-input:focus, .cap-edit-sub:focus { outline: none; border-color: var(--ai); }
+.cap-kind-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cap-kind-chip { font: inherit; font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 999px;
+  border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2); cursor: pointer; }
+.cap-kind-chip.on { border-color: var(--ai); color: var(--ai); background: #efeafc; }
+
+/* per-kind "basics" fields in the inline editor */
+.cap-people { display: flex; flex-wrap: wrap; gap: 6px; }
+.cap-person { font: inherit; font-size: 12.5px; font-weight: 700; padding: 6px 11px; border-radius: 999px;
+  border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2); cursor: pointer; }
+.cap-person.on { border-color: var(--ai); color: var(--ai); background: #efeafc; }
+.cap-edit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cap-edit-mini { font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink); border: 1px solid var(--hair);
+  border-radius: 8px; background: var(--card-2); padding: 6px 9px; }
+.cap-stars { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--ink-3); }
+.cap-stars input { width: 56px; font: inherit; font-size: 14px; font-weight: 700; color: var(--ink);
+  border: 1px solid var(--hair); border-radius: 8px; background: var(--card-2); padding: 6px 8px; }
+select.cap-edit-sub { cursor: pointer; }
+.cap-thinking .cap-icon { color: var(--ai); }
+
+/* "thinking" — the purple spark bounces while the model responds */
+.ai-spark.thinking { animation: cap-bounce 1s ease-in-out infinite; }
+@keyframes cap-bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .ai-spark.thinking { animation: none; } }
+
 .ai-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700;
   color: var(--ai); background: #efeafc; padding: 3px 9px; border-radius: 999px;
   text-transform: uppercase; letter-spacing: .03em; }
@@ -214,6 +253,8 @@
   border-radius: 999px; display: grid; place-items: center; }
 .ev { font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 7px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* meal-plan events read as recipes — a dashed edge sets them apart from real events */
+.ev.ev-meal { border: 1px dashed currentColor; }
 .ev.kevin  { background: var(--kevin-t);  color: #1559b8; }
 .ev.kelly  { background: var(--kelly-t);  color: #b22f66; }
 .ev.wally  { background: var(--wally-t);  color: #167a4a; }

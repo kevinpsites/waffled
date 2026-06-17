@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Icon, Star } from './icons'
+import { Icon, Check } from './icons'
 import { ChoreModal, type ChoreDraft } from './components/ChoreModal'
 import { RewardsPanel } from './components/RewardsPanel'
-import { choresApi, usePersons, useDayInstances, localToday, type ChoreInstance } from '../lib/api'
+import { choresApi, usePersons, useDayInstances, useCurrencies, localToday, type ChoreInstance } from '../lib/api'
 
 // Shift a YYYY-MM-DD by N days (local), and describe a day relative to today.
 function shiftDate(d: string, days: number): string {
@@ -52,7 +52,7 @@ function buildColumns(instances: ChoreInstance[], persons: PersonLite[]): Column
 }
 
 function draftFrom(i: ChoreInstance): ChoreDraft {
-  return { id: i.choreId, title: i.choreTitle, emoji: i.emoji, personId: i.personId, rewardAmount: i.rewardAmount, rrule: i.rrule }
+  return { id: i.choreId, title: i.choreTitle, emoji: i.emoji, personId: i.personId, rewardAmount: i.rewardAmount, rewardCurrency: i.rewardCurrency, rrule: i.rrule }
 }
 
 // The Tasks screen: today's chores per person. Tick to complete/uncomplete;
@@ -61,6 +61,7 @@ export function Tasks() {
   const [date, setDate] = useState(() => localToday())
   const { instances, loading, error, setDone, refetch } = useDayInstances(date)
   const { persons } = usePersons()
+  const { byKey: currencyByKey, defaultCurrency } = useCurrencies()
   const groups = buildColumns(instances, persons)
   const [modal, setModal] = useState<{ chore?: ChoreDraft; personId?: string | null } | null>(null)
   const [tab, setTab] = useState<'chores' | 'rewards'>('chores')
@@ -142,8 +143,8 @@ export function Tasks() {
                     </>
                   )}
                 </span>
-                <span className="badge">
-                  <Star size={13} /> {done}/{g.items.length}
+                <span className="badge" title="Chores done">
+                  <Check size={13} /> {done}/{g.items.length}
                 </span>
               </div>
               {upForGrabs && g.items.length > 0 && (
@@ -180,7 +181,7 @@ export function Tasks() {
                         {i.streak >= 2 && <span className="chore-streak" title={`${i.streak}-day streak`}>🔥 {i.streak}</span>}
                       </div>
                       <div className="star">
-                        <Star size={12} /> {i.rewardAmount ?? 0}
+                        <span style={{ fontSize: 12 }}>{(i.rewardCurrency ? currencyByKey[i.rewardCurrency] : defaultCurrency)?.symbol ?? '⭐'}</span> {i.rewardAmount ?? 0}
                         {isAwaiting && <span className="chore-awaiting-tag">Needs OK</span>}
                       </div>
                     </div>

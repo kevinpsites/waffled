@@ -42,7 +42,7 @@ function mockApi(opts: { lists?: unknown[]; items?: unknown[]; sent?: Sent[]; cr
     }
     // grocery board (auto-built view) — must precede the bare /api/lists check
     if (u.includes('/api/lists/grocery/board')) {
-      return { ok: true, json: async () => ({ list: grocery, weekStart: '2026-06-07', dinners: [], items: [], staples: [] }) }
+      return { ok: true, json: async () => ({ list: grocery, weekStart: '2026-06-07', meals: [], items: [], staples: [] }) }
     }
     if (u.endsWith('/api/lists') && method === 'POST') {
       return { ok: true, json: async () => ({ list: opts.created }) }

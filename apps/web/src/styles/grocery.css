@@ -65,6 +65,35 @@
   font-weight: 700;
 }
 
+/* meal-type badge on by-meal section headers */
+.meal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink-2);
+}
+.meal-badge.mt-breakfast { background: #fdf0d5; color: #9a6b00; }
+.meal-badge.mt-lunch { background: #e6f4ea; color: #1c7a44; }
+.meal-badge.mt-dinner { background: #e8f0fe; color: #1f5fd0; }
+.meal-badge.mt-snack { background: #fce8f3; color: #b83280; }
+
+/* rail meal-type selector */
+.rail-seg {
+  display: flex;
+  width: 100%;
+}
+.rail-seg button {
+  flex: 1;
+  cursor: pointer;
+}
+
 .gitem {
   display: flex;
   align-items: center;
@@ -121,6 +150,90 @@
   flex: none;
   min-width: 44px;
   text-align: right;
+}
+
+/* per-item edit / delete + clear-checked */
+.gitem-acts {
+  display: flex;
+  gap: 2px;
+  flex: none;
+}
+.gact {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 5px 7px;
+  border-radius: 8px;
+  color: var(--ink-2);
+  opacity: 0.5;
+}
+.gact:hover {
+  opacity: 1;
+  background: var(--panel);
+}
+.gact.ok {
+  color: #fff;
+  background: var(--primary);
+  opacity: 1;
+}
+.gitem.editing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  background: var(--card);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
+  margin-bottom: 9px;
+}
+.gedit-name {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  border: 0;
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+.gedit-qty {
+  width: 72px;
+  flex: none;
+  font: inherit;
+  font-size: 14px;
+  border: 0;
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.grocery-clear {
+  cursor: pointer;
+}
+
+/* Completed (checked items tuck here) */
+.grocery-done {
+  margin-top: 10px;
+}
+.grocery-done-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 4px;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink-2);
+  border-top: 1px solid var(--hair-2);
+}
+.grocery-done-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 9px;
+  padding-top: 4px;
 }
 
 /* right rail */

@@ -126,7 +126,7 @@ beforeAll(async () => {
   process.env.TOKEN_ENCRYPTION_KEY = randomBytes(32).toString('base64')
 
   app = (await import('../src/app')).default
-  closePool = (await import('../src/db')).closePool
+  closePool = (await import('../src/platform/db')).closePool
 
   kevinId = JSON.parse((await call('POST', '/api/households', kevin, { name: 'Sites', timezone: 'America/Chicago', person: { name: 'Kevin' } })).body).person.id
 

@@ -129,3 +129,9 @@
 .fam-bar { height: 7px; border-radius: 999px; background: var(--panel); overflow: hidden; }
 .fam-bar span { display: block; height: 100%; background: var(--wally); border-radius: 999px; }
 @media (max-width: 600px) { .family-overview { padding: 6px 16px 22px; } }
+
+/* trade-currencies action in the person profile's balance card */
+.pp-trade { font: inherit; font-size: 12px; font-weight: 700; padding: 5px 11px; border-radius: 999px;
+  border: 1px solid var(--hair); background: var(--card-2); color: var(--ai); cursor: pointer;
+  text-transform: none; letter-spacing: 0; }
+.pp-trade:hover { border-color: var(--ai); }

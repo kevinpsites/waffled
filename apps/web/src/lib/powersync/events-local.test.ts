@@ -11,6 +11,8 @@ function row(p: Partial<LocalEventRow>): LocalEventRow {
     ends_at: null,
     all_day: 0,
     person_id: null,
+    origin: null,
+    origin_ref_id: null,
     person_name: null,
     person_color: null,
     person_emoji: null,

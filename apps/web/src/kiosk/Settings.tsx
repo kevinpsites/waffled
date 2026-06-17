@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { personsApi, captureApi, calendarsApi, usePersons, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink } from '../lib/api'
+import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, usePersons, useCurrencies, useConversions, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import '../styles/settings.css'
 
@@ -292,6 +292,125 @@ function AiPanel() {
         <span className="tiny muted" style={{ fontWeight: 600 }}>
           Keys are read from the server environment and never leave it.
         </span>
+      </div>
+    </div>
+  )
+}
+
+const MEAL_TIME_ROWS: Array<{ key: string; label: string; icon: string }> = [
+  { key: 'breakfast', label: 'Breakfast', icon: '🍳' },
+  { key: 'lunch', label: 'Lunch', icon: '🥪' },
+  { key: 'dinner', label: 'Dinner', icon: '🍽️' },
+  { key: 'snack', label: 'Snack', icon: '🍎' },
+]
+
+// Meals: how planned meals show up on the calendar — whether at all, whether they
+// push to Google, whose calendar they belong to, who's invited, and the time each
+// meal type lands at. Changes re-sync meals already on the plan.
+function MealsPanel() {
+  const { persons } = usePersons()
+  const [cfg, setCfg] = useState<MealCalendarSettings | null>(null)
+  const [error, setError] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [dirty, setDirty] = useState(false)
+
+  useEffect(() => {
+    mealsApi
+      .calendarSettings()
+      .then((s) => { setCfg(s); setError(false) })
+      .catch(() => setError(true))
+  }, [])
+
+  function update(patch: Partial<MealCalendarSettings>) {
+    setCfg((c) => (c ? { ...c, ...patch } : c))
+    setDirty(true)
+    setSaved(false)
+  }
+
+  if (error) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Sign this kiosk in to manage meal settings.</div></div>
+  if (!cfg) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
+
+  // null participantIds == the whole family; resolve to concrete ids for the chips.
+  const allIds = persons.map((p) => p.id)
+  const selected = cfg.participantIds ?? allIds
+  function toggleParticipant(id: string) {
+    const next = selected.includes(id) ? selected.filter((p) => p !== id) : [...selected, id]
+    // all selected ⇒ collapse back to "whole family" (null)
+    update({ participantIds: next.length === allIds.length ? null : next })
+  }
+
+  async function save() {
+    if (!cfg) return
+    setSaving(true)
+    try {
+      const s = await mealsApi.setCalendarSettings(cfg)
+      setCfg(s)
+      setDirty(false)
+      setSaved(true)
+    } catch {
+      setError(true)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="set-panel">
+      <div className="set-head"><div className="nk-serif set-head-t">Meals</div></div>
+
+      <div className="set-card">
+        <SettingRow icon="📅" title="Add planned meals to the calendar" sub="Each meal you plan shows on the Nook calendar, linked to its recipe.">
+          <input type="checkbox" className="set-check" checked={cfg.addToCalendar} onChange={(e) => update({ addToCalendar: e.target.checked })} />
+        </SettingRow>
+        <SettingRow icon="🔄" title="Sync them to Google Calendar" sub="Also push meal events to the calendar below, so they show on everyone’s phones.">
+          <input type="checkbox" className="set-check" disabled={!cfg.addToCalendar} checked={cfg.addToCalendar && cfg.pushToGoogle} onChange={(e) => update({ pushToGoogle: e.target.checked })} />
+        </SettingRow>
+        <SettingRow icon="👤" title="Add to this person’s calendar" sub="Meal events use this person’s color and their Google write-target calendar.">
+          <select className="sel" disabled={!cfg.addToCalendar} value={cfg.calendarPersonId ?? ''} onChange={(e) => update({ calendarPersonId: e.target.value || null })}>
+            <option value="">Unassigned</option>
+            {persons.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </SettingRow>
+      </div>
+
+      <div className="set-card" style={{ marginTop: 16 }}>
+        <SettingRow icon="🧑‍🤝‍🧑" title="Who’s invited" sub={cfg.participantIds === null ? 'The whole family' : `${selected.length} ${selected.length === 1 ? 'person' : 'people'}`}>
+          <div />
+        </SettingRow>
+        <div className="meal-chips">
+          <button type="button" className={`tag ${cfg.participantIds === null ? 'on' : ''}`} disabled={!cfg.addToCalendar} onClick={() => update({ participantIds: null })}>Whole family</button>
+          {persons.map((p) => (
+            <button key={p.id} type="button" className={`tag ${selected.includes(p.id) ? 'on' : ''}`} disabled={!cfg.addToCalendar} onClick={() => toggleParticipant(p.id)}>
+              {p.avatarEmoji ? `${p.avatarEmoji} ` : ''}{p.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="set-card" style={{ marginTop: 16 }}>
+        <div className="set-row2-t" style={{ margin: '2px 2px 4px' }}>Meal times</div>
+        <div className="tiny muted" style={{ fontWeight: 600, margin: '0 2px 12px' }}>When each meal lands on the calendar.</div>
+        {MEAL_TIME_ROWS.map((m) => (
+          <SettingRow key={m.key} icon={m.icon} title={m.label}>
+            <input
+              type="time"
+              className="set-inline-input"
+              disabled={!cfg.addToCalendar}
+              value={cfg.times[m.key] ?? ''}
+              onChange={(e) => update({ times: { ...cfg.times, [m.key]: e.target.value } })}
+            />
+          </SettingRow>
+        ))}
+      </div>
+
+      <div className="set-actions" style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
+        <button type="button" className="btn btn-primary" disabled={!dirty || saving} onClick={save}>
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved · existing meals updated</span>}
       </div>
     </div>
   )
@@ -595,6 +714,125 @@ function Placeholder({ tab }: { tab: string }) {
   )
 }
 
+// Currency catalog management (the "spend"/economy config). Admin-only writes;
+// inline edits save on blur, default/spendable toggle immediately.
+function CurrencyRow({ c, canDelete }: { c: Currency; canDelete: boolean }) {
+  const [label, setLabel] = useState(c.label)
+  const [symbol, setSymbol] = useState(c.symbol ?? '')
+  const [confirmDel, setConfirmDel] = useState(false)
+  const save = (patch: Record<string, unknown>) => currenciesApi.update(c.id, patch).catch(() => {})
+  return (
+    <div className="cur-row">
+      <input className="cur-sym" value={symbol} maxLength={2} aria-label="Symbol"
+        onChange={(e) => setSymbol(e.target.value)} onBlur={() => symbol !== (c.symbol ?? '') && save({ symbol: symbol || null })} />
+      <input className="cur-label" value={label} aria-label="Label"
+        onChange={(e) => setLabel(e.target.value)} onBlur={() => label.trim() && label !== c.label && save({ label: label.trim() })} />
+      <button type="button" className={`cur-flag ${c.isDefault ? 'on' : ''}`} title="Default earn currency"
+        onClick={() => !c.isDefault && save({ isDefault: true })}>{c.isDefault ? '★ Default' : 'Make default'}</button>
+      <button type="button" className={`cur-flag ${c.spendable ? 'on' : ''}`} title="Can be spent on rewards"
+        onClick={() => save({ spendable: !c.spendable })}>{c.spendable ? 'Spendable' : 'Earn-only'}</button>
+      {canDelete && !c.isDefault ? (
+        <button type="button" className="cur-del" aria-label={`Delete ${c.label}`}
+          onClick={() => (confirmDel ? currenciesApi.remove(c.id).catch(() => {}) : setConfirmDel(true))}>
+          {confirmDel ? 'Tap to confirm' : '×'}
+        </button>
+      ) : <span className="cur-del-sp" />}
+    </div>
+  )
+}
+
+function RewardsSettingsPanel() {
+  const { currencies, loading } = useCurrencies()
+  const [newLabel, setNewLabel] = useState('')
+  const [newSymbol, setNewSymbol] = useState('')
+  const [adding, setAdding] = useState(false)
+  async function add() {
+    if (!newLabel.trim()) return
+    setAdding(true)
+    try {
+      await currenciesApi.create({ label: newLabel.trim(), symbol: newSymbol.trim() || null })
+      setNewLabel(''); setNewSymbol('')
+    } finally {
+      setAdding(false)
+    }
+  }
+  return (
+    <div className="set-panel">
+      <div className="set-head">
+        <div className="nk-serif set-head-t">Chores &amp; rewards</div>
+        <div className="tiny muted" style={{ fontWeight: 600 }}>The currencies your family earns &amp; spends</div>
+      </div>
+      <div className="set-card" style={{ padding: 18 }}>
+        <div className="card-h" style={{ marginBottom: 4 }}>Currencies</div>
+        <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
+          Rename stars, add your own, or run several. The <b>default</b> is what new chores award; <b>spendable</b> ones can buy rewards. Set up trades between them under <b>Conversions</b> below.
+        </div>
+        {loading ? (
+          <div className="muted" style={{ fontWeight: 600 }}>Loading…</div>
+        ) : (
+          currencies.map((c) => <CurrencyRow key={c.id} c={c} canDelete={currencies.length > 1} />)
+        )}
+        <div className="cur-add">
+          <input className="cur-sym" value={newSymbol} maxLength={2} placeholder="⭐" aria-label="New symbol" onChange={(e) => setNewSymbol(e.target.value)} />
+          <input className="cur-label" value={newLabel} placeholder="Add a currency (e.g. Family Dollars)" aria-label="New label" onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
+          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={adding || !newLabel.trim()} onClick={add}>＋ Add</button>
+        </div>
+      </div>
+
+      {currencies.length > 1 && <ConversionsSection currencies={currencies} />}
+    </div>
+  )
+}
+
+function ConversionsSection({ currencies }: { currencies: Currency[] }) {
+  const { conversions } = useConversions()
+  const [fromCur, setFromCur] = useState(currencies[0]?.key ?? '')
+  const [toCur, setToCur] = useState(currencies[1]?.key ?? '')
+  const [fromAmt, setFromAmt] = useState(10)
+  const [toAmt, setToAmt] = useState(1)
+  const [busy, setBusy] = useState(false)
+  const sym = (key: string) => currencies.find((c) => c.key === key)?.symbol ?? '•'
+  async function add() {
+    if (!fromCur || !toCur || fromCur === toCur) return
+    setBusy(true)
+    try {
+      await conversionsApi.create({ fromCurrency: fromCur, toCurrency: toCur, fromAmount: fromAmt, toAmount: toAmt })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="set-card" style={{ padding: 18, marginTop: 14 }}>
+      <div className="card-h" style={{ marginBottom: 4 }}>Conversions</div>
+      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
+        Let the family trade up a tier — e.g. <b>10 ⭐ → 1 💵</b>. Anyone can convert their own balance on the Rewards tab.
+      </div>
+      {conversions.map((c) => (
+        <div key={c.id} className="conv-row">
+          <span className="conv-rate">
+            {c.fromAmount} {c.from.symbol ?? sym(c.fromCurrency)} {c.from.label ?? c.fromCurrency}
+            <span className="conv-arrow">→</span>
+            {c.toAmount} {c.to.symbol ?? sym(c.toCurrency)} {c.to.label ?? c.toCurrency}
+          </span>
+          <button type="button" className="cur-del" aria-label="Delete conversion" onClick={() => conversionsApi.remove(c.id)}>×</button>
+        </div>
+      ))}
+      <div className="conv-add">
+        <input type="number" min={1} className="conv-amt" value={fromAmt} onChange={(e) => setFromAmt(Number(e.target.value) || 1)} aria-label="From amount" />
+        <select className="conv-cur" value={fromCur} onChange={(e) => setFromCur(e.target.value)} aria-label="From currency">
+          {currencies.map((c) => <option key={c.key} value={c.key}>{(c.symbol ? `${c.symbol} ` : '') + c.label}</option>)}
+        </select>
+        <span className="conv-arrow">→</span>
+        <input type="number" min={1} className="conv-amt" value={toAmt} onChange={(e) => setToAmt(Number(e.target.value) || 1)} aria-label="To amount" />
+        <select className="conv-cur" value={toCur} onChange={(e) => setToCur(e.target.value)} aria-label="To currency">
+          {currencies.map((c) => <option key={c.key} value={c.key}>{(c.symbol ? `${c.symbol} ` : '') + c.label}</option>)}
+        </select>
+        <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={busy || fromCur === toCur} onClick={add}>＋ Add</button>
+      </div>
+    </div>
+  )
+}
+
 export function Settings() {
   const [tab, setTab] = useState('family')
   return (
@@ -609,7 +847,7 @@ export function Settings() {
         ))}
       </div>
       <div className="set-content">
-        {tab === 'family' ? <FamilyPanel /> : tab === 'ai' ? <AiPanel /> : tab === 'calendars' ? <CalendarsPanel /> : <Placeholder tab={tab} />}
+        {tab === 'family' ? <FamilyPanel /> : tab === 'ai' ? <AiPanel /> : tab === 'calendars' ? <CalendarsPanel /> : tab === 'meals' ? <MealsPanel /> : tab === 'chores' ? <RewardsSettingsPanel /> : <Placeholder tab={tab} />}
       </div>
     </div>
   )

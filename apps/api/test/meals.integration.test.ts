@@ -63,7 +63,7 @@ beforeAll(async () => {
   process.env.DATABASE_URL = url
   delete process.env.AUTH0_DOMAIN
   app = (await import('../src/app')).default
-  closePool = (await import('../src/db')).closePool
+  closePool = (await import('../src/platform/db')).closePool
   const h = await call('POST', '/api/households', kevin, {
     name: 'Sites',
     timezone: 'America/Chicago',

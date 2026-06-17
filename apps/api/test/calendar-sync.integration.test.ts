@@ -154,7 +154,7 @@ beforeAll(async () => {
   process.env.TOKEN_ENCRYPTION_KEY = randomBytes(32).toString('base64')
 
   app = (await import('../src/app')).default
-  closePool = (await import('../src/db')).closePool
+  closePool = (await import('../src/platform/db')).closePool
 
   await call('POST', '/api/households', kevin, { name: 'Sites', timezone: 'America/Chicago', person: { name: 'Kevin' } })
   kellyId = JSON.parse((await call('POST', '/api/persons', kevin, { name: 'Kelly', memberType: 'adult', colorHex: '#E0548B' })).body).person.id
@@ -226,7 +226,7 @@ describe('inbound sync', () => {
   })
 
   it('the scheduled poll syncs every connected household', async () => {
-    const { syncAllHouseholds } = await import('../src/calendar-sync')
+    const { syncAllHouseholds } = await import('../src/modules/calendar/calendar-sync.service')
     const res = await syncAllHouseholds()
     expect(res.households).toBe(1)
   })

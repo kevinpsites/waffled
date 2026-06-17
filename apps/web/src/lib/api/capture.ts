@@ -22,8 +22,8 @@ interface ServerParse {
 export const captureApi = {
   // Returns the parsed intent and which provider produced it. `via` is 'on-device'
   // whenever we used the local heuristic (server deferral, error, or offline).
-  resolve: async (text: string, names: string[]): Promise<{ intent: ParsedIntent | null; via: string }> => {
-    const local = () => ({ intent: parseCapture(text, names), via: 'on-device' })
+  resolve: async (text: string, names: string[], lists: string[] = []): Promise<{ intent: ParsedIntent | null; via: string }> => {
+    const local = () => ({ intent: parseCapture(text, names, new Date(), lists), via: 'on-device' })
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return local()
     try {
       const r = await apiSend<ServerParse>('POST', '/api/capture', { text })

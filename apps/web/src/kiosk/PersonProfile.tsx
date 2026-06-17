@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
-import { usePersonOverview, type OverviewGoal, type CategoryBalance } from '../lib/api'
+import { usePersonOverview, useConversions, type OverviewGoal, type CategoryBalance } from '../lib/api'
+import { TradeModal } from './components/TradeModal'
 import './../styles/overview.css'
 
 const CAT_CLASS: Record<string, string> = {
@@ -56,6 +58,8 @@ export function PersonProfile() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { data, loading, error } = usePersonOverview(id ?? null)
+  const { conversions } = useConversions()
+  const [trading, setTrading] = useState(false)
 
   useTopbarFull(
     () => (
@@ -74,11 +78,13 @@ export function PersonProfile() {
   if (error || !data) return <div className="muted" style={{ padding: 30 }}>Couldn’t load this profile.</div>
 
   const { person, insight } = data
+  const defaultCur = data.currencies.find((c) => c.isDefault) ?? data.currencies[0]
+  const symOf = (key: string) => data.currencies.find((c) => c.key === key)
   const subBits = [
     person.age != null ? `Age ${person.age}` : null,
     `${data.activeGoals} active goal${data.activeGoals === 1 ? '' : 's'}`,
     data.topStreak >= 2 ? `🔥 ${data.topStreak}-day streak` : null,
-    `⭐ ${data.stars} stars`,
+    `${defaultCur?.symbol ?? '⭐'} ${data.stars} ${(defaultCur?.label ?? 'stars').toLowerCase()}`,
   ].filter(Boolean)
 
   return (
@@ -122,31 +128,53 @@ export function PersonProfile() {
 
       <div className="pp-right">
         <div className="card pp-card pp-stars">
-          <div className="card-h" style={{ marginBottom: 4 }}>Stars & chores</div>
-          <div className="pp-star-big">⭐ {data.stars}</div>
+          <div className="card-h" style={{ marginBottom: 4, display: 'flex', alignItems: 'center' }}>
+            <span>{defaultCur?.label ?? 'Stars'} & chores</span>
+            {conversions.length > 0 && (
+              <button type="button" className="pp-trade" style={{ marginLeft: 'auto' }} onClick={() => setTrading(true)}>⇄ Trade</button>
+            )}
+          </div>
+          <div className="pp-star-big" style={defaultCur?.color ? { color: defaultCur.color } : undefined}>{defaultCur?.symbol ?? '⭐'} {data.stars}</div>
+          {data.currencies.length > 1 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', marginTop: 6 }}>
+              {data.balances.filter((b) => b.currency !== defaultCur?.key).map((b) => {
+                const c = symOf(b.currency)
+                return <span key={b.currency} style={{ fontWeight: 800, fontSize: 14, color: c?.color ?? 'var(--ink-2)' }}>{c?.symbol ?? ''} {b.balance}</span>
+              })}
+            </div>
+          )}
           <div className="tiny muted" style={{ fontWeight: 700, margin: '12px 0 4px' }}>RECENT</div>
           {data.recentLedger.length === 0 && <div className="muted tiny" style={{ fontWeight: 600 }}>No activity yet.</div>}
           {data.recentLedger.map((e, i) => (
             <div key={i} className="pp-ledger">
-              <span className={`pp-ledger-amt ${e.amount >= 0 ? 'pos' : 'neg'}`}>{e.amount >= 0 ? `+${e.amount}` : e.amount}</span>
-              <span className="pp-ledger-r">{reasonLabel(e.reason)}</span>
+              <span className={`pp-ledger-amt ${e.amount >= 0 ? 'pos' : 'neg'}`}>{e.amount >= 0 ? `+${e.amount}` : e.amount} {symOf(e.currency)?.symbol ?? ''}</span>
+              <span className="pp-ledger-r">{e.detail ?? reasonLabel(e.reason)}</span>
             </div>
           ))}
         </div>
 
         <div className="card pp-card">
           <div className="card-h" style={{ marginBottom: 10 }}>Reward redemptions</div>
-          {data.redemptions.length === 0 && <div className="muted tiny" style={{ fontWeight: 600 }}>None yet — earn stars, then redeem in Tasks → Rewards.</div>}
+          {data.redemptions.length === 0 && <div className="muted tiny" style={{ fontWeight: 600 }}>None yet — earn {(defaultCur?.label ?? 'stars').toLowerCase()}, then redeem in Tasks → Rewards.</div>}
           {data.redemptions.map((r) => (
             <div key={r.id} className="pp-redeem">
               <span className="pp-redeem-emo">{r.emoji ?? '🎁'}</span>
               <span className="pp-redeem-t">{r.title}</span>
               <span className={`pp-redeem-status st-${r.status}`}>{r.status}</span>
-              <span className="pp-redeem-cost">⭐ {r.cost}</span>
+              <span className="pp-redeem-cost">{symOf(r.currency)?.symbol ?? '⭐'} {r.cost}</span>
             </div>
           ))}
         </div>
       </div>
+
+      {trading && (
+        <TradeModal
+          person={{ id: person.id, name: person.name }}
+          balances={data.balances}
+          conversions={conversions}
+          onClose={() => setTrading(false)}
+        />
+      )}
     </div>
   )
 }

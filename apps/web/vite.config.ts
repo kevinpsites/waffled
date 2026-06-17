@@ -11,7 +11,7 @@ export default defineConfig({
   optimizeDeps: { exclude: ['@powersync/web'] },
   worker: { format: 'es' },
   server: {
-    port: 5173,
+    port: 5175,
     proxy: {
       '/api': 'http://localhost:3000',
     },

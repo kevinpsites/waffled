@@ -1,12 +1,20 @@
-import { useEffect, useState } from 'react'
-import { api, usePersons, type PlanCard } from '../../lib/api'
+import { useRef, useState } from 'react'
+import { api, usePersons, useRecipes, type PlanCard, type Recipe } from '../../lib/api'
 import { useTopbarFull } from '../topbar-slot'
 import { Icon } from '../icons'
+import { RecipeModal } from './RecipeModal'
+import { RecipeBrowser, type MealType } from './RecipeBrowser'
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner'] as const
 const MEAL_LABEL: Record<string, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner' }
 const VIA_LABEL: Record<string, string> = { anthropic: 'Claude', openai: 'OpenAI', ollama: 'local LLM' }
+
+function friendlyAiError(msg: string): string {
+  if (/no ai provider|not configured/i.test(msg)) return 'Pick an AI provider in Settings → AI & capture first.'
+  if (/abort|timeout|timed out|ETIMEDOUT/i.test(msg)) return 'The model took too long — try fewer days, or switch to a faster provider in Settings.'
+  return 'Couldn’t draft the week — please try again.'
+}
 
 function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -32,10 +40,18 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
 
   const [cards, setCards] = useState<PlanCard[]>([])
   const [locked, setLocked] = useState<Set<string>>(new Set())
+  // Dishes the user has shuffled away from — accumulated so they don't come back
+  // on later reshuffles (until the week is applied / the planner closes).
+  const rejected = useRef<Set<string>>(new Set())
+  const { recipes } = useRecipes()
+  const [viewRecipeId, setViewRecipeId] = useState<string | null>(null) // RecipeModal (preserves plan state)
+  const [pickForDate, setPickForDate] = useState<string | null>(null) // manual recipe picker
   const [loading, setLoading] = useState(false)
+  const [draftingDates, setDraftingDates] = useState<Set<string>>(new Set()) // nights currently being (re)drafted
   const [via, setVia] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
+  const started = cards.length > 0 || loading || !!error
 
   useTopbarFull(
     () => (
@@ -44,7 +60,9 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
           <Icon name="cl" />
           Meals
         </div>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginLeft: 14 }}>Plan my week</div>
+        <button type="button" className="pill" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={onClose}>
+          Cancel
+        </button>
       </>
     ),
     []
@@ -54,6 +72,7 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
     if (dates.length === 0) return
     setLoading(true)
     setError(null)
+    setDraftingDates(new Set(dates))
     try {
       const r = await api.planWeek({
         start: startStr,
@@ -64,30 +83,52 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
         useUp,
         avoidTitles: avoid,
       })
+      if (r.error) {
+        setError(friendlyAiError(r.error))
+        return
+      }
       setVia(r.via)
       setCards((prev) => {
         const kept = prev.filter((c) => !dates.includes(c.date)) // keep cards we didn't redraft
         return [...kept, ...r.suggestions].sort((a, b) => (a.date < b.date ? -1 : 1))
       })
     } catch (e) {
-      setError(/501/.test((e as Error).message) ? 'Pick an AI provider in Settings → AI & capture first.' : 'Couldn’t draft the week — try again.')
+      setError(friendlyAiError((e as Error).message))
     } finally {
       setLoading(false)
+      setDraftingDates(new Set())
     }
   }
 
-  // Initial draft on open.
-  useEffect(() => {
-    void draft([...selectedDays].sort(), [])
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // Draft only when the user asks (after setting the guardrails) — no auto-kickoff.
+  function planAll() {
+    void draft([...selectedDays].sort(), [...rejected.current])
+  }
 
   function reshuffle() {
     const dates = [...selectedDays].filter((d) => !locked.has(d)).sort()
-    void draft(dates, cards.map((c) => c.title))
+    // Reject the dishes currently on those nights so they don't reappear.
+    for (const c of cards) if (dates.includes(c.date)) rejected.current.add(c.title)
+    const lockedTitles = cards.filter((c) => locked.has(c.date)).map((c) => c.title)
+    void draft(dates, [...rejected.current, ...lockedTitles])
   }
   function swap(card: PlanCard) {
-    void draft([card.date], cards.map((c) => c.title))
+    rejected.current.add(card.title)
+    const others = cards.filter((c) => c.date !== card.date).map((c) => c.title)
+    void draft([card.date], [...rejected.current, ...others])
+  }
+  // Manually replace one night with a chosen library recipe.
+  function pickRecipe(date: string, r: Recipe) {
+    const old = cards.find((c) => c.date === date)
+    if (old) rejected.current.add(old.title)
+    setCards((prev) =>
+      prev.map((c) =>
+        c.date === date
+          ? { date, mealType, title: r.title, recipeId: r.id, emoji: r.emoji, minutes: r.cookTimeMinutes, servings: c.servings, note: 'Your pick' }
+          : c
+      )
+    )
+    setPickForDate(null)
   }
   function toggleLock(date: string) {
     setLocked((s) => {
@@ -118,6 +159,10 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
       for (const c of shown) {
         await api.planSlot(c.recipeId ? { date: c.date, mealType: c.mealType, recipeId: c.recipeId } : { date: c.date, mealType: c.mealType, title: c.title })
       }
+      // "& build list": rebuild the grocery from the new week's dinners so items
+      // are linked to the planned recipes (otherwise the By-meal view stays empty
+      // / shows stale items from a previous plan).
+      await api.rebuildGrocery(startStr).catch(() => {})
       onApplied()
       onClose()
     } finally {
@@ -133,10 +178,10 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
 
   return (
     <div className="plan-screen">
-      {/* Left: the guardrails */}
+      {/* Left: the guardrails (headed by the screen title, per the mock) */}
       <div className="plan-config">
-        <div className="tiny muted">Tell Nook the guardrails — it drafts the meals and the grocery list in one go.</div>
-
+        <div className="plan-title nk-serif">Plan my week</div>
+        <div className="tiny muted plan-sub">Tell Nook the guardrails — it drafts the meals and the grocery list in one go.</div>
         <div className="flabel">Plan which meal?</div>
         <div className="seg seg-plantype">
           {MEAL_TYPES.map((m) => (
@@ -197,14 +242,42 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
       <div className="plan-results">
         <div className="plan-results-head">
           <div className="card-h nk-serif">Here’s your week</div>
-          <button type="button" className="pill" onClick={reshuffle} disabled={loading}>
-            <Icon name="spark" /> Reshuffle
-          </button>
+          {cards.length > 0 && (
+            <button type="button" className="pill" onClick={reshuffle} disabled={loading}>
+              {loading ? <><span className="spinner" /> Reshuffling…</> : <><Icon name="spark" /> Reshuffle</>}
+            </button>
+          )}
         </div>
-        {via && VIA_LABEL[via] && <div className="tiny muted" style={{ margin: '-4px 2px 12px' }}>Drafted via {VIA_LABEL[via]}</div>}
+        {via && VIA_LABEL[via] && cards.length > 0 && <div className="tiny muted" style={{ margin: '-4px 2px 12px' }}>Drafted via {VIA_LABEL[via]}</div>}
 
-        {loading && cards.length === 0 && <div className="muted" style={{ padding: 16 }}>Drafting your week…</div>}
-        {error && <div className="muted" style={{ padding: 16, fontWeight: 600 }}>{error}</div>}
+        {/* Before drafting: configure on the left, then kick it off here. */}
+        {!started && (
+          <div className="plan-empty">
+            <div className="plan-empty-emoji">🍽️</div>
+            <div className="set-row2-t">Ready when you are</div>
+            <div className="tiny muted" style={{ maxWidth: 340, margin: '4px 0 18px' }}>
+              Set the guardrails on the left, then draft a week of {MEAL_LABEL[mealType].toLowerCase()}s.
+            </div>
+            <button type="button" className="btn btn-primary" onClick={planAll} disabled={selectedDays.size === 0}>
+              <Icon name="spark" /> Plan my week
+            </button>
+          </div>
+        )}
+
+        {loading && cards.length === 0 && (
+          <div className="plan-empty">
+            <span className="spinner lg" />
+            <div className="tiny muted" style={{ marginTop: 14 }}>Drafting your week…</div>
+          </div>
+        )}
+
+        {error && (
+          <div className="plan-empty">
+            <div className="muted" style={{ fontWeight: 600, marginBottom: 16, maxWidth: 360 }}>{error}</div>
+            <button type="button" className="btn btn-primary" onClick={planAll}><Icon name="spark" /> Try again</button>
+          </div>
+        )}
+
         {!loading && !error && cards.length > 0 && shown.length === 0 && (
           <div className="muted" style={{ padding: 16, fontWeight: 600 }}>Pick some days on the left to plan.</div>
         )}
@@ -215,21 +288,34 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
             const isLocked = locked.has(c.date)
             return (
               <div key={c.date} className={`plan-day ${isLocked ? 'locked' : ''}`}>
+                {draftingDates.has(c.date) && (
+                  <div className="pd-loading"><span className="spinner" /></div>
+                )}
                 <div className="pd-day">
                   <div className="pd-dow">{lab.dow}</div>
                   <div className="pd-dt">{lab.dt}</div>
                 </div>
-                <div className="pd-img">{c.emoji ?? '🍽️'}</div>
-                <div className="pd-b">
-                  <div className="pd-t">{c.title}</div>
-                  <div className="pd-m">
-                    {[c.minutes ? `${c.minutes} min` : null, `Serves ${c.servings}`].filter(Boolean).join(' · ')}
-                    {c.recipeId ? ' · from your recipes' : ''}
+                <div
+                  className="pd-main clickable"
+                  onClick={() => (c.recipeId ? setViewRecipeId(c.recipeId) : setPickForDate(c.date))}
+                  role="button"
+                  title={c.recipeId ? 'View recipe' : 'Choose a recipe'}
+                >
+                  <div className="pd-img">{c.emoji ?? '🍽️'}</div>
+                  <div className="pd-b">
+                    <div className="pd-t">{c.title}</div>
+                    <div className="pd-m">
+                      {[c.minutes ? `${c.minutes} min` : null, `Serves ${c.servings}`].filter(Boolean).join(' · ')}
+                      {c.recipeId ? ' · from your recipes' : ''}
+                    </div>
+                    {c.note && <div className="reason"><Icon name="spark" />{c.note}</div>}
                   </div>
-                  {c.note && <div className="reason"><Icon name="spark" />{c.note}</div>}
                 </div>
                 <div className="pd-act">
-                  <button type="button" className="pd-icon" title="Swap this dish" onClick={() => swap(c)} disabled={loading}>⟳</button>
+                  <button type="button" className="pd-icon" title="Swap — let AI pick another" onClick={() => swap(c)} disabled={loading}>⟳</button>
+                  <button type="button" className="pd-icon" title="Choose a recipe yourself" onClick={() => setPickForDate(c.date)}>
+                    <Icon name="recipes" />
+                  </button>
                   <button type="button" className={`pd-icon ${isLocked ? 'on' : ''}`} title={isLocked ? 'Locked — won’t reshuffle' : 'Lock this night'} onClick={() => toggleLock(c.date)}>
                     {isLocked ? '🔒' : '🔓'}
                   </button>
@@ -251,6 +337,30 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
           </div>
         )}
       </div>
+
+      {viewRecipeId && <RecipeModal recipeId={viewRecipeId} onClose={() => setViewRecipeId(null)} />}
+
+      {/* Manual swap: reuse the full recipe browser (filters + grid + View) in an
+          overlay so the plan state stays intact behind it. */}
+      {pickForDate && (
+        <div className="plan-pick-overlay">
+          <div className="plan-pick-head">
+            <button type="button" className="pill" onClick={() => setPickForDate(null)} style={{ cursor: 'pointer' }}>
+              <Icon name="cl" /> Back
+            </button>
+            <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginLeft: 14 }}>
+              Choose a recipe · {labelFor(pickForDate).dow} {labelFor(pickForDate).dt}
+            </div>
+          </div>
+          <RecipeBrowser
+            recipes={recipes}
+            loading={false}
+            slot={mealType as MealType}
+            onPick={(r) => pickRecipe(pickForDate, r)}
+            selectLabel="Use this"
+          />
+        </div>
+      )}
     </div>
   )
 }

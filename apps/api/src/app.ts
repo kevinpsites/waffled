@@ -1,7 +1,7 @@
 // The shared lambda-api app: one routes file, two entrypoints (server.ts, lambda.ts).
 import createAPI, { type Request, type Response, type NextFunction } from 'lambda-api'
-import { config } from './config'
-import { requireAuth } from './auth'
+import { config } from './platform/config'
+import { requireAuth } from './platform/auth'
 import {
   findTenantBySub,
   getContext,
@@ -9,22 +9,24 @@ import {
   presentHousehold,
   presentPerson,
   inferProvider,
-} from './households'
-import { registerPersonRoutes } from './persons'
-import { registerListRoutes } from './lists'
-import { registerChoreRoutes } from './chores'
-import { registerRewardRoutes } from './rewards'
-import { registerMealRoutes } from './meals'
-import { registerEventRoutes } from './events'
-import { registerCalendarRoutes } from './calendars'
-import { registerCalendarSyncRoutes } from './calendar-sync'
-import { registerGoalRoutes } from './goals'
-import { registerOverviewRoutes } from './overview'
-import { registerPhotoRoutes } from './photos'
-import { registerCaptureRoutes } from './capture'
-import { registerWeatherRoutes } from './weather'
-import { registerPowerSyncRoutes } from './powersync'
-import { registerPowerSyncCrudRoutes } from './powersync-crud'
+} from './modules/households/households'
+import { registerPersonRoutes } from './modules/persons/persons'
+import { registerListRoutes } from './modules/lists/lists.routes'
+import { registerChoreRoutes } from './modules/chores/chores.routes'
+import { registerRewardRoutes } from './modules/rewards/rewards'
+import { registerCurrencyRoutes } from './modules/currencies/currencies'
+import { registerMealRoutes } from './modules/meals/meals.routes'
+import { registerEventRoutes } from './modules/events/events'
+import { registerCalendarAiRoutes } from './modules/calendar/calendar-ai'
+import { registerCalendarRoutes } from './modules/calendar/calendars'
+import { registerCalendarSyncRoutes } from './modules/calendar/calendar-sync.routes'
+import { registerGoalRoutes } from './modules/goals/goals.routes'
+import { registerOverviewRoutes } from './modules/overview/overview'
+import { registerPhotoRoutes } from './modules/photos/photos'
+import { registerCaptureRoutes } from './modules/capture/capture'
+import { registerWeatherRoutes } from './integrations/weather'
+import { registerPowerSyncRoutes } from './modules/powersync/powersync'
+import { registerPowerSyncCrudRoutes } from './modules/powersync/powersync-crud'
 
 const api = createAPI()
 
@@ -124,11 +126,17 @@ registerChoreRoutes(api)
 // Rewards + redemptions (/api/rewards, /api/redemptions, /api/balances…)
 registerRewardRoutes(api)
 
+// Currency catalog (/api/currencies…)
+registerCurrencyRoutes(api)
+
 // Meals & recipes (/api/recipes, /api/meals…)
 registerMealRoutes(api)
 
 // Calendar events (/api/events…)
 registerEventRoutes(api)
+
+// Calendar AI cards (/api/calendar/heads-up, /api/events/:id/insight)
+registerCalendarAiRoutes(api)
 
 // Google Calendar connect (/api/calendar/google…, /auth/google/calendar/callback)
 registerCalendarRoutes(api)

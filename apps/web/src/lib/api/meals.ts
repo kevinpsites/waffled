@@ -141,10 +141,23 @@ export interface PlanWeekRequest {
   avoidTitles?: string[]
 }
 
+export interface MealCalendarSettings {
+  addToCalendar: boolean
+  pushToGoogle: boolean
+  calendarPersonId: string | null
+  participantIds: string[] | null
+  times: Record<string, string>
+  durationMinutes: number
+}
+
 export const mealsApi = {
   mealsWeek: (start: string) => apiGet<{ start: string; entries: WeekEntry[] }>(`/api/meals/week?start=${start}`),
+  calendarSettings: () => apiGet<{ settings: MealCalendarSettings }>('/api/meals/calendar-settings').then((r) => r.settings),
+  setCalendarSettings: (patch: Partial<MealCalendarSettings>) =>
+    apiSend<{ settings: MealCalendarSettings }>('PUT', '/api/meals/calendar-settings', patch).then((r) => r.settings),
+  entry: (id: string) => apiGet<{ recipeId: string | null; title: string | null }>(`/api/meals/entry/${id}`),
   planWeek: (req: PlanWeekRequest) =>
-    apiSend<{ start: string; mealType: string; suggestions: PlanCard[]; via: string }>('POST', '/api/meals/plan-week', req),
+    apiSend<{ start: string; mealType: string; suggestions: PlanCard[]; via: string; error?: string }>('POST', '/api/meals/plan-week', req),
   recipes: () => apiGet<{ recipes: Recipe[] }>('/api/recipes'),
   recipe: (id: string) =>
     apiGet<{ recipe: RecipeDetail; ingredients: RecipeIngredient[]; steps: RecipeStep[] }>(`/api/recipes/${id}`),

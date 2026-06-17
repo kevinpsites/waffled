@@ -357,21 +357,54 @@ button.tick {
 }
 
 /* ===== Rewards panel (Tasks → Rewards) ===== */
-.rewards-panel { display: flex; flex-direction: column; gap: 18px; padding: 4px 0 24px; }
+/* Matches the 30px screen gutter the rest of the Tasks page uses (.tasks-head,
+   .tasks-datenav) so balances + catalog line up with the heading. */
+.rewards-panel { display: flex; flex-direction: column; gap: 18px; padding: 6px 30px 30px; }
 
 /* per-kid balances */
 .rw-balances { display: flex; flex-wrap: wrap; gap: 12px; }
 .rw-bal {
   display: flex; align-items: center; gap: 11px;
-  background: var(--card); border-radius: var(--r-lg); box-shadow: var(--sh-1);
-  padding: 12px 18px 12px 12px;
+  background: var(--card); border: 0; border-radius: var(--r-lg); box-shadow: var(--sh-1);
+  padding: 12px 18px 12px 12px; cursor: pointer; font: inherit; text-align: left;
+  transition: box-shadow 0.12s ease;
 }
+.rw-bal:hover { box-shadow: var(--sh-2); }
 .rw-av {
   width: 40px; height: 40px; border-radius: 999px; flex: none;
   display: grid; place-items: center; font-size: 20px;
 }
 .rw-bal-name { font-weight: 700; font-size: 14.5px; }
-.rw-bal-stars { display: flex; align-items: center; gap: 5px; font-weight: 800; color: var(--lottie); font-size: 14px; }
+.rw-bal-coins { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 1px; }
+.rw-coin { display: inline-flex; align-items: center; gap: 4px; font-weight: 800; font-size: 14px; color: var(--lottie); }
+.rw-coin-sym { font-size: 13px; }
+/* trade (currency conversions) — modal summary, shared across surfaces */
+.rw-trade-summary { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 12px 14px;
+  border-radius: var(--r-md); background: var(--panel); font-weight: 800; }
+.rw-trade-summary .conv-arrow { color: var(--ink-3); font-weight: 800; }
+.rw-trade-give { color: var(--primary); }
+.rw-trade-get { color: #167a4a; }
+
+/* currency picker (Add reward) */
+.rw-cur-pick { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.rw-cur-chip {
+  font: inherit; font-size: 13px; font-weight: 700; padding: 7px 12px; border-radius: 999px;
+  border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2); cursor: pointer;
+}
+.rw-cur-chip.on { border-color: var(--wally); color: var(--wally); }
+
+/* archived rewards (admin, collapsed) */
+.rw-archived { margin-top: 4px; }
+.rw-arch-head { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; font: inherit;
+  font-size: 13.5px; font-weight: 700; color: var(--ink-3); cursor: pointer; padding: 6px 0; }
+.rw-arch-caret { display: inline-block; transition: transform 0.12s ease; }
+.rw-arch-caret.open { transform: rotate(90deg); }
+.rw-arch-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.rw-arch-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--r-md); background: var(--card-2); }
+.rw-arch-emo { font-size: 18px; flex: none; opacity: 0.7; }
+.rw-arch-t { flex: 1; min-width: 0; font-weight: 600; font-size: 14px; color: var(--ink-2); }
+.rw-arch-cost { flex: none; opacity: 0.7; }
+.rw-arch-row .pill { flex: none; cursor: pointer; }
 
 /* approvals queue */
 .rw-approvals { padding: 16px 18px; }
@@ -389,13 +422,32 @@ button.tick {
 
 /* catalog */
 .rw-cat-head { display: flex; align-items: center; }
+.rw-cat-head .pill { cursor: pointer; }
 .rw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; }
+
+/* empty state — a centered card with an inline CTA (so adding doesn't depend on
+   the far-right header button) */
+.rw-empty {
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px;
+  max-width: 460px; margin: 6px auto 4px;
+  background: var(--card); border: 1px dashed var(--hair); border-radius: var(--r-xl);
+  padding: 38px 28px; box-shadow: var(--sh-1);
+}
+.rw-empty-emo { font-size: 44px; }
+.rw-empty-h { font-family: var(--serif); font-size: 21px; font-weight: 600; }
+.rw-empty-b { color: var(--ink-2); font-size: 14px; line-height: 1.5; max-width: 340px; }
+.rw-empty .btn-primary { margin-top: 6px; cursor: pointer; }
 .rw-card {
   position: relative;
   background: var(--card); border-radius: var(--r-lg); box-shadow: var(--sh-1);
   padding: 18px 16px 14px; text-align: center;
   display: flex; flex-direction: column; align-items: center; gap: 6px;
 }
+/* the tappable body that opens the edit/remove modal */
+.rw-card-main { background: none; border: 0; font: inherit; cursor: pointer; width: 100%;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.rw-card-edit-hint { font-size: 11px; font-weight: 700; color: var(--ink-3); opacity: 0; transition: opacity 0.12s ease; }
+.rw-card-main:hover .rw-card-edit-hint { opacity: 1; }
 .rw-del {
   position: absolute; top: 8px; right: 9px;
   width: 22px; height: 22px; border-radius: 999px; border: 0;
@@ -424,9 +476,23 @@ button.tick {
 .rw-title-in { flex: 1; font: inherit; font-size: 15px; padding: 10px 13px; border-radius: var(--r-md); border: 1px solid var(--hair); background: var(--card-2); color: var(--ink); }
 .rw-cost-field { display: flex; align-items: center; gap: 12px; }
 .rw-cost-field > span { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
+/* free-entry cost: any whole number, with the currency symbol inline */
+.rw-cost-input { display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border-radius: 999px; padding: 6px 16px; }
+.rw-cost-sym { font-size: 14px; }
+.rw-cost-input input { width: 72px; border: 0; background: none; font: inherit; font-weight: 800; font-size: 15px; color: var(--ink); text-align: center; }
+.rw-cost-input input:focus { outline: none; }
 .rw-cost-stepper { display: inline-flex; align-items: center; gap: 12px; background: var(--panel); border-radius: 999px; padding: 6px 14px; }
 .rw-cost-stepper button { width: 30px; height: 30px; border: 0; border-radius: 999px; background: #fff; box-shadow: var(--sh-1); font-size: 18px; cursor: pointer; color: var(--ink); }
 .rw-cost-stepper > span { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; min-width: 40px; justify-content: center; }
+
+/* rewards — phone layout: tighter gutter, balances fill the row, smaller cards */
+@media (max-width: 720px) {
+  .rewards-panel { padding: 4px 16px 24px; gap: 14px; }
+  .rw-balances { gap: 8px; }
+  .rw-bal { flex: 1 1 140px; padding: 10px 12px; }
+  .rw-grid { grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); gap: 10px; }
+  .rw-empty { padding: 30px 20px; }
+}
 
 /* chore schedule day-chips (ChoreModal) */
 .chore-days { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
