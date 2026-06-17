@@ -57,8 +57,12 @@
 }
 
 /* goal rows */
-.pp-goal { display: flex; align-items: center; gap: 13px; padding: 11px 0; border-bottom: 1px solid var(--hair-2); }
+.pp-goal { display: flex; align-items: center; gap: 13px; padding: 11px 6px; border-bottom: 1px solid var(--hair-2);
+  width: 100%; border-left: 0; border-right: 0; border-top: 0; background: none; font: inherit; color: inherit;
+  text-align: left; cursor: pointer; border-radius: 8px; }
 .pp-goal:last-child { border-bottom: 0; }
+.pp-goal:hover { background: var(--panel); }
+.pp-goal-title { color: var(--ink); }
 .pp-goal-emo { font-size: 24px; flex: none; }
 .pp-goal-body { flex: 1; min-width: 0; }
 .pp-goal-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

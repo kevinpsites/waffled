@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
 import { api, useGoalLists, useGoalDetail, type GoalList } from '../lib/api'
 import { CATEGORIES, CATEGORY_KEYS } from './categories'
 import { ListModal } from './components/ListModal'
 import './../styles/goals.css'
 
+// The measure type is also what tells us divisibility: "Total" accumulates a
+// divisible amount (so it splits evenly across people), "Count" is whole things
+// (no fractions). The copy here makes that distinction obvious so it's chosen on
+// purpose, not by accident.
 const TYPES = [
-  { key: 'count', emoji: '🔢', title: 'Count', desc: 'Reach a number' },
-  { key: 'total', emoji: '⏱️', title: 'Total amount', desc: 'Add up over time' },
-  { key: 'habit', emoji: '🔁', title: 'Habit', desc: 'Repeat on a cadence' },
-  { key: 'checklist', emoji: '🪜', title: 'Milestones', desc: 'A checklist of steps' },
+  { key: 'total', emoji: '⏱️', title: 'Total amount', desc: 'Adds up — can split (hours, miles)' },
+  { key: 'count', emoji: '🔢', title: 'Count', desc: 'Whole things (books, parks)' },
+  { key: 'habit', emoji: '🔁', title: 'Habit', desc: 'Once a day, on a cadence' },
+  { key: 'checklist', emoji: '🪜', title: 'Checklist', desc: 'Named steps you tick off' },
 ] as const
 
 const LOG_METHODS = [
@@ -20,11 +24,25 @@ const LOG_METHODS = [
 ] as const
 
 type Milestone = { threshold: number; emoji: string; label: string; rewardText: string }
-const DEFAULT_MILESTONES: Milestone[] = [
-  { threshold: 250, emoji: '🌱', label: '250', rewardText: '+25 ★ bonus' },
-  { threshold: 500, emoji: '⛺', label: '500', rewardText: 'Family movie night' },
-  { threshold: 1000, emoji: '🏆', label: '1,000', rewardText: 'Big reward' },
-]
+
+// Sensible default milestone thresholds per measure type — the threshold means a
+// different thing for each (units / streak days / percent), so the starting
+// numbers should match. Swapped in when you change the goal type.
+function defaultMilestones(goalType: string): Milestone[] {
+  const sets: Record<string, Array<[number, string, string]>> = {
+    total: [[250, '🌱', '+25 ★ bonus'], [500, '⛺', 'Family movie night'], [1000, '🏆', 'Big reward']],
+    count: [[5, '🌱', '+5 ★ bonus'], [10, '⛺', 'Treat'], [25, '🏆', 'Big reward']],
+    habit: [[7, '🌱', '+10 ★ bonus'], [30, '🔥', 'Movie night'], [100, '🏆', 'Big reward']],
+    checklist: [[50, '🌱', 'Halfway treat'], [100, '🏆', 'All done — big reward']],
+  }
+  return (sets[goalType] ?? sets.total).map(([threshold, emoji, rewardText]) => ({
+    threshold,
+    emoji,
+    label: String(threshold),
+    rewardText,
+  }))
+}
+const DEFAULT_MILESTONES: Milestone[] = defaultMilestones('total')
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -45,9 +63,11 @@ export function GoalCreate() {
   const editing = !!id
   const { lists, refetch: refetchLists } = useGoalLists()
   const { goal: editGoal } = useGoalDetail(id ?? null)
+  // A suggestion tapped on a person profile pre-fills the title (?title=…).
+  const [searchParams] = useSearchParams()
 
   const [form, setForm] = useState({
-    title: '',
+    title: editing ? '' : (searchParams.get('title') ?? ''),
     goalListId: '' as string,
     category: 'physical',
     trackingMode: 'shared_total' as 'shared_total' | 'each_tracks',
@@ -63,6 +83,7 @@ export function GoalCreate() {
     weeklyCheckIn: true,
   })
   const [milestones, setMilestones] = useState<Milestone[]>(DEFAULT_MILESTONES)
+  const [steps, setSteps] = useState<Array<{ id?: string; label: string }>>([{ label: '' }, { label: '' }, { label: '' }])
   const [saving, setSaving] = useState(false)
   const [showListModal, setShowListModal] = useState(false)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
@@ -91,6 +112,9 @@ export function GoalCreate() {
     if (editGoal.milestones.length) {
       setMilestones(editGoal.milestones.map((m) => ({ threshold: m.threshold, emoji: m.emoji ?? '⛳', label: m.label ?? String(m.threshold), rewardText: m.rewardText ?? '' })))
     }
+    if (editGoal.steps?.length) {
+      setSteps(editGoal.steps.map((s) => ({ id: s.id, label: s.label })))
+    }
   }, [editing, editGoal])
 
   const selectedList = useMemo(() => lists.find((l) => l.id === form.goalListId) ?? null, [lists, form.goalListId])
@@ -115,13 +139,14 @@ export function GoalCreate() {
     if (!canSave) return
     setSaving(true)
     const participantIds = selectedList ? selectedList.members.map((m) => m.personId) : editGoal?.participants.map((p) => p.personId) ?? []
+    const isChecklist = form.goalType === 'checklist'
     const payload = {
       title: form.title.trim(),
       goalListId: form.goalListId || null,
       category: form.category,
       goalType: form.goalType,
-      unit: form.goalType === 'habit' ? null : form.unit.trim() || null,
-      targetValue: form.goalType === 'habit' ? form.habitPerPeriod : Number(form.target) || null,
+      unit: form.goalType === 'habit' || isChecklist ? null : form.unit.trim() || null,
+      targetValue: form.goalType === 'habit' ? form.habitPerPeriod : isChecklist ? null : Number(form.target) || null,
       habitPeriod: form.goalType === 'habit' ? form.habitPeriod : null,
       habitTargetPerPeriod: form.goalType === 'habit' ? form.habitPerPeriod : null,
       trackingMode: form.trackingMode,
@@ -133,6 +158,10 @@ export function GoalCreate() {
       milestones: form.hasRewards
         ? milestones.map((m) => ({ threshold: Number(m.threshold) || 0, emoji: m.emoji, label: m.label || `${m.threshold}${form.unit ? ` ${form.unit}` : ''}`, rewardText: m.rewardText }))
         : [],
+      // Checklist steps (with ids when editing so completion is preserved).
+      ...(isChecklist
+        ? { steps: steps.filter((s) => s.label.trim()).map((s) => ({ id: s.id, label: s.label.trim() })) }
+        : {}),
     }
     try {
       if (editing) await api.updateGoal(id!, payload)
@@ -187,7 +216,7 @@ export function GoalCreate() {
             {TYPES.map((t) => {
               const on = form.goalType === t.key
               return (
-                <button key={t.key} type="button" className={`type-pick ${on ? 'on' : ''}`} onClick={() => set('goalType', t.key)}>
+                <button key={t.key} type="button" className={`type-pick ${on ? 'on' : ''}`} onClick={() => { set('goalType', t.key); setMilestones(defaultMilestones(t.key)) }}>
                   <div className="tpe">{t.emoji}</div>
                   <div style={{ flex: 1 }}>
                     <div className="tpt">{t.title}</div>
@@ -198,25 +227,46 @@ export function GoalCreate() {
               )
             })}
           </div>
-          <div className="gc-measure">
-            {form.goalType === 'habit' ? (
-              <>
-                <input className="gc-input gc-input-num" type="number" min={1} value={form.habitPerPeriod} onChange={(e) => set('habitPerPeriod', Number(e.target.value))} />
-                <span className="gc-x">× a</span>
-                <select className="gc-input gc-select" value={form.habitPeriod} onChange={(e) => set('habitPeriod', e.target.value)}>
-                  <option value="day">day</option>
-                  <option value="week">week</option>
-                  <option value="month">month</option>
-                </select>
-              </>
-            ) : (
-              <>
-                <input className="gc-input gc-input-num" type="number" min={1} value={form.target} onChange={(e) => set('target', Number(e.target.value))} />
-                <input className="gc-input gc-select" value={form.unit} onChange={(e) => set('unit', e.target.value)} placeholder="hours" />
-              </>
-            )}
-            <input className="gc-input gc-date" type="date" value={form.deadline} onChange={(e) => set('deadline', e.target.value)} />
-          </div>
+          {form.goalType === 'checklist' ? (
+            <div className="gc-steps">
+              {steps.map((s, i) => (
+                <div key={i} className="gc-steprow">
+                  <span className="gc-stepnum">{i + 1}</span>
+                  <input
+                    className="gc-input gc-stepinput"
+                    value={s.label}
+                    placeholder={`Step ${i + 1}`}
+                    onChange={(e) => setSteps((ss) => ss.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))}
+                  />
+                  <button type="button" className="gc-mdel" aria-label="remove step" onClick={() => setSteps((ss) => (ss.length > 1 ? ss.filter((_, j) => j !== i) : ss))}>×</button>
+                </div>
+              ))}
+              <div className="gc-measure" style={{ marginTop: 4 }}>
+                <button type="button" className="btn btn-ghost gc-addms" onClick={() => setSteps((ss) => [...ss, { label: '' }])}>＋ Add step</button>
+                <input className="gc-input gc-date" type="date" value={form.deadline} onChange={(e) => set('deadline', e.target.value)} />
+              </div>
+            </div>
+          ) : (
+            <div className="gc-measure">
+              {form.goalType === 'habit' ? (
+                <>
+                  <input className="gc-input gc-input-num" type="number" min={1} value={form.habitPerPeriod} onChange={(e) => set('habitPerPeriod', Number(e.target.value))} />
+                  <span className="gc-x">× a</span>
+                  <select className="gc-input gc-select" value={form.habitPeriod} onChange={(e) => set('habitPeriod', e.target.value)}>
+                    <option value="day">day</option>
+                    <option value="week">week</option>
+                    <option value="month">month</option>
+                  </select>
+                </>
+              ) : (
+                <>
+                  <input className="gc-input gc-input-num" type="number" min={1} value={form.target} onChange={(e) => set('target', Number(e.target.value))} />
+                  <input className="gc-input gc-select" value={form.unit} onChange={(e) => set('unit', e.target.value)} placeholder="hours" />
+                </>
+              )}
+              <input className="gc-input gc-date" type="date" value={form.deadline} onChange={(e) => set('deadline', e.target.value)} />
+            </div>
+          )}
         </div>
 
         <div>
@@ -323,6 +373,13 @@ export function GoalCreate() {
         {form.hasRewards && (
           <div className="gc-milestones">
             <div className="flabel" style={{ margin: '2px 0 0' }}>Milestones &amp; rewards</div>
+            <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 4 }}>
+              {form.goalType === 'habit'
+                ? 'Number = 🔥 streak days (e.g. 30 → reward at a 30-day streak)'
+                : form.goalType === 'checklist'
+                  ? 'Number = % complete — enter 80 for 80% (100 = all steps done)'
+                  : `Number = ${form.unit || 'amount'} reached (e.g. 500 → reward at 500${form.unit ? ` ${form.unit}` : ''})`}
+            </div>
             {milestones.map((m, i) => (
               <div key={i} className="gc-mrow">
                 <input className="gc-input gc-memoji" value={m.emoji} onChange={(e) => setMs(i, { emoji: e.target.value })} maxLength={4} aria-label="emoji" />

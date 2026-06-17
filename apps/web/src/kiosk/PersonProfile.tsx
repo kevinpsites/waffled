@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
-import { usePersonOverview, useConversions, type OverviewGoal, type CategoryBalance } from '../lib/api'
+import { usePersonOverview, useConversions, usePersons, type OverviewGoal, type CategoryBalance } from '../lib/api'
 import { TradeModal } from './components/TradeModal'
 import './../styles/overview.css'
 
@@ -16,10 +16,10 @@ function reasonLabel(reason: string): string {
   return reason.replace(/_/g, ' ')
 }
 
-function GoalRow({ g }: { g: OverviewGoal }) {
+function GoalRow({ g, onOpen }: { g: OverviewGoal; onOpen: () => void }) {
   const pct = g.pct ?? 0
   return (
-    <div className="pp-goal">
+    <button type="button" className="pp-goal" onClick={onOpen} title={`Open ${g.title}`}>
       <span className="pp-goal-emo">{g.emoji ?? '🎯'}</span>
       <div className="pp-goal-body">
         <div className="pp-goal-top">
@@ -30,10 +30,17 @@ function GoalRow({ g }: { g: OverviewGoal }) {
         <div className="pp-goal-bar"><span style={{ width: `${pct}%` }} /></div>
       </div>
       <div className="pp-goal-num">
-        <b>{g.goalType === 'checklist' ? g.milestoneReached : +g.progress.toFixed(g.progress % 1 ? 1 : 0)}</b>
-        <span className="muted">/{g.goalType === 'checklist' ? g.milestoneTotal : g.target ?? '—'}{g.unit ? ` ${g.unit}` : ''}</span>
+        <b>{+g.progress.toFixed(g.progress % 1 ? 1 : 0)}</b>
+        <span className="muted">
+          /{g.target ?? '—'}
+          {g.goalType === 'habit'
+            ? ` ${g.habitPeriod === 'day' ? 'today' : g.habitPeriod === 'month' ? 'this month' : 'this week'}`
+            : g.goalType === 'checklist'
+              ? ' steps'
+              : g.unit ? ` ${g.unit}` : ''}
+        </span>
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -59,19 +66,34 @@ export function PersonProfile() {
   const navigate = useNavigate()
   const { data, loading, error } = usePersonOverview(id ?? null)
   const { conversions } = useConversions()
+  const { persons } = usePersons()
   const [trading, setTrading] = useState(false)
 
+  // Segment switcher: jump straight between family members (and back to the
+  // Family grid via "Everyone") without bouncing through a Back button.
   useTopbarFull(
     () => (
-      <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
-        <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(-1)}>‹ Back</button>
-        <div className="nk-serif" style={{ fontSize: 18, fontWeight: 600 }}>{data?.person.name ?? 'Profile'}</div>
-        <button className="pill btn-primary" style={{ color: '#fff', border: 0, marginLeft: 'auto', cursor: 'pointer' }} onClick={() => navigate('/goals/new')}>
+      <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 12, minWidth: 0 }}>
+        <button className="pill" style={{ cursor: 'pointer', flex: 'none' }} onClick={() => navigate('/family')}>‹ Family</button>
+        <div className="seg pp-switch" style={{ minWidth: 0, overflowX: 'auto' }}>
+          <button className="" style={{ cursor: 'pointer' }} onClick={() => navigate('/family')}>Everyone</button>
+          {persons.map((p) => (
+            <button
+              key={p.id}
+              className={p.id === id ? 'on' : ''}
+              style={{ cursor: 'pointer' }}
+              onClick={() => navigate(`/person/${p.id}`)}
+            >
+              {p.name.split(' ')[0]}
+            </button>
+          ))}
+        </div>
+        <button className="pill btn-primary" style={{ color: '#fff', border: 0, marginLeft: 'auto', flex: 'none', cursor: 'pointer' }} onClick={() => navigate('/goals/new')}>
           ＋ New goal{data?.person.name ? ` for ${data.person.name}` : ''}
         </button>
       </div>
     ),
-    [navigate, data?.person.name]
+    [navigate, data?.person.name, persons, id]
   )
 
   if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
@@ -111,7 +133,7 @@ export function PersonProfile() {
                 <div className="pp-insight-s">
                   A gentle idea:{' '}
                   {insight.suggestions.map((s, i) => (
-                    <span key={s}>{i > 0 ? ' or ' : ''}<button className="pp-suggest" onClick={() => navigate('/goals/new')}>“{s}”</button></span>
+                    <span key={s}>{i > 0 ? ' or ' : ''}<button className="pp-suggest" onClick={() => navigate(`/goals/new?title=${encodeURIComponent(s)}`)}>“{s}”</button></span>
                   ))}
                 </div>
               )}
@@ -122,7 +144,7 @@ export function PersonProfile() {
         <div className="card pp-card">
           <div className="card-h" style={{ marginBottom: 10 }}>{person.name}’s goals</div>
           {data.goals.length === 0 && <div className="muted tiny" style={{ fontWeight: 600 }}>No goals yet.</div>}
-          {data.goals.map((g) => <GoalRow key={g.id} g={g} />)}
+          {data.goals.map((g) => <GoalRow key={g.id} g={g} onOpen={() => navigate(`/goals/${g.id}`)} />)}
         </div>
       </div>
 
@@ -154,7 +176,10 @@ export function PersonProfile() {
         </div>
 
         <div className="card pp-card">
-          <div className="card-h" style={{ marginBottom: 10 }}>Reward redemptions</div>
+          <div className="card-h" style={{ marginBottom: 10, display: 'flex', alignItems: 'center' }}>
+            <span>Reward redemptions</span>
+            <button type="button" className="pp-trade" style={{ marginLeft: 'auto' }} onClick={() => navigate('/tasks?tab=rewards')}>🎁 Reward shop</button>
+          </div>
           {data.redemptions.length === 0 && <div className="muted tiny" style={{ fontWeight: 600 }}>None yet — earn {(defaultCur?.label ?? 'stars').toLowerCase()}, then redeem in Tasks → Rewards.</div>}
           {data.redemptions.map((r) => (
             <div key={r.id} className="pp-redeem">

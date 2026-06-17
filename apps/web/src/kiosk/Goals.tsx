@@ -7,10 +7,23 @@ import { useGoalLists, useGoals, type Goal, type GoalList, type GoalListMember, 
 import { CATEGORIES } from './categories'
 import '../styles/goals.css'
 
-const TYPE_LABEL: Record<string, string> = { count: 'Count', total: 'Total', habit: 'Habit', checklist: 'Milestones' }
+const TYPE_LABEL: Record<string, string> = { count: 'Count', total: 'Total', habit: 'Habit', checklist: 'Checklist' }
 
 function frac(progress: number, target: number | null): number {
   return target ? Math.min(progress / target, 1) : 0
+}
+// What a goal shows depends on its type: habits show completions THIS PERIOD vs
+// the cadence (not a lifetime total), milestones show steps done, everything
+// else shows the cumulative amount.
+function dispProgress(g: Goal): number {
+  if (g.goalType === 'habit') return g.periodDone
+  if (g.goalType === 'checklist') return g.stepDone
+  return g.totalProgress
+}
+function dispTarget(g: Goal): number | null {
+  if (g.goalType === 'habit') return g.habitTargetPerPeriod ?? g.target
+  if (g.goalType === 'checklist') return g.stepTotal || null
+  return g.target
 }
 function fmtNum(n: number | null): string {
   return n == null ? '—' : n.toLocaleString('en-US')
@@ -27,6 +40,7 @@ function descriptor(g: Goal): string {
   const label = TYPE_LABEL[g.goalType] ?? g.goalType
   let q: string
   if (g.goalType === 'habit') q = `${g.habitTargetPerPeriod ?? ''}× a ${g.habitPeriod ?? 'week'}`.trim()
+  else if (g.goalType === 'checklist') q = `${g.stepTotal} step${g.stepTotal === 1 ? '' : 's'}`
   else if (g.trackingMode === 'each_tracks') q = `each logs ${g.unit ?? 'progress'}`
   else if (g.unit) q = `in ${g.unit}`
   else q = 'shared total'
@@ -92,10 +106,12 @@ function SharedHero({ goal, onLog, onOpen }: { goal: Goal; onLog: (g: Goal) => v
   return (
     <div className="challenge goal-hero" onClick={onOpen}>
       <div className="ch-row">
-        <Ring value={frac(goal.totalProgress, goal.target)} px={130} stroke="#fff" track="rgba(255,255,255,.25)">
+        <Ring value={frac(dispProgress(goal), dispTarget(goal))} px={130} stroke="#fff" track="rgba(255,255,255,.25)">
           <div>
-            <div className="hero-ring-num">{fmtNum(goal.totalProgress)}</div>
-            <div className="hero-ring-sub">of {fmtNum(goal.target)}{goal.unit ? ` ${goal.unit}` : ''}</div>
+            <div className="hero-ring-num">{fmtNum(dispProgress(goal))}</div>
+            <div className="hero-ring-sub">
+              {goal.goalType === 'habit' ? `${goal.habitPeriod === 'day' ? 'today' : `this ${goal.habitPeriod ?? 'week'}`}` : `of ${fmtNum(dispTarget(goal))}${goal.unit ? ` ${goal.unit}` : ''}`}
+            </div>
           </div>
         </Ring>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -175,12 +191,12 @@ function MoreGoalCard({ goal, onClick }: { goal: Goal; onClick: () => void }) {
           <div className="tiny muted goal-desc">{descriptor(goal)}</div>
         </div>
         <div className="goal-num">
-          <span className="num">{fmtNum(goal.totalProgress)}</span>
-          <span className="tiny muted">/{fmtNum(goal.target)}</span>
+          <span className="num">{fmtNum(dispProgress(goal))}</span>
+          <span className="tiny muted">/{fmtNum(dispTarget(goal))}</span>
         </div>
       </div>
       <div className="gc-bar">
-        <div style={{ width: `${(frac(goal.totalProgress, goal.target) * 100).toFixed(0)}%`, background: barColor(goal) }} />
+        <div style={{ width: `${(frac(dispProgress(goal), dispTarget(goal)) * 100).toFixed(0)}%`, background: barColor(goal) }} />
       </div>
     </div>
   )
@@ -207,6 +223,7 @@ export function Goals() {
   const [filter, setFilter] = useState<'all' | 'shared' | 'each'>('all')
   const [logging, setLogging] = useState<Goal | null>(null)
   const [creatingList, setCreatingList] = useState(false)
+  const [editingList, setEditingList] = useState<GoalList | null>(null)
 
   const shared = lists.filter((l) => l.members.length !== 1)
   const individual = lists.filter((l) => l.members.length === 1)
@@ -268,6 +285,11 @@ export function Goals() {
                 <button className={filter === 'each' ? 'on' : ''} onClick={() => setFilter('each')}>Each</button>
               </div>
             )}
+            {selected && (
+              <button type="button" className="pill" style={{ cursor: 'pointer' }} title="Edit group" onClick={() => setEditingList(selected)}>
+                ✎ Edit group
+              </button>
+            )}
             <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate('/family')}>
               👨‍👩‍👧 Family
             </button>
@@ -306,6 +328,13 @@ export function Goals() {
             refetchLists()
             setSelectedId(listId)
           }}
+        />
+      )}
+      {editingList && (
+        <ListModal
+          list={editingList}
+          onClose={() => setEditingList(null)}
+          onSaved={refetchLists}
         />
       )}
     </div>

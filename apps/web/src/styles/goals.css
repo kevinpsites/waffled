@@ -311,6 +311,15 @@
   gap: 10px;
   margin-top: 12px;
 }
+/* checklist steps editor */
+.gc-steps { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.gc-steprow { display: flex; align-items: center; gap: 10px; }
+.gc-stepnum {
+  width: 24px; height: 24px; flex: none; border-radius: 999px;
+  background: var(--panel); color: var(--ink-2);
+  display: grid; place-items: center; font-size: 12px; font-weight: 800;
+}
+.gc-stepinput { flex: 1; }
 .gc-input-num {
   width: 110px;
   text-align: center;
@@ -502,6 +511,70 @@
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 9px;
+}
+
+/* Habit: one-tap, with the cadence so far */
+.log-habit {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: var(--panel);
+}
+.log-habit-prog {
+  font-family: var(--serif);
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Checklist: tappable step rows */
+.log-steps { display: flex; flex-direction: column; gap: 8px; }
+.log-step-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border-radius: var(--r-md);
+  background: var(--panel); border: 0; font: inherit; text-align: left;
+  cursor: pointer; color: var(--ink);
+}
+.log-step-box {
+  width: 24px; height: 24px; flex: none; border-radius: 7px;
+  border: 1.5px solid var(--hair); background: #fff;
+  display: grid; place-items: center; font-size: 14px; font-weight: 800; color: #fff;
+}
+.log-step-row.done .log-step-box { background: var(--wally); border-color: var(--wally); }
+.log-step-label { font-size: 15px; font-weight: 600; }
+.log-step-row.done .log-step-label { text-decoration: line-through; color: var(--ink-3); }
+
+/* Count: whole-unit stepper */
+.log-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+.log-step {
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  border: 1px solid var(--hair);
+  background: var(--card-2);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  line-height: 1;
+}
+.log-step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.log-step-val {
+  min-width: 110px;
+  text-align: center;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--ink);
 }
 .log-chip {
   padding: 13px 0;

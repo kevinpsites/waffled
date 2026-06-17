@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router'
 import { Icon, Check } from './icons'
 import { ChoreModal, type ChoreDraft } from './components/ChoreModal'
 import { RewardsPanel } from './components/RewardsPanel'
@@ -64,7 +65,8 @@ export function Tasks() {
   const { byKey: currencyByKey, defaultCurrency } = useCurrencies()
   const groups = buildColumns(instances, persons)
   const [modal, setModal] = useState<{ chore?: ChoreDraft; personId?: string | null } | null>(null)
-  const [tab, setTab] = useState<'chores' | 'rewards'>('chores')
+  const [searchParams] = useSearchParams()
+  const [tab, setTab] = useState<'chores' | 'rewards'>(searchParams.get('tab') === 'rewards' ? 'rewards' : 'chores')
   const [claimId, setClaimId] = useState<string | null>(null)
   const meta = dayMeta(date)
   const isToday = meta.diff === 0

@@ -5,7 +5,7 @@
 import type { QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
-import type { CreateGoalListInput, CreateGoalInput, UpdateGoalInput } from './goals.types'
+import type { CreateGoalListInput, UpdateGoalListInput, CreateGoalInput, UpdateGoalInput } from './goals.types'
 
 export const GOAL_TYPES = new Set(['count', 'total', 'habit', 'checklist'])
 export const TRACKING_MODES = new Set(['shared_total', 'each_tracks'])
@@ -80,6 +80,60 @@ export async function createGoalList(tenant: Tenant, input: CreateGoalListInput)
   }
 }
 
+// Edit a goal list: any provided field is updated; when `memberIds` is given the
+// membership is replaced wholesale. Existing goals keep their snapshotted
+// participants — changing the group doesn't retroactively rewrite past goals.
+export async function updateGoalList(
+  tenant: Tenant,
+  id: string,
+  input: UpdateGoalListInput
+): Promise<boolean> {
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    const sets: string[] = []
+    const vals: unknown[] = []
+    let n = 1
+    const push = (col: string, v: unknown) => { sets.push(`${col} = $${n++}`); vals.push(v) }
+    if (input.name !== undefined) push('name', input.name)
+    if (input.emoji !== undefined) push('emoji', input.emoji ?? null)
+    if (input.colorHex !== undefined) push('color_hex', input.colorHex ?? null)
+    if (input.isPrivate !== undefined) push('is_private', input.isPrivate)
+
+    let found = true
+    if (sets.length) {
+      const r = await client.query(
+        `update goal_lists set ${sets.join(', ')} where id = $${n++} and household_id = $${n++} and deleted_at is null`,
+        [...vals, id, tenant.householdId]
+      )
+      found = (r.rowCount ?? 0) > 0
+    } else {
+      const r = await client.query(
+        `select 1 from goal_lists where id = $1 and household_id = $2 and deleted_at is null`,
+        [id, tenant.householdId]
+      )
+      found = (r.rowCount ?? 0) > 0
+    }
+
+    if (found && input.memberIds !== undefined) {
+      await client.query(`delete from goal_list_members where goal_list_id = $1 and household_id = $2`, [id, tenant.householdId])
+      for (const pid of [...new Set(input.memberIds)]) {
+        await client.query(
+          `insert into goal_list_members (household_id, goal_list_id, person_id) values ($1,$2,$3)`,
+          [tenant.householdId, id, pid]
+        )
+      }
+    }
+    await client.query('commit')
+    return found
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
 export async function softDeleteGoalList(householdId: string, id: string): Promise<boolean> {
   const { rowCount } = await query(
     `update goal_lists set deleted_at = now() where household_id=$1 and id=$2 and deleted_at is null`,
@@ -132,6 +186,14 @@ export async function createGoal(tenant: Tenant, input: CreateGoalInput): Promis
         [tenant.householdId, goalId, m.threshold, m.emoji ?? null, m.label ?? null, m.rewardText ?? null, order++]
       )
     }
+    let stepOrder = 0
+    for (const s of input.steps ?? []) {
+      if (!s.label?.trim()) continue
+      await client.query(
+        `insert into goal_steps (household_id, goal_id, label, sort_order) values ($1,$2,$3,$4)`,
+        [tenant.householdId, goalId, s.label.trim(), stepOrder++]
+      )
+    }
     await client.query('commit')
     return { id: goalId }
   } catch (err) {
@@ -159,6 +221,21 @@ const PARTICIPANTS_SUBQUERY = `coalesce((
    where pa.goal_id = g.id and pa.deleted_at is null
 ), '[]'::json)`
 
+// Habit goals are about consistency, not a grand total: how many distinct days
+// have been logged in the CURRENT period (day/week/month, household timezone).
+// 0 for non-habit goals, which display the cumulative total instead.
+const PERIOD_DONE_SUBQUERY = `case when g.goal_type = 'habit' then (
+  select count(distinct (gl.logged_at at time zone h.timezone)::date)
+    from goal_logs gl, households h
+   where h.id = g.household_id and gl.goal_id = g.id and gl.deleted_at is null
+     and (gl.logged_at at time zone h.timezone)
+         >= date_trunc(g.habit_period, (now() at time zone h.timezone))
+) else 0 end`
+
+// Checklist progress comes from steps (done / total), not summed logs.
+const STEP_TOTAL_SUBQUERY = `(select count(*) from goal_steps gs where gs.goal_id = g.id and gs.deleted_at is null)`
+const STEP_DONE_SUBQUERY = `(select count(*) from goal_steps gs where gs.goal_id = g.id and gs.deleted_at is null and gs.done_at is not null)`
+
 interface GoalRow extends QueryResultRow {
   id: string
   goal_list_id: string | null
@@ -178,6 +255,9 @@ interface GoalRow extends QueryResultRow {
   total_progress: number
   milestone_total: number
   milestone_reached: number
+  period_done: number
+  step_total: number
+  step_done: number
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   participants: any[]
 }
@@ -202,6 +282,9 @@ function mapGoal(g: GoalRow) {
     totalProgress: Number(g.total_progress),
     milestoneTotal: Number(g.milestone_total),
     milestoneReached: Number(g.milestone_reached),
+    periodDone: Number(g.period_done),
+    stepTotal: Number(g.step_total),
+    stepDone: Number(g.step_done),
     participants: g.participants,
   }
 }
@@ -262,6 +345,9 @@ export async function listGoals(householdId: string, listId?: string | null) {
               where gm.goal_id = g.id and gm.deleted_at is null
                 and gm.threshold <= coalesce((select sum(amount) from goal_logs gl
                        where gl.goal_id = g.id and gl.deleted_at is null), 0)) as milestone_reached,
+            ${PERIOD_DONE_SUBQUERY} as period_done,
+            ${STEP_TOTAL_SUBQUERY} as step_total,
+            ${STEP_DONE_SUBQUERY} as step_done,
             ${PARTICIPANTS_SUBQUERY} as participants
        from goals g
       where g.household_id = $1 and g.deleted_at is null and g.is_active
@@ -329,6 +415,9 @@ export async function goalDetail(householdId: string, id: string) {
               where gm.goal_id = g.id and gm.deleted_at is null
                 and gm.threshold <= coalesce((select sum(amount) from goal_logs gl
                        where gl.goal_id = g.id and gl.deleted_at is null), 0)) as milestone_reached,
+            ${PERIOD_DONE_SUBQUERY} as period_done,
+            ${STEP_TOTAL_SUBQUERY} as step_total,
+            ${STEP_DONE_SUBQUERY} as step_done,
             ${PARTICIPANTS_SUBQUERY} as participants
        from goals g
       where g.household_id = $1 and g.id = $2 and g.deleted_at is null`,
@@ -336,6 +425,12 @@ export async function goalDetail(householdId: string, id: string) {
   )
   if (rows.length === 0) return null
   const base = mapGoal(rows[0])
+  const streakDays = await goalStreak(householdId, id)
+
+  // A milestone's threshold is read against the goal's natural axis: streak days
+  // for habits, percent-complete for checklists, cumulative total otherwise.
+  const stepPct = base.stepTotal ? (base.stepDone / base.stepTotal) * 100 : 0
+  const milestoneAxis = base.goalType === 'habit' ? streakDays : base.goalType === 'checklist' ? stepPct : base.totalProgress
 
   const milestones = (
     await query<{ id: string; threshold: string; emoji: string | null; label: string | null; reward_text: string | null }>(
@@ -349,8 +444,16 @@ export async function goalDetail(householdId: string, id: string) {
     emoji: m.emoji,
     label: m.label,
     rewardText: m.reward_text,
-    reached: Number(m.threshold) <= base.totalProgress,
+    reached: Number(m.threshold) <= milestoneAxis,
   }))
+
+  const steps = (
+    await query<{ id: string; label: string; done_at: string | null; done_by: string | null }>(
+      `select id, label, done_at as "done_at", done_by as "done_by" from goal_steps
+        where goal_id=$1 and deleted_at is null order by sort_order, created_at`,
+      [id]
+    )
+  ).rows.map((s) => ({ id: s.id, label: s.label, done: s.done_at != null, doneBy: s.done_by }))
 
   const recent = (
     await query<{ id: string; amount: string; loggedAt: string; note: string | null; personId: string | null; name: string | null; avatarEmoji: string | null; colorHex: string | null }>(
@@ -374,12 +477,68 @@ export async function goalDetail(householdId: string, id: string) {
     ).rows[0].sum
   )
 
-  const streakDays = await goalStreak(householdId, id)
-  return { ...base, createdAt: rows[0].created_at, milestones, recent, thisWeek, streakDays }
+  return { ...base, createdAt: rows[0].created_at, milestones, steps, recent, thisWeek, streakDays }
+}
+
+// Tick/untick a checklist step. We keep the step's done_at as the source of truth
+// AND mirror it into goal_logs (source 'checklist_item') so the activity feed and
+// streaks treat a ticked step like any other completion. Returns false if the step
+// isn't found (wrong household/goal).
+export async function toggleGoalStep(
+  tenant: Tenant,
+  goalId: string,
+  stepId: string,
+  done: boolean
+): Promise<boolean> {
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    const upd = await client.query(
+      `update goal_steps set done_at = ${done ? 'now()' : 'null'}, done_by = $1
+        where id = $2 and goal_id = $3 and household_id = $4 and deleted_at is null`,
+      [done ? tenant.personId : null, stepId, goalId, tenant.householdId]
+    )
+    const found = (upd.rowCount ?? 0) > 0
+    if (found) {
+      if (done) {
+        await client.query(
+          `insert into goal_logs (household_id, goal_id, person_id, amount, source, ref_type, ref_id, created_by)
+           values ($1,$2,$3,1,'checklist_item','goal_step',$4,$5)`,
+          [tenant.householdId, goalId, tenant.personId, stepId, tenant.personId]
+        )
+      } else {
+        await client.query(
+          `update goal_logs set deleted_at = now()
+            where goal_id = $1 and ref_type = 'goal_step' and ref_id = $2 and deleted_at is null`,
+          [goalId, stepId]
+        )
+      }
+    }
+    await client.query('commit')
+    return found
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+  }
 }
 
 // Log progress for one or more people — the handoff "who was outside" multi-select
 // inserts one entry per person, so per-person sums still roll up to the pool total.
+const round2 = (n: number): number => Math.round(n * 100) / 100
+
+// Log progress toward a goal. The `amount` is always what the GOAL gains — the
+// people you tap are who took part, never a multiplier. How that maps to rows
+// depends on the goal:
+//   • shared_total + divisible (goalType 'total', e.g. hours): the amount is the
+//     family's total for this activity, so it's SPLIT EVENLY across participants
+//     (rows sum back to exactly `amount`; the last person absorbs any rounding
+//     remainder so the pool total never drifts).
+//   • each_tracks: each person independently did `amount`, so every participant
+//     gets a full-amount row (the pool gains amount × N — correct here).
+//   • whole-unit goals (books, parks): the modal sends a single target (one
+//     person, or null = "the family"), so this writes one full-amount row.
 export async function logProgress(
   tenant: Tenant,
   goalId: string,
@@ -388,11 +547,48 @@ export async function logProgress(
   note?: string | null
 ): Promise<void> {
   const targets = personIds.length ? personIds : [null]
-  for (const personId of targets) {
+
+  const { rows } = await query<{ tracking_mode: string; goal_type: string }>(
+    `select tracking_mode, goal_type from goals where id = $1 and household_id = $2`,
+    [goalId, tenant.householdId]
+  )
+  const trackingMode = rows[0]?.tracking_mode
+  const goalType = rows[0]?.goal_type
+  const isHabit = goalType === 'habit'
+  const splitEvenly = trackingMode === 'shared_total' && goalType === 'total' && targets.length > 1
+
+  // Per-row amounts. Habits are about consistency, so each completion counts as
+  // exactly 1 (never split, never a custom amount). When splitting a divisible
+  // shared pool, divide so the parts sum to exactly `amount`.
+  let amounts: number[]
+  if (isHabit) {
+    amounts = targets.map(() => 1)
+  } else if (splitEvenly) {
+    const n = targets.length
+    const share = round2(amount / n)
+    amounts = targets.map((_, i) => (i === n - 1 ? round2(amount - share * (n - 1)) : share))
+  } else {
+    amounts = targets.map(() => amount)
+  }
+
+  for (let i = 0; i < targets.length; i++) {
+    // A habit can only be logged once per day per person — logging it five times
+    // in an afternoon isn't the point. Skip a same-day duplicate silently.
+    if (isHabit) {
+      const dup = await query(
+        `select 1 from goal_logs gl, households h
+          where h.id = $1 and gl.household_id = $1 and gl.goal_id = $2 and gl.deleted_at is null
+            and gl.person_id is not distinct from $3
+            and (gl.logged_at at time zone h.timezone)::date = (now() at time zone h.timezone)::date
+          limit 1`,
+        [tenant.householdId, goalId, targets[i]]
+      )
+      if (dup.rowCount) continue
+    }
     await query(
       `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, created_by)
        values ($1,$2,$3,$4,$5,'quick_log',$6)`,
-      [tenant.householdId, goalId, personId, amount, note ?? null, tenant.personId]
+      [tenant.householdId, goalId, targets[i], amounts[i], note ?? null, tenant.personId]
     )
   }
 }
@@ -457,6 +653,32 @@ export async function updateGoal(tenant: Tenant, id: string, patch: UpdateGoalIn
           `insert into goal_milestones (household_id, goal_id, threshold, emoji, label, reward_text, sort_order) values ($1,$2,$3,$4,$5,$6,$7)`,
           [tenant.householdId, id, m.threshold, m.emoji ?? null, m.label ?? null, m.rewardText ?? null, order++]
         )
+      }
+    }
+    // Reconcile checklist steps WITHOUT wiping completion: update existing steps
+    // (matched by id) in place, insert new ones, soft-delete any dropped.
+    if (Array.isArray(patch.steps)) {
+      const keepIds = patch.steps.map((s) => s.id).filter(Boolean) as string[]
+      await client.query(
+        `update goal_steps set deleted_at=now()
+          where goal_id=$1 and deleted_at is null and not (id = any($2::uuid[]))`,
+        [id, keepIds]
+      )
+      let order = 0
+      for (const s of patch.steps) {
+        const label = s.label?.trim()
+        if (!label) continue
+        if (s.id) {
+          await client.query(
+            `update goal_steps set label=$1, sort_order=$2 where id=$3 and goal_id=$4 and deleted_at is null`,
+            [label, order++, s.id, id]
+          )
+        } else {
+          await client.query(
+            `insert into goal_steps (household_id, goal_id, label, sort_order) values ($1,$2,$3,$4)`,
+            [tenant.householdId, id, label, order++]
+          )
+        }
       }
     }
     await client.query('commit')

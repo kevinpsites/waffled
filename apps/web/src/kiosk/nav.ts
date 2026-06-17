@@ -12,6 +12,7 @@ export const SCREENS: Screen[] = [
   { path: '/calendar', label: 'Calendar', icon: 'calendar' },
   { path: '/tasks', label: 'Tasks', icon: 'tasks' },
   { path: '/goals', label: 'Goals', icon: 'goals' },
+  { path: '/family', label: 'Family', icon: 'family' },
   { path: '/meals', label: 'Meals', icon: 'meals' },
   { path: '/lists', label: 'Lists', icon: 'lists' },
   { path: '/photos', label: 'Photos', icon: 'photos' },

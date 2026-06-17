@@ -8,6 +8,14 @@ export interface CreateGoalListInput {
   memberIds?: string[]
 }
 
+export interface UpdateGoalListInput {
+  name?: string
+  emoji?: string | null
+  colorHex?: string | null
+  isPrivate?: boolean
+  memberIds?: string[]
+}
+
 export interface CreateGoalInput {
   title: string
   goalListId?: string | null
@@ -25,10 +33,12 @@ export interface CreateGoalInput {
   hasRewards?: boolean
   participantIds?: string[]
   milestones?: Array<{ threshold: number; emoji?: string | null; label?: string | null; rewardText?: string | null }>
+  steps?: Array<{ id?: string; label: string }>
 }
 
 export interface UpdateGoalInput {
   participantIds?: string[]
   milestones?: Array<{ threshold: number; emoji?: string | null; label?: string | null; rewardText?: string | null }>
+  steps?: Array<{ id?: string; label: string }>
   [key: string]: unknown
 }

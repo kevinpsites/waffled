@@ -82,6 +82,21 @@ export function GoalDetail() {
   const c = goal.category ? CATEGORIES[goal.category] : null
   const max = Math.max(1, ...goal.participants.map((p) => p.progress))
   const firstUnreached = goal.milestones.findIndex((m) => !m.reached)
+  const isHabit = goal.goalType === 'habit'
+  const isChecklist = goal.goalType === 'checklist'
+  // Each type measures on its own axis (period for habits, steps for checklists).
+  const dProg = isHabit ? goal.periodDone : isChecklist ? goal.stepDone : goal.totalProgress
+  const dTarget = isHabit ? goal.habitTargetPerPeriod ?? goal.target : isChecklist ? goal.stepTotal || null : goal.target
+  const dUnit = isHabit
+    ? goal.habitPeriod === 'day' ? 'today' : goal.habitPeriod === 'month' ? 'this month' : 'this week'
+    : isChecklist ? 'steps' : goal.unit ?? ''
+  // The value a milestone threshold is compared against (matches the API's reached).
+  const milestoneAxis = isHabit ? goal.streakDays : isChecklist ? (goal.stepTotal ? (goal.stepDone / goal.stepTotal) * 100 : 0) : goal.totalProgress
+
+  async function toggleStep(stepId: string, done: boolean) {
+    await api.toggleStep(goal!.id, stepId, done)
+    refetch()
+  }
 
   async function del() {
     if (!confirmDel) {
@@ -97,17 +112,17 @@ export function GoalDetail() {
       {/* hero banner */}
       <div className="challenge detail-hero">
         <div className="detail-hero-row">
-          <Ring value={pctOf(goal.totalProgress, goal.target)}>
+          <Ring value={pctOf(dProg, dTarget)}>
             <div>
-              <div className="hero-ring-num" style={{ fontSize: 33 }}>{fmtNum(goal.totalProgress)}</div>
-              <div className="hero-ring-sub">of {fmtNum(goal.target)}{goal.unit ? ` ${goal.unit}` : ''}</div>
+              <div className="hero-ring-num" style={{ fontSize: 33 }}>{fmtNum(dProg)}</div>
+              <div className="hero-ring-sub">{isHabit ? dUnit : `of ${fmtNum(dTarget)}${isChecklist ? ' steps' : goal.unit ? ` ${goal.unit}` : ''}`}</div>
             </div>
           </Ring>
           <div style={{ flex: 1, minWidth: 0 }}>
             <span className="cat-pill hero-pill">{c ? `${c.emoji} ${c.label}` : '⭐ Featured'}</span>
             <div className="nk-serif detail-hero-title">{goal.title}</div>
             <div className="detail-hero-sub">
-              Started {fmtMonthDay(goal.createdAt)} · {pctOf(goal.totalProgress, goal.target)}% complete
+              Started {fmtMonthDay(goal.createdAt)} · {pctOf(dProg, dTarget)}% complete
               {goal.streakDays > 0 ? ` · 🔥 ${goal.streakDays}-day streak` : ''}
               {goal.deadline ? ` · by ${fmtMonthDay(goal.deadline)}` : ''}
             </div>
@@ -124,17 +139,34 @@ export function GoalDetail() {
 
       <div className="detail-cols">
         <div className="detail-col">
+          {isChecklist && (
+            <div className="card detail-card">
+              <div className="card-h" style={{ marginBottom: 12 }}>Steps · {goal.stepDone}/{goal.stepTotal}</div>
+              {goal.steps.length === 0 && <div className="tiny muted" style={{ fontWeight: 600 }}>No steps yet — add some with “Edit goal”.</div>}
+              <div className="log-steps">
+                {goal.steps.map((s) => (
+                  <button key={s.id} type="button" className={`log-step-row ${s.done ? 'done' : ''}`} onClick={() => toggleStep(s.id, !s.done)}>
+                    <span className="log-step-box">{s.done ? '✓' : ''}</span>
+                    <span className="log-step-label">{s.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {goal.milestones.length > 0 && (
             <div className="card detail-card">
               <div className="card-h" style={{ marginBottom: 18 }}>Milestones</div>
               <div className="mtrack">
                 {goal.milestones.map((m: GoalMilestone, i: number) => {
                   const state = m.reached ? 'done' : i === firstUnreached ? 'now' : ''
+                  const toGo = Math.max(0, m.threshold - milestoneAxis)
+                  const toGoLabel = isHabit ? `${fmtNum(toGo)}-day streak to go` : isChecklist ? `${Math.ceil(toGo)}% to go` : `${fmtNum(toGo)} to go`
                   return (
                     <div key={m.id} className={`mnode ${state}`}>
                       <div className="mdot2">{m.emoji ?? '⛳'}</div>
                       <div className="ml">{m.label}</div>
-                      <div className="mr">{m.reached ? 'reached' : i === firstUnreached ? `${fmtNum(m.threshold - goal.totalProgress)} to go` : m.rewardText || '—'}</div>
+                      <div className="mr">{m.reached ? 'reached' : i === firstUnreached ? toGoLabel : m.rewardText || '—'}</div>
                     </div>
                   )
                 })}

@@ -1,5 +1,10 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
+import type { ReactElement } from 'react'
 import { Tasks } from './Tasks'
+
+// Tasks reads the active tab from the URL (useSearchParams), so it needs a Router.
+const renderTasks = (ui: ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter>)
 
 interface Inst {
   id: string
@@ -40,7 +45,7 @@ describe('Tasks screen', () => {
       { id: '1', choreTitle: 'Feed dog', emoji: '🐶', personId: 'p1', personName: 'Wally', status: 'pending', rewardAmount: 2 },
       { id: '2', choreTitle: 'Set table', emoji: '🍽️', personId: 'p2', personName: 'Lottie', status: 'pending', rewardAmount: 2 },
     ])
-    render(<Tasks />)
+    renderTasks(<Tasks />)
     expect(await screen.findByText(/Feed dog/)).toBeInTheDocument()
     expect(screen.getByText('Wally')).toBeInTheDocument()
     expect(screen.getByText('Lottie')).toBeInTheDocument()
@@ -61,7 +66,7 @@ describe('Tasks screen', () => {
         { id: 'p3', name: 'Kevin' },
       ]
     )
-    render(<Tasks />)
+    renderTasks(<Tasks />)
     expect(await screen.findByText(/Feed dog/)).toBeInTheDocument()
     expect(screen.getByText(/Up for grabs/)).toBeInTheDocument()
     expect(screen.getByText('Lottie')).toBeInTheDocument() // empty person still shown

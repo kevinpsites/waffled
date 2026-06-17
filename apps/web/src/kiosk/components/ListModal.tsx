@@ -1,13 +1,25 @@
 import { useState, type FormEvent } from 'react'
-import { api, usePersons } from '../../lib/api'
+import { api, usePersons, type GoalList } from '../../lib/api'
 
-// Create a goal list (membership group) — name, emoji, members, privacy.
-export function ListModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+// Create OR edit a goal list (membership group) — name, emoji, members, privacy.
+// Pass `list` to edit an existing one; omit it to create a new one.
+export function ListModal({
+  list,
+  onClose,
+  onCreated,
+  onSaved,
+}: {
+  list?: GoalList
+  onClose: () => void
+  onCreated?: (id: string) => void
+  onSaved?: () => void
+}) {
   const { persons } = usePersons()
-  const [name, setName] = useState('')
-  const [emoji, setEmoji] = useState('')
-  const [memberIds, setMemberIds] = useState<string[]>([])
-  const [isPrivate, setIsPrivate] = useState(false)
+  const editing = !!list
+  const [name, setName] = useState(list?.name ?? '')
+  const [emoji, setEmoji] = useState(list?.emoji ?? '')
+  const [memberIds, setMemberIds] = useState<string[]>(list?.members.map((m) => m.personId) ?? [])
+  const [isPrivate, setIsPrivate] = useState(list?.isPrivate ?? false)
   const [saving, setSaving] = useState(false)
 
   const toggle = (id: string) => setMemberIds((m) => (m.includes(id) ? m.filter((x) => x !== id) : [...m, id]))
@@ -17,8 +29,13 @@ export function ListModal({ onClose, onCreated }: { onClose: () => void; onCreat
     if (!name.trim() || saving) return
     setSaving(true)
     try {
-      const { list } = await api.createGoalList({ name: name.trim(), emoji: emoji.trim() || null, memberIds, isPrivate })
-      onCreated(list.id)
+      if (editing) {
+        await api.updateGoalList(list.id, { name: name.trim(), emoji: emoji.trim() || null, memberIds, isPrivate })
+        onSaved?.()
+      } else {
+        const { list: created } = await api.createGoalList({ name: name.trim(), emoji: emoji.trim() || null, memberIds, isPrivate })
+        onCreated?.(created.id)
+      }
       onClose()
     } catch {
       setSaving(false)
@@ -29,7 +46,7 @@ export function ListModal({ onClose, onCreated }: { onClose: () => void; onCreat
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>New goal list</div>
+        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>{editing ? 'Edit group' : 'New goal list'}</div>
         <form onSubmit={submit}>
           <div className="field-row">
             <label className="field" style={{ flex: 3 }}>
@@ -68,7 +85,7 @@ export function ListModal({ onClose, onCreated }: { onClose: () => void; onCreat
           </label>
 
           <button type="submit" className="btn btn-primary" disabled={!name.trim() || saving} style={{ width: '100%', justifyContent: 'center', marginTop: 6 }}>
-            {saving ? 'Creating…' : 'Create list'}
+            {saving ? 'Saving…' : editing ? 'Save changes' : 'Create list'}
           </button>
         </form>
       </div>

@@ -23,6 +23,7 @@ const PATHS = {
   filter: '<path d="M3 5h18M6 12h12M10 19h4"/>',
   bag: '<path d="M6 8h12l-1 12H7z"/><path d="M9 8a3 3 0 0 1 6 0"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  family: '<circle cx="8" cy="8" r="3"/><path d="M2.5 20a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="8.5" r="2.4"/><path d="M14.8 20a4.6 4.6 0 0 1 6.7-4.1"/>',
 } as const
 
 export type IconName = keyof typeof PATHS

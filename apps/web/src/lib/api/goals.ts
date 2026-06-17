@@ -49,6 +49,9 @@ export interface Goal {
   totalProgress: number
   milestoneTotal: number
   milestoneReached: number
+  periodDone: number
+  stepTotal: number
+  stepDone: number
   streakDays: number
   participants: GoalParticipant[]
 }
@@ -60,6 +63,13 @@ export interface GoalMilestone {
   label: string | null
   rewardText: string | null
   reached: boolean
+}
+
+export interface GoalStep {
+  id: string
+  label: string
+  done: boolean
+  doneBy: string | null
 }
 
 export interface GoalLogEntry {
@@ -76,6 +86,7 @@ export interface GoalLogEntry {
 export interface GoalDetail extends Goal {
   createdAt: string
   milestones: GoalMilestone[]
+  steps: GoalStep[]
   recent: GoalLogEntry[]
   thisWeek: number
   streakDays: number
@@ -84,6 +95,7 @@ export interface GoalDetail extends Goal {
 export const goalsApi = {
   goalLists: () => apiGet<{ lists: GoalList[] }>('/api/goal-lists'),
   createGoalList: (input: Record<string, unknown>) => apiSend<{ list: { id: string } }>('POST', '/api/goal-lists', input),
+  updateGoalList: (id: string, patch: Record<string, unknown>) => apiSend<{ ok: boolean }>('PATCH', `/api/goal-lists/${id}`, patch),
   deleteGoalList: (id: string) => apiDelete(`/api/goal-lists/${id}`),
   goals: (listId?: string | null) =>
     apiGet<{ goals: Goal[] }>(listId ? `/api/goals?listId=${listId}` : '/api/goals'),
@@ -92,6 +104,8 @@ export const goalsApi = {
   updateGoal: (id: string, patch: Record<string, unknown>) => apiSend<{ goal: GoalDetail }>('PATCH', `/api/goals/${id}`, patch).then(tap('goals')),
   logGoal: (id: string, body: { amount: number; personIds?: string[]; personId?: string | null; note?: string | null }) =>
     apiSend<{ ok: boolean }>('POST', `/api/goals/${id}/log`, body).then(tap('goals')),
+  toggleStep: (goalId: string, stepId: string, done: boolean) =>
+    apiSend<{ ok: boolean }>('PATCH', `/api/goals/${goalId}/steps/${stepId}`, { done }).then(tap('goals')),
   deleteGoal: (id: string) => apiDelete(`/api/goals/${id}`).then(tap('goals')),
 }
 

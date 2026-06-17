@@ -17,6 +17,9 @@ export interface OverviewGoal {
   streakDays: number
   milestoneReached: number
   milestoneTotal: number
+  periodDone: number
+  habitPeriod: string | null
+  habitTargetPerPeriod: number | null
 }
 
 export interface CategoryBalance {

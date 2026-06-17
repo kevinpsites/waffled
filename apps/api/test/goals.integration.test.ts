@@ -244,4 +244,95 @@ describe('goal lists + detail', () => {
     expect(detail.recent).toHaveLength(2)
     expect(detail.recent.every((r: { note: string }) => r.note === 'Creek hike')).toBe(true)
   })
+
+  it('splits a shared divisible pool evenly across the people credited', async () => {
+    const kelly = await call('POST', '/api/persons', kevin, { name: 'Kelly', memberType: 'adult' })
+    const kellyId = JSON.parse(kelly.body).person.id
+    const add = await call('POST', '/api/goals', kevin, { title: 'Outside', goalType: 'total', unit: 'hours', targetValue: 1000, trackingMode: 'shared_total', participantIds: [kevinId, kellyId] })
+    const id = JSON.parse(add.body).goal.id
+
+    // 2 hours together → +2 to the pool (NOT 4), split 1h each.
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 2, personIds: [kevinId, kellyId] })).statusCode).toBe(201)
+    // Kelly logs 1 more solo hour.
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 1, personIds: [kellyId] })).statusCode).toBe(201)
+
+    const detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.totalProgress).toBe(3) // 2 (shared) + 1 (solo)
+    const byName = Object.fromEntries(detail.participants.map((p: { name: string; progress: number }) => [p.name, p.progress]))
+    expect(byName.Kevin).toBe(1) // his half of the shared session
+    expect(byName.Kelly).toBe(2) // half of shared + 1 solo
+  })
+
+  it('does not split when a whole-unit shared goal credits the family (one log)', async () => {
+    const add = await call('POST', '/api/goals', kevin, { title: 'Parks', goalType: 'count', unit: 'parks', targetValue: 30, trackingMode: 'shared_total', participantIds: [kevinId] })
+    const id = JSON.parse(add.body).goal.id
+    // The modal sends a single target for whole-unit goals (here: no person = family).
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 1, personIds: [] })).statusCode).toBe(201)
+    const detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.totalProgress).toBe(1)
+    expect(detail.recent).toHaveLength(1)
+  })
+
+  it('caps a habit to one completion per day per person', async () => {
+    const add = await call('POST', '/api/goals', kevin, { title: 'Read nightly', goalType: 'habit', trackingMode: 'each_tracks', habitPeriod: 'week', habitTargetPerPeriod: 5, participantIds: [kevinId] })
+    const id = JSON.parse(add.body).goal.id
+    // Log the habit three times today — only the first counts.
+    await call('POST', `/api/goals/${id}/log`, kevin, { amount: 1, personIds: [kevinId] })
+    await call('POST', `/api/goals/${id}/log`, kevin, { amount: 5, personIds: [kevinId] })
+    await call('POST', `/api/goals/${id}/log`, kevin, { amount: 1, personIds: [kevinId] })
+    const detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.totalProgress).toBe(1) // one completion, even with amount=5
+    expect(detail.periodDone).toBe(1)
+    expect(detail.recent).toHaveLength(1)
+  })
+
+  it('checklist goals progress by ticking steps', async () => {
+    const add = await call('POST', '/api/goals', kevin, {
+      title: 'Lake trip prep', goalType: 'checklist', trackingMode: 'shared_total',
+      participantIds: [kevinId], steps: [{ label: 'Book campsite' }, { label: 'Pack gear' }, { label: 'Drive up' }],
+    })
+    const id = JSON.parse(add.body).goal.id
+    let detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.stepTotal).toBe(3)
+    expect(detail.stepDone).toBe(0)
+    expect(detail.steps).toHaveLength(3)
+
+    // tick two steps
+    const [s1, s2] = detail.steps
+    expect((await call('PATCH', `/api/goals/${id}/steps/${s1.id}`, kevin, { done: true })).statusCode).toBe(200)
+    expect((await call('PATCH', `/api/goals/${id}/steps/${s2.id}`, kevin, { done: true })).statusCode).toBe(200)
+    detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.stepDone).toBe(2)
+    expect(detail.recent).toHaveLength(2) // ticks mirror into the activity feed
+
+    // untick one — progress and activity both drop
+    expect((await call('PATCH', `/api/goals/${id}/steps/${s1.id}`, kevin, { done: false })).statusCode).toBe(200)
+    detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.stepDone).toBe(1)
+    expect(detail.recent).toHaveLength(1)
+
+    // editing the goal keeps existing step completion (reconcile by id) + adds one
+    await call('PATCH', `/api/goals/${id}`, kevin, { steps: [{ id: s1.id, label: 'Book campsite' }, { id: s2.id, label: 'Pack gear' }, { label: 'Buy snacks' }] })
+    detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.stepTotal).toBe(3)
+    expect(detail.stepDone).toBe(1) // s2 still done; s1 still unticked; "Drive up" dropped
+  })
+
+  it('edits a goal list name and replaces its members', async () => {
+    const kelly = await call('POST', '/api/persons', kevin, { name: 'Kelly', memberType: 'adult' })
+    const kellyId = JSON.parse(kelly.body).person.id
+    const made = await call('POST', '/api/goal-lists', kevin, { name: 'Parents', memberIds: [kevinId] })
+    const listId = JSON.parse(made.body).list.id
+
+    const patch = await call('PATCH', `/api/goal-lists/${listId}`, kevin, { name: 'Mom & Dad', memberIds: [kevinId, kellyId] })
+    expect(patch.statusCode).toBe(200)
+
+    const lists = JSON.parse((await call('GET', '/api/goal-lists', kevin)).body).lists
+    const updated = lists.find((l: { id: string }) => l.id === listId)
+    expect(updated.name).toBe('Mom & Dad')
+    expect(updated.members.map((m: { personId: string }) => m.personId).sort()).toEqual([kevinId, kellyId].sort())
+
+    expect((await call('PATCH', '/api/goal-lists/00000000-0000-0000-0000-000000000000', kevin, { name: 'X' })).statusCode).toBe(404)
+    expect((await call('PATCH', `/api/goal-lists/${listId}`, kevin, { name: '  ' })).statusCode).toBe(400)
+  })
 })

@@ -54,8 +54,21 @@ function personGoals(allGoals: Awaited<ReturnType<typeof listGoals>>, personId: 
     .filter((g) => g.participants.some((p: { personId: string }) => p.personId === personId))
     .map((g) => {
       const mine = g.participants.find((p: { personId: string }) => p.personId === personId)
-      const progress = g.trackingMode === 'each_tracks' ? Number(mine?.progress ?? 0) : g.totalProgress
-      const target = g.trackingMode === 'each_tracks' ? Number(mine?.target ?? g.target ?? 0) : g.target
+      // Each type measures on its own axis — match the Goals page so the mini rows
+      // stay honest: habits show completions THIS PERIOD, checklists show steps
+      // done / total, the rest show cumulative (per-person when each_tracks).
+      const isHabit = g.goalType === 'habit'
+      const isChecklist = g.goalType === 'checklist'
+      const progress = isHabit
+        ? g.periodDone
+        : isChecklist
+          ? g.stepDone
+          : g.trackingMode === 'each_tracks' ? Number(mine?.progress ?? 0) : g.totalProgress
+      const target = isHabit
+        ? g.habitTargetPerPeriod ?? g.target ?? 0
+        : isChecklist
+          ? g.stepTotal
+          : g.trackingMode === 'each_tracks' ? Number(mine?.target ?? g.target ?? 0) : g.target
       const pct = target ? Math.min(100, Math.round((progress / target) * 100)) : null
       return {
         id: g.id,
@@ -70,6 +83,9 @@ function personGoals(allGoals: Awaited<ReturnType<typeof listGoals>>, personId: 
         streakDays: g.streakDays,
         milestoneReached: g.milestoneReached,
         milestoneTotal: g.milestoneTotal,
+        periodDone: g.periodDone,
+        habitPeriod: g.habitPeriod,
+        habitTargetPerPeriod: g.habitTargetPerPeriod,
       }
     })
 }
