@@ -239,7 +239,7 @@ struct EventEditSheet: View {
                                             .foregroundStyle(on ? NK.ink : NK.ink2)
                                     }
                                     .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
-                                    .background(on ? c.opacity(0.14) : NK.card)
+                                    .background(on ? c.opacity(0.14) : NK.canvas)
                                     .overlay(Capsule().strokeBorder(on ? c : NK.hair, lineWidth: on ? 1.5 : 1))
                                     .clipShape(Capsule())
                                 }
@@ -279,7 +279,7 @@ struct EventEditSheet: View {
                 }
                 .padding(18)
             }
-            .background(NK.card)
+            .background(NK.canvas)
             .navigationTitle(editing ? "Edit event" : "New event")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -386,17 +386,17 @@ struct EventEditSheet: View {
 }
 
 private extension View {
-    /// The outer card-group chrome (tan panel on the white sheet, hairline border).
+    /// The outer card-group chrome (white box on the tan sheet, hairline border).
     func cardBox() -> some View {
         frame(maxWidth: .infinity, alignment: .leading)
-            .background(NK.panel)
+            .background(NK.card)
             .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
     }
-    /// The inner input chrome (white, hairline border) — sits on the tan box.
+    /// The inner input chrome (recessed tan, hairline border) — sits on the white box.
     func innerField() -> some View {
         frame(maxWidth: .infinity, alignment: .leading)
-            .background(NK.card)
+            .background(NK.canvas)
             .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
     }
