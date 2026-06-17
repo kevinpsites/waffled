@@ -128,9 +128,28 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     chores + a featured goal, a merged day list (events + chores, toggle/edit
     inline), whole-person category balance + AI insight, their goals, recent
     stars ledger, and reward redemptions. ✅
+  - **Meals — Recipes library + detail (started):** the Meals tab opens the
+    household **Recipes library** — a two-column gradient card grid (emoji hero,
+    cuisine · protein · cook-time · cooked-count), live `.searchable` text search
+    across title/cuisine/protein/veg/tags, a sort menu (A–Z / Quickest / Most
+    cooked / Recently cooked), and multi-select **facet filters** (cuisine ·
+    protein · dietary) + a favorites toggle, surfaced as removable chips. Tapping
+    a card opens full **recipe detail**: hero, serif title, metadata + tag chips
+    (collection/cuisine/meal-type/protein/base/method/effort/dietary/veg/#tags),
+    favorite toggle, **mark-cooked**, the ingredient list with a **servings
+    scaler** (re-computes amounts, ½/¼/¾ fractions), an "on hand" banner, the
+    numbered **method** steps, your-notes, and the source notes. **Cook mode** —
+    full-screen step-by-step (big serif type, progress bar, this-step
+    ingredients, an all-ingredients sheet, screen kept awake, finish →
+    mark-cooked). **Phone-side editing**: add/edit a **per-step note**, your own
+    **recipe notes**, and **tags + dietary** — all read-modify-write the recipe's
+    `overrides` blob via `PATCH /api/recipes/:id` (web parity). Over REST
+    (`GET /api/recipes`, `GET /api/recipes/:id`, `PATCH …`, `POST …/cooked`);
+    weekly planner + recipe capture follow. ✅
   - Rewards / Photos / Settings: still live-summary placeholders.
-- **Next:** a hub tile (Rewards/Photos/Settings); Meals tab; Auth0 login
-  (roadmap 4.2.1) to replace the dev token.
+- **Next:** the Meals **weekly planner** (meal_plans grid + "Plan my week ✨"); a
+  hub tile (Rewards/Photos/Settings); Auth0 login (roadmap 4.2.1) to replace the
+  dev token.
 
 ## Known follow-ups / bugs
 

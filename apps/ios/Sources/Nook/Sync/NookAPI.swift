@@ -118,6 +118,125 @@ struct NookAPI: Sendable {
         return try await getJSON("/api/recipes", as: Resp.self).recipes
     }
 
+    // MARK: Recipes library + detail
+
+    /// One recipe as it appears in the library list. `GET /api/recipes` returns the
+    /// full shape; the card reads title/emoji/meta and the cooked tally. Most fields
+    /// are nullable in the source (markdown frontmatter), so almost everything is
+    /// optional; `servings` and the array meta default server-side.
+    struct RecipeSummary: Decodable, Identifiable, Hashable, Sendable {
+        let id: String
+        let title: String
+        let emoji: String?
+        let category: String?
+        let prepTimeMinutes: Int?
+        let cookTimeMinutes: Int?
+        let servings: Int?
+        let imageUrl: String?
+        let sourceName: String?
+        let isFavorite: Bool
+        let cookedCount: Int
+        let lastCookedAt: String?
+        let mealType: String?
+        let protein: String?
+        let base: String?
+        let cuisine: String?
+        let effort: String?
+        let cookMethod: String?
+        let dietary: [String]?
+        let vegetables: [String]?
+        let collection: String?
+        let tags: [String]?           // merged: source ∪ addedTags − removedTags
+        let addedTags: [String]?      // user-added only
+        let notes: String?            // markdown source notes (read-only)
+        let userNotes: String?        // user's own notes (top-level column)
+        let overrides: RecipeOverrides?
+    }
+
+    /// The user-owned override blob layered over the markdown source. `PATCH
+    /// /api/recipes/:id` **replaces this whole object**, so edits are read-modify-
+    /// write: start from the recipe's current `overrides`, change one key, send it
+    /// all back. (The web kiosk does the same.)
+    struct RecipeOverrides: Codable, Hashable, Sendable {
+        var meta: [String: String]?
+        var dietary: [String]?
+        var addedTags: [String]?
+        var removedTags: [String]?
+        var subs: [String: String]?
+        var stepNotes: [String: String]?
+    }
+
+    /// One ingredient row on the detail screen. `amount` is numeric; `display` is the
+    /// raw original line; `aisle`/`isStaple` drive the "on hand" banner; `sub` is the
+    /// current override substitution if the user picked one.
+    struct RecipeIngredientDTO: Decodable, Identifiable, Hashable, Sendable {
+        let id: String
+        let name: String
+        let amount: Double?
+        let unit: String?
+        let prepNote: String?
+        let display: String?
+        let section: String?
+        let aisle: String?
+        let isStaple: Bool
+        let sortOrder: Int?
+        let sub: String?
+    }
+
+    /// One method step. `ingredients` are the raw lines used at this step; `note` is
+    /// the user's per-step override note if any.
+    struct RecipeStepDTO: Decodable, Identifiable, Hashable, Sendable {
+        let stepNumber: Int
+        let instruction: String
+        let ingredients: [String]
+        let note: String?
+        var id: Int { stepNumber }
+    }
+
+    /// Full recipe detail: the summary fields plus structured ingredients + steps.
+    struct RecipeDetailDTO: Decodable, Sendable {
+        let recipe: RecipeSummary
+        let ingredients: [RecipeIngredientDTO]
+        let steps: [RecipeStepDTO]
+    }
+
+    /// The whole recipe library (no server-side search/filter — the client filters).
+    func recipeLibrary() async throws -> [RecipeSummary] {
+        struct Resp: Decodable { let recipes: [RecipeSummary] }
+        return try await getJSON("/api/recipes", as: Resp.self).recipes
+    }
+
+    /// Full detail for one recipe: metadata + ingredients + steps.
+    func recipeDetail(id: String) async throws -> RecipeDetailDTO {
+        try await getJSON("/api/recipes/\(id)", as: RecipeDetailDTO.self)
+    }
+
+    /// Toggle a recipe's favorite flag; returns the updated recipe.
+    @discardableResult
+    func setRecipeFavorite(id: String, isFavorite: Bool) async throws -> RecipeSummary {
+        struct Resp: Decodable { let recipe: RecipeSummary }
+        return try await sendReturning("PATCH", "/api/recipes/\(id)",
+                                       body: ["isFavorite": .bool(isFavorite)], as: Resp.self).recipe
+    }
+
+    /// Mark a recipe cooked (bumps the count + timestamp); returns the updated recipe.
+    @discardableResult
+    func markRecipeCooked(id: String) async throws -> RecipeSummary {
+        struct Resp: Decodable { let recipe: RecipeSummary }
+        return try await sendJSON("POST", "/api/recipes/\(id)/cooked", as: Resp.self).recipe
+    }
+
+    /// Patch a recipe's user notes and/or its full overrides blob (tags, dietary,
+    /// per-step notes). Omitted fields are left untouched server-side; `overrides`,
+    /// when sent, replaces the whole blob — so pass the complete current object.
+    @discardableResult
+    func updateRecipe(id: String, userNotes: String? = nil, overrides: RecipeOverrides? = nil) async throws -> RecipeSummary {
+        struct Body: Encodable { var userNotes: String?; var overrides: RecipeOverrides? }
+        struct Resp: Decodable { let recipe: RecipeSummary }
+        return try await patchEncodable("/api/recipes/\(id)",
+                                        body: Body(userNotes: userNotes, overrides: overrides), as: Resp.self).recipe
+    }
+
     // MARK: Today dashboard reads (non-synced domains, fetched over REST)
 
     /// One dinner/lunch/etc. slot in the planned week (mirrors web `WeekEntry`).
@@ -655,6 +774,20 @@ struct NookAPI: Sendable {
     private func sendReturning<T: Decodable>(_ method: String, _ path: String, body: [String: JSONValue], as: T.Type) async throws -> T {
         var req = URLRequest(url: url(path))
         req.httpMethod = method
+        authorize(&req)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(body)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(resp, data)
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    /// PATCH an arbitrary Encodable body and decode the JSON response. Optionals in
+    /// the body are omitted when nil (Swift's `encodeIfPresent`), so only the fields
+    /// you set are sent.
+    private func patchEncodable<B: Encodable, T: Decodable>(_ path: String, body: B, as: T.Type) async throws -> T {
+        var req = URLRequest(url: url(path))
+        req.httpMethod = "PATCH"
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(body)

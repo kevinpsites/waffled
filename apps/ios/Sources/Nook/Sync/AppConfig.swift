@@ -62,4 +62,6 @@ enum DemoHooks {
     static var openDetails: Bool { AppConfig.env("NOOK_OPEN_DETAILS") == "1" }
     /// Initial grocery board mode for verification: "meal" switches to By meal.
     static var groceryMode: String? { AppConfig.env("NOOK_GROCERY_MODE") }
+    /// On the Meals tab, push a recipe's detail by title substring (verification).
+    static var openRecipe: String? { AppConfig.env("NOOK_OPEN_RECIPE") }
 }
