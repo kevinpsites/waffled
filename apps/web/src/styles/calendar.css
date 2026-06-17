@@ -154,11 +154,12 @@
    text until the model responds, so it's obvious the AI is working. */
 .ag-ai-icon.thinking, .ed-ai-icon.thinking { animation: ai-pulse 1.25s ease-in-out infinite; }
 @keyframes ai-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.12); opacity: .75; } }
-.ai-think { display: flex; flex-direction: column; gap: 7px; margin-top: 7px; }
+.ai-think { display: flex; flex-direction: column; gap: 7px; margin-top: 5px; }
 .ai-think-bar { height: 11px; border-radius: 6px;
   background: linear-gradient(90deg, #e4dcf7 25%, #f6f2fe 50%, #e4dcf7 75%);
   background-size: 200% 100%; animation: ai-shimmer 1.3s linear infinite; }
-.ai-think-bar.short { width: 55%; }
+.ai-think-bar.head { height: 13px; width: 44%; margin-bottom: 3px; } /* stands in for the headline */
+.ai-think-bar.short { width: 60%; }
 @keyframes ai-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) {
   .ag-ai-icon.thinking, .ed-ai-icon.thinking, .ai-think-bar { animation: none; }

@@ -251,17 +251,19 @@ export function EventDetail() {
         <div className="ed-ai">
           <div className={`ed-ai-icon ${insight ? '' : 'thinking'}`}>✦</div>
           <div className="ed-ai-main">
-            <div className="ed-ai-h">{insight?.headline ?? (event.location ? 'Plan your trip' : 'Stay on track')}</div>
             {insight ? (
-              <div className="ed-ai-b">{insight.body}</div>
+              <>
+                <div className="ed-ai-h">{insight.headline}</div>
+                <div className="ed-ai-b">{insight.body}</div>
+                {insight.leaveBy && <div className="ed-ai-chip">🚗 Leave by {insight.leaveBy}</div>}
+              </>
             ) : (
+              // Don't assert a headline before the model has decided — shimmer it too.
               <div className="ai-think" aria-label="Thinking…">
+                <div className="ai-think-bar head" />
                 <div className="ai-think-bar" />
                 <div className="ai-think-bar short" />
               </div>
-            )}
-            {insight?.leaveBy && (
-              <div className="ed-ai-chip">🚗 Leave by {insight.leaveBy}</div>
             )}
             {remindShown && (
               <div className="ed-ai-reminder">
