@@ -158,9 +158,11 @@ struct AvatarStack: View {
 
 struct GoalsView: View {
     @Binding var path: [HubRoute]
+    @Environment(SyncManager.self) private var sync
     @State private var model = GoalsModel()
     @State private var logging: NookAPI.Goal?
     @State private var creating = false
+    @State private var creatingList = false
 
     private static let heroGreen = LinearGradient(colors: [Color(hex: 0x2BA86B), Color(hex: 0x1C8A56)],
                                                   startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -203,8 +205,16 @@ struct GoalsView: View {
             }
         }
         .sheet(isPresented: $creating) {
-            GoalCreateSheet(lists: model.lists, defaultListId: model.selectedList?.id) { body, listId in
+            GoalCreateSheet(lists: model.lists, defaultListId: model.selectedList?.id, members: sync.members) { body, listId in
                 Task { await model.create(body, listId: listId) }
+            }
+        }
+        .sheet(isPresented: $creatingList) {
+            GoalListCreateSheet(members: sync.members) { list in
+                Task {
+                    model.selectedListId = list.id
+                    await model.loadLists()
+                }
             }
         }
     }
@@ -233,6 +243,16 @@ struct GoalsView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                Button { creatingList = true } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
+                        Text("New group").font(.system(size: 13, weight: .bold))
+                    }
+                    .foregroundStyle(NK.ink3)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .overlay(Capsule().strokeBorder(NK.hair, style: StrokeStyle(lineWidth: 1.5, dash: [4])))
+                }
+                .buttonStyle(.plain)
             }
             .padding(.vertical, 2)
         }
@@ -588,11 +608,15 @@ struct GoalCreateSheet: View {
     @Environment(\.dismiss) private var dismiss
     let lists: [NookAPI.GoalList]
     let defaultListId: String?
+    let members: [SyncedMember]
     /// When set, the sheet prefills from this goal and reads as "Edit goal".
     var editGoal: NookAPI.GoalDetail? = nil
     let onSubmit: ([String: JSONValue], String?) -> Void
 
     @State private var didPrefill = false
+    /// A local copy of the lists so a just-created group shows up immediately.
+    @State private var localLists: [NookAPI.GoalList] = []
+    @State private var creatingList = false
 
     private struct TypeOpt { let key, emoji, title, desc: String }
     private static let types = [
@@ -641,23 +665,31 @@ struct GoalCreateSheet: View {
                             .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
                     }
 
-                    if !lists.isEmpty {
-                        section("Who’s it for?") {
-                            ChipFlow(spacing: 8, lineSpacing: 8) {
-                                ForEach(lists) { l in
-                                    let on = goalListId == l.id
-                                    Button { goalListId = l.id } label: {
-                                        Text("\(l.members.first?.avatarEmoji ?? l.emoji ?? "👥") \(l.name)")
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .foregroundStyle(on ? NK.ink : NK.ink2)
-                                            .padding(.horizontal, 12).padding(.vertical, 7)
-                                            .background(on ? NK.primary.opacity(0.12) : NK.card)
-                                            .overlay(Capsule().strokeBorder(on ? NK.primary : NK.hair, lineWidth: on ? 1.5 : 1))
-                                            .clipShape(Capsule())
-                                    }
-                                    .buttonStyle(.plain)
+                    section("Who’s it for?") {
+                        ChipFlow(spacing: 8, lineSpacing: 8) {
+                            ForEach(localLists) { l in
+                                let on = goalListId == l.id
+                                Button { goalListId = l.id } label: {
+                                    Text("\(l.members.first?.avatarEmoji ?? l.emoji ?? "👥") \(l.name)")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(on ? NK.ink : NK.ink2)
+                                        .padding(.horizontal, 12).padding(.vertical, 7)
+                                        .background(on ? NK.primary.opacity(0.12) : NK.card)
+                                        .overlay(Capsule().strokeBorder(on ? NK.primary : NK.hair, lineWidth: on ? 1.5 : 1))
+                                        .clipShape(Capsule())
                                 }
+                                .buttonStyle(.plain)
                             }
+                            Button { creatingList = true } label: {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "plus").font(.system(size: 10, weight: .heavy))
+                                    Text("New group").font(.system(size: 13, weight: .semibold))
+                                }
+                                .foregroundStyle(NK.ink3)
+                                .padding(.horizontal, 12).padding(.vertical, 7)
+                                .overlay(Capsule().strokeBorder(NK.hair, style: StrokeStyle(lineWidth: 1.5, dash: [4])))
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
 
@@ -715,6 +747,12 @@ struct GoalCreateSheet: View {
                 }
             }
             .onAppear(perform: prefill)
+            .sheet(isPresented: $creatingList) {
+                GoalListCreateSheet(members: members) { list in
+                    localLists.append(list)
+                    goalListId = list.id
+                }
+            }
         }
         .presentationDetents([.large])
     }
@@ -839,6 +877,7 @@ struct GoalCreateSheet: View {
     private func prefill() {
         guard !didPrefill else { return }
         didPrefill = true
+        if localLists.isEmpty { localLists = lists }
         guard let g = editGoal else {
             if goalListId == nil { goalListId = defaultListId ?? lists.first?.id }
             return
@@ -957,6 +996,7 @@ final class GoalDetailModel {
 struct GoalDetailView: View {
     let goal: NookAPI.Goal
     @Binding var path: [HubRoute]
+    @Environment(SyncManager.self) private var sync
     @State private var model: GoalDetailModel
     @State private var logging = false
     @State private var editing = false
@@ -1009,7 +1049,7 @@ struct GoalDetailView: View {
         }
         .sheet(isPresented: $editing) {
             if let d = model.detail {
-                GoalCreateSheet(lists: model.lists, defaultListId: d.goalListId, editGoal: d) { body, _ in
+                GoalCreateSheet(lists: model.lists, defaultListId: d.goalListId, members: sync.members, editGoal: d) { body, _ in
                     Task { await model.update(body) }
                 }
             }
@@ -1194,5 +1234,116 @@ struct GoalDetailView: View {
         }
         let out = DateFormatter(); out.dateFormat = fmt
         return out.string(from: date)
+    }
+}
+
+/// New goal list (membership group) — name, optional emoji, member multi-select,
+/// and a private toggle. Creates it server-side and hands the new list back so the
+/// caller can select it. Mirrors the web ListModal.
+struct GoalListCreateSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let members: [SyncedMember]
+    let onCreated: (NookAPI.GoalList) -> Void
+
+    @State private var name = ""
+    @State private var emoji = ""
+    @State private var memberIds: Set<String> = []
+    @State private var isPrivate = false
+    @State private var saving = false
+    private let api = NookAPI()
+
+    private var canSave: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty && !saving }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 9) {
+                            SectionLabel(text: "List name")
+                            TextField("Mom & Dad", text: $name)
+                                .font(.system(size: 16, weight: .semibold)).textInputAutocapitalization(.words)
+                                .padding(.horizontal, 13).padding(.vertical, 12)
+                                .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                        }
+                        VStack(alignment: .leading, spacing: 9) {
+                            SectionLabel(text: "Emoji")
+                            TextField("💑", text: $emoji)
+                                .font(.system(size: 16, weight: .semibold)).multilineTextAlignment(.center)
+                                .frame(width: 60).padding(.vertical, 12)
+                                .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                                .onChange(of: emoji) { _, v in if v.count > 2 { emoji = String(v.prefix(2)) } }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "Who’s on this list?")
+                        ChipFlow(spacing: 8, lineSpacing: 8) {
+                            ForEach(members) { m in
+                                let on = memberIds.contains(m.id)
+                                let c = Color(hexString: m.colorHex) ?? NK.ink3
+                                Button {
+                                    if on { memberIds.remove(m.id) } else { memberIds.insert(m.id) }
+                                } label: {
+                                    HStack(spacing: 7) {
+                                        Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 24)
+                                        Text(goalFirstName(m.name)).font(.system(size: 14, weight: .semibold))
+                                            .foregroundStyle(on ? NK.ink : NK.ink2)
+                                    }
+                                    .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
+                                    .background(on ? c.opacity(0.14) : NK.card)
+                                    .overlay(Capsule().strokeBorder(on ? c : NK.hair, lineWidth: on ? 1.5 : 1))
+                                    .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    Toggle(isOn: $isPrivate) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Private").font(.system(size: 14.5, weight: .bold)).foregroundStyle(NK.ink)
+                            Text("Only these members see it").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                        }
+                    }
+                    .tint(FamilyColor.wally.solid)
+                    .padding(13)
+                    .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                }
+                .padding(20)
+            }
+            .background(NK.canvas)
+            .navigationTitle("New goal list")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") { submit() }.fontWeight(.semibold).disabled(!canSave)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func submit() {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let e = emoji.trimmingCharacters(in: .whitespaces)
+        guard canSave else { return }
+        saving = true
+        Task {
+            do {
+                let id = try await api.addGoalList(name: trimmed, emoji: e.isEmpty ? nil : e,
+                                                   memberIds: Array(memberIds), isPrivate: isPrivate)
+                let mem = members.filter { memberIds.contains($0.id) }.map {
+                    NookAPI.GoalList.Member(personId: $0.id, name: $0.name, avatarEmoji: $0.emoji, colorHex: $0.colorHex)
+                }
+                onCreated(NookAPI.GoalList(id: id, name: trimmed, emoji: e.isEmpty ? nil : e,
+                                           colorHex: nil, goalCount: 0, members: mem))
+                dismiss()
+            } catch { saving = false }
+        }
     }
 }

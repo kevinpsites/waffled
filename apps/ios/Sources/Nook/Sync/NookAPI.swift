@@ -411,6 +411,15 @@ struct NookAPI: Sendable {
         try await delete("/api/goals/\(id)")
     }
 
+    /// Create a goal list (membership group). Returns the new list's id.
+    func addGoalList(name: String, emoji: String?, memberIds: [String], isPrivate: Bool) async throws -> String {
+        var body: [String: JSONValue] = ["name": .string(name), "isPrivate": .bool(isPrivate)]
+        body["emoji"] = emoji.map(JSONValue.string) ?? .null
+        if !memberIds.isEmpty { body["memberIds"] = .array(memberIds.map(JSONValue.string)) }
+        struct Resp: Decodable { let list: NewList; struct NewList: Decodable { let id: String } }
+        return try await sendReturning("POST", "/api/goal-lists", body: body, as: Resp.self).list.id
+    }
+
     /// The household's goal lists (the membership picker).
     func goalLists() async throws -> [GoalList] {
         struct Resp: Decodable { let lists: [GoalList] }
@@ -467,6 +476,18 @@ struct NookAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await URLSession.shared.data(for: req)
         try check(resp, data)
+    }
+
+    /// POST/PATCH a JSON body and decode the JSON response, throwing on non-2xx.
+    private func sendReturning<T: Decodable>(_ method: String, _ path: String, body: [String: JSONValue], as: T.Type) async throws -> T {
+        var req = URLRequest(url: url(path))
+        req.httpMethod = method
+        authorize(&req)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(body)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(resp, data)
+        return try JSONDecoder().decode(T.self, from: data)
     }
 
     /// POST/PATCH (no body) and decode the JSON response, throwing on non-2xx.
