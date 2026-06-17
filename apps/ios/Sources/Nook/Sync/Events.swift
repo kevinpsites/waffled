@@ -12,6 +12,7 @@ struct SyncedEvent: Identifiable, Sendable, Equatable {
     let emoji: String?
     var endsAt: Date? = nil
     var location: String? = nil
+    var participantIds: [String] = []
 }
 
 /// Timestamp handling that mirrors the web client (`events-local.ts`): server-

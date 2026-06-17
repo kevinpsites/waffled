@@ -350,13 +350,17 @@ final class SyncManager {
                 let stream = try db.watch(
                     sql: """
                     SELECT e.id, e.title, e.starts_at, e.ends_at, e.all_day, e.location, e.person_id,
-                           p.color_hex AS person_color, p.avatar_emoji AS person_emoji
+                           p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
+                           (SELECT group_concat(ep.person_id) FROM event_participants ep
+                             WHERE ep.event_id = e.id) AS participant_ids
                       FROM events e
                       LEFT JOIN persons p ON p.id = e.person_id
                     """,
                     parameters: [],
                     mapper: { cursor in
                         let raw = try cursor.getStringOptional(name: "starts_at")
+                        let pids = (try cursor.getStringOptional(name: "participant_ids"))?
+                            .split(separator: ",").map(String.init) ?? []
                         return SyncedEvent(
                             id: try cursor.getString(name: "id"),
                             title: (try cursor.getStringOptional(name: "title")) ?? "(untitled)",
@@ -367,7 +371,8 @@ final class SyncManager {
                             colorHex: try cursor.getStringOptional(name: "person_color"),
                             emoji: try cursor.getStringOptional(name: "person_emoji"),
                             endsAt: EventTime.parse(try cursor.getStringOptional(name: "ends_at")),
-                            location: try cursor.getStringOptional(name: "location")
+                            location: try cursor.getStringOptional(name: "location"),
+                            participantIds: pids
                         )
                     }
                 )

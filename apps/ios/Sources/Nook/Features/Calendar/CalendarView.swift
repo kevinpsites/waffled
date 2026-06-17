@@ -26,10 +26,10 @@ struct CalendarView: View {
     }
 
     private var tz: TimeZone { sync.householdTz }
-    /// Events filtered to the selected person (by owner), or all.
+    /// Events filtered to the selected person — owner or a participant — or all.
     private var filtered: [SyncedEvent] {
         guard let p = filterPerson else { return sync.events }
-        return sync.events.filter { $0.personId == p }
+        return sync.events.filter { $0.personId == p || $0.participantIds.contains(p) }
     }
     private var groups: [(day: String, items: [SyncedEvent])] {
         Agenda.upcoming(filtered, from: Agenda.todayKey(tz), tz: tz)
