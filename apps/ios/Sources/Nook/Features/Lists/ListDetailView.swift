@@ -233,6 +233,8 @@ struct ListDetailView: View {
     @State private var didAutoDetails = false
     @State private var mode: GroceryViewMode = .aisle
     @State private var railMeal = "dinner"
+    /// Section ids (aisle title or meal-group id) the user has collapsed.
+    @State private var collapsed: Set<String> = []
     @FocusState private var focus: Field?
 
     /// Meal-type ordering for the summary filter (matches the web rail).
@@ -261,14 +263,18 @@ struct ListDetailView: View {
             if model.isGrocery && mode == .meal {
                 ForEach(model.mealSections()) { group in
                     Section {
-                        ForEach(group.items) { item in itemRow(item) }
+                        if !collapsed.contains(group.id) {
+                            ForEach(group.items) { item in itemRow(item) }
+                        }
                     } header: { mealHeader(group) }
                 }
             } else {
                 ForEach(model.activeSections) { group in
                     Section {
-                        ForEach(group.items) { item in itemRow(item) }
-                    } header: { sectionHeader(group.title) }
+                        if !collapsed.contains(group.id) {
+                            ForEach(group.items) { item in itemRow(item) }
+                        }
+                    } header: { sectionHeader(group) }
                 }
             }
             completedSection
@@ -332,12 +338,18 @@ struct ListDetailView: View {
             }
     }
 
-    @ViewBuilder private func sectionHeader(_ title: String?) -> some View {
-        if let title {
+    @ViewBuilder private func sectionHeader(_ group: ListSectionGroup) -> some View {
+        if let title = group.title {
             headerChrome {
-                Text(title.uppercased())
-                    .font(.system(size: 11, weight: .heavy)).tracking(0.5)
-                    .foregroundStyle(NK.ink3)
+                collapseButton(id: group.id) {
+                    chevron(for: group.id)
+                    Text(title.uppercased())
+                        .font(.system(size: 11, weight: .heavy)).tracking(0.5)
+                        .foregroundStyle(NK.ink3)
+                    Spacer(minLength: 6)
+                    Text("\(group.items.count)")
+                        .font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                }
             }
         }
     }
@@ -351,6 +363,25 @@ struct ListDetailView: View {
             .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 6)
             .background(NK.canvas)
             .listRowInsets(EdgeInsets())
+    }
+
+    /// A header laid out as a tap target that collapses/expands its section.
+    private func collapseButton<V: View>(id: String, @ViewBuilder _ content: () -> V) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                if collapsed.contains(id) { collapsed.remove(id) } else { collapsed.insert(id) }
+            }
+        } label: {
+            HStack(spacing: 6) { content() }.contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Disclosure chevron — points right when the section is collapsed, down when open.
+    private func chevron(for id: String) -> some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: 10, weight: .heavy)).foregroundStyle(NK.ink3)
+            .rotationEffect(.degrees(collapsed.contains(id) ? 0 : 90))
     }
 
     /// Grocery-only By aisle / By meal segmented control, pinned below the nav bar.
@@ -370,7 +401,8 @@ struct ListDetailView: View {
     /// it doubles as the legend for the item dots) + the meal name + item count.
     @ViewBuilder private func mealHeader(_ group: MealGroup) -> some View {
         headerChrome {
-            HStack(spacing: 8) {
+            collapseButton(id: group.id) {
+                chevron(for: group.id)
                 if let meal = group.meal {
                     let color = Color(hexString: meal.color) ?? NK.ink3
                     if let type = meal.mealType, !type.isEmpty {
