@@ -11,9 +11,9 @@ enum Tab: Hashable {
 struct AppRoot: View {
     @State private var tab: Tab = AppRoot.initialTab
     @State private var showCapture = false
-    /// Bumped when the Family tab is re-tapped while active — changing FamilyView's
-    /// id pops its NavigationStack back to the hub root.
-    @State private var familyNav = 0
+    /// The Family tab's nav stack, lifted here so other tabs (e.g. a Today card)
+    /// can jump straight into a hub destination, and re-tapping Family pops to root.
+    @State private var familyPath: [HubRoute] = []
 
     private static var initialTab: Tab {
         switch DemoHooks.startTab {
@@ -24,6 +24,12 @@ struct AppRoot: View {
         }
     }
 
+    /// Switch to the Family tab and push a hub destination (from another tab).
+    private func openFamily(_ route: HubRoute) {
+        familyPath = [route]
+        tab = .family
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             NK.canvas.ignoresSafeArea()
@@ -32,16 +38,16 @@ struct AppRoot: View {
             // scaffold they're simple views.
             Group {
                 switch tab {
-                case .today:    TodayView()
+                case .today:    TodayView(openFamily: openFamily)
                 case .calendar: CalendarView()
                 case .meals:    MealsView()
-                case .family:   FamilyView().id(familyNav)
+                case .family:   FamilyView(path: $familyPath)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             NookTabBar(tab: $tab, onCapture: { showCapture = true },
-                       onReselect: { if $0 == .family { familyNav += 1 } })
+                       onReselect: { if $0 == .family { familyPath = [] } })
         }
         .sheet(isPresented: $showCapture) {
             CaptureSheet()

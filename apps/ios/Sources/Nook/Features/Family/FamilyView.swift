@@ -6,7 +6,7 @@ import SwiftUI
 struct FamilyView: View {
     @Environment(SyncManager.self) private var sync
     @State private var hub = FamilyHubModel()
-    @State private var path: [HubRoute] = []
+    @Binding var path: [HubRoute]
     @State private var showSync = false
     @State private var ranDemo = false
     private let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
@@ -188,4 +188,4 @@ struct FamilyView: View {
     }
 }
 
-#Preview { FamilyView().environment(SyncManager()) }
+#Preview { FamilyView(path: .constant([])).environment(SyncManager()) }

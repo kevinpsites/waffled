@@ -6,6 +6,8 @@ import SwiftUI
 struct TodayView: View {
     @Environment(SyncManager.self) private var sync
     @State private var dash = DashboardModel()
+    /// Jump to a Family hub destination (Chores, Lists…) from a summary card.
+    var openFamily: (HubRoute) -> Void = { _ in }
 
     private var todays: [SyncedEvent] {
         Agenda.forDay(sync.events, day: Agenda.todayKey(sync.householdTz), tz: sync.householdTz)
@@ -40,8 +42,8 @@ struct TodayView: View {
                 todayCard
                 tonightCard
                 HStack(spacing: 12) {
-                    choresCard
-                    groceryCard
+                    Button { openFamily(.chores) } label: { choresCard }.buttonStyle(.plain)
+                    Button { openFamily(.lists) } label: { groceryCard }.buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 18)

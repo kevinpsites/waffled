@@ -227,8 +227,10 @@ struct ChoresView: View {
                     }
                     Text(col.name).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
                     Spacer()
+                    let allDone = !col.items.isEmpty && col.done == col.items.count
                     HStack(spacing: 3) {
-                        Image(systemName: "star.fill").font(.system(size: 11)).foregroundStyle(NK.gold)
+                        Image(systemName: allDone ? "checkmark.circle.fill" : "checkmark.circle")
+                            .font(.system(size: 12)).foregroundStyle(allDone ? FamilyColor.wally.solid : NK.ink3)
                         Text("\(col.done)/\(col.items.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
                     }
                     Image(systemName: "chevron.right").font(.system(size: 11, weight: .heavy))
