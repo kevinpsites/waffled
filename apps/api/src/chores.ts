@@ -282,7 +282,27 @@ export async function updateChore(
        returning *`,
     values
   )
-  return rows[0] ?? null
+  const updated = rows[0] ?? null
+
+  // Reassigning the chore's "Who" should follow through to its not-yet-acted-on
+  // instances from today forward, so editing the assignee (including back to
+  // "up for grabs", person_id null) moves it on the board. Done/awaiting
+  // instances keep whoever completed/submitted them, for stars-ledger integrity.
+  if (updated && 'personId' in patch) {
+    await query(
+      `update chore_instances ci
+          set person_id = $1
+         from households h
+        where ci.household_id = h.id
+          and ci.household_id = $2
+          and ci.chore_id = $3
+          and ci.deleted_at is null
+          and ci.status = 'pending'
+          and ci.due_on >= (now() at time zone h.timezone)::date`,
+      [(patch.personId as string | null) ?? null, householdId, id]
+    )
+  }
+  return updated
 }
 
 export async function softDeleteChore(householdId: string, id: string): Promise<boolean> {
