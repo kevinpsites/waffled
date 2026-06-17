@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { api, usePersons, calendarsApi, localToday, type AgendaEvent, type CalendarLink } from '../../lib/api'
+import { useNavigate } from 'react-router'
+import { api, usePersons, calendarsApi, mealsApi, localToday, type AgendaEvent, type CalendarLink } from '../../lib/api'
 import { createEventLocal, updateEventLocal, deleteEventLocal } from '../../lib/powersync/events-local'
 
 // Calendars an event can be written to: writable (owner/writer), not read-only.
@@ -63,11 +64,22 @@ export function EventModal({
   onSaved: () => void
 }) {
   const editing = !!event
+  const navigate = useNavigate()
   const { persons } = usePersons()
   const [form, setForm] = useState(() => initialForm(event, date))
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
+
+  // For a planned-meal event, resolve its recipe so we can offer "View recipe".
+  const isMeal = event?.origin === 'meal_plan'
+  const [recipeId, setRecipeId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!isMeal || !event?.originRefId) return
+    let alive = true
+    mealsApi.entry(event.originRefId).then((r) => alive && setRecipeId(r.recipeId)).catch(() => {})
+    return () => { alive = false }
+  }, [isMeal, event?.originRefId])
 
   // Calendar picker (create only): which Google calendar the event is written to.
   // '' = Nook only. Defaults to the owner's ★ calendar and follows the owner until
@@ -164,8 +176,19 @@ export function EventModal({
           ×
         </button>
         <div className="nk-serif" style={{ fontSize: 22, fontWeight: 600, marginBottom: 14 }}>
-          {editing ? 'Edit event' : 'New event'}
+          {editing ? (isMeal ? 'Planned meal' : 'Edit event') : 'New event'}
         </div>
+
+        {isMeal && recipeId && (
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ width: '100%', justifyContent: 'center', marginBottom: 14 }}
+            onClick={() => { onClose(); navigate(`/meals/recipe/${recipeId}`) }}
+          >
+            📖 View recipe
+          </button>
+        )}
 
         <form onSubmit={submit}>
           <label className="field">

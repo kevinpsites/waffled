@@ -109,7 +109,8 @@ const AGENDA_SQL = `
          e.origin, e.origin_ref_id,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          (select json_group_array(json_object(
-                   'id', pp.id, 'name', pp.name, 'colorHex', pp.color_hex, 'avatarEmoji', pp.avatar_emoji))
+                   'id', pp.id, 'name', pp.name, 'colorHex', pp.color_hex, 'avatarEmoji', pp.avatar_emoji)
+                   order by pp.sort_order, pp.created_at)
             from event_participants ep
             join persons pp on pp.id = ep.person_id
            where ep.event_id = e.id) as participants_json

@@ -89,8 +89,12 @@ export async function syncMealEventForEntry(tenant: Tenant, entryId: string): Pr
     return
   }
 
-  const dish = e.title || e.recipe_title || MEAL_LABEL[e.meal_type] || 'Meal'
-  const title = e.recipe_emoji ? `${e.recipe_emoji} ${dish}` : dish
+  // Prefix with the meal type so a glance at the calendar says it's a planned
+  // meal: "🍗 Dinner · Banh Mi-Style Chicken Bowls".
+  const label = MEAL_LABEL[e.meal_type] || 'Meal'
+  const dishName = e.title || e.recipe_title
+  const emoji = e.recipe_emoji ? `${e.recipe_emoji} ` : ''
+  const title = dishName ? `${emoji}${label} · ${dishName}` : label
   const time = settings.times[e.meal_type] || DEFAULT_TIMES[e.meal_type] || '12:00'
 
   const tzRow = await query<{ timezone: string }>(`select timezone from households where id = $1`, [tenant.householdId])
@@ -103,7 +107,7 @@ export async function syncMealEventForEntry(tenant: Tenant, entryId: string): Pr
 
   let participantIds = settings.participantIds
   if (!participantIds) {
-    const ps = await query<{ id: string }>(`select id from persons where household_id = $1 and deleted_at is null`, [tenant.householdId])
+    const ps = await query<{ id: string }>(`select id from persons where household_id = $1 and deleted_at is null order by sort_order, created_at`, [tenant.householdId])
     participantIds = ps.rows.map((r) => r.id)
   }
 
