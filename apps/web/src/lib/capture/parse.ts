@@ -217,8 +217,10 @@ function splitQuantity(s: string): { quantity: string | null; name: string } {
 // Token-overlap match of free text against a known list name ("the lake packing
 // trip" → "Lake trip packing"). Returns the canonical list name or null.
 function matchKnownList(text: string, lists: string[]): string | null {
+  // Keep meaningful nouns like "trip"/"packing" — only drop true filler words —
+  // so "my lake trip" still matches "Lake trip packing".
   const norm = (s: string) =>
-    s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\b(the|a|an|my|our|trip|list|to|for)\b/g, ' ').replace(/\s+/g, ' ').trim()
+    s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\b(the|a|an|my|our|list|to|for)\b/g, ' ').replace(/\s+/g, ' ').trim()
   const ttoks = new Set(norm(text).split(' ').filter(Boolean))
   let best: { name: string; score: number } | null = null
   for (const l of lists) {
@@ -358,6 +360,18 @@ export function parseCapture(raw: string, persons: string[] = [], now: Date = ne
   // groceryHint is informational; we route here either way (sensible default).
   void groceryHint
   return { kind: 'grocery', name: finalName, quantity }
+}
+
+// Whether the on-device guess is strong enough to show before the model answers.
+// Every kind requires an explicit signal to be chosen EXCEPT the bare-noun grocery
+// fallback, which is a last resort — so we hold that one back while the LLM thinks.
+export function looksConfident(intent: ParsedIntent | null, text: string): boolean {
+  if (!intent) return false
+  if (intent.kind !== 'grocery') return true
+  // Generic verbs ("add", "get", "need") aren't grocery-specific — they fit
+  // everything ("add a goal", "add soccer"). Only a real shopping cue counts:
+  // a buy-verb, an explicit grocery/shopping list, or a unit amount.
+  return /\b(buy|grab|pick(?:ing)?\s*up|purchase)\b/i.test(text) || GROCERY_TO_LIST.test(text) || GROCERY_UNIT.test(text)
 }
 
 // A short human label for the preview chip.

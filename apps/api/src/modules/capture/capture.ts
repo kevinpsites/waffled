@@ -181,8 +181,10 @@ export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent
 // Snap a loosely-named list ("the lake packing trip") to a real household list
 // ("Lake trip packing") by token overlap; falls back to the raw name (so the
 // client can create it) when nothing matches well.
+// Keep meaningful nouns ("trip"/"packing") — drop only filler — so "my lake trip"
+// still snaps to "Lake trip packing".
 const normList = (s: string) =>
-  s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\b(the|a|an|my|our|trip|list|to|for)\b/g, ' ').replace(/\s+/g, ' ').trim()
+  s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\b(the|a|an|my|our|list|to|for)\b/g, ' ').replace(/\s+/g, ' ').trim()
 
 // Best known-list match for free text, or null. Scored by how many of the list's
 // tokens appear in the text — so "the lake packing trip" snaps to "Lake trip packing".

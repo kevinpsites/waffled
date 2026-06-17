@@ -157,7 +157,10 @@
 .cap-trigger-text.ph { color: var(--ink-3); }
 .cap-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(20,16,12,.30);
   backdrop-filter: blur(2px); display: flex; align-items: flex-start; justify-content: center;
-  padding: 16vh 20px 20px; }
+  padding: 16vh 20px 20px;
+  /* portal'd to <body> (outside .nk), so set the sans stack explicitly — otherwise
+     `font: inherit` falls back to the browser default serif. */
+  font-family: var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
 .cap-composer { width: min(680px, 94vw); background: var(--card); border-radius: 22px;
   box-shadow: 0 28px 70px rgba(0,0,0,.30); border: 1px solid var(--hair-2); padding: 16px 18px; }
 .cap-comp-row { display: flex; align-items: flex-start; gap: 12px; }
@@ -210,6 +213,20 @@
 .cap-kind-chip { font: inherit; font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 999px;
   border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2); cursor: pointer; }
 .cap-kind-chip.on { border-color: var(--ai); color: var(--ai); background: #efeafc; }
+
+/* per-kind "basics" fields in the inline editor */
+.cap-people { display: flex; flex-wrap: wrap; gap: 6px; }
+.cap-person { font: inherit; font-size: 12.5px; font-weight: 700; padding: 6px 11px; border-radius: 999px;
+  border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2); cursor: pointer; }
+.cap-person.on { border-color: var(--ai); color: var(--ai); background: #efeafc; }
+.cap-edit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cap-edit-mini { font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink); border: 1px solid var(--hair);
+  border-radius: 8px; background: var(--card-2); padding: 6px 9px; }
+.cap-stars { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--ink-3); }
+.cap-stars input { width: 56px; font: inherit; font-size: 14px; font-weight: 700; color: var(--ink);
+  border: 1px solid var(--hair); border-radius: 8px; background: var(--card-2); padding: 6px 8px; }
+select.cap-edit-sub { cursor: pointer; }
+.cap-thinking .cap-icon { color: var(--ai); }
 
 /* "thinking" — the purple spark bounces while the model responds */
 .ai-spark.thinking { animation: cap-bounce 1s ease-in-out infinite; }
