@@ -16,6 +16,11 @@ struct CaptureSheet: View {
     @State private var via = ""
     @State private var error: String?
     @State private var dictation = Dictation()
+    // Inline-editable fields for a parsed event (the "Nook understood" card).
+    @State private var evTitle = ""
+    @State private var evDate = Date()
+    @State private var evAllDay = false
+    @State private var evPerson: String?
     @FocusState private var focused: Bool
 
     enum Phase { case input, parsing, preview, committing }
@@ -121,28 +126,32 @@ struct CaptureSheet: View {
                     }
                 }
 
-                NookCard {
-                    HStack(spacing: 12) {
-                        Text(s.icon).font(.system(size: 22))
-                            .frame(width: 42, height: 42).background(NK.panel)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(s.kind.uppercased()).font(.system(size: 11, weight: .heavy)).tracking(0.4)
-                                .foregroundStyle(NK.ink3)
-                            Text(s.primary).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
-                            if !s.detail.isEmpty {
-                                Text(s.detail).font(.system(size: 12.5)).foregroundStyle(NK.ink2)
+                if case .event = intent {
+                    eventEditorCard
+                } else {
+                    NookCard {
+                        HStack(spacing: 12) {
+                            Text(s.icon).font(.system(size: 22))
+                                .frame(width: 42, height: 42).background(NK.panel)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(s.kind.uppercased()).font(.system(size: 11, weight: .heavy)).tracking(0.4)
+                                    .foregroundStyle(NK.ink3)
+                                Text(s.primary).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
+                                if !s.detail.isEmpty {
+                                    Text(s.detail).font(.system(size: 12.5)).foregroundStyle(NK.ink2)
+                                }
                             }
-                        }
-                        Spacer(minLength: 0)
-                        if let m = personFor(intent) {
-                            Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 32)
+                            Spacer(minLength: 0)
+                            if let m = personFor(intent) {
+                                Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 32)
+                            }
                         }
                     }
                 }
 
                 HStack(spacing: 10) {
-                    Button("Edit") { phase = .input; focused = true }
+                    Button("Edit text") { phase = .input; focused = true }
                         .font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
                         .frame(maxWidth: .infinity).padding(.vertical, 13)
                         .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
@@ -160,6 +169,71 @@ struct CaptureSheet: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+
+    // MARK: inline event editor (the "Nook understood" card for events)
+
+    private var eventEditorCard: some View {
+        let member = evPerson.flatMap { sync.member(named: $0) }
+        let color = Color(hexString: member?.colorHex) ?? FamilyColor.lottie.solid
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 11) {
+                RoundedRectangle(cornerRadius: 99).fill(color).frame(width: 4, height: 40)
+                VStack(alignment: .leading, spacing: 3) {
+                    TextField("Event title", text: $evTitle)
+                        .font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
+                    Text(whenSubtitle).font(.system(size: 12.5)).foregroundStyle(NK.ink2)
+                }
+                Spacer(minLength: 0)
+                if let m = member { Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 32) }
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    whoChip(member)
+                    DatePicker("", selection: $evDate, displayedComponents: .date).labelsHidden()
+                    if !evAllDay {
+                        DatePicker("", selection: $evDate, displayedComponents: .hourAndMinute).labelsHidden()
+                    }
+                    Button { evAllDay.toggle() } label: {
+                        chipBody {
+                            Image(systemName: evAllDay ? "checkmark.square.fill" : "square")
+                                .font(.system(size: 13)).foregroundStyle(evAllDay ? NK.primary : NK.ink3)
+                            Text("All day").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink2)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.vertical, 1)
+            }
+        }
+        .padding(14)
+        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    private func whoChip(_ member: SyncedMember?) -> some View {
+        Menu {
+            Button("Up for grabs") { evPerson = nil }
+            ForEach(sync.members) { m in Button(m.name) { evPerson = m.name } }
+        } label: {
+            chipBody {
+                if let m = member { Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 20) }
+                else { Image(systemName: "person").font(.system(size: 12)).foregroundStyle(NK.ink3) }
+                Text(member?.name ?? "Anyone").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink)
+            }
+        }
+    }
+
+    private func chipBody<V: View>(@ViewBuilder _ content: () -> V) -> some View {
+        HStack(spacing: 6) { content() }
+            .padding(.leading, 8).padding(.trailing, 12).padding(.vertical, 6)
+            .background(NK.card2).overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1)).clipShape(Capsule())
+    }
+
+    private var whenSubtitle: String {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.timeZone = sync.householdTz
+        if evAllDay { f.dateFormat = "EEE, MMM d"; return "\(f.string(from: evDate)) · all day" }
+        f.dateFormat = "EEE, MMM d · h:mm a"; return f.string(from: evDate)
     }
 
     private var addLabel: String {
@@ -195,6 +269,12 @@ struct CaptureSheet: View {
                 let r = try await sync.resolveCapture(t)
                 if let i = r.intent, !r.fallback {
                     intent = i; via = r.via; phase = .preview
+                    if case let .event(title, startsAt, allDay, personName, _) = i {
+                        evTitle = title
+                        evDate = EventTime.parse(startsAt) ?? Date()
+                        evAllDay = allDay
+                        evPerson = personName
+                    }
                     if DemoHooks.captureCommit { commit() }
                 } else {
                     error = "Couldn't understand that — try rephrasing."; phase = .input
@@ -211,8 +291,13 @@ struct CaptureSheet: View {
         Task {
             let ok: Bool
             switch intent {
-            case let .event(title, startsAt, allDay, personName, _):
-                ok = await sync.commitEvent(title: title, startsAtISO: startsAt, allDay: allDay, personName: personName)
+            case .event:
+                // Use the inline-edited fields (who / when / title / all-day).
+                let cal = Calendar.current
+                let start = evAllDay ? (cal.date(bySettingHour: 12, minute: 0, second: 0, of: evDate) ?? evDate) : evDate
+                let iso = ISO8601DateFormatter().string(from: start)
+                ok = await sync.commitEvent(title: evTitle.trimmingCharacters(in: .whitespacesAndNewlines),
+                                            startsAtISO: iso, allDay: evAllDay, personName: evPerson)
             case let .grocery(name, quantity):
                 ok = await sync.commitGrocery(name: name, quantity: quantity)
             case let .task(title, personName, stars, rrule, _):
