@@ -588,7 +588,11 @@ struct GoalCreateSheet: View {
     @Environment(\.dismiss) private var dismiss
     let lists: [NookAPI.GoalList]
     let defaultListId: String?
-    let onCreate: ([String: JSONValue], String?) -> Void
+    /// When set, the sheet prefills from this goal and reads as "Edit goal".
+    var editGoal: NookAPI.GoalDetail? = nil
+    let onSubmit: ([String: JSONValue], String?) -> Void
+
+    @State private var didPrefill = false
 
     private struct TypeOpt { let key, emoji, title, desc: String }
     private static let types = [
@@ -702,15 +706,15 @@ struct GoalCreateSheet: View {
                 .padding(20)
             }
             .background(NK.canvas)
-            .navigationTitle("New goal")
+            .navigationTitle(editGoal == nil ? "New goal" : "Edit goal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") { submit() }.fontWeight(.semibold).disabled(!canSave)
+                    Button(editGoal == nil ? "Create" : "Save") { submit() }.fontWeight(.semibold).disabled(!canSave)
                 }
             }
-            .onAppear { if goalListId == nil { goalListId = defaultListId ?? lists.first?.id } }
+            .onAppear(perform: prefill)
         }
         .presentationDetents([.large])
     }
@@ -831,6 +835,38 @@ struct GoalCreateSheet: View {
         }
     }
 
+    /// One-shot prefill: defaults for create, the existing goal's values for edit.
+    private func prefill() {
+        guard !didPrefill else { return }
+        didPrefill = true
+        guard let g = editGoal else {
+            if goalListId == nil { goalListId = defaultListId ?? lists.first?.id }
+            return
+        }
+        title = g.title
+        goalListId = g.goalListId
+        trackingMode = g.trackingMode
+        goalType = g.goalType
+        category = g.category ?? "physical"
+        unit = g.unit ?? ""
+        if let t = g.target { target = goalFmt(t) }
+        habitPeriod = g.habitPeriod ?? "week"
+        if let h = g.habitTargetPerPeriod { habitPer = String(h) }
+        isFeatured = g.isFeatured
+        hasRewards = g.hasRewards
+        if let d = g.deadline, let parsed = Self.parseDay(d) { hasDeadline = true; deadline = parsed }
+        if !g.milestones.isEmpty {
+            milestones = g.milestones.map {
+                .init(emoji: $0.emoji ?? "🎯", threshold: goalFmt($0.threshold), reward: $0.rewardText ?? "")
+            }
+        }
+    }
+
+    private static func parseDay(_ iso: String) -> Date? {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
+        return f.date(from: String(iso.prefix(10)))
+    }
+
     private func submit() {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         var body: [String: JSONValue] = [
@@ -853,8 +889,10 @@ struct GoalCreateSheet: View {
         } else {
             body["targetValue"] = Double(target).map(JSONValue.double) ?? .null
         }
-        let members = lists.first { $0.id == goalListId }?.members ?? []
-        body["participantIds"] = .array(members.map { .string($0.personId) })
+        // Participants follow the chosen list; on edit with no list, keep the goal's own.
+        let memberIds = lists.first { $0.id == goalListId }?.members.map(\.personId) ?? []
+        let pids = memberIds.isEmpty ? (editGoal?.participants.map(\.personId) ?? []) : memberIds
+        body["participantIds"] = .array(pids.map { .string($0) })
         body["milestones"] = .array(hasRewards ? milestones.map { m in
             .object([
                 "threshold": .int(Int(m.threshold) ?? 0),
@@ -863,7 +901,7 @@ struct GoalCreateSheet: View {
                 "rewardText": .string(m.reward),
             ])
         } : [])
-        onCreate(body, goalListId)
+        onSubmit(body, goalListId)
         dismiss()
     }
 
@@ -880,6 +918,7 @@ struct GoalCreateSheet: View {
 final class GoalDetailModel {
     let goal: NookAPI.Goal
     private(set) var detail: NookAPI.GoalDetail?
+    private(set) var lists: [NookAPI.GoalList] = []
     private(set) var loading = true
     private(set) var error = false
     private let api = NookAPI()
@@ -887,9 +926,16 @@ final class GoalDetailModel {
     init(goal: NookAPI.Goal) { self.goal = goal }
 
     func load() async {
-        do { detail = try await api.goalDetail(id: goal.id); error = false }
+        async let d = api.goalDetail(id: goal.id)
+        async let l = api.goalLists()
+        do { detail = try await d; lists = try await l; error = false }
         catch { self.error = true }
         loading = false
+    }
+
+    func update(_ body: [String: JSONValue]) async {
+        do { try await api.updateGoal(id: goal.id, body); await load() }
+        catch { self.error = true }
     }
 
     func log(amount: Double, personIds: [String], note: String) async {
@@ -913,6 +959,7 @@ struct GoalDetailView: View {
     @Binding var path: [HubRoute]
     @State private var model: GoalDetailModel
     @State private var logging = false
+    @State private var editing = false
     @State private var confirmDelete = false
 
     private static let heroGreen = LinearGradient(colors: [Color(hex: 0x2BA86B), Color(hex: 0x1C8A56)],
@@ -946,7 +993,8 @@ struct GoalDetailView: View {
         .navigationTitle(goal.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button("Edit") { editing = true }.disabled(model.detail == nil)
                 Button { logging = true } label: {
                     Label("Log", systemImage: "plus").labelStyle(.titleAndIcon).fontWeight(.semibold)
                 }
@@ -957,6 +1005,13 @@ struct GoalDetailView: View {
         .sheet(isPresented: $logging) {
             GoalLogSheet(goal: goal) { amount, ids, note in
                 Task { await model.log(amount: amount, personIds: ids, note: note) }
+            }
+        }
+        .sheet(isPresented: $editing) {
+            if let d = model.detail {
+                GoalCreateSheet(lists: model.lists, defaultListId: d.goalListId, editGoal: d) { body, _ in
+                    Task { await model.update(body) }
+                }
             }
         }
     }

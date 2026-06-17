@@ -361,11 +361,18 @@ struct NookAPI: Sendable {
     /// activity log, this-week total, and start date.
     struct GoalDetail: Decodable, Sendable {
         let id: String
+        let goalListId: String?
         let title: String
         let emoji: String?
         let category: String?
+        let goalType: String
         let unit: String?
         let target: Double?
+        let trackingMode: String
+        let habitPeriod: String?
+        let habitTargetPerPeriod: Int?
+        let isFeatured: Bool
+        let hasRewards: Bool
         let totalProgress: Double
         let streakDays: Int
         let deadline: String?
@@ -430,6 +437,11 @@ struct NookAPI: Sendable {
     /// trackingMode (shared_total|each_tracks). The rest are optional refinements.
     func createGoal(_ body: [String: JSONValue]) async throws {
         try await send("POST", "/api/goals", body: body)
+    }
+
+    /// Update a goal — same field set as create (the server PATCH accepts any subset).
+    func updateGoal(id: String, _ body: [String: JSONValue]) async throws {
+        try await send("PATCH", "/api/goals/\(id)", body: body)
     }
 
     /// Forward a batch of queued local writes to the server's CRUD sink.
