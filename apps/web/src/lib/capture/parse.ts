@@ -12,6 +12,8 @@ export type ParsedIntent =
   | { kind: 'grocery'; name: string; quantity: string | null }
   | { kind: 'task'; title: string; personName: string | null; stars: number | null; rrule: string | null; scheduleLabel: string }
   | { kind: 'meal'; title: string; date: string | null; mealType: string; whenLabel: string }
+  | { kind: 'list'; listName: string | null; itemName: string; quantity: string | null }
+  | { kind: 'unsupported'; reason: string }
 
 const MEAL_TYPES = new Set(['breakfast', 'lunch', 'dinner', 'snack'])
 function mealTypeFrom(word?: string): string {
@@ -212,7 +214,24 @@ function splitQuantity(s: string): { quantity: string | null; name: string } {
   return { quantity: null, name: s.trim() }
 }
 
-export function parseCapture(raw: string, persons: string[] = [], now: Date = new Date()): ParsedIntent | null {
+// Token-overlap match of free text against a known list name ("the lake packing
+// trip" → "Lake trip packing"). Returns the canonical list name or null.
+function matchKnownList(text: string, lists: string[]): string | null {
+  const norm = (s: string) =>
+    s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\b(the|a|an|my|our|trip|list|to|for)\b/g, ' ').replace(/\s+/g, ' ').trim()
+  const ttoks = new Set(norm(text).split(' ').filter(Boolean))
+  let best: { name: string; score: number } | null = null
+  for (const l of lists) {
+    const ltoks = norm(l).split(' ').filter(Boolean)
+    if (!ltoks.length) continue
+    const inter = ltoks.filter((t) => ttoks.has(t)).length
+    const score = inter / ltoks.length
+    if (score >= 0.6 && (!best || score > best.score)) best = { name: l, score }
+  }
+  return best?.name ?? null
+}
+
+export function parseCapture(raw: string, persons: string[] = [], now: Date = new Date(), lists: string[] = []): ParsedIntent | null {
   const text = raw.trim()
   if (!text) return null
 
@@ -290,6 +309,20 @@ export function parseCapture(raw: string, persons: string[] = [], now: Date = ne
     return { kind: 'meal', title, date, mealType, whenLabel: `${mDay ? mDay.label : 'Today'} · ${cap(mealType)}` }
   }
 
+  // LIST — "add X to (the) <named list>" / "put X on my <list>" for a NON-grocery
+  // list. Matches a known list (token overlap) or a generic "… <name> list".
+  let listName = matchKnownList(text, lists)
+  if (!listName) {
+    const g = /\b(?:to|on|onto|in)\s+(?:the\s+|my\s+|our\s+)?([a-z0-9][a-z0-9 ]*?)\s+list\b/i.exec(text)
+    if (g && !/^(grocery|shopping|to-?do)\s*$/i.test(g[1].trim())) listName = titleCase(g[1].trim())
+  }
+  if (listName) {
+    const im = /^\s*(?:please\s+|kindly\s+|can you\s+)?(?:add|put|throw|toss|drop|need|get|grab)?\s*(.+?)\s+(?:to|on|onto|in)\s+(?:the\s+|my\s+|our\s+)?/i.exec(text)
+    const { quantity, name } = splitQuantity(tidy(im ? im[1] : text))
+    const itemName = titleCase(name)
+    if (itemName) return { kind: 'list', listName, itemName, quantity }
+  }
+
   const day = findDay(text, now)
   const time = findTime(text)
 
@@ -343,5 +376,14 @@ export function intentSummary(intent: ParsedIntent): { icon: string; kind: strin
       }
     case 'meal':
       return { icon: '🍽️', kind: 'Meal', primary: intent.title, detail: `${intent.whenLabel} · meal plan` }
+    case 'list':
+      return {
+        icon: '📝',
+        kind: 'List',
+        primary: [intent.quantity, intent.itemName].filter(Boolean).join(' '),
+        detail: intent.listName ? `Adds to “${intent.listName}”` : 'Adds to a list',
+      }
+    case 'unsupported':
+      return { icon: '🤔', kind: 'Not supported yet', primary: intent.reason, detail: '' }
   }
 }
