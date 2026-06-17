@@ -46,6 +46,9 @@ targets:
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # Voice dictation in the AI capture bar (Speech framework).
+        NSMicrophoneUsageDescription: Nook uses the microphone so you can speak an event into the capture bar.
+        NSSpeechRecognitionUsageDescription: Nook transcribes your speech on-device to add events by voice.
         # Dev only: allow plain-HTTP to localhost/the tailnet (no TLS in local stack).
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true

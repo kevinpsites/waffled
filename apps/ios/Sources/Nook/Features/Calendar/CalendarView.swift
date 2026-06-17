@@ -11,6 +11,8 @@ struct CalendarView: View {
     @State private var filterPerson: String?       // nil = Everyone
     @State private var monthAnchor = Date()         // the month the grid shows
     @State private var selectedDay = Agenda.todayKey(TimeZone.current)
+    @State private var showCapture = false
+    @State private var dictateOnOpen = false
 
     enum CalMode: String, CaseIterable { case agenda, month, day
         var label: String { rawValue.capitalized }
@@ -70,6 +72,9 @@ struct CalendarView: View {
             case let .edit(event): EventEditSheet(event: event, initialDate: event.startsAt ?? Date())
             }
         }
+        .sheet(isPresented: $showCapture) {
+            CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
+        }
     }
 
     // MARK: header (month title + view toggle + add)
@@ -116,7 +121,9 @@ struct CalendarView: View {
     // MARK: agenda
 
     @ViewBuilder private var agendaContent: some View {
-        AICaptureBar(placeholder: "Add an event…") { editing = .new(Date()) }
+        AICaptureBar(placeholder: "Add an event…",
+                     onTap: { dictateOnOpen = false; showCapture = true },
+                     onMic: { dictateOnOpen = true; showCapture = true })
         personFilter
         if groups.isEmpty {
             VStack(spacing: 10) {

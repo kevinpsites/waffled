@@ -8,11 +8,14 @@ import SwiftUI
 struct CaptureSheet: View {
     @Environment(SyncManager.self) private var sync
     @Environment(\.dismiss) private var dismiss
+    /// Start voice dictation as soon as the sheet appears (from a mic tap).
+    var autoDictate = false
     @State private var text = ""
     @State private var phase: Phase = .input
     @State private var intent: CaptureIntent?
     @State private var via = ""
     @State private var error: String?
+    @State private var dictation = Dictation()
     @FocusState private var focused: Bool
 
     enum Phase { case input, parsing, preview, committing }
@@ -38,10 +41,13 @@ struct CaptureSheet: View {
             if let demo = DemoHooks.captureText {   // headless demo driver (no-op unless set)
                 text = demo
                 parse()
+            } else if autoDictate {
+                dictation.toggle()
             } else {
                 focused = true
             }
         }
+        .onDisappear { dictation.stop() }
     }
 
     // MARK: header
@@ -58,15 +64,29 @@ struct CaptureSheet: View {
     // MARK: input
     private var inputView: some View {
         VStack(alignment: .leading, spacing: 14) {
-            TextField("Soccer practice Tuesday at 4pm for Wally…", text: $text, axis: .vertical)
-                .font(.system(size: 17, weight: .semibold))
-                .lineLimit(3...8)
-                .focused($focused)
-                .submitLabel(.go)
-                .onSubmit(parse)
-                .padding(16)
-                .background(NK.panel)
-                .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+            ZStack(alignment: .bottomTrailing) {
+                TextField("Soccer practice Tuesday at 4pm for Wally…", text: $text, axis: .vertical)
+                    .font(.system(size: 17, weight: .semibold))
+                    .lineLimit(3...8)
+                    .focused($focused)
+                    .submitLabel(.go)
+                    .onSubmit(parse)
+                    .padding(16).padding(.trailing, 40)
+                    .background(NK.panel)
+                    .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+
+                Button { dictation.toggle() } label: {
+                    Image(systemName: dictation.isListening ? "mic.fill" : "mic")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(dictation.isListening ? .white : NK.ink2)
+                        .frame(width: 34, height: 34)
+                        .background(dictation.isListening ? NK.primary : NK.card)
+                        .clipShape(Circle())
+                        .overlay(Circle().strokeBorder(dictation.isListening ? Color.clear : NK.hair, lineWidth: 1))
+                }
+                .buttonStyle(.plain).padding(10)
+            }
+            .onChange(of: dictation.transcript) { _, t in if !t.isEmpty { text = t } }
 
             Button(action: parse) {
                 HStack {
@@ -166,6 +186,7 @@ struct CaptureSheet: View {
 
     // MARK: actions
     private func parse() {
+        dictation.stop()
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
         focused = false; error = nil; phase = .parsing
