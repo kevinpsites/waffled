@@ -85,7 +85,7 @@ struct FamilyView: View {
         switch route {
         case .lists:           ListsIndexView(path: $path)
         case let .list(list):  ListDetailView(list: list)
-        case .chores:          HubPlaceholder(emoji: "✅", title: "Chores", summary: hub.choresSubtitle)
+        case .chores:          ChoresView()
         case .goals:           GoalsView(path: $path)
         case let .goal(goal):  GoalDetailView(goal: goal, path: $path)
         case .rewards:         HubPlaceholder(emoji: "⭐", title: "Rewards", summary: hub.rewardsSubtitle)

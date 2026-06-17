@@ -166,6 +166,38 @@ struct NookAPI: Sendable {
         return try await getJSON("/api/lists/grocery", as: Resp.self).items
     }
 
+    // MARK: Chores board (non-synced; fetched over REST)
+
+    /// One chore instance for a given day (the Tasks list row).
+    struct ChoreInstanceDTO: Decodable, Identifiable, Sendable {
+        let id: String
+        let choreId: String
+        let choreTitle: String
+        let emoji: String?
+        let personId: String?
+        let personName: String?
+        var status: String            // pending | done | awaiting
+        let rewardAmount: Int
+        let rrule: String?
+        let requiresApproval: Bool
+        let streak: Int
+    }
+
+    /// The chore instances for `date` (YYYY-MM-DD; defaults to today within ±31 days).
+    func choreInstances(date: String) async throws -> [ChoreInstanceDTO] {
+        struct Resp: Decodable { let instances: [ChoreInstanceDTO] }
+        return try await getJSON("/api/chore-instances/today?date=\(date)", as: Resp.self).instances
+    }
+
+    func completeChore(id: String) async throws { try await send("POST", "/api/chore-instances/\(id)/complete", body: [:]) }
+    func uncompleteChore(id: String) async throws { try await send("POST", "/api/chore-instances/\(id)/uncomplete", body: [:]) }
+    func approveChore(id: String) async throws { try await send("POST", "/api/chore-instances/\(id)/approve", body: [:]) }
+    func rejectChore(id: String) async throws { try await send("POST", "/api/chore-instances/\(id)/reject", body: [:]) }
+    /// Claim an up-for-grabs instance for a person (credits their stars on complete).
+    func claimChore(id: String, personId: String) async throws {
+        try await send("POST", "/api/chore-instances/\(id)/claim", body: ["personId": .string(personId)])
+    }
+
     // MARK: Family hub tile counts (non-synced domains, fetched over REST)
 
     struct GoalDTO: Decodable { let id: String; let isFeatured: Bool }
