@@ -1020,6 +1020,18 @@ struct GoalDetailView: View {
     private var participants: [NookAPI.Goal.Participant] { model.detail?.participants ?? goal.participants }
     private var pct: Int { (target ?? 0) > 0 ? min(Int((progress / target!) * 100), 100) : 0 }
 
+    /// The goal handed to the Log sheet — participants/unit come from the loaded
+    /// detail, so the "Who?" picker shows even when we arrived via a lightweight
+    /// goal (e.g. the person spotlight, which has no participant list).
+    private var logGoal: NookAPI.Goal {
+        NookAPI.Goal(id: goal.id, goalListId: goal.goalListId, title: goal.title, emoji: goal.emoji,
+                     category: goal.category, goalType: goal.goalType, unit: unit,
+                     habitPeriod: goal.habitPeriod, habitTargetPerPeriod: goal.habitTargetPerPeriod,
+                     trackingMode: goal.trackingMode, deadline: goal.deadline, isFeatured: goal.isFeatured,
+                     target: target, totalProgress: progress, milestoneTotal: goal.milestoneTotal,
+                     milestoneReached: goal.milestoneReached, streakDays: goal.streakDays, participants: participants)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -1045,7 +1057,7 @@ struct GoalDetailView: View {
         .task { await model.load() }
         .refreshable { await model.load() }
         .sheet(isPresented: $logging) {
-            GoalLogSheet(goal: goal) { amount, ids, note in
+            GoalLogSheet(goal: logGoal) { amount, ids, note in
                 Task { await model.log(amount: amount, personIds: ids, note: note) }
             }
         }
