@@ -123,11 +123,19 @@ struct CalendarView: View {
         let on = filterPerson == id
         return Button { withAnimation { filterPerson = id } } label: {
             HStack(spacing: 7) {
-                if let m = member { Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 24) }
+                if let m = member {
+                    Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 24)
+                } else {
+                    // "Everyone" — a family glyph so the chip matches the person chips' size.
+                    Image(systemName: "person.2.fill").font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(on ? .white : NK.ink2)
+                        .frame(width: 24, height: 24)
+                        .background(on ? Color.white.opacity(0.22) : NK.panel).clipShape(Circle())
+                }
                 Text(label).font(.system(size: 14, weight: .bold))
                     .foregroundStyle(on ? .white : NK.ink2)
             }
-            .padding(.leading, member == nil ? 14 : 6).padding(.trailing, 14).padding(.vertical, 7)
+            .padding(.leading, 6).padding(.trailing, 14).padding(.vertical, 7)
             .background(on ? NK.ink : NK.card)
             .overlay(Capsule().strokeBorder(on ? Color.clear : NK.hair, lineWidth: 1))
             .clipShape(Capsule())
