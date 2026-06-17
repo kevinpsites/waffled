@@ -55,6 +55,20 @@ final class ChoresModel {
 
     func approve(_ id: String) async { do { try await api.approveChore(id: id); await load() } catch { self.error = true } }
     func reject(_ id: String) async { do { try await api.rejectChore(id: id); await load() } catch { self.error = true } }
+
+    /// Create (choreId nil) or edit a chore definition, then reload the day.
+    func save(choreId: String?, body: [String: JSONValue]) async {
+        do {
+            if let choreId { try await api.updateChore(id: choreId, body) }
+            else { try await api.createChore(body) }
+            await load()
+        } catch { self.error = true }
+    }
+
+    func delete(choreId: String) async {
+        do { try await api.deleteChore(id: choreId); await load() }
+        catch { self.error = true }
+    }
 }
 
 /// Local-date helpers for the day stepper (household runs in device tz here).
@@ -101,6 +115,19 @@ struct ChoresView: View {
     @Environment(SyncManager.self) private var sync
     @State private var model = ChoresModel(date: ChoreDates.today())
     @State private var claiming: String?   // instance id whose "who did it?" picker is open
+    @State private var editor: ChoreEditorTarget?
+
+    /// What the chore editor sheet is editing/creating.
+    enum ChoreEditorTarget: Identifiable {
+        case new(personId: String?)
+        case edit(NookAPI.ChoreInstanceDTO)
+        var id: String {
+            switch self {
+            case let .new(pid): return "new:\(pid ?? "")"
+            case let .edit(i): return "edit:\(i.id)"
+            }
+        }
+    }
 
     var body: some View {
         ScrollView {
@@ -118,8 +145,20 @@ struct ChoresView: View {
         .background(NK.canvas)
         .navigationTitle("Chores")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { editor = .new(personId: nil) } label: {
+                    Label("New chore", systemImage: "plus").labelStyle(.titleAndIcon).fontWeight(.semibold)
+                }
+            }
+        }
         .task { await model.load() }
         .refreshable { await model.load() }
+        .sheet(item: $editor) { target in
+            ChoreEditSheet(members: sync.members, target: target,
+                onSave: { choreId, body in Task { await model.save(choreId: choreId, body: body) } },
+                onDelete: { choreId in Task { await model.delete(choreId: choreId) } })
+        }
     }
 
     /// Up for grabs first, then every household member in order, then any orphans.
@@ -136,9 +175,7 @@ struct ChoresView: View {
         var seen = Set<String>()
         for m in sync.members {
             seen.insert(m.id)
-            let items = byPerson[m.id] ?? []
-            if items.isEmpty { continue }   // hide empty people on a phone (no per-person add yet)
-            cols.append(ChoreColumn(id: m.id, name: m.name, emoji: m.emoji, colorHex: m.colorHex, isGrabs: false, items: items))
+            cols.append(ChoreColumn(id: m.id, name: m.name, emoji: m.emoji, colorHex: m.colorHex, isGrabs: false, items: byPerson[m.id] ?? []))
         }
         for (pid, items) in byPerson where !seen.contains(pid) {
             cols.append(ChoreColumn(id: pid, name: items.first?.personName ?? "Someone", emoji: nil, colorHex: nil, isGrabs: false, items: items))
@@ -198,6 +235,19 @@ struct ChoresView: View {
                     if i < col.items.count - 1 { Divider().background(NK.hair) }
                 }
             }
+            if col.items.isEmpty {
+                Text(col.isGrabs ? "Nothing up for grabs — add one anyone can claim."
+                                 : "Nothing for \(col.name) \(ChoreDates.meta(model.date).isToday ? "today" : "this day").")
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3).padding(.vertical, 6)
+            }
+            Button { editor = .new(personId: col.isGrabs ? nil : col.id) } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
+                    Text("Add chore").font(.system(size: 13, weight: .semibold))
+                }
+                .foregroundStyle(NK.ink3).padding(.top, 8)
+            }
+            .buttonStyle(.plain)
         }
         .padding(14)
         .background(NK.card)
@@ -238,6 +288,8 @@ struct ChoresView: View {
                         }
                     }
                 }
+                .contentShape(Rectangle())
+                .onTapGesture { editor = .edit(inst) }
                 Spacer(minLength: 6)
                 if isAwaiting {
                     HStack(spacing: 6) {
@@ -292,5 +344,211 @@ struct ChoresView: View {
             }.buttonStyle(.plain)
         }
         .padding(.vertical, 8).padding(.horizontal, 4)
+    }
+}
+
+/// Create or edit a chore definition — title, emoji, repeat schedule (every day /
+/// certain weekdays), who (or up-for-grabs), star reward, and a parent-approval
+/// toggle. Delete when editing. Mirrors the web ChoreModal. NK-styled.
+struct ChoreEditSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let members: [SyncedMember]
+    let target: ChoresView.ChoreEditorTarget
+    let onSave: (String?, [String: JSONValue]) -> Void
+    let onDelete: (String) -> Void
+
+    private static let days: [(code: String, label: String)] = [
+        ("MO", "Mon"), ("TU", "Tue"), ("WE", "Wed"), ("TH", "Thu"), ("FR", "Fri"), ("SA", "Sat"), ("SU", "Sun"),
+    ]
+
+    private let editChoreId: String?
+    @State private var title: String
+    @State private var emoji: String
+    @State private var personId: String?
+    @State private var stars: Int
+    @State private var freq: String        // "daily" | "weekly"
+    @State private var days: Set<String>
+    @State private var requiresApproval: Bool
+    @State private var confirmDelete = false
+
+    init(members: [SyncedMember], target: ChoresView.ChoreEditorTarget,
+         onSave: @escaping (String?, [String: JSONValue]) -> Void, onDelete: @escaping (String) -> Void) {
+        self.members = members; self.target = target; self.onSave = onSave; self.onDelete = onDelete
+        switch target {
+        case let .new(pid):
+            editChoreId = nil
+            _title = State(initialValue: ""); _emoji = State(initialValue: "")
+            _personId = State(initialValue: pid); _stars = State(initialValue: 1)
+            _freq = State(initialValue: "daily"); _days = State(initialValue: [])
+            _requiresApproval = State(initialValue: false)
+        case let .edit(i):
+            editChoreId = i.choreId
+            _title = State(initialValue: i.choreTitle); _emoji = State(initialValue: i.emoji ?? "")
+            _personId = State(initialValue: i.personId); _stars = State(initialValue: i.rewardAmount)
+            let parsed = ChoreEditSheet.parseRrule(i.rrule)
+            _freq = State(initialValue: parsed.freq); _days = State(initialValue: Set(parsed.days))
+            _requiresApproval = State(initialValue: i.requiresApproval)
+        }
+    }
+
+    private var editing: Bool { editChoreId != nil }
+    private var canSave: Bool {
+        !title.trimmingCharacters(in: .whitespaces).isEmpty && (freq != "weekly" || !days.isEmpty)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(spacing: 12) {
+                        labeled("Title") {
+                            TextField("Feed the dog", text: $title)
+                                .font(.system(size: 16, weight: .semibold)).textInputAutocapitalization(.sentences)
+                                .padding(.horizontal, 13).padding(.vertical, 12).cardField()
+                        }
+                        labeled("Emoji", width: 64) {
+                            TextField("🐶", text: $emoji).multilineTextAlignment(.center)
+                                .font(.system(size: 16, weight: .semibold)).frame(width: 60).padding(.vertical, 12).cardField()
+                                .onChange(of: emoji) { _, v in if v.count > 2 { emoji = String(v.prefix(2)) } }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "Repeats")
+                        Picker("Repeats", selection: $freq.animation()) {
+                            Text("Every day").tag("daily"); Text("Certain days").tag("weekly")
+                        }
+                        .pickerStyle(.segmented)
+                        if freq == "weekly" {
+                            HStack(spacing: 5) {
+                                ForEach(Self.days, id: \.code) { d in
+                                    let on = days.contains(d.code)
+                                    Button { if on { days.remove(d.code) } else { days.insert(d.code) } } label: {
+                                        Text(d.label).font(.system(size: 12, weight: .bold))
+                                            .foregroundStyle(on ? .white : NK.ink2)
+                                            .frame(maxWidth: .infinity).padding(.vertical, 9)
+                                            .background(on ? NK.primary : NK.card)
+                                            .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(on ? Color.clear : NK.hair, lineWidth: 1))
+                                            .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "Who")
+                        ChipFlow(spacing: 8, lineSpacing: 8) {
+                            personChip(nil, label: "🙌 Up for grabs")
+                            ForEach(members) { m in personChip(m.id, label: "\(m.emoji ?? "🙂") \(goalFirstName(m.name))") }
+                        }
+                    }
+
+                    HStack {
+                        SectionLabel(text: "Stars")
+                        Spacer()
+                        HStack(spacing: 14) {
+                            Button { if stars > 0 { stars -= 1 } } label: {
+                                Image(systemName: "minus.circle.fill").font(.system(size: 24)).foregroundStyle(stars > 0 ? NK.ink2 : NK.hair)
+                            }.buttonStyle(.plain).disabled(stars == 0)
+                            HStack(spacing: 3) {
+                                Image(systemName: "star.fill").font(.system(size: 13)).foregroundStyle(NK.gold)
+                                Text("\(stars)").font(.system(size: 17, weight: .heavy)).foregroundStyle(NK.ink).frame(minWidth: 20)
+                            }
+                            Button { stars += 1 } label: {
+                                Image(systemName: "plus.circle.fill").font(.system(size: 24)).foregroundStyle(NK.primary)
+                            }.buttonStyle(.plain)
+                        }
+                    }
+
+                    Toggle(isOn: $requiresApproval) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Needs a parent’s OK").font(.system(size: 14.5, weight: .bold)).foregroundStyle(NK.ink)
+                            Text("Stars are awarded only after a parent approves.")
+                                .font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                        }
+                    }
+                    .tint(FamilyColor.wally.solid)
+                    .padding(13).cardField()
+
+                    if editing {
+                        Button {
+                            if confirmDelete { onDelete(editChoreId!); dismiss() }
+                            else { withAnimation { confirmDelete = true } }
+                        } label: {
+                            Text(confirmDelete ? "Tap again to delete this chore" : "Delete chore")
+                                .font(.system(size: 14, weight: .bold)).foregroundStyle(NK.primary)
+                        }
+                        .buttonStyle(.plain).padding(.top, 2)
+                    }
+                }
+                .padding(20)
+            }
+            .background(NK.canvas)
+            .navigationTitle(editing ? "Edit chore" : "New chore")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(editing ? "Save" : "Add") { submit() }.fontWeight(.semibold).disabled(!canSave)
+                }
+            }
+        }
+        .presentationDetents([.large])
+    }
+
+    private func labeled<V: View>(_ label: String, width: CGFloat? = nil, @ViewBuilder _ content: () -> V) -> some View {
+        VStack(alignment: .leading, spacing: 9) { SectionLabel(text: label); content() }
+            .frame(maxWidth: width == nil ? .infinity : width, alignment: .leading)
+    }
+
+    private func personChip(_ id: String?, label: String) -> some View {
+        let on = personId == id
+        return Button { personId = id } label: {
+            Text(label).font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(on ? NK.ink : NK.ink2)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(on ? NK.primary.opacity(0.12) : NK.card)
+                .overlay(Capsule().strokeBorder(on ? NK.primary : NK.hair, lineWidth: on ? 1.5 : 1))
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func submit() {
+        let body: [String: JSONValue] = [
+            "title": .string(title.trimmingCharacters(in: .whitespacesAndNewlines)),
+            "emoji": emoji.trimmingCharacters(in: .whitespaces).isEmpty ? .null : .string(emoji.trimmingCharacters(in: .whitespaces)),
+            "personId": personId.map(JSONValue.string) ?? .null,
+            "rewardAmount": .int(stars),
+            "rrule": .string(buildRrule()),
+            "requiresApproval": .bool(requiresApproval),
+        ]
+        onSave(editChoreId, body)
+        dismiss()
+    }
+
+    private func buildRrule() -> String {
+        guard freq == "weekly", !days.isEmpty else { return "FREQ=DAILY" }
+        let ordered = Self.days.map(\.code).filter { days.contains($0) }
+        return "FREQ=WEEKLY;BYDAY=\(ordered.joined(separator: ","))"
+    }
+
+    private static func parseRrule(_ rrule: String?) -> (freq: String, days: [String]) {
+        guard let r = rrule, r.uppercased().contains("FREQ=WEEKLY") else { return ("daily", []) }
+        guard let range = r.range(of: "BYDAY=", options: .caseInsensitive) else { return ("weekly", []) }
+        let rest = r[range.upperBound...].prefix { $0.isLetter || $0 == "," }
+        return ("weekly", rest.uppercased().split(separator: ",").map(String.init))
+    }
+}
+
+private extension View {
+    /// The shared NK card-field chrome (white, hairline border, rounded).
+    func cardField() -> some View {
+        frame(maxWidth: .infinity, alignment: .leading)
+            .background(NK.card)
+            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
     }
 }

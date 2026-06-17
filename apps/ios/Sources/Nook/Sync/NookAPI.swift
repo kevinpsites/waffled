@@ -189,6 +189,14 @@ struct NookAPI: Sendable {
         return try await getJSON("/api/chore-instances/today?date=\(date)", as: Resp.self).instances
     }
 
+    /// Create a chore definition (admins). Body: title, emoji?, personId?,
+    /// rewardAmount?, rrule?, requiresApproval?.
+    func createChore(_ body: [String: JSONValue]) async throws { try await send("POST", "/api/chores", body: body) }
+    /// Edit a chore definition (admins) — same fields as create.
+    func updateChore(id: String, _ body: [String: JSONValue]) async throws { try await send("PATCH", "/api/chores/\(id)", body: body) }
+    /// Delete a chore definition + today's instances (admins).
+    func deleteChore(id: String) async throws { try await delete("/api/chores/\(id)") }
+
     func completeChore(id: String) async throws { try await send("POST", "/api/chore-instances/\(id)/complete", body: [:]) }
     func uncompleteChore(id: String) async throws { try await send("POST", "/api/chore-instances/\(id)/uncomplete", body: [:]) }
     func approveChore(id: String) async throws { try await send("POST", "/api/chore-instances/\(id)/approve", body: [:]) }
