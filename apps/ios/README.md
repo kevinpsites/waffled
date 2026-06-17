@@ -92,5 +92,22 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
   `persons`/`events` mirrored to local SQLite, Family people-row from the mirror,
   offline read + queued write + reconnect — verified end-to-end on the iPhone 17
   Pro sim against the live stack. ✅
-- **Next — Phase 2:** the "Add anything" capture flow wired to `POST /api/capture`
-  (+ SwiftData for offline capture drafts).
+- **Phase 2 — capture:** the "Add anything" sheet wired to `POST /api/capture`;
+  the client commits all four intents the way the web kiosk does — events to the
+  local PowerSync mirror, grocery/task/meal over REST. ✅
+- **Phase 3 — hub screens (in progress):**
+  - **Today** dashboard widgets live (tonight's meal, chores progress, grocery
+    count) from the REST domains. ✅
+  - **Family hub** tiles show live counts and navigate (per-tile NavigationStack
+    routing; re-tap to pop to root). ✅
+  - **Lists** built out: Lists index → grocery **board** (By aisle / By meal,
+    meal-color dots + meal-type tags, this-week's-meals summary, pantry-staples
+    "Pantry check", collapsible sections, inline name/qty edit, swipe → Details
+    editor with assignee/section, settle-into-Completed). ✅
+  - **Goals** built out: list picker + All/Shared/Each, featured hero
+    (shared-ring / each-together), log progress, **create**, **detail**
+    (milestone ladder, by-person, recent activity, this-week, streak), **edit**
+    (PATCH). ✅
+  - Chores / Rewards / Photos / Settings: still live-summary placeholders.
+- **Next:** another hub tile (Chores/Rewards/Photos/Settings), goal-list
+  creation, and Auth0 login (roadmap 4.2.1) to replace the dev token.
