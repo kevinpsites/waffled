@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Icon } from './icons'
 import { EventModal } from './components/EventModal'
@@ -11,6 +11,11 @@ import { useEventsRange, useHousehold, type AgendaEvent } from '../lib/api'
 import { MONTHS, MONTHS_SHORT, DOW_FULL, ymd, addDays, startOfWeek } from './components/cal-utils'
 
 type View = 'month' | 'week' | 'day' | 'agenda'
+
+// Remember the last view + focused date across navigations (opening an event
+// detail unmounts Calendar), so coming "back" returns you to where you were
+// instead of resetting to the month grid. Module-level: lives for the SPA session.
+const lastCalState: { view: View; anchorTime: number } = { view: 'month', anchorTime: Date.now() }
 
 function addMonths(d: Date, n: number): Date {
   return new Date(d.getFullYear(), d.getMonth() + n, 1)
@@ -49,9 +54,15 @@ function periodLabel(view: View, anchor: Date): string {
 
 export function Calendar() {
   const navigate = useNavigate()
-  const [view, setView] = useState<View>('month')
-  const [anchor, setAnchor] = useState(() => new Date())
+  const [view, setView] = useState<View>(() => lastCalState.view)
+  const [anchor, setAnchor] = useState(() => new Date(lastCalState.anchorTime))
   const [modal, setModal] = useState<{ date?: string; time?: string } | null>(null)
+
+  // Persist view + anchor so returning from an event detail restores this spot.
+  useEffect(() => {
+    lastCalState.view = view
+    lastCalState.anchorTime = anchor.getTime()
+  }, [view, anchor])
 
   const { from, to } = useMemo(() => rangeFor(view, anchor), [view, anchor])
   const { events, refetch } = useEventsRange(from, to)

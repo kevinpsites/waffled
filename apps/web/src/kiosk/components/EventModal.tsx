@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
-import { api, usePersons, calendarsApi, mealsApi, localToday, type AgendaEvent, type CalendarLink } from '../../lib/api'
+import { api, usePersons, calendarsApi, mealsApi, localToday, invalidateGetCache, type AgendaEvent, type CalendarLink } from '../../lib/api'
 import { createEventLocal, updateEventLocal, deleteEventLocal, tombstoneEvent } from '../../lib/powersync/events-local'
 
 // Calendars an event can be written to: writable (owner/writer), not read-only.
@@ -141,11 +141,14 @@ export function EventModal({
       // PowerSync isn't running.
       if (editing) {
         if (!(await updateEventLocal(event!.id, draft))) await api.updateEvent(event!.id, restPayload)
+        invalidateGetCache(`/api/events/${event!.id}/insight`)
       } else {
         if (!(await createEventLocal({ ...draft, calendarId: chosenCal }))) {
           await api.createEvent(ownerCals.length > 1 ? { ...restPayload, calendarId: chosenCal } : restPayload)
         }
       }
+      // The week digest reflects this event — refresh it next time it's shown.
+      invalidateGetCache('/api/calendar/heads-up')
       onSaved()
       onClose()
     } catch (err) {
@@ -169,6 +172,7 @@ export function EventModal({
         await api.deleteEvent(event!.id)
         tombstoneEvent(event!.id)
       }
+      invalidateGetCache('/api/calendar/heads-up')
       onSaved()
       onClose()
     } catch (err) {

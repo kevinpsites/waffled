@@ -1,46 +1,10 @@
 import { useMemo } from 'react'
 import { type AgendaEvent } from '../../lib/api'
-import { DOW_FULL, MONTHS, ymd, localDate, fmtHour, fmtTime, minutesOfDay, durationMin } from './cal-utils'
+import { DOW_FULL, MONTHS, ymd, localDate, fmtHour, fmtTime, minutesOfDay, durationMin, packLanes } from './cal-utils'
 
 const DAY_START = 6 // 6 AM — top of the grid
 const DAY_END = 22 // 10 PM — bottom
 const HOUR_PX = 64 // a touch taller than the week grid — one day has room to breathe
-
-// Pack overlapping timed events into side-by-side lanes so a busy day is legible
-// instead of a stack of cards on top of each other. Returns each event's lane and
-// the lane count of its overlap cluster (so width = 1 / lanes).
-function layout(events: AgendaEvent[]): Map<string, { lane: number; lanes: number }> {
-  const sorted = [...events].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
-  const out = new Map<string, { lane: number; lanes: number }>()
-  let cluster: AgendaEvent[] = []
-  let clusterEnd = 0
-  const flush = () => {
-    // Greedy column assignment within the cluster, then everyone shares the count.
-    const colEnds: number[] = []
-    const laneOf = new Map<string, number>()
-    for (const e of cluster) {
-      const s = new Date(e.startsAt).getTime()
-      const end = s + durationMin(e) * 60000
-      let lane = colEnds.findIndex((ce) => ce <= s)
-      if (lane === -1) { lane = colEnds.length; colEnds.push(end) }
-      else colEnds[lane] = end
-      laneOf.set(e.id, lane)
-    }
-    const lanes = colEnds.length || 1
-    for (const e of cluster) out.set(e.id, { lane: laneOf.get(e.id) ?? 0, lanes })
-    cluster = []
-    clusterEnd = 0
-  }
-  for (const e of sorted) {
-    const s = new Date(e.startsAt).getTime()
-    const end = s + durationMin(e) * 60000
-    if (cluster.length && s >= clusterEnd) flush()
-    cluster.push(e)
-    clusterEnd = Math.max(clusterEnd, end)
-  }
-  if (cluster.length) flush()
-  return out
-}
 
 // A single day as a full-width time grid: an all-day strip, an hour rail, timed
 // events laid out in lanes, and a live "now" line when you're looking at today.
@@ -63,7 +27,7 @@ export function DayView({
   const todays = useMemo(() => events.filter((e) => localDate(e.startsAt, tz) === key), [events, tz, key])
   const allDay = todays.filter((e) => e.allDay)
   const timed = useMemo(() => todays.filter((e) => !e.allDay), [todays])
-  const lanes = useMemo(() => layout(timed), [timed])
+  const lanes = useMemo(() => packLanes(timed), [timed])
 
   const now = new Date()
   const isToday = ymd(now) === key

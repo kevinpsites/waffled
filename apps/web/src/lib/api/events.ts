@@ -1,6 +1,6 @@
 // Calendar events domain — client slice, types, and hooks.
 import { useEffect, useRef, useState } from 'react'
-import { apiGet, apiSend, apiDelete, localToday } from './client'
+import { apiGet, apiGetCached, apiSend, apiDelete, localToday } from './client'
 import { useRefetchOn } from './bus'
 import { watchAgendaRows, eventsForDay, eventsForRange, getHouseholdTz, getLocalEvent, dropTombstoned, isEventTombstoned } from '../powersync/events-local'
 
@@ -42,10 +42,11 @@ export const eventsApi = {
   event: (id: string) => apiGet<{ event: AgendaEvent }>(`/api/events/${id}`),
   // AI cards (honor the household's provider via the server; both fall back to a
   // deterministic summary server-side, so they always return something useful).
+  // Cached briefly so leaving and returning to a screen doesn't re-run the model.
   headsUp: (from: string, to: string) =>
-    apiGet<{ headline: string; body: string; via: string }>(`/api/calendar/heads-up?from=${from}&to=${to}`),
+    apiGetCached<{ headline: string; body: string; via: string }>(`/api/calendar/heads-up?from=${from}&to=${to}`, 5 * 60_000),
   eventInsight: (id: string) =>
-    apiGet<{ headline: string; body: string; leaveBy: string | null; reminder: string; via: string }>(`/api/events/${id}/insight`),
+    apiGetCached<{ headline: string; body: string; leaveBy: string | null; reminder: string; via: string }>(`/api/events/${id}/insight`, 5 * 60_000),
   createEvent: (input: {
     title: string
     startsAt: string

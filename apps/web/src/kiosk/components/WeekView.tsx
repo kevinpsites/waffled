@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { usePersons, type AgendaEvent } from '../../lib/api'
-import { DOW, ymd, addDays, localDate, fmtHour, fmtTime, minutesOfDay, durationMin, eventPeople } from './cal-utils'
+import { DOW, ymd, addDays, localDate, fmtHour, fmtTime, minutesOfDay, durationMin, eventPeople, packLanes } from './cal-utils'
 
 const DAY_START = 6 // 6 AM — top of the grid
 const DAY_END = 22 // 10 PM — bottom
@@ -131,6 +131,8 @@ export function WeekView({
             {days.map((d) => {
               const key = ymd(d)
               const timed = (byDay[key] ?? []).filter((e) => !e.allDay)
+              // Lay overlapping events out side-by-side instead of stacking them.
+              const lanes = packLanes(timed)
               return (
                 <div
                   key={key}
@@ -144,12 +146,16 @@ export function WeekView({
                     const height = Math.max(22, (durationMin(e) / 60) * HOUR_PX - 3)
                     const color = e.personColor ?? '#6B6B70'
                     const isMeal = e.origin === 'meal_plan'
+                    const lane = lanes.get(e.id) ?? { lane: 0, lanes: 1 }
+                    const width = `calc((100% - 6px) / ${lane.lanes})`
+                    const left = `calc((100% - 6px) / ${lane.lanes} * ${lane.lane} + 3px)`
+                    const tight = height < 34 // short events: title beside the time, no wrap
                     return (
                       <div
                         key={e.id}
-                        className={`wk-ev ${isMeal ? 'ev-meal' : ''}`}
-                        style={{ top, height, background: `${color}22`, color, borderLeft: `3px solid ${color}` }}
-                        title={isMeal ? 'Planned meal' : undefined}
+                        className={`wk-ev ${isMeal ? 'ev-meal' : ''} ${tight ? 'tight' : ''}`}
+                        style={{ top, height, left, width, background: `${color}22`, color, borderLeft: `3px solid ${color}` }}
+                        title={isMeal ? `Planned meal · ${e.title}` : `${fmtTime(e)} · ${e.title}`}
                         onClick={(ev) => {
                           ev.stopPropagation()
                           onOpenEvent(e)

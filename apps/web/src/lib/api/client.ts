@@ -19,6 +19,24 @@ export async function apiGet<T>(path: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
+// Short-lived GET cache for idempotent, expensive reads (e.g. the AI cards): a
+// mount within the TTL reuses the in-flight/last promise instead of firing the
+// same request again — so navigating away and back doesn't re-run the model. A
+// failed request is evicted so the next mount retries.
+const getCache = new Map<string, { at: number; p: Promise<unknown> }>()
+export function apiGetCached<T>(path: string, ttlMs: number): Promise<T> {
+  const hit = getCache.get(path)
+  if (hit && Date.now() - hit.at < ttlMs) return hit.p as Promise<T>
+  const p = apiGet<T>(path)
+  getCache.set(path, { at: Date.now(), p })
+  p.catch(() => { if (getCache.get(path)?.p === p) getCache.delete(path) })
+  return p
+}
+// Drop cached GETs by path prefix (e.g. after editing an event) so the next read is fresh.
+export function invalidateGetCache(prefix: string): void {
+  for (const k of [...getCache.keys()]) if (k.startsWith(prefix)) getCache.delete(k)
+}
+
 export async function apiSend<T>(method: string, path: string, body?: unknown): Promise<T> {
   const t = token()
   const res = await fetch(path, {

@@ -119,10 +119,17 @@ function HeadsUpCard({ refreshKey }: { refreshKey: number }) {
 
   return (
     <div className="ag-ai">
-      <div className="ag-ai-icon"><Icon name="spark" /></div>
-      <div>
+      <div className={`ag-ai-icon ${card ? '' : 'thinking'}`}><Icon name="spark" /></div>
+      <div className="ed-ai-main">
         <div className="ag-ai-h">{card?.headline ?? 'Heads up this week'}</div>
-        <div className="ag-ai-b">{card?.body ?? 'Looking over your week…'}</div>
+        {card ? (
+          <div className="ag-ai-b">{card.body}</div>
+        ) : (
+          <div className="ai-think" aria-label="Thinking…">
+            <div className="ai-think-bar" />
+            <div className="ai-think-bar short" />
+          </div>
+        )}
       </div>
     </div>
   )

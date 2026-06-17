@@ -59,10 +59,16 @@
 .wk-col { position: relative; border-right: 1px solid var(--hair);
   background-image: linear-gradient(to bottom, var(--hair-2) 1px, transparent 1px); cursor: pointer; }
 .wk-col:last-child { border-right: 0; }
-.wk-ev { position: absolute; left: 3px; right: 3px; border-radius: 8px; padding: 4px 8px;
+/* left + width are set inline (lane packing); keep a min-width so a 3-way overlap
+   is still tappable. */
+.wk-ev { position: absolute; min-width: 28px; border-radius: 8px; padding: 4px 7px;
   overflow: hidden; cursor: pointer; box-shadow: var(--sh-1); }
-.wk-ev-t { font-size: 10.5px; font-weight: 700; opacity: .85; }
+.wk-ev-t { font-size: 10.5px; font-weight: 700; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wk-ev-title { font-size: 12.5px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* short events: time + title share one line so nothing gets clipped to nothing */
+.wk-ev.tight { padding: 1px 7px; display: flex; align-items: baseline; gap: 6px; }
+.wk-ev.tight .wk-ev-t { font-size: 10px; flex: none; }
+.wk-ev.tight .wk-ev-title { font-size: 11.5px; }
 .wk-ev.ev-meal { border: 1px dashed currentColor; }
 
 /* =====================  DAY VIEW  ===================== */
@@ -142,7 +148,21 @@
 .ag-ai-icon svg { width: 17px; height: 17px; fill: #fff; }
 .ag-ai-h, .ed-ai-h { font-size: 14.5px; font-weight: 700; color: var(--ai); }
 .ag-ai-b, .ed-ai-b { font-size: 13.5px; color: var(--ink-2); margin-top: 3px; line-height: 1.4; }
-.ed-ai-main { min-width: 0; }
+.ed-ai-main { min-width: 0; flex: 1; }
+
+/* "Thinking" state — the spark icon pulses and shimmer bars stand in for the
+   text until the model responds, so it's obvious the AI is working. */
+.ag-ai-icon.thinking, .ed-ai-icon.thinking { animation: ai-pulse 1.25s ease-in-out infinite; }
+@keyframes ai-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.12); opacity: .75; } }
+.ai-think { display: flex; flex-direction: column; gap: 7px; margin-top: 7px; }
+.ai-think-bar { height: 11px; border-radius: 6px;
+  background: linear-gradient(90deg, #e4dcf7 25%, #f6f2fe 50%, #e4dcf7 75%);
+  background-size: 200% 100%; animation: ai-shimmer 1.3s linear infinite; }
+.ai-think-bar.short { width: 55%; }
+@keyframes ai-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .ag-ai-icon.thinking, .ed-ai-icon.thinking, .ai-think-bar { animation: none; }
+}
 .ed-ai-chip { display: inline-block; margin-top: 9px; font-size: 12.5px; font-weight: 700; color: var(--ai);
   background: #fff; border: 1px solid #e4dcf7; padding: 4px 11px; border-radius: 999px; }
 .ed-ai-reminder { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e4dcf7; font-size: 13.5px;
@@ -193,6 +213,8 @@
 .ed-fall { padding: 16px 20px; }
 .ed-fall-row { display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: var(--r-md); }
 .ed-fall-row.me { background: #e9f7ef; border: 1.5px solid #9ed8b6; }
+.ed-fall-row.clickable { cursor: pointer; }
+.ed-fall-row.clickable:hover { background: var(--panel); }
 .ed-fall-time { width: 70px; font-size: 13px; font-weight: 700; color: var(--ink-2); flex: none; }
 .ed-fall-row.me .ed-fall-time { color: #167a4a; }
 .ed-fall-bar { width: 4px; height: 22px; border-radius: 99px; flex: none; }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { EventModal } from './components/EventModal'
 import { useTopbarFull } from './topbar-slot'
-import { api, eventsApi, useEvent, useEventsRange, useHousehold, mealsApi, type AgendaEvent } from '../lib/api'
+import { api, eventsApi, useEvent, useEventsRange, useHousehold, mealsApi, invalidateGetCache, type AgendaEvent } from '../lib/api'
 import { deleteEventLocal, tombstoneEvent } from '../lib/powersync/events-local'
 import { DOW_FULL, MONTHS, fmtTime, durationMin, eventPeople, localDate } from './components/cal-utils'
 
@@ -35,6 +35,7 @@ function gapLabel(rowStart: string, thisStart: string): string {
 
 // The same-day timeline ("Where it falls today") with this event highlighted.
 function DayTimeline({ event, tz }: { event: AgendaEvent; tz: string }) {
+  const navigate = useNavigate()
   const day = localDate(event.startsAt, tz)
   const { events } = useEventsRange(day, day)
   const sorted = [...events].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
@@ -55,7 +56,13 @@ function DayTimeline({ event, tz }: { event: AgendaEvent; tz: string }) {
         const me = e.id === event.id
         const color = e.personColor ?? '#A6A29B'
         return (
-          <div key={e.id} className={`ed-fall-row ${me ? 'me' : ''}`}>
+          <div
+            key={e.id}
+            className={`ed-fall-row ${me ? 'me' : 'clickable'}`}
+            role={me ? undefined : 'button'}
+            tabIndex={me ? undefined : 0}
+            onClick={me ? undefined : () => navigate(`/calendar/event/${e.id}`)}
+          >
             <div className="ed-fall-time">{e.allDay ? 'all day' : fmtTime(e)}</div>
             <div className="ed-fall-bar" style={{ background: color }} />
             <div className="ed-fall-title">{e.title}</div>
@@ -117,6 +124,7 @@ export function EventDetail() {
         await api.deleteEvent(id)
         tombstoneEvent(id)
       }
+      invalidateGetCache('/api/calendar/heads-up')
       navigate('/calendar')
     } catch {
       setDeleting(false)
@@ -241,10 +249,17 @@ export function EventDetail() {
         )}
 
         <div className="ed-ai">
-          <div className="ed-ai-icon">✦</div>
+          <div className={`ed-ai-icon ${insight ? '' : 'thinking'}`}>✦</div>
           <div className="ed-ai-main">
             <div className="ed-ai-h">{insight?.headline ?? (event.location ? 'Plan your trip' : 'Stay on track')}</div>
-            <div className="ed-ai-b">{insight?.body ?? 'Thinking it over…'}</div>
+            {insight ? (
+              <div className="ed-ai-b">{insight.body}</div>
+            ) : (
+              <div className="ai-think" aria-label="Thinking…">
+                <div className="ai-think-bar" />
+                <div className="ai-think-bar short" />
+              </div>
+            )}
             {insight?.leaveBy && (
               <div className="ed-ai-chip">🚗 Leave by {insight.leaveBy}</div>
             )}
