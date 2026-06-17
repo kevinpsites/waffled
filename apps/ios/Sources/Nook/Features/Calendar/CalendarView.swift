@@ -6,6 +6,12 @@ import SwiftUI
 struct CalendarView: View {
     @Environment(SyncManager.self) private var sync
     @State private var editing: EventEditTarget?
+    @State private var mode: CalMode = .agenda
+    @State private var filterPerson: String?       // nil = Everyone
+    @State private var monthAnchor = Date()         // the month the grid shows
+    @State private var selectedDay = Agenda.todayKey(TimeZone.current)
+
+    enum CalMode { case agenda, month }
 
     /// What the event editor sheet is creating/editing.
     enum EventEditTarget: Identifiable {
@@ -19,60 +25,25 @@ struct CalendarView: View {
         }
     }
 
+    private var tz: TimeZone { sync.householdTz }
+    /// Events filtered to the selected person (by owner), or all.
+    private var filtered: [SyncedEvent] {
+        guard let p = filterPerson else { return sync.events }
+        return sync.events.filter { $0.personId == p }
+    }
     private var groups: [(day: String, items: [SyncedEvent])] {
-        Agenda.upcoming(sync.events, from: Agenda.todayKey(sync.householdTz), tz: sync.householdTz)
+        Agenda.upcoming(filtered, from: Agenda.todayKey(tz), tz: tz)
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    Text("Calendar").font(NK.serif(30)).foregroundStyle(NK.ink)
-                    Spacer()
-                    Button { editing = .new(Date()) } label: {
-                        Image(systemName: "plus").font(.system(size: 17, weight: .semibold)).foregroundStyle(NK.primary)
-                            .frame(width: 38, height: 38).background(NK.panel).clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
+        VStack(spacing: 0) {
+            header.padding(.horizontal, 18).padding(.top, 8).padding(.bottom, 10)
+            ScrollView {
+                VStack(alignment: .leading, spacing: mode == .agenda ? 18 : 14) {
+                    if mode == .agenda { agendaContent } else { monthContent }
                 }
-                .padding(.top, 8)
-
-                if groups.isEmpty {
-                    VStack(spacing: 10) {
-                        Image(systemName: "calendar").font(.system(size: 34)).foregroundStyle(NK.ink3)
-                        Text("No upcoming events.").font(.system(size: 14)).foregroundStyle(NK.ink2)
-                        Button { editing = .new(Date()) } label: {
-                            Text("New event").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.primary)
-                        }
-                    }
-                    .frame(maxWidth: .infinity).padding(.top, 56)
-                } else {
-                    ForEach(groups, id: \.day) { group in
-                        VStack(alignment: .leading, spacing: 7) {
-                            SectionLabel(text: dayHeader(group.day))
-                            NookCard(padding: 14) {
-                                VStack(spacing: 0) {
-                                    ForEach(Array(group.items.enumerated()), id: \.element.id) { idx, ev in
-                                        Button { editing = .edit(ev) } label: {
-                                            HStack(spacing: 8) {
-                                                EventRow(event: ev, tz: sync.householdTz)
-                                                Image(systemName: "chevron.right")
-                                                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
-                                            }
-                                            .padding(.vertical, 10).contentShape(Rectangle())
-                                        }
-                                        .buttonStyle(.plain)
-                                        if idx < group.items.count - 1 {
-                                            Rectangle().fill(NK.hair2).frame(height: 1)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                .padding(.horizontal, 18).padding(.bottom, 110)
             }
-            .padding(.horizontal, 18).padding(.bottom, 110)
         }
         .background(NK.canvas)
         .sheet(item: $editing) { target in
@@ -83,18 +54,250 @@ struct CalendarView: View {
         }
     }
 
-    private func dayHeader(_ key: String) -> String {
-        let tz = sync.householdTz
+    // MARK: header (month title + view toggle + add)
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            if mode == .month {
+                Button { stepMonth(-1) } label: { chevron("chevron.left") }
+                Text(monthTitle(monthAnchor, year: true)).font(NK.serif(24)).foregroundStyle(NK.ink).lineLimit(1)
+                Button { stepMonth(1) } label: { chevron("chevron.right") }
+            } else {
+                Text(monthTitle(Date(), year: false)).font(NK.serif(30)).foregroundStyle(NK.ink)
+            }
+            Spacer()
+            Button { withAnimation { mode = mode == .agenda ? .month : .agenda } } label: {
+                Image(systemName: mode == .agenda ? "calendar" : "list.bullet")
+                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink2)
+                    .frame(width: 38, height: 38).background(NK.card).clipShape(Circle())
+                    .overlay(Circle().strokeBorder(NK.hair, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            Button { editing = .new(mode == .month ? (dayKeyToDate(selectedDay) ?? Date()) : Date()) } label: {
+                Image(systemName: "plus").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 38, height: 38).background(NK.primary).clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func chevron(_ s: String) -> some View {
+        Image(systemName: s).font(.system(size: 13, weight: .heavy)).foregroundStyle(NK.ink2)
+            .frame(width: 30, height: 30).background(NK.card).clipShape(Circle())
+            .overlay(Circle().strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    // MARK: agenda
+
+    @ViewBuilder private var agendaContent: some View {
+        AICaptureBar(placeholder: "Add an event…") { editing = .new(Date()) }
+        personFilter
+        if groups.isEmpty {
+            VStack(spacing: 10) {
+                Image(systemName: "calendar").font(.system(size: 34)).foregroundStyle(NK.ink3)
+                Text(filterPerson == nil ? "No upcoming events." : "Nothing for them coming up.")
+                    .font(.system(size: 14)).foregroundStyle(NK.ink2)
+            }
+            .frame(maxWidth: .infinity).padding(.top, 56)
+        } else {
+            ForEach(groups, id: \.day) { group in
+                dayHeading(group.day).padding(.top, 2)
+                ForEach(group.items) { ev in
+                    EventCard(event: ev, tz: tz) { editing = .edit(ev) }
+                }
+            }
+        }
+    }
+
+    private var personFilter: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                filterChip(nil, label: "Everyone")
+                ForEach(sync.members) { m in filterChip(m.id, label: m.name, member: m) }
+            }
+            .padding(.vertical, 1)
+        }
+    }
+
+    private func filterChip(_ id: String?, label: String, member: SyncedMember? = nil) -> some View {
+        let on = filterPerson == id
+        return Button { withAnimation { filterPerson = id } } label: {
+            HStack(spacing: 7) {
+                if let m = member { Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 24) }
+                Text(label).font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(on ? .white : NK.ink2)
+            }
+            .padding(.leading, member == nil ? 14 : 6).padding(.trailing, 14).padding(.vertical, 7)
+            .background(on ? NK.ink : NK.card)
+            .overlay(Capsule().strokeBorder(on ? Color.clear : NK.hair, lineWidth: 1))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: month grid
+
+    @ViewBuilder private var monthContent: some View {
+        let cells = monthCells(monthAnchor)
+        VStack(spacing: 8) {
+            HStack(spacing: 0) {
+                ForEach(["S", "M", "T", "W", "T", "F", "S"], id: \.self) { d in
+                    Text(d).font(.system(size: 11, weight: .heavy)).foregroundStyle(NK.ink3)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 4) {
+                ForEach(cells, id: \.key) { cell in monthCell(cell) }
+            }
+        }
+        .padding(12)
+        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+
+        dayHeading(selectedDay).padding(.top, 6)
+        let dayItems = Agenda.forDay(filtered, day: selectedDay, tz: tz)
+        if dayItems.isEmpty {
+            Button { editing = .new(dayKeyToDate(selectedDay) ?? Date()) } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus").font(.system(size: 12, weight: .heavy))
+                    Text("Add an event").font(.system(size: 14, weight: .semibold))
+                }
+                .foregroundStyle(NK.ink3).padding(.vertical, 10)
+            }
+            .buttonStyle(.plain)
+        } else {
+            ForEach(dayItems) { ev in EventCard(event: ev, tz: tz) { editing = .edit(ev) } }
+        }
+    }
+
+    private func monthCell(_ cell: MonthCell) -> some View {
+        let isSelected = cell.key == selectedDay
+        let isToday = cell.key == Agenda.todayKey(tz)
+        return Button { withAnimation { selectedDay = cell.key } } label: {
+            VStack(spacing: 3) {
+                Text("\(cell.day)")
+                    .font(.system(size: 14, weight: isToday ? .heavy : .semibold))
+                    .foregroundStyle(cell.inMonth ? (isToday ? NK.primary : NK.ink) : NK.ink3.opacity(0.5))
+                HStack(spacing: 2) {
+                    ForEach(Array(dotColors(cell.key).prefix(3).enumerated()), id: \.offset) { _, hex in
+                        Circle().fill(Color(hexString: hex) ?? NK.ink3).frame(width: 5, height: 5)
+                    }
+                }
+                .frame(height: 5)
+            }
+            .frame(maxWidth: .infinity).frame(height: 44)
+            .background(isSelected ? NK.primary.opacity(0.12) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(isSelected ? NK.primary : Color.clear, lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Distinct owner colors of events on a day (for the month dots).
+    private func dotColors(_ key: String) -> [String] {
+        var seen = Set<String>(); var colors: [String] = []
+        for e in filtered where Agenda.dayKey(e, tz) == key {
+            let hex = e.colorHex ?? "#A6A29B"
+            if seen.insert(hex).inserted { colors.append(hex) }
+        }
+        return colors
+    }
+
+    // MARK: helpers
+
+    private func monthTitle(_ date: Date, year: Bool) -> String {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.timeZone = tz
+        f.dateFormat = year ? "MMMM yyyy" : "MMMM"
+        return f.string(from: date)
+    }
+
+    private func stepMonth(_ n: Int) {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        if let d = cal.date(byAdding: .month, value: n, to: monthAnchor) { withAnimation { monthAnchor = d } }
+    }
+
+    private func dayKeyToDate(_ key: String) -> Date? {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = tz; f.dateFormat = "yyyy-MM-dd"
+        return f.date(from: key)
+    }
+
+    struct MonthCell { let key: String; let day: Int; let inMonth: Bool }
+
+    /// 42 day-cells (6 weeks, Sunday-led) covering `anchor`'s month.
+    private func monthCells(_ anchor: Date) -> [MonthCell] {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let comps = cal.dateComponents([.year, .month], from: anchor)
+        guard let first = cal.date(from: comps) else { return [] }
+        let anchorMonth = cal.component(.month, from: first)
+        let leading = cal.component(.weekday, from: first) - 1   // 1=Sun → 0 offset
+        guard let start = cal.date(byAdding: .day, value: -leading, to: first) else { return [] }
+        return (0..<42).compactMap { i in
+            guard let d = cal.date(byAdding: .day, value: i, to: start) else { return nil }
+            return MonthCell(key: EventTime.dayKey(d, tz), day: cal.component(.day, from: d),
+                             inMonth: cal.component(.month, from: d) == anchorMonth)
+        }
+    }
+
+    /// A day heading: serif relative label ("Today") + gray date ("Sat · May 31").
+    @ViewBuilder private func dayHeading(_ key: String) -> some View {
+        HStack(spacing: 8) {
+            Text(relativeLabel(key)).font(NK.serif(20)).foregroundStyle(NK.ink)
+            Text(dateLabel(key)).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+            Spacer()
+        }
+    }
+
+    private func relativeLabel(_ key: String) -> String {
         var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
         let tomorrow = EventTime.dayKey(cal.date(byAdding: .day, value: 1, to: Date()) ?? Date(), tz)
         if key == Agenda.todayKey(tz) { return "Today" }
         if key == tomorrow { return "Tomorrow" }
-        let inF = DateFormatter()
-        inF.locale = Locale(identifier: "en_US_POSIX"); inF.timeZone = tz; inF.dateFormat = "yyyy-MM-dd"
-        guard let d = inF.date(from: key) else { return key }
-        let outF = DateFormatter()
-        outF.locale = Locale(identifier: "en_US"); outF.timeZone = tz; outF.dateFormat = "EEE, MMM d"
-        return outF.string(from: d)
+        guard let d = dayKeyToDate(key) else { return key }
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.timeZone = tz; f.dateFormat = "EEEE"
+        return f.string(from: d)
+    }
+
+    private func dateLabel(_ key: String) -> String {
+        guard let d = dayKeyToDate(key) else { return "" }
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.timeZone = tz; f.dateFormat = "EEE · MMM d"
+        return f.string(from: d)
+    }
+}
+
+/// One agenda event as its own rounded card — time, owner color bar, title, owner
+/// avatar — matching the mobile calendar mock.
+struct EventCard: View {
+    let event: SyncedEvent
+    let tz: TimeZone
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                Text(timeText).font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink2)
+                    .frame(width: 72, alignment: .leading)
+                RoundedRectangle(cornerRadius: 99).fill(Color(hexString: event.colorHex) ?? NK.ink3)
+                    .frame(width: 4, height: 34)
+                Text(event.title).font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                Spacer(minLength: 8)
+                if let emoji = event.emoji {
+                    Avatar(colorHex: event.colorHex, emoji: emoji, size: 30)
+                }
+            }
+            .padding(.horizontal, 15).padding(.vertical, 13)
+            .frame(maxWidth: .infinity)
+            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+            .nkShadow1()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var timeText: String {
+        if event.allDay { return "All day" }
+        if let d = event.startsAt { return EventTime.timeLabel(d, tz) }
+        return ""
     }
 }
 
