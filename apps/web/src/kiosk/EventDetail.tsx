@@ -238,16 +238,16 @@ export function EventDetail() {
             </div>
           )}
         </div>
-      </div>
 
-      <div className="ed-side">
         {event.description && (
           <div className="card ed-notes">
             <div className="card-h" style={{ marginBottom: 8 }}>Notes</div>
             <div className="ed-notes-b">{event.description}</div>
           </div>
         )}
+      </div>
 
+      <div className="ed-side">
         <div className="ed-ai">
           <div className={`ed-ai-icon ${insight ? '' : 'thinking'}`}>✦</div>
           <div className="ed-ai-main">
