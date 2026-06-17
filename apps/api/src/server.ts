@@ -4,7 +4,7 @@
 import http from 'node:http'
 import api from './app'
 import { config } from './platform/config'
-import { startSyncScheduler } from './modules/calendar/calendar-sync'
+import { startSyncScheduler } from './modules/calendar/calendar-sync.service'
 
 interface RunResult {
   statusCode: number

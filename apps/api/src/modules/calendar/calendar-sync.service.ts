@@ -11,10 +11,8 @@
 // Outbound: an event authored in Nook for a person is routed to that person's
 // write-target calendar (resolveWriteTarget) and created/updated/deleted on Google.
 // sync_state tracks it: pending_push → synced, or push_failed (retried next sync).
-import createAPI, { type Request, type Response } from 'lambda-api'
 import type { PoolClient, QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
-import { requireTenant } from '../households/households'
 import { decryptSecret, encryptionAvailable } from '../../platform/crypto'
 import {
   googleConfigured,
@@ -29,10 +27,8 @@ import {
   type GoogleEventWrite,
   type GoogleWriteResult,
 } from '../../integrations/google'
+import type { CalendarSyncResult, HouseholdSyncResult, WriteTarget, PushPendingResult } from './calendar-sync.types'
 
-type Api = ReturnType<typeof createAPI>
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DAY_MS = 86_400_000
 // First-sync window: enough history for "recent" + a year out for planning. After
 // that the sync token tracks changes; rolling the window forward is a full resync.
@@ -51,23 +47,6 @@ interface SelectedCalendarRow extends QueryResultRow {
   sync_token: string | null
   refresh_token_encrypted: string
   household_timezone: string
-}
-
-export interface CalendarSyncResult {
-  calendarId: string
-  summary: string | null
-  imported: number
-  updated: number
-  deleted: number
-  fullResync: boolean
-  error?: string
-}
-
-export interface HouseholdSyncResult {
-  calendars: CalendarSyncResult[]
-  imported: number
-  updated: number
-  deleted: number
 }
 
 // Selected, non-deleted calendars whose account is still connected, with the
@@ -325,12 +304,6 @@ export async function syncHousehold(
 
 // ── Outbound (5.4): push Nook-authored events to Google ────────────────────────
 
-export interface WriteTarget {
-  calendarId: string
-  googleCalendarId: string
-  refreshTokenEncrypted: string
-}
-
 // Where a Nook event for this person should be written. Prefers the explicit
 // write-target flag, then the person's primary, then any writable calendar — so a
 // person with a single writable calendar needs no configuration. Read-only
@@ -488,13 +461,6 @@ export async function pushEventNow(householdId: string, eventId: string): Promis
   return pushById(householdId, eventId, makeTokenCache())
 }
 
-export interface PushPendingResult {
-  created: number
-  updated: number
-  deleted: number
-  failed: number
-}
-
 // Retry the queue: every event still pending_push / push_failed (e.g. a mutation
 // whose immediate push failed, or one made while offline). Runs before inbound.
 export async function pushPending(householdId: string): Promise<PushPendingResult> {
@@ -565,30 +531,4 @@ export function startSyncScheduler(): void {
   // Don't keep the process alive for the timer alone.
   schedulerTimer.unref?.()
   console.log(`calendar sync scheduler started (every ${Math.round(intervalMs / 1000)}s)`)
-}
-
-export function registerCalendarSyncRoutes(api: Api): void {
-  // Pull connected calendars now. Any household member can refresh; the work is
-  // read-from-Google + mirror, gated only on the connection being configured.
-  api.post('/api/calendar/sync', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    if (!googleConfigured() || !encryptionAvailable()) {
-      return res.status(501).json({
-        error: 'NotConfigured',
-        message: 'Google OAuth / token encryption is not configured on the server',
-      })
-    }
-    const calendarId =
-      typeof (req.body as { calendarId?: unknown })?.calendarId === 'string'
-        ? (req.body as { calendarId: string }).calendarId
-        : undefined
-    if (calendarId && !UUID_RE.test(calendarId)) {
-      return res.status(400).json({ error: 'BadRequest', message: 'calendarId must be a uuid' })
-    }
-    // Push local edits out before pulling, so a Nook change isn't clobbered by an
-    // inbound overwrite of the same event in the same run.
-    const pushed = await pushPending(tenant.householdId)
-    const result = await syncHousehold(tenant.householdId, { calendarId })
-    return { ...result, pushed }
-  })
 }

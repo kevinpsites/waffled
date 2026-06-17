@@ -1,14 +1,10 @@
-// Chores domain. MVP: daily-recurring chores assigned to a person; today's
-// instances are materialized on demand; completion awards stars via the ledger.
-// (rrule expansion beyond daily, photo proof, approval, up-for-grabs: later.)
-import createAPI, { type Request, type Response } from 'lambda-api'
+// Chores domain — data access + business logic. Routes live in chores.routes.ts.
+// MVP: daily-recurring chores assigned to a person; today's instances are
+// materialized on demand; completion awards stars via the ledger.
 import type { QueryResultRow, PoolClient } from 'pg'
 import { getPool, query } from '../../platform/db'
-import { requireTenant, requireAdmin, type Tenant } from '../households/households'
-
-type Api = ReturnType<typeof createAPI>
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+import { type Tenant } from '../households/households'
+import type { ChoreRow, CreateChoreInput, PersonChoreSummary, TodayInstance } from './chores.types'
 
 interface ChoreInstanceRow extends QueryResultRow {
   id: string
@@ -19,18 +15,6 @@ interface ChoreInstanceRow extends QueryResultRow {
   reward_amount: number | null
   awarded: boolean
   requires_approval: boolean
-}
-
-export interface ChoreRow extends QueryResultRow {
-  id: string
-  title: string
-  emoji: string | null
-  person_id: string | null
-  rrule: string | null
-  reward_currency: string | null
-  reward_amount: number
-  due_time: string | null
-  is_active: boolean
 }
 
 // "Today" as a calendar day. With a timezone it's the household-local day (so
@@ -57,16 +41,6 @@ export function requestedDate(raw: unknown, today: string): string {
   const diff = Math.round((Date.parse(`${raw}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / DAY_MS)
   if (Number.isNaN(diff) || diff < -31 || diff > 31) return today
   return raw
-}
-
-export interface CreateChoreInput {
-  title: string
-  personId?: string | null
-  emoji?: string | null
-  rewardAmount?: number
-  rrule?: string | null
-  dueTime?: string | null
-  requiresApproval?: boolean
 }
 
 export async function createChore(tenant: Tenant, input: CreateChoreInput): Promise<ChoreRow> {
@@ -123,18 +97,6 @@ export async function claimInstance(tenant: Tenant, id: string, personId: string
   return rows[0] ?? null
 }
 
-export interface PersonChoreSummary {
-  id: string
-  name: string
-  avatarEmoji: string | null
-  colorHex: string | null
-  memberType: string
-  isAdmin: boolean
-  total: number
-  done: number
-  stars: number
-}
-
 interface SummaryRow extends QueryResultRow {
   id: string
   name: string
@@ -176,20 +138,6 @@ export async function todaySummary(householdId: string, dueOn: string): Promise<
     done: Number(r.done),
     stars: Number(r.stars),
   }))
-}
-
-export interface TodayInstance {
-  id: string
-  choreId: string
-  choreTitle: string
-  emoji: string | null
-  personId: string | null
-  personName: string | null
-  status: string
-  rewardAmount: number | null
-  rrule: string | null
-  requiresApproval: boolean
-  streak: number
 }
 
 // Per-chore streak: consecutive calendar days (ending today if done, else
@@ -250,7 +198,7 @@ export async function listTodayInstances(householdId: string, dueOn: string): Pr
   }))
 }
 
-const UPDATABLE_CHORE: Record<string, string> = {
+export const UPDATABLE_CHORE: Record<string, string> = {
   title: 'title',
   emoji: 'emoji',
   personId: 'person_id',
@@ -313,7 +261,7 @@ export async function softDeleteChore(householdId: string, id: string): Promise<
   return !!rowCount
 }
 
-function presentInstance(i: ChoreInstanceRow) {
+export function presentInstance(i: ChoreInstanceRow) {
   return {
     id: i.id,
     personId: i.person_id,
@@ -469,120 +417,4 @@ export function presentChore(c: ChoreRow) {
     isActive: c.is_active,
     requiresApproval: (c as { requires_approval?: boolean }).requires_approval ?? false,
   }
-}
-
-export function registerChoreRoutes(api: Api): void {
-  // Create a chore (admins set up the family's chores).
-  api.post('/api/chores', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    requireAdmin(tenant)
-    const body = (req.body ?? {}) as Partial<CreateChoreInput>
-    if (!body.title || !body.title.trim()) {
-      return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
-    }
-    const chore = await createChore(tenant, { ...body, title: body.title.trim() })
-    return res.status(201).json({ chore: presentChore(chore) })
-  })
-
-  // Edit a chore definition (admins).
-  api.patch('/api/chores/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    requireAdmin(tenant)
-    const id = req.params.id ?? ''
-    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'chore not found' })
-    const patch = (req.body ?? {}) as Record<string, unknown>
-    if (typeof patch.title === 'string' && !patch.title.trim()) {
-      return res.status(400).json({ error: 'BadRequest', message: 'title cannot be empty' })
-    }
-    if (!Object.keys(UPDATABLE_CHORE).some((field) => field in patch)) {
-      return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields provided' })
-    }
-    const chore = await updateChore(tenant.householdId, id, patch)
-    if (!chore) return res.status(404).json({ error: 'NotFound', message: 'chore not found' })
-    return { chore: presentChore(chore) }
-  })
-
-  // Delete a chore (admins). Hides it + today's instances from the Tasks view.
-  api.delete('/api/chores/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    requireAdmin(tenant)
-    const id = req.params.id ?? ''
-    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'chore not found' })
-    const ok = await softDeleteChore(tenant.householdId, id)
-    if (!ok) return res.status(404).json({ error: 'NotFound', message: 'chore not found' })
-    return res.status(204).send('')
-  })
-
-  // Per-person chore summary (rings + stars) for a day (default today, household-local).
-  api.get('/api/chores/today', async (req: Request) => {
-    const tenant = await requireTenant(req)
-    const date = requestedDate(req.query?.date, todayDate(await householdTz(tenant.householdId)))
-    await ensureTodayInstances(tenant.householdId, date)
-    const people = await todaySummary(tenant.householdId, date)
-    return { date, people }
-  })
-
-  // Individual chore instances (the Tasks list) for a day. `?date=YYYY-MM-DD`
-  // (within ±31 days) lets the Tasks screen look ahead; defaults to today (local).
-  api.get('/api/chore-instances/today', async (req: Request) => {
-    const tenant = await requireTenant(req)
-    const date = requestedDate(req.query?.date, todayDate(await householdTz(tenant.householdId)))
-    await ensureTodayInstances(tenant.householdId, date)
-    const instances = await listTodayInstances(tenant.householdId, date)
-    return { date, instances }
-  })
-
-  // Complete / uncomplete an instance (any member can; e.g. a parent on the kiosk).
-  api.post('/api/chore-instances/:id/complete', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    const id = req.params.id ?? ''
-    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
-    const inst = await completeInstance(tenant, id)
-    if (!inst) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
-    return { instance: presentInstance(inst) }
-  })
-
-  api.post('/api/chore-instances/:id/uncomplete', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    const id = req.params.id ?? ''
-    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
-    const inst = await uncompleteInstance(tenant, id)
-    if (!inst) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
-    return { instance: presentInstance(inst) }
-  })
-
-  // Claim an up-for-grabs instance for a person (default: the caller). 409 if
-  // someone already grabbed it.
-  api.post('/api/chore-instances/:id/claim', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    const id = req.params.id ?? ''
-    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
-    const personId = ((req.body ?? {}) as { personId?: string }).personId?.trim() || tenant.personId
-    if (!UUID_RE.test(personId)) return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
-    const inst = await claimInstance(tenant, id, personId)
-    if (!inst) return res.status(409).json({ error: 'Conflict', message: 'already claimed or not found' })
-    return { instance: presentInstance(inst) }
-  })
-
-  // Parent approves a submitted (awaiting) chore → done + award stars (admins).
-  api.post('/api/chore-instances/:id/approve', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    requireAdmin(tenant)
-    const id = req.params.id ?? ''
-    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
-    const inst = await approveInstance(tenant, id)
-    if (!inst) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
-    return { instance: presentInstance(inst) }
-  })
-
-  // Parent rejects a submitted chore → back to pending for a redo (admins).
-  api.post('/api/chore-instances/:id/reject', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    requireAdmin(tenant)
-    const id = req.params.id ?? ''
-    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
-    const inst = await rejectInstance(tenant, id)
-    if (!inst) return res.status(409).json({ error: 'Conflict', message: 'not awaiting approval' })
-    return { instance: presentInstance(inst) }
-  })
 }

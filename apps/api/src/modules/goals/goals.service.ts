@@ -2,16 +2,13 @@
 // INDIVIDUAL membership sidebar), goals (count/total/habit/checklist; shared_total
 // vs each_tracks), append-only logs (SUM = progress), milestones, and a detail
 // read model (hours-by-person, recent activity, streak, this-week).
-import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
-import { requireTenant, type Tenant } from '../households/households'
+import { type Tenant } from '../households/households'
+import type { CreateGoalListInput, CreateGoalInput, UpdateGoalInput } from './goals.types'
 
-type Api = ReturnType<typeof createAPI>
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const GOAL_TYPES = new Set(['count', 'total', 'habit', 'checklist'])
-const TRACKING_MODES = new Set(['shared_total', 'each_tracks'])
+export const GOAL_TYPES = new Set(['count', 'total', 'habit', 'checklist'])
+export const TRACKING_MODES = new Set(['shared_total', 'each_tracks'])
 
 // ---- goal lists (membership groups) ----------------------------------------
 
@@ -57,14 +54,6 @@ export async function listGoalLists(householdId: string) {
   }))
 }
 
-export interface CreateGoalListInput {
-  name: string
-  emoji?: string | null
-  colorHex?: string | null
-  isPrivate?: boolean
-  memberIds?: string[]
-}
-
 export async function createGoalList(tenant: Tenant, input: CreateGoalListInput): Promise<{ id: string }> {
   const client = await getPool().connect()
   try {
@@ -100,25 +89,6 @@ export async function softDeleteGoalList(householdId: string, id: string): Promi
 }
 
 // ---- goals ------------------------------------------------------------------
-
-export interface CreateGoalInput {
-  title: string
-  goalListId?: string | null
-  emoji?: string | null
-  category?: string | null
-  goalType: string
-  unit?: string | null
-  targetValue?: number | null
-  habitPeriod?: string | null
-  habitTargetPerPeriod?: number | null
-  trackingMode: string
-  logMethod?: string | null
-  deadline?: string | null
-  isFeatured?: boolean
-  hasRewards?: boolean
-  participantIds?: string[]
-  milestones?: Array<{ threshold: number; emoji?: string | null; label?: string | null; rewardText?: string | null }>
-}
 
 export async function createGoal(tenant: Tenant, input: CreateGoalInput): Promise<{ id: string }> {
   const client = await getPool().connect()
@@ -338,7 +308,7 @@ async function goalStreak(householdId: string, goalId: string): Promise<number> 
   return streak
 }
 
-async function goalExists(householdId: string, id: string): Promise<boolean> {
+export async function goalExists(householdId: string, id: string): Promise<boolean> {
   const { rowCount } = await query(
     `select 1 from goals where household_id=$1 and id=$2 and deleted_at is null`,
     [householdId, id]
@@ -444,12 +414,6 @@ const GOAL_COLUMNS: Record<string, string> = {
   goalListId: 'goal_list_id',
 }
 
-export interface UpdateGoalInput {
-  participantIds?: string[]
-  milestones?: Array<{ threshold: number; emoji?: string | null; label?: string | null; rewardText?: string | null }>
-  [key: string]: unknown
-}
-
 export async function updateGoal(tenant: Tenant, id: string, patch: UpdateGoalInput): Promise<boolean> {
   const client = await getPool().connect()
   try {
@@ -511,107 +475,4 @@ export async function softDeleteGoal(householdId: string, id: string): Promise<b
     [householdId, id]
   )
   return !!rowCount
-}
-
-// ---- routes -----------------------------------------------------------------
-
-export function registerGoalRoutes(api: Api): void {
-  // goal lists (sidebar)
-  api.get('/api/goal-lists', async (req: Request) => {
-    const tenant = await requireTenant(req)
-    return { lists: await listGoalLists(tenant.householdId) }
-  })
-
-  api.post('/api/goal-lists', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    const body = (req.body ?? {}) as Partial<CreateGoalListInput>
-    if (!body.name || !body.name.trim()) {
-      return res.status(400).json({ error: 'BadRequest', message: 'name is required' })
-    }
-    const list = await createGoalList(tenant, { ...body, name: body.name.trim() } as CreateGoalListInput)
-    return res.status(201).json({ list })
-  })
-
-  api.delete('/api/goal-lists/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    const id = req.params.id ?? ''
-    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
-    const ok = await softDeleteGoalList(tenant.householdId, id)
-    if (!ok) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
-    return res.status(204).send('')
-  })
-
-  // goals
-  api.post('/api/goals', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    const body = (req.body ?? {}) as Partial<CreateGoalInput>
-    if (!body.title || !body.title.trim()) {
-      return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
-    }
-    if (!body.goalType || !GOAL_TYPES.has(body.goalType)) {
-      return res.status(400).json({ error: 'BadRequest', message: 'goalType is required' })
-    }
-    if (!body.trackingMode || !TRACKING_MODES.has(body.trackingMode)) {
-      return res.status(400).json({ error: 'BadRequest', message: 'trackingMode is required' })
-    }
-    const goal = await createGoal(tenant, { ...body, title: body.title.trim() } as CreateGoalInput)
-    return res.status(201).json({ goal })
-  })
-
-  api.get('/api/goals', async (req: Request) => {
-    const tenant = await requireTenant(req)
-    const listId = (req.query?.listId as string | undefined) || null
-    return { goals: await listGoals(tenant.householdId, listId && UUID_RE.test(listId) ? listId : null) }
-  })
-
-  api.get('/api/goals/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    const id = req.params.id ?? ''
-    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
-    const goal = await goalDetail(tenant.householdId, id)
-    if (!goal) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
-    return { goal }
-  })
-
-  api.patch('/api/goals/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    const id = req.params.id ?? ''
-    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
-    const body = (req.body ?? {}) as { goalType?: string; trackingMode?: string }
-    if (body.goalType && !GOAL_TYPES.has(body.goalType)) {
-      return res.status(400).json({ error: 'BadRequest', message: 'invalid goalType' })
-    }
-    if (body.trackingMode && !TRACKING_MODES.has(body.trackingMode)) {
-      return res.status(400).json({ error: 'BadRequest', message: 'invalid trackingMode' })
-    }
-    const ok = await updateGoal(tenant, id, req.body ?? {})
-    if (!ok) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
-    return { goal: await goalDetail(tenant.householdId, id) }
-  })
-
-  api.post('/api/goals/:id/log', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    const id = req.params.id ?? ''
-    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
-    const body = (req.body ?? {}) as { amount?: unknown; personId?: string; personIds?: string[]; note?: string }
-    const amount = Number(body.amount)
-    if (!Number.isFinite(amount) || amount === 0) {
-      return res.status(400).json({ error: 'BadRequest', message: 'amount must be a non-zero number' })
-    }
-    if (!(await goalExists(tenant.householdId, id))) {
-      return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
-    }
-    const personIds = Array.isArray(body.personIds) ? body.personIds.filter(Boolean) : body.personId ? [body.personId] : []
-    await logProgress(tenant, id, amount, personIds, body.note ?? null)
-    return res.status(201).json({ ok: true })
-  })
-
-  api.delete('/api/goals/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    const id = req.params.id ?? ''
-    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
-    const ok = await softDeleteGoal(tenant.householdId, id)
-    if (!ok) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
-    return res.status(204).send('')
-  })
 }

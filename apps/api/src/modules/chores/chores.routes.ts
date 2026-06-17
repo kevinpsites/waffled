@@ -1,0 +1,144 @@
+// Chores domain — HTTP routes (/api/chores, /api/chore-instances). Logic lives
+// in chores.service.ts; types in chores.types.ts.
+import createAPI, { type Request, type Response } from 'lambda-api'
+import { requireTenant, requireAdmin } from '../households/households'
+import type { CreateChoreInput } from './chores.types'
+import {
+  createChore,
+  updateChore,
+  softDeleteChore,
+  requestedDate,
+  todayDate,
+  householdTz,
+  ensureTodayInstances,
+  todaySummary,
+  listTodayInstances,
+  completeInstance,
+  uncompleteInstance,
+  claimInstance,
+  approveInstance,
+  rejectInstance,
+  presentChore,
+  presentInstance,
+  UPDATABLE_CHORE,
+} from './chores.service'
+
+type Api = ReturnType<typeof createAPI>
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function registerChoreRoutes(api: Api): void {
+  // Create a chore (admins set up the family's chores).
+  api.post('/api/chores', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const body = (req.body ?? {}) as Partial<CreateChoreInput>
+    if (!body.title || !body.title.trim()) {
+      return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
+    }
+    const chore = await createChore(tenant, { ...body, title: body.title.trim() })
+    return res.status(201).json({ chore: presentChore(chore) })
+  })
+
+  // Edit a chore definition (admins).
+  api.patch('/api/chores/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'chore not found' })
+    const patch = (req.body ?? {}) as Record<string, unknown>
+    if (typeof patch.title === 'string' && !patch.title.trim()) {
+      return res.status(400).json({ error: 'BadRequest', message: 'title cannot be empty' })
+    }
+    if (!Object.keys(UPDATABLE_CHORE).some((field) => field in patch)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields provided' })
+    }
+    const chore = await updateChore(tenant.householdId, id, patch)
+    if (!chore) return res.status(404).json({ error: 'NotFound', message: 'chore not found' })
+    return { chore: presentChore(chore) }
+  })
+
+  // Delete a chore (admins). Hides it + today's instances from the Tasks view.
+  api.delete('/api/chores/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'chore not found' })
+    const ok = await softDeleteChore(tenant.householdId, id)
+    if (!ok) return res.status(404).json({ error: 'NotFound', message: 'chore not found' })
+    return res.status(204).send('')
+  })
+
+  // Per-person chore summary (rings + stars) for a day (default today, household-local).
+  api.get('/api/chores/today', async (req: Request) => {
+    const tenant = await requireTenant(req)
+    const date = requestedDate(req.query?.date, todayDate(await householdTz(tenant.householdId)))
+    await ensureTodayInstances(tenant.householdId, date)
+    const people = await todaySummary(tenant.householdId, date)
+    return { date, people }
+  })
+
+  // Individual chore instances (the Tasks list) for a day. `?date=YYYY-MM-DD`
+  // (within ±31 days) lets the Tasks screen look ahead; defaults to today (local).
+  api.get('/api/chore-instances/today', async (req: Request) => {
+    const tenant = await requireTenant(req)
+    const date = requestedDate(req.query?.date, todayDate(await householdTz(tenant.householdId)))
+    await ensureTodayInstances(tenant.householdId, date)
+    const instances = await listTodayInstances(tenant.householdId, date)
+    return { date, instances }
+  })
+
+  // Complete / uncomplete an instance (any member can; e.g. a parent on the kiosk).
+  api.post('/api/chore-instances/:id/complete', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
+    const inst = await completeInstance(tenant, id)
+    if (!inst) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
+    return { instance: presentInstance(inst) }
+  })
+
+  api.post('/api/chore-instances/:id/uncomplete', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
+    const inst = await uncompleteInstance(tenant, id)
+    if (!inst) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
+    return { instance: presentInstance(inst) }
+  })
+
+  // Claim an up-for-grabs instance for a person (default: the caller). 409 if
+  // someone already grabbed it.
+  api.post('/api/chore-instances/:id/claim', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
+    const personId = ((req.body ?? {}) as { personId?: string }).personId?.trim() || tenant.personId
+    if (!UUID_RE.test(personId)) return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
+    const inst = await claimInstance(tenant, id, personId)
+    if (!inst) return res.status(409).json({ error: 'Conflict', message: 'already claimed or not found' })
+    return { instance: presentInstance(inst) }
+  })
+
+  // Parent approves a submitted (awaiting) chore → done + award stars (admins).
+  api.post('/api/chore-instances/:id/approve', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
+    const inst = await approveInstance(tenant, id)
+    if (!inst) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
+    return { instance: presentInstance(inst) }
+  })
+
+  // Parent rejects a submitted chore → back to pending for a redo (admins).
+  api.post('/api/chore-instances/:id/reject', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
+    const inst = await rejectInstance(tenant, id)
+    if (!inst) return res.status(409).json({ error: 'Conflict', message: 'not awaiting approval' })
+    return { instance: presentInstance(inst) }
+  })
+}

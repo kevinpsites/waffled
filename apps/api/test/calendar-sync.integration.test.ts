@@ -226,7 +226,7 @@ describe('inbound sync', () => {
   })
 
   it('the scheduled poll syncs every connected household', async () => {
-    const { syncAllHouseholds } = await import('../src/modules/calendar/calendar-sync')
+    const { syncAllHouseholds } = await import('../src/modules/calendar/calendar-sync.service')
     const res = await syncAllHouseholds()
     expect(res.households).toBe(1)
   })

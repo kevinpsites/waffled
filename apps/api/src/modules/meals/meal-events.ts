@@ -5,7 +5,7 @@
 // settings (households.settings.meals): whether to add at all, whether to push to
 // Google, whose calendar, who's invited, and the time each meal type lands at.
 import { getPool, query } from '../../platform/db'
-import { resolveWriteTarget, pushEventNow } from '../calendar/calendar-sync'
+import { resolveWriteTarget, pushEventNow } from '../calendar/calendar-sync.service'
 import { softDeleteEvent } from '../events/events'
 import type { Tenant } from '../households/households'
 

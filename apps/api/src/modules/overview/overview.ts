@@ -4,7 +4,7 @@
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
 import { requireTenant } from '../households/households'
-import { listGoals } from '../goals/goals'
+import { listGoals } from '../goals/goals.service'
 
 type Api = ReturnType<typeof createAPI>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

@@ -11,7 +11,7 @@
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
 import { requireTenant, type Tenant } from '../households/households'
-import { resolveWriteTarget, resolveWriteTargetById, pushEventNow } from '../calendar/calendar-sync'
+import { resolveWriteTarget, resolveWriteTargetById, pushEventNow } from '../calendar/calendar-sync.service'
 import { updateEvent, softDeleteEvent } from '../events/events'
 
 type Api = ReturnType<typeof createAPI>
