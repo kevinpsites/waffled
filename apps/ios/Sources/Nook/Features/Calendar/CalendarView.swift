@@ -135,7 +135,8 @@ struct EventEditSheet: View {
     @State private var start: Date
     @State private var durationMin: Int
     @State private var allDay: Bool
-    @State private var participants: Set<String>
+    /// Ordered so the first one picked is the "owner" (drives the calendar list).
+    @State private var participants: [String]
     @State private var location: String
     @State private var confirmDelete = false
     @State private var loadedParticipants = false
@@ -162,7 +163,7 @@ struct EventEditSheet: View {
         _start = State(initialValue: startDate)
         _durationMin = State(initialValue: mins)
         _allDay = State(initialValue: event?.allDay ?? false)
-        _participants = State(initialValue: event?.personId.map { Set([$0]) } ?? [])
+        _participants = State(initialValue: event?.personId.map { [$0] } ?? [])
         _location = State(initialValue: event?.location ?? "")
     }
 
@@ -170,7 +171,7 @@ struct EventEditSheet: View {
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
 
     /// The owner (first family member who's a participant) drives the calendar list.
-    private var primaryPerson: String? { sync.members.first { participants.contains($0.id) }?.id }
+    private var primaryPerson: String? { participants.first }
     /// The owner's own writable calendars that sync (or are their ★ target).
     private var ownerCals: [NookAPI.CalendarLink] {
         guard let p = primaryPerson else { return [] }
@@ -229,7 +230,8 @@ struct EventEditSheet: View {
                                 let on = participants.contains(m.id)
                                 let c = Color(hexString: m.colorHex) ?? NK.ink3
                                 Button {
-                                    if on { participants.remove(m.id) } else { participants.insert(m.id) }
+                                    if let idx = participants.firstIndex(of: m.id) { participants.remove(at: idx) }
+                                    else { participants.append(m.id) }
                                 } label: {
                                     HStack(spacing: 7) {
                                         Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 24)
@@ -277,7 +279,7 @@ struct EventEditSheet: View {
                 }
                 .padding(18)
             }
-            .background(NK.canvas)
+            .background(NK.card)
             .navigationTitle(editing ? "Edit event" : "New event")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -318,7 +320,8 @@ struct EventEditSheet: View {
         if editing, !loadedParticipants {
             loadedParticipants = true
             let ids = await sync.eventParticipantIds(event!.id)
-            if !ids.isEmpty { participants = Set(ids) }
+            // Keep the owner (person_id) first, then any other participants.
+            if !ids.isEmpty { participants = (participants + ids.filter { !participants.contains($0) }) }
         }
         if !editing, calendars.isEmpty {
             calendars = (try? await NookAPI().calendarLinks()) ?? []
@@ -383,14 +386,14 @@ struct EventEditSheet: View {
 }
 
 private extension View {
-    /// The outer card-group chrome (cream panel, hairline border).
+    /// The outer card-group chrome (tan panel on the white sheet, hairline border).
     func cardBox() -> some View {
         frame(maxWidth: .infinity, alignment: .leading)
-            .background(NK.card2)
+            .background(NK.panel)
             .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
     }
-    /// The inner input chrome (white, hairline border).
+    /// The inner input chrome (white, hairline border) — sits on the tan box.
     func innerField() -> some View {
         frame(maxWidth: .infinity, alignment: .leading)
             .background(NK.card)
