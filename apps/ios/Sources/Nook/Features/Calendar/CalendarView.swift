@@ -11,7 +11,12 @@ struct CalendarView: View {
     @State private var monthAnchor = Date()         // the month the grid shows
     @State private var selectedDay = Agenda.todayKey(TimeZone.current)
 
-    enum CalMode { case agenda, month }
+    enum CalMode: String, CaseIterable { case agenda, month, day
+        var label: String { rawValue.capitalized }
+        var icon: String {
+            switch self { case .agenda: return "list.bullet"; case .month: return "calendar"; case .day: return "calendar.day.timeline.left" }
+        }
+    }
 
     /// What the event editor sheet is creating/editing.
     enum EventEditTarget: Identifiable {
@@ -38,11 +43,23 @@ struct CalendarView: View {
     var body: some View {
         VStack(spacing: 0) {
             header.padding(.horizontal, 18).padding(.top, 8).padding(.bottom, 10)
-            ScrollView {
-                VStack(alignment: .leading, spacing: mode == .agenda ? 18 : 14) {
-                    if mode == .agenda { agendaContent } else { monthContent }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: mode == .agenda ? 18 : 14) {
+                        switch mode {
+                        case .agenda: agendaContent
+                        case .month:  monthContent
+                        case .day:    dayContent
+                        }
+                    }
+                    .padding(.horizontal, 18).padding(.bottom, 110)
                 }
-                .padding(.horizontal, 18).padding(.bottom, 110)
+                // When the day grid appears, jump to the morning (or the first event).
+                .task(id: "\(mode.rawValue)-\(selectedDay)") {
+                    guard mode == .day else { return }
+                    try? await Task.sleep(for: .milliseconds(60))
+                    withAnimation { proxy.scrollTo(dayScrollHour(), anchor: .top) }
+                }
             }
         }
         .background(NK.canvas)
@@ -58,22 +75,30 @@ struct CalendarView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            if mode == .month {
+            switch mode {
+            case .agenda:
+                Text(monthTitle(Date(), year: false)).font(NK.serif(30)).foregroundStyle(NK.ink)
+            case .month:
                 Button { stepMonth(-1) } label: { chevron("chevron.left") }
                 Text(monthTitle(monthAnchor, year: true)).font(NK.serif(24)).foregroundStyle(NK.ink).lineLimit(1)
                 Button { stepMonth(1) } label: { chevron("chevron.right") }
-            } else {
-                Text(monthTitle(Date(), year: false)).font(NK.serif(30)).foregroundStyle(NK.ink)
+            case .day:
+                Button { stepDay(-1) } label: { chevron("chevron.left") }
+                Text(dayTitle(selectedDay)).font(NK.serif(22)).foregroundStyle(NK.ink).lineLimit(1)
+                Button { stepDay(1) } label: { chevron("chevron.right") }
             }
             Spacer()
-            Button { withAnimation { mode = mode == .agenda ? .month : .agenda } } label: {
-                Image(systemName: mode == .agenda ? "calendar" : "list.bullet")
+            Menu {
+                ForEach(CalMode.allCases, id: \.self) { m in
+                    Button { withAnimation { mode = m } } label: { Label(m.label, systemImage: m.icon) }
+                }
+            } label: {
+                Image(systemName: mode.icon)
                     .font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink2)
                     .frame(width: 38, height: 38).background(NK.card).clipShape(Circle())
                     .overlay(Circle().strokeBorder(NK.hair, lineWidth: 1))
             }
-            .buttonStyle(.plain)
-            Button { editing = .new(mode == .month ? (dayKeyToDate(selectedDay) ?? Date()) : Date()) } label: {
+            Button { editing = .new(mode == .agenda ? Date() : (dayKeyToDate(selectedDay) ?? Date())) } label: {
                 Image(systemName: "plus").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
                     .frame(width: 38, height: 38).background(NK.primary).clipShape(Circle())
             }
@@ -210,6 +235,104 @@ struct CalendarView: View {
             if seen.insert(hex).inserted { colors.append(hex) }
         }
         return colors
+    }
+
+    // MARK: day grid
+
+    private static let hourHeight: CGFloat = 52
+
+    @ViewBuilder private var dayContent: some View {
+        let all = Agenda.forDay(filtered, day: selectedDay, tz: tz)
+        let allDay = all.filter { $0.allDay }
+        let timed = all.filter { !$0.allDay && $0.startsAt != nil }
+
+        if !allDay.isEmpty {
+            VStack(spacing: 6) {
+                ForEach(allDay) { ev in EventCard(event: ev, tz: tz) { editing = .edit(ev) } }
+            }
+        }
+        ZStack(alignment: .topLeading) {
+            VStack(spacing: 0) {
+                ForEach(0..<24, id: \.self) { h in
+                    Button { editing = .new(dateAt(hour: h)) } label: {
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(hourLabel(h)).font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(NK.ink3).frame(width: 48, alignment: .trailing)
+                            Rectangle().fill(NK.hair).frame(height: 1)
+                            Spacer(minLength: 0)
+                        }
+                        .frame(height: Self.hourHeight, alignment: .top)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .id(h)
+                }
+            }
+            ForEach(timed) { ev in dayBlock(ev) }
+        }
+        .padding(.top, 2)
+    }
+
+    @ViewBuilder private func dayBlock(_ ev: SyncedEvent) -> some View {
+        if let start = ev.startsAt {
+            let comps = hourMinute(start)
+            let y = (CGFloat(comps.h) + CGFloat(comps.m) / 60) * Self.hourHeight
+            let durMin = ev.endsAt.map { max(30, $0.timeIntervalSince(start) / 60) } ?? 60
+            let height = max(30, CGFloat(durMin) / 60 * Self.hourHeight - 4)
+            let color = Color(hexString: ev.colorHex) ?? NK.ink3
+            Button { editing = .edit(ev) } label: {
+                HStack(spacing: 7) {
+                    RoundedRectangle(cornerRadius: 99).fill(color).frame(width: 3)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(ev.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                        if height > 40 {
+                            Text(EventTime.timeLabel(start, tz)).font(.system(size: 10.5, weight: .medium)).foregroundStyle(NK.ink3)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .frame(maxWidth: .infinity, alignment: .leading).frame(height: height, alignment: .top)
+                .background(color.opacity(0.13))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, 60).padding(.trailing, 2)
+            .offset(y: y)
+        }
+    }
+
+    private func hourLabel(_ h: Int) -> String {
+        let hr = h % 12 == 0 ? 12 : h % 12
+        return "\(hr) \(h < 12 ? "AM" : "PM")"
+    }
+    private func hourMinute(_ date: Date) -> (h: Int, m: Int) {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let c = cal.dateComponents([.hour, .minute], from: date)
+        return (c.hour ?? 0, c.minute ?? 0)
+    }
+    private func dateAt(hour: Int) -> Date {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let base = dayKeyToDate(selectedDay) ?? Date()
+        return cal.date(bySettingHour: hour, minute: 0, second: 0, of: base) ?? base
+    }
+    /// Hour to scroll the day grid to: one before the first event, else 7 AM.
+    private func dayScrollHour() -> Int {
+        let starts = Agenda.forDay(filtered, day: selectedDay, tz: tz)
+            .filter { !$0.allDay }.compactMap(\.startsAt)
+        if let first = starts.min() { return max(0, hourMinute(first).h - 1) }
+        return 7
+    }
+    private func stepDay(_ n: Int) {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        if let d = dayKeyToDate(selectedDay), let nd = cal.date(byAdding: .day, value: n, to: d) {
+            withAnimation { selectedDay = EventTime.dayKey(nd, tz) }
+        }
+    }
+    private func dayTitle(_ key: String) -> String {
+        guard let d = dayKeyToDate(key) else { return key }
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.timeZone = tz; f.dateFormat = "EEE · MMM d"
+        return f.string(from: d)
     }
 
     // MARK: helpers
