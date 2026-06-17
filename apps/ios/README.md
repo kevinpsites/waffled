@@ -112,6 +112,10 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     complete/uncomplete, up-for-grabs claim ("who did it?"), parent
     approve/reject, streaks + star rewards, and create/edit/delete chores
     (schedule, who, stars, approval). ✅
+  - **Calendar** built out: Agenda + Month grid (switcher), per-person filter,
+    tap any event (Today or Calendar) → editor with title / date / time +
+    duration / all-day / participants / Google-calendar picker / location,
+    create + delete — all offline-first writes to the synced events mirror. ✅
   - Rewards / Photos / Settings: still live-summary placeholders.
-- **Next:** another hub tile (Rewards/Photos/Settings) and Auth0 login
-  (roadmap 4.2.1) to replace the dev token.
+- **Next:** Day & Week calendar views; another hub tile (Rewards/Photos/
+  Settings); Auth0 login (roadmap 4.2.1) to replace the dev token.
