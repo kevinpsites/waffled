@@ -116,10 +116,13 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     tap any event (Today or Calendar) → editor with title / date / time +
     duration / all-day / participants / Google-calendar picker / location,
     create + delete — all offline-first writes to the synced events mirror. ✅
+  - **Family per-person spotlight**: tap a person → their stars/streak, today's
+    chores + a featured goal, a merged day list (events + chores, toggle/edit
+    inline), whole-person category balance + AI insight, their goals, recent
+    stars ledger, and reward redemptions. ✅
   - Rewards / Photos / Settings: still live-summary placeholders.
-- **Next:** Day view shipped; Week view skipped (≈ Month). Remaining: a hub
-  tile (Rewards/Photos/Settings); the Family per-person view; Meals tab;
-  Auth0 login (roadmap 4.2.1) to replace the dev token.
+- **Next:** a hub tile (Rewards/Photos/Settings); Meals tab; Auth0 login
+  (roadmap 4.2.1) to replace the dev token.
 
 ## Known follow-ups / bugs
 
