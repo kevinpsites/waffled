@@ -45,12 +45,14 @@ enum RecipeSort: String, CaseIterable, Identifiable {
     }
 }
 
-/// The Recipes library screen — lives inside the Meals tab's NavigationStack (so
-/// it shares the recipe-detail destination). The `model` and `path` are owned by
-/// `MealsView`.
+/// The Recipes library screen — the searchable/sortable/filterable card grid.
+/// Normally it lives inside the Meals tab's NavigationStack and a card pushes the
+/// recipe detail; in **pick mode** (`onPick` set, e.g. the planner's "Choose a
+/// recipe" sheet) a card calls `onPick` instead so the same browse UI doubles as
+/// the picker. `model` is owned by the caller.
 struct RecipesLibraryView: View {
     let model: RecipesModel
-    @Binding var path: [MealsRoute]
+    var onPick: ((NookAPI.RecipeSummary) -> Void)? = nil
     @Environment(SyncManager.self) private var sync
     @State private var query = ""
     @State private var sort: RecipeSort = .az
@@ -85,8 +87,12 @@ struct RecipesLibraryView: View {
         } else {
             LazyVGrid(columns: cols, spacing: 14) {
                 ForEach(list) { r in
-                    NavigationLink(value: MealsRoute.recipe(r)) { RecipeCard(recipe: r) }
-                        .buttonStyle(.plain)
+                    if let onPick {
+                        Button { onPick(r) } label: { RecipeCard(recipe: r) }.buttonStyle(.plain)
+                    } else {
+                        NavigationLink(value: MealsRoute.recipe(r)) { RecipeCard(recipe: r) }
+                            .buttonStyle(.plain)
+                    }
                 }
             }
             .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 110)

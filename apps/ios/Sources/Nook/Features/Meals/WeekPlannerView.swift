@@ -30,7 +30,7 @@ struct WeekPlannerView: View {
         .onChange(of: weekOffset) { _, _ in Task { await load() } }
         .onChange(of: sync.mealsRev) { _, _ in Task { await load() } }
         .sheet(item: $picking) { target in
-            RecipePickerSheet(recipes: recipes.recipes) { recipe in
+            RecipePickerSheet(model: recipes) { recipe in
                 Task {
                     _ = await sync.setMealPlan(date: target.date, mealType: target.mealType,
                                                recipeId: recipe.id, title: nil)
@@ -208,48 +208,19 @@ struct WeekPlannerView: View {
     }
 }
 
-/// A searchable recipe picker (used when planning a slot). Reuses the loaded
-/// library; tapping a recipe calls `onPick` and dismisses.
+/// The "Choose a recipe" sheet for planning a slot. Reuses the full Recipes
+/// library (search · sort · facet filters · card grid) in pick mode, so browsing
+/// to plan feels identical to browsing to view.
 struct RecipePickerSheet: View {
-    let recipes: [NookAPI.RecipeSummary]
+    let model: RecipesModel
     let onPick: (NookAPI.RecipeSummary) -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var query = ""
-
-    private var filtered: [NookAPI.RecipeSummary] {
-        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        let list = q.isEmpty ? recipes : recipes.filter {
-            ($0.title + " " + ($0.cuisine ?? "") + " " + ($0.protein ?? "")).lowercased().contains(q)
-        }
-        return list.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-    }
 
     var body: some View {
         NavigationStack {
-            List {
-                ForEach(filtered) { r in
-                    Button { onPick(r); dismiss() } label: {
-                        HStack(spacing: 12) {
-                            Text(r.emoji ?? RecipeGradient.emoji(r.category)).font(.system(size: 22))
-                                .frame(width: 40, height: 40)
-                                .background(RecipeGradient.forCategory(r.category))
-                                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(r.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                                    .lineLimit(1)
-                                HStack(spacing: 8) {
-                                    if let c = r.cuisine { Text("🌍 \(c)").font(.system(size: 12)).foregroundStyle(NK.ink3) }
-                                    if let t = r.cookTimeMinutes { Text("🕐 \(t)m").font(.system(size: 12)).foregroundStyle(NK.ink3) }
-                                }
-                            }
-                            Spacer(minLength: 0)
-                        }
-                    }
-                    .listRowBackground(NK.card)
-                }
+            RecipesLibraryView(model: model) { recipe in
+                onPick(recipe); dismiss()
             }
-            .listStyle(.plain).scrollContentBackground(.hidden).background(NK.canvas)
-            .searchable(text: $query, prompt: "Search recipes…")
             .navigationTitle("Choose a recipe").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }

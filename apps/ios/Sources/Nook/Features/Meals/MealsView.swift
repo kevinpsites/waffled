@@ -24,7 +24,7 @@ struct MealsView: View {
                 if section == 0 {
                     WeekPlannerView(recipes: model, path: $path)
                 } else {
-                    RecipesLibraryView(model: model, path: $path)
+                    RecipesLibraryView(model: model)
                 }
             }
             .background(NK.canvas)
@@ -43,7 +43,7 @@ struct MealsView: View {
             }
             .navigationDestination(for: MealsRoute.self) { route in
                 switch route {
-                case .recipes: RecipesLibraryView(model: model, path: $path)
+                case .recipes: RecipesLibraryView(model: model)
                 case .recipe(let r): RecipeDetailView(summary: r, model: model)
                 }
             }
