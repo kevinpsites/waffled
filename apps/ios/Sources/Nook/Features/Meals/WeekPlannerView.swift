@@ -161,7 +161,10 @@ struct WeekPlannerView: View {
 
     private func open(_ e: NookAPI.WeekEntryDTO) {
         guard let rid = e.recipeId else { return }   // free-text meals have no detail
-        let seed = recipes.recipes.first { $0.id == rid } ?? stub(e, id: rid)
+        let seed = recipes.recipes.first { $0.id == rid }
+            ?? .placeholder(id: rid, title: e.recipe?.title ?? e.displayTitle, emoji: e.recipe?.emoji,
+                            category: e.recipe?.category, cookTimeMinutes: e.recipe?.cookTimeMinutes,
+                            servings: e.recipe?.servings)
         path.append(.recipe(seed))
     }
 
@@ -169,19 +172,6 @@ struct WeekPlannerView: View {
         loading = true
         entries = (try? await api.mealsWeek(start: ymd(weekStart))) ?? []
         loading = false
-    }
-
-    /// A minimal RecipeSummary for an instant detail header; the detail screen
-    /// reloads the full recipe on appear.
-    private func stub(_ e: NookAPI.WeekEntryDTO, id: String) -> NookAPI.RecipeSummary {
-        NookAPI.RecipeSummary(
-            id: id, title: e.recipe?.title ?? e.displayTitle, emoji: e.recipe?.emoji,
-            category: e.recipe?.category, prepTimeMinutes: e.recipe?.prepTimeMinutes,
-            cookTimeMinutes: e.recipe?.cookTimeMinutes, servings: e.recipe?.servings,
-            imageUrl: e.recipe?.imageUrl, sourceName: nil, isFavorite: false, cookedCount: 0,
-            lastCookedAt: nil, mealType: nil, protein: nil, base: nil, cuisine: nil, effort: nil,
-            cookMethod: nil, dietary: nil, vegetables: nil, collection: nil, tags: nil,
-            addedTags: nil, notes: nil, userNotes: nil, overrides: nil)
     }
 
     // MARK: date helpers

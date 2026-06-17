@@ -10,15 +10,26 @@ struct TonightMeal: Sendable {
     let servings: Int?
     let eatingOut: Bool
     let hasRecipe: Bool
+    let recipeId: String?
+    let category: String?
 
     init(_ e: NookAPI.WeekEntryDTO) {
         let out = e.recipeId == nil && TonightMeal.isEatingOut(e.title)
         eatingOut = out
         hasRecipe = e.recipeId != nil
+        recipeId = e.recipeId
+        category = e.recipe?.category
         title = out ? "Eating out" : (e.recipe?.title ?? e.title ?? "Dinner")
         emoji = e.recipe?.emoji ?? (out ? "🍴" : "🍽️")
         cookTimeMinutes = e.recipe?.cookTimeMinutes
         servings = e.recipe?.servings
+    }
+
+    /// A placeholder RecipeSummary so the Today card can open this meal's recipe.
+    var recipeSummary: NookAPI.RecipeSummary? {
+        guard let recipeId else { return nil }
+        return .placeholder(id: recipeId, title: title, emoji: emoji, category: category,
+                            cookTimeMinutes: cookTimeMinutes, servings: servings)
     }
 
     /// A recipe-less plan whose title reads like an eating-out night ("takeout",

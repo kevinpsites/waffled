@@ -13,6 +13,8 @@ struct TodayView: View {
     var openFamily: (HubRoute) -> Void = { _ in }
     /// Jump to the Calendar tab (from the agenda card).
     var openCalendar: () -> Void = {}
+    /// Open a recipe's detail in the Meals tab (from tonight's meal card).
+    var openRecipe: (NookAPI.RecipeSummary) -> Void = { _ in }
 
     private var todays: [SyncedEvent] {
         Agenda.forDay(sync.events, day: Agenda.todayKey(sync.householdTz), tz: sync.householdTz)
@@ -46,7 +48,11 @@ struct TodayView: View {
                              onMic: { dictateOnOpen = true; showCapture = true })
                     .padding(.bottom, 2)
                 todayCard
-                tonightCard
+                if let summary = dash.tonight?.recipeSummary {
+                    Button { openRecipe(summary) } label: { tonightCard }.buttonStyle(.plain)
+                } else {
+                    tonightCard
+                }
                 HStack(spacing: 12) {
                     Button { openFamily(.chores) } label: { choresCard }.buttonStyle(.plain)
                     Button { openFamily(grocerySummary) } label: { groceryCard }.buttonStyle(.plain)

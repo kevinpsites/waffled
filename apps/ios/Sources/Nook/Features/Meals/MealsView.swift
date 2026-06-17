@@ -11,9 +11,8 @@ enum MealsRoute: Hashable {
 /// same recipe detail. The recipe `model` and nav `path` are owned here and shared
 /// so either screen can open a recipe and the planner's picker reuses the library.
 struct MealsView: View {
-    @Environment(SyncManager.self) private var sync
+    @Binding var path: [MealsRoute]
     @State private var model = RecipesModel()
-    @State private var path: [MealsRoute] = []
     @State private var section = 0   // 0 = This week, 1 = Recipes
 
     /// Fire the headless deep-link at most once per process.
@@ -28,13 +27,18 @@ struct MealsView: View {
                     RecipesLibraryView(model: model, path: $path)
                 }
             }
+            .background(NK.canvas)
+            // Inline title (no large-title gap); the segmented control is the only
+            // nav-bar item and neither screen adds trailing buttons, so it stays
+            // centered instead of jumping.
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Picker("", selection: $section) {
                         Text("This week").tag(0)
                         Text("Recipes").tag(1)
                     }
-                    .pickerStyle(.segmented).frame(width: 220)
+                    .pickerStyle(.segmented).frame(width: 240)
                 }
             }
             .navigationDestination(for: MealsRoute.self) { route in

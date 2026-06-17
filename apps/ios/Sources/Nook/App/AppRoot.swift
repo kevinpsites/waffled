@@ -14,6 +14,9 @@ struct AppRoot: View {
     /// The Family tab's nav stack, lifted here so other tabs (e.g. a Today card)
     /// can jump straight into a hub destination, and re-tapping Family pops to root.
     @State private var familyPath: [HubRoute] = []
+    /// The Meals tab's nav stack, lifted here so the Today meal card can open a
+    /// recipe, and re-tapping Meals pops to root.
+    @State private var mealsPath: [MealsRoute] = []
 
     private static var initialTab: Tab {
         switch DemoHooks.startTab {
@@ -30,6 +33,12 @@ struct AppRoot: View {
         tab = .family
     }
 
+    /// Switch to the Meals tab and open a recipe's detail (from a Today card).
+    private func openRecipe(_ recipe: NookAPI.RecipeSummary) {
+        mealsPath = [.recipe(recipe)]
+        tab = .meals
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             NK.canvas.ignoresSafeArea()
@@ -38,16 +47,19 @@ struct AppRoot: View {
             // scaffold they're simple views.
             Group {
                 switch tab {
-                case .today:    TodayView(openFamily: openFamily, openCalendar: { tab = .calendar })
+                case .today:    TodayView(openFamily: openFamily, openCalendar: { tab = .calendar }, openRecipe: openRecipe)
                 case .calendar: CalendarView()
-                case .meals:    MealsView()
+                case .meals:    MealsView(path: $mealsPath)
                 case .family:   FamilyView(path: $familyPath)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             NookTabBar(tab: $tab, onCapture: { showCapture = true },
-                       onReselect: { if $0 == .family { familyPath = [] } })
+                       onReselect: {
+                           if $0 == .family { familyPath = [] }
+                           if $0 == .meals { mealsPath = [] }
+                       })
         }
         .sheet(isPresented: $showCapture) {
             CaptureSheet()

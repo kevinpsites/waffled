@@ -63,15 +63,13 @@ struct RecipesLibraryView: View {
 
     var body: some View {
         ScrollView {
+            controlsBar
             if anyFilter { filterBar }
             content
         }
         .background(NK.canvas)
-        .navigationTitle("Recipes")
-        .navigationBarTitleDisplayMode(.large)
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
                     prompt: "Search recipes, cuisine, a veggie…")
-        .toolbar { toolbar }
         .refreshable { await model.load() }
         .onChange(of: sync.mealsRev) { _, _ in Task { await model.load() } }
     }
@@ -146,14 +144,10 @@ struct RecipesLibraryView: View {
 
     // MARK: chrome
 
-    @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            Button { withAnimation(.snappy) { onlyFavorites.toggle() } } label: {
-                Image(systemName: onlyFavorites ? "heart.fill" : "heart")
-                    .foregroundStyle(onlyFavorites ? NK.primary : NK.ink2)
-            }
-        }
-        ToolbarItem(placement: .topBarTrailing) {
+    /// Sort + filter live in the content (not the nav bar) so the Meals segmented
+    /// control stays centered.
+    private var controlsBar: some View {
+        HStack(spacing: 8) {
             Menu {
                 Picker("Sort", selection: $sort) {
                     ForEach(RecipeSort.allCases) { s in
@@ -164,10 +158,29 @@ struct RecipesLibraryView: View {
                 Section("Protein") { facetToggles(uniqueValues(\.protein), $selProtein) }
                 if !allDietary.isEmpty { Section("Dietary") { facetToggles(allDietary, $selDietary) } }
             } label: {
-                Image(systemName: anyFilter ? "line.3.horizontal.decrease.circle.fill"
-                                            : "line.3.horizontal.decrease.circle")
+                pill(systemImage: anyFilter ? "line.3.horizontal.decrease.circle.fill"
+                                            : "line.3.horizontal.decrease.circle",
+                     text: sort.rawValue, active: anyFilter)
+            }
+            Spacer()
+            Button { withAnimation(.snappy) { onlyFavorites.toggle() } } label: {
+                pill(systemImage: onlyFavorites ? "heart.fill" : "heart",
+                     text: "Favorites", active: onlyFavorites)
             }
         }
+        .padding(.horizontal, 16).padding(.top, 8)
+    }
+
+    private func pill(systemImage: String, text: String, active: Bool) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: systemImage).font(.system(size: 13, weight: .semibold))
+            Text(text).font(.system(size: 13, weight: .semibold))
+        }
+        .foregroundStyle(active ? NK.primary : NK.ink2)
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .background(active ? NK.primary.opacity(0.1) : NK.card)
+        .overlay(Capsule().strokeBorder(active ? NK.primary.opacity(0.4) : NK.hair, lineWidth: 1))
+        .clipShape(Capsule())
     }
 
     @ViewBuilder private func facetToggles(_ values: [String], _ set: Binding<Set<String>>) -> some View {
@@ -288,5 +301,19 @@ enum RecipeGradient {
         case "snack", "dessert": return "🍪"
         default: return "🍽️"
         }
+    }
+}
+
+extension NookAPI.RecipeSummary {
+    /// A minimal placeholder for an instant recipe-detail header when only partial
+    /// info is on hand (the planner, the Today card). The detail screen reloads the
+    /// full recipe on appear.
+    static func placeholder(id: String, title: String, emoji: String?, category: String?,
+                            cookTimeMinutes: Int?, servings: Int?) -> NookAPI.RecipeSummary {
+        .init(id: id, title: title, emoji: emoji, category: category, prepTimeMinutes: nil,
+              cookTimeMinutes: cookTimeMinutes, servings: servings, imageUrl: nil, sourceName: nil,
+              isFavorite: false, cookedCount: 0, lastCookedAt: nil, mealType: nil, protein: nil,
+              base: nil, cuisine: nil, effort: nil, cookMethod: nil, dietary: nil, vegetables: nil,
+              collection: nil, tags: nil, addedTags: nil, notes: nil, userNotes: nil, overrides: nil)
     }
 }

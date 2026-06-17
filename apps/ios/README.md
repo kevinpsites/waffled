@@ -104,8 +104,8 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
   (Event·List·Grocery·Task·Meal) to correct a mis-parse, and "Edit text" to
   re-open the raw box. ✅
 - **Phase 3 — hub screens (in progress):**
-  - **Today** dashboard widgets live (tonight's meal, chores progress, grocery
-    count) from the REST domains. ✅
+  - **Today** dashboard widgets live (tonight's meal — **tap → its recipe** in the
+    Meals tab — chores progress, grocery count) from the REST domains. ✅
   - **Family hub** tiles show live counts and navigate (per-tile NavigationStack
     routing; re-tap to pop to root). ✅
   - **Lists** built out: Lists index → grocery **board** (By aisle / By meal,
