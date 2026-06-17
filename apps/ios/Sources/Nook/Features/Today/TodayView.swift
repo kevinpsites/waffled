@@ -9,6 +9,8 @@ struct TodayView: View {
     @State private var editingEvent: SyncedEvent?
     /// Jump to a Family hub destination (Chores, Lists…) from a summary card.
     var openFamily: (HubRoute) -> Void = { _ in }
+    /// Jump to the Calendar tab (from the agenda card).
+    var openCalendar: () -> Void = {}
 
     private var todays: [SyncedEvent] {
         Agenda.forDay(sync.events, day: Agenda.todayKey(sync.householdTz), tz: sync.householdTz)
@@ -85,18 +87,26 @@ struct TodayView: View {
     private var todayCard: some View {
         NookCard(padding: 17) {
             VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text("Today").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
-                    Spacer()
-                    Text("\(todays.count) event\(todays.count == 1 ? "" : "s")")
-                        .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                Button(action: openCalendar) {
+                    HStack(spacing: 6) {
+                        Text("Today").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
+                        Spacer()
+                        Text("\(todays.count) event\(todays.count == 1 ? "" : "s")")
+                            .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
                 .padding(.bottom, 4)
 
                 if todays.isEmpty {
-                    Text("Nothing scheduled today.")
-                        .font(.system(size: 14)).foregroundStyle(NK.ink3)
-                        .padding(.vertical, 12)
+                    Button(action: openCalendar) {
+                        Text("Nothing scheduled today.")
+                            .font(.system(size: 14)).foregroundStyle(NK.ink3)
+                            .padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 } else {
                     ForEach(Array(todays.enumerated()), id: \.element.id) { idx, ev in
                         Button { editingEvent = ev } label: {

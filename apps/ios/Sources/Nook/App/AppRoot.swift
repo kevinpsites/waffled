@@ -38,7 +38,7 @@ struct AppRoot: View {
             // scaffold they're simple views.
             Group {
                 switch tab {
-                case .today:    TodayView(openFamily: openFamily)
+                case .today:    TodayView(openFamily: openFamily, openCalendar: { tab = .calendar })
                 case .calendar: CalendarView()
                 case .meals:    MealsView()
                 case .family:   FamilyView(path: $familyPath)
