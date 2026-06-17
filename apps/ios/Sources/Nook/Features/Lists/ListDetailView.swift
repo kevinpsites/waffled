@@ -665,7 +665,7 @@ struct ListDetailView: View {
         .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
         .padding(.horizontal, 16)
         .padding(.top, 10)
-        .padding(.bottom, 96)            // clear the floating tab bar
+        .padding(.bottom, 78)            // clear the floating tab bar
         .background(NK.canvas)           // opaque strip so rows don't show through
     }
 
