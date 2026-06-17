@@ -93,8 +93,16 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
   offline read + queued write + reconnect — verified end-to-end on the iPhone 17
   Pro sim against the live stack. ✅
 - **Phase 2 — capture:** the "Add anything" sheet wired to `POST /api/capture`;
-  the client commits all four intents the way the web kiosk does — events to the
-  local PowerSync mirror, grocery/task/meal over REST. ✅
+  the client commits all five intents the way the web kiosk does — events to the
+  local PowerSync mirror, grocery/task/meal/list over REST. The "Nook understood"
+  preview leads with a **confident one-tap glance** (icon · kind · what it heard ·
+  who · a single Add button) — you confirm without ever seeing a form. A second
+  **Edit** tap opens the full **editable + re-classifiable** card: an inline name
+  field + per-kind fields (event = who-chips + date/time + all-day; task =
+  who-chips + reward stepper + **currency picker**; grocery/list = quantity, list
+  = target-list dropdown; meal = slot chips + date), a **type-switcher** chip row
+  (Event·List·Grocery·Task·Meal) to correct a mis-parse, and "Edit text" to
+  re-open the raw box. ✅
 - **Phase 3 — hub screens (in progress):**
   - **Today** dashboard widgets live (tonight's meal, chores progress, grocery
     count) from the REST domains. ✅
@@ -126,13 +134,15 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
 
 ## Known follow-ups / bugs
 
-- **Capture → custom lists** (needs backend, do on `main` not this worktree):
-  the capture parser only has `event/grocery/task/meal` intents, so "add towels
-  to the lake packing trip" misroutes to grocery (the list name is dropped).
-  Fix has two parts: (1) **server** — add a `list` intent (item + target list,
-  resolved by name; default Grocery) to the parser schema + commit path; (2)
-  **iOS** — make the "Nook understood" preview *correctable*: a type switcher
-  (Event·Task·Grocery·List·Meal) + an "Add to: [list ▾]" picker for grocery/
-  list, and rename "Edit" → "Edit text" (it currently re-opens the text box,
-  which reads as "edit the interpretation"). The iOS-only half (picker + relabel)
-  can ship here; the `list` intent must land on `main` first.
+- **Capture → custom lists**: ✅ done. The server `list` intent landed on `main`,
+  and the editable preview (type switcher + per-kind fields + list-target picker +
+  "Edit text") shipped here. `commitListItem` creates the named list on the fly if
+  it doesn't exist yet (web parity). The parser sometimes drops the list name
+  (returns `listName: null`) — when it does, the preview defaults the picker to the
+  first non-grocery list and the user re-picks; no misroute to grocery.
+- **Multi-intent capture** (needs backend): the parser returns a single intent, so
+  "add milk and schedule a dentist appointment" can't yet split into two cards
+  (the web "Add both" affordance). Needs a server intent **array** first.
+- **Capture currency picker** only appears when the household has >1 currency; the
+  default reward currency is the household default (usually `stars`). Verified the
+  reward currency flows through `commitTask` → `POST /api/chores` (`rewardCurrency`).

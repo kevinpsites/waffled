@@ -157,34 +157,18 @@ final class SyncManager {
     /// person_id drives server-side calendar routing + the Google push (the phone
     /// never talks to Google). Returns false on failure.
     func commitEvent(title: String, startsAtISO: String, allDay: Bool, personName: String?) async -> Bool {
-        let householdId = (try? await db.getOptional(
-            sql: "SELECT id FROM households LIMIT 1", parameters: [],
-            mapper: { try $0.getString(name: "id") })) ?? nil
-        guard let householdId else {
-            lastError = "No household synced yet."
-            return false
-        }
+        // Resolve the named assignee to a person id and route through the same path the
+        // editor uses, so the capture also writes the `event_participants` row (not just
+        // `person_id`) — otherwise the person never shows up as a participant.
         let personId = personName.flatMap { name in
             members.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }?.id
         }
-        let id = UUID().uuidString.lowercased()
         let ends: String? = allDay
             ? nil
             : EventTime.parse(startsAtISO).map { SyncManager.iso8601.string(from: $0.addingTimeInterval(3600)) }
-        do {
-            try await db.execute(
-                sql: """
-                INSERT INTO events (id, household_id, title, starts_at, ends_at, all_day, person_id, origin)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'manual')
-                """,
-                parameters: [id, householdId, title, startsAtISO, ends, allDay ? 1 : 0, personId]
-            )
-            await refreshCounts()
-            return true
-        } catch {
-            lastError = String(describing: error)
-            return false
-        }
+        return await createCalendarEvent(
+            title: title, startsAtISO: startsAtISO, endsAtISO: ends, allDay: allDay,
+            location: nil, personIds: personId.map { [$0] } ?? [], calendarId: nil)
     }
 
     // MARK: calendar event writes (synced table → local mirror, queued for upload)
@@ -276,10 +260,11 @@ final class SyncManager {
 
     /// Commit a captured task as a chore via REST. The assignee name resolves to a
     /// synced person; stars become the reward amount.
-    func commitTask(title: String, personName: String?, stars: Int?, rrule: String?) async -> Bool {
+    func commitTask(title: String, personName: String?, stars: Int?, rewardCurrency: String? = nil, rrule: String?) async -> Bool {
         let ok = await restCommit {
             try await api.createChore(
-                title: title, personId: personId(for: personName), rewardAmount: stars, rrule: rrule
+                title: title, personId: personId(for: personName), rewardAmount: stars,
+                rewardCurrency: rewardCurrency, rrule: rrule
             )
         }
         if ok { choresRev += 1 }
@@ -307,11 +292,15 @@ final class SyncManager {
     func commitListItem(item: String, listName: String?, quantity: String?) async -> Bool {
         do {
             let lists = try await api.listSummaries()
-            let target = listName.flatMap { name in
+            var target = listName.flatMap { name in
                 lists.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
             }
+            // Web parity: an unmatched (but named) list is created on the fly.
+            if target == nil, let name = listName?.trimmingCharacters(in: .whitespaces), !name.isEmpty {
+                target = try await api.addList(name: name, emoji: nil)
+            }
             guard let target else {
-                lastError = listName.map { "No list named “\($0)”." } ?? "No matching list."
+                lastError = "No matching list."
                 return false
             }
             try await api.addListItem(listId: target.id, name: item, quantity: quantity)

@@ -92,10 +92,11 @@ struct NookAPI: Sendable {
 
     /// Create a chore (the "task" intent). personId resolves the assignee; stars map
     /// to the reward amount; rrule carries a recurrence if the LLM inferred one.
-    func createChore(title: String, personId: String?, rewardAmount: Int?, rrule: String?) async throws {
+    func createChore(title: String, personId: String?, rewardAmount: Int?, rewardCurrency: String? = nil, rrule: String?) async throws {
         var body: [String: JSONValue] = ["title": .string(title)]
         body["personId"] = personId.map(JSONValue.string) ?? .null
         if let rewardAmount { body["rewardAmount"] = .int(rewardAmount) }
+        if let rewardCurrency, !rewardCurrency.isEmpty { body["rewardCurrency"] = .string(rewardCurrency) }
         if let rrule, !rrule.isEmpty { body["rrule"] = .string(rrule) }
         try await send("POST", "/api/chores", body: body)
     }
