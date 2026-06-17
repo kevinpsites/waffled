@@ -357,3 +357,13 @@ select.sel {
   .cur-row, .cur-add { flex-wrap: wrap; }
   .cur-label { flex: 1 1 120px; }
 }
+
+/* conversions / tiers */
+.conv-row { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--hair-2); }
+.conv-rate { flex: 1; font-size: 14.5px; font-weight: 700; color: var(--ink); display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.conv-arrow { color: var(--ink-3); font-weight: 800; }
+.conv-add { display: flex; align-items: center; gap: 8px; padding-top: 14px; flex-wrap: wrap; }
+.conv-amt { width: 64px; font: inherit; font-size: 14px; font-weight: 700; color: var(--ink); border: 1px solid var(--hair);
+  border-radius: 8px; background: var(--card-2); padding: 7px 8px; text-align: center; }
+.conv-cur { font: inherit; font-size: 14px; font-weight: 600; color: var(--ink); border: 1px solid var(--hair);
+  border-radius: 8px; background: var(--card-2); padding: 7px 9px; cursor: pointer; }

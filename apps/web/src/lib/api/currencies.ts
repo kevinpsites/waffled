@@ -31,6 +31,46 @@ export function fmtCurrency(amount: number, c: Pick<Currency, 'symbol' | 'label'
   return `${c.symbol ?? ''}${c.symbol ? ' ' : ''}${amount}`
 }
 
+// ── Conversions / tiers (trade one currency for another) ─────────────────────
+export interface ConversionSide {
+  key: string
+  label: string | null
+  symbol: string | null
+  color: string | null
+}
+export interface Conversion {
+  id: string
+  fromCurrency: string
+  toCurrency: string
+  fromAmount: number
+  toAmount: number
+  from: ConversionSide
+  to: ConversionSide
+}
+
+export const conversionsApi = {
+  list: () => apiGet<{ conversions: Conversion[] }>('/api/conversions'),
+  create: (body: { fromCurrency: string; toCurrency: string; fromAmount: number; toAmount: number }) =>
+    apiSend<{ conversion: Conversion }>('POST', '/api/conversions', body).then((r) => r.conversion).then((c) => { emit('currencies'); return c }),
+  remove: (id: string) => apiDelete(`/api/conversions/${id}`).then(() => emit('currencies')),
+  // Trade `times` × the rate for a person; balances move, so nudge the rewards bus.
+  apply: (id: string, personId: string, times = 1) =>
+    apiSend<{ ok: boolean }>('POST', `/api/conversions/${id}/apply`, { personId, times }).then((r) => { emit('rewards'); return r }),
+}
+
+export function useConversions(): { conversions: Conversion[]; refetch: () => void } {
+  const [conversions, setConversions] = useState<Conversion[]>([])
+  const [nonce, setNonce] = useState(0)
+  const refetch = useCallback(() => setNonce((n) => n + 1), [])
+  useEffect(() => {
+    let alive = true
+    conversionsApi.list().then((d) => alive && setConversions(d.conversions)).catch(() => {})
+    return () => { alive = false }
+  }, [nonce])
+  useRefetchOn(['currencies'], refetch)
+  return { conversions, refetch }
+}
+
 export interface CurrenciesState {
   currencies: Currency[]
   defaultCurrency: Currency | null

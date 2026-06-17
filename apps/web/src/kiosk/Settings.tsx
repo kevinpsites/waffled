@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, usePersons, useCurrencies, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency } from '../lib/api'
+import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, usePersons, useCurrencies, useConversions, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import '../styles/settings.css'
 
@@ -765,7 +765,7 @@ function RewardsSettingsPanel() {
       <div className="set-card" style={{ padding: 18 }}>
         <div className="card-h" style={{ marginBottom: 4 }}>Currencies</div>
         <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
-          Rename stars, add your own, or run several. The <b>default</b> is what new chores award; <b>spendable</b> ones can buy rewards. (Trading one currency for another is coming soon.)
+          Rename stars, add your own, or run several. The <b>default</b> is what new chores award; <b>spendable</b> ones can buy rewards. Set up trades between them under <b>Conversions</b> below.
         </div>
         {loading ? (
           <div className="muted" style={{ fontWeight: 600 }}>Loading…</div>
@@ -777,6 +777,57 @@ function RewardsSettingsPanel() {
           <input className="cur-label" value={newLabel} placeholder="Add a currency (e.g. Family Dollars)" aria-label="New label" onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
           <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={adding || !newLabel.trim()} onClick={add}>＋ Add</button>
         </div>
+      </div>
+
+      {currencies.length > 1 && <ConversionsSection currencies={currencies} />}
+    </div>
+  )
+}
+
+function ConversionsSection({ currencies }: { currencies: Currency[] }) {
+  const { conversions } = useConversions()
+  const [fromCur, setFromCur] = useState(currencies[0]?.key ?? '')
+  const [toCur, setToCur] = useState(currencies[1]?.key ?? '')
+  const [fromAmt, setFromAmt] = useState(10)
+  const [toAmt, setToAmt] = useState(1)
+  const [busy, setBusy] = useState(false)
+  const sym = (key: string) => currencies.find((c) => c.key === key)?.symbol ?? '•'
+  async function add() {
+    if (!fromCur || !toCur || fromCur === toCur) return
+    setBusy(true)
+    try {
+      await conversionsApi.create({ fromCurrency: fromCur, toCurrency: toCur, fromAmount: fromAmt, toAmount: toAmt })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="set-card" style={{ padding: 18, marginTop: 14 }}>
+      <div className="card-h" style={{ marginBottom: 4 }}>Conversions</div>
+      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
+        Let the family trade up a tier — e.g. <b>10 ⭐ → 1 💵</b>. Anyone can convert their own balance on the Rewards tab.
+      </div>
+      {conversions.map((c) => (
+        <div key={c.id} className="conv-row">
+          <span className="conv-rate">
+            {c.fromAmount} {c.from.symbol ?? sym(c.fromCurrency)} {c.from.label ?? c.fromCurrency}
+            <span className="conv-arrow">→</span>
+            {c.toAmount} {c.to.symbol ?? sym(c.toCurrency)} {c.to.label ?? c.toCurrency}
+          </span>
+          <button type="button" className="cur-del" aria-label="Delete conversion" onClick={() => conversionsApi.remove(c.id)}>×</button>
+        </div>
+      ))}
+      <div className="conv-add">
+        <input type="number" min={1} className="conv-amt" value={fromAmt} onChange={(e) => setFromAmt(Number(e.target.value) || 1)} aria-label="From amount" />
+        <select className="conv-cur" value={fromCur} onChange={(e) => setFromCur(e.target.value)} aria-label="From currency">
+          {currencies.map((c) => <option key={c.key} value={c.key}>{(c.symbol ? `${c.symbol} ` : '') + c.label}</option>)}
+        </select>
+        <span className="conv-arrow">→</span>
+        <input type="number" min={1} className="conv-amt" value={toAmt} onChange={(e) => setToAmt(Number(e.target.value) || 1)} aria-label="To amount" />
+        <select className="conv-cur" value={toCur} onChange={(e) => setToCur(e.target.value)} aria-label="To currency">
+          {currencies.map((c) => <option key={c.key} value={c.key}>{(c.symbol ? `${c.symbol} ` : '') + c.label}</option>)}
+        </select>
+        <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={busy || fromCur === toCur} onClick={add}>＋ Add</button>
       </div>
     </div>
   )
