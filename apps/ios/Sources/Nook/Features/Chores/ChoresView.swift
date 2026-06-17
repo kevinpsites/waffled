@@ -116,6 +116,7 @@ struct ChoresView: View {
     @State private var model = ChoresModel(date: ChoreDates.today())
     @State private var claiming: String?   // instance id whose "who did it?" picker is open
     @State private var editor: ChoreEditorTarget?
+    @State private var collapsed: Set<String> = []   // column ids the user has folded
 
     /// What the chore editor sheet is editing/creating.
     enum ChoreEditorTarget: Identifiable {
@@ -168,10 +169,11 @@ struct ChoresView: View {
         for i in model.instances {
             if let pid = i.personId { byPerson[pid, default: []].append(i) } else { grabs.append(i) }
         }
-        var cols: [ChoreColumn] = []
-        if !grabs.isEmpty {
-            cols.append(ChoreColumn(id: "__grabs__", name: "Up for grabs", emoji: "🙌", colorHex: nil, isGrabs: true, items: grabs))
-        }
+        // Up for grabs always leads (even when empty), so anyone-can-claim chores
+        // have a home to add to — matching the web board.
+        var cols: [ChoreColumn] = [
+            ChoreColumn(id: "__grabs__", name: "Up for grabs", emoji: "🙌", colorHex: nil, isGrabs: true, items: grabs),
+        ]
         var seen = Set<String>()
         for m in sync.members {
             seen.insert(m.id)
@@ -209,45 +211,60 @@ struct ChoresView: View {
     }
 
     private func columnCard(_ col: ChoreColumn) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 9) {
-                if col.isGrabs {
-                    Text("🙌").font(.system(size: 16)).frame(width: 30, height: 30)
-                        .background(NK.gold.opacity(0.15)).clipShape(Circle())
-                } else {
-                    Avatar(colorHex: col.colorHex, emoji: col.emoji ?? "🙂", size: 30)
+        let isCollapsed = collapsed.contains(col.id)
+        return VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    if isCollapsed { collapsed.remove(col.id) } else { collapsed.insert(col.id) }
                 }
-                Text(col.name).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
-                Spacer()
-                HStack(spacing: 3) {
-                    Image(systemName: "star.fill").font(.system(size: 11)).foregroundStyle(NK.gold)
-                    Text("\(col.done)/\(col.items.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
+            } label: {
+                HStack(spacing: 9) {
+                    if col.isGrabs {
+                        Text("🙌").font(.system(size: 16)).frame(width: 30, height: 30)
+                            .background(NK.gold.opacity(0.15)).clipShape(Circle())
+                    } else {
+                        Avatar(colorHex: col.colorHex, emoji: col.emoji ?? "🙂", size: 30)
+                    }
+                    Text(col.name).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                    Spacer()
+                    HStack(spacing: 3) {
+                        Image(systemName: "star.fill").font(.system(size: 11)).foregroundStyle(NK.gold)
+                        Text("\(col.done)/\(col.items.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
+                    }
+                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .heavy))
+                        .foregroundStyle(NK.ink3).rotationEffect(.degrees(isCollapsed ? 0 : 90))
                 }
-            }
-            .padding(.bottom, 4)
-            if col.isGrabs {
-                Text("Tap a chore to claim it — whoever does it gets the stars.")
-                    .font(.system(size: 11.5, weight: .medium)).foregroundStyle(NK.ink3).padding(.bottom, 6)
-            }
-            VStack(spacing: 0) {
-                ForEach(Array(col.items.enumerated()), id: \.element.id) { i, inst in
-                    choreRow(inst, isGrabs: col.isGrabs)
-                    if i < col.items.count - 1 { Divider().background(NK.hair) }
-                }
-            }
-            if col.items.isEmpty {
-                Text(col.isGrabs ? "Nothing up for grabs — add one anyone can claim."
-                                 : "Nothing for \(col.name) \(ChoreDates.meta(model.date).isToday ? "today" : "this day").")
-                    .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3).padding(.vertical, 6)
-            }
-            Button { editor = .new(personId: col.isGrabs ? nil : col.id) } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
-                    Text("Add chore").font(.system(size: 13, weight: .semibold))
-                }
-                .foregroundStyle(NK.ink3).padding(.top, 8)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+
+            if !isCollapsed {
+                if col.isGrabs && !col.items.isEmpty {
+                    Text("Tap a chore to claim it — whoever does it gets the stars.")
+                        .font(.system(size: 11.5, weight: .medium)).foregroundStyle(NK.ink3)
+                        .padding(.top, 4).padding(.bottom, 2)
+                }
+                VStack(spacing: 0) {
+                    ForEach(Array(col.items.enumerated()), id: \.element.id) { i, inst in
+                        choreRow(inst, isGrabs: col.isGrabs)
+                        if i < col.items.count - 1 { Divider().background(NK.hair) }
+                    }
+                }
+                .padding(.top, 4)
+                if col.items.isEmpty {
+                    Text(col.isGrabs ? "Nothing up for grabs — add one anyone can claim."
+                                     : "Nothing for \(col.name) \(ChoreDates.meta(model.date).isToday ? "today" : "this day").")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3).padding(.vertical, 6)
+                }
+                Button { editor = .new(personId: col.isGrabs ? nil : col.id) } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
+                        Text("Add chore").font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundStyle(NK.ink3).padding(.top, 8)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(14)
         .background(NK.card)
