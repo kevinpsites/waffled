@@ -239,7 +239,7 @@ struct EventEditSheet: View {
                                             .foregroundStyle(on ? NK.ink : NK.ink2)
                                     }
                                     .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
-                                    .background(on ? c.opacity(0.14) : NK.canvas)
+                                    .background(on ? c.opacity(0.14) : NK.card)
                                     .overlay(Capsule().strokeBorder(on ? c : NK.hair, lineWidth: on ? 1.5 : 1))
                                     .clipShape(Capsule())
                                 }
@@ -393,10 +393,10 @@ private extension View {
             .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
     }
-    /// The inner input chrome (recessed tan, hairline border) — sits on the white box.
+    /// The inner input chrome (white, hairline border) — sits on the white box.
     func innerField() -> some View {
         frame(maxWidth: .infinity, alignment: .leading)
-            .background(NK.canvas)
+            .background(NK.card)
             .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
     }

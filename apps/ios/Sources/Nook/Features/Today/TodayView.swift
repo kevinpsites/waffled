@@ -6,6 +6,7 @@ import SwiftUI
 struct TodayView: View {
     @Environment(SyncManager.self) private var sync
     @State private var dash = DashboardModel()
+    @State private var editingEvent: SyncedEvent?
     /// Jump to a Family hub destination (Chores, Lists…) from a summary card.
     var openFamily: (HubRoute) -> Void = { _ in }
 
@@ -55,6 +56,9 @@ struct TodayView: View {
         .task(id: sync.householdTz) {
             await dash.load(todayKey: Agenda.todayKey(sync.householdTz))
         }
+        .sheet(item: $editingEvent) { ev in
+            EventEditSheet(event: ev, initialDate: ev.startsAt ?? Date())
+        }
     }
 
     // MARK: greeting row
@@ -95,7 +99,11 @@ struct TodayView: View {
                         .padding(.vertical, 12)
                 } else {
                     ForEach(Array(todays.enumerated()), id: \.element.id) { idx, ev in
-                        EventRow(event: ev, tz: sync.householdTz).padding(.vertical, 11)
+                        Button { editingEvent = ev } label: {
+                            EventRow(event: ev, tz: sync.householdTz)
+                                .padding(.vertical, 11).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                         if idx < todays.count - 1 {
                             Rectangle().fill(NK.hair2).frame(height: 1)
                         }
