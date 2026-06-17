@@ -166,6 +166,26 @@ struct NookAPI: Sendable {
         return try await getJSON("/api/lists/grocery", as: Resp.self).items
     }
 
+    // MARK: Google Calendar links (for the event editor's calendar picker)
+
+    /// One linked Google calendar. `accessRole` owner/writer = writable; the ★
+    /// `isWriteTarget` is a person's default calendar.
+    struct CalendarLink: Decodable, Identifiable, Sendable {
+        let id: String
+        let summary: String?
+        let accessRole: String?
+        let selected: Bool
+        let isWriteTarget: Bool
+        let personId: String?
+        var isWritable: Bool { accessRole == "owner" || accessRole == "writer" }
+    }
+
+    /// The household's linked Google calendars (empty if Google isn't connected).
+    func calendarLinks() async throws -> [CalendarLink] {
+        struct Resp: Decodable { let calendars: [CalendarLink] }
+        return ((try? await getJSON("/api/calendar/google/status", as: Resp.self))?.calendars) ?? []
+    }
+
     // MARK: Chores board (non-synced; fetched over REST)
 
     /// One chore instance for a given day (the Tasks list row).

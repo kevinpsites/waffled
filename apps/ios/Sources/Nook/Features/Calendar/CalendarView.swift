@@ -120,9 +120,10 @@ struct TabPlaceholder: View {
     }
 }
 
-/// Create or edit a calendar event — title, date, start/end time (or all-day),
-/// participants, and location. Writes to the local PowerSync mirror (offline-first;
-/// uploads on reconnect). Mirrors the web EventModal. NK-styled.
+/// Create or edit a calendar event — title, date, time + duration (or all-day),
+/// participants, calendar (Google destination, create only), and location. Each
+/// field is its own labeled card, mirroring the web EventModal. Writes to the
+/// local PowerSync mirror (offline-first; uploads on reconnect).
 struct EventEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(SyncManager.self) private var sync
@@ -132,14 +133,19 @@ struct EventEditSheet: View {
     @State private var title: String
     @State private var day: Date
     @State private var start: Date
-    @State private var end: Date
+    @State private var durationMin: Int
     @State private var allDay: Bool
     @State private var participants: Set<String>
     @State private var location: String
     @State private var confirmDelete = false
     @State private var loadedParticipants = false
+    // Google calendar picker (create only).
+    @State private var calendars: [NookAPI.CalendarLink] = []
+    @State private var calendarId: String?
+    @State private var calTouched = false
 
     private static let iso = ISO8601DateFormatter()
+    private static let durations = [15, 30, 45, 60, 90, 120, 180, 240]
 
     init(event: SyncedEvent?, initialDate: Date) {
         self.event = event
@@ -147,11 +153,14 @@ struct EventEditSheet: View {
         let cal = Calendar.current
         // Create defaults to 5pm on the given day; edit uses the event's times.
         let startDate = event?.startsAt ?? (cal.date(bySettingHour: 17, minute: 0, second: 0, of: initialDate) ?? initialDate)
-        let endDate = event?.endsAt ?? startDate.addingTimeInterval(3600)
+        let mins: Int = {
+            guard let s = event?.startsAt, let e = event?.endsAt else { return 60 }
+            return max(15, Int(e.timeIntervalSince(s) / 60))
+        }()
         _title = State(initialValue: event?.title ?? "")
         _day = State(initialValue: startDate)
         _start = State(initialValue: startDate)
-        _end = State(initialValue: endDate)
+        _durationMin = State(initialValue: mins)
         _allDay = State(initialValue: event?.allDay ?? false)
         _participants = State(initialValue: event?.personId.map { Set([$0]) } ?? [])
         _location = State(initialValue: event?.location ?? "")
@@ -160,44 +169,61 @@ struct EventEditSheet: View {
     private var editing: Bool { event != nil }
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
 
+    /// The owner (first family member who's a participant) drives the calendar list.
+    private var primaryPerson: String? { sync.members.first { participants.contains($0.id) }?.id }
+    /// The owner's own writable calendars that sync (or are their ★ target).
+    private var ownerCals: [NookAPI.CalendarLink] {
+        guard let p = primaryPerson else { return [] }
+        return calendars.filter { $0.isWritable && $0.personId == p && ($0.selected || $0.isWriteTarget) }
+    }
+    private var showCalendarPicker: Bool { !editing && ownerCals.count > 1 }
+
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 9) {
-                        SectionLabel(text: "Title")
+                VStack(alignment: .leading, spacing: 14) {
+                    group("Title") {
                         TextField("Soccer practice", text: $title)
                             .font(.system(size: 16, weight: .semibold)).textInputAutocapitalization(.sentences)
-                            .padding(.horizontal, 13).padding(.vertical, 12).eventField()
+                            .padding(.horizontal, 13).padding(.vertical, 11).innerField()
                     }
 
-                    VStack(spacing: 12) {
-                        Toggle(isOn: $allDay.animation()) {
-                            Text("All day").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                        }
-                        .tint(FamilyColor.wally.solid)
-                        HStack {
-                            Text("Date").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                            Spacer()
-                            DatePicker("", selection: $day, displayedComponents: .date).labelsHidden()
-                        }
-                        if !allDay {
-                            HStack {
-                                Text("Starts").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                                Spacer()
-                                DatePicker("", selection: $start, displayedComponents: .hourAndMinute).labelsHidden()
+                    group("Date") {
+                        DatePicker("", selection: $day, displayedComponents: .date)
+                            .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if !allDay {
+                        HStack(spacing: 14) {
+                            group("Time") {
+                                DatePicker("", selection: $start, displayedComponents: .hourAndMinute)
+                                    .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            HStack {
-                                Text("Ends").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                                Spacer()
-                                DatePicker("", selection: $end, displayedComponents: .hourAndMinute).labelsHidden()
+                            group("Duration") {
+                                Menu {
+                                    ForEach(durationOptions, id: \.self) { m in
+                                        Button(durationLabel(m)) { durationMin = m }
+                                    }
+                                } label: {
+                                    HStack {
+                                        Text(durationLabel(durationMin)).font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
+                                        Spacer()
+                                        Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                                    }
+                                    .padding(.horizontal, 13).padding(.vertical, 11).innerField()
+                                }
                             }
                         }
                     }
-                    .padding(14).eventField()
 
-                    VStack(alignment: .leading, spacing: 9) {
-                        SectionLabel(text: "Who")
+                    // All day — boxed grouping like the web, with a toggle.
+                    Toggle(isOn: $allDay.animation()) {
+                        Text("All day").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                    }
+                    .tint(FamilyColor.wally.solid)
+                    .padding(14).cardBox()
+
+                    group("Who") {
                         ChipFlow(spacing: 8, lineSpacing: 8) {
                             ForEach(sync.members) { m in
                                 let on = participants.contains(m.id)
@@ -220,46 +246,99 @@ struct EventEditSheet: View {
                         }
                     }
 
-                    VStack(alignment: .leading, spacing: 9) {
-                        SectionLabel(text: "Location · optional")
-                        TextField("Field 3", text: $location)
-                            .font(.system(size: 16, weight: .semibold))
-                            .padding(.horizontal, 13).padding(.vertical, 12).eventField()
+                    if showCalendarPicker {
+                        group("Calendar") {
+                            Menu {
+                                ForEach(ownerCals) { c in
+                                    Button { calendarId = c.id; calTouched = true } label: {
+                                        Text("\(c.summary ?? "Calendar")\(c.isWriteTarget ? " ★" : "")")
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    let sel = ownerCals.first { $0.id == calendarId }
+                                    Text("\(sel?.summary ?? "Choose…")\(sel?.isWriteTarget == true ? " ★" : "")")
+                                        .font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                                    Spacer()
+                                    Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                                }
+                                .padding(.horizontal, 13).padding(.vertical, 11).innerField()
+                            }
+                        }
                     }
 
-                    if editing {
-                        Button {
-                            if confirmDelete {
-                                Task { _ = await sync.deleteEvent(id: event!.id) }
-                                dismiss()
-                            } else { withAnimation { confirmDelete = true } }
-                        } label: {
-                            Text(confirmDelete ? "Tap again to delete this event" : "Delete event")
-                                .font(.system(size: 14, weight: .bold)).foregroundStyle(NK.primary)
-                        }
-                        .buttonStyle(.plain).padding(.top, 2)
+                    group("Location · optional") {
+                        TextField("Field 3", text: $location)
+                            .font(.system(size: 16, weight: .semibold))
+                            .padding(.horizontal, 13).padding(.vertical, 11).innerField()
                     }
+
+                    bottomBar.padding(.top, 6)
                 }
-                .padding(20)
+                .padding(18)
             }
             .background(NK.canvas)
             .navigationTitle(editing ? "Edit event" : "New event")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(editing ? "Save" : "Add") { save() }.fontWeight(.semibold).disabled(!canSave)
-                }
             }
-            .task {
-                // Refine the seeded owner with the event's full participant list.
-                guard editing, !loadedParticipants else { return }
-                loadedParticipants = true
-                let ids = await sync.eventParticipantIds(event!.id)
-                if !ids.isEmpty { participants = Set(ids) }
-            }
+            .task { await load() }
+            .onChange(of: participants) { _, _ in recomputeDefaultCalendar() }
         }
         .presentationDetents([.large])
+    }
+
+    private var bottomBar: some View {
+        HStack(spacing: 14) {
+            if editing {
+                Button {
+                    if confirmDelete { Task { _ = await sync.deleteEvent(id: event!.id) }; dismiss() }
+                    else { withAnimation { confirmDelete = true } }
+                } label: {
+                    Text(confirmDelete ? "Tap again" : "Delete")
+                        .font(.system(size: 15, weight: .bold)).foregroundStyle(NK.primary)
+                }
+                .buttonStyle(.plain)
+            }
+            Button { save() } label: {
+                Text(editing ? "Save" : "Add event")
+                    .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                    .frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .background(canSave ? NK.primary : NK.primary.opacity(0.4))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain).disabled(!canSave)
+        }
+    }
+
+    // MARK: data
+
+    private func load() async {
+        if editing, !loadedParticipants {
+            loadedParticipants = true
+            let ids = await sync.eventParticipantIds(event!.id)
+            if !ids.isEmpty { participants = Set(ids) }
+        }
+        if !editing, calendars.isEmpty {
+            calendars = (try? await NookAPI().calendarLinks()) ?? []
+            recomputeDefaultCalendar()
+        }
+    }
+
+    /// Default to the owner's ★ calendar (then any of theirs), until manually picked.
+    private func recomputeDefaultCalendar() {
+        guard !editing, !calTouched else { return }
+        calendarId = (ownerCals.first { $0.isWriteTarget } ?? ownerCals.first)?.id
+    }
+
+    private var durationOptions: [Int] {
+        Self.durations.contains(durationMin) ? Self.durations : (Self.durations + [durationMin]).sorted()
+    }
+    private func durationLabel(_ m: Int) -> String {
+        if m < 60 { return "\(m) min" }
+        let h = Double(m) / 60
+        return h == h.rounded() ? "\(Int(h)) hr" : String(format: "%.1f hr", h)
     }
 
     private func save() {
@@ -268,17 +347,18 @@ struct EventEditSheet: View {
             ? (cal.date(bySettingHour: 12, minute: 0, second: 0, of: day) ?? day)
             : combine(day, start)
         let startISO = Self.iso.string(from: startDate)
-        let endISO = allDay ? nil : Self.iso.string(from: combine(day, end))
+        let endISO = allDay ? nil : Self.iso.string(from: startDate.addingTimeInterval(Double(durationMin) * 60))
         let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let loc = location.trimmingCharacters(in: .whitespaces).isEmpty ? nil : location.trimmingCharacters(in: .whitespaces)
         let ids = Array(participants)
+        let chosenCal = showCalendarPicker ? calendarId : nil
         Task {
             if let event {
                 _ = await sync.updateEvent(id: event.id, title: name, startsAtISO: startISO,
                                            endsAtISO: endISO, allDay: allDay, location: loc, personIds: ids)
             } else {
-                _ = await sync.createCalendarEvent(title: name, startsAtISO: startISO,
-                                                   endsAtISO: endISO, allDay: allDay, location: loc, personIds: ids)
+                _ = await sync.createCalendarEvent(title: name, startsAtISO: startISO, endsAtISO: endISO,
+                                                   allDay: allDay, location: loc, personIds: ids, calendarId: chosenCal)
             }
         }
         dismiss()
@@ -291,14 +371,30 @@ struct EventEditSheet: View {
         let t = cal.dateComponents([.hour, .minute], from: time)
         return cal.date(from: DateComponents(year: d.year, month: d.month, day: d.day, hour: t.hour, minute: t.minute)) ?? dayDate
     }
+
+    /// A labeled field card (label top-left, content below) — the web's panel look.
+    private func group<V: View>(_ label: String, @ViewBuilder _ content: () -> V) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink2)
+            content()
+        }
+        .padding(14).cardBox()
+    }
 }
 
 private extension View {
-    /// Shared NK card-field chrome for the event editor.
-    func eventField() -> some View {
+    /// The outer card-group chrome (cream panel, hairline border).
+    func cardBox() -> some View {
         frame(maxWidth: .infinity, alignment: .leading)
-            .background(NK.card)
+            .background(NK.card2)
             .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+    /// The inner input chrome (white, hairline border).
+    func innerField() -> some View {
+        frame(maxWidth: .infinity, alignment: .leading)
+            .background(NK.card)
+            .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
     }
 }

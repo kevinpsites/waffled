@@ -197,18 +197,19 @@ final class SyncManager {
     /// Create a calendar event in the local mirror (PowerSync uploads it). `person_id`
     /// is the first participant — the server uses it for calendar routing.
     func createCalendarEvent(title: String, startsAtISO: String, endsAtISO: String?,
-                             allDay: Bool, location: String?, personIds: [String]) async -> Bool {
+                             allDay: Bool, location: String?, personIds: [String],
+                             calendarId: String?) async -> Bool {
         guard let hh = await householdRowId() else { lastError = "No household synced yet."; return false }
         let id = UUID().uuidString.lowercased()
         do {
             try await db.execute(
                 sql: """
                 INSERT INTO events (id, household_id, title, description, location, starts_at, ends_at,
-                                    all_day, timezone, person_id, origin)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')
+                                    all_day, timezone, person_id, calendar_id, origin)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')
                 """,
                 parameters: [id, hh, title, nil, location, startsAtISO, endsAtISO,
-                             allDay ? 1 : 0, householdTz.identifier, personIds.first])
+                             allDay ? 1 : 0, householdTz.identifier, personIds.first, calendarId])
             try await replaceParticipants(eventId: id, householdId: hh, personIds: personIds)
             await refreshCounts()
             return true
