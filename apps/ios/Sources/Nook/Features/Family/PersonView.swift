@@ -62,6 +62,22 @@ struct PersonView: View {
     private var firstName: String { (person?.name ?? "").split(separator: " ").first.map(String.init) ?? (person?.name ?? "") }
     private var color: Color { Color(hexString: person?.colorHex) ?? NK.ink3 }
 
+    /// A person's balances joined to their currency definitions (symbol + color),
+    /// in the household's currency order — supports custom currencies, not just stars.
+    private struct CurBal: Identifiable { let key, symbol, label: String; let color: Color; let amount, sort: Int; var id: String { key } }
+    private func balances(_ ov: NookAPI.PersonOverview) -> [CurBal] {
+        let defs = Dictionary(ov.currencies.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
+        return ov.balances.compactMap { b -> CurBal? in
+            guard let d = defs[b.currency] else { return nil }
+            return CurBal(key: d.key, symbol: d.symbol, label: d.label,
+                          color: Color(hexString: d.color) ?? NK.gold, amount: b.balance, sort: d.sortOrder)
+        }
+        .sorted { $0.sort < $1.sort }
+    }
+    private func symbol(for currency: String) -> String {
+        model.overview?.currencies.first { $0.key == currency }?.symbol ?? "⭐"
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -97,12 +113,16 @@ struct PersonView: View {
                 Text(subtitle).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
             }
             Spacer()
-            VStack(spacing: 0) {
-                HStack(spacing: 4) {
-                    Image(systemName: "star.fill").font(.system(size: 16)).foregroundStyle(NK.gold)
-                    Text("\(model.overview?.stars ?? 0)").font(.system(size: 22, weight: .heavy)).foregroundStyle(NK.ink)
+            if let ov = model.overview {
+                VStack(alignment: .trailing, spacing: 4) {
+                    ForEach(balances(ov)) { b in
+                        HStack(spacing: 4) {
+                            Text(b.symbol).font(.system(size: 15))
+                            Text("\(b.amount)").font(.system(size: 20, weight: .heavy)).foregroundStyle(NK.ink)
+                            Text(b.label.lowercased()).font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
+                        }
+                    }
                 }
-                Text("stars").font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
             }
         }
     }
@@ -162,15 +182,14 @@ struct PersonView: View {
                 .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3).padding(.vertical, 12)
         } else {
             VStack(spacing: 0) {
+                // Events first (time on the left), then chores (a checkbox on the
+                // left) so the two are visually distinct at a glance.
                 ForEach(Array(events.enumerated()), id: \.element.id) { i, ev in
-                    dayRow(time: eventTime(ev), title: ev.title, trailing: .event) { editingEvent = ev }
+                    eventRow(ev)
                     if i < events.count - 1 || !model.chores.isEmpty { divider }
                 }
                 ForEach(Array(model.chores.enumerated()), id: \.element.id) { i, ch in
-                    dayRow(time: "—", title: "\(ch.emoji.map { "\($0) " } ?? "")\(ch.choreTitle)",
-                           trailing: ch.status == "done" ? .choreDone : .chorePending) {
-                        Task { await model.toggleChore(ch) }
-                    }
+                    choreRow(ch)
                     if i < model.chores.count - 1 { divider }
                 }
             }
@@ -180,21 +199,38 @@ struct PersonView: View {
         }
     }
 
-    private enum DayTrailing { case event, choreDone, chorePending }
-
-    private func dayRow(time: String, title: String, trailing: DayTrailing, tap: @escaping () -> Void) -> some View {
-        Button(action: tap) {
+    private func eventRow(_ ev: SyncedEvent) -> some View {
+        Button { editingEvent = ev } label: {
             HStack(spacing: 12) {
-                Text(time).font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ink3)
-                    .frame(width: 64, alignment: .leading)
-                Text(title).font(.system(size: 15, weight: .semibold))
-                    .strikethrough(trailing == .choreDone, color: NK.ink3)
-                    .foregroundStyle(trailing == .choreDone ? NK.ink3 : NK.ink).lineLimit(1)
+                Text(eventTime(ev)).font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ink3)
+                    .frame(width: 60, alignment: .leading)
+                Text(ev.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
                 Spacer(minLength: 8)
-                switch trailing {
-                case .event: Image(systemName: "calendar").font(.system(size: 15)).foregroundStyle(NK.ink3)
-                case .choreDone: Image(systemName: "checkmark.circle.fill").font(.system(size: 20)).foregroundStyle(FamilyColor.wally.solid)
-                case .chorePending: Image(systemName: "circle").font(.system(size: 20)).foregroundStyle(NK.ink3)
+                Image(systemName: "calendar").font(.system(size: 14)).foregroundStyle(NK.ink3)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 11).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func choreRow(_ ch: NookAPI.ChoreInstanceDTO) -> some View {
+        let done = ch.status == "done"
+        let awaiting = ch.status == "awaiting"
+        return Button { Task { await model.toggleChore(ch) } } label: {
+            HStack(spacing: 12) {
+                Image(systemName: awaiting ? "hourglass.circle.fill" : (done ? "checkmark.circle.fill" : "circle"))
+                    .font(.system(size: 22))
+                    .foregroundStyle(done ? FamilyColor.wally.solid : (awaiting ? NK.gold : NK.ink3))
+                Text("\(ch.emoji.map { "\($0) " } ?? "")\(ch.choreTitle)")
+                    .font(.system(size: 15, weight: .semibold))
+                    .strikethrough(done, color: NK.ink3)
+                    .foregroundStyle(done ? NK.ink3 : NK.ink).lineLimit(1)
+                Spacer(minLength: 8)
+                if ch.rewardAmount > 0 {
+                    HStack(spacing: 2) {
+                        Image(systemName: "star.fill").font(.system(size: 10)).foregroundStyle(NK.gold)
+                        Text("\(ch.rewardAmount)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                    }
                 }
             }
             .padding(.horizontal, 14).padding(.vertical, 11).contentShape(Rectangle())
@@ -267,10 +303,15 @@ struct PersonView: View {
     // MARK: stars & redemptions
 
     private func starsCard(_ ov: NookAPI.PersonOverview) -> some View {
-        card("Stars & chores") {
-            HStack(spacing: 4) {
-                Image(systemName: "star.fill").font(.system(size: 15)).foregroundStyle(NK.gold)
-                Text("\(ov.stars)").font(.system(size: 20, weight: .heavy)).foregroundStyle(FamilyColor.lottie.solid)
+        card("Currencies & chores") {
+            HStack(spacing: 16) {
+                ForEach(balances(ov)) { b in
+                    HStack(spacing: 4) {
+                        Text(b.symbol).font(.system(size: 15))
+                        Text("\(b.amount)").font(.system(size: 20, weight: .heavy)).foregroundStyle(b.color)
+                        Text(b.label.lowercased()).font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
+                    }
+                }
             }
             if !ov.recentLedger.isEmpty {
                 SectionLabel(text: "Recent")
@@ -281,7 +322,7 @@ struct PersonView: View {
                                 .font(.system(size: 13, weight: .heavy))
                                 .foregroundStyle(e.amount >= 0 ? FamilyColor.wally.solid : NK.primary)
                                 .frame(width: 38, alignment: .leading)
-                            Image(systemName: "star.fill").font(.system(size: 10)).foregroundStyle(NK.gold)
+                            Text(symbol(for: e.currency)).font(.system(size: 11))
                             Text(e.detail ?? e.reason.replacingOccurrences(of: "_", with: " "))
                                 .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
                             Spacer()
@@ -307,7 +348,7 @@ struct PersonView: View {
                             .padding(.horizontal, 7).padding(.vertical, 2)
                             .background((r.status == "approved" ? FamilyColor.wally.solid : NK.ink3).opacity(0.14)).clipShape(Capsule())
                         HStack(spacing: 2) {
-                            Image(systemName: "star.fill").font(.system(size: 10)).foregroundStyle(NK.gold)
+                            Text(symbol(for: r.currency)).font(.system(size: 11))
                             Text("\(r.cost)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
                         }
                     }

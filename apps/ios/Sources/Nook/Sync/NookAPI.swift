@@ -234,11 +234,26 @@ struct NookAPI: Sendable {
         let person: Person
         let stars: Int
         let topStreak: Int
+        let currencies: [Currency]
+        let balances: [Balance]
         let goals: [Goal]
         let categoryBalance: [CategoryBalance]
         let insight: Insight?
         let recentLedger: [LedgerEntry]
         let redemptions: [Redemption]
+
+        struct Currency: Decodable, Sendable, Identifiable {
+            let key, label, symbol: String
+            let color: String?
+            let isDefault: Bool
+            let sortOrder: Int
+            var id: String { key }
+        }
+        struct Balance: Decodable, Sendable, Identifiable {
+            let currency: String
+            let balance: Int
+            var id: String { currency }
+        }
 
         struct Person: Decodable, Sendable {
             let id, name: String
