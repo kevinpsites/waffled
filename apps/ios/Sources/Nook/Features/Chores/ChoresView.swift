@@ -186,21 +186,24 @@ struct ChoresView: View {
     }
 
     private var dateNav: some View {
-        HStack(spacing: 12) {
-            Button { Task { await model.shift(-1) } } label: { navArrow("chevron.left") }
-            VStack(spacing: 1) {
-                Text(ChoreDates.meta(model.date).full).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
-                Text(ChoreDates.meta(model.date).rel).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
-            }
-            .frame(maxWidth: .infinity)
-            Button { Task { await model.shift(1) } } label: { navArrow("chevron.right") }
-        }
-        .overlay(alignment: .trailing) {
-            if !ChoreDates.meta(model.date).isToday {
-                Button { Task { await model.goToday() } } label: {
-                    Text("Today").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.primary)
+        let meta = ChoreDates.meta(model.date)
+        return VStack(spacing: 8) {
+            HStack(spacing: 12) {
+                Button { Task { await model.shift(-1) } } label: { navArrow("chevron.left") }
+                VStack(spacing: 1) {
+                    Text(meta.full).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                    Text(meta.rel).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
                 }
-                .offset(y: 30)
+                .frame(maxWidth: .infinity)
+                Button { Task { await model.shift(1) } } label: { navArrow("chevron.right") }
+            }
+            if !meta.isToday {
+                Button { Task { await model.goToday() } } label: {
+                    Text("Jump to today").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.primary)
+                        .padding(.horizontal, 12).padding(.vertical, 5)
+                        .background(NK.primary.opacity(0.1)).clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
             }
         }
     }

@@ -7,6 +7,8 @@ struct TodayView: View {
     @Environment(SyncManager.self) private var sync
     @State private var dash = DashboardModel()
     @State private var editingEvent: SyncedEvent?
+    @State private var showCapture = false
+    @State private var dictateOnOpen = false
     /// Jump to a Family hub destination (Chores, Lists…) from a summary card.
     var openFamily: (HubRoute) -> Void = { _ in }
     /// Jump to the Calendar tab (from the agenda card).
@@ -40,7 +42,8 @@ struct TodayView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 greeting
-                AICaptureBar()
+                AICaptureBar(onTap: { dictateOnOpen = false; showCapture = true },
+                             onMic: { dictateOnOpen = true; showCapture = true })
                     .padding(.bottom, 2)
                 todayCard
                 tonightCard
@@ -60,6 +63,9 @@ struct TodayView: View {
         }
         .sheet(item: $editingEvent) { ev in
             EventEditSheet(event: ev, initialDate: ev.startsAt ?? Date())
+        }
+        .sheet(isPresented: $showCapture) {
+            CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
         }
     }
 
