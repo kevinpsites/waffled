@@ -104,3 +104,56 @@ and a cross-surface live-refresh bus. Still **zero external dependencies**.
 
 Other deferred polish folded into done items: AI "Nook suggests" cards (→6.6-ai), list-sharing
 UI, settings sub-tab depth, event recurrence/overrides, auto-from-calendar goal logging (M5).
+
+---
+
+## Backlog — designed, not yet built
+
+### Calendar → goal auto-counting (the "auto-from-calendar" log method)
+The bidirectional Google Calendar **sync already exists and works** (inbound pull +
+outbound push, per-household OAuth, 5-min poll — `calendar-sync.service.ts`,
+`calendars.ts`). What's missing is the **bridge from events to goal progress**:
+today there is no link between `events` and `goals` (no `goal_id` on events, no
+join table), and although `goal_logs.source` reserves `'auto_calendar'`, nothing
+writes it. To ship "schedule it → it counts," build three pieces:
+1. **Association** — explicit link on an event ("counts toward *1,000 Hours Outside*"),
+   stored as `goal_id` (or a join table), ideally with smart title suggestions.
+   Keyword/category auto-matching is fragile — prefer explicit.
+2. **Amount mapping** — Total goal → event **duration** (90 min = +1.5 hr);
+   Count goal → **+1**; Habit → **mark-done**.
+3. **Confirmation (decided: confirm-after, not auto-on-time-pass)** — a calendar
+   event is a *plan, not a fact*. When the event ends, surface a kiosk recap card
+   ("Did Soccer happen? ✓ Log 1.5 hr / Skip / Edit"); only log on confirmation.
+   Pre-filter out `cancelled`/declined events using the `status` we already store.
+   (Middle ground: auto-count but make it one-tap undoable.)
+Wires up `logMethod='auto_calendar'` (currently cosmetic) + `goal_logs.source='auto_calendar'`.
+
+### Milestones / checklist rethink — DECIDED, being built
+"Milestones" did double duty: threshold reward moments AND the "checklist" measure
+type both ran on `goal_milestones`. Now split:
+- **checklist** becomes real named steps (`goal_steps`: label, sort_order, done_at,
+  done_by), decoupled from the rewards toggle, logged by ticking steps. Progress =
+  steps done / total. Measure type renamed "Milestones" → "Checklist".
+- **reward milestones** become a per-type threshold marker, where the threshold is
+  expressed in each type's natural axis:
+  - Total → X units (vs cumulative)   • Count → X units (vs cumulative)
+  - Habit → X **streak days** (vs current streak)
+  - Checklist → **percent** complete (e.g. 50/100%), shown as "70% ≈ 5 of 7 steps"
+  Milestones stay **text-only** for now (label + free-text reward like "movie night").
+
+### Milestone reward payouts — DEFERRED (needs a dedicated, careful pass)
+Milestones currently pay nothing (cosmetic). Before wiring real payouts, resolve:
+- **Rewards aren't always currency.** Many are *experiential* ("at 250 hours we go
+  camping / movie night") and must NOT touch the ledger. So the model needs an
+  optional structured payout (currency + amount) *alongside* the free-text reward —
+  text-only milestones never pay.
+- **Idempotency** — pay on FIRST crossing, never double-pay (logProgress runs every
+  log). Needs an awards record (`goal_milestone_awards` or a ledger ref) to dedupe.
+- **Attribution on shared goals** — who gets the bonus when a *shared pool* crosses a
+  threshold? Logger / split / all participants? (Same ambiguity as shared logging.)
+- **Per-type "reached"** trigger must evaluate crossing per type (cumulative / streak
+  / %), including the streak calc.
+- **Clawback policy** — if a log is deleted and progress drops back below, revoke the
+  payout or keep it earned? (Lean: keep earned.)
+- Reuses the existing `ledger_entries` + `currencies` economy (a second earn source
+  alongside chores), reason e.g. `goal_milestone`.
