@@ -14,6 +14,7 @@ import { registerPersonRoutes } from './modules/persons/persons'
 import { registerListRoutes } from './modules/lists/lists.routes'
 import { registerChoreRoutes } from './modules/chores/chores.routes'
 import { registerRewardRoutes } from './modules/rewards/rewards'
+import { registerCurrencyRoutes } from './modules/currencies/currencies'
 import { registerMealRoutes } from './modules/meals/meals.routes'
 import { registerEventRoutes } from './modules/events/events'
 import { registerCalendarAiRoutes } from './modules/calendar/calendar-ai'
@@ -124,6 +125,9 @@ registerChoreRoutes(api)
 
 // Rewards + redemptions (/api/rewards, /api/redemptions, /api/balances…)
 registerRewardRoutes(api)
+
+// Currency catalog (/api/currencies…)
+registerCurrencyRoutes(api)
 
 // Meals & recipes (/api/recipes, /api/meals…)
 registerMealRoutes(api)

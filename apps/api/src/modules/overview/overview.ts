@@ -5,6 +5,7 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
 import { requireTenant } from '../households/households'
 import { listGoals } from '../goals/goals.service'
+import { listCurrencies, getDefaultCurrencyKey, presentCurrency } from '../currencies/currencies'
 
 type Api = ReturnType<typeof createAPI>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -113,18 +114,21 @@ export async function personOverview(householdId: string, personId: string) {
   const goals = personGoals(await listGoals(householdId), personId)
   const balance = categoryBalance(goals)
 
-  const bal = await query<{ b: string }>(
-    `select coalesce(sum(amount),0) as b from ledger_entries
-       where household_id=$1 and person_id=$2 and currency='stars' and deleted_at is null`,
+  const currencies = await listCurrencies(householdId)
+  const defaultKey = currencies.find((c) => c.is_default)?.key ?? currencies[0]?.key ?? 'stars'
+  const bal = await query<{ currency: string; b: string }>(
+    `select currency, coalesce(sum(amount),0) as b from ledger_entries
+       where household_id=$1 and person_id=$2 and deleted_at is null group by currency`,
     [householdId, personId]
   )
-  const recent = await query<{ amount: number; reason: string; created_at: string }>(
-    `select amount, reason, created_at from ledger_entries
+  const balByCurrency = new Map(bal.rows.map((r) => [r.currency, Number(r.b)]))
+  const recent = await query<{ amount: number; reason: string; currency: string; created_at: string }>(
+    `select amount, reason, currency, created_at from ledger_entries
        where household_id=$1 and person_id=$2 and deleted_at is null order by created_at desc limit 8`,
     [householdId, personId]
   )
-  const redemptions = await query<{ id: string; title: string; emoji: string | null; cost: number; status: string; created_at: string }>(
-    `select id, title, emoji, cost, status, created_at from reward_redemptions
+  const redemptions = await query<{ id: string; title: string; emoji: string | null; cost: number; currency: string; status: string; created_at: string }>(
+    `select id, title, emoji, cost, currency, status, created_at from reward_redemptions
        where household_id=$1 and person_id=$2 and deleted_at is null order by created_at desc limit 8`,
     [householdId, personId]
   )
@@ -133,12 +137,14 @@ export async function personOverview(householdId: string, personId: string) {
     person: { id: person.id, name: person.name, avatarEmoji: person.avatar_emoji, colorHex: person.color_hex, age: ageFrom(person.birthday), memberType: person.member_type },
     activeGoals: goals.length,
     topStreak: goals.reduce((m, g) => Math.max(m, g.streakDays), 0),
-    stars: Number(bal.rows[0]?.b ?? 0),
+    stars: balByCurrency.get(defaultKey) ?? 0,
+    currencies: currencies.map(presentCurrency),
+    balances: currencies.map((c) => ({ currency: c.key, balance: balByCurrency.get(c.key) ?? 0 })),
     goals,
     categoryBalance: balance,
     insight: buildInsight(balance, person.name),
-    recentLedger: recent.rows.map((r) => ({ amount: r.amount, reason: r.reason, createdAt: r.created_at })),
-    redemptions: redemptions.rows.map((r) => ({ id: r.id, title: r.title, emoji: r.emoji, cost: r.cost, status: r.status, createdAt: r.created_at })),
+    recentLedger: recent.rows.map((r) => ({ amount: r.amount, reason: r.reason, currency: r.currency, createdAt: r.created_at })),
+    redemptions: redemptions.rows.map((r) => ({ id: r.id, title: r.title, emoji: r.emoji, cost: r.cost, currency: r.currency, status: r.status, createdAt: r.created_at })),
   }
 }
 
@@ -149,10 +155,11 @@ export async function familyOverview(householdId: string) {
     [householdId]
   )
   const allGoals = await listGoals(householdId)
+  const defaultKey = await getDefaultCurrencyKey(householdId)
   const balances = await query<{ person_id: string; b: string }>(
     `select person_id, sum(amount) as b from ledger_entries
-       where household_id=$1 and currency='stars' and deleted_at is null group by person_id`,
-    [householdId]
+       where household_id=$1 and currency=$2 and deleted_at is null group by person_id`,
+    [householdId, defaultKey]
   )
   const starsByPerson = new Map(balances.rows.map((r) => [r.person_id, Number(r.b)]))
 

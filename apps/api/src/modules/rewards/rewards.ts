@@ -6,6 +6,7 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { requireTenant, requireAdmin, type Tenant } from '../households/households'
+import { listCurrencies, getDefaultCurrencyKey, presentCurrency } from '../currencies/currencies'
 
 type Api = ReturnType<typeof createAPI>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -73,8 +74,12 @@ export async function balanceFor(householdId: string, personId: string, currency
   return Number(rows[0]?.balance ?? 0)
 }
 
-// Per-person balances + recent earn/spend history (drives the balances screen).
+// Per-person balances (per currency) + recent earn/spend history. Returns the
+// currency catalog too so the kiosk can render symbols/labels without a second
+// fetch. `stars` is kept as the default-currency total for older consumers.
 export async function balancesSummary(householdId: string) {
+  const currencies = await listCurrencies(householdId)
+  const defaultKey = currencies.find((c) => c.is_default)?.key ?? currencies[0]?.key ?? 'stars'
   const people = await query<{ id: string; name: string | null; avatar_emoji: string | null; color_hex: string | null }>(
     `select id, name, avatar_emoji, color_hex from persons where household_id=$1 and deleted_at is null order by sort_order, created_at`,
     [householdId]
@@ -84,25 +89,34 @@ export async function balancesSummary(householdId: string) {
        where household_id=$1 and deleted_at is null group by person_id, currency`,
     [householdId]
   )
-  const recent = await query<{ person_id: string; amount: number; reason: string; created_at: string }>(
-    `select person_id, amount, reason, created_at from ledger_entries
+  const recent = await query<{ person_id: string; amount: number; reason: string; currency: string; created_at: string }>(
+    `select person_id, amount, reason, currency, created_at from ledger_entries
        where household_id=$1 and deleted_at is null order by created_at desc limit 50`,
     [householdId]
   )
-  const balByPerson = new Map<string, number>()
-  for (const b of balances.rows) if (b.currency === 'stars') balByPerson.set(b.person_id, Number(b.balance))
+  const byPerson = new Map<string, Map<string, number>>()
+  for (const b of balances.rows) {
+    if (!byPerson.has(b.person_id)) byPerson.set(b.person_id, new Map())
+    byPerson.get(b.person_id)!.set(b.currency, Number(b.balance))
+  }
   return {
-    people: people.rows.map((p) => ({
-      personId: p.id,
-      name: p.name,
-      avatarEmoji: p.avatar_emoji,
-      colorHex: p.color_hex,
-      stars: balByPerson.get(p.id) ?? 0,
-      recent: recent.rows
-        .filter((e) => e.person_id === p.id)
-        .slice(0, 8)
-        .map((e) => ({ amount: e.amount, reason: e.reason, createdAt: e.created_at })),
-    })),
+    currencies: currencies.map(presentCurrency),
+    people: people.rows.map((p) => {
+      const m = byPerson.get(p.id) ?? new Map<string, number>()
+      return {
+        personId: p.id,
+        name: p.name,
+        avatarEmoji: p.avatar_emoji,
+        colorHex: p.color_hex,
+        stars: m.get(defaultKey) ?? 0,
+        // one entry per catalog currency, so zero balances still render as chips
+        balances: currencies.map((c) => ({ currency: c.key, balance: m.get(c.key) ?? 0 })),
+        recent: recent.rows
+          .filter((e) => e.person_id === p.id)
+          .slice(0, 8)
+          .map((e) => ({ amount: e.amount, reason: e.reason, currency: e.currency, createdAt: e.created_at })),
+      }
+    }),
   }
 }
 
@@ -187,10 +201,11 @@ export function registerRewardRoutes(api: Api): void {
     const body = (req.body ?? {}) as { title?: string; emoji?: string; cost?: number; currency?: string }
     const title = body.title?.trim()
     if (!title) return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
+    const currency = body.currency?.trim() || (await getDefaultCurrencyKey(tenant.householdId))
     const { rows } = await query<RewardRow>(
       `insert into rewards (household_id, title, emoji, cost, currency)
        values ($1,$2,$3,$4,$5) returning *`,
-      [tenant.householdId, title, body.emoji ?? null, Math.max(0, Math.round(body.cost ?? 0)), body.currency ?? 'stars']
+      [tenant.householdId, title, body.emoji ?? null, Math.max(0, Math.round(body.cost ?? 0)), currency]
     )
     return res.status(201).json({ reward: presentReward(rows[0]) })
   })

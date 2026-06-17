@@ -4,6 +4,7 @@
 import type { QueryResultRow, PoolClient } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
+import { getDefaultCurrencyKey } from '../currencies/currencies'
 import type { ChoreRow, CreateChoreInput, PersonChoreSummary, TodayInstance } from './chores.types'
 
 interface ChoreInstanceRow extends QueryResultRow {
@@ -44,10 +45,11 @@ export function requestedDate(raw: unknown, today: string): string {
 }
 
 export async function createChore(tenant: Tenant, input: CreateChoreInput): Promise<ChoreRow> {
+  const currency = input.rewardCurrency?.trim() || (await getDefaultCurrencyKey(tenant.householdId))
   const { rows } = await query<ChoreRow>(
     `insert into chores
        (household_id, title, emoji, person_id, rrule, reward_currency, reward_amount, due_time, requires_approval)
-     values ($1, $2, $3, $4, coalesce($5,'FREQ=DAILY'), 'stars', coalesce($6,0), $7, $8)
+     values ($1, $2, $3, $4, coalesce($5,'FREQ=DAILY'), $6, coalesce($7,0), $8, $9)
      returning *`,
     [
       tenant.householdId,
@@ -55,6 +57,7 @@ export async function createChore(tenant: Tenant, input: CreateChoreInput): Prom
       input.emoji ?? null,
       input.personId ?? null,
       input.rrule ?? null,
+      currency,
       input.rewardAmount ?? 0,
       input.dueTime ?? null,
       input.requiresApproval ?? false,
@@ -109,8 +112,10 @@ interface SummaryRow extends QueryResultRow {
   stars: string
 }
 
-// Per-person done/total for the day + star balance (drives the kiosk rings).
+// Per-person done/total for the day + balance in the household's default currency
+// (drives the kiosk rings).
 export async function todaySummary(householdId: string, dueOn: string): Promise<PersonChoreSummary[]> {
+  const defaultCurrency = await getDefaultCurrencyKey(householdId)
   const { rows } = await query<SummaryRow>(
     `select p.id, p.name, p.avatar_emoji, p.color_hex, p.member_type, p.is_admin,
             count(c.id) as total,
@@ -121,11 +126,11 @@ export async function todaySummary(householdId: string, dueOn: string): Promise<
          on ci.person_id = p.id and ci.due_on = $2::date and ci.deleted_at is null
        left join chores c on c.id = ci.chore_id and c.deleted_at is null
        left join v_person_balances b
-         on b.person_id = p.id and b.currency = 'stars'
+         on b.person_id = p.id and b.currency = $3
       where p.household_id = $1 and p.deleted_at is null
       group by p.id, b.balance
       order by p.sort_order, p.created_at`,
-    [householdId, dueOn]
+    [householdId, dueOn, defaultCurrency]
   )
   return rows.map((r) => ({
     id: r.id,
@@ -203,6 +208,7 @@ export const UPDATABLE_CHORE: Record<string, string> = {
   emoji: 'emoji',
   personId: 'person_id',
   rewardAmount: 'reward_amount',
+  rewardCurrency: 'reward_currency',
   dueTime: 'due_time',
   isActive: 'is_active',
   rrule: 'rrule',

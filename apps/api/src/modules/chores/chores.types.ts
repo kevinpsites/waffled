@@ -18,6 +18,7 @@ export interface CreateChoreInput {
   personId?: string | null
   emoji?: string | null
   rewardAmount?: number
+  rewardCurrency?: string | null // currency key; defaults to the household default
   rrule?: string | null
   dueTime?: string | null
   requiresApproval?: boolean
