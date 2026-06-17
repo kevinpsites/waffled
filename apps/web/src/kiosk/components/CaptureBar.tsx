@@ -240,6 +240,11 @@ export function CaptureBar() {
   }
   function close() {
     setExpanded(false)
+    setText('')
+    setServer(null)
+    setDraft(null)
+    setThinking(false)
+    setFlash(null)
   }
 
   function personId(name: string | null): string | null {
