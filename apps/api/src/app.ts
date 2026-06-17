@@ -16,6 +16,7 @@ import { registerChoreRoutes } from './chores'
 import { registerRewardRoutes } from './rewards'
 import { registerMealRoutes } from './meals'
 import { registerEventRoutes } from './events'
+import { registerCalendarAiRoutes } from './calendar-ai'
 import { registerCalendarRoutes } from './calendars'
 import { registerCalendarSyncRoutes } from './calendar-sync'
 import { registerGoalRoutes } from './goals'
@@ -129,6 +130,9 @@ registerMealRoutes(api)
 
 // Calendar events (/api/events…)
 registerEventRoutes(api)
+
+// Calendar AI cards (/api/calendar/heads-up, /api/events/:id/insight)
+registerCalendarAiRoutes(api)
 
 // Google Calendar connect (/api/calendar/google…, /auth/google/calendar/callback)
 registerCalendarRoutes(api)

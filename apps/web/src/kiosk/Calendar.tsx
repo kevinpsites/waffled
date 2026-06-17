@@ -4,12 +4,13 @@ import { Icon } from './icons'
 import { EventModal } from './components/EventModal'
 import { MonthView } from './components/MonthView'
 import { WeekView } from './components/WeekView'
+import { DayView } from './components/DayView'
 import { AgendaView } from './components/AgendaView'
 import { useTopbarRight } from './topbar-slot'
 import { useEventsRange, useHousehold, type AgendaEvent } from '../lib/api'
-import { MONTHS, MONTHS_SHORT, ymd, addDays, startOfWeek } from './components/cal-utils'
+import { MONTHS, MONTHS_SHORT, DOW_FULL, ymd, addDays, startOfWeek } from './components/cal-utils'
 
-type View = 'month' | 'week' | 'agenda'
+type View = 'month' | 'week' | 'day' | 'agenda'
 
 function addMonths(d: Date, n: number): Date {
   return new Date(d.getFullYear(), d.getMonth() + n, 1)
@@ -20,6 +21,9 @@ function rangeFor(view: View, anchor: Date): { from: string; to: string } {
   if (view === 'week') {
     const ws = startOfWeek(anchor)
     return { from: ymd(ws), to: ymd(addDays(ws, 6)) }
+  }
+  if (view === 'day') {
+    return { from: ymd(anchor), to: ymd(anchor) }
   }
   if (view === 'agenda') {
     const today = new Date()
@@ -35,6 +39,7 @@ function rangeFor(view: View, anchor: Date): { from: string; to: string } {
 // The label between the nav arrows for the current view.
 function periodLabel(view: View, anchor: Date): string {
   if (view === 'month') return `${MONTHS[anchor.getMonth()]} ${anchor.getFullYear()}`
+  if (view === 'day') return `${DOW_FULL[anchor.getDay()]}, ${MONTHS[anchor.getMonth()]} ${anchor.getDate()}`
   const ws = startOfWeek(anchor)
   const we = addDays(ws, 6)
   const start = `${MONTHS_SHORT[ws.getMonth()]} ${ws.getDate()}`
@@ -55,13 +60,18 @@ export function Calendar() {
   const tz = household?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
   function shift(delta: number) {
-    setAnchor((a) => (view === 'month' ? addMonths(a, delta) : addDays(a, delta * 7)))
+    setAnchor((a) => (view === 'month' ? addMonths(a, delta) : view === 'day' ? addDays(a, delta) : addDays(a, delta * 7)))
   }
   const openEvent = (e: AgendaEvent) => navigate(`/calendar/event/${e.id}`)
   const jumpToWeek = (d: Date) => {
     setAnchor(d)
     setView('week')
   }
+  const jumpToDay = (d: Date) => {
+    setAnchor(d)
+    setView('day')
+  }
+  const navLabel = view === 'month' ? 'month' : view === 'day' ? 'day' : 'week'
 
   // The view toggle + period nav live in the topbar's right slot (replacing the
   // capture bar on this screen), matching the per-screen-topbar pattern.
@@ -69,7 +79,7 @@ export function Calendar() {
     () => (
       <div className="cal-topbar">
         <div className="seg">
-          {(['month', 'week', 'agenda'] as View[]).map((v) => (
+          {(['month', 'week', 'day', 'agenda'] as View[]).map((v) => (
             <button key={v} type="button" className={view === v ? 'on' : ''} onClick={() => setView(v)}>
               {v[0].toUpperCase() + v.slice(1)}
             </button>
@@ -77,13 +87,13 @@ export function Calendar() {
         </div>
         {view !== 'agenda' && (
           <div className="cal-nav">
-            <button type="button" className="icon-btn" aria-label={view === 'month' ? 'Previous month' : 'Previous week'} onClick={() => shift(-1)}>
+            <button type="button" className="icon-btn" aria-label={`Previous ${navLabel}`} onClick={() => shift(-1)}>
               <Icon name="cl" />
             </button>
             <button type="button" className="pill cal-period" onClick={() => setAnchor(new Date())}>
               {periodLabel(view, anchor)}
             </button>
-            <button type="button" className="icon-btn" aria-label={view === 'month' ? 'Next month' : 'Next week'} onClick={() => shift(1)}>
+            <button type="button" className="icon-btn" aria-label={`Next ${navLabel}`} onClick={() => shift(1)}>
               <Icon name="cr" />
             </button>
           </div>
@@ -103,12 +113,21 @@ export function Calendar() {
           tz={tz}
           onOpenEvent={openEvent}
           onCreateOnDay={(date) => setModal({ date })}
-          onMore={(date) => jumpToWeek(new Date(`${date}T12:00:00`))}
+          onMore={(date) => jumpToDay(new Date(`${date}T12:00:00`))}
         />
       )}
       {view === 'week' && (
         <WeekView
           weekStart={startOfWeek(anchor)}
+          events={events}
+          tz={tz}
+          onOpenEvent={openEvent}
+          onCreate={(date, time) => setModal({ date, time })}
+        />
+      )}
+      {view === 'day' && (
+        <DayView
+          day={anchor}
           events={events}
           tz={tz}
           onOpenEvent={openEvent}

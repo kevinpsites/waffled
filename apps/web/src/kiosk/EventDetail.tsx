@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { EventModal } from './components/EventModal'
 import { useTopbarFull } from './topbar-slot'
-import { api, useEvent, useEventsRange, useHousehold, mealsApi, type AgendaEvent } from '../lib/api'
+import { api, eventsApi, useEvent, useEventsRange, useHousehold, mealsApi, type AgendaEvent } from '../lib/api'
 import { deleteEventLocal, tombstoneEvent } from '../lib/powersync/events-local'
 import { DOW_FULL, MONTHS, fmtTime, durationMin, eventPeople, localDate } from './components/cal-utils'
 
@@ -80,6 +80,21 @@ export function EventDetail() {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
+  // Real AI insight for this event (headline + practical tip + a reminder nudge),
+  // via the household's chosen provider with a deterministic server fallback. The
+  // "Remind me" button reveals the suggested nudge inline (no delivery yet).
+  type Insight = { headline: string; body: string; leaveBy: string | null; reminder: string }
+  const [insight, setInsight] = useState<Insight | null>(null)
+  const [remindShown, setRemindShown] = useState(false)
+  useEffect(() => {
+    if (!id) return
+    let alive = true
+    setInsight(null)
+    setRemindShown(false)
+    eventsApi.eventInsight(id).then((d) => alive && setInsight(d)).catch(() => {})
+    return () => { alive = false }
+  }, [id])
+
   // Resolve the recipe for a planned-meal event so we can offer "View recipe".
   const isMeal = event?.origin === 'meal_plan'
   const [recipeId, setRecipeId] = useState<string | null>(null)
@@ -122,7 +137,7 @@ export function EventDetail() {
           <button type="button" className="pill" onClick={() => setEditing(true)}>
             ✎ Edit
           </button>
-          <button type="button" className="btn btn-primary" onClick={() => alert('Reminders are coming soon.')}>
+          <button type="button" className="btn btn-primary" onClick={() => setRemindShown(true)}>
             ⏰ Remind me
           </button>
         </div>
@@ -227,13 +242,18 @@ export function EventDetail() {
 
         <div className="ed-ai">
           <div className="ed-ai-icon">✦</div>
-          <div>
-            <div className="ed-ai-h">{event.location ? 'Plan your trip' : 'Stay on track'}</div>
-            <div className="ed-ai-b">
-              {event.location
-                ? 'Tap Directions for the route. Travel-time reminders are coming soon.'
-                : 'Tap “Remind me” to get a nudge before this starts. Coming soon.'}
-            </div>
+          <div className="ed-ai-main">
+            <div className="ed-ai-h">{insight?.headline ?? (event.location ? 'Plan your trip' : 'Stay on track')}</div>
+            <div className="ed-ai-b">{insight?.body ?? 'Thinking it over…'}</div>
+            {insight?.leaveBy && (
+              <div className="ed-ai-chip">🚗 Leave by {insight.leaveBy}</div>
+            )}
+            {remindShown && (
+              <div className="ed-ai-reminder">
+                ⏰ {insight ? insight.reminder : 'One moment…'}
+                <span className="tiny muted"> · reminders don’t fire yet — coming soon</span>
+              </div>
+            )}
           </div>
         </div>
 

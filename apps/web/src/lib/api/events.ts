@@ -40,6 +40,12 @@ export const eventsApi = {
   eventsRange: (from: string, to: string) =>
     apiGet<{ from: string; to: string; events: AgendaEvent[] }>(`/api/events?from=${from}&to=${to}`),
   event: (id: string) => apiGet<{ event: AgendaEvent }>(`/api/events/${id}`),
+  // AI cards (honor the household's provider via the server; both fall back to a
+  // deterministic summary server-side, so they always return something useful).
+  headsUp: (from: string, to: string) =>
+    apiGet<{ headline: string; body: string; via: string }>(`/api/calendar/heads-up?from=${from}&to=${to}`),
+  eventInsight: (id: string) =>
+    apiGet<{ headline: string; body: string; leaveBy: string | null; reminder: string; via: string }>(`/api/events/${id}/insight`),
   createEvent: (input: {
     title: string
     startsAt: string

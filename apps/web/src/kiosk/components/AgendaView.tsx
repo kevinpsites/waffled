@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { usePersons, type AgendaEvent } from '../../lib/api'
+import { useEffect, useMemo, useState } from 'react'
+import { usePersons, eventsApi, type AgendaEvent } from '../../lib/api'
 import { Icon } from '../icons'
 import {
   MONTHS, ymd, addDays, startOfWeek, localDate, fmtTime, eventPeople,
@@ -101,6 +101,33 @@ function MiniMonth({ events, tz, onPickDate }: { events: AgendaEvent[]; tz: stri
   )
 }
 
+// "Heads up this week" — a real digest from the household's AI provider (with a
+// deterministic server-side fallback, so it always says something useful). Shows a
+// gentle placeholder while the first response lands.
+function HeadsUpCard({ refreshKey }: { refreshKey: number }) {
+  const [card, setCard] = useState<{ headline: string; body: string } | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    const ws = startOfWeek(new Date())
+    eventsApi
+      .headsUp(ymd(ws), ymd(addDays(ws, 6)))
+      .then((d) => alive && setCard({ headline: d.headline, body: d.body }))
+      .catch(() => {})
+    return () => { alive = false }
+  }, [refreshKey])
+
+  return (
+    <div className="ag-ai">
+      <div className="ag-ai-icon"><Icon name="spark" /></div>
+      <div>
+        <div className="ag-ai-h">{card?.headline ?? 'Heads up this week'}</div>
+        <div className="ag-ai-b">{card?.body ?? 'Looking over your week…'}</div>
+      </div>
+    </div>
+  )
+}
+
 export function AgendaView({
   events,
   tz,
@@ -177,13 +204,7 @@ export function AgendaView({
       <div className="ag-side">
         <MiniMonth events={events} tz={tz} onPickDate={onPickDate} />
 
-        <div className="ag-ai">
-          <div className="ag-ai-icon"><Icon name="spark" /></div>
-          <div>
-            <div className="ag-ai-h">Heads up this week</div>
-            <div className="ag-ai-b">A calmer week than most — nothing’s double-booked. Tap a day to plan ahead.</div>
-          </div>
-        </div>
+        <HeadsUpCard refreshKey={events.length} />
 
         {busy.rows.length > 0 && (
           <div className="card ag-busy">

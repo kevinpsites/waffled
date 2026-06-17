@@ -65,6 +65,35 @@
 .wk-ev-title { font-size: 12.5px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wk-ev.ev-meal { border: 1px dashed currentColor; }
 
+/* =====================  DAY VIEW  ===================== */
+.dv-screen { flex: 1; display: flex; flex-direction: column; min-height: 0; gap: 14px; --dv-rail: 64px; }
+.dv-bar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.dv-heading { display: flex; align-items: baseline; gap: 10px; }
+.dv-dow { font-size: 24px; font-weight: 600; }
+.dv-date { font-size: 16px; font-weight: 500; }
+.dv-add { margin-left: auto; }
+.dv-allday { display: grid; grid-template-columns: var(--dv-rail) 1fr; border-top: 1px solid var(--hair);
+  border-bottom: 1px solid var(--hair); min-height: 38px; }
+.dv-rail-lbl { font-size: 10px; font-weight: 700; color: var(--ink-3); letter-spacing: .06em;
+  display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; border-right: 1px solid var(--hair); }
+.dv-allday-cell { padding: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+.dv-allday-ev { font-size: 12.5px; font-weight: 600; padding: 4px 10px; border-radius: 8px; cursor: pointer; }
+.dv-body { flex: 1; overflow-y: auto; }
+.dv-grid { display: grid; grid-template-columns: var(--dv-rail) 1fr; position: relative; }
+.dv-rail { position: relative; }
+.dv-hr { position: relative; border-right: 1px solid var(--hair); }
+.dv-hr span { position: absolute; top: -8px; right: 8px; font-size: 11px; font-weight: 600; color: var(--ink-3); }
+.dv-col { position: relative; cursor: pointer;
+  background-image: linear-gradient(to bottom, var(--hair-2) 1px, transparent 1px); }
+.dv-ev { position: absolute; border-radius: 9px; padding: 5px 10px; overflow: hidden; cursor: pointer;
+  box-shadow: var(--sh-1); }
+.dv-ev.ev-meal { border: 1px dashed currentColor; }
+.dv-ev-t { font-size: 11px; font-weight: 700; opacity: .85; }
+.dv-ev-title { font-size: 13.5px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dv-ev-loc { font-size: 11.5px; opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dv-now { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--primary); z-index: 5; }
+.dv-now-dot { position: absolute; left: -5px; top: -5px; width: 9px; height: 9px; border-radius: 999px; background: var(--primary); }
+
 /* =====================  AGENDA VIEW  ===================== */
 .ag-screen { flex: 1; display: grid; grid-template-columns: 1.5fr 1fr; gap: 22px; min-height: 0; }
 .ag-list { overflow-y: auto; padding-right: 4px; }
@@ -104,7 +133,8 @@
 .ag-mini-dot { width: 4px; height: 4px; border-radius: 999px; }
 .ag-mini-cell.today .ag-mini-dot { background: #fff !important; }
 
-/* AI heads-up card (stub) */
+/* AI cards — heads-up (agenda) + per-event insight (detail). Driven by the
+   household's AI provider with a deterministic server fallback. */
 .ag-ai, .ed-ai { display: flex; gap: 12px; align-items: flex-start; padding: 16px 18px; border-radius: var(--r-lg);
   background: linear-gradient(135deg, #efeafc, #f4f0fd); border: 1px solid #e4dcf7; }
 .ag-ai-icon, .ed-ai-icon { width: 34px; height: 34px; border-radius: 999px; flex: none; display: grid; place-items: center;
@@ -112,6 +142,11 @@
 .ag-ai-icon svg { width: 17px; height: 17px; fill: #fff; }
 .ag-ai-h, .ed-ai-h { font-size: 14.5px; font-weight: 700; color: var(--ai); }
 .ag-ai-b, .ed-ai-b { font-size: 13.5px; color: var(--ink-2); margin-top: 3px; line-height: 1.4; }
+.ed-ai-main { min-width: 0; }
+.ed-ai-chip { display: inline-block; margin-top: 9px; font-size: 12.5px; font-weight: 700; color: var(--ai);
+  background: #fff; border: 1px solid #e4dcf7; padding: 4px 11px; border-radius: 999px; }
+.ed-ai-reminder { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e4dcf7; font-size: 13.5px;
+  font-weight: 600; color: var(--ink); line-height: 1.4; }
 
 /* whose week is busy */
 .ag-busy { padding: 16px 18px; }
