@@ -224,10 +224,13 @@ struct NookAPI: Sendable {
     }
 
     /// The grocery board: items tagged with aisle + the meals that need them, plus
-    /// this week's meals (each with a color used for the per-item meal dots).
+    /// this week's meals (each with a color used for the per-item meal dots) and the
+    /// pantry staples (assumed in-house, so left off the list).
     struct GroceryBoardDTO: Decodable, Sendable {
+        let weekStart: String
         let meals: [Meal]
         let items: [ListItemDTO]
+        let staples: [Staple]
         struct Meal: Decodable, Sendable, Identifiable {
             let recipeId: String?
             let title: String?
@@ -237,11 +240,22 @@ struct NookAPI: Sendable {
             let mealType: String?
             var id: String { (recipeId ?? "") + "|" + date + "|" + (mealType ?? "") }
         }
+        struct Staple: Decodable, Sendable, Identifiable {
+            let id: String
+            let name: String
+        }
     }
 
-    /// The grocery board (aisle groupings + meal dots + this week's dinners).
+    /// The grocery board (aisle groupings + meal dots + this week's meals + staples).
     func groceryBoard() async throws -> GroceryBoardDTO {
         try await getJSON("/api/lists/grocery/board", as: GroceryBoardDTO.self)
+    }
+
+    /// Rebuild the auto-added grocery items from this week's planned meals (keeps
+    /// hand-added and checked items). Returns the refreshed board.
+    func rebuildGrocery(weekStart: String) async throws -> GroceryBoardDTO {
+        struct Resp: Decodable { let board: GroceryBoardDTO }
+        return try await sendJSON("POST", "/api/lists/grocery/rebuild?weekStart=\(weekStart)", as: Resp.self).board
     }
 
     /// All lists in the household (for the Lists index).
@@ -313,6 +327,16 @@ struct NookAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await URLSession.shared.data(for: req)
         try check(resp, data)
+    }
+
+    /// POST/PATCH (no body) and decode the JSON response, throwing on non-2xx.
+    private func sendJSON<T: Decodable>(_ method: String, _ path: String, as: T.Type) async throws -> T {
+        var req = URLRequest(url: url(path))
+        req.httpMethod = method
+        authorize(&req)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(resp, data)
+        return try JSONDecoder().decode(T.self, from: data)
     }
 
     /// GET `path` and decode the JSON body, throwing on non-2xx.

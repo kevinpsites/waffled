@@ -29,6 +29,12 @@ final class ListDetailModel {
 
     /// This week's meals (grocery board only) — drive the meal grouping + dots.
     private(set) var meals: [NookAPI.GroceryBoardDTO.Meal] = []
+    /// Pantry staples (assumed in-house, left off the list) — tap to add anyway.
+    private(set) var staples: [NookAPI.GroceryBoardDTO.Staple] = []
+    /// The week the board covers (YYYY-MM-DD) — passed to rebuild.
+    private(set) var weekStart = ""
+    /// True while a rebuild-from-meals is in flight (drives the Refresh spinner).
+    private(set) var rebuilding = false
 
     private let api = NookAPI()
     /// Grocery gets the richer board (aisle/meal toggle + meal dots).
@@ -76,6 +82,8 @@ final class ListDetailModel {
             if isGrocery {
                 let board = try await api.groceryBoard()
                 meals = board.meals
+                staples = board.staples
+                weekStart = board.weekStart
                 items = board.items.map { var i = $0; if i.section == nil { i.section = i.aisle }; return i }
             } else {
                 items = try await api.listItems(listId: list.id)
@@ -174,6 +182,32 @@ final class ListDetailModel {
         }
     }
 
+    /// Add a pantry staple to the list anyway (it's normally assumed in-house).
+    func addStaple(_ name: String) async {
+        do {
+            try await api.addGroceryItem(name: name, quantity: nil)
+            await load()
+        } catch { self.error = true }
+    }
+
+    /// Rebuild the auto items from this week's planned meals (keeps hand-added and
+    /// checked items). Reuses the returned board so it's a single round-trip.
+    func rebuild() async {
+        guard !weekStart.isEmpty else { return }
+        rebuilding = true
+        defer { rebuilding = false }
+        do {
+            let board = try await api.rebuildGrocery(weekStart: weekStart)
+            meals = board.meals
+            staples = board.staples
+            weekStart = board.weekStart
+            settling = []
+            withAnimation {
+                items = board.items.map { var i = $0; if i.section == nil { i.section = i.aisle }; return i }
+            }
+        } catch { self.error = true }
+    }
+
     /// Optimistic removal; restore on failure.
     func remove(_ id: String) async {
         let snapshot = items
@@ -198,7 +232,13 @@ struct ListDetailView: View {
     @State private var detailItem: NookAPI.ListItemDTO?
     @State private var didAutoDetails = false
     @State private var mode: GroceryViewMode = .aisle
+    @State private var railMeal = "dinner"
     @FocusState private var focus: Field?
+
+    /// Meal-type ordering for the summary filter (matches the web rail).
+    private static let mealTypeOrder = ["breakfast", "lunch", "dinner", "snack"]
+    private static let mealTypeLabel = ["breakfast": "Breakfast", "lunch": "Lunch", "dinner": "Dinner", "snack": "Snack"]
+    private static let mealTypeEmoji = ["breakfast": "🍳", "lunch": "🥪", "dinner": "🍽️", "snack": "🍎"]
 
     private enum Field: Hashable { case add, editName, editQty }
 
@@ -208,6 +248,11 @@ struct ListDetailView: View {
 
     var body: some View {
         List {
+            if model.isGrocery && !model.meals.isEmpty {
+                summaryPanel
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
+            }
             if model.items.isEmpty && !model.loading {
                 Text(model.error ? "Couldn’t load this list." : "Nothing here yet.")
                     .font(.system(size: 14)).foregroundStyle(NK.ink3)
@@ -227,6 +272,11 @@ struct ListDetailView: View {
                 }
             }
             completedSection
+            if model.isGrocery && !model.staples.isEmpty {
+                staplesPanel
+                    .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 24, trailing: 16))
+                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
+            }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -342,6 +392,129 @@ struct ListDetailView: View {
                 }
             }
         }
+    }
+
+    // MARK: This week's meals (summary + legend)
+
+    /// Meal types actually planned this week, in breakfast→snack order.
+    private var availableMealTypes: [String] {
+        Self.mealTypeOrder.filter { t in model.meals.contains { $0.mealType == t } }
+    }
+    /// The selected meal type, falling back to the first available.
+    private var effectiveRailMeal: String {
+        availableMealTypes.contains(railMeal) ? railMeal : (availableMealTypes.first ?? "dinner")
+    }
+    /// This week's meals of the selected type, deduped by recipe, earliest first.
+    private var railMeals: [NookAPI.GroceryBoardDTO.Meal] {
+        var seen = Set<String>()
+        return model.meals
+            .filter { $0.mealType == effectiveRailMeal }
+            .sorted { $0.date < $1.date }
+            .filter { seen.insert($0.recipeId ?? $0.id).inserted }
+    }
+
+    /// "This week's meals" recap — a meal-type filter, the meals of that type (each a
+    /// colored pill that doubles as the legend for the item dots), and a Refresh that
+    /// rebuilds the auto items from the plan.
+    @ViewBuilder private var summaryPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("THIS WEEK’S MEALS")
+                    .font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
+                Spacer()
+                Button { Task { await model.rebuild() } } label: {
+                    HStack(spacing: 5) {
+                        if model.rebuilding {
+                            ProgressView().controlSize(.mini)
+                        } else {
+                            Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 11, weight: .bold))
+                        }
+                        Text(model.rebuilding ? "Refreshing…" : "Refresh").font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(NK.ai)
+                }
+                .buttonStyle(.plain).disabled(model.rebuilding)
+            }
+
+            if availableMealTypes.count > 1 {
+                Picker("Meal", selection: $railMeal.animation()) {
+                    ForEach(availableMealTypes, id: \.self) { t in
+                        Text(Self.mealTypeLabel[t] ?? t.capitalized).tag(t)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
+            VStack(spacing: 8) {
+                ForEach(railMeals) { meal in mealRecapRow(meal) }
+            }
+        }
+        .padding(14)
+        .background(NK.card)
+        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    private func mealRecapRow(_ meal: NookAPI.GroceryBoardDTO.Meal) -> some View {
+        let color = Color(hexString: meal.color) ?? NK.ink3
+        return HStack(spacing: 10) {
+            Circle().fill(color).frame(width: 9, height: 9)
+            Text(weekday(meal.date))
+                .font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                .frame(width: 34, alignment: .leading)
+            Text(meal.title ?? "—")
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink)
+                .lineLimit(1)
+            Spacer(minLength: 6)
+            Text(meal.emoji ?? Self.mealTypeEmoji[meal.mealType ?? ""] ?? "🍽️")
+                .font(.system(size: 14))
+                .frame(width: 28, height: 28)
+                .background(color.opacity(0.12)).clipShape(Circle())
+        }
+    }
+
+    /// "Sun"/"Mon"… from a YYYY-MM-DD(THH…) date string.
+    private func weekday(_ iso: String) -> String {
+        let day = String(iso.prefix(10))
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
+        guard let d = f.date(from: day) else { return "" }
+        let out = DateFormatter(); out.dateFormat = "EEE"; out.timeZone = TimeZone(identifier: "UTC")
+        return out.string(from: d)
+    }
+
+    // MARK: Pantry check (staples)
+
+    /// "Pantry check" — staples assumed in-house (left off the list); tap a chip to
+    /// add one anyway. Mirrors the web rail's staples card.
+    @ViewBuilder private var staplesPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("PANTRY CHECK")
+                .font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
+            Text("These staples are assumed in the house, so they’re left off the list. Tap one to add it anyway.")
+                .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink2)
+                .fixedSize(horizontal: false, vertical: true)
+            ChipFlow(spacing: 8, lineSpacing: 8) {
+                ForEach(model.staples) { s in
+                    Button { Task { await model.addStaple(s.name) } } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "plus").font(.system(size: 10, weight: .heavy))
+                            Text(s.name).font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundStyle(NK.ink2)
+                        .padding(.horizontal, 11).padding(.vertical, 7)
+                        .background(NK.card2)
+                        .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(NK.panel)
+        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
     }
 
     @ViewBuilder private var completedSection: some View {
@@ -607,6 +780,36 @@ struct ItemDetailEditor: View {
                 }
             }
             .padding(.vertical, 1)
+        }
+    }
+}
+
+/// A simple wrapping flow layout (left-to-right, top-to-bottom) for chip rows that
+/// should show every item rather than scroll — used by the pantry-staples panel.
+struct ChipFlow: Layout {
+    var spacing: CGFloat = 8
+    var lineSpacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
+        for v in subviews {
+            let s = v.sizeThatFits(.unspecified)
+            if x > 0 && x + s.width > maxWidth { x = 0; y += rowHeight + lineSpacing; rowHeight = 0 }
+            x += s.width + spacing
+            rowHeight = max(rowHeight, s.height)
+        }
+        return CGSize(width: maxWidth == .infinity ? x : maxWidth, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
+        for v in subviews {
+            let s = v.sizeThatFits(.unspecified)
+            if x > bounds.minX && x + s.width > bounds.maxX { x = bounds.minX; y += rowHeight + lineSpacing; rowHeight = 0 }
+            v.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(s))
+            x += s.width + spacing
+            rowHeight = max(rowHeight, s.height)
         }
     }
 }
