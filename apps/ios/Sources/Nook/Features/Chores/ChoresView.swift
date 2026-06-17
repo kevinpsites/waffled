@@ -153,7 +153,7 @@ struct ChoresView: View {
                 }
             }
         }
-        .task { await model.load() }
+        .task(id: sync.choresRev) { await model.load() }
         .refreshable { await model.load() }
         .sheet(item: $editor) { target in
             ChoreEditSheet(members: sync.members, target: target,

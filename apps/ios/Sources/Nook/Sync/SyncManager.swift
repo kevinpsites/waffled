@@ -29,6 +29,12 @@ final class SyncManager {
     private(set) var lastSyncedAt: Date?
     private(set) var lastError: String?
 
+    /// Bumped after a REST capture commit so screens reading these (non-synced)
+    /// domains reload without a manual pull-to-refresh. Mirrors the web refresh bus.
+    private(set) var choresRev = 0
+    private(set) var groceryRev = 0
+    private(set) var mealsRev = 0
+
     private let db: PowerSyncDatabaseProtocol
     private let connector = NookConnector()
     private let api = NookAPI()
@@ -243,7 +249,9 @@ final class SyncManager {
     /// Commit a captured grocery item via REST (not a synced table). The quantity is
     /// folded into the label the same way the web kiosk does ("milk (2)").
     func commitGrocery(name: String, quantity: String?) async -> Bool {
-        await restCommit { try await api.addGroceryItem(name: SyncManager.groceryLabel(name: name, quantity: quantity)) }
+        let ok = await restCommit { try await api.addGroceryItem(name: SyncManager.groceryLabel(name: name, quantity: quantity)) }
+        if ok { groceryRev += 1 }
+        return ok
     }
 
     /// Fold an optional quantity into the grocery label ("milk" + "2" → "milk (2)"),
@@ -256,11 +264,13 @@ final class SyncManager {
     /// Commit a captured task as a chore via REST. The assignee name resolves to a
     /// synced person; stars become the reward amount.
     func commitTask(title: String, personName: String?, stars: Int?, rrule: String?) async -> Bool {
-        await restCommit {
+        let ok = await restCommit {
             try await api.createChore(
                 title: title, personId: personId(for: personName), rewardAmount: stars, rrule: rrule
             )
         }
+        if ok { choresRev += 1 }
+        return ok
     }
 
     /// Commit a captured meal to the plan via REST. Best-effort matches a known
@@ -269,12 +279,14 @@ final class SyncManager {
     func commitMeal(title: String, date: String?, mealType: String) async -> Bool {
         let day = date ?? localToday()
         let recipeId = await matchRecipe(title)
-        return await restCommit {
+        let ok = await restCommit {
             try await api.planMeal(
                 date: day, mealType: mealType,
                 recipeId: recipeId, title: recipeId == nil ? title : nil
             )
         }
+        if ok { mealsRev += 1 }
+        return ok
     }
 
     /// Today's date (YYYY-MM-DD) in the household timezone — the meal-plan default.

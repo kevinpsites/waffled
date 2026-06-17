@@ -58,7 +58,8 @@ struct TodayView: View {
         }
         .background(NK.canvas)
         .refreshable { await dash.load(todayKey: Agenda.todayKey(sync.householdTz)) }
-        .task(id: sync.householdTz) {
+        // Reload when the tz is known and whenever a capture commit bumps a domain.
+        .task(id: "\(sync.householdTz.identifier)|\(sync.choresRev)|\(sync.groceryRev)|\(sync.mealsRev)") {
             await dash.load(todayKey: Agenda.todayKey(sync.householdTz))
         }
         .sheet(item: $editingEvent) { ev in
