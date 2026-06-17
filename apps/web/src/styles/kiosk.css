@@ -378,10 +378,7 @@ button.tick {
 .rw-bal-coins { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 1px; }
 .rw-coin { display: inline-flex; align-items: center; gap: 4px; font-weight: 800; font-size: 14px; color: var(--lottie); }
 .rw-coin-sym { font-size: 13px; }
-/* trade (currency conversions) */
-.rw-trade-btn { align-self: center; font: inherit; font-size: 13px; font-weight: 700; padding: 11px 16px;
-  border-radius: var(--r-lg); border: 1px dashed var(--hair); background: var(--card); color: var(--ai); cursor: pointer; }
-.rw-trade-btn:hover { border-color: var(--ai); }
+/* trade (currency conversions) — modal summary, shared across surfaces */
 .rw-trade-summary { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 12px 14px;
   border-radius: var(--r-md); background: var(--panel); font-weight: 800; }
 .rw-trade-summary .conv-arrow { color: var(--ink-3); font-weight: 800; }

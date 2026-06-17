@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
-import { usePersonOverview, type OverviewGoal, type CategoryBalance } from '../lib/api'
+import { usePersonOverview, useConversions, type OverviewGoal, type CategoryBalance } from '../lib/api'
+import { TradeModal } from './components/TradeModal'
 import './../styles/overview.css'
 
 const CAT_CLASS: Record<string, string> = {
@@ -56,6 +58,8 @@ export function PersonProfile() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { data, loading, error } = usePersonOverview(id ?? null)
+  const { conversions } = useConversions()
+  const [trading, setTrading] = useState(false)
 
   useTopbarFull(
     () => (
@@ -124,7 +128,12 @@ export function PersonProfile() {
 
       <div className="pp-right">
         <div className="card pp-card pp-stars">
-          <div className="card-h" style={{ marginBottom: 4 }}>{defaultCur?.label ?? 'Stars'} & chores</div>
+          <div className="card-h" style={{ marginBottom: 4, display: 'flex', alignItems: 'center' }}>
+            <span>{defaultCur?.label ?? 'Stars'} & chores</span>
+            {conversions.length > 0 && (
+              <button type="button" className="pp-trade" style={{ marginLeft: 'auto' }} onClick={() => setTrading(true)}>⇄ Trade</button>
+            )}
+          </div>
           <div className="pp-star-big" style={defaultCur?.color ? { color: defaultCur.color } : undefined}>{defaultCur?.symbol ?? '⭐'} {data.stars}</div>
           {data.currencies.length > 1 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', marginTop: 6 }}>
@@ -157,6 +166,15 @@ export function PersonProfile() {
           ))}
         </div>
       </div>
+
+      {trading && (
+        <TradeModal
+          person={{ id: person.id, name: person.name }}
+          balances={data.balances}
+          conversions={conversions}
+          onClose={() => setTrading(false)}
+        />
+      )}
     </div>
   )
 }
