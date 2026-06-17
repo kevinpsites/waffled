@@ -49,12 +49,14 @@ final class PersonOverviewModel {
 struct PersonView: View {
     @Environment(SyncManager.self) private var sync
     let personId: String
+    @Binding var path: [HubRoute]
     @State private var model: PersonOverviewModel
     @State private var showCapture = false
     @State private var editingEvent: SyncedEvent?
 
-    init(personId: String) {
+    init(personId: String, path: Binding<[HubRoute]>) {
         self.personId = personId
+        _path = path
         _model = State(initialValue: PersonOverviewModel(personId: personId))
     }
 
@@ -98,6 +100,7 @@ struct PersonView: View {
         .navigationTitle(firstName)
         .navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }
+        .task { await sync.loadCurrencies() }
         .refreshable { await model.load() }
         .sheet(isPresented: $showCapture) { CaptureSheet().presentationDragIndicator(.visible) }
         .sheet(item: $editingEvent) { ev in EventEditSheet(event: ev, initialDate: ev.startsAt ?? Date()) }
@@ -142,27 +145,30 @@ struct PersonView: View {
             statCard(title: "Today’s chores",
                      big: model.chores.isEmpty ? "None" : "\(model.choresDone) of \(model.chores.count)",
                      frac: model.chores.isEmpty ? 0 : Double(model.choresDone) / Double(model.chores.count),
-                     tint: FamilyColor.wally.solid)
+                     tint: FamilyColor.wally.solid) { path.append(.chores) }
             if let g = model.overview?.goals.first {
                 statCard(title: g.title,
                          big: "\(fmt(g.progress))/\(fmt(g.target))",
                          frac: Double(g.pct) / 100,
-                         tint: GoalStyle.color(g.category))
+                         tint: GoalStyle.color(g.category)) { path.append(.goal(g.asGoal)) }
             } else {
-                statCard(title: "Goals", big: "—", frac: 0, tint: NK.ink3)
+                statCard(title: "Goals", big: "—", frac: 0, tint: NK.ink3) { path.append(.goals) }
             }
         }
     }
 
-    private func statCard(title: String, big: String, frac: Double, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink2).lineLimit(1)
-            Text(big).font(.system(size: 26, weight: .heavy)).foregroundStyle(NK.ink).lineLimit(1).minimumScaleFactor(0.7)
-            ProgressBar(value: max(0, min(frac, 1)), tint: tint, track: tint.opacity(0.18))
+    private func statCard(title: String, big: String, frac: Double, tint: Color, tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title).font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink2).lineLimit(1)
+                Text(big).font(.system(size: 26, weight: .heavy)).foregroundStyle(NK.ink).lineLimit(1).minimumScaleFactor(0.7)
+                ProgressBar(value: max(0, min(frac, 1)), tint: tint, track: tint.opacity(0.18))
+            }
+            .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
         }
-        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .buttonStyle(.plain)
     }
 
     // MARK: day list (events + chores)
@@ -228,7 +234,7 @@ struct PersonView: View {
                 Spacer(minLength: 8)
                 if ch.rewardAmount > 0 {
                     HStack(spacing: 2) {
-                        Image(systemName: "star.fill").font(.system(size: 10)).foregroundStyle(NK.gold)
+                        Text(sync.currencySymbol(ch.rewardCurrency)).font(.system(size: 11))
                         Text("\(ch.rewardAmount)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
                     }
                 }
@@ -280,6 +286,7 @@ struct PersonView: View {
             VStack(spacing: 12) {
                 ForEach(ov.goals) { g in
                     let c = GoalStyle.color(g.category)
+                    Button { path.append(.goal(g.asGoal)) } label: {
                     VStack(spacing: 6) {
                         HStack(spacing: 9) {
                             Text(g.emoji ?? GoalStyle.emoji(g.category)).font(.system(size: 17))
@@ -295,6 +302,9 @@ struct PersonView: View {
                         }
                         ProgressBar(value: Double(g.pct) / 100, tint: c, track: NK.hair)
                     }
+                    .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }

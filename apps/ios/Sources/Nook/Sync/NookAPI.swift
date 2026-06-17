@@ -198,9 +198,25 @@ struct NookAPI: Sendable {
         let personName: String?
         var status: String            // pending | done | awaiting
         let rewardAmount: Int
+        let rewardCurrency: String?   // currency key (e.g. "stars"); nil = default
         let rrule: String?
         let requiresApproval: Bool
         let streak: Int
+    }
+
+    /// A household reward currency (stars, sticks, …) — symbol/label/color for display.
+    struct Currency: Decodable, Identifiable, Sendable {
+        let key, label, symbol: String
+        let color: String?
+        let isDefault: Bool
+        let sortOrder: Int
+        var id: String { key }
+    }
+
+    /// The household's reward currencies (for rendering chore/goal reward symbols).
+    func currencies() async throws -> [Currency] {
+        struct Resp: Decodable { let currencies: [Currency] }
+        return try await getJSON("/api/currencies", as: Resp.self).currencies
     }
 
     /// The chore instances for `date` (YYYY-MM-DD; defaults to today within ±31 days).
@@ -264,10 +280,23 @@ struct NookAPI: Sendable {
         struct Goal: Decodable, Sendable, Identifiable {
             let id, title: String
             let emoji, category, unit: String?
+            let goalType: String?
             let progress, target: Double?
             let pct: Int
             let streakDays: Int
+
+            /// A full `NookAPI.Goal` for navigating to the goal detail (which reloads
+            /// the rest by id); the missing fields get harmless defaults.
+            var asGoal: Goal2 {
+                Goal2(id: id, goalListId: nil, title: title, emoji: emoji, category: category,
+                      goalType: goalType ?? "total", unit: unit, habitPeriod: nil, habitTargetPerPeriod: nil,
+                      trackingMode: "shared_total", deadline: nil, isFeatured: false, target: target,
+                      totalProgress: progress ?? 0, milestoneTotal: 0, milestoneReached: 0,
+                      streakDays: streakDays, participants: [])
+            }
         }
+        /// Alias so `asGoal` can name the outer `NookAPI.Goal` from inside this nested type.
+        typealias Goal2 = NookAPI.Goal
         struct CategoryBalance: Decodable, Sendable, Identifiable {
             let category, emoji, label: String
             let goalCount, avgPct: Int

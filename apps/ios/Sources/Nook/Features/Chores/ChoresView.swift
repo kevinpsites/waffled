@@ -154,6 +154,7 @@ struct ChoresView: View {
             }
         }
         .task(id: sync.choresRev) { await model.load() }
+        .task { await sync.loadCurrencies() }
         .refreshable { await model.load() }
         .sheet(item: $editor) { target in
             ChoreEditSheet(members: sync.members, target: target,
@@ -300,7 +301,7 @@ struct ChoresView: View {
                         }
                     }
                     HStack(spacing: 5) {
-                        Image(systemName: "star.fill").font(.system(size: 10)).foregroundStyle(NK.gold)
+                        Text(sync.currencySymbol(inst.rewardCurrency)).font(.system(size: 11))
                         Text("\(inst.rewardAmount)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
                         if isAwaiting {
                             Text("Needs OK").font(.system(size: 10, weight: .heavy))

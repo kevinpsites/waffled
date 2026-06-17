@@ -35,6 +35,18 @@ final class SyncManager {
     private(set) var groceryRev = 0
     private(set) var mealsRev = 0
 
+    /// The household's reward currencies, loaded once (for chore/goal reward symbols).
+    private(set) var currencies: [NookAPI.Currency] = []
+    /// The symbol for a currency key (defaults to ⭐ / the household default).
+    func currencySymbol(_ key: String?) -> String {
+        if let key, let c = currencies.first(where: { $0.key == key }) { return c.symbol }
+        return currencies.first(where: { $0.isDefault })?.symbol ?? "⭐"
+    }
+    func loadCurrencies() async {
+        guard currencies.isEmpty else { return }
+        currencies = (try? await api.currencies()) ?? []
+    }
+
     private let db: PowerSyncDatabaseProtocol
     private let connector = NookConnector()
     private let api = NookAPI()

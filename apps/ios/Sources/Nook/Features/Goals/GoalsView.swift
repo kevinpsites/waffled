@@ -132,8 +132,10 @@ struct GoalRing<Center: View>: View {
     @ViewBuilder var center: () -> Center
     var body: some View {
         ZStack {
-            Circle().stroke(track, lineWidth: lineWidth)
-            Circle().trim(from: 0, to: max(0, min(value, 1)))
+            // Inset by half the line width so the stroke stays inside the frame
+            // (a plain .stroke is centered on the path and would clip at the edges).
+            Circle().inset(by: lineWidth / 2).stroke(track, lineWidth: lineWidth)
+            Circle().inset(by: lineWidth / 2).trim(from: 0, to: max(0, min(value, 1)))
                 .stroke(stroke, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
             center()

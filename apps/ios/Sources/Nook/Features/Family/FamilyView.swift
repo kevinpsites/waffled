@@ -88,7 +88,7 @@ struct FamilyView: View {
         case .chores:          ChoresView()
         case .goals:           GoalsView(path: $path)
         case let .goal(goal):  GoalDetailView(goal: goal, path: $path)
-        case let .person(id):  PersonView(personId: id)
+        case let .person(id):  PersonView(personId: id, path: $path)
         case .rewards:         HubPlaceholder(emoji: "⭐", title: "Rewards", summary: hub.rewardsSubtitle)
         case .photos:          HubPlaceholder(emoji: "📷", title: "Photos", summary: hub.photosSubtitle)
         case .settings:        HubPlaceholder(emoji: "⚙️", title: "Settings", summary: "People, calendars, AI")
