@@ -6,7 +6,8 @@ import SwiftUI
 struct CalendarView: View {
     @Environment(SyncManager.self) private var sync
     @State private var editing: EventEditTarget?
-    @State private var mode: CalMode = .agenda
+    /// Remembered across tab switches + launches, so your preferred view sticks.
+    @AppStorage("nook.calendarMode") private var mode: CalMode = .agenda
     @State private var filterPerson: String?       // nil = Everyone
     @State private var monthAnchor = Date()         // the month the grid shows
     @State private var selectedDay = Agenda.todayKey(TimeZone.current)
