@@ -128,7 +128,14 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     chores + a featured goal, a merged day list (events + chores, toggle/edit
     inline), whole-person category balance + AI insight, their goals, recent
     stars ledger, and reward redemptions. ✅
-  - **Meals — Recipes library + detail (started):** the Meals tab opens the
+  - **Meals — week planner + Recipes library (started):** the Meals tab is a
+    **This week / Recipes** segmented switch over one nav stack. **This week** is a
+    day-by-day **planner**: each day card lists its planned meals (emoji · title ·
+    slot tag for non-dinner · cook · time), with prev/next week nav + a "jump to
+    this week", **＋ Plan dinner** on empty days, and a per-meal menu to **Change**
+    (recipe picker) or **Remove**. Tapping a planned recipe opens its detail; plan/
+    clear write via `POST`/`DELETE /api/meals/plan` and bump the refresh bus so the
+    Today card stays in sync. **Recipes** is the
     household **Recipes library** — a two-column gradient card grid (emoji hero,
     cuisine · protein · cook-time · cooked-count), live `.searchable` text search
     across title/cuisine/protein/veg/tags, a sort menu (A–Z / Quickest / Most
@@ -147,9 +154,9 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     (`GET /api/recipes`, `GET /api/recipes/:id`, `PATCH …`, `POST …/cooked`);
     weekly planner + recipe capture follow. ✅
   - Rewards / Photos / Settings: still live-summary placeholders.
-- **Next:** the Meals **weekly planner** (meal_plans grid + "Plan my week ✨"); a
-  hub tile (Rewards/Photos/Settings); Auth0 login (roadmap 4.2.1) to replace the
-  dev token.
+- **Next:** Meals **"Plan my week ✨"** (AI `POST /api/meals/plan-week` review/accept)
+  + cook-assignment on a planned slot; a hub tile (Rewards/Photos/Settings); Auth0
+  login (roadmap 4.2.1) to replace the dev token.
 
 ## Known follow-ups / bugs
 

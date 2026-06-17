@@ -45,52 +45,35 @@ enum RecipeSort: String, CaseIterable, Identifiable {
     }
 }
 
+/// The Recipes library screen — lives inside the Meals tab's NavigationStack (so
+/// it shares the recipe-detail destination). The `model` and `path` are owned by
+/// `MealsView`.
 struct RecipesLibraryView: View {
+    let model: RecipesModel
+    @Binding var path: [MealsRoute]
     @Environment(SyncManager.self) private var sync
-    @State private var model = RecipesModel()
     @State private var query = ""
     @State private var sort: RecipeSort = .az
     @State private var onlyFavorites = false
     @State private var selCuisine: Set<String> = []
     @State private var selProtein: Set<String> = []
     @State private var selDietary: Set<String> = []
-    @State private var path: [NookAPI.RecipeSummary] = []
-
-    /// Fire the headless deep-link at most once per process (the view is recreated
-    /// when you pop back, so a per-view flag would re-trap you on detail).
-    private static var didDeepLink = false
 
     private let cols = [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
 
     var body: some View {
-        NavigationStack(path: $path) {
-            ScrollView {
-                if anyFilter { filterBar }
-                content
-            }
-            .background(NK.canvas)
-            .navigationTitle("Recipes")
-            .navigationBarTitleDisplayMode(.large)
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
-                        prompt: "Search recipes, cuisine, a veggie…")
-            .toolbar { toolbar }
-            .navigationDestination(for: NookAPI.RecipeSummary.self) { r in
-                RecipeDetailView(summary: r, model: model)
-            }
-            .task { await model.load(); deepLinkIfNeeded() }
-            .refreshable { await model.load() }
-            .onChange(of: sync.mealsRev) { _, _ in Task { await model.load() } }
+        ScrollView {
+            if anyFilter { filterBar }
+            content
         }
-    }
-
-    /// Headless verification: NOOK_OPEN_RECIPE=<title substring> pushes that recipe's
-    /// detail once per process, after the library has loaded.
-    private func deepLinkIfNeeded() {
-        guard !Self.didDeepLink, let want = DemoHooks.openRecipe?.lowercased() else { return }
-        if let match = model.recipes.first(where: { $0.title.lowercased().contains(want) }) {
-            Self.didDeepLink = true
-            path = [match]
-        }
+        .background(NK.canvas)
+        .navigationTitle("Recipes")
+        .navigationBarTitleDisplayMode(.large)
+        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
+                    prompt: "Search recipes, cuisine, a veggie…")
+        .toolbar { toolbar }
+        .refreshable { await model.load() }
+        .onChange(of: sync.mealsRev) { _, _ in Task { await model.load() } }
     }
 
     @ViewBuilder private var content: some View {
@@ -104,7 +87,7 @@ struct RecipesLibraryView: View {
         } else {
             LazyVGrid(columns: cols, spacing: 14) {
                 ForEach(list) { r in
-                    NavigationLink(value: r) { RecipeCard(recipe: r) }
+                    NavigationLink(value: MealsRoute.recipe(r)) { RecipeCard(recipe: r) }
                         .buttonStyle(.plain)
                 }
             }

@@ -287,6 +287,23 @@ final class SyncManager {
         return ok
     }
 
+    /// Plan (upsert) a meal slot from the weekly planner; bumps `mealsRev` so the
+    /// Today card and any open week reload.
+    func setMealPlan(date: String, mealType: String, recipeId: String?, title: String?, cookPersonId: String? = nil) async -> Bool {
+        let ok = await restCommit {
+            try await api.planMeal(date: date, mealType: mealType, recipeId: recipeId, title: title, cookPersonId: cookPersonId)
+        }
+        if ok { mealsRev += 1 }
+        return ok
+    }
+
+    /// Clear a planned meal slot; bumps `mealsRev`.
+    func clearMealPlan(date: String, mealType: String) async -> Bool {
+        let ok = await restCommit { try await api.clearMeal(date: date, mealType: mealType) }
+        if ok { mealsRev += 1 }
+        return ok
+    }
+
     /// Commit a captured "add X to <list>" intent: resolve the named list and add
     /// the item. Mirrors the web kiosk's list-intent commit.
     func commitListItem(item: String, listName: String?, quantity: String?) async -> Bool {

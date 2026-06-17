@@ -102,11 +102,19 @@ struct NookAPI: Sendable {
     }
 
     /// Plan a meal slot. recipeId links a known recipe; otherwise title is a one-off.
-    func planMeal(date: String, mealType: String, recipeId: String?, title: String?) async throws {
+    /// `cookPersonId` optionally assigns who's cooking. Upserts (re-planning the same
+    /// date+mealType replaces, not duplicates).
+    func planMeal(date: String, mealType: String, recipeId: String?, title: String?, cookPersonId: String? = nil) async throws {
         var body: [String: JSONValue] = ["date": .string(date), "mealType": .string(mealType)]
         if let recipeId { body["recipeId"] = .string(recipeId) }
         if let title { body["title"] = .string(title) }
+        if let cookPersonId { body["cookPersonId"] = .string(cookPersonId) }
         try await send("POST", "/api/meals/plan", body: body)
+    }
+
+    /// Clear a planned slot (soft-delete). 404 if nothing was planned there.
+    func clearMeal(date: String, mealType: String) async throws {
+        try await delete("/api/meals/plan?date=\(date)&mealType=\(mealType)")
     }
 
     struct RecipeRef: Decodable { let id: String; let title: String? }
@@ -240,19 +248,32 @@ struct NookAPI: Sendable {
     // MARK: Today dashboard reads (non-synced domains, fetched over REST)
 
     /// One dinner/lunch/etc. slot in the planned week (mirrors web `WeekEntry`).
-    struct WeekEntryDTO: Decodable {
+    struct WeekEntryDTO: Decodable, Identifiable, Hashable, Sendable {
         let id: String
         let date: String
         let mealType: String
         let title: String?
         let recipeId: String?
         let recipe: RecipeInfo?
-        struct RecipeInfo: Decodable {
+        let cook: Cook?
+        struct RecipeInfo: Decodable, Hashable, Sendable {
             let title: String?
             let emoji: String?
+            let category: String?
+            let prepTimeMinutes: Int?
             let cookTimeMinutes: Int?
             let servings: Int?
+            let imageUrl: String?
         }
+        struct Cook: Decodable, Hashable, Sendable {
+            let personId: String?
+            let name: String?
+            let avatarEmoji: String?
+            let colorHex: String?
+        }
+        /// The label to show for this slot — the recipe title, the free-text title,
+        /// or a placeholder.
+        var displayTitle: String { recipe?.title ?? title ?? "Planned meal" }
     }
 
     /// A person's chore tally for today (mirrors web `PersonChores`).
