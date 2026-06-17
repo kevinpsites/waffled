@@ -7,6 +7,7 @@ enum HubRoute: Hashable {
     case chores, goals, rewards, lists, photos, settings
     case list(NookAPI.ListSummary)   // a specific list pushed from the Lists index
     case goal(NookAPI.Goal)          // a specific goal pushed from the Goals screen
+    case person(String)              // a person spotlight pushed from the people row
 }
 
 /// A consistent "screen coming soon" destination that still surfaces the tile's

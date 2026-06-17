@@ -226,6 +226,63 @@ struct NookAPI: Sendable {
         try await send("POST", "/api/chore-instances/\(id)/claim", body: ["personId": .string(personId)])
     }
 
+    // MARK: Person overview (the Family per-person spotlight)
+
+    /// A person's spotlight: stars, streak, their goals (with per-person progress),
+    /// whole-person category balance + insight, recent stars ledger, redemptions.
+    struct PersonOverview: Decodable, Sendable {
+        let person: Person
+        let stars: Int
+        let topStreak: Int
+        let goals: [Goal]
+        let categoryBalance: [CategoryBalance]
+        let insight: Insight?
+        let recentLedger: [LedgerEntry]
+        let redemptions: [Redemption]
+
+        struct Person: Decodable, Sendable {
+            let id, name: String
+            let avatarEmoji, colorHex: String?
+            let age: Int?
+            let memberType: String?
+        }
+        struct Goal: Decodable, Sendable, Identifiable {
+            let id, title: String
+            let emoji, category, unit: String?
+            let progress, target: Double?
+            let pct: Int
+            let streakDays: Int
+        }
+        struct CategoryBalance: Decodable, Sendable, Identifiable {
+            let category, emoji, label: String
+            let goalCount, avgPct: Int
+            var id: String { category }
+        }
+        struct Insight: Decodable, Sendable {
+            let lean, light, suggestions: [String]
+            let text: String
+        }
+        struct LedgerEntry: Decodable, Sendable, Identifiable {
+            let amount: Int
+            let reason, currency: String
+            let detail: String?
+            let createdAt: String
+            var id: String { createdAt + reason + "\(amount)" + (detail ?? "") }
+        }
+        struct Redemption: Decodable, Sendable, Identifiable {
+            let id, title: String
+            let emoji: String?
+            let cost: Int
+            let currency, status: String
+            let createdAt: String
+        }
+    }
+
+    /// One person's spotlight overview (goals, stars, balance, redemptions).
+    func personOverview(id: String) async throws -> PersonOverview {
+        try await getJSON("/api/persons/\(id)/overview", as: PersonOverview.self)
+    }
+
     // MARK: Family hub tile counts (non-synced domains, fetched over REST)
 
     struct GoalDTO: Decodable { let id: String; let isFeatured: Bool }

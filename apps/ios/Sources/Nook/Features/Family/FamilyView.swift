@@ -88,6 +88,7 @@ struct FamilyView: View {
         case .chores:          ChoresView()
         case .goals:           GoalsView(path: $path)
         case let .goal(goal):  GoalDetailView(goal: goal, path: $path)
+        case let .person(id):  PersonView(personId: id)
         case .rewards:         HubPlaceholder(emoji: "⭐", title: "Rewards", summary: hub.rewardsSubtitle)
         case .photos:          HubPlaceholder(emoji: "📷", title: "Photos", summary: hub.photosSubtitle)
         case .settings:        HubPlaceholder(emoji: "⚙️", title: "Settings", summary: "People, calendars, AI")
@@ -122,11 +123,14 @@ struct FamilyView: View {
                     }
                 } else {
                     ForEach(sync.members) { m in
-                        personChip(name: m.name,
-                                   sub: m.memberType?.capitalized ?? "",
-                                   dot: Color(hexString: m.colorHex) ?? NK.ink3) {
-                            Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 46)
+                        Button { path.append(.person(m.id)) } label: {
+                            personChip(name: m.name,
+                                       sub: m.memberType?.capitalized ?? "",
+                                       dot: Color(hexString: m.colorHex) ?? NK.ink3) {
+                                Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 46)
+                            }
                         }
+                        .buttonStyle(.plain)
                     }
                 }
                 VStack(spacing: 7) {
