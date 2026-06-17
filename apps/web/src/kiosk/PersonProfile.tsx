@@ -139,7 +139,7 @@ export function PersonProfile() {
           {data.recentLedger.map((e, i) => (
             <div key={i} className="pp-ledger">
               <span className={`pp-ledger-amt ${e.amount >= 0 ? 'pos' : 'neg'}`}>{e.amount >= 0 ? `+${e.amount}` : e.amount} {symOf(e.currency)?.symbol ?? ''}</span>
-              <span className="pp-ledger-r">{reasonLabel(e.reason)}</span>
+              <span className="pp-ledger-r">{e.detail ?? reasonLabel(e.reason)}</span>
             </div>
           ))}
         </div>

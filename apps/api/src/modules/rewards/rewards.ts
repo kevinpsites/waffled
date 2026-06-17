@@ -210,6 +210,33 @@ export function registerRewardRoutes(api: Api): void {
     return res.status(201).json({ reward: presentReward(rows[0]) })
   })
 
+  // Edit a reward (title / emoji / cost / currency).
+  api.patch('/api/rewards/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
+    const body = (req.body ?? {}) as { title?: string; emoji?: string | null; cost?: number; currency?: string }
+    const sets: string[] = []
+    const vals: unknown[] = []
+    let i = 1
+    if (typeof body.title === 'string') {
+      if (!body.title.trim()) return res.status(400).json({ error: 'BadRequest', message: 'title cannot be empty' })
+      sets.push(`title = $${i++}`); vals.push(body.title.trim())
+    }
+    if ('emoji' in body) { sets.push(`emoji = $${i++}`); vals.push(body.emoji ?? null) }
+    if (typeof body.cost === 'number') { sets.push(`cost = $${i++}`); vals.push(Math.max(0, Math.round(body.cost))) }
+    if (typeof body.currency === 'string' && body.currency.trim()) { sets.push(`currency = $${i++}`); vals.push(body.currency.trim()) }
+    if (sets.length === 0) return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields' })
+    vals.push(tenant.householdId, id)
+    const { rows } = await query<RewardRow>(
+      `update rewards set ${sets.join(', ')} where household_id = $${i++} and id = $${i} and deleted_at is null returning *`,
+      vals
+    )
+    if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
+    return { reward: presentReward(rows[0]) }
+  })
+
   api.delete('/api/rewards/:id', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
     requireAdmin(tenant)

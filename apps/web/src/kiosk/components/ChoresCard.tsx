@@ -1,9 +1,9 @@
 import { Link } from 'react-router'
-import { Star } from '../icons'
-import { useChoresToday, type PersonChores } from '../../lib/api'
+import { useChoresToday, useCurrencies, type PersonChores } from '../../lib/api'
 
-// Per-person progress ring, colored by the member's own color.
-function Ring({ person }: { person: PersonChores }) {
+// Per-person progress ring, colored by the member's own color. `sym` is the
+// household default currency symbol (renders ⭐ / 💵 / etc. from the catalog).
+function Ring({ person, sym }: { person: PersonChores; sym: string }) {
   const pct = person.total ? person.done / person.total : 0
   const color = person.colorHex ?? '#6B6B70'
   return (
@@ -32,8 +32,8 @@ function Ring({ person }: { person: PersonChores }) {
           {person.done} of {person.total} done
         </div>
       </div>
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 13, fontWeight: 700, color: 'var(--gold)' }}>
-        <Star size={14} />
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 700, color: 'var(--gold)' }}>
+        <span style={{ fontSize: 14 }}>{sym}</span>
         {person.stars}
       </div>
     </div>
@@ -42,6 +42,8 @@ function Ring({ person }: { person: PersonChores }) {
 
 export function ChoresCard() {
   const { people, loading, error } = useChoresToday()
+  const { defaultCurrency } = useCurrencies()
+  const sym = defaultCurrency?.symbol ?? '⭐'
   const withChores = people.filter((p) => p.total > 0)
   return (
     <div className="card" style={{ padding: '18px 20px' }}>
@@ -61,7 +63,7 @@ export function ChoresCard() {
         <div className="tiny muted" style={{ padding: '8px 0' }}>No chores yet.</div>
       )}
       {withChores.map((p) => (
-        <Ring key={p.id} person={p} />
+        <Ring key={p.id} person={p} sym={sym} />
       ))}
     </div>
   )

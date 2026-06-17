@@ -31,6 +31,7 @@ export interface OverviewLedgerEntry {
   amount: number
   reason: string
   currency: string
+  detail: string | null // the specific chore / reward title, when known
   createdAt: string
 }
 

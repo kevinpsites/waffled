@@ -51,7 +51,7 @@ export function useCurrencies(): CurrenciesState {
     let alive = true
     currenciesApi
       .list()
-      .then((d) => alive && (setCurrencies(d.currencies), setLoading(false)))
+      .then((d) => alive && (setCurrencies(d.currencies ?? []), setLoading(false)))
       .catch(() => alive && (setError(true), setLoading(false)))
     return () => { alive = false }
   }, [nonce])

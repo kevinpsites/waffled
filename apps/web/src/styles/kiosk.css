@@ -424,6 +424,11 @@ button.tick {
   padding: 18px 16px 14px; text-align: center;
   display: flex; flex-direction: column; align-items: center; gap: 6px;
 }
+/* the tappable body that opens the edit/remove modal */
+.rw-card-main { background: none; border: 0; font: inherit; cursor: pointer; width: 100%;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.rw-card-edit-hint { font-size: 11px; font-weight: 700; color: var(--ink-3); opacity: 0; transition: opacity 0.12s ease; }
+.rw-card-main:hover .rw-card-edit-hint { opacity: 1; }
 .rw-del {
   position: absolute; top: 8px; right: 9px;
   width: 22px; height: 22px; border-radius: 999px; border: 0;
@@ -452,6 +457,11 @@ button.tick {
 .rw-title-in { flex: 1; font: inherit; font-size: 15px; padding: 10px 13px; border-radius: var(--r-md); border: 1px solid var(--hair); background: var(--card-2); color: var(--ink); }
 .rw-cost-field { display: flex; align-items: center; gap: 12px; }
 .rw-cost-field > span { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
+/* free-entry cost: any whole number, with the currency symbol inline */
+.rw-cost-input { display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border-radius: 999px; padding: 6px 16px; }
+.rw-cost-sym { font-size: 14px; }
+.rw-cost-input input { width: 72px; border: 0; background: none; font: inherit; font-weight: 800; font-size: 15px; color: var(--ink); text-align: center; }
+.rw-cost-input input:focus { outline: none; }
 .rw-cost-stepper { display: inline-flex; align-items: center; gap: 12px; background: var(--panel); border-radius: 999px; padding: 6px 14px; }
 .rw-cost-stepper button { width: 30px; height: 30px; border: 0; border-radius: 999px; background: #fff; box-shadow: var(--sh-1); font-size: 18px; cursor: pointer; color: var(--ink); }
 .rw-cost-stepper > span { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; min-width: 40px; justify-content: center; }

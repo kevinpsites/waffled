@@ -20,14 +20,15 @@ function Coin({ currency, amount }: { currency: Currency | undefined; amount: nu
 }
 
 // The "spend" side of the economy: per-kid balances (per currency), a parent-
-// approval queue, and a rewards catalog kids redeem against. Currencies come from
-// the household catalog (Settings → Stars & currencies); a one-currency family
-// just sees one balance, a tiered family sees several.
+// approval queue, and a rewards catalog kids redeem against. Tap a reward to edit
+// or remove it. Currencies come from the household catalog (Settings → Chores &
+// rewards) — one-currency families just see one balance.
 export function RewardsPanel() {
   const { rewards, balances, currencies, pending, loading, error, refetch } = useRewardsHub()
   const navigate = useNavigate()
   const [redeemFor, setRedeemFor] = useState<Reward | null>(null)
   const [adding, setAdding] = useState(false)
+  const [editing, setEditing] = useState<Reward | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
   const curOf = (key: string) => currencies.find((c) => c.key === key)
@@ -115,10 +116,13 @@ export function RewardsPanel() {
         <div className="rw-grid">
           {rewards.map((r) => (
             <div key={r.id} className="rw-card">
-              <button type="button" className="rw-del" aria-label={`Remove ${r.title}`} onClick={() => rewardsApi.deleteReward(r.id).then(refetch)}>×</button>
-              <div className="rw-card-emo">{r.emoji ?? '🎁'}</div>
-              <div className="rw-card-title">{r.title}</div>
-              <div className="rw-card-cost"><Coin currency={curOf(r.currency)} amount={r.cost} /></div>
+              {/* tap the card to edit / remove */}
+              <button type="button" className="rw-card-main" onClick={() => setEditing(r)} title="Edit reward">
+                <div className="rw-card-emo">{r.emoji ?? '🎁'}</div>
+                <div className="rw-card-title">{r.title}</div>
+                <div className="rw-card-cost"><Coin currency={curOf(r.currency)} amount={r.cost} /></div>
+                <div className="rw-card-edit-hint">Edit</div>
+              </button>
               {redeemFor?.id === r.id ? (
                 <div className="rw-pick">
                   {balances.map((b) => {
@@ -146,35 +150,60 @@ export function RewardsPanel() {
         </div>
       )}
 
-      {adding && <AddRewardModal currencies={currencies} onClose={() => setAdding(false)} onSaved={refetch} />}
+      {(adding || editing) && (
+        <RewardModal
+          reward={editing ?? undefined}
+          currencies={currencies}
+          onClose={() => { setAdding(false); setEditing(null) }}
+          onSaved={refetch}
+        />
+      )}
     </div>
   )
 }
 
-function AddRewardModal({ currencies, onClose, onSaved }: { currencies: Currency[]; onClose: () => void; onSaved: () => void }) {
+function RewardModal({ reward, currencies, onClose, onSaved }: { reward?: Reward; currencies: Currency[]; onClose: () => void; onSaved: () => void }) {
+  const editing = !!reward
   const spendable = currencies.filter((c) => c.spendable)
-  const [title, setTitle] = useState('')
-  const [emoji, setEmoji] = useState('🎁')
-  const [cost, setCost] = useState(10)
-  const [currencyKey, setCurrencyKey] = useState(() => (spendable.find((c) => c.isDefault) ?? spendable[0])?.key ?? 'stars')
+  const [title, setTitle] = useState(reward?.title ?? '')
+  const [emoji, setEmoji] = useState(reward?.emoji ?? '🎁')
+  const [cost, setCost] = useState(reward?.cost ?? 10)
+  const [currencyKey, setCurrencyKey] = useState(() => reward?.currency ?? (spendable.find((c) => c.isDefault) ?? spendable[0])?.key ?? 'stars')
   const [saving, setSaving] = useState(false)
-  const selected = spendable.find((c) => c.key === currencyKey)
+  const [confirmDel, setConfirmDel] = useState(false)
+  const selected = currencies.find((c) => c.key === currencyKey)
+
   async function save() {
     if (!title.trim()) return
     setSaving(true)
     try {
-      await rewardsApi.createReward({ title: title.trim(), emoji: emoji.trim() || null, cost, currency: currencyKey })
+      const body = { title: title.trim(), emoji: emoji.trim() || null, cost: Math.max(0, Math.round(cost || 0)), currency: currencyKey }
+      if (editing) await rewardsApi.updateReward(reward!.id, body)
+      else await rewardsApi.createReward(body)
       onSaved()
       onClose()
     } catch {
       setSaving(false)
     }
   }
+  async function del() {
+    if (!reward) return
+    if (!confirmDel) { setConfirmDel(true); return }
+    setSaving(true)
+    try {
+      await rewardsApi.deleteReward(reward.id)
+      onSaved()
+      onClose()
+    } catch {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>Add a reward</div>
+        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>{editing ? 'Edit reward' : 'Add a reward'}</div>
         <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
           <input className="rw-emoji-in" value={emoji} onChange={(e) => setEmoji(e.target.value)} aria-label="Emoji" maxLength={2} />
           <input className="rw-title-in" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Movie night, 30 min screen time…" aria-label="Reward title" autoFocus />
@@ -197,16 +226,21 @@ function AddRewardModal({ currencies, onClose, onSaved }: { currencies: Currency
         )}
         <label className="rw-cost-field">
           <span>Cost</span>
-          <div className="rw-cost-stepper">
-            <button type="button" onClick={() => setCost((c) => Math.max(0, c - 5))}>−</button>
-            <span>{selected?.symbol ?? '⭐'} {cost}</span>
-            <button type="button" onClick={() => setCost((c) => c + 5)}>+</button>
+          <div className="rw-cost-input">
+            <span className="rw-cost-sym">{selected?.symbol ?? '⭐'}</span>
+            <input type="number" min={0} value={cost} onChange={(e) => setCost(Number(e.target.value))} aria-label="Cost" />
           </div>
         </label>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
-          <button type="button" className="pill" onClick={onClose}>Cancel</button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 18 }}>
+          {editing && (
+            <button type="button" onClick={del} disabled={saving}
+              style={{ border: 0, background: 'none', font: 'inherit', fontWeight: 700, fontSize: 14, color: 'var(--primary)', cursor: 'pointer', padding: '8px 4px' }}>
+              {confirmDel ? 'Tap again to delete' : 'Delete'}
+            </button>
+          )}
+          <button type="button" className="pill" style={{ marginLeft: 'auto' }} onClick={onClose}>Cancel</button>
           <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={saving || !title.trim()} onClick={save}>
-            {saving ? 'Saving…' : 'Add reward'}
+            {saving ? 'Saving…' : editing ? 'Save' : 'Add reward'}
           </button>
         </div>
       </div>

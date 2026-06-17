@@ -122,9 +122,15 @@ export async function personOverview(householdId: string, personId: string) {
     [householdId, personId]
   )
   const balByCurrency = new Map(bal.rows.map((r) => [r.currency, Number(r.b)]))
-  const recent = await query<{ amount: number; reason: string; currency: string; created_at: string }>(
-    `select amount, reason, currency, created_at from ledger_entries
-       where household_id=$1 and person_id=$2 and deleted_at is null order by created_at desc limit 8`,
+  const recent = await query<{ amount: number; reason: string; currency: string; detail: string | null; created_at: string }>(
+    `select le.amount, le.reason, le.currency, le.created_at,
+            coalesce(rr.title, ch.title) as detail
+       from ledger_entries le
+       left join chore_instances ci on le.ref_type = 'chore_instance' and ci.id = le.ref_id
+       left join chores ch on ch.id = ci.chore_id and ch.deleted_at is null
+       left join reward_redemptions rr on le.ref_type = 'reward_redemption' and rr.id = le.ref_id
+      where le.household_id=$1 and le.person_id=$2 and le.deleted_at is null
+      order by le.created_at desc limit 8`,
     [householdId, personId]
   )
   const redemptions = await query<{ id: string; title: string; emoji: string | null; cost: number; currency: string; status: string; created_at: string }>(
@@ -143,7 +149,7 @@ export async function personOverview(householdId: string, personId: string) {
     goals,
     categoryBalance: balance,
     insight: buildInsight(balance, person.name),
-    recentLedger: recent.rows.map((r) => ({ amount: r.amount, reason: r.reason, currency: r.currency, createdAt: r.created_at })),
+    recentLedger: recent.rows.map((r) => ({ amount: r.amount, reason: r.reason, currency: r.currency, detail: r.detail ?? null, createdAt: r.created_at })),
     redemptions: redemptions.rows.map((r) => ({ id: r.id, title: r.title, emoji: r.emoji, cost: r.cost, currency: r.currency, status: r.status, createdAt: r.created_at })),
   }
 }
