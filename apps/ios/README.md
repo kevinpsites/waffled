@@ -182,7 +182,13 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     person has a target, from the overview's `savingToward`. Over REST
     (`GET /api/balances`, `/api/rewards`, `/api/redemptions`, `/api/persons/:id/
     overview`; `POST …/redeem`, `…/approve`, `…/deny`), bumped through `rewardsRev`.
-    Reward editing, currency settings, and conversions/Trade follow. ✅
+    The overview also **manages the catalog**: a Rewards list (tap to edit) with
+    **＋ Add** and a collapsible **Archived** (Restore). The reward editor (emoji ·
+    title · cost · a currency picker over the spendable currencies · Save · Archive)
+    mirrors the web RewardModal, over `POST/PATCH /api/rewards`, `DELETE …` (archive),
+    `GET …/archived`, `POST …/restore`. The saving-toward target is selectable from
+    both the shop and the person spotlight (`POST /api/persons/:id/saving-toward`).
+    Currency settings + conversions/Trade follow. ✅
   - Photos / Settings: still live-summary placeholders.
 - **Next:** Meals **cook-assignment** on a planned slot + grocery-build from the
   week; a hub tile (Rewards/Photos/Settings); Auth0 login (roadmap 4.2.1) to

@@ -363,6 +363,38 @@ final class SyncManager {
         return ok
     }
 
+    /// Create a reward in the catalog (admins); bumps `rewardsRev`.
+    @discardableResult
+    func createReward(title: String, emoji: String?, cost: Int, currency: String) async -> Bool {
+        let ok = await restCommit { _ = try await api.createReward(title: title, emoji: emoji, cost: cost, currency: currency) }
+        if ok { rewardsRev += 1 }
+        return ok
+    }
+
+    /// Edit a reward (admins); bumps `rewardsRev`.
+    @discardableResult
+    func updateReward(id: String, title: String, emoji: String?, cost: Int, currency: String) async -> Bool {
+        let ok = await restCommit { _ = try await api.updateReward(id: id, title: title, emoji: emoji, cost: cost, currency: currency) }
+        if ok { rewardsRev += 1 }
+        return ok
+    }
+
+    /// Archive (soft-delete) a reward (admins); bumps `rewardsRev`.
+    @discardableResult
+    func archiveReward(id: String) async -> Bool {
+        let ok = await restCommit { try await api.archiveReward(id: id) }
+        if ok { rewardsRev += 1 }
+        return ok
+    }
+
+    /// Restore an archived reward (admins); bumps `rewardsRev`.
+    @discardableResult
+    func restoreReward(id: String) async -> Bool {
+        let ok = await restCommit { _ = try await api.restoreReward(id: id) }
+        if ok { rewardsRev += 1 }
+        return ok
+    }
+
     /// Commit a captured "add X to <list>" intent: resolve the named list and add
     /// the item. Mirrors the web kiosk's list-intent commit.
     func commitListItem(item: String, listName: String?, quantity: String?) async -> Bool {

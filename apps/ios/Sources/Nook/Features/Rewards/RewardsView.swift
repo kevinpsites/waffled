@@ -10,6 +10,7 @@ final class RewardsModel {
     private(set) var currencies: [NookAPI.Currency] = []
     private(set) var people: [NookAPI.PersonBalance] = []
     private(set) var rewards: [NookAPI.Reward] = []
+    private(set) var archived: [NookAPI.Reward] = []
     private(set) var pending: [NookAPI.RewardRedemption] = []
     private(set) var loading = true
     private(set) var error = false
@@ -31,10 +32,12 @@ final class RewardsModel {
         } catch {
             self.error = true
         }
+        archived = (try? await api.archivedRewards()) ?? []   // best-effort (admin-only)
         loading = false
     }
 
     func currency(_ key: String) -> NookAPI.Currency? { currencies.first { $0.key == key } }
+    var spendableCurrencies: [NookAPI.Currency] { currencies.filter { $0.spendable } }
     func person(_ id: String) -> NookAPI.PersonBalance? { people.first { $0.personId == id } }
     func balance(_ personId: String, _ currency: String) -> Int {
         person(personId)?.balances.first { $0.currency == currency }?.balance ?? 0
@@ -137,6 +140,16 @@ struct RewardsView: View {
     @Binding var path: [HubRoute]
     @Environment(SyncManager.self) private var sync
     @State private var model = RewardsModel()
+    @State private var editor: EditorMode?
+    @State private var showArchived = false
+
+    /// What the reward editor sheet is doing.
+    private enum EditorMode: Identifiable {
+        case new
+        case edit(NookAPI.Reward)
+        var id: String { if case .edit(let r) = self { return r.id }; return "new" }
+        var reward: NookAPI.Reward? { if case .edit(let r) = self { return r }; return nil }
+    }
 
     var body: some View {
         ScrollView {
@@ -149,6 +162,8 @@ struct RewardsView: View {
                 } else {
                     ForEach(model.people) { p in personRow(p) }
                 }
+
+                catalogSection
             }
             .padding(16).padding(.bottom, 110)
         }
@@ -157,6 +172,85 @@ struct RewardsView: View {
         .task { await model.load() }
         .refreshable { await model.load() }
         .onChange(of: sync.rewardsRev) { _, _ in Task { await model.load() } }
+        .sheet(item: $editor) { mode in
+            RewardEditorSheet(editing: mode.reward, currencies: model.spendableCurrencies) {
+                Task { await model.load() }
+            }
+        }
+    }
+
+    // MARK: catalog management
+
+    private var catalogSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                SectionLabel(text: "Rewards")
+                Spacer()
+                Button { editor = .new } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus").font(.system(size: 12, weight: .bold))
+                        Text("Add").font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundStyle(NK.primary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.top, 4)
+
+            if model.rewards.isEmpty {
+                Text("No rewards yet — tap Add to create one.")
+                    .font(.system(size: 13)).foregroundStyle(NK.ink3)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
+            } else {
+                ForEach(model.rewards) { r in catalogRow(r) }
+            }
+
+            if !model.archived.isEmpty {
+                Button { withAnimation { showArchived.toggle() } } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: showArchived ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("Archived (\(model.archived.count))").font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundStyle(NK.ink3)
+                }
+                .buttonStyle(.plain).padding(.top, 2)
+                if showArchived { ForEach(model.archived) { r in archivedRow(r) } }
+            }
+        }
+    }
+
+    private func catalogRow(_ r: NookAPI.Reward) -> some View {
+        Button { editor = .edit(r) } label: {
+            HStack(spacing: 12) {
+                Text(r.emoji ?? "🎁").font(.system(size: 22))
+                    .frame(width: 40, height: 40).background(NK.panel)
+                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                Text(r.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                Spacer(minLength: 8)
+                coin(r.currency, r.cost)
+                Image(systemName: "pencil").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+            }
+            .padding(12)
+            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func archivedRow(_ r: NookAPI.Reward) -> some View {
+        HStack(spacing: 12) {
+            Text(r.emoji ?? "🎁").font(.system(size: 18)).opacity(0.6)
+                .frame(width: 34, height: 34).background(NK.panel)
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            Text(r.title).font(.system(size: 14, weight: .medium)).foregroundStyle(NK.ink2).lineLimit(1)
+            Spacer(minLength: 8)
+            Button { Task { _ = await sync.restoreReward(id: r.id); await model.load() } } label: {
+                Text("Restore").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ai)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
     }
 
     // MARK: approvals
@@ -394,3 +488,143 @@ struct RewardShopView: View {
     }
 }
 
+
+/// Add or edit a reward (admins). Emoji + title + cost, a currency picker when the
+/// household has more than one spendable currency, and Archive when editing.
+/// Mirrors the web RewardModal. Writes via SyncManager (bumps rewardsRev).
+struct RewardEditorSheet: View {
+    let editing: NookAPI.Reward?
+    let currencies: [NookAPI.Currency]   // spendable only
+    let onDone: () -> Void
+
+    @Environment(SyncManager.self) private var sync
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var emoji: String
+    @State private var title: String
+    @State private var cost: Int
+    @State private var currencyKey: String
+    @State private var busy = false
+    @State private var confirmArchive = false
+    @FocusState private var titleFocused: Bool
+
+    init(editing: NookAPI.Reward?, currencies: [NookAPI.Currency], onDone: @escaping () -> Void) {
+        self.editing = editing
+        self.currencies = currencies
+        self.onDone = onDone
+        _emoji = State(initialValue: editing?.emoji ?? "🎁")
+        _title = State(initialValue: editing?.title ?? "")
+        _cost = State(initialValue: editing?.cost ?? 10)
+        let def = currencies.first(where: { $0.isDefault }) ?? currencies.first
+        _currencyKey = State(initialValue: editing?.currency ?? def?.key ?? "stars")
+    }
+
+    private var selectedCur: NookAPI.Currency? { currencies.first { $0.key == currencyKey } }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    HStack(spacing: 14) {
+                        TextField("🎁", text: $emoji)
+                            .font(.system(size: 34)).multilineTextAlignment(.center)
+                            .frame(width: 70, height: 70)
+                            .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .onChange(of: emoji) { _, v in if v.count > 2 { emoji = String(v.prefix(2)) } }
+                        TextField("Movie night, 30 min screen time…", text: $title)
+                            .font(.system(size: 17, weight: .semibold)).focused($titleFocused)
+                            .padding(.horizontal, 14).padding(.vertical, 14)
+                            .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    }
+
+                    if currencies.count > 1 {
+                        VStack(alignment: .leading, spacing: 9) {
+                            SectionLabel(text: "Currency")
+                            ChipFlow(spacing: 8, lineSpacing: 8) {
+                                ForEach(currencies) { c in
+                                    let on = c.key == currencyKey
+                                    Button { currencyKey = c.key } label: {
+                                        Text("\(c.symbol) \(c.label)")
+                                            .font(.system(size: 14, weight: on ? .bold : .medium))
+                                            .foregroundStyle(on ? NK.ink : NK.ink2)
+                                            .padding(.horizontal, 13).padding(.vertical, 8)
+                                            .background(on ? (Color(hexString: c.color) ?? NK.ai).opacity(0.16) : NK.panel)
+                                            .clipShape(Capsule())
+                                            .overlay(Capsule().strokeBorder(on ? (Color(hexString: c.color) ?? NK.ai).opacity(0.5) : .clear, lineWidth: 1))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    NookCard(padding: 14) {
+                        HStack {
+                            Text("Cost").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                            Spacer()
+                            Text(selectedCur?.symbol ?? "⭐").font(.system(size: 16))
+                            TextField("0", value: $cost, format: .number)
+                                .keyboardType(.numberPad).multilineTextAlignment(.trailing)
+                                .font(.system(size: 17, weight: .bold)).frame(width: 64)
+                            Stepper("", value: $cost, in: 0...100000).labelsHidden()
+                        }
+                    }
+
+                    Button { Task { await save() } } label: {
+                        Text(busy ? "Saving…" : (editing == nil ? "Add reward" : "Save"))
+                            .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                            .frame(maxWidth: .infinity).padding(.vertical, 14)
+                            .background(title.trimmingCharacters(in: .whitespaces).isEmpty ? NK.ink3 : NK.primary)
+                            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(busy || title.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                    if editing != nil {
+                        Button(role: .destructive) {
+                            if confirmArchive { Task { await archive() } } else { confirmArchive = true }
+                        } label: {
+                            Text(confirmArchive ? "Tap again to archive" : "Archive reward")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(confirmArchive ? NK.primary : NK.ink3)
+                        }
+                        .buttonStyle(.plain)
+                        Text("Archived rewards keep their redemption history and can be restored.")
+                            .font(.system(size: 11)).foregroundStyle(NK.ink3).multilineTextAlignment(.center)
+                            .padding(.horizontal, 30)
+                    }
+                }
+                .padding(20)
+            }
+            .background(NK.canvas)
+            .navigationTitle(editing == nil ? "New reward" : "Edit reward")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .onAppear { if editing == nil { titleFocused = true } }
+        }
+    }
+
+    private func save() async {
+        let t = title.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty else { return }
+        busy = true
+        let e = emoji.trimmingCharacters(in: .whitespaces)
+        let ok: Bool
+        if let editing {
+            ok = await sync.updateReward(id: editing.id, title: t, emoji: e.isEmpty ? nil : e, cost: max(0, cost), currency: currencyKey)
+        } else {
+            ok = await sync.createReward(title: t, emoji: e.isEmpty ? nil : e, cost: max(0, cost), currency: currencyKey)
+        }
+        busy = false
+        if ok { onDone(); dismiss() }
+    }
+
+    private func archive() async {
+        guard let editing else { return }
+        busy = true
+        let ok = await sync.archiveReward(id: editing.id)
+        busy = false
+        if ok { onDone(); dismiss() }
+    }
+}

@@ -397,6 +397,7 @@ struct NookAPI: Sendable {
         let key, label, symbol: String
         let color: String?
         let isDefault: Bool
+        let spendable: Bool
         let sortOrder: Int
         var id: String { key }
     }
@@ -510,6 +511,39 @@ struct NookAPI: Sendable {
     func setSavingToward(personId: String, rewardId: String?) async throws {
         try await send("POST", "/api/persons/\(personId)/saving-toward",
                        body: ["rewardId": rewardId.map(JSONValue.string) ?? .null])
+    }
+
+    // MARK: rewards catalog admin
+
+    /// Create a reward (admins). Returns the new reward.
+    func createReward(title: String, emoji: String?, cost: Int, currency: String) async throws -> Reward {
+        struct Resp: Decodable { let reward: Reward }
+        var body: [String: JSONValue] = ["title": .string(title), "cost": .int(cost), "currency": .string(currency)]
+        body["emoji"] = emoji.map(JSONValue.string) ?? .null
+        return try await sendReturning("POST", "/api/rewards", body: body, as: Resp.self).reward
+    }
+
+    /// Edit a reward's title/emoji/cost/currency (admins).
+    func updateReward(id: String, title: String, emoji: String?, cost: Int, currency: String) async throws -> Reward {
+        struct Resp: Decodable { let reward: Reward }
+        var body: [String: JSONValue] = ["title": .string(title), "cost": .int(cost), "currency": .string(currency)]
+        body["emoji"] = emoji.map(JSONValue.string) ?? .null
+        return try await sendReturning("PATCH", "/api/rewards/\(id)", body: body, as: Resp.self).reward
+    }
+
+    /// Soft-archive a reward (admins) — its redemption history is kept.
+    func archiveReward(id: String) async throws { try await delete("/api/rewards/\(id)") }
+
+    /// Archived (soft-deleted) rewards (admins).
+    func archivedRewards() async throws -> [Reward] {
+        struct Resp: Decodable { let rewards: [Reward] }
+        return try await getJSON("/api/rewards/archived", as: Resp.self).rewards
+    }
+
+    /// Restore an archived reward (admins).
+    func restoreReward(id: String) async throws -> Reward {
+        struct Resp: Decodable { let reward: Reward }
+        return try await sendJSON("POST", "/api/rewards/\(id)/restore", as: Resp.self).reward
     }
 
     /// The chore instances for `date` (YYYY-MM-DD; defaults to today within ±31 days).
