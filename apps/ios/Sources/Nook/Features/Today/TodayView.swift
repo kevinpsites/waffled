@@ -6,15 +6,17 @@ import SwiftUI
 struct TodayView: View {
     @Environment(SyncManager.self) private var sync
     @State private var dash = DashboardModel()
+    @State private var recipes = RecipesModel()   // backs a recipe pushed from tonight's card
     @State private var editingEvent: SyncedEvent?
     @State private var showCapture = false
     @State private var dictateOnOpen = false
+    /// Today's own nav stack — tonight's meal card pushes its recipe here so Back
+    /// returns to the dashboard (lifted to AppRoot for re-tap-to-pop).
+    @Binding var path: [NookAPI.RecipeSummary]
     /// Jump to a Family hub destination (Chores, Lists…) from a summary card.
     var openFamily: (HubRoute) -> Void = { _ in }
     /// Jump to the Calendar tab (from the agenda card).
     var openCalendar: () -> Void = {}
-    /// Open a recipe's detail in the Meals tab (from tonight's meal card).
-    var openRecipe: (NookAPI.RecipeSummary) -> Void = { _ in }
 
     private var todays: [SyncedEvent] {
         Agenda.forDay(sync.events, day: Agenda.todayKey(sync.householdTz), tz: sync.householdTz)
@@ -41,39 +43,45 @@ struct TodayView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                greeting
-                AICaptureBar(onTap: { dictateOnOpen = false; showCapture = true },
-                             onMic: { dictateOnOpen = true; showCapture = true })
-                    .padding(.bottom, 2)
-                todayCard
-                if let summary = dash.tonight?.recipeSummary {
-                    Button { openRecipe(summary) } label: { tonightCard }.buttonStyle(.plain)
-                } else {
-                    tonightCard
+        NavigationStack(path: $path) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    greeting
+                    AICaptureBar(onTap: { dictateOnOpen = false; showCapture = true },
+                                 onMic: { dictateOnOpen = true; showCapture = true })
+                        .padding(.bottom, 2)
+                    todayCard
+                    if let summary = dash.tonight?.recipeSummary {
+                        Button { path.append(summary) } label: { tonightCard }.buttonStyle(.plain)
+                    } else {
+                        tonightCard
+                    }
+                    HStack(spacing: 12) {
+                        Button { openFamily(.chores) } label: { choresCard }.buttonStyle(.plain)
+                        Button { openFamily(grocerySummary) } label: { groceryCard }.buttonStyle(.plain)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
                 }
-                HStack(spacing: 12) {
-                    Button { openFamily(.chores) } label: { choresCard }.buttonStyle(.plain)
-                    Button { openFamily(grocerySummary) } label: { groceryCard }.buttonStyle(.plain)
-                }
-                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
+                .padding(.bottom, 110)   // clear the floating tab bar
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 8)
-            .padding(.bottom, 110)   // clear the floating tab bar
-        }
-        .background(NK.canvas)
-        .refreshable { await dash.load(todayKey: Agenda.todayKey(sync.householdTz)) }
-        // Reload when the tz is known and whenever a capture commit bumps a domain.
-        .task(id: "\(sync.householdTz.identifier)|\(sync.choresRev)|\(sync.groceryRev)|\(sync.mealsRev)") {
-            await dash.load(todayKey: Agenda.todayKey(sync.householdTz))
-        }
-        .sheet(item: $editingEvent) { ev in
-            EventEditSheet(event: ev, initialDate: ev.startsAt ?? Date())
-        }
-        .sheet(isPresented: $showCapture) {
-            CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
+            .background(NK.canvas)
+            .toolbar(.hidden, for: .navigationBar)   // Today draws its own greeting header
+            .navigationDestination(for: NookAPI.RecipeSummary.self) { r in
+                RecipeDetailView(summary: r, model: recipes)
+            }
+            .refreshable { await dash.load(todayKey: Agenda.todayKey(sync.householdTz)) }
+            // Reload when the tz is known and whenever a capture commit bumps a domain.
+            .task(id: "\(sync.householdTz.identifier)|\(sync.choresRev)|\(sync.groceryRev)|\(sync.mealsRev)") {
+                await dash.load(todayKey: Agenda.todayKey(sync.householdTz))
+            }
+            .sheet(item: $editingEvent) { ev in
+                EventEditSheet(event: ev, initialDate: ev.startsAt ?? Date())
+            }
+            .sheet(isPresented: $showCapture) {
+                CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
+            }
         }
     }
 
@@ -256,4 +264,4 @@ struct ProgressBar: View {
     }
 }
 
-#Preview { TodayView().environment(SyncManager()) }
+#Preview { TodayView(path: .constant([])).environment(SyncManager()) }
