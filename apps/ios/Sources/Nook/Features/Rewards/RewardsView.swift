@@ -176,9 +176,10 @@ struct RewardShopView: View {
     @Binding var path: [HubRoute]
     @Environment(SyncManager.self) private var sync
     @State private var model = RewardsModel()
-    @State private var saving: NookAPI.PersonOverview.SavingToward?
+    @State private var overview: NookAPI.PersonOverview?
     @State private var confirm: NookAPI.Reward?
     @State private var giving = false
+    @State private var showSavingPicker = false
 
     private let api = NookAPI()
     private let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
@@ -188,7 +189,11 @@ struct RewardShopView: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let p = model.person(personId) {
                     header(p)
-                    if let s = saving { savingHero(s) }
+                    if let s = overview?.savingToward {
+                        Button { showSavingPicker = true } label: { savingHero(s) }.buttonStyle(.plain)
+                    } else if !(overview?.rewardShop.isEmpty ?? true) {
+                        savingPrompt
+                    }
                     shopHead
                     if model.rewards.isEmpty {
                         Text("No rewards yet — a parent can add them on the web.")
@@ -221,6 +226,13 @@ struct RewardShopView: View {
             Button("Cancel", role: .cancel) { confirm = nil }
         } message: { r in
             Text("Uses \(r.cost) \(model.currency(r.currency)?.label ?? "stars") from \(model.person(personId)?.name ?? "their")’s balance.")
+        }
+        .sheet(isPresented: $showSavingPicker) {
+            SavingTowardPicker(rewards: overview?.rewardShop ?? [],
+                               currencies: overview?.currencies ?? [],
+                               current: overview?.savingToward?.id) { rewardId in
+                Task { _ = await sync.setSavingToward(personId: personId, rewardId: rewardId); await reload() }
+            }
         }
     }
 
@@ -255,8 +267,12 @@ struct RewardShopView: View {
         let cur = model.currency(s.currency)
         let tint = Color(hexString: cur?.color) ?? NK.ai
         return VStack(alignment: .leading, spacing: 12) {
-            Text("SAVING TOWARD")
-                .font(.system(size: 11, weight: .heavy)).tracking(0.6).foregroundStyle(.white.opacity(0.85))
+            HStack {
+                Text("SAVING TOWARD")
+                    .font(.system(size: 11, weight: .heavy)).tracking(0.6).foregroundStyle(.white.opacity(0.85))
+                Spacer()
+                Text("Change").font(.system(size: 12, weight: .bold)).foregroundStyle(.white.opacity(0.9))
+            }
             HStack(spacing: 9) {
                 Text(s.emoji ?? "🎁").font(.system(size: 24))
                 Text(s.title).font(NK.serif(22)).foregroundStyle(.white).lineLimit(2)
@@ -279,6 +295,29 @@ struct RewardShopView: View {
         .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
     }
 
+    /// Shown when the person has no target yet — a dashed prompt to pick one.
+    private var savingPrompt: some View {
+        Button { showSavingPicker = true } label: {
+            HStack(spacing: 11) {
+                Image(systemName: "target").font(.system(size: 18)).foregroundStyle(NK.ai)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Pick something to save toward")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                    Text("Track progress to a reward").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity)
+            .background(NK.ai.opacity(0.07))
+            .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous)
+                .strokeBorder(NK.ai.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
+        }
+        .buttonStyle(.plain)
+    }
+
     private var shopHead: some View {
         HStack {
             Text("Reward shop").font(.system(size: 18, weight: .bold)).foregroundStyle(NK.ink)
@@ -289,7 +328,7 @@ struct RewardShopView: View {
 
     private func reload() async {
         await model.load()
-        saving = try? await api.personOverview(id: personId).savingToward
+        overview = try? await api.personOverview(id: personId)
     }
 
     // MARK: a reward

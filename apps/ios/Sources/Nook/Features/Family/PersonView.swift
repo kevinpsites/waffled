@@ -462,8 +462,9 @@ struct PersonView: View {
 
 /// Pick which reward a person is saving toward (or clear it). Anyone can set their
 /// own per the backend; on a parent's phone you set it for the kid. Lists the
-/// household catalog with this person's progress toward each.
-private struct SavingTowardPicker: View {
+/// household catalog with this person's progress toward each. Shared by the person
+/// spotlight and the reward shop.
+struct SavingTowardPicker: View {
     let rewards: [NookAPI.PersonOverview.ShopReward]
     let currencies: [NookAPI.PersonOverview.Currency]
     let current: String?
