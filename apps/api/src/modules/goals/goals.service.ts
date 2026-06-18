@@ -134,12 +134,31 @@ export async function updateGoalList(
   }
 }
 
+// Deleting a goal group does NOT delete its goals — unlike a throwaway grocery
+// list, goals are long-lived (history, progress, participants). So we detach them
+// (goal_list_id → null) rather than orphan or destroy them, and drop the now-
+// meaningless membership rows. All in one transaction.
 export async function softDeleteGoalList(householdId: string, id: string): Promise<boolean> {
-  const { rowCount } = await query(
-    `update goal_lists set deleted_at = now() where household_id=$1 and id=$2 and deleted_at is null`,
-    [householdId, id]
-  )
-  return !!rowCount
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    const r = await client.query(
+      `update goal_lists set deleted_at = now() where household_id=$1 and id=$2 and deleted_at is null`,
+      [householdId, id]
+    )
+    const found = (r.rowCount ?? 0) > 0
+    if (found) {
+      await client.query(`update goals set goal_list_id = null where household_id=$1 and goal_list_id=$2 and deleted_at is null`, [householdId, id])
+      await client.query(`update goal_list_members set deleted_at = now() where household_id=$1 and goal_list_id=$2 and deleted_at is null`, [householdId, id])
+    }
+    await client.query('commit')
+    return found
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+  }
 }
 
 // ---- goals ------------------------------------------------------------------

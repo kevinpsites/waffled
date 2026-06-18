@@ -173,6 +173,8 @@ export function Lists() {
   const { persons } = usePersons()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [editingList, setEditingList] = useState<{ id: string; name: string; emoji: string | null } | null>(null)
+  const [confirmDel, setConfirmDel] = useState(false)
   const [draft, setDraft] = useState('')
   const addingRef = useRef(false)
   const addInputRef = useRef<HTMLInputElement>(null)
@@ -283,6 +285,20 @@ export function Lists() {
     if (selectedId && !lists.some((l) => l.id === selectedId)) setSelectedId(null)
   }, [lists, selectedId])
 
+  // Delete the selected list (and, server-side, its items). Two-tap confirm since
+  // it discards anything not yet checked off.
+  async function deleteSelected() {
+    if (!selected) return
+    if (!confirmDel) {
+      setConfirmDel(true)
+      return
+    }
+    await groceryApi.deleteList(selected.id).catch(() => {})
+    setConfirmDel(false)
+    setSelectedId(null)
+    refetchLists()
+  }
+
   if (listsError) {
     return <div className="muted" style={{ padding: 30 }}>Sign this kiosk in to see your lists.</div>
   }
@@ -312,6 +328,7 @@ export function Lists() {
                 onClick={() => {
                   setSelectedId(l.id)
                   setGroceryOpen(l.listType === 'grocery')
+                  setConfirmDel(false)
                 }}
               >
                 <span className="lemo">{l.emoji ?? '📝'}</span>
@@ -357,6 +374,10 @@ export function Lists() {
                   </div>
                 )}
               </div>
+              <button type="button" className="pill" style={{ cursor: 'pointer' }} title="Rename list" onClick={() => setEditingList({ id: selected.id, name: selected.name, emoji: selected.emoji })}>✎ Rename</button>
+              <button type="button" className="pill" style={{ cursor: 'pointer', color: confirmDel ? 'var(--primary)' : undefined, borderColor: confirmDel ? 'var(--primary)' : undefined }} title="Delete list" onClick={deleteSelected}>
+                {confirmDel ? 'Tap again to delete' : '🗑 Delete'}
+              </button>
             </div>
             <div className="tiny muted lists-hint">
               Tap to check off · tap an avatar to assign · ×2 is the quantity
@@ -422,6 +443,13 @@ export function Lists() {
             refetchLists()
             setSelectedId(id)
           }}
+        />
+      )}
+      {editingList && (
+        <ListsModal
+          list={editingList}
+          onClose={() => setEditingList(null)}
+          onSaved={refetchLists}
         />
       )}
       {itemModal && selected && (

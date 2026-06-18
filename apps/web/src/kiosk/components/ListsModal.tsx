@@ -1,10 +1,21 @@
 import { useState, type FormEvent } from 'react'
 import { groceryApi } from '../../lib/api'
 
-// Create a new named list (name + emoji) — backs the topbar "New list" action.
-export function ListsModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
-  const [name, setName] = useState('')
-  const [emoji, setEmoji] = useState('')
+// Create OR rename a named list (name + emoji). Pass `list` to edit; omit to create.
+export function ListsModal({
+  list,
+  onClose,
+  onCreated,
+  onSaved,
+}: {
+  list?: { id: string; name: string; emoji: string | null }
+  onClose: () => void
+  onCreated?: (id: string) => void
+  onSaved?: () => void
+}) {
+  const editing = !!list
+  const [name, setName] = useState(list?.name ?? '')
+  const [emoji, setEmoji] = useState(list?.emoji ?? '')
   const [saving, setSaving] = useState(false)
 
   async function submit(e: FormEvent) {
@@ -12,8 +23,13 @@ export function ListsModal({ onClose, onCreated }: { onClose: () => void; onCrea
     if (!name.trim() || saving) return
     setSaving(true)
     try {
-      const list = await groceryApi.createList({ name: name.trim(), emoji: emoji.trim() || null })
-      onCreated(list.id)
+      if (editing) {
+        await groceryApi.renameList(list.id, { name: name.trim(), emoji: emoji.trim() || null })
+        onSaved?.()
+      } else {
+        const created = await groceryApi.createList({ name: name.trim(), emoji: emoji.trim() || null })
+        onCreated?.(created.id)
+      }
       onClose()
     } catch {
       setSaving(false)
@@ -24,7 +40,7 @@ export function ListsModal({ onClose, onCreated }: { onClose: () => void; onCrea
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>New list</div>
+        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>{editing ? 'Rename list' : 'New list'}</div>
         <form onSubmit={submit}>
           <div className="field-row">
             <label className="field" style={{ flex: 3 }}>
@@ -42,7 +58,7 @@ export function ListsModal({ onClose, onCreated }: { onClose: () => void; onCrea
             disabled={!name.trim() || saving}
             style={{ width: '100%', justifyContent: 'center', marginTop: 6 }}
           >
-            {saving ? 'Creating…' : 'Create list'}
+            {saving ? 'Saving…' : editing ? 'Save changes' : 'Create list'}
           </button>
         </form>
       </div>

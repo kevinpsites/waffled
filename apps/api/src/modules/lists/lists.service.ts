@@ -4,7 +4,7 @@
 // (CLOTHES / GEAR / FOR THE KIDS via `category`), a freeform quantity ("×4"),
 // an assignee (avatar) and a checked state. The grocery list keeps its existing
 // get-or-create endpoints (the Today dashboard's Grocery card depends on them).
-import { query } from '../../platform/db'
+import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { getRecipe, listIngredients, getOverrides } from '../meals/meals.service'
 import { aisleFor, isStaple } from './aisles'
@@ -86,13 +86,34 @@ export async function updateList(
   return rows[0] ?? null
 }
 
+// Deleting a list takes its items with it — a shopping/packing list is throwaway,
+// so any items not yet checked off go too (cascade, in one transaction) rather
+// than lingering as orphaned rows.
 export async function softDeleteList(householdId: string, id: string): Promise<boolean> {
-  const { rowCount } = await query(
-    `update lists set deleted_at = now()
-       where household_id = $1 and id = $2 and deleted_at is null`,
-    [householdId, id]
-  )
-  return !!rowCount
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    const r = await client.query(
+      `update lists set deleted_at = now()
+         where household_id = $1 and id = $2 and deleted_at is null`,
+      [householdId, id]
+    )
+    const found = (r.rowCount ?? 0) > 0
+    if (found) {
+      await client.query(
+        `update list_items set deleted_at = now()
+           where household_id = $1 and list_id = $2 and deleted_at is null`,
+        [householdId, id]
+      )
+    }
+    await client.query('commit')
+    return found
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+  }
 }
 
 export async function listItems(householdId: string, listId: string): Promise<ListItemRow[]> {

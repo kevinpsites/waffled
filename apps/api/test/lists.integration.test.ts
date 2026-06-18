@@ -235,6 +235,23 @@ describe('lists sidebar + custom-list CRUD', () => {
     expect((await call('GET', '/api/lists/not-a-uuid', kevin)).statusCode).toBe(404)
     expect((await call('GET', '/api/lists/00000000-0000-0000-0000-000000000000', kevin)).statusCode).toBe(404)
   })
+
+  it('deleting a list cascades to its items — no orphans left behind', async () => {
+    const list = JSON.parse((await call('POST', '/api/lists', kevin, { name: 'Costco run' })).body).list
+    await call('POST', `/api/lists/${list.id}/items`, kevin, { name: 'Paper towels' })
+    await call('POST', `/api/lists/${list.id}/items`, kevin, { name: 'Rotisserie chicken' })
+
+    // grab one item id to prove it's gone after the list delete
+    const items = JSON.parse((await call('GET', `/api/lists/${list.id}`, kevin)).body).items
+    expect(items).toHaveLength(2)
+    const itemId = items[0].id
+
+    expect((await call('DELETE', `/api/lists/${list.id}`, kevin)).statusCode).toBe(204)
+
+    // the item is soft-deleted with the list, not orphaned (live)
+    const row = await withClient((c) => c.query(`select deleted_at from list_items where id=$1`, [itemId]))
+    expect(row.rows[0].deleted_at).not.toBeNull()
+  })
 })
 
 describe('list items — sections, quantity, assignee', () => {
