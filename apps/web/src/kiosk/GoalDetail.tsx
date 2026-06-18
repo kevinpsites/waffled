@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams, useLocation } from 'react-router'
 import { LogModal } from './components/LogModal'
 import { useGoalDetail, api, type GoalParticipant, type GoalMilestone, type GoalLogEntry } from '../lib/api'
 import { useTopbarFull } from './topbar-slot'
@@ -55,6 +55,7 @@ function HoursRow({ p, max, unit }: { p: GoalParticipant; max: number; unit: str
 export function GoalDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const { goal, loading, error, refetch } = useGoalDetail(id ?? null)
   const [logging, setLogging] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
@@ -62,12 +63,24 @@ export function GoalDetail() {
   const logRef = useRef<() => void>(() => {})
   logRef.current = () => setLogging(true)
 
+  // Back returns to wherever you came from (a person's profile, the goals hub,
+  // etc.) rather than always the goals list. 'default' key = loaded straight
+  // here (no in-app history), so fall back to the goals page.
+  const backRef = useRef<() => void>(() => {})
+  backRef.current = () => (location.key === 'default' ? navigate('/goals') : navigate(-1))
+  const backLabel = location.key === 'default' ? '‹ Goals' : '‹ Back'
+
   // The log action reads differently per type — and checklists log by ticking
   // steps inline (in the Steps card below), so they get no top "log" button.
+  // A habit already completed today shows a done, non-clickable button instead
+  // of opening a modal you can't act in.
   const gType = goal?.goalType
   const gUnit = goal?.unit
+  const habitDoneToday =
+    gType === 'habit' && (goal?.participants.length ?? 0) > 0 &&
+    (goal?.participants ?? []).every((p) => goal!.loggedTodayBy.includes(p.personId))
   const logLabel =
-    gType === 'habit' ? '✓ Mark done'
+    gType === 'habit' ? (habitDoneToday ? 'Done for today ✓' : '✓ Mark done')
       : gType === 'count' ? `＋ Add${gUnit ? ` ${gUnit}` : ''}`
         : gUnit && HOUR_UNITS.has(gUnit.toLowerCase()) ? '＋ Log time'
           : '＋ Log progress'
@@ -76,18 +89,23 @@ export function GoalDetail() {
   useTopbarFull(
     () => (
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
-        <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate('/goals')}>‹ Goals</button>
+        <button className="pill" style={{ cursor: 'pointer' }} onClick={() => backRef.current()}>{backLabel}</button>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
           <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(`/goals/${id}/edit`)}>Edit goal</button>
           {showLog && (
-            <button className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => logRef.current()}>
+            <button
+              className="pill btn-primary"
+              disabled={habitDoneToday}
+              style={{ color: '#fff', border: 0, cursor: habitDoneToday ? 'default' : 'pointer', opacity: habitDoneToday ? 0.6 : 1 }}
+              onClick={() => { if (!habitDoneToday) logRef.current() }}
+            >
               {logLabel}
             </button>
           )}
         </div>
       </div>
     ),
-    [navigate, id, logLabel, showLog]
+    [navigate, id, logLabel, showLog, backLabel, habitDoneToday]
   )
 
   if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
