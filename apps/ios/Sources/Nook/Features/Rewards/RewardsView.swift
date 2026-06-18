@@ -52,7 +52,7 @@ struct CoinChip: View {
     let amount: Int
 
     var body: some View {
-        let tint = Color(hexString: colorHex) ?? NK.ink2
+        let tint = Color(hexString: colorHex) ?? NK.gold
         HStack(spacing: 4) {
             Text(symbol).font(.system(size: 12.5))
             Text("\(amount)").font(.system(size: 13.5, weight: .bold)).foregroundStyle(tint)
@@ -64,7 +64,7 @@ struct CoinChip: View {
 }
 
 /// A jar that fills from the bottom to `pct` — the goal-jar take on "saving toward".
-/// A white jar on the violet hero, filled with the currency color (web parity).
+/// A white jar on the currency-tinted hero, filled with the currency color (web parity).
 struct JarView: View {
     let pct: Int
     let fill: Color
@@ -89,7 +89,7 @@ struct JarView: View {
 }
 
 /// The saving-toward block, shared by the reward shop and the person spotlight so
-/// both read identically: a violet hero when a target is pinned — with a Bar/Jar
+/// both read identically: a currency-tinted hero when a target is pinned — with a Bar/Jar
 /// progress toggle, a **Redeem** button once it's affordable, and **Change** — or a
 /// dashed "pick one" prompt when not. `colorHex`/`symbol` describe the currency.
 struct SavingTowardCard: View {
@@ -108,7 +108,7 @@ struct SavingTowardCard: View {
     }
 
     private func hero(_ s: NookAPI.PersonOverview.SavingToward) -> some View {
-        let tint = Color(hexString: colorHex) ?? NK.ai
+        let tint = Color(hexString: colorHex) ?? NK.gold   // orange when the currency has no color
         let ready = s.have >= s.cost
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -625,9 +625,9 @@ struct RewardEditorSheet: View {
                                             .font(.system(size: 14, weight: on ? .bold : .medium))
                                             .foregroundStyle(on ? NK.ink : NK.ink2)
                                             .padding(.horizontal, 13).padding(.vertical, 8)
-                                            .background(on ? (Color(hexString: c.color) ?? NK.ai).opacity(0.16) : NK.panel)
+                                            .background(on ? (Color(hexString: c.color) ?? NK.gold).opacity(0.16) : NK.panel)
                                             .clipShape(Capsule())
-                                            .overlay(Capsule().strokeBorder(on ? (Color(hexString: c.color) ?? NK.ai).opacity(0.5) : .clear, lineWidth: 1))
+                                            .overlay(Capsule().strokeBorder(on ? (Color(hexString: c.color) ?? NK.gold).opacity(0.5) : .clear, lineWidth: 1))
                                     }
                                     .buttonStyle(.plain)
                                 }
