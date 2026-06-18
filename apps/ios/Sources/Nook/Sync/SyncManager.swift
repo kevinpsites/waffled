@@ -354,6 +354,15 @@ final class SyncManager {
         return ok
     }
 
+    /// Pin (or clear, with `nil`) the reward a person is saving toward. Bumps
+    /// `rewardsRev` so the person spotlight and their reward shop reflect it.
+    @discardableResult
+    func setSavingToward(personId: String, rewardId: String?) async -> Bool {
+        let ok = await restCommit { try await api.setSavingToward(personId: personId, rewardId: rewardId) }
+        if ok { rewardsRev += 1 }
+        return ok
+    }
+
     /// Commit a captured "add X to <list>" intent: resolve the named list and add
     /// the item. Mirrors the web kiosk's list-intent commit.
     func commitListItem(item: String, listName: String?, quantity: String?) async -> Bool {

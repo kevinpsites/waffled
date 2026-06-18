@@ -506,6 +506,12 @@ struct NookAPI: Sendable {
         return try await sendJSON("POST", "/api/redemptions/\(id)/deny", as: Resp.self).redemption
     }
 
+    /// Pin (or clear, with `nil`) the reward a person is saving toward.
+    func setSavingToward(personId: String, rewardId: String?) async throws {
+        try await send("POST", "/api/persons/\(personId)/saving-toward",
+                       body: ["rewardId": rewardId.map(JSONValue.string) ?? .null])
+    }
+
     /// The chore instances for `date` (YYYY-MM-DD; defaults to today within ±31 days).
     func choreInstances(date: String) async throws -> [ChoreInstanceDTO] {
         struct Resp: Decodable { let instances: [ChoreInstanceDTO] }
@@ -544,7 +550,8 @@ struct NookAPI: Sendable {
         let insight: Insight?
         let recentLedger: [LedgerEntry]
         let redemptions: [Redemption]
-        let savingToward: SavingToward?   // the reward this person is closest to (hero)
+        let savingToward: SavingToward?   // the reward this person is pinned to (hero)
+        let rewardShop: [ShopReward]      // the catalog with this person's have/toGo
 
         struct Currency: Decodable, Sendable, Identifiable {
             let key, label, symbol: String
@@ -613,6 +620,13 @@ struct NookAPI: Sendable {
             let id, title: String
             let emoji: String?
             let cost, have, toGo, pct: Int
+            let currency: String
+        }
+        /// A catalog reward with this person's progress toward it (for the picker).
+        struct ShopReward: Decodable, Sendable, Identifiable {
+            let id, title: String
+            let emoji: String?
+            let cost, have, toGo: Int
             let currency: String
         }
     }

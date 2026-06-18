@@ -53,6 +53,7 @@ struct PersonView: View {
     @State private var model: PersonOverviewModel
     @State private var showCapture = false
     @State private var editingEvent: SyncedEvent?
+    @State private var showSavingPicker = false
 
     init(personId: String, path: Binding<[HubRoute]>) {
         self.personId = personId
@@ -85,6 +86,7 @@ struct PersonView: View {
             VStack(alignment: .leading, spacing: 16) {
                 header
                 statCards
+                if let ov = model.overview { savingTowardCard(ov) }
                 daySection
                 if let ov = model.overview {
                     if ov.categoryBalance.contains(where: { $0.goalCount > 0 }) { balanceCard(ov) }
@@ -104,6 +106,60 @@ struct PersonView: View {
         .refreshable { await model.load() }
         .sheet(isPresented: $showCapture) { CaptureSheet().presentationDragIndicator(.visible) }
         .sheet(item: $editingEvent) { ev in EventEditSheet(event: ev, initialDate: ev.startsAt ?? Date()) }
+        .sheet(isPresented: $showSavingPicker) {
+            SavingTowardPicker(rewards: model.overview?.rewardShop ?? [],
+                               currencies: model.overview?.currencies ?? [],
+                               current: model.overview?.savingToward?.id) { rewardId in
+                Task { _ = await sync.setSavingToward(personId: personId, rewardId: rewardId); await model.load() }
+            }
+        }
+    }
+
+    // MARK: saving toward
+
+    @ViewBuilder private func savingTowardCard(_ ov: NookAPI.PersonOverview) -> some View {
+        NookCard(padding: 14) {
+            VStack(alignment: .leading, spacing: 11) {
+                HStack {
+                    Text("Saving toward").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink2)
+                    Spacer()
+                    if ov.savingToward != nil {
+                        Button("Change") { showSavingPicker = true }
+                            .font(.system(size: 13, weight: .semibold)).tint(NK.ai)
+                            .disabled(ov.rewardShop.isEmpty)
+                    }
+                }
+                if let s = ov.savingToward {
+                    let cur = ov.currencies.first { $0.key == s.currency }
+                    let tint = Color(hexString: cur?.color) ?? NK.ai
+                    HStack(spacing: 11) {
+                        Text(s.emoji ?? "🎁").font(.system(size: 24))
+                            .frame(width: 46, height: 46).background(tint.opacity(0.14))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(s.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                            ProgressBar(value: max(0.02, Double(s.pct) / 100), tint: tint, track: NK.hair)
+                            Text("\(s.have) of \(s.cost) \(cur?.label.lowercased() ?? "")")
+                                .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                        }
+                    }
+                } else {
+                    Button { showSavingPicker = true } label: {
+                        HStack(spacing: 9) {
+                            Image(systemName: "target").font(.system(size: 15)).foregroundStyle(NK.ai)
+                            Text(ov.rewardShop.isEmpty ? "No rewards yet" : "Pick a reward to save toward")
+                                .font(.system(size: 14, weight: .medium)).foregroundStyle(NK.ink2)
+                            Spacer()
+                            if !ov.rewardShop.isEmpty {
+                                Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).disabled(ov.rewardShop.isEmpty)
+                }
+            }
+        }
     }
 
     // MARK: header
@@ -401,5 +457,64 @@ struct PersonView: View {
     private func fmt(_ n: Double?) -> String {
         guard let n else { return "—" }
         return n == n.rounded() ? String(Int(n)) : String(format: "%g", n)
+    }
+}
+
+/// Pick which reward a person is saving toward (or clear it). Anyone can set their
+/// own per the backend; on a parent's phone you set it for the kid. Lists the
+/// household catalog with this person's progress toward each.
+private struct SavingTowardPicker: View {
+    let rewards: [NookAPI.PersonOverview.ShopReward]
+    let currencies: [NookAPI.PersonOverview.Currency]
+    let current: String?
+    let onPick: (String?) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 8) {
+                    row(emoji: "🚫", title: "Not saving toward anything", sub: nil,
+                        selected: current == nil, tint: NK.ink3) { onPick(nil); dismiss() }
+                    ForEach(rewards) { r in
+                        let cur = currencies.first { $0.key == r.currency }
+                        let sym = cur?.symbol ?? "⭐"
+                        row(emoji: r.emoji ?? "🎁", title: r.title,
+                            sub: r.have >= r.cost ? "Can afford · \(sym)\(r.cost)" : "\(r.toGo) to go · \(sym)\(r.cost)",
+                            selected: current == r.id, tint: Color(hexString: cur?.color) ?? NK.ai) {
+                            onPick(r.id); dismiss()
+                        }
+                    }
+                }
+                .padding(16)
+            }
+            .background(NK.canvas)
+            .navigationTitle("Saving toward").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+    }
+
+    private func row(emoji: String, title: String, sub: String?, selected: Bool, tint: Color,
+                     tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            HStack(spacing: 12) {
+                Text(emoji).font(.system(size: 22)).frame(width: 42, height: 42)
+                    .background(tint.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                    if let sub { Text(sub).font(.system(size: 12)).foregroundStyle(NK.ink3) }
+                }
+                Spacer(minLength: 0)
+                if selected {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 20)).foregroundStyle(NK.ai)
+                }
+            }
+            .padding(12)
+            .background(NK.card)
+            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
+                .strokeBorder(selected ? NK.ai.opacity(0.4) : NK.hair, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 }

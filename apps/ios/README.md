@@ -129,9 +129,11 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     duration / all-day / participants / Google-calendar picker / location,
     create + delete — all offline-first writes to the synced events mirror. ✅
   - **Family per-person spotlight**: tap a person → their stars/streak, today's
-    chores + a featured goal, a merged day list (events + chores, toggle/edit
-    inline), whole-person category balance + AI insight, their goals, recent
-    stars ledger, and reward redemptions. ✅
+    chores + a featured goal, a **"Saving toward"** card (the pinned reward with
+    progress + a **Change** picker that sets `POST /api/persons/:id/saving-toward`,
+    or clears it), a merged day list (events + chores, toggle/edit inline),
+    whole-person category balance + AI insight, their goals, recent stars ledger,
+    and reward redemptions. ✅
   - **Meals — week planner + Recipes library (started):** the Meals tab is a
     **This week / Recipes** segmented switch over one nav stack. **This week** is a
     day-by-day **planner**: each day card lists its planned meals (emoji · title ·
