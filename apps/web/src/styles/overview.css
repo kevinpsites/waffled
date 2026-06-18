@@ -84,6 +84,9 @@
 
 /* stars & chores */
 .pp-star-big { font-size: 30px; font-weight: 800; color: var(--lottie); }
+/* All currencies equal: one wrapping row, same large size, no priority. */
+.pp-wallet { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 22px; }
+.pp-wallet-cur { font-size: 30px; font-weight: 800; line-height: 1; }
 .pp-ledger { display: flex; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--hair-2); font-size: 14px; }
 .pp-ledger:last-child { border-bottom: 0; }
 .pp-ledger-amt { width: 44px; flex: none; font-weight: 800; }

@@ -86,6 +86,7 @@ function StreakCard({ streak }: { streak: StreakSummary }) {
         <span className="pp-streak-days">🔥 {streak.days}-day streak</span>
         <span className="pp-streak-cheer">{streak.days >= 2 ? 'Keep it up!' : 'Start one today'}</span>
       </div>
+      <div className="tiny muted" style={{ fontWeight: 600, margin: '-4px 0 12px' }}>Days in a row doing a chore or logging a goal</div>
       <div className="pp-streak-week">
         {streak.week.map((d, i) => (
           <div key={i} className={`pp-streak-day ${d.active ? 'on' : ''} ${d.isToday ? 'today' : ''} ${d.isFuture ? 'future' : ''}`}>
@@ -211,11 +212,11 @@ export function PersonProfile() {
   const { person, insight } = data
   const defaultCur = data.currencies.find((c) => c.isDefault) ?? data.currencies[0]
   const symOf = (key: string) => data.currencies.find((c) => c.key === key)
+  // Streak and balances each have their own card now — keep the hero to identity
+  // + goal count so the numbers aren't duplicated (and contradicting each other).
   const subBits = [
     person.age != null ? `Age ${person.age}` : null,
     `${data.activeGoals} active goal${data.activeGoals === 1 ? '' : 's'}`,
-    data.topStreak >= 2 ? `🔥 ${data.topStreak}-day streak` : null,
-    `${defaultCur?.symbol ?? '⭐'} ${data.stars} ${(defaultCur?.label ?? 'stars').toLowerCase()}`,
   ].filter(Boolean)
 
   return (
@@ -269,22 +270,24 @@ export function PersonProfile() {
         />
 
         <div className="card pp-card pp-stars">
-          <div className="card-h" style={{ marginBottom: 4, display: 'flex', alignItems: 'center' }}>
-            <span>{defaultCur?.label ?? 'Stars'} & chores</span>
+          <div className="card-h" style={{ marginBottom: 8, display: 'flex', alignItems: 'center' }}>
+            <span>Wallet &amp; chores</span>
             {conversions.length > 0 && (
               <button type="button" className="pp-trade" style={{ marginLeft: 'auto' }} onClick={() => setTrading(true)}>⇄ Trade</button>
             )}
           </div>
-          <div className="pp-star-big" style={defaultCur?.color ? { color: defaultCur.color } : undefined}>{defaultCur?.symbol ?? '⭐'} {data.stars}</div>
-          {data.currencies.length > 1 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', marginTop: 6 }}>
-              {data.balances.filter((b) => b.currency !== defaultCur?.key).map((b) => {
-                const c = symOf(b.currency)
-                return <span key={b.currency} style={{ fontWeight: 800, fontSize: 14, color: c?.color ?? 'var(--ink-2)' }}>{c?.symbol ?? ''} {b.balance}</span>
-              })}
-            </div>
-          )}
-          <div className="tiny muted" style={{ fontWeight: 700, margin: '12px 0 4px' }}>RECENT</div>
+          {/* All currencies are equal — one line, same size, no default-first priority. */}
+          <div className="pp-wallet">
+            {data.balances.map((b) => {
+              const c = symOf(b.currency)
+              return (
+                <span key={b.currency} className="pp-wallet-cur" style={{ color: c?.color ?? 'var(--ink)' }}>
+                  {c?.symbol ?? '⭐'} {b.balance}
+                </span>
+              )
+            })}
+          </div>
+          <div className="tiny muted" style={{ fontWeight: 700, margin: '14px 0 4px' }}>RECENT</div>
           {data.recentLedger.length === 0 && <div className="muted tiny" style={{ fontWeight: 600 }}>No activity yet.</div>}
           {data.recentLedger.map((e, i) => (
             <div key={i} className="pp-ledger">
