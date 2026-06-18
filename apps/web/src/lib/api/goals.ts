@@ -42,6 +42,7 @@ export interface Goal {
   habitTargetPerPeriod: number | null
   trackingMode: string
   logMethod: string
+  autoFromCalendar: boolean
   deadline: string | null
   isFeatured: boolean
   hasRewards: boolean
@@ -53,6 +54,7 @@ export interface Goal {
   stepTotal: number
   stepDone: number
   streakDays: number
+  loggedTodayBy: string[]
   participants: GoalParticipant[]
 }
 

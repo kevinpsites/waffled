@@ -6,6 +6,7 @@ import { useTopbarFull } from './topbar-slot'
 import { CATEGORIES } from './categories'
 import './../styles/goals.css'
 
+const HOUR_UNITS = new Set(['hour', 'hours', 'hr', 'hrs'])
 function pctOf(progress: number, target: number | null): number {
   return target ? Math.min(Math.round((progress / target) * 100), 100) : 0
 }
@@ -61,19 +62,32 @@ export function GoalDetail() {
   const logRef = useRef<() => void>(() => {})
   logRef.current = () => setLogging(true)
 
+  // The log action reads differently per type — and checklists log by ticking
+  // steps inline (in the Steps card below), so they get no top "log" button.
+  const gType = goal?.goalType
+  const gUnit = goal?.unit
+  const logLabel =
+    gType === 'habit' ? '✓ Mark done'
+      : gType === 'count' ? `＋ Add${gUnit ? ` ${gUnit}` : ''}`
+        : gUnit && HOUR_UNITS.has(gUnit.toLowerCase()) ? '＋ Log time'
+          : '＋ Log progress'
+  const showLog = gType !== 'checklist'
+
   useTopbarFull(
     () => (
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
         <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate('/goals')}>‹ Goals</button>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
           <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(`/goals/${id}/edit`)}>Edit goal</button>
-          <button className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => logRef.current()}>
-            ＋ Log time
-          </button>
+          {showLog && (
+            <button className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => logRef.current()}>
+              {logLabel}
+            </button>
+          )}
         </div>
       </div>
     ),
-    [navigate, id]
+    [navigate, id, logLabel, showLog]
   )
 
   if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
@@ -112,7 +126,7 @@ export function GoalDetail() {
       {/* hero banner */}
       <div className="challenge detail-hero">
         <div className="detail-hero-row">
-          <Ring value={pctOf(dProg, dTarget)}>
+          <Ring value={pctOf(dProg, dTarget) / 100}>
             <div>
               <div className="hero-ring-num" style={{ fontSize: 33 }}>{fmtNum(dProg)}</div>
               <div className="hero-ring-sub">{isHabit ? dUnit : `of ${fmtNum(dTarget)}${isChecklist ? ' steps' : goal.unit ? ` ${goal.unit}` : ''}`}</div>

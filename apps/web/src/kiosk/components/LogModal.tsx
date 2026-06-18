@@ -43,12 +43,9 @@ export function LogModal({
   const chips = quickChips(goal.unit)
   const isChecklist = goal.goalType === 'checklist'
   const isHabit = goal.goalType === 'habit'
-  // "Check off" (one-tap +1) is only a meaningful choice on TOTAL goals — "log
-  // exact amounts" vs "just count sessions". Count goals are always whole-unit
-  // and get the stepper (default 1, bump up to log several at once); habits are
-  // always one-tap regardless. So check-off never applies to count/habit.
-  const checkOff = goal.goalType === 'total' && goal.logMethod === 'check_off'
-  const oneTap = isHabit || checkOff
+  // Logging style is derived purely from the goal type: total = amount entry,
+  // count = whole-unit stepper, habit = one tap per day, checklist = tick steps.
+  const oneTap = isHabit
   const isCount = goal.goalType === 'count'
   const [amount, setAmount] = useState<number>(oneTap ? 1 : isCount ? 1 : chips[1]?.value ?? 1)
   const isShared = goal.trackingMode === 'shared_total'
@@ -58,8 +55,6 @@ export function LogModal({
   const period = goal.habitPeriod ?? 'week'
   const periodLabel = period === 'day' ? 'today' : period === 'month' ? 'this month' : 'this week'
   const habitTarget = goal.habitTargetPerPeriod ?? goal.target ?? 0
-  // A daily habit already logged today can't be logged again (server enforces it too).
-  const doneToday = isHabit && period === 'day' && goal.periodDone >= 1
   // Multi-select only makes sense when tapping several people changes the math
   // in a way we can represent cleanly: a divisible shared pool (split) or
   // each-tracks (full amount each). Whole-unit goals credit a single party.
@@ -67,6 +62,11 @@ export function LogModal({
   const [who, setWho] = useState<string[]>(
     goal.participants.length === 1 ? [goal.participants[0].personId] : multi ? [] : [FAMILY]
   )
+  // A single participant is always credited; no picker (and no "Family") needed.
+  const showWho = goal.participants.length > 1
+  // A habit can only be marked done once per day per person (the server enforces
+  // it too). It's "done" when everyone currently selected already logged today.
+  const doneToday = isHabit && who.length > 0 && who.every((id) => goal.loggedTodayBy.includes(id))
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -178,12 +178,6 @@ export function LogModal({
                 </span>
               </div>
             </>
-          ) : checkOff ? (
-            // Check-off goal: a single tap counts as one. No amount to enter.
-            <div className="log-habit">
-              <span className="log-habit-prog">{goal.totalProgress.toLocaleString()}{goal.target ? ` / ${goal.target.toLocaleString()}` : ''}</span>
-              <span className="tiny muted" style={{ fontWeight: 600 }}>so far{goal.unit ? ` · ${goal.unit}` : ''}</span>
-            </div>
           ) : isCount ? (
             // Whole-unit count: integer stepper, no fractions.
             <>
@@ -213,7 +207,7 @@ export function LogModal({
             </>
           )}
 
-          {goal.participants.length > 0 && (
+          {showWho && (
             <>
               <div className="flabel" style={{ marginTop: 16 }}>Who?{!multi && <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600, color: 'var(--ink-3)' }}> · one</span>}</div>
               <div className="log-who">
@@ -260,9 +254,7 @@ export function LogModal({
               ? 'Saving…'
               : isHabit
                 ? doneToday ? 'Done for today ✓' : '✓ Mark done for today'
-                : checkOff
-                  ? '✓ Mark done'
-                  : `Log ${logAmount}${goal.unit ? ` ${goal.unit}` : ''}`}
+                : `Log ${logAmount}${goal.unit ? ` ${goal.unit}` : ''}`}
           </button>
         </form>
         <button

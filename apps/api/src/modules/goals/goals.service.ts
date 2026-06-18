@@ -170,8 +170,9 @@ export async function createGoal(tenant: Tenant, input: CreateGoalInput): Promis
     const g = await client.query<{ id: string }>(
       `insert into goals
          (household_id, goal_list_id, title, emoji, category, goal_type, unit, target_value,
-          habit_period, habit_target_per_period, tracking_mode, log_method, deadline, is_featured, has_rewards)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) returning id`,
+          habit_period, habit_target_per_period, tracking_mode, log_method, auto_from_calendar,
+          deadline, is_featured, has_rewards)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) returning id`,
       [
         tenant.householdId,
         input.goalListId ?? null,
@@ -185,6 +186,7 @@ export async function createGoal(tenant: Tenant, input: CreateGoalInput): Promis
         input.habitTargetPerPeriod ?? null,
         input.trackingMode,
         input.logMethod ?? 'quick_log',
+        input.autoFromCalendar ?? false,
         input.deadline ?? null,
         input.isFeatured ?? false,
         input.hasRewards ?? false,
@@ -251,6 +253,16 @@ const PERIOD_DONE_SUBQUERY = `case when g.goal_type = 'habit' then (
          >= date_trunc(g.habit_period, (now() at time zone h.timezone))
 ) else 0 end`
 
+// Who has already logged this goal TODAY (household timezone), as an array of
+// person ids — with the sentinel '__family__' for a no-person (shared) log. The
+// client uses it to stop a habit being marked done twice in a day per person.
+const LOGGED_TODAY_SUBQUERY = `coalesce((
+  select json_agg(distinct coalesce(gl.person_id::text, '__family__'))
+    from goal_logs gl, households h
+   where h.id = g.household_id and gl.goal_id = g.id and gl.deleted_at is null
+     and (gl.logged_at at time zone h.timezone)::date = (now() at time zone h.timezone)::date
+), '[]'::json)`
+
 // Checklist progress comes from steps (done / total), not summed logs.
 const STEP_TOTAL_SUBQUERY = `(select count(*) from goal_steps gs where gs.goal_id = g.id and gs.deleted_at is null)`
 const STEP_DONE_SUBQUERY = `(select count(*) from goal_steps gs where gs.goal_id = g.id and gs.deleted_at is null and gs.done_at is not null)`
@@ -268,6 +280,7 @@ interface GoalRow extends QueryResultRow {
   habit_target_per_period: number | null
   tracking_mode: string
   log_method: string
+  auto_from_calendar: boolean
   deadline: string | null
   is_featured: boolean
   has_rewards: boolean
@@ -277,6 +290,7 @@ interface GoalRow extends QueryResultRow {
   period_done: number
   step_total: number
   step_done: number
+  logged_today_by: string[]
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   participants: any[]
 }
@@ -294,6 +308,7 @@ function mapGoal(g: GoalRow) {
     habitTargetPerPeriod: g.habit_target_per_period,
     trackingMode: g.tracking_mode,
     logMethod: g.log_method,
+    autoFromCalendar: g.auto_from_calendar,
     deadline: g.deadline,
     isFeatured: g.is_featured,
     hasRewards: g.has_rewards,
@@ -304,6 +319,7 @@ function mapGoal(g: GoalRow) {
     periodDone: Number(g.period_done),
     stepTotal: Number(g.step_total),
     stepDone: Number(g.step_done),
+    loggedTodayBy: g.logged_today_by ?? [],
     participants: g.participants,
   }
 }
@@ -354,7 +370,7 @@ async function streaksFor(householdId: string, goalIds: string[]): Promise<Map<s
 export async function listGoals(householdId: string, listId?: string | null) {
   const { rows } = await query<GoalRow>(
     `select g.id, g.goal_list_id, g.title, g.emoji, g.category, g.goal_type, g.unit, g.target_value,
-            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.log_method, g.deadline,
+            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.log_method, g.auto_from_calendar, g.deadline,
             g.is_featured, g.has_rewards,
             coalesce((select sum(amount)::float from goal_logs gl
                        where gl.goal_id = g.id and gl.deleted_at is null), 0) as total_progress,
@@ -367,6 +383,7 @@ export async function listGoals(householdId: string, listId?: string | null) {
             ${PERIOD_DONE_SUBQUERY} as period_done,
             ${STEP_TOTAL_SUBQUERY} as step_total,
             ${STEP_DONE_SUBQUERY} as step_done,
+            ${LOGGED_TODAY_SUBQUERY} as logged_today_by,
             ${PARTICIPANTS_SUBQUERY} as participants
        from goals g
       where g.household_id = $1 and g.deleted_at is null and g.is_active
@@ -424,7 +441,7 @@ export async function goalExists(householdId: string, id: string): Promise<boole
 export async function goalDetail(householdId: string, id: string) {
   const { rows } = await query<GoalRow>(
     `select g.id, g.goal_list_id, g.title, g.emoji, g.category, g.goal_type, g.unit, g.target_value,
-            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.log_method, g.deadline,
+            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.log_method, g.auto_from_calendar, g.deadline,
             g.is_featured, g.has_rewards, g.created_at,
             coalesce((select sum(amount)::float from goal_logs gl
                        where gl.goal_id = g.id and gl.deleted_at is null), 0) as total_progress,
@@ -437,6 +454,7 @@ export async function goalDetail(householdId: string, id: string) {
             ${PERIOD_DONE_SUBQUERY} as period_done,
             ${STEP_TOTAL_SUBQUERY} as step_total,
             ${STEP_DONE_SUBQUERY} as step_done,
+            ${LOGGED_TODAY_SUBQUERY} as logged_today_by,
             ${PARTICIPANTS_SUBQUERY} as participants
        from goals g
       where g.household_id = $1 and g.id = $2 and g.deleted_at is null`,
@@ -623,6 +641,7 @@ const GOAL_COLUMNS: Record<string, string> = {
   habitTargetPerPeriod: 'habit_target_per_period',
   trackingMode: 'tracking_mode',
   logMethod: 'log_method',
+  autoFromCalendar: 'auto_from_calendar',
   deadline: 'deadline',
   isFeatured: 'is_featured',
   hasRewards: 'has_rewards',

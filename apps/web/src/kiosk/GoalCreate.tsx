@@ -17,30 +17,12 @@ const TYPES = [
   { key: 'checklist', emoji: '🪜', title: 'Checklist', desc: 'Named steps you tick off' },
 ] as const
 
-type LogMethod = 'quick_log' | 'check_off' | 'auto_calendar'
-type LogMethodOption = { key: LogMethod; label: string; tone: 'on' | 'ai' | '' }
-
-// Two separate ideas live here:
-//   • the MANUAL fork (enter an amount vs one tap = +1) is only meaningful for
-//     total goals — count is a whole-unit stepper, habits are once-a-day.
-//   • "auto from calendar" is a SOURCE, not a manual method, so it's offered for
-//     anything time/occurrence based (total, count, habit). Checklists log by
-//     ticking named steps, so they have no log-method picker at all.
-const CALENDAR_OPTION: LogMethodOption = { key: 'auto_calendar', label: '📅 Auto from calendar ✦', tone: 'ai' }
-function logMethodsFor(goalType: string): LogMethodOption[] {
-  if (goalType === 'total')
-    return [
-      { key: 'quick_log', label: '⚡ Enter amount', tone: 'on' },
-      CALENDAR_OPTION,
-      { key: 'check_off', label: '✅ One tap = +1', tone: '' },
-    ]
-  if (goalType === 'count' || goalType === 'habit')
-    return [
-      { key: 'quick_log', label: goalType === 'habit' ? '✋ Mark manually' : '✋ Log manually', tone: 'on' },
-      CALENDAR_OPTION,
-    ]
-  return [] // checklist: logged by ticking steps
-}
+// How a goal is logged is derived entirely from its type — total = enter an
+// amount, count = whole-unit stepper, habit = one tap a day, checklist = tick
+// steps. There's no manual log-method to pick. "Auto-count from calendar" is a
+// separate, independent opt-in (it coexists with manual logging) offered on
+// everything except checklists, which complete by ticking named steps.
+const CALENDAR_TYPES = new Set(['total', 'count', 'habit'])
 
 type Milestone = { threshold: number; emoji: string; label: string; rewardText: string }
 
@@ -96,7 +78,7 @@ export function GoalCreate() {
     deadline: '',
     habitPeriod: 'week',
     habitPerPeriod: 5,
-    logMethod: 'quick_log' as LogMethod,
+    autoFromCalendar: false,
     isFeatured: true,
     hasRewards: false,
     weeklyCheckIn: true,
@@ -124,7 +106,7 @@ export function GoalCreate() {
       deadline: editGoal.deadline ?? '',
       habitPeriod: editGoal.habitPeriod ?? 'week',
       habitPerPeriod: editGoal.habitTargetPerPeriod ?? 5,
-      logMethod: (editGoal.logMethod as LogMethod) ?? 'quick_log',
+      autoFromCalendar: editGoal.autoFromCalendar ?? false,
       isFeatured: editGoal.isFeatured,
       hasRewards: editGoal.hasRewards,
     }))
@@ -137,7 +119,16 @@ export function GoalCreate() {
   }, [editing, editGoal])
 
   const selectedList = useMemo(() => lists.find((l) => l.id === form.goalListId) ?? null, [lists, form.goalListId])
-  const canSave = form.title.trim().length > 0 && !saving
+
+  // A goal needs a name, at least one person, and the measurement filled in for
+  // its type before it can be saved. The deadline is always optional.
+  const participantCount = selectedList ? selectedList.members.length : editing ? editGoal?.participants.length ?? 0 : 0
+  const stepCount = steps.filter((s) => s.label.trim()).length
+  const typeValid =
+    form.goalType === 'checklist' ? stepCount >= 1
+      : form.goalType === 'habit' ? form.habitPerPeriod > 0
+        : Number(form.target) > 0 && form.unit.trim().length > 0 // total | count
+  const canSave = form.title.trim().length > 0 && participantCount >= 1 && typeValid && !saving
 
   const submitRef = useRef<() => void>(() => {})
   useTopbarFull(
@@ -147,11 +138,19 @@ export function GoalCreate() {
         <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600 }}>{editing ? 'Edit goal' : 'New goal'}</div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
           <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(editing ? `/goals/${id}` : '/goals')}>Cancel</button>
-          <button className="pill btn-primary create-submit" style={{ color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => submitRef.current()}>{editing ? 'Save changes' : 'Create goal'}</button>
+          <button
+            className="pill btn-primary create-submit"
+            disabled={!canSave}
+            title={canSave ? undefined : 'Add a name, pick who it’s for, and fill in the measurement'}
+            style={{ color: '#fff', border: 0, cursor: canSave ? 'pointer' : 'not-allowed', opacity: canSave ? 1 : 0.5 }}
+            onClick={() => submitRef.current()}
+          >
+            {editing ? 'Save changes' : 'Create goal'}
+          </button>
         </div>
       </div>
     ),
-    [navigate, editing, id]
+    [navigate, editing, id, canSave]
   )
 
   async function submit() {
@@ -169,9 +168,9 @@ export function GoalCreate() {
       habitPeriod: form.goalType === 'habit' ? form.habitPeriod : null,
       habitTargetPerPeriod: form.goalType === 'habit' ? form.habitPerPeriod : null,
       trackingMode: form.trackingMode,
-      // Only persist a log method that's valid for this type (e.g. never a stale
-      // check_off on a count goal); checklist has none, so it falls back to quick_log.
-      logMethod: logMethodsFor(form.goalType).some((m) => m.key === form.logMethod) ? form.logMethod : 'quick_log',
+      // Logging style is derived from the type; calendar auto-count is an
+      // independent opt-in (never on checklists, which tick steps).
+      autoFromCalendar: isChecklist ? false : form.autoFromCalendar,
       deadline: form.deadline || null,
       isFeatured: form.isFeatured,
       hasRewards: form.hasRewards,
@@ -237,13 +236,7 @@ export function GoalCreate() {
             {TYPES.map((t) => {
               const on = form.goalType === t.key
               return (
-                <button key={t.key} type="button" className={`type-pick ${on ? 'on' : ''}`} onClick={() => {
-                  set('goalType', t.key)
-                  setMilestones(defaultMilestones(t.key))
-                  // Preserve the log method if it's still valid for the new type
-                  // (keeps a calendar choice across total↔count↔habit); else reset.
-                  if (!logMethodsFor(t.key).some((m) => m.key === form.logMethod)) set('logMethod', 'quick_log')
-                }}>
+                <button key={t.key} type="button" className={`type-pick ${on ? 'on' : ''}`} onClick={() => { set('goalType', t.key); setMilestones(defaultMilestones(t.key)) }}>
                   <div className="tpe">{t.emoji}</div>
                   <div style={{ flex: 1 }}>
                     <div className="tpt">{t.title}</div>
@@ -313,30 +306,28 @@ export function GoalCreate() {
           </div>
         </div>
 
-        {/* The manual fork (enter amount vs one tap) only shows for total; the
-            calendar SOURCE is offered for total/count/habit. Checklists log by
-            ticking steps, so logMethodsFor returns [] and the picker is hidden. */}
-        {logMethodsFor(form.goalType).length > 0 && (
+        {/* Logging style is derived from the type above. Calendar auto-counting
+            is an independent opt-in that coexists with manual logging — offered
+            on everything except checklists. */}
+        {CALENDAR_TYPES.has(form.goalType) && (
           <div>
             <div className="flabel">How is progress logged?</div>
-            <div className="gc-chips">
-              {logMethodsFor(form.goalType).map((m) => {
-                const on = form.logMethod === m.key
-                const style: React.CSSProperties = on
-                  ? m.tone === 'ai'
-                    ? { background: '#efeafc', color: 'var(--ai)', borderColor: '#ddd2f5' }
-                    : { background: 'var(--ink)', color: '#fff', borderColor: 'var(--ink)' }
-                  : {}
-                return (
-                  <button key={m.key} type="button" className="pill gc-chip" style={{ cursor: 'pointer', ...style }} onClick={() => set('logMethod', m.key)}>
-                    {m.label}
-                  </button>
-                )
-              })}
+            <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 8 }}>
+              You can always log it yourself, anytime. Optionally let the calendar count too:
             </div>
-            {form.logMethod === 'auto_calendar' && (
+            <div className="feature-row" onClick={() => set('autoFromCalendar', !form.autoFromCalendar)} style={{ cursor: 'pointer' }}>
+              <div style={{ fontSize: 24 }}>📅</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14.5, fontWeight: 700 }}>Also auto-count from calendar ✦</div>
+                <div className="tiny muted" style={{ fontWeight: 600 }}>
+                  Matching calendar events add progress automatically
+                </div>
+              </div>
+              <Toggle on={form.autoFromCalendar} onClick={() => set('autoFromCalendar', !form.autoFromCalendar)} />
+            </div>
+            {form.autoFromCalendar && (
               <div className="tiny muted" style={{ fontWeight: 600, marginTop: 8 }}>
-                ✦ Auto-counting from the calendar is coming with Google sync — for now it logs like manual.
+                ✦ Auto-counting from the calendar arrives with Google sync — for now this just saves the preference.
               </div>
             )}
           </div>
