@@ -341,7 +341,7 @@ struct RewardShopView: View {
     @Environment(SyncManager.self) private var sync
     @State private var model = RewardsModel()
     @State private var overview: NookAPI.PersonOverview?
-    @State private var confirm: NookAPI.Reward?
+    @State private var confirm: NookAPI.PersonOverview.ShopReward?
     @State private var giving = false
     @State private var showSavingPicker = false
 
@@ -357,13 +357,14 @@ struct RewardShopView: View {
                                      label: savingCur?.label,
                                      canPick: !(overview?.rewardShop.isEmpty ?? true)) { showSavingPicker = true }
                     shopHead
-                    if model.rewards.isEmpty {
-                        Text("No rewards yet — a parent can add them on the web.")
+                    let shop = overview?.rewardShop ?? []
+                    if shop.isEmpty {
+                        Text("No rewards yet — a parent can add them.")
                             .font(.system(size: 14)).foregroundStyle(NK.ink3)
                             .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 30)
                     } else {
                         LazyVGrid(columns: cols, spacing: 12) {
-                            ForEach(model.rewards) { r in rewardCard(r) }
+                            ForEach(shop) { r in rewardCard(r) }
                         }
                     }
                 } else if model.loading {
@@ -444,10 +445,9 @@ struct RewardShopView: View {
 
     // MARK: a reward
 
-    private func rewardCard(_ r: NookAPI.Reward) -> some View {
-        let bal = model.balance(personId, r.currency)
+    private func rewardCard(_ r: NookAPI.PersonOverview.ShopReward) -> some View {
         let cur = model.currency(r.currency)
-        let canAfford = bal >= r.cost
+        let canAfford = r.have >= r.cost   // server-computed have/toGo
         return VStack(spacing: 9) {
             Text(r.emoji ?? "🎁").font(.system(size: 40)).frame(height: 54)
             Text(r.title).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
@@ -466,7 +466,7 @@ struct RewardShopView: View {
                 }
                 .buttonStyle(.plain).disabled(giving)
             } else {
-                Text("\(r.cost - bal) to go")
+                Text("\(r.toGo) to go")
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
                     .frame(maxWidth: .infinity).padding(.vertical, 11)
                     .background(NK.panel).clipShape(Capsule())
@@ -479,12 +479,12 @@ struct RewardShopView: View {
         .nkShadow1()
     }
 
-    private func give(_ r: NookAPI.Reward) async {
+    private func give(_ r: NookAPI.PersonOverview.ShopReward) async {
         giving = true
         _ = await sync.giveReward(rewardId: r.id, personId: personId)
         confirm = nil
         giving = false
-        await model.load()
+        await reload()
     }
 }
 
