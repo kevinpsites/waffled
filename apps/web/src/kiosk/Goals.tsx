@@ -241,6 +241,10 @@ export function Goals() {
   )
   const featured = visible.find((g) => g.isFeatured) ?? null
   const more = visible.filter((g) => g !== featured)
+  // For an individual list, the visible goals ARE that person's, so the best
+  // single-goal streak is a free at-a-glance "on a roll" cue. (Distinct from the
+  // whole-person chore+goal streak on their profile — labeled as a goal streak.)
+  const maxGoalStreak = isIndividual ? Math.max(0, ...visible.map((g) => g.streakDays)) : 0
 
   if (listsError) {
     return <div className="muted" style={{ padding: 30 }}>Sign this kiosk in to see goals.</div>
@@ -290,6 +294,7 @@ export function Goals() {
             )}
             <div className="tiny muted" style={{ fontWeight: 600 }}>
               {selected ? `${selected.goalCount} goals · ${listSub(selected)}` : `${goals.length} goals`}
+              {maxGoalStreak >= 2 && <span title="Longest active goal streak"> · 🔥 {maxGoalStreak}-day goal streak</span>}
             </div>
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center' }}>
