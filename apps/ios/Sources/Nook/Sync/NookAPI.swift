@@ -407,6 +407,105 @@ struct NookAPI: Sendable {
         return try await getJSON("/api/currencies", as: Resp.self).currencies
     }
 
+    // MARK: - Rewards
+
+    /// One reward in the household catalog — costs `cost` of `currency`.
+    struct Reward: Decodable, Identifiable, Hashable, Sendable {
+        let id: String
+        let title: String
+        let emoji: String?
+        let cost: Int
+        let currency: String        // currency key (e.g. "stars")
+        let sortOrder: Int
+    }
+
+    /// A reward redemption: request → pending → approved/denied. Carries the
+    /// requesting person's display info and a snapshot of the reward at request time.
+    struct RewardRedemption: Decodable, Identifiable, Hashable, Sendable {
+        let id: String
+        let rewardId: String
+        let personId: String
+        let personName: String?
+        let personAvatar: String?
+        let personColor: String?
+        let title: String
+        let emoji: String?
+        let cost: Int
+        let currency: String
+        let status: String          // pending | approved | denied
+        let decidedAt: String?
+        let createdAt: String
+    }
+
+    /// One person's balances across every currency, plus recent ledger activity.
+    struct PersonBalance: Decodable, Identifiable, Hashable, Sendable {
+        let personId: String
+        let name: String?
+        let avatarEmoji: String?
+        let colorHex: String?
+        let stars: Int              // back-compat: balance in the default currency
+        let balances: [CurrencyBalance]
+        let recent: [LedgerLine]
+        var id: String { personId }
+
+        struct CurrencyBalance: Decodable, Identifiable, Hashable, Sendable {
+            let currency: String
+            let balance: Int
+            var id: String { currency }
+        }
+        struct LedgerLine: Decodable, Identifiable, Hashable, Sendable {
+            let amount: Int
+            let reason: String
+            let currency: String
+            let createdAt: String
+            var id: String { createdAt + reason + "\(amount)" + currency }
+        }
+    }
+
+    /// The household reward-economy snapshot — currency catalog + every person's
+    /// per-currency balances and recent activity.
+    struct BalancesSummary: Decodable, Sendable {
+        let currencies: [Currency]
+        let people: [PersonBalance]
+    }
+
+    /// The full rewards catalog (active rewards, in sort order).
+    func rewardsCatalog() async throws -> [Reward] {
+        struct Resp: Decodable { let rewards: [Reward] }
+        return try await getJSON("/api/rewards", as: Resp.self).rewards
+    }
+
+    /// Per-person, per-currency balances for the whole household.
+    func balancesSummary() async throws -> BalancesSummary {
+        try await getJSON("/api/balances", as: BalancesSummary.self)
+    }
+
+    /// Redemptions, optionally filtered by status (pending | approved | denied).
+    func redemptions(status: String? = nil) async throws -> [RewardRedemption] {
+        struct Resp: Decodable { let redemptions: [RewardRedemption] }
+        let path = status.map { "/api/redemptions?status=\($0)" } ?? "/api/redemptions"
+        return try await getJSON(path, as: Resp.self).redemptions
+    }
+
+    /// Request a reward for a person — creates a pending redemption.
+    func redeemReward(rewardId: String, personId: String) async throws -> RewardRedemption {
+        struct Resp: Decodable { let redemption: RewardRedemption }
+        return try await sendReturning("POST", "/api/rewards/\(rewardId)/redeem",
+                                       body: ["personId": .string(personId)], as: Resp.self).redemption
+    }
+
+    /// Approve a pending redemption (admin) — writes the debit ledger entry.
+    func approveRedemption(id: String) async throws -> RewardRedemption {
+        struct Resp: Decodable { let redemption: RewardRedemption }
+        return try await sendJSON("POST", "/api/redemptions/\(id)/approve", as: Resp.self).redemption
+    }
+
+    /// Deny a pending redemption (admin) — leaves the balance unchanged.
+    func denyRedemption(id: String) async throws -> RewardRedemption {
+        struct Resp: Decodable { let redemption: RewardRedemption }
+        return try await sendJSON("POST", "/api/redemptions/\(id)/deny", as: Resp.self).redemption
+    }
+
     /// The chore instances for `date` (YYYY-MM-DD; defaults to today within ±31 days).
     func choreInstances(date: String) async throws -> [ChoreInstanceDTO] {
         struct Resp: Decodable { let instances: [ChoreInstanceDTO] }
