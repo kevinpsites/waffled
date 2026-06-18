@@ -176,9 +176,11 @@ struct RewardShopView: View {
     @Binding var path: [HubRoute]
     @Environment(SyncManager.self) private var sync
     @State private var model = RewardsModel()
+    @State private var saving: NookAPI.PersonOverview.SavingToward?
     @State private var confirm: NookAPI.Reward?
     @State private var giving = false
 
+    private let api = NookAPI()
     private let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
     var body: some View {
@@ -186,6 +188,7 @@ struct RewardShopView: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let p = model.person(personId) {
                     header(p)
+                    if let s = saving { savingHero(s) }
                     shopHead
                     if model.rewards.isEmpty {
                         Text("No rewards yet — a parent can add them on the web.")
@@ -205,9 +208,9 @@ struct RewardShopView: View {
         .background(NK.canvas)
         .navigationTitle(model.person(personId)?.name ?? "Reward shop")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await model.load() }
-        .refreshable { await model.load() }
-        .onChange(of: sync.rewardsRev) { _, _ in Task { await model.load() } }
+        .task { await reload() }
+        .refreshable { await reload() }
+        .onChange(of: sync.rewardsRev) { _, _ in Task { await reload() } }
         .confirmationDialog(confirm.map { "Redeem \($0.title)?" } ?? "",
                             isPresented: Binding(get: { confirm != nil },
                                                  set: { if !$0 { confirm = nil } }),
@@ -246,12 +249,47 @@ struct RewardShopView: View {
         return ordered.map { key in byKey[key] ?? .init(currency: key, balance: 0) }
     }
 
+    // MARK: saving-toward hero
+
+    private func savingHero(_ s: NookAPI.PersonOverview.SavingToward) -> some View {
+        let cur = model.currency(s.currency)
+        let tint = Color(hexString: cur?.color) ?? NK.ai
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("SAVING TOWARD")
+                .font(.system(size: 11, weight: .heavy)).tracking(0.6).foregroundStyle(.white.opacity(0.85))
+            HStack(spacing: 9) {
+                Text(s.emoji ?? "🎁").font(.system(size: 24))
+                Text(s.title).font(NK.serif(22)).foregroundStyle(.white).lineLimit(2)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.28))
+                    Capsule().fill(.white)
+                        .frame(width: geo.size.width * max(0.02, min(1, Double(s.pct) / 100)))
+                }
+            }
+            .frame(height: 9)
+            Text("\(s.have) of \(s.cost) \(cur?.label.lowercased() ?? "")")
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LinearGradient(colors: [tint.opacity(0.92), tint],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing))
+        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+    }
+
     private var shopHead: some View {
         HStack {
             Text("Reward shop").font(.system(size: 18, weight: .bold)).foregroundStyle(NK.ink)
             Spacer()
             Text("Set by parents").font(.system(size: 13)).foregroundStyle(NK.ink3)
         }
+    }
+
+    private func reload() async {
+        await model.load()
+        saving = try? await api.personOverview(id: personId).savingToward
     }
 
     // MARK: a reward

@@ -175,11 +175,12 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     their **reward shop**: a header with their balances and a catalog grid (emoji ·
     title · cost) where each reward shows **Redeem** (debits on confirm — redeem +
     auto-approve, since the actor is a parent) when affordable in that reward's
-    currency, or **"N to go"** when short. Over REST (`GET /api/balances`,
-    `/api/rewards`, `/api/redemptions`; `POST …/redeem`, `…/approve`, `…/deny`),
-    bumped through `rewardsRev`. Reward editing, currency settings, and
-    conversions/Trade follow; the per-kid "saving toward" hero waits on a backend
-    endpoint. ✅
+    currency, or **"N to go"** when short. The shop is topped by a violet
+    **"Saving toward"** hero (emoji · title · progress · "have of cost") when the
+    person has a target, from the overview's `savingToward`. Over REST
+    (`GET /api/balances`, `/api/rewards`, `/api/redemptions`, `/api/persons/:id/
+    overview`; `POST …/redeem`, `…/approve`, `…/deny`), bumped through `rewardsRev`.
+    Reward editing, currency settings, and conversions/Trade follow. ✅
   - Photos / Settings: still live-summary placeholders.
 - **Next:** Meals **cook-assignment** on a planned slot + grocery-build from the
   week; a hub tile (Rewards/Photos/Settings); Auth0 login (roadmap 4.2.1) to

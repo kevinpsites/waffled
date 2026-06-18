@@ -544,6 +544,7 @@ struct NookAPI: Sendable {
         let insight: Insight?
         let recentLedger: [LedgerEntry]
         let redemptions: [Redemption]
+        let savingToward: SavingToward?   // the reward this person is closest to (hero)
 
         struct Currency: Decodable, Sendable, Identifiable {
             let key, label, symbol: String
@@ -606,6 +607,13 @@ struct NookAPI: Sendable {
             let cost: Int
             let currency, status: String
             let createdAt: String
+        }
+        /// The reward a person is saving toward — drives the shop's hero card.
+        struct SavingToward: Decodable, Sendable {
+            let id, title: String
+            let emoji: String?
+            let cost, have, toGo, pct: Int
+            let currency: String
         }
     }
 
