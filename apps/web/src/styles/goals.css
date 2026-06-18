@@ -59,6 +59,21 @@
   font-size: 24px;
   font-weight: 600;
 }
+/* Individual-list heading doubles as a link to that person's profile. */
+button.goal-listhead-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+button.goal-listhead-link:hover {
+  color: var(--primary);
+}
 .goal-listhead .seg button {
   cursor: pointer;
 }

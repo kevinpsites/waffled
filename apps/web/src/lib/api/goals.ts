@@ -1,5 +1,5 @@
 // Goals domain — client slice, types, and hooks. Matches the goal-lists mocks.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { apiGet, apiSend, apiDelete } from './client'
 import { tap } from './bus'
 
@@ -174,10 +174,18 @@ export function useGoalDetail(id: string | null): GoalDetailState {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [nonce, setNonce] = useState(0)
+  const idRef = useRef(id)
   useEffect(() => {
     if (!id) return
     let alive = true
-    setLoading(true)
+    // Blank to "Loading…" only when switching to a different goal (or first
+    // load) — NOT on a refetch of the same goal (e.g. ticking a checklist step),
+    // which would otherwise flash the whole page.
+    if (idRef.current !== id) {
+      idRef.current = id
+      setGoal(null)
+      setLoading(true)
+    }
     goalsApi
       .goal(id)
       .then((d) => alive && (setGoal(d.goal), setLoading(false), setError(false)))

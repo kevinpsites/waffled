@@ -275,7 +275,19 @@ export function Goals() {
         <div className="goal-listhead">
           {selected && <AvStack members={selected.members} />}
           <div>
-            <div className="nk-serif goal-listhead-t">{selected?.name ?? 'All goals'}</div>
+            {isIndividual && selected ? (
+              // An individual list IS a person — make the name open their profile.
+              <button
+                type="button"
+                className="nk-serif goal-listhead-t goal-listhead-link"
+                onClick={() => navigate(`/person/${selected.members[0].personId}`)}
+                title={`View ${selected.name}'s page`}
+              >
+                {selected.name} ›
+              </button>
+            ) : (
+              <div className="nk-serif goal-listhead-t">{selected?.name ?? 'All goals'}</div>
+            )}
             <div className="tiny muted" style={{ fontWeight: 600 }}>
               {selected ? `${selected.goalCount} goals · ${listSub(selected)}` : `${goals.length} goals`}
             </div>
@@ -289,14 +301,13 @@ export function Goals() {
                 <button className={filter === 'each' ? 'on' : ''} onClick={() => setFilter('each')}>Each</button>
               </div>
             )}
-            {selected && (
+            {/* "Edit group" only makes sense for multi-person lists — an
+                individual isn't a group. */}
+            {selected && !isIndividual && (
               <button type="button" className="pill" style={{ cursor: 'pointer' }} title="Edit group" onClick={() => setEditingList(selected)}>
                 ✎ Edit group
               </button>
             )}
-            <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate('/family')}>
-              👨‍👩‍👧 Family
-            </button>
             <button type="button" className="pill btn-primary" onClick={() => navigate('/goals/new')}>
               <Icon name="plus" />
               <span>New goal</span>
