@@ -88,8 +88,10 @@ struct PersonView: View {
                 statCards
                 if let ov = model.overview {
                     let cur = ov.currencies.first { $0.key == ov.savingToward?.currency }
-                    SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, label: cur?.label,
-                                     canPick: !ov.rewardShop.isEmpty) { showSavingPicker = true }
+                    SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, symbol: cur?.symbol,
+                                     canPick: !ov.rewardShop.isEmpty,
+                                     onChange: { showSavingPicker = true },
+                                     onRedeem: redeemSaving)
                 }
                 daySection
                 if let ov = model.overview {
@@ -117,6 +119,12 @@ struct PersonView: View {
                 Task { _ = await sync.setSavingToward(personId: personId, rewardId: rewardId); await model.load() }
             }
         }
+    }
+
+    /// Redeem the pinned saving-toward reward directly (only shown when affordable).
+    private func redeemSaving() {
+        guard let s = model.overview?.savingToward else { return }
+        Task { _ = await sync.giveReward(rewardId: s.id, personId: personId); await model.load() }
     }
 
     // MARK: header

@@ -63,54 +63,122 @@ struct CoinChip: View {
     }
 }
 
+/// A jar that fills from the bottom to `pct` — the goal-jar take on "saving toward".
+/// A white jar on the violet hero, filled with the currency color (web parity).
+struct JarView: View {
+    let pct: Int
+    let fill: Color
+
+    var body: some View {
+        let f = max(0, min(100, Double(pct)))
+        VStack(spacing: 3) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(Color(red: 0.80, green: 0.73, blue: 0.61)).frame(width: 26, height: 6) // lid
+            ZStack(alignment: .bottom) {
+                Rectangle().fill(.white)
+                Rectangle().fill(fill.opacity(0.85)).frame(height: 60 * f / 100)
+            }
+            .frame(width: 48, height: 60)
+            .overlay(Text("\(Int(f))%").font(.system(size: 13, weight: .heavy))
+                .foregroundStyle(f > 55 ? .white : NK.ink))
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .strokeBorder(Color(white: 0.88), lineWidth: 2.5))
+        }
+    }
+}
+
 /// The saving-toward block, shared by the reward shop and the person spotlight so
-/// both read identically: a violet hero when a target is pinned (tap to change), or
-/// a dashed "pick one" prompt when not. Renders nothing if there's no target and no
-/// rewards to pick. `colorHex`/`label` describe the target's currency.
+/// both read identically: a violet hero when a target is pinned — with a Bar/Jar
+/// progress toggle, a **Redeem** button once it's affordable, and **Change** — or a
+/// dashed "pick one" prompt when not. `colorHex`/`symbol` describe the currency.
 struct SavingTowardCard: View {
     let saving: NookAPI.PersonOverview.SavingToward?
     let colorHex: String?
-    let label: String?
+    let symbol: String?
     let canPick: Bool
-    let onTap: () -> Void
+    let onChange: () -> Void
+    let onRedeem: () -> Void
+
+    @AppStorage("nook.savingJar") private var jar = false
 
     var body: some View {
-        if let s = saving {
-            Button(action: onTap) { hero(s) }.buttonStyle(.plain)
-        } else if canPick {
-            Button(action: onTap) { prompt }.buttonStyle(.plain)
-        }
+        if let s = saving { hero(s) }
+        else if canPick { Button(action: onChange) { prompt }.buttonStyle(.plain) }
     }
 
     private func hero(_ s: NookAPI.PersonOverview.SavingToward) -> some View {
         let tint = Color(hexString: colorHex) ?? NK.ai
+        let ready = s.have >= s.cost
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("SAVING TOWARD")
                     .font(.system(size: 11, weight: .heavy)).tracking(0.6).foregroundStyle(.white.opacity(0.85))
                 Spacer()
-                Text("Change").font(.system(size: 12, weight: .bold)).foregroundStyle(.white.opacity(0.9))
+                toggle(tint)
             }
-            HStack(spacing: 9) {
-                Text(s.emoji ?? "🎁").font(.system(size: 24))
-                Text(s.title).font(NK.serif(22)).foregroundStyle(.white).lineLimit(2)
-            }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.28))
-                    Capsule().fill(.white)
-                        .frame(width: geo.size.width * max(0.02, min(1, Double(s.pct) / 100)))
+            HStack(alignment: .center, spacing: 13) {
+                if jar { JarView(pct: s.pct, fill: tint) }
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 9) {
+                        Text(s.emoji ?? "🎁").font(.system(size: 22))
+                        Text(s.title).font(NK.serif(20)).foregroundStyle(.white).lineLimit(2)
+                    }
+                    if !jar {
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(.white.opacity(0.28))
+                                Capsule().fill(.white)
+                                    .frame(width: geo.size.width * max(0.02, min(1, Double(s.pct) / 100)))
+                            }
+                        }
+                        .frame(height: 9)
+                    }
+                    Text(ready ? "Ready to redeem! 🎉"
+                               : "\(s.have) of \(s.cost) \(symbol ?? "⭐") · \(s.toGo) to go")
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.92))
+                }
+                Spacer(minLength: 0)
+                VStack(spacing: 7) {
+                    if ready {
+                        Button(action: onRedeem) { pill("Redeem", bg: NK.primary, outline: false) }
+                            .buttonStyle(.plain)
+                    }
+                    Button(action: onChange) { pill("Change", bg: .white.opacity(0.18), outline: true) }
+                        .buttonStyle(.plain)
                 }
             }
-            .frame(height: 9)
-            Text(s.have >= s.cost ? "Ready to redeem! 🎉" : "\(s.have) of \(s.cost) \(label?.lowercased() ?? "")")
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(LinearGradient(colors: [tint.opacity(0.92), tint],
                                    startPoint: .topLeading, endPoint: .bottomTrailing))
         .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+    }
+
+    private func pill(_ t: String, bg: Color, outline: Bool) -> some View {
+        Text(t).font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+            .padding(.horizontal, 16).padding(.vertical, 8)
+            .background(bg).clipShape(Capsule())
+            .overlay(outline ? AnyView(Capsule().strokeBorder(.white.opacity(0.4), lineWidth: 1)) : AnyView(EmptyView()))
+    }
+
+    private func toggle(_ tint: Color) -> some View {
+        HStack(spacing: 0) {
+            seg("Bar", on: !jar, tint: tint) { jar = false }
+            seg("Jar", on: jar, tint: tint) { jar = true }
+        }
+        .padding(2).background(.white.opacity(0.22)).clipShape(Capsule())
+    }
+
+    private func seg(_ t: String, on: Bool, tint: Color, tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            Text(t).font(.system(size: 12, weight: .bold))
+                .foregroundStyle(on ? tint : .white.opacity(0.85))
+                .padding(.horizontal, 12).padding(.vertical, 5)
+                .background(on ? AnyView(Capsule().fill(.white)) : AnyView(Color.clear))
+        }
+        .buttonStyle(.plain)
     }
 
     private var prompt: some View {
@@ -354,8 +422,10 @@ struct RewardShopView: View {
                 if let p = model.person(personId) {
                     header(p)
                     SavingTowardCard(saving: overview?.savingToward, colorHex: savingCur?.color,
-                                     label: savingCur?.label,
-                                     canPick: !(overview?.rewardShop.isEmpty ?? true)) { showSavingPicker = true }
+                                     symbol: savingCur?.symbol,
+                                     canPick: !(overview?.rewardShop.isEmpty ?? true),
+                                     onChange: { showSavingPicker = true },
+                                     onRedeem: redeemSaving)
                     shopHead
                     let shop = overview?.rewardShop ?? []
                     if shop.isEmpty {
@@ -485,6 +555,13 @@ struct RewardShopView: View {
         confirm = nil
         giving = false
         await reload()
+    }
+
+    /// Redeem the pinned saving-toward reward directly (web parity — no extra
+    /// confirm; the button only appears once it's affordable).
+    private func redeemSaving() {
+        guard let s = overview?.savingToward else { return }
+        Task { _ = await sync.giveReward(rewardId: s.id, personId: personId); await reload() }
     }
 }
 
