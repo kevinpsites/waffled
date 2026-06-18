@@ -139,3 +139,29 @@
   border: 1px solid var(--hair); background: var(--card-2); color: var(--ai); cursor: pointer;
   text-transform: none; letter-spacing: 0; }
 .pp-trade:hover { border-color: var(--ai); }
+
+/* Saving toward */
+.pp-saving-toggle { font-size: 11px; }
+.pp-saving-toggle button { cursor: pointer; padding: 3px 9px; }
+.pp-saving-row { display: flex; align-items: center; gap: 14px; }
+.pp-saving-title { font-weight: 700; font-size: 15px; margin-bottom: 8px; }
+.pp-saving-bar { height: 10px; border-radius: 999px; background: var(--hair-2); overflow: hidden; margin-bottom: 8px; }
+.pp-saving-bar > span { display: block; height: 100%; border-radius: 999px; transition: width .3s; }
+.pp-saving-sub { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+
+/* Inline reward shop */
+.pp-shop { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pp-shop-card { position: relative; border: 1px solid var(--hair); border-radius: 14px; padding: 12px 10px 10px;
+  text-align: center; background: var(--card-2); }
+.pp-shop-card.pinned { border-color: var(--wally); box-shadow: 0 0 0 1px var(--wally) inset; }
+.pp-shop-pin { position: absolute; top: 6px; right: 6px; border: 0; background: none; cursor: pointer;
+  font-size: 13px; opacity: .3; filter: grayscale(1); transition: opacity .12s; padding: 2px; }
+.pp-shop-pin:hover { opacity: .7; }
+.pp-shop-pin.on { opacity: 1; filter: none; }
+.pp-shop-emo { font-size: 28px; line-height: 1; margin-bottom: 4px; }
+.pp-shop-title { font-weight: 700; font-size: 13px; }
+.pp-shop-cost { font-weight: 800; font-size: 13px; margin: 2px 0 8px; }
+.pp-shop-redeem { font: inherit; font-weight: 700; font-size: 12px; width: 100%; padding: 6px; border-radius: 999px;
+  border: 0; background: var(--primary); color: #fff; cursor: pointer; }
+.pp-shop-redeem:hover { filter: brightness(1.05); }
+.pp-shop-togo { font-size: 12px; font-weight: 700; color: var(--ink-3); padding: 6px; }

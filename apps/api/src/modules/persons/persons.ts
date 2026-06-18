@@ -105,6 +105,30 @@ export async function updatePerson(
   return rows[0] ?? null
 }
 
+// Pin (or clear) the reward a person is "saving toward". Household-scoped, not
+// admin-gated — a kid chooses their own target from the parent-curated shop. A
+// non-null rewardId must point at a live reward in this household.
+export async function setSavingToward(
+  householdId: string,
+  personId: string,
+  rewardId: string | null
+): Promise<PersonRow | null> {
+  if (rewardId) {
+    const { rowCount } = await query(
+      `select 1 from rewards where household_id=$1 and id=$2 and deleted_at is null`,
+      [householdId, rewardId]
+    )
+    if (!rowCount) return null
+  }
+  const { rows } = await query<PersonRow>(
+    `update persons set saving_toward_reward_id = $1
+       where household_id = $2 and id = $3 and deleted_at is null
+       returning *`,
+    [rewardId, householdId, personId]
+  )
+  return rows[0] ?? null
+}
+
 export type DeleteResult = 'deleted' | 'not_found' | 'is_owner'
 
 // Soft-delete a member. The household owner can't be removed.
@@ -232,6 +256,21 @@ export function registerPersonRoutes(api: Api): void {
 
     const person = await updatePerson(tenant.householdId, id, patch)
     if (!person) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
+    return { person: presentPerson(person) }
+  })
+
+  // Pin what a person is "saving toward" (any household member — kids set their
+  // own). Body: { rewardId: string | null }. null clears it.
+  api.post('/api/persons/:id/saving-toward', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
+    const rewardId = (req.body as { rewardId?: unknown })?.rewardId ?? null
+    if (rewardId !== null && (typeof rewardId !== 'string' || !UUID_RE.test(rewardId))) {
+      return res.status(400).json({ error: 'BadRequest', message: 'rewardId must be a uuid or null' })
+    }
+    const person = await setSavingToward(tenant.householdId, id, rewardId as string | null)
+    if (!person) return res.status(404).json({ error: 'NotFound', message: 'person or reward not found' })
     return { person: presentPerson(person) }
   })
 

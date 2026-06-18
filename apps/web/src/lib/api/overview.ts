@@ -59,6 +59,20 @@ export interface OverviewCurrency {
   sortOrder: number
 }
 
+export interface ShopReward {
+  id: string
+  title: string
+  emoji: string | null
+  cost: number
+  currency: string
+  have: number // this person's balance in the reward's currency
+  toGo: number // max(0, cost - have)
+}
+
+export interface SavingToward extends ShopReward {
+  pct: number // min(100, have / cost)
+}
+
 export interface PersonOverview {
   person: { id: string; name: string | null; avatarEmoji: string | null; colorHex: string | null; age: number | null; memberType: string }
   activeGoals: number
@@ -71,6 +85,8 @@ export interface PersonOverview {
   insight: { lean: string[]; light: string[]; suggestions: string[]; text: string }
   recentLedger: OverviewLedgerEntry[]
   redemptions: PersonRedemption[]
+  rewardShop: ShopReward[]
+  savingToward: SavingToward | null
 }
 
 export interface FamilyMember {

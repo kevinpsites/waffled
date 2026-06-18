@@ -35,6 +35,7 @@ interface PersonRow {
   color_hex: string | null
   birthday: string | null
   member_type: string
+  saving_toward_reward_id?: string | null
 }
 
 function ageFrom(birthday: string | null): number | null {
@@ -120,7 +121,7 @@ function buildInsight(balance: ReturnType<typeof categoryBalance>, name: string 
 
 export async function personOverview(householdId: string, personId: string) {
   const pr = await query<PersonRow>(
-    `select id, name, avatar_emoji, color_hex, birthday::text, member_type
+    `select id, name, avatar_emoji, color_hex, birthday::text, member_type, saving_toward_reward_id
        from persons where household_id=$1 and id=$2 and deleted_at is null`,
     [householdId, personId]
   )
@@ -155,6 +156,23 @@ export async function personOverview(householdId: string, personId: string) {
     [householdId, personId]
   )
 
+  // The reward shop, scored against THIS kid's balance: "X to go" = cost minus
+  // what they have in that currency (0 when they can already afford it).
+  const shop = await query<{ id: string; title: string; emoji: string | null; cost: number; currency: string }>(
+    `select id, title, emoji, cost, currency from rewards
+       where household_id=$1 and deleted_at is null order by sort_order, cost`,
+    [householdId]
+  )
+  const rewardShop = shop.rows.map((r) => {
+    const have = balByCurrency.get(r.currency) ?? 0
+    return { id: r.id, title: r.title, emoji: r.emoji, cost: r.cost, currency: r.currency, have, toGo: Math.max(0, r.cost - have) }
+  })
+  // What they're "saving toward" — a pinned reward + progress against balance.
+  const pinned = person.saving_toward_reward_id ? rewardShop.find((r) => r.id === person.saving_toward_reward_id) ?? null : null
+  const savingToward = pinned
+    ? { ...pinned, pct: pinned.cost > 0 ? Math.min(100, Math.round((pinned.have / pinned.cost) * 100)) : 0 }
+    : null
+
   return {
     person: { id: person.id, name: person.name, avatarEmoji: person.avatar_emoji, colorHex: person.color_hex, age: ageFrom(person.birthday), memberType: person.member_type },
     activeGoals: goals.length,
@@ -167,6 +185,8 @@ export async function personOverview(householdId: string, personId: string) {
     insight: buildInsight(balance, person.name),
     recentLedger: recent.rows.map((r) => ({ amount: r.amount, reason: r.reason, currency: r.currency, detail: r.detail ?? null, createdAt: r.created_at })),
     redemptions: redemptions.rows.map((r) => ({ id: r.id, title: r.title, emoji: r.emoji, cost: r.cost, currency: r.currency, status: r.status, createdAt: r.created_at })),
+    rewardShop,
+    savingToward,
   }
 }
 

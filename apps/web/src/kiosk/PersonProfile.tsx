@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
-import { usePersonOverview, useConversions, usePersons, type OverviewGoal, type CategoryBalance } from '../lib/api'
+import { usePersonOverview, useConversions, usePersons, personsApi, rewardsApi, type OverviewGoal, type CategoryBalance, type ShopReward, type SavingToward, type OverviewCurrency } from '../lib/api'
 import { TradeModal } from './components/TradeModal'
 import './../styles/overview.css'
 
@@ -57,6 +57,91 @@ function BalanceTile({ c }: { c: CategoryBalance }) {
       </svg>
       <div className="pp-bal-label">{c.label}</div>
       <div className="pp-bal-count">{c.goalCount === 0 ? 'none yet' : `${c.goalCount} goal${c.goalCount === 1 ? '' : 's'}`}</div>
+    </div>
+  )
+}
+
+// A jar that fills from the bottom to `pct` — the Goal-jar take on "saving toward".
+function Jar({ pct, color }: { pct: number; color: string }) {
+  const f = Math.max(0, Math.min(100, pct))
+  const fillTop = 14 + 78 * (1 - f / 100)
+  return (
+    <svg viewBox="0 0 80 100" width="72" height="90" aria-hidden>
+      <defs>
+        <clipPath id="jarclip"><rect x="14" y="14" width="52" height="78" rx="11" /></clipPath>
+      </defs>
+      <rect x="24" y="3" width="32" height="8" rx="2.5" fill="#cdbb9c" />
+      <rect x="14" y="14" width="52" height="78" rx="11" fill="#fff" stroke="#e0d4c2" strokeWidth="3" />
+      <rect x="14" y={fillTop} width="52" height={92 - fillTop} fill={color} opacity="0.85" clipPath="url(#jarclip)" />
+      <text x="40" y="60" textAnchor="middle" fontSize="17" fontWeight="800" fill={f > 55 ? '#fff' : 'var(--ink)'}>{Math.round(f)}%</text>
+    </svg>
+  )
+}
+
+// "Saving toward" — the pinned reward + progress against the kid's balance,
+// shown as a bar (Stars bank) or a jar (Goal jar). Same data either way.
+function SavingTowardCard({ s, cur, onChange }: { s: SavingToward; cur: OverviewCurrency | undefined; onChange: () => void }) {
+  const [jar, setJar] = useState(false)
+  const color = cur?.color ?? 'var(--wally)'
+  const sym = cur?.symbol ?? '⭐'
+  return (
+    <div className="card pp-card pp-saving">
+      <div className="card-h" style={{ marginBottom: 10, display: 'flex', alignItems: 'center' }}>
+        <span>Saving toward</span>
+        <div className="seg pp-saving-toggle" style={{ marginLeft: 'auto' }}>
+          <button type="button" className={jar ? '' : 'on'} onClick={() => setJar(false)}>Bar</button>
+          <button type="button" className={jar ? 'on' : ''} onClick={() => setJar(true)}>Jar</button>
+        </div>
+      </div>
+      <div className="pp-saving-row">
+        {jar && <Jar pct={s.pct} color={color} />}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="pp-saving-title">{s.emoji ?? '🎁'} {s.title}</div>
+          {!jar && (
+            <div className="pp-saving-bar"><span style={{ width: `${s.pct}%`, background: color }} /></div>
+          )}
+          <div className="pp-saving-sub">
+            {s.toGo === 0
+              ? <b style={{ color }}>Ready to redeem! 🎉</b>
+              : <><b>{s.have}</b> of {s.cost} {sym} · <b style={{ color }}>{s.toGo} to go</b></>}
+          </div>
+        </div>
+        <button type="button" className="pp-trade" onClick={onChange}>Change</button>
+      </div>
+    </div>
+  )
+}
+
+// Inline reward shop scored for this kid: each card shows cost + "X to go", a
+// Redeem button when affordable, and a pin to set it as "saving toward".
+function RewardShop({ shop, cur, pinnedId, onRedeem, onPin }: {
+  shop: ShopReward[]
+  cur: (key: string) => OverviewCurrency | undefined
+  pinnedId: string | null
+  onRedeem: (r: ShopReward) => void
+  onPin: (r: ShopReward) => void
+}) {
+  if (shop.length === 0) return <div className="muted tiny" style={{ fontWeight: 600 }}>No rewards yet — a parent can add some in Tasks → Rewards.</div>
+  return (
+    <div className="pp-shop">
+      {shop.map((r) => {
+        const c = cur(r.currency)
+        const can = r.toGo === 0
+        const pinned = r.id === pinnedId
+        return (
+          <div key={r.id} className={`pp-shop-card ${pinned ? 'pinned' : ''}`}>
+            <button type="button" className={`pp-shop-pin ${pinned ? 'on' : ''}`} title={pinned ? 'Saving toward this' : 'Save toward this'} onClick={() => onPin(r)}>📌</button>
+            <div className="pp-shop-emo">{r.emoji ?? '🎁'}</div>
+            <div className="pp-shop-title">{r.title}</div>
+            <div className="pp-shop-cost" style={{ color: c?.color ?? 'var(--ink-2)' }}>{c?.symbol ?? '⭐'} {r.cost}</div>
+            {can ? (
+              <button type="button" className="pp-shop-redeem" onClick={() => onRedeem(r)}>Redeem</button>
+            ) : (
+              <div className="pp-shop-togo">{r.toGo} to go</div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -175,10 +260,31 @@ export function PersonProfile() {
           ))}
         </div>
 
+        {data.savingToward && (
+          <SavingTowardCard
+            s={data.savingToward}
+            cur={symOf(data.savingToward.currency)}
+            onChange={() => personsApi.setSavingToward(person.id, null)}
+          />
+        )}
+
+        <div className="card pp-card">
+          <div className="card-h" style={{ marginBottom: 10, display: 'flex', alignItems: 'center' }}>
+            <span>Reward shop</span>
+            <button type="button" className="pp-trade" style={{ marginLeft: 'auto' }} onClick={() => navigate('/tasks?tab=rewards')}>Manage</button>
+          </div>
+          <RewardShop
+            shop={data.rewardShop}
+            cur={symOf}
+            pinnedId={data.savingToward?.id ?? null}
+            onRedeem={(r) => rewardsApi.redeem(r.id, person.id)}
+            onPin={(r) => personsApi.setSavingToward(person.id, data.savingToward?.id === r.id ? null : r.id)}
+          />
+        </div>
+
         <div className="card pp-card">
           <div className="card-h" style={{ marginBottom: 10, display: 'flex', alignItems: 'center' }}>
             <span>Reward redemptions</span>
-            <button type="button" className="pp-trade" style={{ marginLeft: 'auto' }} onClick={() => navigate('/tasks?tab=rewards')}>🎁 Reward shop</button>
           </div>
           {data.redemptions.length === 0 && <div className="muted tiny" style={{ fontWeight: 600 }}>None yet — earn {(defaultCur?.label ?? 'stars').toLowerCase()}, then redeem in Tasks → Rewards.</div>}
           {data.redemptions.map((r) => (

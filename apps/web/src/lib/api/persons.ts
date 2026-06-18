@@ -1,6 +1,7 @@
 // Persons (family members) + household settings — client slice, types, hooks.
 import { useEffect, useState } from 'react'
 import { apiGet, apiSend, apiDelete } from './client'
+import { tap } from './bus'
 
 export interface Person {
   id: string
@@ -37,6 +38,8 @@ export const personsApi = {
   createPerson: (input: Record<string, unknown>) => apiSend<{ person: Person }>('POST', '/api/persons', input).then((r) => r.person),
   updatePerson: (id: string, patch: Record<string, unknown>) => apiSend<{ person: Person }>('PATCH', `/api/persons/${id}`, patch).then((r) => r.person),
   deletePerson: (id: string) => apiDelete(`/api/persons/${id}`),
+  setSavingToward: (id: string, rewardId: string | null) =>
+    apiSend<{ person: Person }>('POST', `/api/persons/${id}/saving-toward`, { rewardId }).then((r) => r.person).then(tap('rewards')),
   household: () => apiGet<{ provisioned: boolean; household?: Household; person?: Person }>('/api/household'),
   householdSettings: () => apiGet<{ household: Household; members: SettingsMember[] }>('/api/household/settings'),
   updateHousehold: (patch: Record<string, unknown>) => apiSend<{ household: Household }>('PATCH', '/api/household', patch).then((r) => r.household),
