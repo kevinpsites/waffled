@@ -39,6 +39,7 @@ struct PlanWeekSheet: View {
     @State private var pickTarget: PickTarget?            // manual-pick sheet
     @State private var via: String?
     @State private var errorMessage: String?
+    @State private var notice: String?                    // transient re-roll feedback
     @State private var applying = false
 
     private let api = NookAPI()
@@ -280,6 +281,16 @@ struct PlanWeekSheet: View {
                         }
                         .buttonStyle(.plain).disabled(redrafting || unlockedDates.isEmpty)
                     }
+                    if let notice {
+                        HStack(spacing: 7) {
+                            Image(systemName: "info.circle.fill").font(.system(size: 12))
+                            Text(notice).font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundStyle(NK.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12).padding(.vertical, 9)
+                        .background(NK.primary.opacity(0.10)).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                    }
                     ForEach(suggestions) { card in suggestionCard(card) }
                     Text("Lock the nights you love, swap or pick the rest.")
                         .font(.system(size: 12)).foregroundStyle(NK.ink3)
@@ -396,8 +407,14 @@ struct PlanWeekSheet: View {
     /// Draft (or re-draft) the given nights. `full` drives the whole-screen loading
     /// state for the first run; partial re-drafts (swap/reshuffle) keep the review
     /// up and show a per-night spinner instead. Results merge into `suggestions`.
+    ///
+    /// Weak local models sometimes echo a dish that's *in* the avoid list (so a swap
+    /// would change nothing) or skip a requested night. We repair both client-side:
+    /// any night the model can't give a fresh, non-duplicate dish for is filled from
+    /// the household's own recipe library, so a swap/reshuffle always moves.
     private func draft(dates: [String], avoid: [String], full: Bool) async {
         guard !dates.isEmpty else { return }
+        notice = nil
         if full { phase = .loading } else { redrafting = true; draftingDates = Set(dates) }
         defer { redrafting = false; draftingDates = [] }
         do {
@@ -408,17 +425,57 @@ struct PlanWeekSheet: View {
             via = result.via
             if let err = result.error, result.suggestions.isEmpty {
                 errorMessage = friendly(err); if full { phase = .failed }
-            } else if result.suggestions.isEmpty {
-                if full { phase = .empty }
-            } else {
-                let kept = suggestions.filter { !dates.contains($0.date) }
-                suggestions = (kept + result.suggestions).sorted { $0.date < $1.date }
-                phase = .review
+                return
+            }
+
+            let prior = suggestions
+            let avoidSet = Set(avoid.map(normTitle))
+            var byDate: [String: NookAPI.PlanCardDTO] = [:]
+            for c in result.suggestions where dates.contains(c.date) { byDate[c.date] = c }
+            // Off-limits: dishes on nights we're keeping, plus everything avoided —
+            // so each night stays distinct.
+            var used = Set(suggestions.filter { !dates.contains($0.date) }.map { normTitle($0.title) })
+                .union(avoidSet)
+
+            var resolved: [NookAPI.PlanCardDTO] = []
+            for date in dates.sorted() {
+                let m = byDate[date]
+                if let m, !used.contains(normTitle(m.title)) {
+                    resolved.append(m); used.insert(normTitle(m.title))
+                } else if let fb = libraryFallback(date: date, used: used) {
+                    resolved.append(fb); used.insert(normTitle(fb.title))
+                } else if let m {
+                    resolved.append(m); used.insert(normTitle(m.title))   // nothing fresher available
+                }
+            }
+
+            guard !resolved.isEmpty else { if full { phase = .empty }; return }
+            let kept = suggestions.filter { !dates.contains($0.date) }
+            suggestions = (kept + resolved).sorted { $0.date < $1.date }
+            phase = .review
+
+            if !full {
+                let changed = resolved.contains { new in
+                    prior.first { $0.date == new.date }.map { normTitle($0.title) != normTitle(new.title) } ?? true
+                }
+                if !changed { notice = "No fresh options left for that night — tap Pick to choose any recipe." }
             }
         } catch {
             errorMessage = "The AI provider didn’t respond. Check your connection and try again."
             if full { phase = .failed }
         }
+    }
+
+    /// Normalize a title for de-duping (mirrors the server's matcher).
+    private func normTitle(_ s: String) -> String { s.lowercased().filter { $0.isLetter || $0.isNumber } }
+
+    /// A library recipe whose title isn't already used/avoided this week, as a card.
+    private func libraryFallback(date: String, used: Set<String>) -> NookAPI.PlanCardDTO? {
+        guard let r = recipes.recipes.first(where: { !used.contains(normTitle($0.title)) }) else { return nil }
+        return NookAPI.PlanCardDTO(
+            date: date, mealType: mealType, title: r.title, recipeId: r.id, emoji: r.emoji,
+            minutes: r.cookTimeMinutes, servings: cookingFor > 0 ? cookingFor : familySize,
+            note: "From your library")
     }
 
     /// Re-roll every unlocked night, keeping locked picks and steering away from
@@ -444,6 +501,7 @@ struct PlanWeekSheet: View {
             date: date, mealType: mealType, title: r.title, recipeId: r.id, emoji: r.emoji,
             minutes: r.cookTimeMinutes, servings: cookingFor > 0 ? cookingFor : familySize, note: "Your pick")
         suggestions = suggestions.map { $0.date == date ? card : $0 }.sorted { $0.date < $1.date }
+        notice = nil
         pickTarget = nil
     }
 
