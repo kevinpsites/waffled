@@ -105,9 +105,10 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
   re-open the raw box. ✅
 - **Phase 3 — hub screens (in progress):**
   - **Today** dashboard widgets live (tonight's meal → its recipe, chores progress →
-    the chores board, grocery count → the grocery board) from the REST domains —
-    every summary card drills in on **Today's own nav stack**, so Back returns to the
-    dashboard instead of switching tabs. ✅
+    the chores board, grocery count → the grocery board, greeting avatar → that
+    person's spotlight) from the REST domains — every card and the avatar drill in on
+    **Today's own nav stack** (a shared `HubDestination` renderer, also used by the
+    Family hub), so Back returns to the dashboard instead of switching tabs. ✅
   - **Family hub** tiles show live counts and navigate (per-tile NavigationStack
     routing; re-tap to pop to root). ✅
   - **Lists** built out: Lists index → grocery **board** (By aisle / By meal,

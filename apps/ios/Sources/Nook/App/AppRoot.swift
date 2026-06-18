@@ -18,8 +18,9 @@ struct AppRoot: View {
     /// recipe, and re-tapping Meals pops to root.
     @State private var mealsPath: [MealsRoute] = []
     /// The Today tab's nav stack — its summary cards (tonight's meal, chores,
-    /// grocery) push here, lifted so re-tapping Today pops back to the dashboard.
-    @State private var todayPath: [TodayRoute] = []
+    /// grocery) and the greeting avatar push here (as `HubRoute`s), lifted so
+    /// re-tapping Today pops back to the dashboard.
+    @State private var todayPath: [HubRoute] = []
 
     private static var initialTab: Tab {
         switch DemoHooks.startTab {
@@ -30,12 +31,6 @@ struct AppRoot: View {
         }
     }
 
-    /// Switch to the Family tab and push a hub destination (from another tab).
-    private func openFamily(_ route: HubRoute) {
-        familyPath = [route]
-        tab = .family
-    }
-
     var body: some View {
         ZStack(alignment: .bottom) {
             NK.canvas.ignoresSafeArea()
@@ -44,7 +39,7 @@ struct AppRoot: View {
             // scaffold they're simple views.
             Group {
                 switch tab {
-                case .today:    TodayView(path: $todayPath, openFamily: openFamily, openCalendar: { tab = .calendar })
+                case .today:    TodayView(path: $todayPath, openCalendar: { tab = .calendar })
                 case .calendar: CalendarView()
                 case .meals:    MealsView(path: $mealsPath)
                 case .family:   FamilyView(path: $familyPath)

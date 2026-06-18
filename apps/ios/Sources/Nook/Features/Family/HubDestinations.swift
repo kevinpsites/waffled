@@ -11,6 +11,33 @@ enum HubRoute: Hashable {
     case recipe(NookAPI.RecipeSummary) // a recipe opened from the grocery meal recap
 }
 
+/// Renders a `HubRoute` destination. Shared by the Family hub and the Today tab so
+/// drilling into a person/chores/grocery/recipe stays on whichever tab you started
+/// from — Back returns there instead of switching tabs. `hub` is optional: only the
+/// placeholder tiles (rewards/photos/settings, reachable from the Family grid) use
+/// its summary lines, so Today can omit it.
+struct HubDestination: View {
+    let route: HubRoute
+    @Binding var path: [HubRoute]
+    let recipes: RecipesModel
+    var hub: FamilyHubModel? = nil
+
+    var body: some View {
+        switch route {
+        case .lists:            ListsIndexView(path: $path)
+        case let .list(list):   ListDetailView(list: list, openRecipe: { path.append(.recipe($0)) })
+        case let .recipe(r):    RecipeDetailView(summary: r, model: recipes)
+        case .chores:           ChoresView()
+        case .goals:            GoalsView(path: $path)
+        case let .goal(goal):   GoalDetailView(goal: goal, path: $path)
+        case let .person(id):   PersonView(personId: id, path: $path)
+        case .rewards:          HubPlaceholder(emoji: "⭐", title: "Rewards", summary: hub?.rewardsSubtitle ?? "Stars & redemptions")
+        case .photos:           HubPlaceholder(emoji: "📷", title: "Photos", summary: hub?.photosSubtitle ?? "Family photos")
+        case .settings:         HubPlaceholder(emoji: "⚙️", title: "Settings", summary: "People, calendars, AI")
+        }
+    }
+}
+
 /// A consistent "screen coming soon" destination that still surfaces the tile's
 /// real summary line, so the hub never navigates into a dead end.
 struct HubPlaceholder: View {

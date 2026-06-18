@@ -1,13 +1,5 @@
 import SwiftUI
 
-/// A destination within the Today tab's own navigation stack, so a summary card
-/// drills in and Back returns to the dashboard (instead of switching tabs).
-enum TodayRoute: Hashable {
-    case recipe(NookAPI.RecipeSummary)   // tonight's meal
-    case chores                          // the family chores board
-    case grocery(NookAPI.ListSummary)    // the grocery board
-}
-
 /// Today — the home surface. Mock-faithful to the handoff `ios-home.png`:
 /// greeting + capture bar, today's agenda, tonight's meal, chores + grocery.
 /// Static sample data in Phase 0; PowerSync-backed in Phase 1+.
@@ -18,11 +10,11 @@ struct TodayView: View {
     @State private var editingEvent: SyncedEvent?
     @State private var showCapture = false
     @State private var dictateOnOpen = false
-    /// Today's own nav stack — summary cards push here so Back returns to the
-    /// dashboard (lifted to AppRoot for re-tap-to-pop).
-    @Binding var path: [TodayRoute]
-    /// Jump to a Family hub destination (Chores, Lists…) from a summary card.
-    var openFamily: (HubRoute) -> Void = { _ in }
+    /// Today's own nav stack — summary cards (and the greeting avatar) push here so
+    /// Back returns to the dashboard. Uses `HubRoute` so the person spotlight,
+    /// chores, grocery, and recipe all render with the shared `HubDestination`
+    /// (lifted to AppRoot for re-tap-to-pop).
+    @Binding var path: [HubRoute]
     /// Jump to the Calendar tab (from the agenda card).
     var openCalendar: () -> Void = {}
 
@@ -66,7 +58,7 @@ struct TodayView: View {
                     }
                     HStack(spacing: 12) {
                         Button { path.append(.chores) } label: { choresCard }.buttonStyle(.plain)
-                        Button { path.append(.grocery(grocerySummary)) } label: { groceryCard }.buttonStyle(.plain)
+                        Button { path.append(.list(grocerySummary)) } label: { groceryCard }.buttonStyle(.plain)
                     }
                     .fixedSize(horizontal: false, vertical: true)
                 }
@@ -76,12 +68,8 @@ struct TodayView: View {
             }
             .background(NK.canvas)
             .toolbar(.hidden, for: .navigationBar)   // Today draws its own greeting header
-            .navigationDestination(for: TodayRoute.self) { route in
-                switch route {
-                case .recipe(let r):    RecipeDetailView(summary: r, model: recipes)
-                case .chores:           ChoresView()
-                case .grocery(let list): ListDetailView(list: list, openRecipe: { path.append(.recipe($0)) })
-                }
+            .navigationDestination(for: HubRoute.self) { route in
+                HubDestination(route: route, path: $path, recipes: recipes)
             }
             .refreshable { await dash.load(todayKey: Agenda.todayKey(sync.householdTz)) }
             // Reload when the tz is known and whenever a capture commit bumps a domain.
@@ -110,7 +98,7 @@ struct TodayView: View {
             }
             Spacer()
             if let m = greetingMember {
-                Button { openFamily(.person(m.id)) } label: {
+                Button { path.append(.person(m.id)) } label: {
                     Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 46)
                 }
                 .buttonStyle(.plain)

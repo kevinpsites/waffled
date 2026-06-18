@@ -15,7 +15,9 @@ struct FamilyView: View {
     var body: some View {
         NavigationStack(path: $path) {
             hubContent
-                .navigationDestination(for: HubRoute.self, destination: destination)
+                .navigationDestination(for: HubRoute.self) { route in
+                    HubDestination(route: route, path: $path, recipes: recipes, hub: hub)
+                }
         }
     }
 
@@ -74,22 +76,6 @@ struct FamilyView: View {
         case "photos": return .photos
         case "settings": return .settings
         default: return nil
-        }
-    }
-
-    /// Tile destinations: Lists is built out; the rest are live-summary placeholders.
-    @ViewBuilder private func destination(_ route: HubRoute) -> some View {
-        switch route {
-        case .lists:           ListsIndexView(path: $path)
-        case let .list(list):  ListDetailView(list: list, openRecipe: { path.append(.recipe($0)) })
-        case let .recipe(r):   RecipeDetailView(summary: r, model: recipes)
-        case .chores:          ChoresView()
-        case .goals:           GoalsView(path: $path)
-        case let .goal(goal):  GoalDetailView(goal: goal, path: $path)
-        case let .person(id):  PersonView(personId: id, path: $path)
-        case .rewards:         HubPlaceholder(emoji: "⭐", title: "Rewards", summary: hub.rewardsSubtitle)
-        case .photos:          HubPlaceholder(emoji: "📷", title: "Photos", summary: hub.photosSubtitle)
-        case .settings:        HubPlaceholder(emoji: "⚙️", title: "Settings", summary: "People, calendars, AI")
         }
     }
 
