@@ -165,3 +165,22 @@
   border: 0; background: var(--primary); color: #fff; cursor: pointer; }
 .pp-shop-redeem:hover { filter: brightness(1.05); }
 .pp-shop-togo { font-size: 12px; font-weight: 700; color: var(--ink-3); padding: 6px; }
+
+/* Saving-toward selector (when nothing pinned, or on Change) */
+.pp-saving-pick { display: flex; align-items: center; gap: 8px; }
+.pp-saving-select { flex: 1; font: inherit; font-weight: 600; font-size: 14px; padding: 9px 10px;
+  border-radius: 10px; border: 1px solid var(--hair); background: var(--card-2); color: var(--ink); cursor: pointer; }
+
+/* Streak card */
+.pp-streak-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+.pp-streak-days { font-weight: 800; font-size: 17px; }
+.pp-streak-cheer { font-size: 12px; font-weight: 700; color: var(--wally); margin-left: auto; }
+.pp-streak-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.pp-streak-day { display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px 0; border-radius: 10px; background: var(--card-2); }
+.pp-streak-day.on { background: color-mix(in srgb, var(--wally) 16%, transparent); }
+.pp-streak-day.today { box-shadow: 0 0 0 2px var(--wally) inset; }
+.pp-streak-day.future { opacity: 0.45; }
+.pp-streak-icon { font-size: 16px; line-height: 1; }
+.pp-streak-day:not(.on) .pp-streak-icon { color: var(--ink-3); }
+.pp-streak-label { font-size: 11px; font-weight: 700; color: var(--ink-2); }

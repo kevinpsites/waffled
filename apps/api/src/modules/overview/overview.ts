@@ -119,6 +119,37 @@ function buildInsight(balance: ReturnType<typeof categoryBalance>, name: string 
   return { lean, light, suggestions, text }
 }
 
+const DAY_MS = 86400000
+const WEEK_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'] // Mon-first
+
+// A unified activity streak across chores + goals: a day "counts" if the person
+// completed a chore OR logged a goal that day (household timezone). Returns the
+// consecutive-day count (ending today or yesterday) plus the current Mon–Sun
+// week as fire cells for the kiosk display.
+function buildStreak(activeDates: string[], today: string) {
+  const active = new Set(activeDates)
+  const t = new Date(today + 'T00:00:00Z').getTime()
+  const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+
+  // Streak only "lives" if the last active day is today or yesterday.
+  let cursor = active.has(today) ? t : active.has(iso(t - DAY_MS)) ? t - DAY_MS : null
+  let days = 0
+  while (cursor !== null && active.has(iso(cursor))) {
+    days++
+    cursor -= DAY_MS
+  }
+
+  // Current week, Monday-first.
+  const dow = new Date(t).getUTCDay() // 0=Sun..6=Sat
+  const monday = t - ((dow + 6) % 7) * DAY_MS
+  const week = WEEK_LABELS.map((label, i) => {
+    const ms = monday + i * DAY_MS
+    const day = iso(ms)
+    return { label, active: active.has(day), isToday: day === today, isFuture: ms > t }
+  })
+  return { days, week }
+}
+
 export async function personOverview(householdId: string, personId: string) {
   const pr = await query<PersonRow>(
     `select id, name, avatar_emoji, color_hex, birthday::text, member_type, saving_toward_reward_id
@@ -173,6 +204,29 @@ export async function personOverview(householdId: string, personId: string) {
     ? { ...pinned, pct: pinned.cost > 0 ? Math.min(100, Math.round((pinned.have / pinned.cost) * 100)) : 0 }
     : null
 
+  // Activity streak: days the person did a chore OR logged a goal (household tz).
+  const hh = await query<{ tz: string; today: string }>(
+    `select timezone as tz, (now() at time zone timezone)::date::text as today from households where id=$1`,
+    [householdId]
+  )
+  const tz = hh.rows[0]?.tz ?? 'UTC'
+  const today = hh.rows[0]?.today ?? new Date().toISOString().slice(0, 10)
+  const act = await query<{ day: string }>(
+    `select distinct d::text as day from (
+       select (gl.logged_at at time zone $3)::date as d
+         from goal_logs gl
+        where gl.household_id=$1 and gl.person_id=$2 and gl.deleted_at is null
+          and gl.logged_at >= now() - interval '21 days'
+       union
+       select (le.created_at at time zone $3)::date
+         from ledger_entries le
+        where le.household_id=$1 and le.person_id=$2 and le.deleted_at is null
+          and le.reason='chore_completed' and le.created_at >= now() - interval '21 days'
+     ) s`,
+    [householdId, personId, tz]
+  )
+  const streak = buildStreak(act.rows.map((r) => r.day), today)
+
   return {
     person: { id: person.id, name: person.name, avatarEmoji: person.avatar_emoji, colorHex: person.color_hex, age: ageFrom(person.birthday), memberType: person.member_type },
     activeGoals: goals.length,
@@ -187,6 +241,7 @@ export async function personOverview(householdId: string, personId: string) {
     redemptions: redemptions.rows.map((r) => ({ id: r.id, title: r.title, emoji: r.emoji, cost: r.cost, currency: r.currency, status: r.status, createdAt: r.created_at })),
     rewardShop,
     savingToward,
+    streak,
   }
 }
 

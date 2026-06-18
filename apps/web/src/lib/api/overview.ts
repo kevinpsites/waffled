@@ -87,6 +87,19 @@ export interface PersonOverview {
   redemptions: PersonRedemption[]
   rewardShop: ShopReward[]
   savingToward: SavingToward | null
+  streak: StreakSummary
+}
+
+export interface StreakDay {
+  label: string
+  active: boolean
+  isToday: boolean
+  isFuture: boolean
+}
+
+export interface StreakSummary {
+  days: number
+  week: StreakDay[]
 }
 
 export interface FamilyMember {

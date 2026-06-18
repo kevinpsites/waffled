@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
-import { usePersonOverview, useConversions, usePersons, personsApi, rewardsApi, type OverviewGoal, type CategoryBalance, type ShopReward, type SavingToward, type OverviewCurrency } from '../lib/api'
+import { usePersonOverview, useConversions, usePersons, personsApi, rewardsApi, type OverviewGoal, type CategoryBalance, type ShopReward, type SavingToward, type OverviewCurrency, type StreakSummary } from '../lib/api'
 import { TradeModal } from './components/TradeModal'
 import './../styles/overview.css'
 
@@ -78,70 +78,94 @@ function Jar({ pct, color }: { pct: number; color: string }) {
   )
 }
 
-// "Saving toward" — the pinned reward + progress against the kid's balance,
-// shown as a bar (Stars bank) or a jar (Goal jar). Same data either way.
-function SavingTowardCard({ s, cur, onChange }: { s: SavingToward; cur: OverviewCurrency | undefined; onChange: () => void }) {
-  const [jar, setJar] = useState(false)
-  const color = cur?.color ?? 'var(--wally)'
-  const sym = cur?.symbol ?? '⭐'
+// Weekly fire row + consecutive-day count — chores and goals both keep it alive.
+function StreakCard({ streak }: { streak: StreakSummary }) {
   return (
-    <div className="card pp-card pp-saving">
-      <div className="card-h" style={{ marginBottom: 10, display: 'flex', alignItems: 'center' }}>
-        <span>Saving toward</span>
-        <div className="seg pp-saving-toggle" style={{ marginLeft: 'auto' }}>
-          <button type="button" className={jar ? '' : 'on'} onClick={() => setJar(false)}>Bar</button>
-          <button type="button" className={jar ? 'on' : ''} onClick={() => setJar(true)}>Jar</button>
-        </div>
+    <div className="card pp-card pp-streak">
+      <div className="pp-streak-head">
+        <span className="pp-streak-days">🔥 {streak.days}-day streak</span>
+        <span className="pp-streak-cheer">{streak.days >= 2 ? 'Keep it up!' : 'Start one today'}</span>
       </div>
-      <div className="pp-saving-row">
-        {jar && <Jar pct={s.pct} color={color} />}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="pp-saving-title">{s.emoji ?? '🎁'} {s.title}</div>
-          {!jar && (
-            <div className="pp-saving-bar"><span style={{ width: `${s.pct}%`, background: color }} /></div>
-          )}
-          <div className="pp-saving-sub">
-            {s.toGo === 0
-              ? <b style={{ color }}>Ready to redeem! 🎉</b>
-              : <><b>{s.have}</b> of {s.cost} {sym} · <b style={{ color }}>{s.toGo} to go</b></>}
+      <div className="pp-streak-week">
+        {streak.week.map((d, i) => (
+          <div key={i} className={`pp-streak-day ${d.active ? 'on' : ''} ${d.isToday ? 'today' : ''} ${d.isFuture ? 'future' : ''}`}>
+            <span className="pp-streak-icon">{d.active ? '🔥' : '·'}</span>
+            <span className="pp-streak-label">{d.label}</span>
           </div>
-        </div>
-        <button type="button" className="pp-trade" onClick={onChange}>Change</button>
+        ))}
       </div>
     </div>
   )
 }
 
-// Inline reward shop scored for this kid: each card shows cost + "X to go", a
-// Redeem button when affordable, and a pin to set it as "saving toward".
-function RewardShop({ shop, cur, pinnedId, onRedeem, onPin }: {
+// The single "Saving toward" hub: progress for the pinned reward (bar or jar),
+// or — when nothing is pinned, or on Change — a compact selector over the whole
+// shop (scales better than a grid when there are many rewards).
+function SavingTowardCard({ saving, shop, cur, onPick, onRedeem }: {
+  saving: SavingToward | null
   shop: ShopReward[]
   cur: (key: string) => OverviewCurrency | undefined
-  pinnedId: string | null
-  onRedeem: (r: ShopReward) => void
-  onPin: (r: ShopReward) => void
+  onPick: (rewardId: string | null) => void
+  onRedeem: (r: SavingToward) => void
 }) {
-  if (shop.length === 0) return <div className="muted tiny" style={{ fontWeight: 600 }}>No rewards yet — a parent can add some in Tasks → Rewards.</div>
+  const [jar, setJar] = useState(false)
+  const [picking, setPicking] = useState(false)
+  const showProgress = saving && !picking
+
   return (
-    <div className="pp-shop">
-      {shop.map((r) => {
-        const c = cur(r.currency)
-        const can = r.toGo === 0
-        const pinned = r.id === pinnedId
-        return (
-          <div key={r.id} className={`pp-shop-card ${pinned ? 'pinned' : ''}`}>
-            <button type="button" className={`pp-shop-pin ${pinned ? 'on' : ''}`} title={pinned ? 'Saving toward this' : 'Save toward this'} onClick={() => onPin(r)}>📌</button>
-            <div className="pp-shop-emo">{r.emoji ?? '🎁'}</div>
-            <div className="pp-shop-title">{r.title}</div>
-            <div className="pp-shop-cost" style={{ color: c?.color ?? 'var(--ink-2)' }}>{c?.symbol ?? '⭐'} {r.cost}</div>
-            {can ? (
-              <button type="button" className="pp-shop-redeem" onClick={() => onRedeem(r)}>Redeem</button>
-            ) : (
-              <div className="pp-shop-togo">{r.toGo} to go</div>
-            )}
+    <div className="card pp-card pp-saving">
+      <div className="card-h" style={{ marginBottom: 10, display: 'flex', alignItems: 'center' }}>
+        <span>Saving toward</span>
+        {showProgress && (
+          <div className="seg pp-saving-toggle" style={{ marginLeft: 'auto' }}>
+            <button type="button" className={jar ? '' : 'on'} onClick={() => setJar(false)}>Bar</button>
+            <button type="button" className={jar ? 'on' : ''} onClick={() => setJar(true)}>Jar</button>
           </div>
-        )
-      })}
+        )}
+      </div>
+
+      {showProgress ? (
+        (() => {
+          const s = saving!
+          const c = cur(s.currency)
+          const color = c?.color ?? 'var(--wally)'
+          return (
+            <div className="pp-saving-row">
+              {jar && <Jar pct={s.pct} color={color} />}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="pp-saving-title">{s.emoji ?? '🎁'} {s.title}</div>
+                {!jar && <div className="pp-saving-bar"><span style={{ width: `${s.pct}%`, background: color }} /></div>}
+                <div className="pp-saving-sub">
+                  {s.toGo === 0
+                    ? <b style={{ color }}>Ready to redeem! 🎉</b>
+                    : <><b>{s.have}</b> of {s.cost} {c?.symbol ?? '⭐'} · <b style={{ color }}>{s.toGo} to go</b></>}
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {s.toGo === 0 && <button type="button" className="pp-shop-redeem" style={{ width: 'auto' }} onClick={() => onRedeem(s)}>Redeem</button>}
+                <button type="button" className="pp-trade" onClick={() => setPicking(true)}>Change</button>
+              </div>
+            </div>
+          )
+        })()
+      ) : shop.length === 0 ? (
+        <div className="muted tiny" style={{ fontWeight: 600 }}>No rewards yet — a parent can add some in Tasks → Rewards.</div>
+      ) : (
+        <div className="pp-saving-pick">
+          <select
+            className="pp-saving-select"
+            defaultValue={saving?.id ?? ''}
+            onChange={(e) => { if (e.target.value) { onPick(e.target.value); setPicking(false) } }}
+          >
+            <option value="" disabled>Choose a reward to save toward…</option>
+            {shop.map((r) => {
+              const sym = cur(r.currency)?.symbol ?? '⭐'
+              return <option key={r.id} value={r.id}>{r.emoji ?? '🎁'} {r.title} — {r.cost} {sym}{r.toGo === 0 ? ' (ready!)' : ` (${r.toGo} to go)`}</option>
+            })}
+          </select>
+          {saving && <button type="button" className="pp-trade" onClick={() => setPicking(false)}>Cancel</button>}
+        </div>
+      )}
     </div>
   )
 }
@@ -234,6 +258,16 @@ export function PersonProfile() {
       </div>
 
       <div className="pp-right">
+        <StreakCard streak={data.streak} />
+
+        <SavingTowardCard
+          saving={data.savingToward}
+          shop={data.rewardShop}
+          cur={symOf}
+          onPick={(rid) => personsApi.setSavingToward(person.id, rid)}
+          onRedeem={(r) => rewardsApi.redeem(r.id, person.id)}
+        />
+
         <div className="card pp-card pp-stars">
           <div className="card-h" style={{ marginBottom: 4, display: 'flex', alignItems: 'center' }}>
             <span>{defaultCur?.label ?? 'Stars'} & chores</span>
@@ -260,31 +294,10 @@ export function PersonProfile() {
           ))}
         </div>
 
-        {data.savingToward && (
-          <SavingTowardCard
-            s={data.savingToward}
-            cur={symOf(data.savingToward.currency)}
-            onChange={() => personsApi.setSavingToward(person.id, null)}
-          />
-        )}
-
-        <div className="card pp-card">
-          <div className="card-h" style={{ marginBottom: 10, display: 'flex', alignItems: 'center' }}>
-            <span>Reward shop</span>
-            <button type="button" className="pp-trade" style={{ marginLeft: 'auto' }} onClick={() => navigate('/tasks?tab=rewards')}>Manage</button>
-          </div>
-          <RewardShop
-            shop={data.rewardShop}
-            cur={symOf}
-            pinnedId={data.savingToward?.id ?? null}
-            onRedeem={(r) => rewardsApi.redeem(r.id, person.id)}
-            onPin={(r) => personsApi.setSavingToward(person.id, data.savingToward?.id === r.id ? null : r.id)}
-          />
-        </div>
-
         <div className="card pp-card">
           <div className="card-h" style={{ marginBottom: 10, display: 'flex', alignItems: 'center' }}>
             <span>Reward redemptions</span>
+            <button type="button" className="pp-trade" style={{ marginLeft: 'auto' }} onClick={() => navigate('/tasks?tab=rewards')}>🎁 Shop</button>
           </div>
           {data.redemptions.length === 0 && <div className="muted tiny" style={{ fontWeight: 600 }}>None yet — earn {(defaultCur?.label ?? 'stars').toLowerCase()}, then redeem in Tasks → Rewards.</div>}
           {data.redemptions.map((r) => (
