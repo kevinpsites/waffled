@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router'
 import { LogModal } from './components/LogModal'
 import { useGoalDetail, api, type GoalParticipant, type GoalMilestone, type GoalLogEntry } from '../lib/api'
@@ -59,6 +59,24 @@ export function GoalDetail() {
   const { goal, loading, error, refetch } = useGoalDetail(id ?? null)
   const [logging, setLogging] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
+  // Optimistic checklist toggles: stepId -> intended done state. The checkbox
+  // flips instantly (no wait for the round-trip) and rapid taps stay consistent;
+  // each override is dropped once the server confirms it (or on error).
+  const [pendingSteps, setPendingSteps] = useState<Record<string, boolean>>({})
+  useEffect(() => {
+    if (!goal) return
+    setPendingSteps((prev) => {
+      const next = { ...prev }
+      let changed = false
+      for (const s of goal.steps ?? []) {
+        if (s.id in next && next[s.id] === s.done) {
+          delete next[s.id]
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [goal])
 
   const logRef = useRef<() => void>(() => {})
   logRef.current = () => setLogging(true)
@@ -116,18 +134,28 @@ export function GoalDetail() {
   const firstUnreached = goal.milestones.findIndex((m) => !m.reached)
   const isHabit = goal.goalType === 'habit'
   const isChecklist = goal.goalType === 'checklist'
+  // Merge optimistic toggles over the server step state so the UI reflects taps
+  // immediately (counts, ring, and percent all use this).
+  const stepState = (goal.steps ?? []).map((s) => ({ ...s, done: pendingSteps[s.id] ?? s.done }))
+  const stepDone = stepState.filter((s) => s.done).length
+  const stepTotal = stepState.length
   // Each type measures on its own axis (period for habits, steps for checklists).
-  const dProg = isHabit ? goal.periodDone : isChecklist ? goal.stepDone : goal.totalProgress
-  const dTarget = isHabit ? goal.habitTargetPerPeriod ?? goal.target : isChecklist ? goal.stepTotal || null : goal.target
+  const dProg = isHabit ? goal.periodDone : isChecklist ? stepDone : goal.totalProgress
+  const dTarget = isHabit ? goal.habitTargetPerPeriod ?? goal.target : isChecklist ? stepTotal || null : goal.target
   const dUnit = isHabit
     ? goal.habitPeriod === 'day' ? 'today' : goal.habitPeriod === 'month' ? 'this month' : 'this week'
     : isChecklist ? 'steps' : goal.unit ?? ''
   // The value a milestone threshold is compared against (matches the API's reached).
-  const milestoneAxis = isHabit ? goal.streakDays : isChecklist ? (goal.stepTotal ? (goal.stepDone / goal.stepTotal) * 100 : 0) : goal.totalProgress
+  const milestoneAxis = isHabit ? goal.streakDays : isChecklist ? (stepTotal ? (stepDone / stepTotal) * 100 : 0) : goal.totalProgress
 
   async function toggleStep(stepId: string, done: boolean) {
-    await api.toggleStep(goal!.id, stepId, done)
-    refetch()
+    setPendingSteps((prev) => ({ ...prev, [stepId]: done })) // flip instantly
+    try {
+      await api.toggleStep(goal!.id, stepId, done)
+      refetch() // the reconcile effect clears the override once confirmed
+    } catch {
+      setPendingSteps((prev) => { const n = { ...prev }; delete n[stepId]; return n }) // revert
+    }
   }
 
   async function del() {
@@ -173,10 +201,10 @@ export function GoalDetail() {
         <div className="detail-col">
           {isChecklist && (
             <div className="card detail-card">
-              <div className="card-h" style={{ marginBottom: 12 }}>Steps · {goal.stepDone}/{goal.stepTotal}</div>
-              {goal.steps.length === 0 && <div className="tiny muted" style={{ fontWeight: 600 }}>No steps yet — add some with “Edit goal”.</div>}
+              <div className="card-h" style={{ marginBottom: 12 }}>Steps · {stepDone}/{stepTotal}</div>
+              {stepState.length === 0 && <div className="tiny muted" style={{ fontWeight: 600 }}>No steps yet — add some with “Edit goal”.</div>}
               <div className="log-steps">
-                {goal.steps.map((s) => (
+                {stepState.map((s) => (
                   <button key={s.id} type="button" className={`log-step-row ${s.done ? 'done' : ''}`} onClick={() => toggleStep(s.id, !s.done)}>
                     <span className="log-step-box">{s.done ? '✓' : ''}</span>
                     <span className="log-step-label">{s.label}</span>

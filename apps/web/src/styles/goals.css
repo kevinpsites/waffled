@@ -59,14 +59,15 @@
   font-size: 24px;
   font-weight: 600;
 }
-/* Individual-list heading doubles as a link to that person's profile. */
+/* Individual-list heading doubles as a link to that person's profile — same
+   look as the group headers (font comes from .nk-serif/.goal-listhead-t), just
+   tappable. Only reset the button chrome, never the font. */
 button.goal-listhead-link {
   background: none;
   border: 0;
   padding: 0;
   margin: 0;
   color: inherit;
-  font: inherit;
   text-align: left;
   cursor: pointer;
   transition: color 0.12s;

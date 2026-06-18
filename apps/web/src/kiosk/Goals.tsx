@@ -283,7 +283,7 @@ export function Goals() {
                 onClick={() => navigate(`/person/${selected.members[0].personId}`)}
                 title={`View ${selected.name}'s page`}
               >
-                {selected.name} ›
+                {selected.name}
               </button>
             ) : (
               <div className="nk-serif goal-listhead-t">{selected?.name ?? 'All goals'}</div>
