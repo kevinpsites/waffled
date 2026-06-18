@@ -134,10 +134,10 @@ export function GoalCreate() {
   useTopbarFull(
     () => (
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
-        <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(editing ? `/goals/${id}` : '/goals')}>‹ {editing ? 'Goal' : 'Goals'}</button>
+        <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(editing ? `/goals/${id}` : '/goals', { replace: true })}>‹ {editing ? 'Goal' : 'Goals'}</button>
         <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600 }}>{editing ? 'Edit goal' : 'New goal'}</div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
-          <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(editing ? `/goals/${id}` : '/goals')}>Cancel</button>
+          <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(editing ? `/goals/${id}` : '/goals', { replace: true })}>Cancel</button>
           <button
             className="pill btn-primary create-submit"
             disabled={!canSave}
@@ -186,7 +186,7 @@ export function GoalCreate() {
     try {
       if (editing) await api.updateGoal(id!, payload)
       else await api.createGoal(payload)
-      navigate(editing ? `/goals/${id}` : '/goals')
+      navigate(editing ? `/goals/${id}` : '/goals', { replace: true })
     } catch {
       setSaving(false)
     }

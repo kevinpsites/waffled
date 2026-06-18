@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { Icon } from './icons'
 import { LogModal } from './components/LogModal'
 import { ListModal } from './components/ListModal'
@@ -218,8 +218,12 @@ function GlistItem({ list, on, onClick }: { list: GoalList; on: boolean; onClick
 // Goals home — the goal-lists membership model (matches "Home / Family list").
 export function Goals() {
   const navigate = useNavigate()
+  // The selected list lives in the URL (?list=<id>) so leaving for a goal and
+  // coming back (browser back) keeps you on the same person/list, not the default.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const selectedId = searchParams.get('list')
+  const selectList = (id: string) => setSearchParams({ list: id })
   const { lists, loading: listsLoading, error: listsError, refetch: refetchLists } = useGoalLists()
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'shared' | 'each'>('all')
   const [logging, setLogging] = useState<Goal | null>(null)
   const [creatingList, setCreatingList] = useState(false)
@@ -247,7 +251,7 @@ export function Goals() {
       <div className="goal-listrail">
         {shared.length > 0 && <div className="flabel">SHARED LISTS</div>}
         {shared.map((l) => (
-          <GlistItem key={l.id} list={l} on={l.id === selected?.id} onClick={() => setSelectedId(l.id)} />
+          <GlistItem key={l.id} list={l} on={l.id === selected?.id} onClick={() => selectList(l.id)} />
         ))}
         {individual.length > 0 && (
           <>
@@ -256,7 +260,7 @@ export function Goals() {
           </>
         )}
         {individual.map((l) => (
-          <GlistItem key={l.id} list={l} on={l.id === selected?.id} onClick={() => setSelectedId(l.id)} />
+          <GlistItem key={l.id} list={l} on={l.id === selected?.id} onClick={() => selectList(l.id)} />
         ))}
         {!listsLoading && lists.length === 0 && (
           <div className="tiny muted" style={{ padding: '4px 8px', fontWeight: 600 }}>No goal lists yet.</div>
@@ -326,7 +330,7 @@ export function Goals() {
           onClose={() => setCreatingList(false)}
           onCreated={(listId) => {
             refetchLists()
-            setSelectedId(listId)
+            selectList(listId)
           }}
         />
       )}
