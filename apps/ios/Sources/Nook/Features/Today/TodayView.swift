@@ -46,10 +46,6 @@ struct TodayView: View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    greeting
-                    AICaptureBar(onTap: { dictateOnOpen = false; showCapture = true },
-                                 onMic: { dictateOnOpen = true; showCapture = true })
-                        .padding(.bottom, 2)
                     todayCard
                     if let summary = dash.tonight?.recipeSummary {
                         Button { path.append(.recipe(summary)) } label: { tonightCard }.buttonStyle(.plain)
@@ -63,10 +59,12 @@ struct TodayView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.horizontal, 18)
-                .padding(.top, 8)
+                .padding(.top, 6)
                 .padding(.bottom, 110)   // clear the floating tab bar
             }
             .background(NK.canvas)
+            // Greeting + capture bar stay pinned; the cards scroll under them.
+            .safeAreaInset(edge: .top, spacing: 0) { stickyHeader }
             .toolbar(.hidden, for: .navigationBar)   // Today draws its own greeting header
             .navigationDestination(for: HubRoute.self) { route in
                 HubDestination(route: route, path: $path, recipes: recipes)
@@ -83,6 +81,25 @@ struct TodayView: View {
                 CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
             }
         }
+    }
+
+    // MARK: pinned header (greeting + capture bar)
+
+    /// The fixed top of Today: the greeting row and the capture bar. It carries an
+    /// opaque canvas background (plus a faint shadow) so the cards scroll out of
+    /// sight beneath it rather than showing through.
+    private var stickyHeader: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            greeting
+            AICaptureBar(onTap: { dictateOnOpen = false; showCapture = true },
+                         onMic: { dictateOnOpen = true; showCapture = true })
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity)
+        .background(NK.canvas)
+        .shadow(color: .black.opacity(0.05), radius: 6, y: 4)
     }
 
     // MARK: greeting row
