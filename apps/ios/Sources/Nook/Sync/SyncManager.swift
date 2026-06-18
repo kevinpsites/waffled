@@ -52,6 +52,10 @@ final class SyncManager {
         guard currencies.isEmpty else { return }
         currencies = (try? await api.currencies()) ?? []
     }
+    /// Re-fetch the currency catalog (after an edit), ignoring the once-only guard.
+    func refreshCurrencies() async {
+        if let fresh = try? await api.currencies() { currencies = fresh }
+    }
 
     private let db: PowerSyncDatabaseProtocol
     private let connector = NookConnector()
@@ -393,6 +397,46 @@ final class SyncManager {
         let ok = await restCommit { _ = try await api.restoreReward(id: id) }
         if ok { rewardsRev += 1 }
         return ok
+    }
+
+    // MARK: settings — currencies
+
+    /// Create or edit a currency (admins). Refreshes the catalog + bumps rewardsRev
+    /// so symbols/colors update everywhere.
+    @discardableResult
+    func saveCurrency(id: String?, _ body: [String: JSONValue]) async -> Bool {
+        let ok = await restCommit {
+            if let id { try await api.updateCurrency(id: id, body) } else { try await api.createCurrency(body) }
+        }
+        if ok { await refreshCurrencies(); rewardsRev += 1 }
+        return ok
+    }
+    /// Delete a currency (admins). Fails (with `lastError`) if it's the default or last.
+    @discardableResult
+    func deleteCurrency(id: String) async -> Bool {
+        let ok = await restCommit { try await api.deleteCurrency(id: id) }
+        if ok { await refreshCurrencies(); rewardsRev += 1 }
+        return ok
+    }
+
+    // MARK: settings — family & household
+
+    /// Create or edit a member (admins).
+    @discardableResult
+    func savePerson(id: String?, _ body: [String: JSONValue]) async -> Bool {
+        await restCommit {
+            if let id { try await api.updatePerson(id: id, body) } else { try await api.createPerson(body) }
+        }
+    }
+    /// Delete a member (admins; the owner can't be removed → `lastError`).
+    @discardableResult
+    func deletePerson(id: String) async -> Bool {
+        await restCommit { try await api.deletePerson(id: id) }
+    }
+    /// Edit household name/timezone/weekStart/location (admins).
+    @discardableResult
+    func updateHousehold(_ body: [String: JSONValue]) async -> Bool {
+        await restCommit { try await api.updateHousehold(body) }
     }
 
     /// Commit a captured "add X to <list>" intent: resolve the named list and add

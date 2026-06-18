@@ -408,6 +408,51 @@ struct NookAPI: Sendable {
         return try await getJSON("/api/currencies", as: Resp.self).currencies
     }
 
+    // MARK: - Settings: currencies (admin CRUD)
+
+    /// Create a currency. Body: label, symbol?, color?, spendable?, isDefault?.
+    func createCurrency(_ body: [String: JSONValue]) async throws { try await send("POST", "/api/currencies", body: body) }
+    /// Edit a currency (key is immutable). Same fields + sortOrder?.
+    func updateCurrency(id: String, _ body: [String: JSONValue]) async throws { try await send("PATCH", "/api/currencies/\(id)", body: body) }
+    /// Soft-delete a currency (can't be the default or the last one).
+    func deleteCurrency(id: String) async throws { try await delete("/api/currencies/\(id)") }
+
+    // MARK: - Settings: family & household
+
+    /// Household settings + members (with owner/login flags) for the Settings screen.
+    struct HouseholdSettings: Decodable, Sendable {
+        let household: Household
+        let members: [Member]
+
+        struct Household: Decodable, Sendable {
+            let id, name, timezone, weekStart: String
+            let location: String?
+            let ownerPersonId: String?
+        }
+        struct Member: Decodable, Identifiable, Hashable, Sendable {
+            let id, name, memberType: String
+            let isAdmin: Bool
+            let avatarEmoji, colorHex, birthday, dietaryNotes: String?
+            let showOnKiosk: Bool
+            let hasLogin: Bool
+            let isOwner: Bool
+        }
+    }
+
+    func householdSettings() async throws -> HouseholdSettings {
+        try await getJSON("/api/household/settings", as: HouseholdSettings.self)
+    }
+    /// Edit household name/timezone/weekStart/location (admins).
+    func updateHousehold(_ body: [String: JSONValue]) async throws { try await send("PATCH", "/api/household", body: body) }
+
+    /// Create a member (admins). Body: name, memberType, avatarEmoji?, colorHex?,
+    /// birthday?, isAdmin?, showOnKiosk?.
+    func createPerson(_ body: [String: JSONValue]) async throws { try await send("POST", "/api/persons", body: body) }
+    /// Edit a member (admins) — same fields.
+    func updatePerson(id: String, _ body: [String: JSONValue]) async throws { try await send("PATCH", "/api/persons/\(id)", body: body) }
+    /// Soft-delete a member (admins; the household owner can't be removed).
+    func deletePerson(id: String) async throws { try await delete("/api/persons/\(id)") }
+
     // MARK: - Rewards
 
     /// One reward in the household catalog — costs `cost` of `currency`.

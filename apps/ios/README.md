@@ -188,11 +188,21 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     mirrors the web RewardModal, over `POST/PATCH /api/rewards`, `DELETE …` (archive),
     `GET …/archived`, `POST …/restore`. The saving-toward target is selectable from
     both the shop and the person spotlight (`POST /api/persons/:id/saving-toward`).
-    Currency settings + conversions/Trade follow. ✅
-  - Photos / Settings: still live-summary placeholders.
-- **Next:** Meals **cook-assignment** on a planned slot + grocery-build from the
-  week; a hub tile (Rewards/Photos/Settings); Auth0 login (roadmap 4.2.1) to
-  replace the dev token.
+    Conversions/Trade follow. ✅
+  - **Settings (started):** a landing that pushes into built-out panels (the rest
+    flagged "coming soon"). **Family & people** — member list with role lines
+    (type · Owner · Admin) + a member editor (name · emoji · type Adult/Teen/Kid ·
+    color swatch · birthday · admin · show-on-kiosk), add/edit/remove (the owner
+    can't be removed), plus a **household** card (name · week-start · time zone ·
+    location). **Currencies** — the catalog with a per-currency editor (symbol ·
+    label · **color swatch** (which the web lacks) · default · spendable) and
+    add/delete (can't delete the default or the last). Over `GET/PATCH
+    /api/household(/settings)`, `POST/PATCH/DELETE /api/persons`, and
+    `POST/PATCH/DELETE /api/currencies`; admin-gated server-side. ✅
+  - Photos: still a live-summary placeholder. Settings panels still to build:
+    AI & capture, Calendars/Google, Conversions, Notifications.
+- **Next:** the remaining Settings panels (AI provider, Google calendars,
+  conversions); Auth0 login (roadmap 4.2.1) to replace the dev token; Photos.
 
 ## Known follow-ups / bugs
 
