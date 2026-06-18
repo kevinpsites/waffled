@@ -43,11 +43,13 @@ export function LogModal({
   const chips = quickChips(goal.unit)
   const isChecklist = goal.goalType === 'checklist'
   const isHabit = goal.goalType === 'habit'
-  // "Check off" is a one-tap +1 on any goal that opted into it (habits are always
-  // one-tap). Count is whole-unit (no fractions) → a stepper.
-  const checkOff = !isHabit && !isChecklist && goal.logMethod === 'check_off'
+  // "Check off" (one-tap +1) is only a meaningful choice on TOTAL goals — "log
+  // exact amounts" vs "just count sessions". Count goals are always whole-unit
+  // and get the stepper (default 1, bump up to log several at once); habits are
+  // always one-tap regardless. So check-off never applies to count/habit.
+  const checkOff = goal.goalType === 'total' && goal.logMethod === 'check_off'
   const oneTap = isHabit || checkOff
-  const isCount = !oneTap && goal.goalType === 'count'
+  const isCount = goal.goalType === 'count'
   const [amount, setAmount] = useState<number>(oneTap ? 1 : isCount ? 1 : chips[1]?.value ?? 1)
   const isShared = goal.trackingMode === 'shared_total'
   const divisible = goal.goalType === 'total'
