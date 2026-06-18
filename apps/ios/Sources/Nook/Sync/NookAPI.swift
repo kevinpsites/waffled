@@ -144,12 +144,15 @@ struct NookAPI: Sendable {
     /// Ask the household's LLM to draft a dish for each empty night of the week
     /// (nothing is saved — the client applies accepted cards via `planMeal`). Can be
     /// slow on a local model, so it uses a generous timeout.
-    func planWeek(start: String, mealType: String = "dinner", cookingFor: Int?,
-                  keepInMind: String?, useUp: [String]?) async throws -> PlanWeekResult {
+    func planWeek(start: String, mealType: String = "dinner", dates: [String]? = nil,
+                  cookingFor: Int?, keepInMind: String?, useUp: [String]?,
+                  avoidTitles: [String]? = nil) async throws -> PlanWeekResult {
         var body: [String: JSONValue] = ["start": .string(start), "mealType": .string(mealType)]
-        if let cookingFor { body["cookingFor"] = .int(cookingFor) }
+        if let dates, !dates.isEmpty { body["dates"] = .array(dates.map { .string($0) }) }
+        if let cookingFor { body["cookingFor"] = .int(cookingFor) }   // omit ⇒ server uses whole family
         if let keepInMind, !keepInMind.isEmpty { body["keepInMind"] = .string(keepInMind) }
         if let useUp, !useUp.isEmpty { body["useUp"] = .array(useUp.map { .string($0) }) }
+        if let avoidTitles, !avoidTitles.isEmpty { body["avoidTitles"] = .array(avoidTitles.map { .string($0) }) }
         var req = URLRequest(url: url("/api/meals/plan-week"))
         req.httpMethod = "POST"
         authorize(&req)

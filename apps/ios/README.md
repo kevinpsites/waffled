@@ -135,10 +135,13 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     this week", **＋ Plan dinner** on empty days, and a per-meal menu to **Change**
     (recipe picker) or **Remove**. Tapping a planned recipe opens its detail; plan/
     clear write via `POST`/`DELETE /api/meals/plan` and bump the refresh bus so the
-    Today card stays in sync. Empty weeks show **✨ Plan my week** — a config
-    (cooking-for · keep-in-mind · use-up) → `POST /api/meals/plan-week` → review of
-    the AI's per-night suggestion cards (emoji · title · time · from-library vs
-    new-dish · note) you accept/skip, then apply (nothing saves until you tap Add).
+    Today card stays in sync. Empty weeks show **✨ Plan my week** — a config that
+    mirrors the web kiosk (meal-type segmented Breakfast/Lunch/Dinner · which-days
+    selector defaulting to Mon–Fri · a "cooking for · whole family" dropdown · use-up
+    ingredient chips · keep-in-mind) → `POST /api/meals/plan-week` → review of the
+    AI's per-night suggestion cards (emoji · title · time · from-library vs new-dish ·
+    note) you accept/skip, then **Add & build list** — applies each accepted slot and
+    rebuilds the week's grocery list (nothing saves until you tap Add).
     The planner's "Choose a recipe" picker reuses the Recipes library in pick mode.
     **Recipes** is the
     household **Recipes library** — a two-column gradient card grid (emoji hero,

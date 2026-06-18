@@ -304,6 +304,16 @@ final class SyncManager {
         return ok
     }
 
+    /// Rebuild the grocery list from a week's planned dinners (web's "& build list");
+    /// bumps `groceryRev` so the Lists screen refreshes. Best-effort — failures are
+    /// swallowed so applying a plan still succeeds.
+    @discardableResult
+    func rebuildGroceryFromWeek(weekStart: String) async -> Bool {
+        let ok = await restCommit { _ = try await api.rebuildGrocery(weekStart: weekStart) }
+        if ok { groceryRev += 1 }
+        return ok
+    }
+
     /// Commit a captured "add X to <list>" intent: resolve the named list and add
     /// the item. Mirrors the web kiosk's list-intent commit.
     func commitListItem(item: String, listName: String?, quantity: String?) async -> Bool {

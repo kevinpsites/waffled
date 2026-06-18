@@ -7,7 +7,10 @@ import SwiftUI
 struct PlanWeekSheet: View {
     let start: String
     let weekLabel: String
-    let defaultCookingFor: Int
+    /// The seven days of the week being planned (in household order, Sun→Sat).
+    let weekDays: [Date]
+    /// Household size — labels the "whole family" cooking-for option.
+    let familySize: Int
     /// Called after suggestions are applied, so the planner reloads.
     let onApplied: () -> Void
 
@@ -15,10 +18,15 @@ struct PlanWeekSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     private enum Phase { case config, loading, review, empty, failed }
+    private let mealTypes = ["breakfast", "lunch", "dinner"]
+
     @State private var phase: Phase = .config
-    @State private var cookingFor: Int
+    @State private var mealType = "dinner"
+    @State private var selectedDays: Set<String> = []   // ymd; seeded Mon–Fri on appear
+    @State private var cookingFor = 0                    // 0 ⇒ whole family
     @State private var keepInMind = ""
-    @State private var useUpText = ""
+    @State private var useUp: [String] = []
+    @State private var useUpInput = ""
     @State private var suggestions: [NookAPI.PlanCardDTO] = []
     @State private var accepted: Set<String> = []
     @State private var via: String?
@@ -26,14 +34,6 @@ struct PlanWeekSheet: View {
     @State private var applying = false
 
     private let api = NookAPI()
-
-    init(start: String, weekLabel: String, defaultCookingFor: Int, onApplied: @escaping () -> Void) {
-        self.start = start
-        self.weekLabel = weekLabel
-        self.defaultCookingFor = defaultCookingFor
-        self.onApplied = onApplied
-        _cookingFor = State(initialValue: max(1, defaultCookingFor))
-    }
 
     var body: some View {
         NavigationStack {
@@ -52,61 +52,164 @@ struct PlanWeekSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
         }
+        .task { seedDaysIfNeeded() }
+    }
+
+    /// Default to weekdays (Mon–Fri), matching the web kiosk.
+    private func seedDaysIfNeeded() {
+        guard selectedDays.isEmpty else { return }
+        for d in weekDays where (2...6).contains(cal.component(.weekday, from: d)) {
+            selectedDays.insert(ymd(d))
+        }
     }
 
     // MARK: config
 
     private var configView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(spacing: 10) {
-                    Text("✨").font(.system(size: 26))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Fill the empty nights").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
-                        Text(weekLabel).font(.system(size: 13)).foregroundStyle(NK.ink3)
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("Tell Nook the guardrails — it drafts the meals and the grocery list in one go.")
+                        .font(.system(size: 14)).foregroundStyle(NK.ink3)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    // Plan which meal?
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "Plan which meal?")
+                        HStack(spacing: 0) {
+                            ForEach(mealTypes, id: \.self) { m in
+                                Button { mealType = m } label: {
+                                    Text(m.capitalized)
+                                        .font(.system(size: 14, weight: mealType == m ? .bold : .medium))
+                                        .foregroundStyle(mealType == m ? NK.ink : NK.ink3)
+                                        .frame(maxWidth: .infinity).padding(.vertical, 9)
+                                        .background(
+                                            mealType == m
+                                                ? AnyView(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).fill(NK.card)
+                                                    .shadow(color: .black.opacity(0.06), radius: 3, y: 1))
+                                                : AnyView(Color.clear))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(3).background(NK.panel)
+                        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    }
+
+                    // Which days?
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "Which days?")
+                        HStack(spacing: 6) {
+                            ForEach(weekDays, id: \.self) { d in dayChip(d) }
+                        }
+                    }
+
+                    // Cooking for
+                    NookCard(padding: 14) {
+                        HStack {
+                            Text("Cooking for").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                            Spacer()
+                            Menu {
+                                Button { cookingFor = 0 } label: { Text("\(familySize) · whole family") }
+                                ForEach(1...8, id: \.self) { n in
+                                    Button { cookingFor = n } label: { Text("\(n)") }
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Text(cookingForLabel).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                                    Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                                }
+                                .padding(.horizontal, 14).padding(.vertical, 9)
+                                .background(NK.panel).clipShape(Capsule())
+                            }
+                        }
+                    }
+
+                    // Use up first
+                    NookCard(padding: 14) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Use up first").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                            ChipFlow(spacing: 8, lineSpacing: 8) {
+                                ForEach(useUp, id: \.self) { u in useUpChip(u) }
+                                TextField("+ Add", text: $useUpInput)
+                                    .font(.system(size: 14)).textInputAutocapitalization(.never)
+                                    .submitLabel(.done).onSubmit { addUseUp() }
+                                    .frame(minWidth: 80)
+                                    .padding(.horizontal, 12).padding(.vertical, 7)
+                                    .background(NK.panel).clipShape(Capsule())
+                            }
+                        }
+                    }
+
+                    // Keep in mind
+                    NookCard(padding: 14) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Keep in mind").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                            TextField("e.g. Lottie skips spicy · Tue & Thu are busy — keep under 30 min",
+                                      text: $keepInMind, axis: .vertical)
+                                .font(.system(size: 14)).lineLimit(2...4)
+                                .padding(.horizontal, 12).padding(.vertical, 10)
+                                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                        }
                     }
                 }
-
-                VStack(alignment: .leading, spacing: 9) {
-                    SectionLabel(text: "Cooking for")
-                    HStack(spacing: 14) {
-                        Button { cookingFor = max(1, cookingFor - 1) } label: { stepGlyph("minus") }
-                        Text("\(cookingFor)").font(.system(size: 18, weight: .bold)).foregroundStyle(NK.ink).frame(minWidth: 26)
-                        Button { cookingFor = min(20, cookingFor + 1) } label: { stepGlyph("plus") }
-                        Text(cookingFor == 1 ? "person" : "people").font(.system(size: 13)).foregroundStyle(NK.ink3)
-                    }
-                }
-
-                field("Keep in mind", "busy week · quick meals · no repeats…", text: $keepInMind)
-                field("Use up (optional)", "chicken in freezer, zucchini…", text: $useUpText)
-                Text("Comma-separated ingredients you’d like featured.")
-                    .font(.system(size: 12)).foregroundStyle(NK.ink3)
-
-                Button { Task { await suggest() } } label: {
-                    Text("✨ Suggest meals").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
-                        .frame(maxWidth: .infinity).padding(.vertical, 14)
-                        .background(NK.ai).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                }
-                .buttonStyle(.plain).padding(.top, 4)
+                .padding(20)
             }
-            .padding(20)
+            suggestBar
         }
     }
 
-    private func field(_ label: String, _ placeholder: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            SectionLabel(text: label)
-            TextField(placeholder, text: text, axis: .vertical)
-                .font(.system(size: 15)).lineLimit(1...3)
-                .padding(.horizontal, 12).padding(.vertical, 11)
-                .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    private var suggestBar: some View {
+        VStack(spacing: 0) {
+            Divider().background(NK.hair)
+            Button { Task { await suggest() } } label: {
+                Text("✨ Plan my week").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                    .frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .background(selectedDays.isEmpty ? NK.ink3 : NK.ai)
+                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            }
+            .buttonStyle(.plain).disabled(selectedDays.isEmpty)
+            .padding(.horizontal, 16).padding(.vertical, 12)
         }
+        .background(NK.canvas)
     }
 
-    private func stepGlyph(_ name: String) -> some View {
-        Image(systemName: name).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
-            .frame(width: 34, height: 34).background(NK.panel).clipShape(Circle())
+    private func dayChip(_ d: Date) -> some View {
+        let key = ymd(d)
+        let on = selectedDays.contains(key)
+        return Button {
+            if on { selectedDays.remove(key) } else { selectedDays.insert(key) }
+        } label: {
+            VStack(spacing: 2) {
+                Text(dowLetter(d)).font(.system(size: 15, weight: .heavy)).foregroundStyle(on ? .white : NK.ink2)
+            }
+            .frame(maxWidth: .infinity).frame(height: 46)
+            .background(on ? NK.primary : NK.card)
+            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(on ? .clear : NK.hair, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func useUpChip(_ u: String) -> some View {
+        HStack(spacing: 5) {
+            Text(u).font(.system(size: 14, weight: .medium)).foregroundStyle(NK.ink)
+            Button { useUp.removeAll { $0 == u } } label: {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(NK.ink3)
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .background(NK.panel).clipShape(Capsule())
+    }
+
+    private func addUseUp() {
+        let v = useUpInput.trimmingCharacters(in: .whitespaces)
+        guard !v.isEmpty, !useUp.contains(v), useUp.count < 12 else { useUpInput = ""; return }
+        useUp.append(v); useUpInput = ""
+    }
+
+    private var cookingForLabel: String {
+        cookingFor == 0 ? "\(familySize) · whole family" : "\(cookingFor)"
     }
 
     // MARK: loading
@@ -208,7 +311,7 @@ struct PlanWeekSheet: View {
             Button { Task { await apply() } } label: {
                 HStack(spacing: 8) {
                     if applying { ProgressView().controlSize(.small).tint(.white) }
-                    Text(applying ? "Adding…" : "Add \(accepted.count) to the week")
+                    Text(applying ? "Adding…" : "Add \(accepted.count) & build list")
                         .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 14)
@@ -224,12 +327,13 @@ struct PlanWeekSheet: View {
     // MARK: actions
 
     private func suggest() async {
+        addUseUp()   // fold any half-typed entry into the chips
         phase = .loading
-        let useUp = useUpText.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
         do {
-            let result = try await api.planWeek(start: start, cookingFor: cookingFor,
-                                                keepInMind: keepInMind, useUp: Array(useUp.prefix(12)))
+            let result = try await api.planWeek(
+                start: start, mealType: mealType, dates: selectedDays.sorted(),
+                cookingFor: cookingFor > 0 ? cookingFor : nil,
+                keepInMind: keepInMind, useUp: Array(useUp.prefix(12)))
             via = result.via
             if let err = result.error, result.suggestions.isEmpty {
                 errorMessage = friendly(err); phase = .failed
@@ -253,9 +357,25 @@ struct PlanWeekSheet: View {
                                        recipeId: card.recipeId,
                                        title: card.recipeId == nil ? card.title : nil)
         }
+        // "& build list" — rebuild the grocery list from the newly planned week.
+        await sync.rebuildGroceryFromWeek(weekStart: start)
         applying = false
         onApplied()
         dismiss()
+    }
+
+    // MARK: date helpers
+
+    private var cal: Calendar {
+        var c = Calendar(identifier: .gregorian); c.timeZone = sync.householdTz; return c
+    }
+    private func ymd(_ d: Date) -> String {
+        let f = DateFormatter(); f.calendar = cal; f.timeZone = sync.householdTz; f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: d)
+    }
+    private func dowLetter(_ d: Date) -> String {
+        let f = DateFormatter(); f.calendar = cal; f.timeZone = sync.householdTz; f.dateFormat = "EEEEE"
+        return f.string(from: d)   // narrow weekday: S M T W T F S
     }
 
     // MARK: helpers

@@ -47,7 +47,7 @@ struct WeekPlannerView: View {
         }
         .sheet(isPresented: $planningWeek) {
             PlanWeekSheet(start: ymd(weekStart), weekLabel: weekTitle,
-                          defaultCookingFor: max(1, sync.members.count)) {
+                          weekDays: days, familySize: max(1, sync.members.count)) {
                 Task { await load() }
             }
         }
