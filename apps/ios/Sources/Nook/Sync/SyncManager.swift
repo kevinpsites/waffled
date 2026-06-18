@@ -35,6 +35,7 @@ final class SyncManager {
     private(set) var groceryRev = 0
     private(set) var mealsRev = 0
     private(set) var listsRev = 0
+    private(set) var rewardsRev = 0
 
     /// The household's reward currencies, loaded once (for chore/goal reward symbols).
     private(set) var currencies: [NookAPI.Currency] = []
@@ -42,6 +43,10 @@ final class SyncManager {
     func currencySymbol(_ key: String?) -> String {
         if let key, let c = currencies.first(where: { $0.key == key }) { return c.symbol }
         return currencies.first(where: { $0.isDefault })?.symbol ?? "⭐"
+    }
+    /// The display color (hex) for a currency key, if one is set.
+    func currencyColor(_ key: String?) -> String? {
+        currencies.first(where: { $0.key == key })?.color
     }
     func loadCurrencies() async {
         guard currencies.isEmpty else { return }
@@ -311,6 +316,41 @@ final class SyncManager {
     func rebuildGroceryFromWeek(weekStart: String) async -> Bool {
         let ok = await restCommit { _ = try await api.rebuildGrocery(weekStart: weekStart) }
         if ok { groceryRev += 1 }
+        return ok
+    }
+
+    // MARK: rewards
+
+    /// Give a reward to a person from this (parent) phone: request the redemption and
+    /// immediately approve it, so the balance debits in one action. Bumps `rewardsRev`.
+    /// The caller gates this on affordability, so approval shouldn't fail; if it does
+    /// (e.g. balance changed underfoot) the error surfaces via `lastError`.
+    @discardableResult
+    func giveReward(rewardId: String, personId: String) async -> Bool {
+        do {
+            let redemption = try await api.redeemReward(rewardId: rewardId, personId: personId)
+            _ = try await api.approveRedemption(id: redemption.id)
+            rewardsRev += 1
+            return true
+        } catch {
+            lastError = String(describing: error)
+            return false
+        }
+    }
+
+    /// Approve a pending redemption (e.g. one a kid filed from the web kiosk).
+    @discardableResult
+    func approveRedemption(id: String) async -> Bool {
+        let ok = await restCommit { _ = try await api.approveRedemption(id: id) }
+        if ok { rewardsRev += 1 }
+        return ok
+    }
+
+    /// Deny a pending redemption; the balance is left unchanged.
+    @discardableResult
+    func denyRedemption(id: String) async -> Bool {
+        let ok = await restCommit { _ = try await api.denyRedemption(id: id) }
+        if ok { rewardsRev += 1 }
         return ok
     }
 

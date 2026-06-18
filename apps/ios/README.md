@@ -168,7 +168,19 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     `overrides` blob via `PATCH /api/recipes/:id` (web parity). Over REST
     (`GET /api/recipes`, `GET /api/recipes/:id`, `PATCH …`, `POST …/cooked`);
     weekly planner + recipe capture follow. ✅
-  - Rewards / Photos / Settings: still live-summary placeholders.
+  - **Rewards (core hub):** a parent's view of the family reward economy. The tab
+    lands on an **overview** — each member with their per-currency balances (⭐/🥢
+    coin chips, tinted by the currency's color) plus a **"Needs your OK"** strip to
+    approve/deny redemptions the kids filed from the web kiosk. Tap a person →
+    their **reward shop**: a header with their balances and a catalog grid (emoji ·
+    title · cost) where each reward shows **Redeem** (debits on confirm — redeem +
+    auto-approve, since the actor is a parent) when affordable in that reward's
+    currency, or **"N to go"** when short. Over REST (`GET /api/balances`,
+    `/api/rewards`, `/api/redemptions`; `POST …/redeem`, `…/approve`, `…/deny`),
+    bumped through `rewardsRev`. Reward editing, currency settings, and
+    conversions/Trade follow; the per-kid "saving toward" hero waits on a backend
+    endpoint. ✅
+  - Photos / Settings: still live-summary placeholders.
 - **Next:** Meals **cook-assignment** on a planned slot + grocery-build from the
   week; a hub tile (Rewards/Photos/Settings); Auth0 login (roadmap 4.2.1) to
   replace the dev token.
