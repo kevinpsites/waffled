@@ -149,7 +149,7 @@ struct PersonView: View {
             if let g = model.overview?.goals.first {
                 statCard(title: g.title,
                          big: "\(fmt(g.progress))/\(fmt(g.target))",
-                         frac: Double(g.pct) / 100,
+                         frac: Double(g.pct ?? 0) / 100,
                          tint: GoalStyle.color(g.category)) { path.append(.goal(g.asGoal)) }
             } else {
                 statCard(title: "Goals", big: "—", frac: 0, tint: NK.ink3) { path.append(.goals) }
@@ -300,7 +300,7 @@ struct PersonView: View {
                             Text("\(fmt(g.progress))/\(fmt(g.target))\(g.unit.map { " \($0)" } ?? "")")
                                 .font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ink2).lineLimit(1)
                         }
-                        ProgressBar(value: Double(g.pct) / 100, tint: c, track: NK.hair)
+                        ProgressBar(value: Double(g.pct ?? 0) / 100, tint: c, track: NK.hair)
                     }
                     .contentShape(Rectangle())
                     }

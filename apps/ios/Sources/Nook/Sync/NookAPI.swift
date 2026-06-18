@@ -569,7 +569,7 @@ struct NookAPI: Sendable {
             let emoji, category, unit: String?
             let goalType: String?
             let progress, target: Double?
-            let pct: Int
+            let pct: Int?            // null for target-less goals (no computable %)
             let streakDays: Int
 
             /// A full `NookAPI.Goal` for navigating to the goal detail (which reloads
