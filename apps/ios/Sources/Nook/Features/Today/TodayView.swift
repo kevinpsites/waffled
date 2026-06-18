@@ -10,6 +10,7 @@ struct TodayView: View {
     @State private var editingEvent: SyncedEvent?
     @State private var showCapture = false
     @State private var dictateOnOpen = false
+    @State private var scrolled = false   // cards have scrolled under the header → lift it
     /// Today's own nav stack — summary cards (and the greeting avatar) push here so
     /// Back returns to the dashboard. Uses `HubRoute` so the person spotlight,
     /// chores, grocery, and recipe all render with the shared `HubDestination`
@@ -62,6 +63,13 @@ struct TodayView: View {
                 .padding(.top, 6)
                 .padding(.bottom, 110)   // clear the floating tab bar
             }
+            // Track whether content has scrolled off the top, so the header only
+            // lifts (gets a shadow) once cards start tucking under it.
+            .onScrollGeometryChange(for: Bool.self) { geo in
+                geo.contentOffset.y + geo.contentInsets.top > 0.5
+            } action: { _, isScrolled in
+                withAnimation(.easeOut(duration: 0.2)) { scrolled = isScrolled }
+            }
             .background(NK.canvas)
             // Greeting + capture bar stay pinned; the cards scroll under them.
             .safeAreaInset(edge: .top, spacing: 0) { stickyHeader }
@@ -86,8 +94,8 @@ struct TodayView: View {
     // MARK: pinned header (greeting + capture bar)
 
     /// The fixed top of Today: the greeting row and the capture bar. It carries an
-    /// opaque canvas background so the cards scroll out of sight beneath it rather
-    /// than showing through.
+    /// opaque canvas background so the cards scroll out of sight beneath it; a faint
+    /// shadow fades in only once content has scrolled under it.
     private var stickyHeader: some View {
         VStack(alignment: .leading, spacing: 12) {
             greeting
@@ -99,6 +107,7 @@ struct TodayView: View {
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity)
         .background(NK.canvas)
+        .shadow(color: .black.opacity(scrolled ? 0.06 : 0), radius: 6, y: 4)
     }
 
     // MARK: greeting row
