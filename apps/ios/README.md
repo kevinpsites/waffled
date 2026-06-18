@@ -138,10 +138,13 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     Today card stays in sync. Empty weeks show **✨ Plan my week** — a config that
     mirrors the web kiosk (meal-type segmented Breakfast/Lunch/Dinner · which-days
     selector defaulting to Mon–Fri · a "cooking for · whole family" dropdown · use-up
-    ingredient chips · keep-in-mind) → `POST /api/meals/plan-week` → review of the
-    AI's per-night suggestion cards (emoji · title · time · from-library vs new-dish ·
-    note) you accept/skip, then **Add & build list** — applies each accepted slot and
-    rebuilds the week's grocery list (nothing saves until you tap Add).
+    ingredient chips · keep-in-mind) → `POST /api/meals/plan-week` → a review of the
+    AI's per-night cards (emoji · title · time · from-library vs new-dish · note) you
+    curate the web way: **lock** a night you like, **swap** to let the AI re-roll one
+    night, manually **pick** a recipe (reuses the library picker), or **reshuffle**
+    every unlocked night (re-rolls keep locked picks and avoid dishes you've already
+    passed on). Then **Add & build list** applies every slot and rebuilds the week's
+    grocery list (nothing saves until you tap Add).
     The planner's "Choose a recipe" picker reuses the Recipes library in pick mode.
     **Recipes** is the
     household **Recipes library** — a two-column gradient card grid (emoji hero,

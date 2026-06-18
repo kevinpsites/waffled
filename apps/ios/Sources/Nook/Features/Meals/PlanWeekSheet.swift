@@ -1,9 +1,11 @@
 import SwiftUI
 
-/// The AI "Plan my week ✨" flow. A short config (who you're cooking for, anything
-/// to keep in mind, ingredients to use up) → `POST /api/meals/plan-week` → a review
-/// of the per-night suggestion cards you accept or skip. Nothing is saved until you
-/// tap Add; each accepted card is applied via `SyncManager.setMealPlan`.
+/// The AI "Plan my week ✨" flow. A short config (meal · days · who you're cooking
+/// for · keep-in-mind · use-up) → `POST /api/meals/plan-week` → a review of the
+/// per-night cards you curate the way the web kiosk does: **lock** a night you like,
+/// **swap** to let the AI re-roll one night, manually **pick** a recipe, or
+/// **reshuffle** every unlocked night. Nothing is saved until you tap Add; then each
+/// card is applied via `SyncManager.setMealPlan` and the grocery list is rebuilt.
 struct PlanWeekSheet: View {
     let start: String
     let weekLabel: String
@@ -11,6 +13,8 @@ struct PlanWeekSheet: View {
     let weekDays: [Date]
     /// Household size — labels the "whole family" cooking-for option.
     let familySize: Int
+    /// The Recipes library, reused by the manual-pick sheet.
+    let recipes: RecipesModel
     /// Called after suggestions are applied, so the planner reloads.
     let onApplied: () -> Void
 
@@ -28,12 +32,18 @@ struct PlanWeekSheet: View {
     @State private var useUp: [String] = []
     @State private var useUpInput = ""
     @State private var suggestions: [NookAPI.PlanCardDTO] = []
-    @State private var accepted: Set<String> = []
+    @State private var locked: Set<String> = []          // dates the user won't reshuffle
+    @State private var rejected: Set<String> = []         // dish titles shuffled away (kept out)
+    @State private var draftingDates: Set<String> = []    // nights being (re)drafted
+    @State private var redrafting = false                 // a reshuffle/swap is in flight
+    @State private var pickTarget: PickTarget?            // manual-pick sheet
     @State private var via: String?
     @State private var errorMessage: String?
     @State private var applying = false
 
     private let api = NookAPI()
+
+    struct PickTarget: Identifiable { let date: String; var id: String { date } }
 
     var body: some View {
         NavigationStack {
@@ -53,6 +63,9 @@ struct PlanWeekSheet: View {
             }
         }
         .task { seedDaysIfNeeded() }
+        .sheet(item: $pickTarget) { target in
+            RecipePickerSheet(model: recipes) { recipe in pickRecipe(date: target.date, recipe) }
+        }
     }
 
     /// Default to weekdays (Mon–Fri), matching the web kiosk.
@@ -248,17 +261,29 @@ struct PlanWeekSheet: View {
             ScrollView {
                 VStack(spacing: 10) {
                     HStack {
-                        Text("\(accepted.count) of \(suggestions.count) selected")
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
-                        Spacer()
-                        Button(accepted.count == suggestions.count ? "Clear all" : "Select all") {
-                            accepted = accepted.count == suggestions.count ? [] : Set(suggestions.map(\.id))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Here’s your week").font(NK.serif(17, .bold)).foregroundStyle(NK.ink)
+                            if let via { Text("Drafted via \(viaLabel(via))")
+                                .font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3) }
                         }
-                        .font(.system(size: 13, weight: .semibold)).tint(NK.ai)
+                        Spacer()
+                        Button { Task { await reshuffle() } } label: {
+                            HStack(spacing: 6) {
+                                if redrafting && draftingDates.count > 1 {
+                                    ProgressView().controlSize(.small).tint(NK.ai)
+                                } else { Text("✨").font(.system(size: 13)) }
+                                Text(redrafting && draftingDates.count > 1 ? "Reshuffling…" : "Reshuffle")
+                                    .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ai)
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                            .background(NK.ai.opacity(0.10)).clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain).disabled(redrafting || unlockedDates.isEmpty)
                     }
-                    if let via { Text("via \(viaLabel(via))").font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ai)
-                        .frame(maxWidth: .infinity, alignment: .leading) }
                     ForEach(suggestions) { card in suggestionCard(card) }
+                    Text("Lock the nights you love, swap or pick the rest.")
+                        .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                        .frame(maxWidth: .infinity, alignment: .center).padding(.top, 2)
                 }
                 .padding(16)
             }
@@ -266,14 +291,13 @@ struct PlanWeekSheet: View {
         }
     }
 
+    private var unlockedDates: [String] { suggestions.map(\.date).filter { !locked.contains($0) } }
+
     private func suggestionCard(_ card: NookAPI.PlanCardDTO) -> some View {
-        let on = accepted.contains(card.id)
-        return Button {
-            if on { accepted.remove(card.id) } else { accepted.insert(card.id) }
-        } label: {
+        let isLocked = locked.contains(card.date)
+        let busy = draftingDates.contains(card.date)
+        return VStack(spacing: 10) {
             HStack(spacing: 12) {
-                Image(systemName: on ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 20)).foregroundStyle(on ? NK.ai : NK.ink3)
                 Text(card.emoji ?? "🍽️").font(.system(size: 26))
                     .frame(width: 46, height: 46).background(RecipeGradient.forCategory(card.mealType))
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -291,11 +315,49 @@ struct PlanWeekSheet: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(13)
-            .background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-                .strokeBorder(on ? NK.ai.opacity(0.4) : NK.hair, lineWidth: 1))
+            Divider().background(NK.hair)
+            HStack(spacing: 8) {
+                actionButton("arrow.triangle.2.circlepath", "Swap") { Task { await swap(card) } }
+                    .disabled(redrafting)
+                actionButton("book", "Pick") { pickTarget = PickTarget(date: card.date) }
+                    .disabled(redrafting)
+                Spacer()
+                Button { toggleLock(card.date) } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: isLocked ? "lock.fill" : "lock.open")
+                            .font(.system(size: 12, weight: .bold))
+                        Text(isLocked ? "Locked" : "Lock").font(.system(size: 12, weight: .bold))
+                    }
+                    .foregroundStyle(isLocked ? .white : NK.ink2)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(isLocked ? NK.primary : NK.panel).clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(13)
+        .background(NK.card)
+        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
+            .strokeBorder(isLocked ? NK.primary.opacity(0.45) : NK.hair, lineWidth: 1))
+        .overlay {
+            if busy {
+                RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).fill(NK.card.opacity(0.7))
+                    .overlay(ProgressView().controlSize(.small).tint(NK.ai))
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: isLocked)
+    }
+
+    private func actionButton(_ icon: String, _ label: String, _ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 12, weight: .bold))
+                Text(label).font(.system(size: 12, weight: .bold))
+            }
+            .foregroundStyle(NK.ink2)
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .background(NK.panel).clipShape(Capsule())
         }
         .buttonStyle(.plain)
     }
@@ -311,14 +373,14 @@ struct PlanWeekSheet: View {
             Button { Task { await apply() } } label: {
                 HStack(spacing: 8) {
                     if applying { ProgressView().controlSize(.small).tint(.white) }
-                    Text(applying ? "Adding…" : "Add \(accepted.count) & build list")
+                    Text(applying ? "Adding…" : "Add \(suggestions.count) & build list")
                         .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 14)
-                .background(accepted.isEmpty ? NK.ink3 : NK.ai)
+                .background(suggestions.isEmpty ? NK.ink3 : NK.ai)
                 .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
             }
-            .buttonStyle(.plain).disabled(accepted.isEmpty || applying)
+            .buttonStyle(.plain).disabled(suggestions.isEmpty || applying || redrafting)
             .padding(.horizontal, 16).padding(.vertical, 12)
         }
         .background(NK.canvas)
@@ -328,31 +390,70 @@ struct PlanWeekSheet: View {
 
     private func suggest() async {
         addUseUp()   // fold any half-typed entry into the chips
-        phase = .loading
+        await draft(dates: selectedDays.sorted(), avoid: Array(rejected), full: true)
+    }
+
+    /// Draft (or re-draft) the given nights. `full` drives the whole-screen loading
+    /// state for the first run; partial re-drafts (swap/reshuffle) keep the review
+    /// up and show a per-night spinner instead. Results merge into `suggestions`.
+    private func draft(dates: [String], avoid: [String], full: Bool) async {
+        guard !dates.isEmpty else { return }
+        if full { phase = .loading } else { redrafting = true; draftingDates = Set(dates) }
+        defer { redrafting = false; draftingDates = [] }
         do {
             let result = try await api.planWeek(
-                start: start, mealType: mealType, dates: selectedDays.sorted(),
+                start: start, mealType: mealType, dates: dates,
                 cookingFor: cookingFor > 0 ? cookingFor : nil,
-                keepInMind: keepInMind, useUp: Array(useUp.prefix(12)))
+                keepInMind: keepInMind, useUp: Array(useUp.prefix(12)), avoidTitles: avoid)
             via = result.via
             if let err = result.error, result.suggestions.isEmpty {
-                errorMessage = friendly(err); phase = .failed
+                errorMessage = friendly(err); if full { phase = .failed }
             } else if result.suggestions.isEmpty {
-                phase = .empty
+                if full { phase = .empty }
             } else {
-                suggestions = result.suggestions
-                accepted = Set(result.suggestions.map(\.id))
+                let kept = suggestions.filter { !dates.contains($0.date) }
+                suggestions = (kept + result.suggestions).sorted { $0.date < $1.date }
                 phase = .review
             }
         } catch {
             errorMessage = "The AI provider didn’t respond. Check your connection and try again."
-            phase = .failed
+            if full { phase = .failed }
         }
+    }
+
+    /// Re-roll every unlocked night, keeping locked picks and steering away from
+    /// dishes already shown (so they don't reappear).
+    private func reshuffle() async {
+        let dates = unlockedDates.sorted()
+        for c in suggestions where dates.contains(c.date) { rejected.insert(c.title) }
+        let lockedTitles = suggestions.filter { locked.contains($0.date) }.map(\.title)
+        await draft(dates: dates, avoid: Array(rejected) + lockedTitles, full: false)
+    }
+
+    /// Re-roll a single night.
+    private func swap(_ card: NookAPI.PlanCardDTO) async {
+        rejected.insert(card.title)
+        let others = suggestions.filter { $0.date != card.date }.map(\.title)
+        await draft(dates: [card.date], avoid: Array(rejected) + others, full: false)
+    }
+
+    /// Replace a night with a hand-picked library recipe.
+    private func pickRecipe(date: String, _ r: NookAPI.RecipeSummary) {
+        if let old = suggestions.first(where: { $0.date == date }) { rejected.insert(old.title) }
+        let card = NookAPI.PlanCardDTO(
+            date: date, mealType: mealType, title: r.title, recipeId: r.id, emoji: r.emoji,
+            minutes: r.cookTimeMinutes, servings: cookingFor > 0 ? cookingFor : familySize, note: "Your pick")
+        suggestions = suggestions.map { $0.date == date ? card : $0 }.sorted { $0.date < $1.date }
+        pickTarget = nil
+    }
+
+    private func toggleLock(_ date: String) {
+        if locked.contains(date) { locked.remove(date) } else { locked.insert(date) }
     }
 
     private func apply() async {
         applying = true
-        for card in suggestions where accepted.contains(card.id) {
+        for card in suggestions {
             _ = await sync.setMealPlan(date: card.date, mealType: card.mealType,
                                        recipeId: card.recipeId,
                                        title: card.recipeId == nil ? card.title : nil)
