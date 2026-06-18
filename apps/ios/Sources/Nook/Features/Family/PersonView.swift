@@ -86,7 +86,11 @@ struct PersonView: View {
             VStack(alignment: .leading, spacing: 16) {
                 header
                 statCards
-                if let ov = model.overview { savingTowardCard(ov) }
+                if let ov = model.overview {
+                    let cur = ov.currencies.first { $0.key == ov.savingToward?.currency }
+                    SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, label: cur?.label,
+                                     canPick: !ov.rewardShop.isEmpty) { showSavingPicker = true }
+                }
                 daySection
                 if let ov = model.overview {
                     if ov.categoryBalance.contains(where: { $0.goalCount > 0 }) { balanceCard(ov) }
@@ -111,53 +115,6 @@ struct PersonView: View {
                                currencies: model.overview?.currencies ?? [],
                                current: model.overview?.savingToward?.id) { rewardId in
                 Task { _ = await sync.setSavingToward(personId: personId, rewardId: rewardId); await model.load() }
-            }
-        }
-    }
-
-    // MARK: saving toward
-
-    @ViewBuilder private func savingTowardCard(_ ov: NookAPI.PersonOverview) -> some View {
-        NookCard(padding: 14) {
-            VStack(alignment: .leading, spacing: 11) {
-                HStack {
-                    Text("Saving toward").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink2)
-                    Spacer()
-                    if ov.savingToward != nil {
-                        Button("Change") { showSavingPicker = true }
-                            .font(.system(size: 13, weight: .semibold)).tint(NK.ai)
-                            .disabled(ov.rewardShop.isEmpty)
-                    }
-                }
-                if let s = ov.savingToward {
-                    let cur = ov.currencies.first { $0.key == s.currency }
-                    let tint = Color(hexString: cur?.color) ?? NK.ai
-                    HStack(spacing: 11) {
-                        Text(s.emoji ?? "🎁").font(.system(size: 24))
-                            .frame(width: 46, height: 46).background(tint.opacity(0.14))
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(s.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
-                            ProgressBar(value: max(0.02, Double(s.pct) / 100), tint: tint, track: NK.hair)
-                            Text("\(s.have) of \(s.cost) \(cur?.label.lowercased() ?? "")")
-                                .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
-                        }
-                    }
-                } else {
-                    Button { showSavingPicker = true } label: {
-                        HStack(spacing: 9) {
-                            Image(systemName: "target").font(.system(size: 15)).foregroundStyle(NK.ai)
-                            Text(ov.rewardShop.isEmpty ? "No rewards yet" : "Pick a reward to save toward")
-                                .font(.system(size: 14, weight: .medium)).foregroundStyle(NK.ink2)
-                            Spacer()
-                            if !ov.rewardShop.isEmpty {
-                                Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain).disabled(ov.rewardShop.isEmpty)
-                }
             }
         }
     }

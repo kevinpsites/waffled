@@ -60,6 +60,76 @@ struct CoinChip: View {
     }
 }
 
+/// The saving-toward block, shared by the reward shop and the person spotlight so
+/// both read identically: a violet hero when a target is pinned (tap to change), or
+/// a dashed "pick one" prompt when not. Renders nothing if there's no target and no
+/// rewards to pick. `colorHex`/`label` describe the target's currency.
+struct SavingTowardCard: View {
+    let saving: NookAPI.PersonOverview.SavingToward?
+    let colorHex: String?
+    let label: String?
+    let canPick: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        if let s = saving {
+            Button(action: onTap) { hero(s) }.buttonStyle(.plain)
+        } else if canPick {
+            Button(action: onTap) { prompt }.buttonStyle(.plain)
+        }
+    }
+
+    private func hero(_ s: NookAPI.PersonOverview.SavingToward) -> some View {
+        let tint = Color(hexString: colorHex) ?? NK.ai
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("SAVING TOWARD")
+                    .font(.system(size: 11, weight: .heavy)).tracking(0.6).foregroundStyle(.white.opacity(0.85))
+                Spacer()
+                Text("Change").font(.system(size: 12, weight: .bold)).foregroundStyle(.white.opacity(0.9))
+            }
+            HStack(spacing: 9) {
+                Text(s.emoji ?? "🎁").font(.system(size: 24))
+                Text(s.title).font(NK.serif(22)).foregroundStyle(.white).lineLimit(2)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.28))
+                    Capsule().fill(.white)
+                        .frame(width: geo.size.width * max(0.02, min(1, Double(s.pct) / 100)))
+                }
+            }
+            .frame(height: 9)
+            Text("\(s.have) of \(s.cost) \(label?.lowercased() ?? "")")
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LinearGradient(colors: [tint.opacity(0.92), tint],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing))
+        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+    }
+
+    private var prompt: some View {
+        HStack(spacing: 11) {
+            Image(systemName: "target").font(.system(size: 18)).foregroundStyle(NK.ai)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Pick something to save toward")
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                Text("Track progress to a reward").font(.system(size: 12)).foregroundStyle(NK.ink3)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity)
+        .background(NK.ai.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous)
+            .strokeBorder(NK.ai.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
+    }
+}
+
 /// Rewards overview — the Rewards tab landing on a parent's phone. Shows pending
 /// requests the kids filed (approve/deny) and each family member's balances; tap a
 /// person to open their reward shop.
@@ -189,11 +259,9 @@ struct RewardShopView: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let p = model.person(personId) {
                     header(p)
-                    if let s = overview?.savingToward {
-                        Button { showSavingPicker = true } label: { savingHero(s) }.buttonStyle(.plain)
-                    } else if !(overview?.rewardShop.isEmpty ?? true) {
-                        savingPrompt
-                    }
+                    SavingTowardCard(saving: overview?.savingToward, colorHex: savingCur?.color,
+                                     label: savingCur?.label,
+                                     canPick: !(overview?.rewardShop.isEmpty ?? true)) { showSavingPicker = true }
                     shopHead
                     if model.rewards.isEmpty {
                         Text("No rewards yet — a parent can add them on the web.")
@@ -261,61 +329,10 @@ struct RewardShopView: View {
         return ordered.map { key in byKey[key] ?? .init(currency: key, balance: 0) }
     }
 
-    // MARK: saving-toward hero
-
-    private func savingHero(_ s: NookAPI.PersonOverview.SavingToward) -> some View {
-        let cur = model.currency(s.currency)
-        let tint = Color(hexString: cur?.color) ?? NK.ai
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("SAVING TOWARD")
-                    .font(.system(size: 11, weight: .heavy)).tracking(0.6).foregroundStyle(.white.opacity(0.85))
-                Spacer()
-                Text("Change").font(.system(size: 12, weight: .bold)).foregroundStyle(.white.opacity(0.9))
-            }
-            HStack(spacing: 9) {
-                Text(s.emoji ?? "🎁").font(.system(size: 24))
-                Text(s.title).font(NK.serif(22)).foregroundStyle(.white).lineLimit(2)
-            }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.28))
-                    Capsule().fill(.white)
-                        .frame(width: geo.size.width * max(0.02, min(1, Double(s.pct) / 100)))
-                }
-            }
-            .frame(height: 9)
-            Text("\(s.have) of \(s.cost) \(cur?.label.lowercased() ?? "")")
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(LinearGradient(colors: [tint.opacity(0.92), tint],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing))
-        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-    }
-
-    /// Shown when the person has no target yet — a dashed prompt to pick one.
-    private var savingPrompt: some View {
-        Button { showSavingPicker = true } label: {
-            HStack(spacing: 11) {
-                Image(systemName: "target").font(.system(size: 18)).foregroundStyle(NK.ai)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Pick something to save toward")
-                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                    Text("Track progress to a reward").font(.system(size: 12)).foregroundStyle(NK.ink3)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity)
-            .background(NK.ai.opacity(0.07))
-            .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous)
-                .strokeBorder(NK.ai.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
-        }
-        .buttonStyle(.plain)
+    /// The currency definition for the current saving-toward target.
+    private var savingCur: NookAPI.PersonOverview.Currency? {
+        guard let key = overview?.savingToward?.currency else { return nil }
+        return overview?.currencies.first { $0.key == key }
     }
 
     private var shopHead: some View {
