@@ -17,9 +17,9 @@ struct AppRoot: View {
     /// The Meals tab's nav stack, lifted here so the Today meal card can open a
     /// recipe, and re-tapping Meals pops to root.
     @State private var mealsPath: [MealsRoute] = []
-    /// The Today tab's nav stack — just recipe pushes (tonight's meal card), lifted
-    /// so re-tapping Today pops back to the dashboard.
-    @State private var todayPath: [NookAPI.RecipeSummary] = []
+    /// The Today tab's nav stack — its summary cards (tonight's meal, chores,
+    /// grocery) push here, lifted so re-tapping Today pops back to the dashboard.
+    @State private var todayPath: [TodayRoute] = []
 
     private static var initialTab: Tab {
         switch DemoHooks.startTab {
