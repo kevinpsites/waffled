@@ -50,7 +50,7 @@ struct AppRoot: View {
                 case .today:    TodayView(openFamily: openFamily, openCalendar: { tab = .calendar }, openRecipe: openRecipe)
                 case .calendar: CalendarView()
                 case .meals:    MealsView(path: $mealsPath)
-                case .family:   FamilyView(path: $familyPath, openRecipe: openRecipe)
+                case .family:   FamilyView(path: $familyPath)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

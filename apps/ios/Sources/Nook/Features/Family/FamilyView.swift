@@ -6,10 +6,8 @@ import SwiftUI
 struct FamilyView: View {
     @Environment(SyncManager.self) private var sync
     @State private var hub = FamilyHubModel()
+    @State private var recipes = RecipesModel()   // backs a recipe pushed from the grocery recap
     @Binding var path: [HubRoute]
-    /// Jump to the Meals tab and open a recipe (used by the grocery board's
-    /// this-week's-meals recap).
-    var openRecipe: (NookAPI.RecipeSummary) -> Void = { _ in }
     @State private var showSync = false
     @State private var ranDemo = false
     private let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
@@ -83,7 +81,8 @@ struct FamilyView: View {
     @ViewBuilder private func destination(_ route: HubRoute) -> some View {
         switch route {
         case .lists:           ListsIndexView(path: $path)
-        case let .list(list):  ListDetailView(list: list, openRecipe: openRecipe)
+        case let .list(list):  ListDetailView(list: list, openRecipe: { path.append(.recipe($0)) })
+        case let .recipe(r):   RecipeDetailView(summary: r, model: recipes)
         case .chores:          ChoresView()
         case .goals:           GoalsView(path: $path)
         case let .goal(goal):  GoalDetailView(goal: goal, path: $path)
