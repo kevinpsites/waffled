@@ -103,7 +103,7 @@ struct SavingTowardCard: View {
                 }
             }
             .frame(height: 9)
-            Text("\(s.have) of \(s.cost) \(label?.lowercased() ?? "")")
+            Text(s.have >= s.cost ? "Ready to redeem! 🎉" : "\(s.have) of \(s.cost) \(label?.lowercased() ?? "")")
                 .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
         }
         .padding(16)
