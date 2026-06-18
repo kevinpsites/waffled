@@ -86,8 +86,8 @@ struct TodayView: View {
     // MARK: pinned header (greeting + capture bar)
 
     /// The fixed top of Today: the greeting row and the capture bar. It carries an
-    /// opaque canvas background (plus a faint shadow) so the cards scroll out of
-    /// sight beneath it rather than showing through.
+    /// opaque canvas background so the cards scroll out of sight beneath it rather
+    /// than showing through.
     private var stickyHeader: some View {
         VStack(alignment: .leading, spacing: 12) {
             greeting
@@ -99,7 +99,6 @@ struct TodayView: View {
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity)
         .background(NK.canvas)
-        .shadow(color: .black.opacity(0.05), radius: 6, y: 4)
     }
 
     // MARK: greeting row
