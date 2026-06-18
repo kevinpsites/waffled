@@ -135,7 +135,12 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     this week", **＋ Plan dinner** on empty days, and a per-meal menu to **Change**
     (recipe picker) or **Remove**. Tapping a planned recipe opens its detail; plan/
     clear write via `POST`/`DELETE /api/meals/plan` and bump the refresh bus so the
-    Today card stays in sync. **Recipes** is the
+    Today card stays in sync. Empty weeks show **✨ Plan my week** — a config
+    (cooking-for · keep-in-mind · use-up) → `POST /api/meals/plan-week` → review of
+    the AI's per-night suggestion cards (emoji · title · time · from-library vs
+    new-dish · note) you accept/skip, then apply (nothing saves until you tap Add).
+    The planner's "Choose a recipe" picker reuses the Recipes library in pick mode.
+    **Recipes** is the
     household **Recipes library** — a two-column gradient card grid (emoji hero,
     cuisine · protein · cook-time · cooked-count), live `.searchable` text search
     across title/cuisine/protein/veg/tags, a sort menu (A–Z / Quickest / Most
@@ -154,9 +159,9 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     (`GET /api/recipes`, `GET /api/recipes/:id`, `PATCH …`, `POST …/cooked`);
     weekly planner + recipe capture follow. ✅
   - Rewards / Photos / Settings: still live-summary placeholders.
-- **Next:** Meals **"Plan my week ✨"** (AI `POST /api/meals/plan-week` review/accept)
-  + cook-assignment on a planned slot; a hub tile (Rewards/Photos/Settings); Auth0
-  login (roadmap 4.2.1) to replace the dev token.
+- **Next:** Meals **cook-assignment** on a planned slot + grocery-build from the
+  week; a hub tile (Rewards/Photos/Settings); Auth0 login (roadmap 4.2.1) to
+  replace the dev token.
 
 ## Known follow-ups / bugs
 

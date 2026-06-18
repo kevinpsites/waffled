@@ -13,13 +13,20 @@ struct WeekPlannerView: View {
     @State private var weekOffset = 0
     @State private var loading = true
     @State private var picking: PlanTarget?
+    @State private var planningWeek = false
 
     private let api = NookAPI()
+
+    /// Whether any night this week has no dinner — drives the "Plan my week" CTA.
+    private var hasEmptyNight: Bool {
+        days.contains { day in !entries.contains { $0.date == ymd(day) && $0.mealType == "dinner" } }
+    }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
                 weekHeader
+                if hasEmptyNight { planWeekButton }
                 ForEach(days, id: \.self) { day in dayCard(day) }
             }
             .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 110)
@@ -38,6 +45,24 @@ struct WeekPlannerView: View {
                 }
             }
         }
+        .sheet(isPresented: $planningWeek) {
+            PlanWeekSheet(start: ymd(weekStart), weekLabel: weekTitle,
+                          defaultCookingFor: max(1, sync.members.count)) {
+                Task { await load() }
+            }
+        }
+    }
+
+    private var planWeekButton: some View {
+        Button { planningWeek = true } label: {
+            HStack(spacing: 7) {
+                Text("✨").font(.system(size: 15))
+                Text("Plan my week").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 12)
+            .background(NK.ai).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: header

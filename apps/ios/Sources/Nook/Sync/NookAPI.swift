@@ -117,6 +117,50 @@ struct NookAPI: Sendable {
         try await delete("/api/meals/plan?date=\(date)&mealType=\(mealType)")
     }
 
+    /// One AI-suggested meal for a night (mirrors the server `PlanCard`). `recipeId`
+    /// is set when it matched a library recipe; otherwise it's a brand-new dish.
+    struct PlanCardDTO: Decodable, Identifiable, Hashable, Sendable {
+        let date: String
+        let mealType: String
+        let title: String
+        let recipeId: String?
+        let emoji: String?
+        let minutes: Int?
+        let servings: Int?
+        let note: String?
+        var id: String { "\(date)|\(mealType)|\(title)" }
+    }
+
+    /// The result of an AI "plan my week" run. `error` is set (with empty
+    /// suggestions) when the provider failed at runtime; a 501 throws instead.
+    struct PlanWeekResult: Decodable, Sendable {
+        let start: String
+        let mealType: String
+        let suggestions: [PlanCardDTO]
+        let via: String?
+        let error: String?
+    }
+
+    /// Ask the household's LLM to draft a dish for each empty night of the week
+    /// (nothing is saved — the client applies accepted cards via `planMeal`). Can be
+    /// slow on a local model, so it uses a generous timeout.
+    func planWeek(start: String, mealType: String = "dinner", cookingFor: Int?,
+                  keepInMind: String?, useUp: [String]?) async throws -> PlanWeekResult {
+        var body: [String: JSONValue] = ["start": .string(start), "mealType": .string(mealType)]
+        if let cookingFor { body["cookingFor"] = .int(cookingFor) }
+        if let keepInMind, !keepInMind.isEmpty { body["keepInMind"] = .string(keepInMind) }
+        if let useUp, !useUp.isEmpty { body["useUp"] = .array(useUp.map { .string($0) }) }
+        var req = URLRequest(url: url("/api/meals/plan-week"))
+        req.httpMethod = "POST"
+        authorize(&req)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 120
+        req.httpBody = try JSONEncoder().encode(body)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(resp, data)
+        return try JSONDecoder().decode(PlanWeekResult.self, from: data)
+    }
+
     struct RecipeRef: Decodable { let id: String; let title: String? }
 
     /// The household's recipes — used for best-effort title→recipe matching before
