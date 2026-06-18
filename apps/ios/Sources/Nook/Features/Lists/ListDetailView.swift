@@ -244,8 +244,12 @@ struct ListDetailView: View {
 
     private enum Field: Hashable { case add, editName, editQty }
 
-    init(list: NookAPI.ListSummary) {
+    /// Jump to the Meals tab and open a recipe — tapping a meal in the recap.
+    var openRecipe: (NookAPI.RecipeSummary) -> Void = { _ in }
+
+    init(list: NookAPI.ListSummary, openRecipe: @escaping (NookAPI.RecipeSummary) -> Void = { _ in }) {
         _model = State(initialValue: ListDetailModel(list: list))
+        self.openRecipe = openRecipe
     }
 
     var body: some View {
@@ -504,9 +508,9 @@ struct ListDetailView: View {
         .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
     }
 
-    private func mealRecapRow(_ meal: NookAPI.GroceryBoardDTO.Meal) -> some View {
+    @ViewBuilder private func mealRecapRow(_ meal: NookAPI.GroceryBoardDTO.Meal) -> some View {
         let color = Color(hexString: meal.color) ?? NK.ink3
-        return HStack(spacing: 10) {
+        let row = HStack(spacing: 10) {
             Circle().fill(color).frame(width: 9, height: 9)
             Text(weekday(meal.date))
                 .font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
@@ -515,11 +519,28 @@ struct ListDetailView: View {
                 .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink)
                 .lineLimit(1)
             Spacer(minLength: 6)
+            // A chevron hints the row drills into the recipe (only when it links one).
+            if meal.recipeId != nil {
+                Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+            }
             Text(meal.emoji ?? Self.mealTypeEmoji[meal.mealType ?? ""] ?? "🍽️")
                 .font(.system(size: 14))
                 .frame(width: 28, height: 28)
                 .background(color.opacity(0.12)).clipShape(Circle())
         }
+        if let rid = meal.recipeId {
+            Button { openRecipe(recipeSummary(for: meal, recipeId: rid)) } label: { row }
+                .buttonStyle(.plain)
+        } else {
+            row
+        }
+    }
+
+    /// A lightweight summary the Meals detail screen can open (it reloads the full
+    /// recipe on appear), built from the recap row's known fields.
+    private func recipeSummary(for meal: NookAPI.GroceryBoardDTO.Meal, recipeId: String) -> NookAPI.RecipeSummary {
+        .placeholder(id: recipeId, title: meal.title ?? "Recipe", emoji: meal.emoji,
+                     category: meal.mealType, cookTimeMinutes: nil, servings: nil)
     }
 
     /// "Sun"/"Mon"… from a YYYY-MM-DD(THH…) date string.

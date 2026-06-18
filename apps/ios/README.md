@@ -109,9 +109,10 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
   - **Family hub** tiles show live counts and navigate (per-tile NavigationStack
     routing; re-tap to pop to root). ✅
   - **Lists** built out: Lists index → grocery **board** (By aisle / By meal,
-    meal-color dots + meal-type tags, this-week's-meals summary, pantry-staples
-    "Pantry check", collapsible sections, inline name/qty edit, swipe → Details
-    editor with assignee/section, settle-into-Completed). ✅
+    meal-color dots + meal-type tags, this-week's-meals summary (tap a meal →
+    its recipe in the Meals tab), pantry-staples "Pantry check", collapsible
+    sections, inline name/qty edit, swipe → Details editor with assignee/section,
+    settle-into-Completed). ✅
   - **Goals** built out: list picker + All/Shared/Each, featured hero
     (shared-ring / each-together), log progress, **create**, **detail**
     (milestone ladder, by-person, recent activity, this-week, streak), **edit**
