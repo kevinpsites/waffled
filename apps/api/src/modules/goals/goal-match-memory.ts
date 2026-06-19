@@ -10,6 +10,12 @@ import { tokensOf } from './goal-match'
 // Weights by source. Human choice is gold-standard; an LLM guess is a softer hint.
 export const WEIGHT = { human: 3, llm: 1 } as const
 
+// Memory score at/above which the modal auto-links (pre-selects) the goal instead
+// of just suggesting it. 9 ≈ the family has confirmed a phrasing ~twice (each
+// human link is +3/word), so the 3rd identical event pre-fills. The recap still
+// confirms before any progress is logged, so an unwanted auto-link is undo-able.
+export const AUTO_LINK_THRESHOLD = 9
+
 // Record that `title` mapped to `goalId` for this household — bump every meaningful
 // token's weight toward that goal. Best-effort: never throws into the caller.
 export async function recordMatch(
@@ -57,10 +63,11 @@ export async function loadMemory(householdId: string): Promise<Memory> {
   return mem
 }
 
-// Best learned match for an event's title among the eligible goals, or null. Sums
-// learned token weights per goal; needs a clear winner (≥4 ≈ one human signal, and
-// strictly ahead of the runner-up) so a single weak hint never overrides keywords.
-export function memoryMatch(title: string, eligibleGoalIds: Set<string>, mem: Memory): string | null {
+// Best learned match for an event's title among the eligible goals, with its
+// score, or null. Sums learned token weights per goal; needs a clear winner (≥4 ≈
+// one human signal, and strictly ahead of the runner-up) so a single weak hint
+// never overrides keywords. The score drives the auto-link threshold.
+export function memoryMatch(title: string, eligibleGoalIds: Set<string>, mem: Memory): { goalId: string; score: number } | null {
   if (mem.size === 0) return null
   const score = new Map<string, number>()
   for (const token of tokensOf(title)) {
@@ -82,5 +89,5 @@ export function memoryMatch(title: string, eligibleGoalIds: Set<string>, mem: Me
     }
   }
   if (!best || best.w < 4 || best.w === second) return null
-  return best.id
+  return { goalId: best.id, score: best.w }
 }

@@ -167,6 +167,23 @@ Total-time / Count / Habit single events. Verified end-to-end (Playwright on the
 - [ ] Edit/cancel/delete after a confirmed log — clawback vs keep (lean: keep)   *(Phase 2)*
 - [ ] Backfill on enable — forward-only vs sweep past events (lean: forward-only) *(Phase 2)*
 
+**Phase B — smart suggestions + per-family learning (SHIPPED 2026-06-19):** untagged
+events that look like a goal are suggested (Today drawer "Might count toward a goal" +
+event modal + event detail). Layered match: learned **memory** (`goal_match_memory`,
+per-token→goal weights from human links +3 / LLM hits +1) → keyword/concept matcher →
+LLM fallback (`completeJson`, per-household provider, once per event via `event_llm_seen`).
+Checklist scheduling (migration 0034, `events.goal_step_id`) also shipped. **Auto-link
+(SHIPPED, modal only):** when memory score ≥ `AUTO_LINK_THRESHOLD` (9 ≈ confirmed ~2×) the
+create modal **pre-selects** the goal ("we've learned this · change it"); the recap is
+still the safety net so an unwanted auto-link never logs progress.
+- [ ] **Auto-link in the background** — extend auto-link to events created outside the
+      modal (Google sync, capture bar): set goal_id at create when memory is confident,
+      show "auto-linked · undo", recap confirms. *(deferred — modal-only for now)*
+- [ ] **⚠️ No background LLM without an explicit opt-in.** The suggestions LLM fallback runs
+      only on user-initiated surfaces today (drawer open / modal). Any background sweep
+      (e.g. classifying synced events on a schedule) MUST be gated behind a per-household
+      opt-in before it ships. *(constraint, per user 2026-06-19)*
+
 ### Milestones / checklist rethink — ✅ DONE (migration 0030)
 "Milestones" did double duty: threshold reward moments AND the "checklist" measure
 type both ran on `goal_milestones`. Split & shipped:

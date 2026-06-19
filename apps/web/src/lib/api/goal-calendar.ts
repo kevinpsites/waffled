@@ -50,7 +50,7 @@ export const goalCalendarApi = {
   // event. Pass an AbortSignal so a superseded request (attendees changed mid-
   // flight) is cancelled instead of racing the new one.
   suggestOne: (body: { title: string; participantIds: string[] }, signal?: AbortSignal) =>
-    apiSend<{ suggestion: { goalId: string; goalTitle: string; goalEmoji: string | null; via: string } | null }>(
+    apiSend<{ suggestion: { goalId: string; goalTitle: string; goalEmoji: string | null; via: string; auto: boolean } | null }>(
       'POST',
       '/api/goal-calendar/suggest-one',
       body,

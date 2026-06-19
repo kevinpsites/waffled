@@ -12,7 +12,7 @@ import { requireTenant, type Tenant } from '../households/households'
 import { logProgress } from './goals.service'
 import { updateEvent } from '../events/events'
 import { keywordMatch, type MatchGoal } from './goal-match'
-import { loadMemory, memoryMatch, recordMatch, WEIGHT } from './goal-match-memory'
+import { loadMemory, memoryMatch, recordMatch, WEIGHT, AUTO_LINK_THRESHOLD } from './goal-match-memory'
 import { getAiConfig, completeJson } from '../../platform/llm'
 
 type Api = ReturnType<typeof createAPI>
@@ -331,7 +331,7 @@ export async function suggestionQueue(householdId: string): Promise<Suggestion[]
     // Match on the TITLE only — event descriptions are full of scheduling
     // boilerplate ("booking", "reschedule", Zoom links) that produces false hits.
     // 1) learned memory  2) keyword/concept
-    const memId = memoryMatch(ev.title, candIds, mem)
+    const memId = memoryMatch(ev.title, candIds, mem)?.goalId ?? null
     const matchId = memId ?? keywordMatch(ev.title, null, cands as MatchGoal[])
     if (matchId && candIds.has(matchId)) {
       const g = goalById.get(matchId)!
@@ -432,7 +432,7 @@ export async function suggestOne(
   householdId: string,
   title: string,
   participantIds: string[]
-): Promise<{ goalId: string; goalTitle: string; goalEmoji: string | null; via: 'memory' | 'keyword' | 'llm' } | null> {
+): Promise<{ goalId: string; goalTitle: string; goalEmoji: string | null; via: 'memory' | 'keyword' | 'llm'; auto: boolean } | null> {
   if (!title.trim()) return null
   const { rows: goals } = await query<SuggestGoalRow>(
     `select g.id, g.title, g.emoji, g.goal_type,
@@ -447,14 +447,16 @@ export async function suggestOne(
   if (eligible.length === 0) return null
   const eligIds = new Set(eligible.map((g) => g.id))
   const byId = new Map(eligible.map((g) => [g.id, g]))
-  const pack = (id: string, via: 'memory' | 'keyword' | 'llm') => {
+  // auto=true → confident enough to pre-link in the modal (memory only — a learned,
+  // repeatedly-confirmed pattern; never on a one-off keyword/LLM guess).
+  const pack = (id: string, via: 'memory' | 'keyword' | 'llm', auto = false) => {
     const g = byId.get(id)!
-    return { goalId: g.id, goalTitle: g.title, goalEmoji: g.emoji, via }
+    return { goalId: g.id, goalTitle: g.title, goalEmoji: g.emoji, via, auto }
   }
 
   const mem = await loadMemory(householdId)
-  const memId = memoryMatch(title, eligIds, mem)
-  if (memId) return pack(memId, 'memory')
+  const memHit = memoryMatch(title, eligIds, mem)
+  if (memHit) return pack(memHit.goalId, 'memory', memHit.score >= AUTO_LINK_THRESHOLD)
   const kwId = keywordMatch(title, null, eligible)
   if (kwId) return pack(kwId, 'keyword')
 

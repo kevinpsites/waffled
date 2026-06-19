@@ -168,46 +168,72 @@ export function EventModal({
   // goal, offer to link it (the human still taps "Link" — never auto-applied).
   // Only once attendees are chosen, so attribution makes sense.
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set())
+  // Once the person picks the goal themselves (the dropdown), back off entirely —
+  // no chip, no auto-link — and respect their choice for the rest of the session.
+  const [userTouchedGoal, setUserTouchedGoal] = useState(false)
+  const userTouchedGoalRef = useRef(false)
+  userTouchedGoalRef.current = userTouchedGoal
+  // When memory is confident enough we pre-fill the goal (auto-link); remember
+  // which one so we can show the "we learned this" note next to the picker.
+  const [autoLinkedId, setAutoLinkedId] = useState<string | null>(null)
   // Instant client-side keyword/concept match — no network, shows immediately.
   const suggestion = useMemo(() => {
-    if (form.goalId || form.participantIds.length === 0 || form.title.trim().length < 3) return null
+    if (userTouchedGoal || form.goalId || form.participantIds.length === 0 || form.title.trim().length < 3) return null
     const g = suggestGoalForEvent(form.title, null, form.participantIds, calendarGoals)
     return g && !dismissed.has(g.id) ? g : null
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.goalId, form.title, form.participantIds, calendarGoals, dismissed])
+  }, [form.goalId, form.title, form.participantIds, calendarGoals, dismissed, userTouchedGoal])
 
   // LLM fallback: when keywords found nothing (or tied), ask the server's matcher
   // (memory → keyword → LLM). Debounced so it fires on a typing pause, not every
   // keystroke, and cached per (title, people) so it never re-asks the same thing.
   type Sug = { id: string; title: string; emoji: string | null }
+  type RawSug = { goalId: string; goalTitle: string; goalEmoji: string | null; auto: boolean }
   const peopleKey = [...form.participantIds].sort().join(',')
   const [llmSug, setLlmSug] = useState<Sug | null>(null)
   const [llmThinking, setLlmThinking] = useState(false)
-  const llmCache = useRef<Map<string, Sug | null>>(new Map())
+  const llmCache = useRef<Map<string, RawSug | null>>(new Map())
+  // Always consult the server (memory → keyword → LLM), even when the instant
+  // client keyword matched — because LEARNED MEMORY must win over a keyword
+  // coincidence (e.g. "Trampoline park" keyword-hits a parks goal, but the family
+  // has taught us it means "Get active"). The instant client chip shows meanwhile;
+  // an `auto` result pre-links and overrides it.
   useEffect(() => {
-    if (suggestion || form.goalId || form.participantIds.length === 0 || form.title.trim().length < 3) {
+    if (userTouchedGoal || form.goalId || form.participantIds.length === 0 || form.title.trim().length < 3) {
       setLlmSug(null)
       setLlmThinking(false)
       return
     }
     const key = `${form.title.trim().toLowerCase()}|${peopleKey}`
+    let alive = true
+    const ctrl = new AbortController()
+    // auto → pre-link (override the instant chip). Non-auto → only fill the chip
+    // when the instant client matcher found nothing (keep instant display for hits).
+    const apply = (s: { goalId: string; goalTitle: string; goalEmoji: string | null; auto: boolean } | null) => {
+      if (!alive || userTouchedGoalRef.current) return
+      if (s?.auto) {
+        set('goalId', s.goalId)
+        setAutoLinkedId(s.goalId)
+        setLlmSug(null)
+      } else if (!suggestion) {
+        setLlmSug(s ? { id: s.goalId, title: s.goalTitle, emoji: s.goalEmoji } : null)
+      }
+    }
     if (llmCache.current.has(key)) {
-      setLlmSug(llmCache.current.get(key)!)
+      apply(llmCache.current.get(key)!)
       setLlmThinking(false)
       return
     }
-    let alive = true
-    const ctrl = new AbortController()
-    setLlmSug(null)
-    setLlmThinking(true)
+    if (!suggestion) setLlmSug(null)
+    // Only show the thinking spinner when there's no instant chip to look at.
+    setLlmThinking(!suggestion)
     const timer = setTimeout(async () => {
       try {
         const { suggestion: s } = await goalCalendarApi.suggestOne({ title: form.title.trim(), participantIds: form.participantIds }, ctrl.signal)
-        const val: Sug | null = s ? { id: s.goalId, title: s.goalTitle, emoji: s.goalEmoji } : null
-        llmCache.current.set(key, val)
-        if (alive) setLlmSug(val)
+        llmCache.current.set(key, s)
+        apply(s)
       } catch {
-        if (alive) setLlmSug(null)
+        if (alive && !suggestion) setLlmSug(null)
       } finally {
         if (alive) setLlmThinking(false)
       }
@@ -220,13 +246,20 @@ export function EventModal({
       ctrl.abort()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suggestion, form.goalId, form.title, peopleKey])
+  }, [suggestion, userTouchedGoal, form.goalId, form.title, peopleKey])
 
   // What the chip shows: the instant keyword match, else the LLM's pick.
   const shownSuggestion: Sug | null = suggestion
     ? { id: suggestion.id, title: suggestion.title, emoji: suggestion.emoji }
     : llmSug && !dismissed.has(llmSug.id)
       ? llmSug
+      : null
+
+  // The auto-linked goal (for the "we learned this" note) — only while it's still
+  // the selected goal and the person hasn't overridden it.
+  const autoLinkedGoal =
+    autoLinkedId && form.goalId === autoLinkedId && !userTouchedGoal
+      ? calendarGoals.find((g) => g.id === autoLinkedId) ?? null
       : null
 
   // For a planned-meal event, resolve its recipe so we can offer "View recipe".
@@ -496,10 +529,29 @@ export function EventModal({
               goal. Shown only once attendees are chosen and they share an
               auto-counting goal. After the event ends, a "did this happen?" recap
               confirms it. */}
+          {/* Auto-linked: memory was confident enough to pre-fill the goal below.
+              It's a normal selection — change it (or pick "No goal") to override. */}
+          {autoLinkedGoal && (
+            <div className="ev-suggest ev-suggest-auto">
+              <span className="ai-spark"><Icon name="spark" /></span>
+              <span className="ev-suggest-txt">
+                Auto-linked to <b>{autoLinkedGoal.emoji ? `${autoLinkedGoal.emoji} ` : ''}{autoLinkedGoal.title}</b> — we’ve learned this. Change it below if needed.
+              </span>
+            </div>
+          )}
+
           {relevantGoals.length > 0 && (
             <label className="field">
               <span>Counts toward (optional)</span>
-              <select value={form.goalId} onChange={(e) => set('goalId', e.target.value)} style={{ width: '100%' }}>
+              <select
+                value={form.goalId}
+                onChange={(e) => {
+                  set('goalId', e.target.value)
+                  setUserTouchedGoal(true)
+                  setAutoLinkedId(null)
+                }}
+                style={{ width: '100%' }}
+              >
                 <option value="">No goal</option>
                 {relevantGoals.map((g) => (
                   <option key={g.id} value={g.id}>
