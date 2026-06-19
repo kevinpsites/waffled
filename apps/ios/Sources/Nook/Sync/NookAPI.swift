@@ -455,6 +455,29 @@ struct NookAPI: Sendable {
                                 as: CaptureConfigUpdate.self)
     }
 
+    // MARK: - Settings: meal calendar
+
+    /// How planned meals land on the calendar — calendar toggle, Google push, the
+    /// owning person, who's invited (`participantIds` nil ⇒ whole family), and the
+    /// per-meal times ("HH:MM").
+    struct MealCalendarSettings: Decodable, Sendable {
+        let addToCalendar: Bool
+        let pushToGoogle: Bool
+        let calendarPersonId: String?
+        let participantIds: [String]?
+        let times: [String: String]
+        let durationMinutes: Int
+    }
+    func mealCalendarSettings() async throws -> MealCalendarSettings {
+        struct Resp: Decodable { let settings: MealCalendarSettings }
+        return try await getJSON("/api/meals/calendar-settings", as: Resp.self).settings
+    }
+    /// Save the meal-calendar settings (admins) — re-syncs existing planned meals.
+    func setMealCalendarSettings(_ body: [String: JSONValue]) async throws -> MealCalendarSettings {
+        struct Resp: Decodable { let settings: MealCalendarSettings }
+        return try await sendReturning("PUT", "/api/meals/calendar-settings", body: body, as: Resp.self).settings
+    }
+
     // MARK: Chores board (non-synced; fetched over REST)
 
     /// One chore instance for a given day (the Tasks list row).

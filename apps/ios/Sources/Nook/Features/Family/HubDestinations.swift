@@ -14,6 +14,7 @@ enum HubRoute: Hashable {
     case settingsChoresRewards       // Settings → Chores & rewards (currencies + conversions)
     case settingsCalendars           // Settings → Calendars (Google)
     case settingsAI                  // Settings → AI & capture
+    case settingsMeals               // Settings → Meals (calendar)
 }
 
 /// Renders a `HubRoute` destination. Shared by the Family hub and the Today tab so
@@ -44,6 +45,7 @@ struct HubDestination: View {
         case .settingsChoresRewards: ChoresRewardsSettingsView()
         case .settingsCalendars: CalendarsSettingsView()
         case .settingsAI: AISettingsView()
+        case .settingsMeals: MealsSettingsView()
         }
     }
 }

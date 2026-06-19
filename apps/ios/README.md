@@ -215,7 +215,11 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     Ollama · Claude · OpenAI) with a model-override field; unconfigured providers
     are disabled with a "key detected / not configured" badge and an env-var hint.
     Keys live in the server env (no key field). Over `GET/PUT /api/capture/config`.
-    Calendars sort A–Z (primary pinned). ✅
+    Calendars sort A–Z (primary pinned). **Meals** — how planned meals hit the
+    calendar (add-to-calendar + Google-push toggles, the owning person, a "who's
+    invited" Whole-family/per-member chip selector, and Breakfast/Lunch/Dinner/Snack
+    time pickers); saving re-syncs existing meals. Over
+    `GET/PUT /api/meals/calendar-settings`. ✅
   - Photos: still a live-summary placeholder. Settings panels still to build:
     Notifications.
 - **Next:** the Notifications Settings panel; Auth0 login (roadmap 4.2.1) to

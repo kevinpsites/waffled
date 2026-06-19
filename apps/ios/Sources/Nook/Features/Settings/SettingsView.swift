@@ -34,6 +34,7 @@ struct SettingsView: View {
                 row("👨‍👩‍👧‍👦", "Family & people", "Members, roles, household") { path.append(.settingsFamily) }
                 row("⭐", "Chores & rewards", "Currencies & conversions") { path.append(.settingsChoresRewards) }
                 row("📅", "Calendars", "Google sync") { path.append(.settingsCalendars) }
+                row("🍽️", "Meals", "Calendar & meal times") { path.append(.settingsMeals) }
                 row("✨", "AI & capture", "Provider & model") { path.append(.settingsAI) }
 
                 SectionLabel(text: "Coming soon").padding(.top, 10)
