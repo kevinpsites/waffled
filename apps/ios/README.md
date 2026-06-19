@@ -201,11 +201,20 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     amount · from-currency → amount · to-currency). Over `GET/PATCH
     /api/household(/settings)`, `POST/PATCH/DELETE /api/persons`,
     `…/currencies`, and `…/conversions`; admin-gated server-side. ✅
+    **Calendars** — Google-calendar management (web parity): connected accounts
+    (email · N-of-M syncing · Disconnect), each calendar with a color dot,
+    primary/access-role/last-synced line, a **Sync** toggle, a **person** assign
+    menu, and the **★ write-target** star; a **Sync now** action; and **Connect**
+    via `ASWebAuthenticationSession` (a `nook://` OAuth callback). Over
+    `GET /api/calendar/google/status`, `PATCH …/calendars/:id`,
+    `DELETE …/accounts/:id`, `POST /api/calendar/sync` + `…/google/connect`. ✅
+  - The person spotlight's wallet card gains a **⇄ Trade** button → a TradeSheet
+    that converts a person's balance through a household rate (`POST
+    /api/conversions/:id/apply`). ✅
   - Photos: still a live-summary placeholder. Settings panels still to build:
-    AI & capture, Calendars/Google, Notifications.
-- **Next:** the remaining Settings panels (AI provider, Google calendars,
-  notifications); the Trade modal on the person spotlight (conversions are live);
-  Auth0 login (roadmap 4.2.1) to replace the dev token; Photos.
+    AI & capture, Notifications.
+- **Next:** AI-provider + notifications Settings panels; Auth0 login (roadmap
+  4.2.1) to replace the dev token; Photos.
 
 ## Known follow-ups / bugs
 

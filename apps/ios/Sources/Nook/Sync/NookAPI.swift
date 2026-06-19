@@ -374,6 +374,65 @@ struct NookAPI: Sendable {
         return ((try? await getJSON("/api/calendar/google/status", as: Resp.self))?.calendars) ?? []
     }
 
+    // MARK: - Settings: Google Calendar
+
+    /// Full Google-calendar status for the Settings panel — accounts + calendars.
+    struct CalendarStatus: Decodable, Sendable {
+        let configured: Bool
+        let connected: Bool
+        let accounts: [Account]
+        let calendars: [Cal]
+
+        struct Account: Decodable, Identifiable, Hashable, Sendable {
+            let id: String
+            let email: String?
+            let connectedAt: String
+        }
+        struct Cal: Decodable, Identifiable, Hashable, Sendable {
+            let id, accountId: String
+            let summary: String?
+            let accessRole: String?
+            let colorHex: String?
+            let isPrimary: Bool
+            let selected: Bool
+            let isWriteTarget: Bool
+            let personId, personName, personColor: String?
+            let lastSyncedAt: String?
+            var isWritable: Bool { accessRole == "owner" || accessRole == "writer" }
+        }
+    }
+
+    func calendarStatus() async throws -> CalendarStatus {
+        try await getJSON("/api/calendar/google/status", as: CalendarStatus.self)
+    }
+    /// Map a calendar to a person, toggle sync, or set the write-target (admins).
+    func updateCalendarLink(id: String, _ body: [String: JSONValue]) async throws {
+        try await send("PATCH", "/api/calendar/google/calendars/\(id)", body: body)
+    }
+    /// Disconnect a Google account + its calendars (admins; imported events stay).
+    func disconnectCalendarAccount(id: String) async throws {
+        try await delete("/api/calendar/google/accounts/\(id)")
+    }
+
+    struct CalendarSyncResult: Decodable, Sendable {
+        let imported, updated, deleted: Int
+        let calendars: [Line]
+        struct Line: Decodable, Sendable { let summary: String?; let error: String? }
+        var errors: [String] { calendars.compactMap(\.error) }
+    }
+    /// Run a manual inbound+outbound sync (all selected calendars, or one).
+    func syncCalendars(calendarId: String? = nil) async throws -> CalendarSyncResult {
+        var body: [String: JSONValue] = [:]
+        if let calendarId { body["calendarId"] = .string(calendarId) }
+        return try await sendReturning("POST", "/api/calendar/sync", body: body, as: CalendarSyncResult.self)
+    }
+    /// Begin connecting a Google account — returns the consent URL to open.
+    func connectCalendarURL(redirectTo: String) async throws -> String {
+        struct Resp: Decodable { let url: String }
+        return try await sendReturning("POST", "/api/calendar/google/connect",
+                                       body: ["redirectTo": .string(redirectTo)], as: Resp.self).url
+    }
+
     // MARK: Chores board (non-synced; fetched over REST)
 
     /// One chore instance for a given day (the Tasks list row).

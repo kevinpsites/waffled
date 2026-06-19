@@ -33,10 +33,10 @@ struct SettingsView: View {
                 SectionLabel(text: "Household").padding(.top, 4)
                 row("👨‍👩‍👧‍👦", "Family & people", "Members, roles, household") { path.append(.settingsFamily) }
                 row("⭐", "Chores & rewards", "Currencies & conversions") { path.append(.settingsChoresRewards) }
+                row("📅", "Calendars", "Google sync") { path.append(.settingsCalendars) }
 
                 SectionLabel(text: "Coming soon").padding(.top, 10)
                 soon("✨", "AI & capture", "Provider & model")
-                soon("📅", "Calendars", "Google sync")
                 soon("🔔", "Notifications", "Reminders")
             }
             .padding(16).padding(.bottom, 110)

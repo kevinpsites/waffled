@@ -43,6 +43,11 @@ targets:
       properties:
         CFBundleDisplayName: Nook
         UILaunchScreen: {}
+        # Custom scheme for the Google-calendar OAuth callback (ASWebAuthenticationSession).
+        CFBundleURLTypes:
+          - CFBundleURLName: ai.lorebooks.nook.oauth
+            CFBundleURLSchemes:
+              - nook
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
