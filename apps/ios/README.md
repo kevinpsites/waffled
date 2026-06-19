@@ -211,10 +211,15 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
   - The person spotlight's wallet card gains a **⇄ Trade** button → a TradeSheet
     that converts a person's balance through a household rate (`POST
     /api/conversions/:id/apply`). ✅
+    **AI & capture** — pick the provider that powers the capture bar (On-device ·
+    Ollama · Claude · OpenAI) with a model-override field; unconfigured providers
+    are disabled with a "key detected / not configured" badge and an env-var hint.
+    Keys live in the server env (no key field). Over `GET/PUT /api/capture/config`.
+    Calendars sort A–Z (primary pinned). ✅
   - Photos: still a live-summary placeholder. Settings panels still to build:
-    AI & capture, Notifications.
-- **Next:** AI-provider + notifications Settings panels; Auth0 login (roadmap
-  4.2.1) to replace the dev token; Photos.
+    Notifications.
+- **Next:** the Notifications Settings panel; Auth0 login (roadmap 4.2.1) to
+  replace the dev token; Photos.
 
 ## Known follow-ups / bugs
 

@@ -433,6 +433,28 @@ struct NookAPI: Sendable {
                                        body: ["redirectTo": .string(redirectTo)], as: Resp.self).url
     }
 
+    // MARK: - Settings: AI & capture
+
+    /// The household's capture/AI config — active provider + model, which providers
+    /// have server-side credentials (`available`), and each provider's default model.
+    /// Keys live in the server env and never reach the client.
+    struct CaptureConfig: Decodable, Sendable {
+        let provider: String                 // anthropic | openai | ollama | heuristic
+        let model: String?
+        let available: [String: Bool]
+        let defaultModels: [String: String]
+    }
+    func captureConfig() async throws -> CaptureConfig {
+        try await getJSON("/api/capture/config", as: CaptureConfig.self)
+    }
+    /// Set the active provider + model override (admins). `model` nil ⇒ provider default.
+    struct CaptureConfigUpdate: Decodable, Sendable { let provider: String; let model: String? }
+    func setCaptureConfig(provider: String, model: String?) async throws -> CaptureConfigUpdate {
+        try await sendReturning("PUT", "/api/capture/config",
+                                body: ["provider": .string(provider), "model": model.map(JSONValue.string) ?? .null],
+                                as: CaptureConfigUpdate.self)
+    }
+
     // MARK: Chores board (non-synced; fetched over REST)
 
     /// One chore instance for a given day (the Tasks list row).
