@@ -26,6 +26,10 @@ function stepFor(item: RecapItem): number {
   return 1
 }
 
+// Habits and checklists carry no amount — confirming a habit ticks today, a
+// checklist ticks the linked step. So the stepper is hidden and we send 1.
+const noAmount = (goalType: string) => goalType === 'habit' || goalType === 'checklist'
+
 function whenLabel(item: RecapItem): string {
   const d = new Date(item.startsAt)
   const day = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
@@ -111,10 +115,11 @@ function RecapRow({
   onSkip: () => void
 }) {
   const [editWho, setEditWho] = useState(false)
-  const isHabit = item.goalType === 'habit'
-  const amt = isHabit ? 1 : Number(draft.amount)
+  const noAmt = noAmount(item.goalType)
+  const isChecklist = item.goalType === 'checklist'
+  const amt = noAmt ? 1 : Number(draft.amount)
   const step = stepFor(item)
-  const canConfirm = !busy && (isHabit || (Number.isFinite(amt) && amt !== 0))
+  const canConfirm = !busy && (noAmt || (Number.isFinite(amt) && amt !== 0))
 
   // The pickable set is the goal's participants, never the whole household. A
   // solo goal just notes whose it is; a multi-person goal can re-pick on tap.
@@ -148,6 +153,11 @@ function RecapRow({
         <div className="recap-name">{item.title}</div>
         <div className="recap-meta">
           <span>{whenLabel(item)}</span>
+          {/* A checklist recap ticks a specific step — name it so it's clear what
+              "Confirm" will check off. */}
+          {isChecklist && item.stepLabel && (
+            <span className="recap-stepchip">✓ {item.stepLabel}</span>
+          )}
           {!scoped && (
             <span className="recap-goalchip">
               {item.goalEmoji ?? '🎯'} {item.goalTitle}
@@ -157,7 +167,7 @@ function RecapRow({
       </div>
 
       <div className="recap-input">
-        {!isHabit && (
+        {!noAmt && (
           <div className="recap-step">
             <button type="button" onClick={() => bump(-step)} disabled={busy} aria-label="Decrease">−</button>
             <input
@@ -248,7 +258,7 @@ export function ReviewList({ goalId, variant }: { goalId?: string | null; varian
     const k = KEY(it)
     const d = drafts[k]
     if (!d) return
-    const amt = it.goalType === 'habit' ? 1 : Number(d.amount)
+    const amt = noAmount(it.goalType) ? 1 : Number(d.amount)
     if (!Number.isFinite(amt) || amt === 0) return
     setBusy((b) => ({ ...b, [k]: true }))
     try {
@@ -275,7 +285,7 @@ export function ReviewList({ goalId, variant }: { goalId?: string | null; varian
     for (const it of items) {
       const d = drafts[KEY(it)]
       if (!d) continue
-      const amt = it.goalType === 'habit' ? 1 : Number(d.amount)
+      const amt = noAmount(it.goalType) ? 1 : Number(d.amount)
       if (!Number.isFinite(amt) || amt === 0) continue
       try {
         await goalCalendarApi.confirm({ eventId: it.eventId, occurrenceDate: it.occurrenceDate, amount: amt, personIds: d.who })

@@ -20,6 +20,7 @@ export interface AgendaEvent {
   location: string | null
   personId: string | null
   goalId?: string | null
+  goalStepId?: string | null
   personName: string | null
   personColor: string | null
   personEmoji: string | null
@@ -57,6 +58,7 @@ export const eventsApi = {
     participantIds?: string[]
     location?: string | null
     goalId?: string | null
+    goalStepId?: string | null
     calendarId?: string | null
   }) => apiSend<{ event: AgendaEvent }>('POST', '/api/events', input),
   updateEvent: (id: string, patch: Record<string, unknown>) =>

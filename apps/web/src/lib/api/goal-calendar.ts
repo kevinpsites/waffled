@@ -22,6 +22,8 @@ export interface RecapItem {
   suggestedAmount: number
   defaultPersonIds: string[]
   goalParticipantIds: string[]
+  goalStepId: string | null
+  stepLabel: string | null
 }
 
 export const goalCalendarApi = {

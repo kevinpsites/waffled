@@ -109,9 +109,10 @@ export function GoalDetail() {
           : '＋ Log progress'
   const showLog = gType !== 'checklist'
   // "Plan time" is only meaningful when the goal accepts calendar contributions
-  // (so the scheduled event can actually count). Checklists can't be timed.
+  // (so the scheduled event can actually count) — all four calendar types qualify.
   const canPlan =
-    !!goal?.autoFromCalendar && (gType === 'total' || gType === 'count' || gType === 'habit')
+    !!goal?.autoFromCalendar &&
+    (gType === 'total' || gType === 'count' || gType === 'habit' || gType === 'checklist')
   const planLabel = gUnit && HOUR_UNITS.has(gUnit.toLowerCase()) ? '＋ Plan time' : '＋ Schedule'
 
   useTopbarFull(

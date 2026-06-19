@@ -38,6 +38,8 @@ interface RecapRow {
   goal_type: string
   unit: string | null
   tracking_mode: string
+  goal_step_id: string | null
+  step_label: string | null
   event_person_ids: string[]
   goal_person_ids: string[]
 }
@@ -75,6 +77,7 @@ export async function recapQueue(householdId: string, goalId?: string | null) {
             (e.starts_at at time zone h.timezone)::date::text as occurrence_date,
             g.id as goal_id, g.title as goal_title, g.emoji as goal_emoji,
             g.goal_type, g.unit, g.tracking_mode,
+            e.goal_step_id, gs.label as step_label,
             coalesce((select array_agg(ep.person_id::text)
                         from event_participants ep
                        where ep.event_id = e.id and ep.deleted_at is null), '{}') as event_person_ids,
@@ -84,6 +87,7 @@ export async function recapQueue(householdId: string, goalId?: string | null) {
        from events e
        join households h on h.id = e.household_id
        join goals g on g.id = e.goal_id and g.deleted_at is null and g.auto_from_calendar
+       left join goal_steps gs on gs.id = e.goal_step_id and gs.deleted_at is null
        left join event_goal_logs egl
          on egl.event_id = e.id and egl.goal_id = e.goal_id
         and egl.occurrence_date = (e.starts_at at time zone h.timezone)::date
@@ -94,6 +98,9 @@ export async function recapQueue(householdId: string, goalId?: string | null) {
         and coalesce(e.ends_at, e.starts_at) <= now()
         and (e.status is null or e.status not in ${SKIP_STATUSES})
         and egl.id is null
+        -- A checklist recap needs a still-pending step to tick; amount-based goals
+        -- (total/count/habit) surface regardless.
+        and (g.goal_type <> 'checklist' or (gs.id is not null and gs.done_at is null))
         and ($2::uuid is null or g.id = $2)
       order by coalesce(e.ends_at, e.starts_at) desc
       limit 50`,
@@ -115,6 +122,8 @@ export async function recapQueue(householdId: string, goalId?: string | null) {
     suggestedAmount: suggestedAmount(r),
     defaultPersonIds: defaultPersonIds(r),
     goalParticipantIds: r.goal_person_ids ?? [],
+    goalStepId: r.goal_step_id,
+    stepLabel: r.step_label,
   }))
 }
 
@@ -135,31 +144,59 @@ export async function confirmRecap(
     await client.query('begin')
     // The event must still exist, belong to the household, and be linked to a goal
     // that accepts calendar contributions.
-    const { rows } = await client.query<{ goal_id: string }>(
-      `select e.goal_id from events e
+    const { rows } = await client.query<{ goal_id: string; goal_type: string; goal_step_id: string | null }>(
+      `select e.goal_id, g.goal_type, e.goal_step_id from events e
          join goals g on g.id = e.goal_id and g.deleted_at is null and g.auto_from_calendar
         where e.id = $1 and e.household_id = $2 and e.deleted_at is null and e.goal_id is not null`,
       [eventId, tenant.householdId]
     )
-    const goalId = rows[0]?.goal_id
-    if (!goalId) {
+    const link = rows[0]
+    if (!link) {
       await client.query('rollback')
       return null
     }
+    const goalId = link.goal_id
     // Claim the (event, occurrence, goal) slot first. ON CONFLICT DO NOTHING +
     // RETURNING means a second confirm gets no row back → we bail without logging.
     const claim = await client.query<{ id: string }>(
       `insert into event_goal_logs
-         (household_id, event_id, occurrence_date, goal_id, status, created_by)
-       values ($1,$2,$3,$4,'logged',$5)
+         (household_id, event_id, occurrence_date, goal_id, goal_step_id, status, created_by)
+       values ($1,$2,$3,$4,$5,'logged',$6)
        on conflict (event_id, occurrence_date, goal_id) do nothing
        returning id`,
-      [tenant.householdId, eventId, occurrenceDate, goalId, tenant.personId]
+      [tenant.householdId, eventId, occurrenceDate, goalId, link.goal_step_id, tenant.personId]
     )
     if (claim.rowCount === 0) {
       await client.query('rollback')
       return 'duplicate'
     }
+
+    // Checklist goals don't take an amount — confirming ticks the linked step.
+    // Done inside the claim transaction (it's a couple of small writes). We mirror
+    // it to goal_logs like a manual tick (ref_type 'goal_step') so the activity
+    // feed/streaks count it and an untick later cleans it up.
+    if (link.goal_type === 'checklist') {
+      const stepId = link.goal_step_id
+      if (stepId) {
+        const doneBy = personIds[0] ?? tenant.personId
+        const upd = await client.query(
+          `update goal_steps set done_at = now(), done_by = $1
+            where id = $2 and goal_id = $3 and household_id = $4 and deleted_at is null and done_at is null
+            returning id`,
+          [doneBy, stepId, goalId, tenant.householdId]
+        )
+        if ((upd.rowCount ?? 0) > 0) {
+          await client.query(
+            `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, ref_type, ref_id, created_by)
+             values ($1,$2,$3,1,$4,'auto_calendar','goal_step',$5,$6)`,
+            [tenant.householdId, goalId, doneBy, note ?? null, stepId, tenant.personId]
+          )
+        }
+      }
+      await client.query('commit')
+      return 'logged'
+    }
+
     await client.query('commit')
     // Write progress OUTSIDE the claim transaction (logProgress opens its own
     // connection). The claim row already guarantees idempotency.

@@ -804,6 +804,11 @@ button.goal-listhead-link:hover {
   display: inline-flex; align-items: center; gap: 5px; font-weight: 700; color: var(--ink);
   background: var(--panel); border-radius: 999px; padding: 3px 10px; margin-top: 1px;
 }
+.recap-stepchip {
+  display: inline-flex; align-items: center; gap: 5px; font-weight: 700;
+  color: var(--ai); background: color-mix(in srgb, var(--ai) 10%, #fff);
+  border-radius: 999px; padding: 3px 10px; margin-top: 1px;
+}
 
 /* Amount stepper + attribution, stacked and right-aligned. */
 .recap-input { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 7px; }

@@ -167,6 +167,71 @@ describe('calendar → goal recap', () => {
     void e1; void e2
   })
 
+  it('checklist: a linked event ticks its step on confirm (and only its step)', async () => {
+    // Checklist goal with two steps; the event is linked to the second one.
+    const g = await call('POST', '/api/goals', kevin, {
+      goalListId: listId, title: 'Reno', goalType: 'checklist', trackingMode: 'shared_total',
+      autoFromCalendar: true, participantIds: [kevinId],
+      steps: [{ label: 'Sand the deck' }, { label: 'Prime the walls' }],
+    })
+    const goalId = JSON.parse(g.body).goal.id
+    const before = JSON.parse((await call('GET', `/api/goals/${goalId}`, kevin)).body).goal
+    const primeStep = before.steps.find((s: { label: string }) => s.label === 'Prime the walls')
+
+    // An ended event linked to the goal + that step.
+    const start = new Date(Date.now() - 24 * 3600_000)
+    const ev = await call('POST', '/api/events', kevin, {
+      title: 'Painting', startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 3600_000).toISOString(),
+      participantIds: [kevinId], goalId, goalStepId: primeStep.id,
+    })
+    const eventId = JSON.parse(ev.body).event.id
+
+    // Recap surfaces it with the step label and no amount expectation.
+    const items = await recap(goalId)
+    expect(items.length).toBe(1)
+    expect(items[0].goalType).toBe('checklist')
+    expect(items[0].stepLabel).toBe('Prime the walls')
+
+    // Confirm ticks the linked step — and ONLY it.
+    const c = await call('POST', '/api/goal-calendar/recap/confirm', kevin, {
+      eventId, occurrenceDate: items[0].occurrenceDate, amount: 1, personIds: [kevinId],
+    })
+    expect(JSON.parse(c.body).status).toBe('logged')
+
+    const after = JSON.parse((await call('GET', `/api/goals/${goalId}`, kevin)).body).goal
+    const prime = after.steps.find((s: { label: string }) => s.label === 'Prime the walls')
+    const sand = after.steps.find((s: { label: string }) => s.label === 'Sand the deck')
+    expect(prime.done).toBe(true)
+    expect(sand.done).toBe(false)
+    expect(after.stepDone).toBe(1)
+
+    // The tick is mirrored as a goal_log (auto_calendar / goal_step) and the recap clears.
+    const log = await withClient((cl) =>
+      cl.query(`select source, ref_type, ref_id from goal_logs where goal_id=$1 and deleted_at is null`, [goalId])
+    )
+    expect(log.rows[0]).toMatchObject({ source: 'auto_calendar', ref_type: 'goal_step', ref_id: primeStep.id })
+    expect((await recap(goalId)).length).toBe(0)
+  })
+
+  it('checklist: recap hides once the linked step is already done', async () => {
+    const g = await call('POST', '/api/goals', kevin, {
+      goalListId: listId, title: 'Reno2', goalType: 'checklist', trackingMode: 'shared_total',
+      autoFromCalendar: true, participantIds: [kevinId], steps: [{ label: 'Caulk the tub' }],
+    })
+    const goalId = JSON.parse(g.body).goal.id
+    const detail = JSON.parse((await call('GET', `/api/goals/${goalId}`, kevin)).body).goal
+    const stepId = detail.steps[0].id
+    // Tick the step manually first.
+    await call('PATCH', `/api/goals/${goalId}/steps/${stepId}`, kevin, { done: true })
+    // A linked event for that already-done step shouldn't ask.
+    const start = new Date(Date.now() - 24 * 3600_000)
+    await call('POST', '/api/events', kevin, {
+      title: 'Caulking', startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 1800_000).toISOString(),
+      participantIds: [kevinId], goalId, goalStepId: stepId,
+    })
+    expect((await recap(goalId)).length).toBe(0)
+  })
+
   it('excludes cancelled, future, and non-opted-in events', async () => {
     // cancelled status
     const g1 = await makeGoal({ title: 'Cancelled' })

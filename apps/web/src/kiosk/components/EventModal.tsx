@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
-import { api, usePersons, useGoals, calendarsApi, mealsApi, localToday, invalidateGetCache, type AgendaEvent, type CalendarLink } from '../../lib/api'
+import { api, usePersons, useGoals, goalsApi, calendarsApi, mealsApi, localToday, invalidateGetCache, type AgendaEvent, type CalendarLink, type GoalStep } from '../../lib/api'
 import { createEventLocal, updateEventLocal, deleteEventLocal, tombstoneEvent } from '../../lib/powersync/events-local'
 
 // Calendars an event can be written to: writable (owner/writer), not read-only.
@@ -30,6 +30,7 @@ const DURATIONS: Array<{ min: number; label: string }> = [
 // goal hands us the goal + its people so the event is linked from the start.
 export interface EventPrefill {
   goalId?: string
+  goalStepId?: string
   participantIds?: string[]
   title?: string
   durationMin?: number
@@ -56,6 +57,7 @@ function initialForm(event?: AgendaEvent, date?: string, time?: string, prefill?
       participantIds,
       location: event.location ?? '',
       goalId: event.goalId ?? '',
+      goalStepId: event.goalStepId ?? '',
     }
   }
   return {
@@ -67,6 +69,7 @@ function initialForm(event?: AgendaEvent, date?: string, time?: string, prefill?
     participantIds: prefill?.participantIds ?? ([] as string[]),
     location: '',
     goalId: prefill?.goalId ?? '',
+    goalStepId: prefill?.goalStepId ?? '',
   }
 }
 
@@ -91,10 +94,12 @@ export function EventModal({
   const navigate = useNavigate()
   const { persons } = usePersons()
   // Goals that opted into calendar auto-counting (the "Counts toward" picker).
-  // Checklists can't be timed by an event, so only total/count/habit qualify.
+  // total/count/habit add an amount; a checklist instead ticks a chosen step.
   const { goals } = useGoals()
   const calendarGoals = goals.filter(
-    (g) => g.autoFromCalendar && (g.goalType === 'total' || g.goalType === 'count' || g.goalType === 'habit')
+    (g) =>
+      g.autoFromCalendar &&
+      (g.goalType === 'total' || g.goalType === 'count' || g.goalType === 'habit' || g.goalType === 'checklist')
   )
   const [form, setForm] = useState(() => initialForm(event, date, time, prefill))
   const [saving, setSaving] = useState(false)
@@ -113,14 +118,47 @@ export function EventModal({
           const gp = new Set(g.participants.map((p) => p.personId))
           return form.participantIds.every((id) => gp.has(id))
         })
-  // If the attendee change orphaned the chosen goal, drop it so we never save a
-  // link the picker no longer offers. Wait for goals to load first — otherwise a
-  // pre-filled goalId (from "Plan time") would be cleared before the list arrives.
+  // If the attendee change orphaned the chosen goal, drop it (and any step) so we
+  // never save a link the picker no longer offers. Wait for goals to load first —
+  // otherwise a pre-filled goalId (from "Plan time") is cleared before they arrive.
   useEffect(() => {
     if (!goals.length) return
-    if (form.goalId && !relevantGoals.some((g) => g.id === form.goalId)) set('goalId', '')
+    if (form.goalId && !relevantGoals.some((g) => g.id === form.goalId)) {
+      set('goalId', '')
+      set('goalStepId', '')
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.participantIds, form.goalId, goals.length])
+
+  // A checklist goal needs a step to tick — fetch the goal's open steps when one
+  // is selected. (The goals list carries only counts, not the step rows.)
+  const selectedGoal = calendarGoals.find((g) => g.id === form.goalId)
+  const isChecklistGoal = selectedGoal?.goalType === 'checklist'
+  const [steps, setSteps] = useState<GoalStep[]>([])
+  useEffect(() => {
+    if (!isChecklistGoal || !form.goalId) {
+      setSteps([])
+      return
+    }
+    let alive = true
+    goalsApi
+      .goal(form.goalId)
+      // Offer the steps still to do — plus, when editing, the one already linked
+      // (even if done) so the current selection stays visible.
+      .then((d) => alive && setSteps(d.goal.steps.filter((s) => !s.done || s.id === form.goalStepId)))
+      .catch(() => alive && setSteps([]))
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isChecklistGoal, form.goalId])
+
+  // Drop a stale step when the goal changes to a non-checklist or a different one.
+  useEffect(() => {
+    if (!isChecklistGoal && form.goalStepId) set('goalStepId', '')
+    else if (form.goalStepId && steps.length && !steps.some((s) => s.id === form.goalStepId)) set('goalStepId', '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isChecklistGoal, steps])
 
   // For a planned-meal event, resolve its recipe so we can offer "View recipe".
   const isMeal = event?.origin === 'meal_plan'
@@ -184,6 +222,8 @@ export function EventModal({
       location: form.location.trim() || null,
       personIds: form.participantIds,
       goalId: form.goalId || null,
+      // Only a checklist link carries a step; clear it otherwise.
+      goalStepId: isChecklistGoal ? form.goalStepId || null : null,
     }
     const restPayload = { ...draft, participantIds: draft.personIds }
     try {
@@ -366,6 +406,23 @@ export function EventModal({
                   <option key={g.id} value={g.id}>
                     {g.emoji ? `${g.emoji} ` : ''}
                     {g.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {/* Checklist goal → pick which step this event completes; confirming the
+              post-event recap ticks it. Hidden once every step is already done. */}
+          {isChecklistGoal && steps.length > 0 && (
+            <label className="field">
+              <span>Completes step</span>
+              <select value={form.goalStepId} onChange={(e) => set('goalStepId', e.target.value)} style={{ width: '100%' }}>
+                <option value="">No specific step</option>
+                {steps.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.done ? '✓ ' : ''}
+                    {s.label}
                   </option>
                 ))}
               </select>
