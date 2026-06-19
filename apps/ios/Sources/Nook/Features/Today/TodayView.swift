@@ -12,6 +12,9 @@ struct TodayView: View {
     @State private var dictateOnOpen = false
     @State private var scrolled = false   // cards have scrolled under the header → lift it
     @State private var weather: NookAPI.Weather?
+    /// Goal-calendar review queue counts, for the "review events" entry card.
+    @State private var reviewRecap: [NookAPI.GoalRecapItem] = []
+    @State private var reviewSuggestions: [NookAPI.GoalSuggestionItem] = []
     /// Today's own nav stack — summary cards (and the greeting avatar) push here so
     /// Back returns to the dashboard. Uses `HubRoute` so the person spotlight,
     /// chores, grocery, and recipe all render with the shared `HubDestination`
@@ -48,6 +51,9 @@ struct TodayView: View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    if !reviewRecap.isEmpty || !reviewSuggestions.isEmpty {
+                        Button { path.append(.reviewEvents) } label: { reviewCard }.buttonStyle(.plain)
+                    }
                     todayCard
                     if let summary = dash.tonight?.recipeSummary {
                         Button { path.append(.recipe(summary)) } label: { tonightCard }.buttonStyle(.plain)
@@ -84,6 +90,15 @@ struct TodayView: View {
                 await dash.load(todayKey: Agenda.todayKey(sync.householdTz))
             }
             .task { weather = try? await NookAPI().weather() }
+            // Load the goal-calendar review queues for the entry card (refreshes
+            // whenever a review action bumps the goals bus).
+            .task(id: sync.goalsRev) {
+                let api = NookAPI()
+                async let r = try? await api.goalRecap()
+                async let s = try? await api.goalSuggestions()
+                reviewRecap = await r ?? []
+                reviewSuggestions = await s ?? []
+            }
             .sheet(item: $editingEvent) { ev in
                 EventEditSheet(event: ev, initialDate: ev.startsAt ?? Date())
             }
@@ -140,6 +155,42 @@ struct TodayView: View {
                 Avatar(person: .kelly, emoji: "🦊", size: 46)
             }
         }
+    }
+
+    // MARK: review-events entry card (goal-calendar bridge)
+
+    /// "N to review · M to link" — a purple-tinted card that opens the review
+    /// screen. Purple signals these are goal-progress confirmations.
+    private var reviewCard: some View {
+        let nR = reviewRecap.count, nS = reviewSuggestions.count
+        return HStack(spacing: 13) {
+            Image(systemName: "sparkles").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .background(LinearGradient(colors: [NK.ai2, NK.ai], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(reviewTitle(nR, nS)).font(.system(size: 16, weight: .heavy)).foregroundStyle(NK.ink)
+                Text(reviewSubtitle).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink3).lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            Image(systemName: "chevron.right").font(.system(size: 14, weight: .heavy)).foregroundStyle(NK.ai)
+        }
+        .padding(14)
+        .background(NK.ai.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.ai.opacity(0.22), lineWidth: 1))
+    }
+
+    private func reviewTitle(_ nR: Int, _ nS: Int) -> String {
+        if nR > 0 && nS > 0 { return "\(nR) to review · \(nS) to link" }
+        if nR > 0 { return nR == 1 ? "1 event to log" : "\(nR) events to log" }
+        return nS == 1 ? "1 event might count" : "\(nS) events might count"
+    }
+
+    private var reviewSubtitle: String {
+        let titles = reviewRecap.map(\.title) + reviewSuggestions.map(\.title)
+        let preview = titles.prefix(3).joined(separator: " · ")
+        return preview.isEmpty ? "Tap to review & add to goals" : preview
     }
 
     // MARK: today's agenda (live from the local mirror)

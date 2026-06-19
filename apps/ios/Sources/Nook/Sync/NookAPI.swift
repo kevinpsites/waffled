@@ -1166,6 +1166,91 @@ struct NookAPI: Sendable {
         try await send("PATCH", "/api/goals/\(id)", body: body)
     }
 
+    // MARK: Goal ↔ calendar review (the Today "review events" queues)
+
+    /// A *confirmed* link (purple): an event the household agreed ties to a goal,
+    /// now ended and waiting to be logged. `suggestedAmount` is a default preview;
+    /// the user can edit it. For checklist goals `goalStepId`/`stepLabel` say which
+    /// step a confirm ticks (and the amount is ignored).
+    struct GoalRecapItem: Decodable, Identifiable, Sendable {
+        let eventId: String
+        let occurrenceDate: String
+        let title: String
+        let startsAt: String
+        let endsAt: String?
+        let allDay: Bool
+        let goalId: String
+        let goalTitle: String
+        let goalEmoji: String?
+        let goalType: String            // total | count | habit | checklist
+        let unit: String?
+        let trackingMode: String        // shared_total | each_tracks
+        let suggestedAmount: Double
+        let defaultPersonIds: [String]
+        let goalParticipantIds: [String]
+        let goalStepId: String?
+        let stepLabel: String?
+        var id: String { "\(eventId)|\(occurrenceDate)|\(goalId)" }
+        /// Amount-based goals get an editable stepper; habits/checklists don't.
+        var isAmountBased: Bool { goalType == "total" || goalType == "count" }
+    }
+
+    /// A *suggested* link (orange): an untagged event the matcher thinks might
+    /// count toward `goalId` (best single match). Link or dismiss.
+    struct GoalSuggestionItem: Decodable, Identifiable, Sendable {
+        let eventId: String
+        let title: String
+        let startsAt: String
+        let allDay: Bool
+        let goalId: String
+        let goalTitle: String
+        let goalEmoji: String?
+        let via: String?                // memory | keyword | llm
+        var id: String { eventId }
+    }
+
+    /// Confirmed links awaiting review (household-wide).
+    func goalRecap() async throws -> [GoalRecapItem] {
+        struct Resp: Decodable { let items: [GoalRecapItem] }
+        return try await getJSON("/api/goal-calendar/recap", as: Resp.self).items
+    }
+
+    /// Untagged events that might count toward a goal (household-wide).
+    func goalSuggestions() async throws -> [GoalSuggestionItem] {
+        struct Resp: Decodable { let items: [GoalSuggestionItem] }
+        return try await getJSON("/api/goal-calendar/suggestions", as: Resp.self).items
+    }
+
+    /// Confirm a linked event → logs `amount` to `personIds` (checklist goals tick
+    /// their step and ignore amount). Idempotent on (event, occurrence, goal).
+    func confirmRecap(eventId: String, occurrenceDate: String, amount: Double, personIds: [String], note: String? = nil) async throws {
+        var body: [String: JSONValue] = [
+            "eventId": .string(eventId),
+            "occurrenceDate": .string(occurrenceDate),
+            "amount": .double(amount),
+        ]
+        if !personIds.isEmpty { body["personIds"] = .array(personIds.map(JSONValue.string)) }
+        if let note, !note.isEmpty { body["note"] = .string(note) }
+        try await send("POST", "/api/goal-calendar/recap/confirm", body: body)
+    }
+
+    /// Mark a linked event as "didn't happen" — clears it without logging progress.
+    func skipRecap(eventId: String, occurrenceDate: String) async throws {
+        try await send("POST", "/api/goal-calendar/recap/skip",
+                       body: ["eventId": .string(eventId), "occurrenceDate": .string(occurrenceDate)])
+    }
+
+    /// Tag a suggested event to the goal (it later surfaces in the recap queue).
+    func linkSuggestion(eventId: String, goalId: String) async throws {
+        try await send("POST", "/api/goal-calendar/suggestions/link",
+                       body: ["eventId": .string(eventId), "goalId": .string(goalId)])
+    }
+
+    /// Permanently dismiss a suggestion for this household.
+    func dismissSuggestion(eventId: String) async throws {
+        try await send("POST", "/api/goal-calendar/suggestions/dismiss", body: ["eventId": .string(eventId)])
+    }
+
     /// Forward a batch of queued local writes to the server's CRUD sink.
     func uploadCrud(_ ops: [CrudOpDTO]) async throws {
         var req = URLRequest(url: url("/api/powersync/crud"))

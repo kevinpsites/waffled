@@ -36,6 +36,12 @@ final class SyncManager {
     private(set) var mealsRev = 0
     private(set) var listsRev = 0
     private(set) var rewardsRev = 0
+    /// Bumped after a goal-calendar review action (confirm/skip/link/dismiss) so the
+    /// Today review card and the Goals screens reload their progress.
+    private(set) var goalsRev = 0
+
+    /// Nudge the goals refresh bus (call after logging/review changes goal progress).
+    func touchGoals() { goalsRev += 1 }
 
     /// The household's reward currencies, loaded once (for chore/goal reward symbols).
     private(set) var currencies: [NookAPI.Currency] = []
