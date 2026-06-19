@@ -69,7 +69,7 @@ struct AISettingsView: View {
             .padding(16).padding(.bottom, 110)
         }
         .background(NK.canvas)
-        .navigationTitle("AI & capture").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("AI & Capture").navigationBarTitleDisplayMode(.inline)
         .task { await load() }
     }
 

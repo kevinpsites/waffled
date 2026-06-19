@@ -54,7 +54,7 @@ struct FamilyPeopleSettingsView: View {
             .padding(16).padding(.bottom, 110)
         }
         .background(NK.canvas)
-        .navigationTitle("Family & people").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("Family & People").navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .sheet(item: $editor) { e in
             PersonEditorSheet(editing: e.member) { await load() }

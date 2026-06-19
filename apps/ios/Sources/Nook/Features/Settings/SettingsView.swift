@@ -31,14 +31,14 @@ struct SettingsView: View {
         ScrollView {
             // Web order (with Accounts before AI, per the kiosk's pending update).
             VStack(alignment: .leading, spacing: 10) {
-                row("👨‍👩‍👧‍👦", "Family & people", "Members, roles, household") { path.append(.settingsFamily) }
+                row("👨‍👩‍👧‍👦", "Family & People", "Members, roles, household") { path.append(.settingsFamily) }
                 row("🔗", "Accounts", "Sign-in & connections")
-                row("✨", "AI & capture", "Provider & model") { path.append(.settingsAI) }
+                row("✨", "AI & Capture", "Provider & model") { path.append(.settingsAI) }
                 row("📅", "Calendars", "Google sync") { path.append(.settingsCalendars) }
-                row("⭐", "Chores & rewards", "Currencies & conversions") { path.append(.settingsChoresRewards) }
+                row("⭐", "Chores & Rewards", "Currencies & conversions") { path.append(.settingsChoresRewards) }
                 row("🍽️", "Meals", "Calendar & meal times") { path.append(.settingsMeals) }
                 row("📋", "Lists", "Grocery & lists")
-                row("🖥️", "Display & kiosk", "Theme & screen")
+                row("🖥️", "Display & Kiosk", "Theme & screen")
                 row("🔔", "Notifications", "Reminders")
                 row("ℹ️", "About", "Version & info")
             }
@@ -108,7 +108,7 @@ struct ChoresRewardsSettingsView: View {
             .padding(16).padding(.bottom, 110)
         }
         .background(NK.canvas)
-        .navigationTitle("Chores & rewards").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("Chores & Rewards").navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .onChange(of: sync.rewardsRev) { _, _ in Task { await load() } }
         .sheet(item: $editor) { e in
