@@ -65,15 +65,35 @@ struct RecipesLibraryView: View {
 
     var body: some View {
         ScrollView {
+            searchField
             controlsBar
             if anyFilter { filterBar }
             content
         }
         .background(NK.canvas)
-        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
-                    prompt: "Search recipes, cuisine, a veggie…")
         .refreshable { await model.load() }
         .onChange(of: sync.mealsRev) { _, _ in Task { await model.load() } }
+    }
+
+    /// Inline search field — kept in the content (not `.searchable`), since the Meals
+    /// tab's principal segmented control suppresses the nav-bar search drawer.
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").font(.system(size: 14)).foregroundStyle(NK.ink3)
+            TextField("Search recipes, cuisine, a veggie…", text: $query)
+                .font(.system(size: 15)).textInputAutocapitalization(.never).autocorrectionDisabled()
+                .submitLabel(.search)
+            if !query.isEmpty {
+                Button { query = "" } label: {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(NK.ink3)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 13).padding(.vertical, 10)
+        .background(NK.panel).clipShape(Capsule())
+        .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+        .padding(.horizontal, 16).padding(.top, 10)
     }
 
     @ViewBuilder private var content: some View {
