@@ -417,6 +417,27 @@ struct NookAPI: Sendable {
     /// Soft-delete a currency (can't be the default or the last one).
     func deleteCurrency(id: String) async throws { try await delete("/api/currencies/\(id)") }
 
+    /// A trade rate between two currencies (e.g. 10 ⭐ → 1 🥢).
+    struct Conversion: Decodable, Identifiable, Hashable, Sendable {
+        let id: String
+        let fromCurrency, toCurrency: String
+        let fromAmount, toAmount: Int
+        let from, to: Side
+        struct Side: Decodable, Hashable, Sendable {
+            let key: String
+            let label, symbol, color: String?
+        }
+    }
+
+    func conversions() async throws -> [Conversion] {
+        struct Resp: Decodable { let conversions: [Conversion] }
+        return try await getJSON("/api/conversions", as: Resp.self).conversions
+    }
+    /// Create a trade rate (admins). Body: fromCurrency, toCurrency, fromAmount, toAmount.
+    func createConversion(_ body: [String: JSONValue]) async throws { try await send("POST", "/api/conversions", body: body) }
+    /// Delete a trade rate (admins).
+    func deleteConversion(id: String) async throws { try await delete("/api/conversions/\(id)") }
+
     // MARK: - Settings: family & household
 
     /// Household settings + members (with owner/login flags) for the Settings screen.

@@ -419,6 +419,21 @@ final class SyncManager {
         return ok
     }
 
+    /// Create a conversion/trade rate (admins); bumps `rewardsRev`.
+    @discardableResult
+    func createConversion(_ body: [String: JSONValue]) async -> Bool {
+        let ok = await restCommit { try await api.createConversion(body) }
+        if ok { rewardsRev += 1 }
+        return ok
+    }
+    /// Delete a conversion (admins); bumps `rewardsRev`.
+    @discardableResult
+    func deleteConversion(id: String) async -> Bool {
+        let ok = await restCommit { try await api.deleteConversion(id: id) }
+        if ok { rewardsRev += 1 }
+        return ok
+    }
+
     // MARK: settings — family & household
 
     /// Create or edit a member (admins).

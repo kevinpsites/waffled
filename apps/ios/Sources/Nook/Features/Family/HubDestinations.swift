@@ -11,7 +11,7 @@ enum HubRoute: Hashable {
     case recipe(NookAPI.RecipeSummary) // a recipe opened from the grocery meal recap
     case rewardShop(String)          // one person's reward shop (from the Rewards overview)
     case settingsFamily              // Settings → Family & people
-    case settingsCurrencies          // Settings → Currencies
+    case settingsChoresRewards       // Settings → Chores & rewards (currencies + conversions)
 }
 
 /// Renders a `HubRoute` destination. Shared by the Family hub and the Today tab so
@@ -39,7 +39,7 @@ struct HubDestination: View {
         case .photos:           HubPlaceholder(emoji: "📷", title: "Photos", summary: hub?.photosSubtitle ?? "Family photos")
         case .settings:         SettingsView(path: $path)
         case .settingsFamily:   FamilyPeopleSettingsView()
-        case .settingsCurrencies: CurrenciesSettingsView()
+        case .settingsChoresRewards: ChoresRewardsSettingsView()
         }
     }
 }

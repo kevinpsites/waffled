@@ -194,15 +194,18 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     (type · Owner · Admin) + a member editor (name · emoji · type Adult/Teen/Kid ·
     color swatch · birthday · admin · show-on-kiosk), add/edit/remove (the owner
     can't be removed), plus a **household** card (name · week-start · time zone ·
-    location). **Currencies** — the catalog with a per-currency editor (symbol ·
-    label · **color swatch** (which the web lacks) · default · spendable) and
-    add/delete (can't delete the default or the last). Over `GET/PATCH
-    /api/household(/settings)`, `POST/PATCH/DELETE /api/persons`, and
-    `POST/PATCH/DELETE /api/currencies`; admin-gated server-side. ✅
+    location). **Chores & rewards** (web parity) — a **Currencies** section with a
+    per-currency editor (symbol · label · **color swatch** (which the web lacks) ·
+    default · spendable) + add/delete (can't delete the default or last), and a
+    **Conversions** section (existing trade rates with delete + an add form:
+    amount · from-currency → amount · to-currency). Over `GET/PATCH
+    /api/household(/settings)`, `POST/PATCH/DELETE /api/persons`,
+    `…/currencies`, and `…/conversions`; admin-gated server-side. ✅
   - Photos: still a live-summary placeholder. Settings panels still to build:
-    AI & capture, Calendars/Google, Conversions, Notifications.
+    AI & capture, Calendars/Google, Notifications.
 - **Next:** the remaining Settings panels (AI provider, Google calendars,
-  conversions); Auth0 login (roadmap 4.2.1) to replace the dev token; Photos.
+  notifications); the Trade modal on the person spotlight (conversions are live);
+  Auth0 login (roadmap 4.2.1) to replace the dev token; Photos.
 
 ## Known follow-ups / bugs
 

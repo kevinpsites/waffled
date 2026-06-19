@@ -32,12 +32,11 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 10) {
                 SectionLabel(text: "Household").padding(.top, 4)
                 row("👨‍👩‍👧‍👦", "Family & people", "Members, roles, household") { path.append(.settingsFamily) }
-                row("⭐", "Currencies", "Stars, symbols, colors") { path.append(.settingsCurrencies) }
+                row("⭐", "Chores & rewards", "Currencies & conversions") { path.append(.settingsChoresRewards) }
 
                 SectionLabel(text: "Coming soon").padding(.top, 10)
                 soon("✨", "AI & capture", "Provider & model")
                 soon("📅", "Calendars", "Google sync")
-                soon("🔁", "Conversions", "Trade rates")
                 soon("🔔", "Notifications", "Reminders")
             }
             .padding(16).padding(.bottom, 110)
@@ -81,13 +80,19 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - Currencies
+// MARK: - Chores & rewards (currencies + conversions)
 
-struct CurrenciesSettingsView: View {
+struct ChoresRewardsSettingsView: View {
     @Environment(SyncManager.self) private var sync
     @State private var currencies: [NookAPI.Currency] = []
+    @State private var conversions: [NookAPI.Conversion] = []
     @State private var loading = true
     @State private var editor: CurrencyEditor?
+    // new-conversion form
+    @State private var fromKey = ""
+    @State private var toKey = ""
+    @State private var fromAmt = 10
+    @State private var toAmt = 1
 
     private let api = NookAPI()
 
@@ -100,34 +105,42 @@ struct CurrenciesSettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Rename stars, add your own, or run several. The **default** is what new chores award; **spendable** ones can buy rewards.")
-                    .font(.system(size: 13)).foregroundStyle(NK.ink2)
-                    .fixedSize(horizontal: false, vertical: true).padding(.bottom, 4)
-
-                ForEach(currencies) { c in currencyRow(c) }
-
-                Button { editor = .new } label: {
-                    HStack(spacing: 7) {
-                        Image(systemName: "plus").font(.system(size: 13, weight: .bold))
-                        Text("Add a currency").font(.system(size: 14, weight: .semibold))
-                    }
-                    .foregroundStyle(NK.ink2).frame(maxWidth: .infinity).padding(.vertical, 12)
-                    .background(NK.card2)
-                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-                        .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundStyle(NK.hair))
-                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                }
-                .buttonStyle(.plain).padding(.top, 2)
+            VStack(alignment: .leading, spacing: 22) {
+                currenciesSection
+                if currencies.count > 1 { conversionsSection }
             }
             .padding(16).padding(.bottom, 110)
         }
         .background(NK.canvas)
-        .navigationTitle("Currencies").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("Chores & rewards").navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .onChange(of: sync.rewardsRev) { _, _ in Task { await load() } }
         .sheet(item: $editor) { e in
             CurrencyEditorSheet(editing: e.currency, canDelete: currencies.count > 1) { await load() }
+        }
+    }
+
+    private var currenciesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(text: "Currencies")
+            Text("Rename stars, add your own, or run several. The **default** is what new chores award; **spendable** ones can buy rewards.")
+                .font(.system(size: 13)).foregroundStyle(NK.ink2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(currencies) { c in currencyRow(c) }
+
+            Button { editor = .new } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "plus").font(.system(size: 13, weight: .bold))
+                    Text("Add a currency").font(.system(size: 14, weight: .semibold))
+                }
+                .foregroundStyle(NK.ink2).frame(maxWidth: .infinity).padding(.vertical, 12)
+                .background(NK.card2)
+                .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundStyle(NK.hair))
+                .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            }
+            .buttonStyle(.plain).padding(.top, 2)
         }
     }
 
@@ -159,8 +172,102 @@ struct CurrenciesSettingsView: View {
             .padding(.horizontal, 7).padding(.vertical, 2).background(color.opacity(0.12)).clipShape(Capsule())
     }
 
+    // MARK: conversions
+
+    private var conversionsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(text: "Conversions")
+            Text("Let the family trade up a tier — e.g. 10 ⭐ → 1 🥢. Anyone can convert their own balance on the Rewards tab.")
+                .font(.system(size: 13)).foregroundStyle(NK.ink2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(conversions) { c in conversionRow(c) }
+            addConversionForm
+        }
+    }
+
+    private func conversionRow(_ c: NookAPI.Conversion) -> some View {
+        HStack(spacing: 8) {
+            Text("\(c.fromAmount) \(c.from.symbol ?? "•") \(c.from.label ?? c.fromCurrency)")
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink)
+            Image(systemName: "arrow.right").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+            Text("\(c.toAmount) \(c.to.symbol ?? "•") \(c.to.label ?? c.toCurrency)")
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink)
+            Spacer(minLength: 0)
+            Button { Task { _ = await sync.deleteConversion(id: c.id); await load() } } label: {
+                Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    private var addConversionForm: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                amountField($fromAmt)
+                currencyMenu(selected: $fromKey)
+                Image(systemName: "arrow.right").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                amountField($toAmt)
+                currencyMenu(selected: $toKey)
+            }
+            Button { Task { await addConversion() } } label: {
+                Text("＋ Add rate").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                    .frame(maxWidth: .infinity).padding(.vertical, 11)
+                    .background(fromKey == toKey ? NK.ink3 : NK.primary)
+                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            }
+            .buttonStyle(.plain).disabled(fromKey == toKey || fromKey.isEmpty)
+        }
+        .padding(12)
+        .background(NK.card2).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .padding(.top, 2)
+    }
+
+    private func amountField(_ value: Binding<Int>) -> some View {
+        TextField("0", value: value, format: .number)
+            .keyboardType(.numberPad).multilineTextAlignment(.center)
+            .font(.system(size: 15, weight: .bold)).frame(width: 44)
+            .padding(.vertical, 8).background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+    }
+
+    private func currencyMenu(selected: Binding<String>) -> some View {
+        let cur = currencies.first { $0.key == selected.wrappedValue }
+        return Menu {
+            ForEach(currencies) { c in Button("\(c.symbol) \(c.label)") { selected.wrappedValue = c.key } }
+        } label: {
+            HStack(spacing: 4) {
+                Text(cur.map { "\($0.symbol)" } ?? "•").font(.system(size: 15))
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).foregroundStyle(NK.ink3)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+        }
+    }
+
+    private func addConversion() async {
+        guard fromKey != toKey, !fromKey.isEmpty, !toKey.isEmpty else { return }
+        let body: [String: JSONValue] = [
+            "fromCurrency": .string(fromKey), "toCurrency": .string(toKey),
+            "fromAmount": .int(max(1, fromAmt)), "toAmount": .int(max(1, toAmt)),
+        ]
+        if await sync.createConversion(body) { fromAmt = 10; toAmt = 1; await load() }
+    }
+
     private func load() async {
-        currencies = (try? await api.currencies()) ?? []
+        async let cur = api.currencies()
+        async let conv = api.conversions()
+        currencies = (try? await cur) ?? []
+        conversions = (try? await conv) ?? []
+        // seed the new-conversion currency pickers
+        if fromKey.isEmpty || !currencies.contains(where: { $0.key == fromKey }) { fromKey = currencies.first?.key ?? "" }
+        if toKey.isEmpty || !currencies.contains(where: { $0.key == toKey }) {
+            toKey = currencies.first(where: { $0.key != fromKey })?.key ?? currencies.first?.key ?? ""
+        }
         loading = false
     }
 }
