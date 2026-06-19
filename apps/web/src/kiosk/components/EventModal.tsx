@@ -192,6 +192,9 @@ export function EventModal({
   const peopleKey = [...form.participantIds].sort().join(',')
   const [llmSug, setLlmSug] = useState<Sug | null>(null)
   const [llmThinking, setLlmThinking] = useState(false)
+  // True when a search finished and turned up nothing — so we can say "no match"
+  // instead of the spinner just vanishing.
+  const [searchedEmpty, setSearchedEmpty] = useState(false)
   const llmCache = useRef<Map<string, RawSug | null>>(new Map())
   // Always consult the server (memory → keyword → LLM), even when the instant
   // client keyword matched — because LEARNED MEMORY must win over a keyword
@@ -202,6 +205,7 @@ export function EventModal({
     if (userTouchedGoal || form.goalId || form.participantIds.length === 0 || form.title.trim().length < 3) {
       setLlmSug(null)
       setLlmThinking(false)
+      setSearchedEmpty(false)
       return
     }
     const key = `${form.title.trim().toLowerCase()}|${peopleKey}`
@@ -215,10 +219,13 @@ export function EventModal({
         set('goalId', s.goalId)
         setAutoLinkedId(s.goalId)
         setLlmSug(null)
+        setSearchedEmpty(false)
       } else if (!suggestion) {
         setLlmSug(s ? { id: s.goalId, title: s.goalTitle, emoji: s.goalEmoji } : null)
+        setSearchedEmpty(!s) // searched, nothing back → show the "no match" note
       }
     }
+    setSearchedEmpty(false)
     if (llmCache.current.has(key)) {
       apply(llmCache.current.get(key)!)
       setLlmThinking(false)
@@ -227,13 +234,33 @@ export function EventModal({
     if (!suggestion) setLlmSug(null)
     // Only show the thinking spinner when there's no instant chip to look at.
     setLlmThinking(!suggestion)
+    // Cap the wait: a slow local model can take 20s+, which is an unacceptable
+    // modal spinner. Bail at 10s and fall back to the "no match" note rather than
+    // hang. (The Today drawer keeps the full LLM — it's not latency-sensitive.)
+    let settled = false
+    const cap = setTimeout(() => {
+      if (settled) return
+      ctrl.abort()
+      if (alive) {
+        setLlmThinking(false)
+        if (!suggestion) setSearchedEmpty(true)
+      }
+    }, 10000)
     const timer = setTimeout(async () => {
       try {
         const { suggestion: s } = await goalCalendarApi.suggestOne({ title: form.title.trim(), participantIds: form.participantIds }, ctrl.signal)
+        settled = true
+        clearTimeout(cap)
         llmCache.current.set(key, s)
         apply(s)
       } catch {
-        if (alive && !suggestion) setLlmSug(null)
+        // Errored or timed out → don't leave the spinner hanging; offer manual pick.
+        settled = true
+        clearTimeout(cap)
+        if (alive && !suggestion) {
+          setLlmSug(null)
+          setSearchedEmpty(true)
+        }
       } finally {
         if (alive) setLlmThinking(false)
       }
@@ -243,6 +270,7 @@ export function EventModal({
     return () => {
       alive = false
       clearTimeout(timer)
+      clearTimeout(cap)
       ctrl.abort()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -502,6 +530,13 @@ export function EventModal({
             <div className="ev-suggest ev-suggest-thinking">
               <span className="ai-spark thinking"><Icon name="spark" /></span>
               <span className="ev-suggest-txt">Looking for a goal this counts toward…</span>
+            </div>
+          )}
+          {/* Searched, nothing fit — say so (and let them pick below) instead of
+              the spinner just disappearing. Only when there were goals to match. */}
+          {!shownSuggestion && !autoLinkedGoal && !llmThinking && searchedEmpty && relevantGoals.length > 0 && (
+            <div className="ev-suggest ev-suggest-none">
+              <span className="ev-suggest-txt muted">No matching goal — pick one below if it counts.</span>
             </div>
           )}
           {shownSuggestion && (

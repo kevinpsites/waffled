@@ -197,6 +197,9 @@ body {
   padding: 4px 6px;
 }
 .ev-suggest-x:hover { color: var(--ink); }
+/* Neutral states — "no match" + auto-linked note (no violet accent / buttons). */
+.ev-suggest-none { background: var(--card-2); border-color: var(--hair); }
+.ev-suggest-none .ev-suggest-txt { font-weight: 600; }
 
 /* ===== calendar screen ===== */
 .cal-screen {

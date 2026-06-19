@@ -313,7 +313,7 @@ export function Goals() {
                 ✎ Edit group
               </button>
             )}
-            <button type="button" className="pill btn-primary" onClick={() => navigate('/goals/new')}>
+            <button type="button" className="pill btn-primary" onClick={() => navigate(`/goals/new${selected ? `?list=${selected.id}` : ''}`)}>
               <Icon name="plus" />
               <span>New goal</span>
             </button>

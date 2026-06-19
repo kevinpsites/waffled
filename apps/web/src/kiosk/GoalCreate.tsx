@@ -69,7 +69,9 @@ export function GoalCreate() {
 
   const [form, setForm] = useState({
     title: editing ? '' : (searchParams.get('title') ?? ''),
-    goalListId: '' as string,
+    // Pre-select the list you came from (?list=) so a goal made while viewing
+    // "Kevin" / "Mom & Dad" starts in that group; falls to the picker otherwise.
+    goalListId: editing ? '' : (searchParams.get('list') ?? ''),
     category: 'physical',
     trackingMode: 'shared_total' as 'shared_total' | 'each_tracks',
     goalType: 'total' as (typeof TYPES)[number]['key'],
@@ -130,14 +132,19 @@ export function GoalCreate() {
         : Number(form.target) > 0 && form.unit.trim().length > 0 // total | count
   const canSave = form.title.trim().length > 0 && participantCount >= 1 && typeValid && !saving
 
+  // Return to the list you came from (cancel/back). After CREATE we return to the
+  // goal's final list instead (see submit) — so changing it to Wally lands on Wally.
+  const cameFromList = searchParams.get('list') ?? ''
+  const backToGoals = editing ? `/goals/${id}` : `/goals${cameFromList ? `?list=${cameFromList}` : ''}`
+
   const submitRef = useRef<() => void>(() => {})
   useTopbarFull(
     () => (
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
-        <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(editing ? `/goals/${id}` : '/goals', { replace: true })}>‹ {editing ? 'Goal' : 'Goals'}</button>
+        <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(backToGoals, { replace: true })}>‹ {editing ? 'Goal' : 'Goals'}</button>
         <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600 }}>{editing ? 'Edit goal' : 'New goal'}</div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
-          <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(editing ? `/goals/${id}` : '/goals', { replace: true })}>Cancel</button>
+          <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(backToGoals, { replace: true })}>Cancel</button>
           <button
             className="pill btn-primary create-submit"
             disabled={!canSave}
@@ -150,7 +157,7 @@ export function GoalCreate() {
         </div>
       </div>
     ),
-    [navigate, editing, id, canSave]
+    [navigate, editing, id, canSave, backToGoals]
   )
 
   async function submit() {
@@ -186,7 +193,9 @@ export function GoalCreate() {
     try {
       if (editing) await api.updateGoal(id!, payload)
       else await api.createGoal(payload)
-      navigate(editing ? `/goals/${id}` : '/goals', { replace: true })
+      // Land on the goal's final list — if they retargeted it (e.g. Mom & Dad →
+      // Wally), that's where the new goal lives, so that's where we go.
+      navigate(editing ? `/goals/${id}` : `/goals${form.goalListId ? `?list=${form.goalListId}` : ''}`, { replace: true })
     } catch {
       setSaving(false)
     }
