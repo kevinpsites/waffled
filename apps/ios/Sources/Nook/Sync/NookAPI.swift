@@ -478,6 +478,19 @@ struct NookAPI: Sendable {
         return try await sendReturning("PUT", "/api/meals/calendar-settings", body: body, as: Resp.self).settings
     }
 
+    // MARK: - Weather
+
+    /// Current conditions for the household location (server-side, Open-Meteo).
+    /// `configured` is false when no location is set.
+    struct Weather: Decodable, Sendable {
+        let configured: Bool
+        let tempF: Double?
+        let emoji: String?
+        let label: String?
+        let location: String?
+    }
+    func weather() async throws -> Weather { try await getJSON("/api/weather", as: Weather.self) }
+
     // MARK: Chores board (non-synced; fetched over REST)
 
     /// One chore instance for a given day (the Tasks list row).

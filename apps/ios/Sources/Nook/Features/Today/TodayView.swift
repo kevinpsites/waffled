@@ -11,6 +11,7 @@ struct TodayView: View {
     @State private var showCapture = false
     @State private var dictateOnOpen = false
     @State private var scrolled = false   // cards have scrolled under the header → lift it
+    @State private var weather: NookAPI.Weather?
     /// Today's own nav stack — summary cards (and the greeting avatar) push here so
     /// Back returns to the dashboard. Uses `HubRoute` so the person spotlight,
     /// chores, grocery, and recipe all render with the shared `HubDestination`
@@ -82,6 +83,7 @@ struct TodayView: View {
             .task(id: "\(sync.householdTz.identifier)|\(sync.choresRev)|\(sync.groceryRev)|\(sync.mealsRev)") {
                 await dash.load(todayKey: Agenda.todayKey(sync.householdTz))
             }
+            .task { weather = try? await NookAPI().weather() }
             .sheet(item: $editingEvent) { ev in
                 EventEditSheet(event: ev, initialDate: ev.startsAt ?? Date())
             }
@@ -114,9 +116,16 @@ struct TodayView: View {
     private var greeting: some View {
         HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(greetingDate)
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(NK.ink2)
+                HStack(spacing: 8) {
+                    Text(greetingDate)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(NK.ink2)
+                    if let w = weather, w.configured, let t = w.tempF {
+                        Text("\(w.emoji ?? "") \(Int(t.rounded()))°")
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .foregroundStyle(NK.ink3)
+                    }
+                }
                 Text(greetingPhrase)
                     .font(NK.serif(30))
                     .foregroundStyle(NK.ink)
