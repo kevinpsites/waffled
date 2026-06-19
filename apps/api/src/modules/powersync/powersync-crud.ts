@@ -12,6 +12,7 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
 import { requireTenant, type Tenant } from '../households/households'
 import { resolveWriteTarget, resolveWriteTargetById, pushEventNow } from '../calendar/calendar-sync.service'
+import { recordMatch, WEIGHT } from '../goals/goal-match-memory'
 import { updateEvent, softDeleteEvent } from '../events/events'
 
 type Api = ReturnType<typeof createAPI>
@@ -29,7 +30,7 @@ const asBool = (v: unknown): boolean => v === true || v === 1 || v === '1'
 
 // events PUT — upsert the client's event row, then route to a calendar + push.
 async function applyEventPut(tenant: Tenant, id: string, data: Record<string, unknown>): Promise<void> {
-  await query(
+  const ins = await query<{ inserted: boolean }>(
     `insert into events
        (id, household_id, title, description, location, starts_at, ends_at, all_day, timezone,
         person_id, goal_id, goal_step_id, origin, sync_state)
@@ -40,7 +41,8 @@ async function applyEventPut(tenant: Tenant, id: string, data: Record<string, un
        title = excluded.title, description = excluded.description, location = excluded.location,
        starts_at = excluded.starts_at, ends_at = excluded.ends_at, all_day = excluded.all_day,
        person_id = excluded.person_id, goal_id = excluded.goal_id, goal_step_id = excluded.goal_step_id
-     where events.household_id = $2`,
+     where events.household_id = $2
+     returning (xmax::text = '0') as inserted`,
     [
       id,
       tenant.householdId,
@@ -56,6 +58,14 @@ async function applyEventPut(tenant: Tenant, id: string, data: Record<string, un
       asStr(data.goal_step_id),
     ]
   )
+  // Teach the household matcher when a goal-linked event is first created here —
+  // the kiosk creates through PowerSync, not REST, so without this the learning
+  // cache never sees the link. Insert-only (xmax) so PowerSync retries of the same
+  // op don't inflate the weight.
+  const goalId = asStr(data.goal_id)
+  if (ins.rows[0]?.inserted && goalId) {
+    await recordMatch(tenant.householdId, asStr(data.title) ?? '', goalId, WEIGHT.human)
+  }
   // Pick the destination calendar (explicit choice, else the owner's ★ target).
   const calId = asStr(data.calendar_id)
   const target = calId
