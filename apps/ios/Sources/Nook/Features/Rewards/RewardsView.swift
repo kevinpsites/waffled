@@ -409,9 +409,11 @@ struct RewardShopView: View {
     @Environment(SyncManager.self) private var sync
     @State private var model = RewardsModel()
     @State private var overview: NookAPI.PersonOverview?
+    @State private var conversions: [NookAPI.Conversion] = []
     @State private var confirm: NookAPI.PersonOverview.ShopReward?
     @State private var giving = false
     @State private var showSavingPicker = false
+    @State private var showTrade = false
 
     private let api = NookAPI()
     private let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
@@ -467,6 +469,13 @@ struct RewardShopView: View {
                 Task { _ = await sync.setSavingToward(personId: personId, rewardId: rewardId); await reload() }
             }
         }
+        .sheet(isPresented: $showTrade) {
+            TradeSheet(personName: model.person(personId)?.name ?? "",
+                       personId: personId,
+                       currencies: overview?.currencies ?? [],
+                       balances: overview?.balances ?? [],
+                       conversions: conversions) { await reload() }
+        }
     }
 
     // MARK: header
@@ -483,7 +492,19 @@ struct RewardShopView: View {
                     }
                 }
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
+            if !conversions.isEmpty {
+                Button { showTrade = true } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.left.arrow.right").font(.system(size: 12, weight: .bold))
+                        Text("Trade").font(.system(size: 13, weight: .bold))
+                    }
+                    .foregroundStyle(NK.ai)
+                    .padding(.horizontal, 11).padding(.vertical, 7)
+                    .background(NK.ai.opacity(0.12)).clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
@@ -511,6 +532,7 @@ struct RewardShopView: View {
     private func reload() async {
         await model.load()
         overview = try? await api.personOverview(id: personId)
+        conversions = (try? await api.conversions()) ?? []
     }
 
     // MARK: a reward

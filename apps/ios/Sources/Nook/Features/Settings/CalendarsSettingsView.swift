@@ -35,6 +35,11 @@ struct CalendarsSettingsView: View {
     @State private var connecting = false
     @State private var message: String?
     @State private var launcher = OAuthLauncher()
+    // filters (web parity)
+    @State private var hideReadOnly = true
+    @State private var syncedOnly = false
+    @State private var search = ""
+    @State private var collapsed: Set<String> = []   // account ids
 
     private let api = NookAPI()
 
@@ -53,6 +58,7 @@ struct CalendarsSettingsView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
                         }
+                        filterControls
                         ForEach(status.accounts) { acct in accountCard(acct) }
                         connectMore
                     }
@@ -64,7 +70,55 @@ struct CalendarsSettingsView: View {
         }
         .background(NK.canvas)
         .navigationTitle("Calendars").navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if status?.connected == true {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { Task { await syncNow() } } label: {
+                        if syncing { ProgressView().controlSize(.small) }
+                        else { Text("Sync now").font(.system(size: 15, weight: .semibold)) }
+                    }
+                    .disabled(syncing)
+                }
+            }
+        }
         .task { await load() }
+    }
+
+    private var filterControls: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").font(.system(size: 13)).foregroundStyle(NK.ink3)
+                TextField("Search calendars…", text: $search).font(.system(size: 14))
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+            HStack(spacing: 18) {
+                checkToggle("Synced only", $syncedOnly)
+                checkToggle("Hide read-only", $hideReadOnly)
+                Spacer()
+            }
+        }
+    }
+
+    private func checkToggle(_ label: String, _ on: Binding<Bool>) -> some View {
+        Button { on.wrappedValue.toggle() } label: {
+            HStack(spacing: 6) {
+                Image(systemName: on.wrappedValue ? "checkmark.square.fill" : "square")
+                    .font(.system(size: 15)).foregroundStyle(on.wrappedValue ? NK.primary : NK.ink3)
+                Text(label).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink2)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Apply search + synced-only + hide-read-only.
+    private func filtered(_ cals: [NookAPI.CalendarStatus.Cal]) -> [NookAPI.CalendarStatus.Cal] {
+        cals.filter { c in
+            if syncedOnly && !c.selected { return false }
+            if hideReadOnly && !c.selected && !c.isWritable { return false }
+            if !search.isEmpty && !(c.summary ?? "").localizedCaseInsensitiveContains(search) { return false }
+            return true
+        }
     }
 
     // MARK: connect
@@ -98,39 +152,70 @@ struct CalendarsSettingsView: View {
     // MARK: an account
 
     private func accountCard(_ acct: NookAPI.CalendarStatus.Account) -> some View {
-        let cals = status?.calendars.filter { $0.accountId == acct.id } ?? []
-        let synced = cals.filter(\.selected).count
+        let all = status?.calendars.filter { $0.accountId == acct.id } ?? []
+        let shown = filtered(all)
+        let synced = all.filter(\.selected).count
+        let isCollapsed = collapsed.contains(acct.id)
         return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                Image(systemName: "person.crop.circle").font(.system(size: 18)).foregroundStyle(NK.ai)
+                Image(systemName: "link").font(.system(size: 15)).foregroundStyle(NK.ai)
+                    .frame(width: 30, height: 30).background(NK.panel).clipShape(Circle())
                 VStack(alignment: .leading, spacing: 1) {
                     Text(acct.email ?? "Google account").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink).lineLimit(1)
-                    Text("\(synced) of \(cals.count) syncing").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                    Text("\(synced) of \(all.count) syncing · connected \(shortDay(acct.connectedAt))")
+                        .font(.system(size: 12)).foregroundStyle(NK.ink3)
                 }
                 Spacer(minLength: 0)
-                Button { Task { await syncNow() } } label: {
-                    HStack(spacing: 5) {
-                        if syncing { ProgressView().controlSize(.mini) }
-                        else { Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 12, weight: .bold)) }
-                        Text(syncing ? "Syncing…" : "Sync now").font(.system(size: 12, weight: .bold))
-                    }
-                    .foregroundStyle(NK.ai)
+                Button(role: .destructive) { Task { await disconnect(acct.id) } } label: {
+                    Text("Disconnect").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
+                        .padding(.horizontal, 11).padding(.vertical, 6).background(NK.panel).clipShape(Capsule())
                 }
-                .buttonStyle(.plain).disabled(syncing)
+                .buttonStyle(.plain)
+                Button { toggleCollapse(acct.id) } label: {
+                    Image(systemName: isCollapsed ? "chevron.down" : "chevron.up")
+                        .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3).frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
             }
 
-            VStack(spacing: 8) {
-                ForEach(cals) { c in calendarRow(c) }
+            if !isCollapsed {
+                HStack(spacing: 14) {
+                    Button("Sync all") { Task { await setAllSync(acct.id, true) } }
+                        .font(.system(size: 12, weight: .bold)).tint(NK.ai)
+                    Text("·").foregroundStyle(NK.ink3)
+                    Button("Sync none") { Task { await setAllSync(acct.id, false) } }
+                        .font(.system(size: 12, weight: .bold)).tint(NK.ai)
+                    Spacer()
+                }
+                VStack(spacing: 8) {
+                    ForEach(shown) { c in calendarRow(c) }
+                    if shown.isEmpty {
+                        Text("No calendars match.").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6)
+                    }
+                }
             }
-
-            Button(role: .destructive) { Task { await disconnect(acct.id) } } label: {
-                Text("Disconnect account").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
-            }
-            .buttonStyle(.plain)
         }
         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
         .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    private func toggleCollapse(_ id: String) {
+        if collapsed.contains(id) { collapsed.remove(id) } else { collapsed.insert(id) }
+    }
+
+    private func setAllSync(_ accountId: String, _ selected: Bool) async {
+        let cals = status?.calendars.filter { $0.accountId == accountId && $0.selected != selected } ?? []
+        for c in cals { try? await api.updateCalendarLink(id: c.id, ["selected": .bool(selected)]) }
+        await load()
+    }
+
+    private func shortDay(_ iso: String) -> String {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let d = f.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else { return "" }
+        let out = DateFormatter(); out.dateFormat = "MMM d"; out.timeZone = sync.householdTz
+        return out.string(from: d)
     }
 
     // MARK: a calendar
