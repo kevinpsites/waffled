@@ -44,11 +44,19 @@ final class ChoresModel {
         }
     }
 
-    /// Assign an up-for-grabs chore to a person *without* completing it — the drag-
-    /// and-drop gesture (drop into their column). They (or a parent) tick it done.
+    /// Assign (or reassign) a chore to a person *without* completing it — the drag-
+    /// and-drop gesture (drop into their column). No-op if it's already theirs.
     func assign(id: String, to personId: String) async {
-        guard instances.first(where: { $0.id == id })?.personId == nil else { return }
-        do { try await api.claimChore(id: id, personId: personId); await load() }
+        guard let inst = instances.first(where: { $0.id == id }), inst.personId != personId else { return }
+        do { try await api.assignChore(id: id, personId: personId); await load() }
+        catch { self.error = true }
+    }
+
+    /// Send a chore back to up-for-grabs — dropping it on the "Up for grabs" column.
+    /// No-op if it's already unassigned.
+    func unassign(id: String) async {
+        guard instances.first(where: { $0.id == id })?.personId != nil else { return }
+        do { try await api.assignChore(id: id, personId: nil); await load() }
         catch { self.error = true }
     }
 
@@ -261,7 +269,7 @@ struct ChoresView: View {
                 }
                 VStack(spacing: 0) {
                     ForEach(Array(col.items.enumerated()), id: \.element.id) { i, inst in
-                        grabsDraggable(choreRow(inst, isGrabs: col.isGrabs), inst: inst, isGrabs: col.isGrabs)
+                        draggableRow(choreRow(inst, isGrabs: col.isGrabs), inst: inst)
                         if i < col.items.count - 1 { Divider().background(NK.hair) }
                     }
                 }
@@ -288,29 +296,31 @@ struct ChoresView: View {
             .strokeBorder(dropTarget == col.id ? NK.primary
                           : (col.isGrabs ? NK.gold.opacity(0.4) : NK.hair),
                           lineWidth: dropTarget == col.id ? 2 : 1))
-        // Drop an up-for-grabs chore here to assign it to this person.
+        // Drop a chore here to (re)assign it to this person, or onto "Up for grabs"
+        // to unassign it.
         .dropDestination(for: String.self) { ids, _ in
-            guard !col.isGrabs, let id = ids.first else { return false }
+            guard let id = ids.first else { return false }
             dropTarget = nil
-            Task { await model.assign(id: id, to: col.id) }
+            if col.isGrabs { Task { await model.unassign(id: id) } }
+            else { Task { await model.assign(id: id, to: col.id) } }
             return true
         } isTargeted: { hovering in
-            guard !col.isGrabs else { return }
             withAnimation(.easeInOut(duration: 0.12)) {
                 dropTarget = hovering ? col.id : (dropTarget == col.id ? nil : dropTarget)
             }
         }
     }
 
-    /// Wrap an up-for-grabs row so it can be dragged into a person's column. Only
-    /// unclaimed, still-pending chores are draggable.
-    @ViewBuilder private func grabsDraggable(_ row: some View, inst: NookAPI.ChoreInstanceDTO, isGrabs: Bool) -> some View {
-        if isGrabs && inst.status == "pending" {
+    /// Wrap a chore row so it can be dragged between columns — reassign to a person,
+    /// or back to up-for-grabs. Only still-pending chores are draggable (a done or
+    /// awaiting one keeps its awarded stars where they are).
+    @ViewBuilder private func draggableRow(_ row: some View, inst: NookAPI.ChoreInstanceDTO) -> some View {
+        if inst.status == "pending" {
             // contentShape makes the *whole* row (incl. the trailing empty space)
             // the drag handle, not just the title text.
             row.contentShape(Rectangle()).draggable(inst.id) {
                 HStack(spacing: 6) {
-                    Text(inst.emoji ?? "🙌").font(.system(size: 14))
+                    Text(inst.emoji ?? "🧹").font(.system(size: 14))
                     Text(inst.choreTitle).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 8)

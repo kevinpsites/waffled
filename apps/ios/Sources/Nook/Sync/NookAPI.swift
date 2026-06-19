@@ -760,6 +760,11 @@ struct NookAPI: Sendable {
     func claimChore(id: String, personId: String) async throws {
         try await send("POST", "/api/chore-instances/\(id)/claim", body: ["personId": .string(personId)])
     }
+    /// Move an instance to another person, or back to up-for-grabs (personId nil).
+    /// Powers the board's drag-and-drop between columns.
+    func assignChore(id: String, personId: String?) async throws {
+        try await send("POST", "/api/chore-instances/\(id)/assign", body: ["personId": personId.map(JSONValue.string) ?? .null])
+    }
 
     // MARK: Person overview (the Family per-person spotlight)
 
