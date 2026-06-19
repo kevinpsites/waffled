@@ -114,12 +114,16 @@ export function registerListRoutes(api: Api): void {
 
   api.post('/api/lists/grocery/items', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
-    const body = (req.body ?? {}) as { name?: string; quantity?: string }
+    const body = (req.body ?? {}) as { name?: string; quantity?: string; category?: string }
     if (!body.name || !body.name.trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'name is required' })
     }
     const list = await getOrCreateGroceryList(tenant)
-    const item = await addItem(tenant, list.id, { name: body.name.trim(), quantity: body.quantity ?? null })
+    const item = await addItem(tenant, list.id, {
+      name: body.name.trim(),
+      quantity: body.quantity ?? null,
+      category: body.category ?? null,
+    })
     return res.status(201).json({ item: presentListItem(item) })
   })
 
