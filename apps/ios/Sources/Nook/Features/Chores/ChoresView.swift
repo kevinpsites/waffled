@@ -306,7 +306,9 @@ struct ChoresView: View {
     /// unclaimed, still-pending chores are draggable.
     @ViewBuilder private func grabsDraggable(_ row: some View, inst: NookAPI.ChoreInstanceDTO, isGrabs: Bool) -> some View {
         if isGrabs && inst.status == "pending" {
-            row.draggable(inst.id) {
+            // contentShape makes the *whole* row (incl. the trailing empty space)
+            // the drag handle, not just the title text.
+            row.contentShape(Rectangle()).draggable(inst.id) {
                 HStack(spacing: 6) {
                     Text(inst.emoji ?? "🙌").font(.system(size: 14))
                     Text(inst.choreTitle).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
