@@ -16,6 +16,7 @@ import {
   completeInstance,
   uncompleteInstance,
   claimInstance,
+  setInstanceAssignee,
   approveInstance,
   rejectInstance,
   presentChore,
@@ -117,6 +118,25 @@ export function registerChoreRoutes(api: Api): void {
     if (!UUID_RE.test(personId)) return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
     const inst = await claimInstance(tenant, id, personId)
     if (!inst) return res.status(409).json({ error: 'Conflict', message: 'already claimed or not found' })
+    return { instance: presentInstance(inst) }
+  })
+
+  // Reassign an instance to another person, or unassign it back to up-for-grabs
+  // (personId null/empty). Powers the board's drag-and-drop between columns.
+  api.post('/api/chore-instances/:id/assign', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
+    const raw = ((req.body ?? {}) as { personId?: string | null }).personId
+    let personId: string | null
+    if (raw == null || (typeof raw === 'string' && raw.trim() === '')) {
+      personId = null
+    } else {
+      personId = String(raw).trim()
+      if (!UUID_RE.test(personId)) return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
+    }
+    const inst = await setInstanceAssignee(tenant, id, personId)
+    if (!inst) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
     return { instance: presentInstance(inst) }
   })
 

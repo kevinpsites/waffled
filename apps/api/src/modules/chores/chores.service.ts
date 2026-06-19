@@ -100,6 +100,23 @@ export async function claimInstance(tenant: Tenant, id: string, personId: string
   return rows[0] ?? null
 }
 
+// Move an instance to a different person, or back to up-for-grabs (personId null).
+// Unlike claimInstance this doesn't require it to be currently unassigned — it's
+// the board's drag-and-drop reassign. Leaves status/awarded untouched.
+export async function setInstanceAssignee(
+  tenant: Tenant,
+  id: string,
+  personId: string | null
+): Promise<ChoreInstanceRow | null> {
+  const { rows } = await query<ChoreInstanceRow>(
+    `update chore_instances set person_id=$3
+       where household_id=$1 and id=$2 and deleted_at is null
+       returning *`,
+    [tenant.householdId, id, personId]
+  )
+  return rows[0] ?? null
+}
+
 interface SummaryRow extends QueryResultRow {
   id: string
   name: string
