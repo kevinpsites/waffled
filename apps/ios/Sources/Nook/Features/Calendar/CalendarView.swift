@@ -490,13 +490,25 @@ struct EventEditSheet: View {
     @State private var calendars: [NookAPI.CalendarLink] = []
     @State private var calendarId: String?
     @State private var calTouched = false
+    // Goal linking (create only — the PowerSync events table has no goal columns, so
+    // a goal-tagged create goes through the rich REST route instead of the mirror).
+    let prefillGoalId: String?
+    let prefillParticipantIds: [String]?
+    @State private var goalId: String?
+    @State private var goalStepId: String?
+    @State private var eligibleGoals: [NookAPI.Goal] = []
+    @State private var goalSteps: [NookAPI.GoalDetail.Step] = []
+    @State private var suggestion: NookAPI.GoalSuggestOne?
+    @State private var suggestTask: Task<Void, Never>?
 
     private static let iso = ISO8601DateFormatter()
     private static let durations = [15, 30, 45, 60, 90, 120, 180, 240]
 
-    init(event: SyncedEvent?, initialDate: Date) {
+    init(event: SyncedEvent?, initialDate: Date, prefillGoalId: String? = nil, prefillParticipantIds: [String]? = nil) {
         self.event = event
         self.initialDate = initialDate
+        self.prefillGoalId = prefillGoalId
+        self.prefillParticipantIds = prefillParticipantIds
         let cal = Calendar.current
         // Create defaults to 5pm on the given day; edit uses the event's times.
         let startDate = event?.startsAt ?? (cal.date(bySettingHour: 17, minute: 0, second: 0, of: initialDate) ?? initialDate)
@@ -509,8 +521,9 @@ struct EventEditSheet: View {
         _start = State(initialValue: startDate)
         _durationMin = State(initialValue: mins)
         _allDay = State(initialValue: event?.allDay ?? false)
-        _participants = State(initialValue: event?.personId.map { [$0] } ?? [])
+        _participants = State(initialValue: prefillParticipantIds ?? (event?.personId.map { [$0] } ?? []))
         _location = State(initialValue: event?.location ?? "")
+        _goalId = State(initialValue: prefillGoalId)
     }
 
     private var editing: Bool { event != nil }
@@ -594,6 +607,8 @@ struct EventEditSheet: View {
                         }
                     }
 
+                    if !editing { goalSection }
+
                     if showCalendarPicker {
                         group("Calendar") {
                             Menu {
@@ -632,7 +647,8 @@ struct EventEditSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
             .task { await load() }
-            .onChange(of: participants) { _, _ in recomputeDefaultCalendar() }
+            .onChange(of: participants) { _, _ in recomputeDefaultCalendar(); scheduleSuggest() }
+            .onChange(of: title) { _, _ in scheduleSuggest() }
         }
         .presentationDetents([.large])
     }
@@ -660,6 +676,109 @@ struct EventEditSheet: View {
         }
     }
 
+    // MARK: goal linking (create only)
+
+    /// Calendar-opted goals whose participants include every chosen attendee.
+    private var eligibleGoalsForAttendees: [NookAPI.Goal] {
+        let att = Set(participants)
+        return eligibleGoals.filter { g in
+            g.autoFromCalendar
+            && ["total", "count", "habit", "checklist"].contains(g.goalType)
+            && att.isSubset(of: Set(g.participants.map(\.personId)))
+        }
+    }
+    private var selectedGoal: NookAPI.Goal? { eligibleGoals.first { $0.id == goalId } }
+
+    @ViewBuilder private var goalSection: some View {
+        let options = eligibleGoalsForAttendees
+        if let s = suggestion, goalId == nil { suggestionHint(s) }
+        if !options.isEmpty || goalId != nil {
+            group("Counts toward · optional") {
+                Menu {
+                    Button("No goal") { goalId = nil; goalStepId = nil; goalSteps = [] }
+                    ForEach(options) { g in
+                        Button("\(g.emoji.map { "\($0) " } ?? "")\(g.title)") { selectGoal(g.id) }
+                    }
+                } label: {
+                    HStack {
+                        Text(goalMenuLabel).font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(goalId == nil ? NK.ink3 : NK.ink).lineLimit(1)
+                        Spacer()
+                        Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                    }
+                    .padding(.horizontal, 13).padding(.vertical, 11).innerField()
+                }
+                if !goalSteps.isEmpty {
+                    Menu {
+                        Button("No specific step") { goalStepId = nil }
+                        ForEach(goalSteps) { s in
+                            Button("\(s.done ? "✓ " : "")\(s.label)") { goalStepId = s.id }
+                        }
+                    } label: {
+                        HStack {
+                            Text(stepMenuLabel).font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(goalStepId == nil ? NK.ink3 : NK.ink).lineLimit(1)
+                            Spacer()
+                            Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                        }
+                        .padding(.horizontal, 13).padding(.vertical, 10).innerField()
+                    }
+                }
+            }
+        }
+    }
+
+    private var goalMenuLabel: String {
+        guard let g = selectedGoal else { return "No goal" }
+        return "\(g.emoji.map { "\($0) " } ?? "")\(g.title)"
+    }
+    private var stepMenuLabel: String {
+        guard let id = goalStepId, let s = goalSteps.first(where: { $0.id == id }) else { return "Whole goal — no specific step" }
+        return "Completes: \(s.label)"
+    }
+
+    private func suggestionHint(_ s: NookAPI.GoalSuggestOne) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "sparkles").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ai)
+            Text("Looks like this counts toward \(s.goalEmoji.map { "\($0) " } ?? "")\(s.goalTitle)")
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink2).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 6)
+            Button("Link") { selectGoal(s.goalId) }.font(.system(size: 13, weight: .heavy)).foregroundStyle(NK.ai)
+            Button { suggestion = nil } label: {
+                Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+            }.buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(NK.ai.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.ai.opacity(0.25), lineWidth: 1))
+    }
+
+    private func selectGoal(_ id: String) {
+        goalId = id; goalStepId = nil; suggestion = nil
+        Task { await loadSteps(for: id) }
+    }
+
+    /// Fetch a goal's checklist steps (empty for non-checklist goals).
+    private func loadSteps(for id: String) async {
+        goalSteps = (try? await NookAPI().goalDetail(id: id))?.steps ?? []
+    }
+
+    /// Debounced live goal match for the inline hint (create, no goal chosen yet).
+    private func scheduleSuggest() {
+        suggestTask?.cancel()
+        let t = title.trimmingCharacters(in: .whitespaces)
+        guard !editing, goalId == nil, t.count >= 3 else { suggestion = nil; return }
+        let ids = participants
+        suggestTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(600))
+            if Task.isCancelled { return }
+            let s = try? await NookAPI().suggestOne(title: t, participantIds: ids)
+            if Task.isCancelled || goalId != nil { return }
+            suggestion = s
+        }
+    }
+
     // MARK: data
 
     private func load() async {
@@ -669,9 +788,15 @@ struct EventEditSheet: View {
             // Keep the owner (person_id) first, then any other participants.
             if !ids.isEmpty { participants = (participants + ids.filter { !participants.contains($0) }) }
         }
-        if !editing, calendars.isEmpty {
-            calendars = (try? await NookAPI().calendarLinks()) ?? []
-            recomputeDefaultCalendar()
+        if !editing {
+            if calendars.isEmpty {
+                calendars = (try? await NookAPI().calendarLinks()) ?? []
+                recomputeDefaultCalendar()
+            }
+            if eligibleGoals.isEmpty {
+                eligibleGoals = (try? await NookAPI().goalsIn(listId: nil)) ?? []
+            }
+            if let gid = goalId, goalSteps.isEmpty { await loadSteps(for: gid) }
         }
     }
 
@@ -705,6 +830,14 @@ struct EventEditSheet: View {
             if let event {
                 _ = await sync.updateEvent(id: event.id, title: name, startsAtISO: startISO,
                                            endsAtISO: endISO, allDay: allDay, location: loc, personIds: ids)
+            } else if let gid = goalId {
+                // Goal-linked create goes through the rich REST route (the local
+                // events table has no goal columns); PowerSync down-syncs it back.
+                _ = try? await NookAPI().createEvent(
+                    title: name, startsAtISO: startISO, endsAtISO: endISO, allDay: allDay,
+                    location: loc, personIds: ids, goalId: gid, goalStepId: goalStepId,
+                    calendarId: chosenCal, timezone: sync.householdTz.identifier)
+                sync.touchGoals()
             } else {
                 _ = await sync.createCalendarEvent(title: name, startsAtISO: startISO, endsAtISO: endISO,
                                                    allDay: allDay, location: loc, personIds: ids, calendarId: chosenCal)

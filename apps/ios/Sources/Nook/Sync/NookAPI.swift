@@ -818,7 +818,7 @@ struct NookAPI: Sendable {
                       goalType: goalType ?? "total", unit: unit, habitPeriod: nil, habitTargetPerPeriod: nil,
                       trackingMode: "shared_total", deadline: nil, isFeatured: false, target: target,
                       totalProgress: progress ?? 0, milestoneTotal: 0, milestoneReached: 0,
-                      streakDays: streakDays, participants: [])
+                      streakDays: streakDays, autoFromCalendar: false, participants: [])
             }
         }
         /// Alias so `asGoal` can name the outer `NookAPI.Goal` from inside this nested type.
@@ -1059,6 +1059,8 @@ struct NookAPI: Sendable {
         let milestoneTotal: Int
         let milestoneReached: Int
         let streakDays: Int
+        /// Goal opted in to count matching calendar events (drives "Plan time").
+        let autoFromCalendar: Bool
         let participants: [Participant]
         struct Participant: Decodable, Hashable, Sendable {
             let personId: String
@@ -1091,9 +1093,18 @@ struct NookAPI: Sendable {
         let deadline: String?
         let createdAt: String
         let thisWeek: Double
+        let autoFromCalendar: Bool
         let participants: [Goal.Participant]
         let milestones: [Milestone]
+        let steps: [Step]
         let recent: [LogEntry]
+        /// A checklist goal's steps (empty for other goal types).
+        struct Step: Decodable, Identifiable, Sendable {
+            let id: String
+            let label: String
+            let done: Bool
+            let doneBy: String?
+        }
         struct Milestone: Decodable, Identifiable, Sendable {
             let id: String
             let threshold: Double
@@ -1249,6 +1260,45 @@ struct NookAPI: Sendable {
     /// Permanently dismiss a suggestion for this household.
     func dismissSuggestion(eventId: String) async throws {
         try await send("POST", "/api/goal-calendar/suggestions/dismiss", body: ["eventId": .string(eventId)])
+    }
+
+    /// A live single-event goal match (memory → keyword → LLM) for the event editor's
+    /// inline "looks like this counts toward …" hint. Read-only (records nothing).
+    struct GoalSuggestOne: Decodable, Sendable {
+        let goalId: String
+        let goalTitle: String
+        let goalEmoji: String?
+        let via: String?
+    }
+    func suggestOne(title: String, participantIds: [String]) async throws -> GoalSuggestOne? {
+        struct Resp: Decodable { let suggestion: GoalSuggestOne? }
+        var body: [String: JSONValue] = ["title": .string(title)]
+        if !participantIds.isEmpty { body["participantIds"] = .array(participantIds.map(JSONValue.string)) }
+        return try await sendReturning("POST", "/api/goal-calendar/suggest-one", body: body, as: Resp.self).suggestion
+    }
+
+    /// Create an event via the rich REST route (records the goal-match signal +
+    /// routes to Google). Used when linking a goal — the PowerSync `events` table
+    /// has no goal columns, so goal-tagged creates can't go through the local mirror.
+    /// Returns the new event id; PowerSync down-syncs it for display.
+    func createEvent(title: String, startsAtISO: String, endsAtISO: String?, allDay: Bool,
+                     location: String?, personIds: [String], goalId: String?, goalStepId: String?,
+                     calendarId: String?, timezone: String?) async throws -> String {
+        var body: [String: JSONValue] = [
+            "title": .string(title),
+            "startsAt": .string(startsAtISO),
+            "allDay": .bool(allDay),
+        ]
+        if let e = endsAtISO { body["endsAt"] = .string(e) }
+        if let l = location, !l.isEmpty { body["location"] = .string(l) }
+        if let owner = personIds.first { body["personId"] = .string(owner) }
+        if !personIds.isEmpty { body["participantIds"] = .array(personIds.map(JSONValue.string)) }
+        if let g = goalId { body["goalId"] = .string(g) }
+        if let s = goalStepId { body["goalStepId"] = .string(s) }
+        if let c = calendarId { body["calendarId"] = .string(c) }
+        if let tz = timezone { body["timezone"] = .string(tz) }
+        struct Resp: Decodable { let event: Ev; struct Ev: Decodable { let id: String } }
+        return try await sendReturning("POST", "/api/events", body: body, as: Resp.self).event.id
     }
 
     /// Forward a batch of queued local writes to the server's CRUD sink.

@@ -646,6 +646,7 @@ struct GoalCreateSheet: View {
     @State private var deadline = Date()
     @State private var isFeatured = true
     @State private var hasRewards = false
+    @State private var autoFromCalendar = false
     @State private var milestones: [Milestone] = [
         .init(emoji: "🌱", threshold: "250", reward: "+25 ★ bonus"),
         .init(emoji: "⛺", threshold: "500", reward: "Family movie night"),
@@ -729,6 +730,12 @@ struct GoalCreateSheet: View {
                         }
                     }
 
+                    toggleRow("📅", "Also auto-count from calendar", "Matching calendar events add progress automatically", $autoFromCalendar)
+                    if autoFromCalendar {
+                        Text("✦ Calendar events you link to this goal show up on Today to confirm — and you can schedule time for it right from the goal.")
+                            .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     toggleRow("⭐", "Feature on the home screen", "Shows big on the family hub", $isFeatured)
                     toggleRow("🏆", "Milestones & rewards", "Bonus stars at custom thresholds", $hasRewards)
                     if hasRewards { milestoneEditor }
@@ -895,6 +902,7 @@ struct GoalCreateSheet: View {
         if let h = g.habitTargetPerPeriod { habitPer = String(h) }
         isFeatured = g.isFeatured
         hasRewards = g.hasRewards
+        autoFromCalendar = g.autoFromCalendar
         if let d = g.deadline, let parsed = Self.parseDay(d) { hasDeadline = true; deadline = parsed }
         if !g.milestones.isEmpty {
             milestones = g.milestones.map {
@@ -919,6 +927,7 @@ struct GoalCreateSheet: View {
             "logMethod": .string("quick_log"),
             "isFeatured": .bool(isFeatured),
             "hasRewards": .bool(hasRewards),
+            "autoFromCalendar": .bool(autoFromCalendar),
             "unit": isHabit ? .null : (unit.trimmingCharacters(in: .whitespaces).isEmpty ? .null : .string(unit.trimmingCharacters(in: .whitespaces))),
             "deadline": hasDeadline ? .string(isoDay(deadline)) : .null,
         ]
@@ -1002,6 +1011,7 @@ struct GoalDetailView: View {
     @State private var model: GoalDetailModel
     @State private var logging = false
     @State private var editing = false
+    @State private var scheduling = false
     @State private var confirmDelete = false
 
     private static let heroGreen = LinearGradient(colors: [Color(hex: 0x2BA86B), Color(hex: 0x1C8A56)],
@@ -1029,13 +1039,15 @@ struct GoalDetailView: View {
                      habitPeriod: goal.habitPeriod, habitTargetPerPeriod: goal.habitTargetPerPeriod,
                      trackingMode: goal.trackingMode, deadline: goal.deadline, isFeatured: goal.isFeatured,
                      target: target, totalProgress: progress, milestoneTotal: goal.milestoneTotal,
-                     milestoneReached: goal.milestoneReached, streakDays: goal.streakDays, participants: participants)
+                     milestoneReached: goal.milestoneReached, streakDays: goal.streakDays,
+                     autoFromCalendar: goal.autoFromCalendar, participants: participants)
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 hero
+                if autoFromCalendar { planButton }
                 if let ms = model.detail?.milestones, !ms.isEmpty { milestoneCard(ms) }
                 if !participants.isEmpty { byPersonCard }
                 recentCard
@@ -1068,6 +1080,33 @@ struct GoalDetailView: View {
                 }
             }
         }
+        .sheet(isPresented: $scheduling) {
+            EventEditSheet(event: nil, initialDate: Date(),
+                           prefillGoalId: goal.id,
+                           prefillParticipantIds: participants.map(\.personId))
+        }
+    }
+
+    /// Whether this goal opted into calendar counting (drives "Plan time").
+    private var autoFromCalendar: Bool { model.detail?.autoFromCalendar ?? goal.autoFromCalendar }
+
+    /// "Plan time" (hour goals) / "Schedule" — opens the event editor pre-linked to
+    /// this goal, so the new event later shows up on Today to confirm.
+    private var planButton: some View {
+        let hourly = ["hour", "hours", "hr", "hrs", "minute", "minutes"].contains((unit ?? "").lowercased())
+        return Button { scheduling = true } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "calendar.badge.plus").font(.system(size: 14, weight: .bold))
+                Text(hourly ? "Plan time on the calendar" : "Schedule on the calendar")
+                    .font(.system(size: 14.5, weight: .bold))
+            }
+            .foregroundStyle(NK.ai)
+            .frame(maxWidth: .infinity).padding(.vertical, 13)
+            .background(NK.ai.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.ai.opacity(0.25), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: hero
