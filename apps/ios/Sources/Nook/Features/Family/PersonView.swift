@@ -12,6 +12,7 @@ final class PersonOverviewModel {
     let personId: String
     private(set) var overview: NookAPI.PersonOverview?
     private(set) var chores: [NookAPI.ChoreInstanceDTO] = []
+    private(set) var conversions: [NookAPI.Conversion] = []
     private(set) var loading = true
     private(set) var error = false
 
@@ -21,11 +22,13 @@ final class PersonOverviewModel {
     func load() async {
         async let o = api.personOverview(id: personId)
         async let c = api.choreInstances(date: ChoreDates.today())
+        async let cv = api.conversions()
         do {
             overview = try await o
             chores = (try await c).filter { $0.personId == personId }
             error = false
         } catch { self.error = true }
+        conversions = (try? await cv) ?? []
         loading = false
     }
 
@@ -54,6 +57,7 @@ struct PersonView: View {
     @State private var showCapture = false
     @State private var editingEvent: SyncedEvent?
     @State private var showSavingPicker = false
+    @State private var showTrade = false
 
     init(personId: String, path: Binding<[HubRoute]>) {
         self.personId = personId
@@ -118,6 +122,12 @@ struct PersonView: View {
                                current: model.overview?.savingToward?.id) { rewardId in
                 Task { _ = await sync.setSavingToward(personId: personId, rewardId: rewardId); await model.load() }
             }
+        }
+        .sheet(isPresented: $showTrade) {
+            TradeSheet(personName: firstName, personId: personId,
+                       currencies: model.overview?.currencies ?? [],
+                       balances: model.overview?.balances ?? [],
+                       conversions: model.conversions) { await model.load() }
         }
     }
 
@@ -343,6 +353,19 @@ struct PersonView: View {
                         Text(b.label.lowercased()).font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
                     }
                 }
+                Spacer(minLength: 8)
+                if !model.conversions.isEmpty {
+                    Button { showTrade = true } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.left.arrow.right").font(.system(size: 12, weight: .bold))
+                            Text("Trade").font(.system(size: 13, weight: .bold))
+                        }
+                        .foregroundStyle(NK.ai)
+                        .padding(.horizontal, 11).padding(.vertical, 7)
+                        .background(NK.ai.opacity(0.12)).clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             if !ov.recentLedger.isEmpty {
                 SectionLabel(text: "Recent")
@@ -482,5 +505,128 @@ struct SavingTowardPicker: View {
                 .strokeBorder(selected ? NK.ai.opacity(0.4) : NK.hair, lineWidth: 1))
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Trade a person's balance through a household conversion rate — the web's
+/// TradeModal. Anyone can convert their own; a parent does it for a kid here.
+struct TradeSheet: View {
+    let personName: String
+    let personId: String
+    let currencies: [NookAPI.PersonOverview.Currency]
+    let balances: [NookAPI.PersonOverview.Balance]
+    let conversions: [NookAPI.Conversion]
+    let onDone: () async -> Void
+
+    @Environment(SyncManager.self) private var sync
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var convId: String
+    @State private var times = 1
+    @State private var busy = false
+    @State private var error: String?
+
+    init(personName: String, personId: String, currencies: [NookAPI.PersonOverview.Currency],
+         balances: [NookAPI.PersonOverview.Balance], conversions: [NookAPI.Conversion],
+         onDone: @escaping () async -> Void) {
+        self.personName = personName; self.personId = personId
+        self.currencies = currencies; self.balances = balances; self.conversions = conversions
+        self.onDone = onDone
+        _convId = State(initialValue: conversions.first?.id ?? "")
+    }
+
+    private var conv: NookAPI.Conversion? { conversions.first { $0.id == convId } }
+    private var have: Int { conv.flatMap { c in balances.first { $0.currency == c.fromCurrency }?.balance } ?? 0 }
+    private var cost: Int { (conv?.fromAmount ?? 0) * times }
+    private var gain: Int { (conv?.toAmount ?? 0) * times }
+    private var afford: Bool { conv != nil && have >= cost && times > 0 }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Trade currencies").font(NK.serif(22)).foregroundStyle(NK.ink)
+                        Text("for \(personName)").font(.system(size: 13)).foregroundStyle(NK.ink3)
+                    }
+
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "Trade")
+                        Menu {
+                            ForEach(conversions) { c in
+                                Button("\(c.fromAmount) \(c.from.symbol ?? "•") → \(c.toAmount) \(c.to.symbol ?? "•")") { convId = c.id }
+                            }
+                        } label: {
+                            HStack {
+                                if let c = conv {
+                                    Text("\(c.fromAmount) \(c.from.symbol ?? "•") \(c.from.label ?? c.fromCurrency)  →  \(c.toAmount) \(c.to.symbol ?? "•") \(c.to.label ?? c.toCurrency)")
+                                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                                } else { Text("Pick a rate").foregroundStyle(NK.ink3) }
+                                Spacer()
+                                Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 12)
+                            .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "How many times")
+                        HStack(spacing: 14) {
+                            Button { times = max(1, times - 1) } label: { stepGlyph("minus") }
+                            Text("\(times)").font(.system(size: 18, weight: .bold)).foregroundStyle(NK.ink).frame(minWidth: 30)
+                            Button { times += 1 } label: { stepGlyph("plus") }
+                        }
+                    }
+
+                    if let c = conv {
+                        HStack(spacing: 10) {
+                            Text("−\(cost) \(c.from.symbol ?? "•")").font(.system(size: 16, weight: .heavy)).foregroundStyle(NK.primary)
+                            Image(systemName: "arrow.right").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+                            Text("+\(gain) \(c.to.symbol ?? "•")").font(.system(size: 16, weight: .heavy)).foregroundStyle(FamilyColor.wally.solid)
+                            Spacer()
+                            Text("has \(have) \(c.from.symbol ?? "•")").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                        }
+                        .padding(14).background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    }
+
+                    if !afford, conv != nil {
+                        Text("Not enough \(conv?.from.label ?? "currency") to trade \(times)×.")
+                            .font(.system(size: 13, weight: .medium)).foregroundStyle(NK.primary)
+                    }
+                    if let error { Text(error).font(.system(size: 13, weight: .medium)).foregroundStyle(NK.primary) }
+
+                    Button { Task { await trade() } } label: {
+                        Text(busy ? "Trading…" : "Trade").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                            .frame(maxWidth: .infinity).padding(.vertical, 14)
+                            .background(afford ? NK.primary : NK.ink3)
+                            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    }
+                    .buttonStyle(.plain).disabled(busy || !afford)
+                }
+                .padding(20)
+            }
+            .background(NK.canvas)
+            .navigationTitle("Trade").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+    }
+
+    private func stepGlyph(_ name: String) -> some View {
+        Image(systemName: name).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+            .frame(width: 36, height: 36).background(NK.panel).clipShape(Circle())
+    }
+
+    private func trade() async {
+        busy = true; error = nil
+        let result = await sync.applyConversion(id: convId, personId: personId, times: times)
+        busy = false
+        if result.ok { await onDone(); dismiss() }
+        else { error = friendly(result.error) }
+    }
+
+    private func friendly(_ e: String?) -> String {
+        guard let e else { return "Couldn’t complete that trade." }
+        return e.contains("not enough") ? "Not enough to trade that many times." : "Couldn’t complete that trade."
     }
 }

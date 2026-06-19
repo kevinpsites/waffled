@@ -438,6 +438,14 @@ struct NookAPI: Sendable {
     /// Delete a trade rate (admins).
     func deleteConversion(id: String) async throws { try await delete("/api/conversions/\(id)") }
 
+    /// Apply a conversion to a person's balance N times (anyone, for their own).
+    /// Returns `{ ok }` — `ok: false` (with `error`) on insufficient funds.
+    struct ConversionResult: Decodable, Sendable { let ok: Bool; let error: String? }
+    func applyConversion(id: String, personId: String, times: Int) async throws -> ConversionResult {
+        try await sendReturning("POST", "/api/conversions/\(id)/apply",
+                                body: ["personId": .string(personId), "times": .int(times)], as: ConversionResult.self)
+    }
+
     // MARK: - Settings: family & household
 
     /// Household settings + members (with owner/login flags) for the Settings screen.

@@ -434,6 +434,19 @@ final class SyncManager {
         return ok
     }
 
+    /// Trade a person's balance through a conversion N times. Returns success + an
+    /// optional error message (e.g. "not enough to trade"). Bumps `rewardsRev`.
+    func applyConversion(id: String, personId: String, times: Int) async -> (ok: Bool, error: String?) {
+        do {
+            let r = try await api.applyConversion(id: id, personId: personId, times: times)
+            if r.ok { rewardsRev += 1 }
+            return (r.ok, r.error)
+        } catch {
+            lastError = String(describing: error)
+            return (false, "Couldn’t complete that trade.")
+        }
+    }
+
     // MARK: settings — family & household
 
     /// Create or edit a member (admins).
