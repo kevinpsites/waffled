@@ -29,16 +29,18 @@ struct SettingsView: View {
 
     var body: some View {
         ScrollView {
+            // Web order (with Accounts before AI, per the kiosk's pending update).
             VStack(alignment: .leading, spacing: 10) {
-                SectionLabel(text: "Household").padding(.top, 4)
                 row("👨‍👩‍👧‍👦", "Family & people", "Members, roles, household") { path.append(.settingsFamily) }
-                row("⭐", "Chores & rewards", "Currencies & conversions") { path.append(.settingsChoresRewards) }
-                row("📅", "Calendars", "Google sync") { path.append(.settingsCalendars) }
-                row("🍽️", "Meals", "Calendar & meal times") { path.append(.settingsMeals) }
+                row("🔗", "Accounts", "Sign-in & connections")
                 row("✨", "AI & capture", "Provider & model") { path.append(.settingsAI) }
-
-                SectionLabel(text: "Coming soon").padding(.top, 10)
-                soon("🔔", "Notifications", "Reminders")
+                row("📅", "Calendars", "Google sync") { path.append(.settingsCalendars) }
+                row("⭐", "Chores & rewards", "Currencies & conversions") { path.append(.settingsChoresRewards) }
+                row("🍽️", "Meals", "Calendar & meal times") { path.append(.settingsMeals) }
+                row("📋", "Lists", "Grocery & lists")
+                row("🖥️", "Display & kiosk", "Theme & screen")
+                row("🔔", "Notifications", "Reminders")
+                row("ℹ️", "About", "Version & info")
             }
             .padding(16).padding(.bottom, 110)
         }
@@ -46,38 +48,31 @@ struct SettingsView: View {
         .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
     }
 
-    private func row(_ emoji: String, _ title: String, _ sub: String, tap: @escaping () -> Void) -> some View {
-        Button(action: tap) {
+    /// A settings row. `tap == nil` ⇒ not built yet (dimmed + a "Soon" pill).
+    private func row(_ emoji: String, _ title: String, _ sub: String, tap: (() -> Void)? = nil) -> some View {
+        let enabled = tap != nil
+        return Button { tap?() } label: {
             HStack(spacing: 12) {
                 Text(emoji).font(.system(size: 22)).frame(width: 40, height: 40)
                     .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                    Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(enabled ? NK.ink : NK.ink2)
                     Text(sub).font(.system(size: 12.5)).foregroundStyle(NK.ink3)
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+                if enabled {
+                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+                } else {
+                    Text("Soon").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                        .padding(.horizontal, 8).padding(.vertical, 3).background(NK.panel).clipShape(Capsule())
+                }
             }
             .padding(12).background(NK.card)
             .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .opacity(enabled ? 1 : 0.6)
         }
-        .buttonStyle(.plain)
-    }
-
-    private func soon(_ emoji: String, _ title: String, _ sub: String) -> some View {
-        HStack(spacing: 12) {
-            Text(emoji).font(.system(size: 20)).frame(width: 36, height: 36)
-                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous)).opacity(0.6)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
-                Text(sub).font(.system(size: 12)).foregroundStyle(NK.ink3)
-            }
-            Spacer(minLength: 0)
-            Text("Soon").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
-                .padding(.horizontal, 8).padding(.vertical, 3).background(NK.panel).clipShape(Capsule())
-        }
-        .padding(.horizontal, 12).padding(.vertical, 8)
+        .buttonStyle(.plain).disabled(!enabled)
     }
 }
 
