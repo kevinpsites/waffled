@@ -111,6 +111,14 @@ struct CalendarsSettingsView: View {
         .buttonStyle(.plain)
     }
 
+    /// Stable A–Z order (case-insensitive), with the primary calendar pinned first.
+    private func sortedCals(_ cals: [NookAPI.CalendarStatus.Cal]) -> [NookAPI.CalendarStatus.Cal] {
+        cals.sorted { a, b in
+            if a.isPrimary != b.isPrimary { return a.isPrimary }
+            return (a.summary ?? "").localizedCaseInsensitiveCompare(b.summary ?? "") == .orderedAscending
+        }
+    }
+
     /// Apply search + synced-only + hide-read-only.
     private func filtered(_ cals: [NookAPI.CalendarStatus.Cal]) -> [NookAPI.CalendarStatus.Cal] {
         cals.filter { c in
@@ -152,7 +160,7 @@ struct CalendarsSettingsView: View {
     // MARK: an account
 
     private func accountCard(_ acct: NookAPI.CalendarStatus.Account) -> some View {
-        let all = status?.calendars.filter { $0.accountId == acct.id } ?? []
+        let all = sortedCals(status?.calendars.filter { $0.accountId == acct.id } ?? [])
         let shown = filtered(all)
         let synced = all.filter(\.selected).count
         let isCollapsed = collapsed.contains(acct.id)
