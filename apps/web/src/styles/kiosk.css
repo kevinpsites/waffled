@@ -49,6 +49,16 @@ body {
 }
 
 /* ===== Today dashboard — responsive columns ===== */
+/* Wraps the recap banner + the column grid in one flex column so the grid keeps
+   filling the height on large displays while the recap sits above it. */
+.today-wrap { display: flex; flex-direction: column; min-height: 0; }
+.today-wrap > .recap-bar { margin: 6px 30px 0; }
+@media (min-width: 1101px) and (min-height: 680px) {
+  .today-wrap { flex: 1; }
+}
+@media (max-width: 720px) {
+  .today-wrap > .recap-bar { margin: 6px 16px 0; }
+}
 .today-grid {
   display: grid;
   grid-template-columns: 1.15fr 1fr 0.82fr;

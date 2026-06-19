@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router'
 import { LogModal } from './components/LogModal'
+import { EventModal } from './components/EventModal'
+import { ReviewList } from './components/GoalRecap'
 import { useGoalDetail, api, type GoalParticipant, type GoalMilestone, type GoalLogEntry } from '../lib/api'
 import { useTopbarFull } from './topbar-slot'
 import { CATEGORIES } from './categories'
@@ -58,6 +60,7 @@ export function GoalDetail() {
   const location = useLocation()
   const { goal, loading, error, refetch } = useGoalDetail(id ?? null)
   const [logging, setLogging] = useState(false)
+  const [planning, setPlanning] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   // Optimistic checklist toggles: stepId -> intended done state. The checkbox
   // flips instantly (no wait for the round-trip) and rapid taps stay consistent;
@@ -80,6 +83,8 @@ export function GoalDetail() {
 
   const logRef = useRef<() => void>(() => {})
   logRef.current = () => setLogging(true)
+  const planRef = useRef<() => void>(() => {})
+  planRef.current = () => setPlanning(true)
 
   // Back returns to wherever you came from (a person's profile, the goals hub,
   // etc.) rather than always the goals list. 'default' key = loaded straight
@@ -103,6 +108,11 @@ export function GoalDetail() {
         : gUnit && HOUR_UNITS.has(gUnit.toLowerCase()) ? '＋ Log time'
           : '＋ Log progress'
   const showLog = gType !== 'checklist'
+  // "Plan time" is only meaningful when the goal accepts calendar contributions
+  // (so the scheduled event can actually count). Checklists can't be timed.
+  const canPlan =
+    !!goal?.autoFromCalendar && (gType === 'total' || gType === 'count' || gType === 'habit')
+  const planLabel = gUnit && HOUR_UNITS.has(gUnit.toLowerCase()) ? '＋ Plan time' : '＋ Schedule'
 
   useTopbarFull(
     () => (
@@ -110,6 +120,9 @@ export function GoalDetail() {
         <button className="pill" style={{ cursor: 'pointer' }} onClick={() => backRef.current()}>{backLabel}</button>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
           <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(`/goals/${id}/edit`)}>Edit goal</button>
+          {canPlan && (
+            <button className="pill" style={{ cursor: 'pointer' }} onClick={() => planRef.current()}>{planLabel}</button>
+          )}
           {showLog && (
             <button
               className="pill btn-primary"
@@ -123,7 +136,7 @@ export function GoalDetail() {
         </div>
       </div>
     ),
-    [navigate, id, logLabel, showLog, backLabel, habitDoneToday]
+    [navigate, id, logLabel, showLog, backLabel, habitDoneToday, canPlan, planLabel]
   )
 
   if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
@@ -247,6 +260,8 @@ export function GoalDetail() {
         </div>
 
         <div className="detail-col">
+          {goal.autoFromCalendar && <ReviewList goalId={goal.id} variant="inline" />}
+
           <div className="card detail-card">
             <div className="card-h" style={{ marginBottom: 8 }}>Recent activity</div>
             {goal.recent.length === 0 && <div className="tiny muted" style={{ fontWeight: 600, padding: '8px 0' }}>No activity yet — log some progress.</div>}
@@ -274,6 +289,19 @@ export function GoalDetail() {
       </div>
 
       {logging && <LogModal goal={goal} onClose={() => setLogging(false)} onSaved={refetch} onDeleted={() => navigate('/goals')} />}
+      {planning && (
+        <EventModal
+          prefill={{
+            goalId: goal.id,
+            participantIds: goal.participants.map((p) => p.personId),
+          }}
+          onClose={() => setPlanning(false)}
+          onSaved={() => {
+            setPlanning(false)
+            refetch()
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -1,7 +1,7 @@
 // Goals domain — client slice, types, and hooks. Matches the goal-lists mocks.
 import { useEffect, useRef, useState } from 'react'
 import { apiGet, apiSend, apiDelete } from './client'
-import { tap } from './bus'
+import { tap, useRefetchOn } from './bus'
 
 export interface GoalListMember {
   personId: string
@@ -194,5 +194,8 @@ export function useGoalDetail(id: string | null): GoalDetailState {
       alive = false
     }
   }, [id, nonce])
+  // Refetch when anything taps the goals bus (a calendar-recap confirm, a log from
+  // elsewhere, etc.). Same-id refetch is silent (no loading flash) per the effect above.
+  useRefetchOn(['goals'], () => setNonce((n) => n + 1))
   return { goal, loading, error, refetch: () => setNonce((n) => n + 1) }
 }

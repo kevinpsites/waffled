@@ -66,6 +66,7 @@ export interface LocalEventRow {
   ends_at: string | null
   all_day: number // SQLite has no bool; 0/1
   person_id: string | null
+  goal_id?: string | null
   origin: string | null
   origin_ref_id: string | null
   person_name: string | null
@@ -122,6 +123,7 @@ export function rowToAgenda(r: LocalEventRow): AgendaEvent {
     location: r.location,
     description: r.description,
     personId: r.person_id,
+    goalId: r.goal_id ?? null,
     origin: r.origin,
     originRefId: r.origin_ref_id,
     personName: r.person_name,
@@ -157,7 +159,7 @@ export function eventsForRange(rows: LocalEventRow[], tz: string, from: string, 
 // Pull every (non-deleted — the local DB only holds those) event with owner +
 // participants. We filter/bucket by date in JS since SQLite tz support is weak.
 const AGENDA_SQL = `
-  select e.id, e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.person_id,
+  select e.id, e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.person_id, e.goal_id,
          e.origin, e.origin_ref_id,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          (select json_group_array(json_object(
@@ -211,6 +213,7 @@ export interface EventDraft {
   allDay: boolean
   location: string | null
   personIds: string[]
+  goalId?: string | null // calendar→goal link; null = not linked
   calendarId?: string | null // create only; null = let the server auto-route
 }
 
@@ -232,9 +235,9 @@ export async function createEventLocal(draft: EventDraft): Promise<boolean> {
   await db.execute(
     `insert into events
        (id, household_id, title, description, location, starts_at, ends_at, all_day, timezone,
-        person_id, calendar_id, origin)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
-    [id, hh, draft.title, null, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, tz, draft.personIds[0] ?? null, draft.calendarId ?? null]
+        person_id, goal_id, calendar_id, origin)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
+    [id, hh, draft.title, null, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, tz, draft.personIds[0] ?? null, draft.goalId ?? null, draft.calendarId ?? null]
   )
   for (const pid of [...new Set(draft.personIds)]) {
     await db.execute(`insert into event_participants (id, household_id, event_id, person_id) values (?, ?, ?, ?)`, [
@@ -252,8 +255,8 @@ export async function updateEventLocal(id: string, draft: EventDraft): Promise<b
   if (!db) return false
   const hh = await householdRowId()
   const res = await db.execute(
-    `update events set title = ?, location = ?, starts_at = ?, ends_at = ?, all_day = ?, person_id = ? where id = ?`,
-    [draft.title, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.personIds[0] ?? null, id]
+    `update events set title = ?, location = ?, starts_at = ?, ends_at = ?, all_day = ?, person_id = ?, goal_id = ? where id = ?`,
+    [draft.title, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.personIds[0] ?? null, draft.goalId ?? null, id]
   )
   // Row not in the local DB yet (PowerSync hasn't synced it) → the update matched
   // nothing and would never upload. Bail so the caller saves via REST instead.

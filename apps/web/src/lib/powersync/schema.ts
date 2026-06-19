@@ -17,6 +17,7 @@ const events = new Table({
   timezone: column.text,
   status: column.text,
   person_id: column.text,
+  goal_id: column.text,
   origin: column.text,
   origin_ref_id: column.text,
   updated_at: column.text,

@@ -32,14 +32,14 @@ async function applyEventPut(tenant: Tenant, id: string, data: Record<string, un
   await query(
     `insert into events
        (id, household_id, title, description, location, starts_at, ends_at, all_day, timezone,
-        person_id, origin, sync_state)
+        person_id, goal_id, origin, sync_state)
      values ($1,$2,$3,$4,$5,$6,$7,$8,
              coalesce($9, (select timezone from households where id = $2)),
-             $10, 'manual', 'local_only')
+             $10, $11, 'manual', 'local_only')
      on conflict (id) do update set
        title = excluded.title, description = excluded.description, location = excluded.location,
        starts_at = excluded.starts_at, ends_at = excluded.ends_at, all_day = excluded.all_day,
-       person_id = excluded.person_id
+       person_id = excluded.person_id, goal_id = excluded.goal_id
      where events.household_id = $2`,
     [
       id,
@@ -52,6 +52,7 @@ async function applyEventPut(tenant: Tenant, id: string, data: Record<string, un
       asBool(data.all_day),
       asStr(data.timezone),
       asStr(data.person_id),
+      asStr(data.goal_id),
     ]
   )
   // Pick the destination calendar (explicit choice, else the owner's ★ target).
@@ -80,6 +81,7 @@ async function applyEventPatch(tenant: Tenant, id: string, data: Record<string, 
   if ('ends_at' in data) patch.endsAt = asStr(data.ends_at)
   if ('all_day' in data) patch.allDay = asBool(data.all_day)
   if ('person_id' in data) patch.personId = asStr(data.person_id)
+  if ('goal_id' in data) patch.goalId = asStr(data.goal_id)
   if (Object.keys(patch).length) await updateEvent(tenant.householdId, id, patch)
 }
 

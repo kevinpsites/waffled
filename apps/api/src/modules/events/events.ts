@@ -24,6 +24,7 @@ const UPDATABLE: Record<string, string> = {
   endsAt: 'ends_at',
   allDay: 'all_day',
   personId: 'person_id',
+  goalId: 'goal_id',
 }
 
 // Patch fields Google owns — a change to one of these is worth pushing back to
@@ -46,6 +47,7 @@ export interface EventRow extends QueryResultRow {
   ends_at: Date | null
   all_day: boolean
   person_id: string | null
+  goal_id?: string | null
   rrule?: string | null
   sync_state?: string | null
   calendar_name?: string | null
@@ -66,6 +68,9 @@ export interface CreateEventInput {
   description?: string | null
   personId?: string | null
   participantIds?: string[]
+  // Calendar → goal bridge: tag this event so its completion counts toward a goal
+  // (the goal must have auto_from_calendar on). null/omitted = not linked.
+  goalId?: string | null
   timezone?: string | null
   // Explicit calendar choice (create-time picker): a calendar id to write to, or
   // null for "Nook only". Omit entirely to auto-route to the owner's ★ default.
@@ -106,9 +111,9 @@ export async function createEvent(tenant: Tenant, input: CreateEventInput): Prom
     const ins = await client.query<EventRow>(
       `insert into events
          (household_id, calendar_id, title, description, location, starts_at, ends_at, all_day, timezone,
-          person_id, origin, sync_state)
+          person_id, goal_id, origin, sync_state)
        values ($1,$2,$3,$4,$5,$6,$7, coalesce($8,false),
-               coalesce($9, (select timezone from households where id=$1)), $10, 'manual', $11)
+               coalesce($9, (select timezone from households where id=$1)), $10, $11, 'manual', $12)
        returning *`,
       [
         tenant.householdId,
@@ -121,6 +126,7 @@ export async function createEvent(tenant: Tenant, input: CreateEventInput): Prom
         input.allDay ?? false,
         input.timezone ?? null,
         primary,
+        input.goalId ?? null,
         target ? 'pending_push' : 'local_only',
       ]
     )
@@ -150,7 +156,7 @@ const PARTICIPANTS_SUBQUERY = `
   ), '[]'::json) as participants`
 
 const SELECT_WITH_PERSON = `
-  select e.id, e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.person_id,
+  select e.id, e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.person_id, e.goal_id,
          e.rrule, e.sync_state, e.origin, e.origin_ref_id, c.summary as calendar_name,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          ${PARTICIPANTS_SUBQUERY}
@@ -278,6 +284,7 @@ export function presentEvent(e: EventRow) {
     endsAt: e.ends_at,
     allDay: e.all_day,
     personId: e.person_id,
+    goalId: e.goal_id ?? null,
     rrule: e.rrule ?? null,
     // The Google calendar this event lives on (its name) + whether it's pushed —
     // drives the detail screen's "Calendar · synced from Google" row.

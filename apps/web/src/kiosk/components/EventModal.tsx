@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
-import { api, usePersons, calendarsApi, mealsApi, localToday, invalidateGetCache, type AgendaEvent, type CalendarLink } from '../../lib/api'
+import { api, usePersons, useGoals, calendarsApi, mealsApi, localToday, invalidateGetCache, type AgendaEvent, type CalendarLink } from '../../lib/api'
 import { createEventLocal, updateEventLocal, deleteEventLocal, tombstoneEvent } from '../../lib/powersync/events-local'
 
 // Calendars an event can be written to: writable (owner/writer), not read-only.
@@ -26,7 +26,16 @@ const DURATIONS: Array<{ min: number; label: string }> = [
   { min: 240, label: '4 hr' },
 ]
 
-function initialForm(event?: AgendaEvent, date?: string, time?: string) {
+// A new event can be opened with some fields pre-filled — e.g. "Plan time" on a
+// goal hands us the goal + its people so the event is linked from the start.
+export interface EventPrefill {
+  goalId?: string
+  participantIds?: string[]
+  title?: string
+  durationMin?: number
+}
+
+function initialForm(event?: AgendaEvent, date?: string, time?: string, prefill?: EventPrefill) {
   if (event) {
     const d = new Date(event.startsAt)
     const participantIds = event.participants.length
@@ -46,32 +55,72 @@ function initialForm(event?: AgendaEvent, date?: string, time?: string) {
       allDay: event.allDay,
       participantIds,
       location: event.location ?? '',
+      goalId: event.goalId ?? '',
     }
   }
-  return { title: '', day: date ?? localToday(), time: time ?? '17:00', durationMin: 60, allDay: false, participantIds: [] as string[], location: '' }
+  return {
+    title: prefill?.title ?? '',
+    day: date ?? localToday(),
+    time: time ?? '17:00',
+    durationMin: prefill?.durationMin ?? 60,
+    allDay: false,
+    participantIds: prefill?.participantIds ?? ([] as string[]),
+    location: '',
+    goalId: prefill?.goalId ?? '',
+  }
 }
 
-// Create (pass `date`, optional `time`) or edit (pass `event`) a calendar event.
+// Create (pass `date`, optional `time`, optional `prefill`) or edit (pass `event`)
+// a calendar event.
 export function EventModal({
   event,
   date,
   time,
+  prefill,
   onClose,
   onSaved,
 }: {
   event?: AgendaEvent
   date?: string
   time?: string
+  prefill?: EventPrefill
   onClose: () => void
   onSaved: () => void
 }) {
   const editing = !!event
   const navigate = useNavigate()
   const { persons } = usePersons()
-  const [form, setForm] = useState(() => initialForm(event, date, time))
+  // Goals that opted into calendar auto-counting (the "Counts toward" picker).
+  // Checklists can't be timed by an event, so only total/count/habit qualify.
+  const { goals } = useGoals()
+  const calendarGoals = goals.filter(
+    (g) => g.autoFromCalendar && (g.goalType === 'total' || g.goalType === 'count' || g.goalType === 'habit')
+  )
+  const [form, setForm] = useState(() => initialForm(event, date, time, prefill))
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
+
+  // "Counts toward" is gated on who's attending: with nobody selected there's
+  // nothing to attribute, so the picker is hidden. Once people are chosen, only
+  // goals that include EVERY selected person show — a goal's participants must be
+  // a superset of the attendees (so a family goal still appears when you pick a
+  // subset of the family, but a Kevin-only goal won't show once Wally is added).
+  const relevantGoals =
+    form.participantIds.length === 0
+      ? []
+      : calendarGoals.filter((g) => {
+          const gp = new Set(g.participants.map((p) => p.personId))
+          return form.participantIds.every((id) => gp.has(id))
+        })
+  // If the attendee change orphaned the chosen goal, drop it so we never save a
+  // link the picker no longer offers. Wait for goals to load first — otherwise a
+  // pre-filled goalId (from "Plan time") would be cleared before the list arrives.
+  useEffect(() => {
+    if (!goals.length) return
+    if (form.goalId && !relevantGoals.some((g) => g.id === form.goalId)) set('goalId', '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.participantIds, form.goalId, goals.length])
 
   // For a planned-meal event, resolve its recipe so we can offer "View recipe".
   const isMeal = event?.origin === 'meal_plan'
@@ -134,6 +183,7 @@ export function EventModal({
       allDay: form.allDay,
       location: form.location.trim() || null,
       personIds: form.participantIds,
+      goalId: form.goalId || null,
     }
     const restPayload = { ...draft, participantIds: draft.personIds }
     try {
@@ -302,6 +352,25 @@ export function EventModal({
             <span>Location (optional)</span>
             <input value={form.location} onChange={(e) => set('location', e.target.value)} placeholder="Field 3" />
           </label>
+
+          {/* Calendar → goal: tag the event so its completion can count toward a
+              goal. Shown only once attendees are chosen and they share an
+              auto-counting goal. After the event ends, a "did this happen?" recap
+              confirms it. */}
+          {relevantGoals.length > 0 && (
+            <label className="field">
+              <span>Counts toward (optional)</span>
+              <select value={form.goalId} onChange={(e) => set('goalId', e.target.value)} style={{ width: '100%' }}>
+                <option value="">No goal</option>
+                {relevantGoals.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.emoji ? `${g.emoji} ` : ''}
+                    {g.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <div style={{ display: 'flex', gap: 9, marginTop: 6, alignItems: 'center' }}>
             {editing && (

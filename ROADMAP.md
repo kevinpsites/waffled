@@ -109,7 +109,7 @@ UI, settings sub-tab depth, event recurrence/overrides, auto-from-calendar goal 
 
 ## Backlog — designed, not yet built
 
-### Calendar → goal auto-counting (the "auto-from-calendar" bridge) — DESIGNED 2026-06-18
+### Calendar → goal auto-counting (the "auto-from-calendar" bridge) — PHASE 1 SHIPPED 2026-06-18
 The bidirectional Google Calendar **sync already exists and works** (inbound pull +
 outbound push, per-household OAuth, 5-min poll). The goal side has the **opt-in toggle**
 (`goals.auto_from_calendar`, migration 0031) and `goal_logs.source` reserves
@@ -137,22 +137,35 @@ queue on **Today** (primary) and on the relevant **goal detail / person profile*
 **mark-done** (respect once/day). Attribution default = event participants ∩ goal
 participants (via existing split/each-tracks), editable in the recap.
 
-**Phase 1 (the slice):** migration (`events.goal_id` + confirmation table) → goal picker in
-the event modal → single (non-recurring) events → editable-preview recap on Today + goal →
-write with idempotency + attribution. Covers Total-time / Count / Habit.
+**Phase 1 — SHIPPED** (migration 0033 `events.goal_id` + `event_goal_logs`; module
+`goals/goal-calendar.ts`; `GoalRecap` on Today + goal detail; "Counts toward" picker in
+the event modal, round-tripped through REST **and** the PowerSync CRUD path). Covers
+Total-time / Count / Habit single events. Verified end-to-end (Playwright on the kiosk) +
+`test/goal-calendar.integration.test.ts` (6 cases).
 
 **Definition of done — resolve or EXPLICITLY defer each before marking complete:**
-- [ ] Idempotency — never double-count (sync re-run / edit / double-confirm)   *(Phase 1)*
-- [ ] Attribution editable in recap; sensible default + fallback to shared/family  *(Phase 1)*
-- [ ] Filter cancelled / tentative / declined via `status`            *(Phase 1)*
-- [ ] Edge cases: all-day (no duration), multi-day, zero-duration      *(Phase 1)*
-- [ ] Habit once-a-day interaction with calendar mark-done             *(Phase 1)*
-- [ ] Recap offline behavior (kiosk renders from local; confirm queues)  *(Phase 1)*
-- [ ] Recurring events — per-occurrence tag + confirmation             *(Phase 2)*
+- [x] Idempotency — never double-count. Confirm claims the `(event_id, occurrence_date,
+      goal_id)` slot via `insert … on conflict do nothing returning`; a 2nd confirm gets
+      `status:'duplicate'` and writes no log. *(Phase 1)*
+- [x] Attribution editable in recap; default = event ∩ goal participants, fallback to all
+      goal participants when the intersection is empty; who-chips editable at confirm. *(Phase 1)*
+- [x] Filter cancelled — recap excludes `events.status = 'cancelled'` (and `deleted_at`,
+      which Google cancellations also set). Tentative/declined intentionally KEPT (a
+      tentative event that happened should still be confirmable). *(Phase 1)*
+- [x] Edge cases: all-day / no-`ends_at` / zero-duration → `suggestedAmount` 0 for Total
+      (person fills it in); Count/Habit always suggest 1; multi-day uses the start date as
+      the occurrence. *(Phase 1)*
+- [x] Habit once-a-day — two linked events the same day both resolve the recap, but
+      `logProgress`'s habit dup-guard means only one progress row is written. *(Phase 1)*
+- [~] Recap offline behavior — events render from the local DB, but the recap **queue +
+      confirm/skip are REST** (server computes the queue, writes the log). The kiosk is the
+      always-on home hub so this is fine in practice; a fully-offline confirm-queue is a
+      documented follow-up (would need `event_goal_logs` replicated + a CRUD path). *(Phase 1 → follow-up)*
+- [ ] Recurring events — per-occurrence tag + confirmation (recap is gated to `rrule is
+      null` today). `occurrence_date` is already carried for this. *(Phase 2)*
 - [ ] Non-time Total units (miles/pages) — per-association amount or unsupported  *(Phase 2)*
 - [ ] Edit/cancel/delete after a confirmed log — clawback vs keep (lean: keep)   *(Phase 2)*
 - [ ] Backfill on enable — forward-only vs sweep past events (lean: forward-only) *(Phase 2)*
-Wires up the cosmetic `auto_from_calendar` toggle + `goal_logs.source='auto_calendar'`.
 
 ### Milestones / checklist rethink — ✅ DONE (migration 0030)
 "Milestones" did double duty: threshold reward moments AND the "checklist" measure

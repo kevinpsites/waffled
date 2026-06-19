@@ -21,6 +21,7 @@ import { registerCalendarAiRoutes } from './modules/calendar/calendar-ai'
 import { registerCalendarRoutes } from './modules/calendar/calendars'
 import { registerCalendarSyncRoutes } from './modules/calendar/calendar-sync.routes'
 import { registerGoalRoutes } from './modules/goals/goals.routes'
+import { registerGoalCalendarRoutes } from './modules/goals/goal-calendar'
 import { registerOverviewRoutes } from './modules/overview/overview'
 import { registerPhotoRoutes } from './modules/photos/photos'
 import { registerCaptureRoutes } from './modules/capture/capture'
@@ -146,6 +147,9 @@ registerCalendarSyncRoutes(api)
 
 // Goals (/api/goals…)
 registerGoalRoutes(api)
+
+// Calendar → goal auto-counting recap (/api/goal-calendar/recap…)
+registerGoalCalendarRoutes(api)
 
 // Person + family overviews (/api/persons/:id/overview, /api/family/overview)
 registerOverviewRoutes(api)

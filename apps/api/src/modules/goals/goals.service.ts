@@ -581,9 +581,14 @@ export async function logProgress(
   goalId: string,
   amount: number,
   personIds: Array<string | null>,
-  note?: string | null
-): Promise<void> {
+  note?: string | null,
+  opts?: { source?: string; refType?: string | null; refId?: string | null }
+): Promise<string[]> {
+  const source = opts?.source ?? 'quick_log'
+  const refType = opts?.refType ?? null
+  const refId = opts?.refId ?? null
   const targets = personIds.length ? personIds : [null]
+  const logIds: string[] = []
 
   const { rows } = await query<{ tracking_mode: string; goal_type: string }>(
     `select tracking_mode, goal_type from goals where id = $1 and household_id = $2`,
@@ -622,12 +627,14 @@ export async function logProgress(
       )
       if (dup.rowCount) continue
     }
-    await query(
-      `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, created_by)
-       values ($1,$2,$3,$4,$5,'quick_log',$6)`,
-      [tenant.householdId, goalId, targets[i], amounts[i], note ?? null, tenant.personId]
+    const ins = await query<{ id: string }>(
+      `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, ref_type, ref_id, created_by)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`,
+      [tenant.householdId, goalId, targets[i], amounts[i], note ?? null, source, refType, refId, tenant.personId]
     )
+    logIds.push(ins.rows[0].id)
   }
+  return logIds
 }
 
 const GOAL_COLUMNS: Record<string, string> = {
