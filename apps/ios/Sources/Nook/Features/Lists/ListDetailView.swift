@@ -45,9 +45,22 @@ final class ListDetailModel {
     /// Canonical grocery aisles in shopping order (mirrors the server's aisles.ts).
     static let groceryAisles = ["Produce", "Pantry", "Dairy & Chilled", "Meat & Seafood", "Bakery", "Frozen", "Other"]
 
+    /// Free-text filter applied to both active and completed items. Empty = show all.
+    var searchQuery = ""
+
+    /// True if the item matches the current search (name / section / quantity).
+    private func matches(_ item: NookAPI.ListItemDTO) -> Bool {
+        let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return true }
+        if item.name.lowercased().contains(q) { return true }
+        if let s = item.section, s.lowercased().contains(q) { return true }
+        if let qt = item.quantity, qt.lowercased().contains(q) { return true }
+        return false
+    }
+
     /// Active items: unchecked, plus just-checked ones that haven't settled yet.
     private var activeItems: [NookAPI.ListItemDTO] {
-        items.filter { !$0.checked || settling.contains($0.id) }
+        items.filter { (!$0.checked || settling.contains($0.id)) && matches($0) }
     }
 
     /// "By aisle" grouping (also used for non-grocery lists).
@@ -73,7 +86,7 @@ final class ListDetailModel {
     }
 
     /// Settled, checked items — shown in the collapsed Completed section.
-    var completed: [NookAPI.ListItemDTO] { items.filter { $0.checked && !settling.contains($0.id) } }
+    var completed: [NookAPI.ListItemDTO] { items.filter { $0.checked && !settling.contains($0.id) && matches($0) } }
 
     func load() async {
         loading = true
@@ -95,15 +108,17 @@ final class ListDetailModel {
         loading = false
     }
 
-    func add(name rawName: String, quantity rawQty: String) async {
+    func add(name rawName: String, quantity rawQty: String, section rawSection: String? = nil) async {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
         let qty = rawQty.trimmingCharacters(in: .whitespacesAndNewlines)
+        let section = rawSection?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sec = (section?.isEmpty == false) ? section : nil
         do {
             if isGrocery {
-                try await api.addGroceryItem(name: name, quantity: qty.isEmpty ? nil : qty)
+                try await api.addGroceryItem(name: name, quantity: qty.isEmpty ? nil : qty, section: sec)
             } else {
-                try await api.addListItem(listId: list.id, name: name, quantity: qty.isEmpty ? nil : qty)
+                try await api.addListItem(listId: list.id, name: name, quantity: qty.isEmpty ? nil : qty, section: sec)
             }
             await load()
         } catch {
@@ -225,6 +240,11 @@ struct ListDetailView: View {
     @State private var model: ListDetailModel
     @State private var draftName = ""
     @State private var draftQty = ""
+    /// Target section for the next added item (nil = auto-classify / no section).
+    @State private var draftSection: String?
+    @State private var query = ""
+    @State private var newSectionPrompt = false
+    @State private var newSectionName = ""
     @State private var editingId: String?
     @State private var editName = ""
     @State private var editQty = ""
@@ -242,7 +262,11 @@ struct ListDetailView: View {
     private static let mealTypeLabel = ["breakfast": "Breakfast", "lunch": "Lunch", "dinner": "Dinner", "snack": "Snack"]
     private static let mealTypeEmoji = ["breakfast": "🍳", "lunch": "🥪", "dinner": "🍽️", "snack": "🍎"]
 
-    private enum Field: Hashable { case add, editName, editQty }
+    private enum Field: Hashable { case add, editName, editQty, search }
+
+    /// True while the user is searching — the search box is focused or has text.
+    /// Used to hide non-item chrome (meals recap, pantry staples) so results stand out.
+    private var searchActive: Bool { focus == .search || !query.isEmpty }
 
     /// Jump to the Meals tab and open a recipe — tapping a meal in the recap.
     var openRecipe: (NookAPI.RecipeSummary) -> Void = { _ in }
@@ -254,7 +278,7 @@ struct ListDetailView: View {
 
     var body: some View {
         List {
-            if model.isGrocery && !model.meals.isEmpty {
+            if model.isGrocery && !model.meals.isEmpty && !searchActive {
                 summaryPanel
                     .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     .listRowSeparator(.hidden).listRowBackground(Color.clear)
@@ -282,7 +306,7 @@ struct ListDetailView: View {
                 }
             }
             completedSection
-            if model.isGrocery && !model.staples.isEmpty {
+            if model.isGrocery && !model.staples.isEmpty && !searchActive {
                 staplesPanel
                     .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 24, trailing: 16))
                     .listRowSeparator(.hidden).listRowBackground(Color.clear)
@@ -291,7 +315,7 @@ struct ListDetailView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(NK.canvas)
-        .safeAreaInset(edge: .top, spacing: 0) { modeToggle }
+        .safeAreaInset(edge: .top, spacing: 0) { topControls }
         .safeAreaInset(edge: .bottom, spacing: 0) { addBar }
         .navigationTitle(model.list.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -310,11 +334,56 @@ struct ListDetailView: View {
             // Tapping away from an inline edit commits it.
             if editingId != nil, new != .editName, new != .editQty { commitEdit() }
         }
+        .onChange(of: query) { _, q in model.searchQuery = q }
         .sheet(item: $detailItem) { item in
             ItemDetailEditor(item: item, members: sync.members, suggestions: sectionSuggestions) { name, qty, member, section in
                 Task { await model.editDetails(item.id, name: name, quantity: qty, member: member, section: section) }
             }
         }
+        .alert("New section", isPresented: $newSectionPrompt) {
+            TextField("Section name", text: $newSectionName)
+            Button("Cancel", role: .cancel) { newSectionName = "" }
+            Button("Use") {
+                let s = newSectionName.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !s.isEmpty { draftSection = s }
+                newSectionName = ""
+            }
+        } message: { Text("New items will be added to this section.") }
+    }
+
+    /// Whether to show the search field — only worth the space once a list is long.
+    private var showSearch: Bool { model.items.count > 6 }
+
+    /// Pinned controls below the nav bar: a search field (long lists) above the
+    /// grocery aisle/meal toggle.
+    @ViewBuilder private var topControls: some View {
+        VStack(spacing: 0) {
+            if showSearch { searchField }
+            if model.isGrocery { modeToggle }
+        }
+        .background(NK.canvas)
+    }
+
+    /// Inline search box — filters items by name, section, or quantity.
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
+            TextField("Search this list…", text: $query)
+                .font(.system(size: 15, weight: .medium))
+                .focused($focus, equals: .search)
+                .textInputAutocapitalization(.never).autocorrectionDisabled().submitLabel(.search)
+            if !query.isEmpty {
+                Button { query = "" } label: {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(NK.ink3)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 13).padding(.vertical, 9)
+        .background(NK.panel)
+        .clipShape(Capsule())
+        .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+        .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, model.isGrocery ? 2 : 8)
     }
 
     /// Section chips offered in the editor: the grocery aisle taxonomy (for grocery
@@ -638,10 +707,26 @@ struct ListDetailView: View {
                 TextField("Qty", text: $editQty)
                     .font(.system(size: 14, weight: .semibold))
                     .multilineTextAlignment(.trailing)
-                    .frame(width: 70)
+                    .frame(width: 56)
                     .focused($focus, equals: .editQty)
                     .submitLabel(.done)
                     .onSubmit { commitEdit() }
+                // A discoverable route to the full editor (assignee + section) so
+                // users don't have to find the swipe action.
+                Button {
+                    var updated = item
+                    updated.name = editName
+                    updated.quantity = editQty.isEmpty ? nil : editQty
+                    editingId = nil
+                    detailItem = updated
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(NK.ai)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             } else {
                 Button { startEdit(item) } label: {
                     HStack(spacing: 8) {
@@ -666,30 +751,76 @@ struct ListDetailView: View {
         .padding(.vertical, 2)
     }
 
+    /// Whether the section picker is revealed (while typing, or once a section is set).
+    private var showSectionPicker: Bool { focus == .add || draftSection != nil }
+
     private var addBar: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "plus.circle.fill").font(.system(size: 20)).foregroundStyle(NK.primary)
-            TextField("Add item", text: $draftName)
-                .font(.system(size: 16, weight: .semibold))
-                .focused($focus, equals: .add)
-                .submitLabel(.next)
-                .onSubmit(submit)
-            TextField("Qty", text: $draftQty)
-                .font(.system(size: 15, weight: .semibold))
-                .multilineTextAlignment(.trailing)
-                .frame(width: 64)
-                .focused($focus, equals: .add)
-                .submitLabel(.done)
-                .onSubmit(submit)
+        VStack(spacing: 8) {
+            if showSectionPicker {
+                sectionPicker
+            }
+            HStack(spacing: 10) {
+                Image(systemName: "plus.circle.fill").font(.system(size: 20)).foregroundStyle(NK.primary)
+                TextField("Add item", text: $draftName)
+                    .font(.system(size: 16, weight: .semibold))
+                    .focused($focus, equals: .add)
+                    .submitLabel(.next)
+                    .onSubmit(submit)
+                TextField("Qty", text: $draftQty)
+                    .font(.system(size: 15, weight: .semibold))
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 64)
+                    .focused($focus, equals: .add)
+                    .submitLabel(.done)
+                    .onSubmit(submit)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .background(NK.card)
+            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
         }
-        .padding(.horizontal, 16).padding(.vertical, 12)
-        .background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 78)            // clear the floating tab bar
         .background(NK.canvas)           // opaque strip so rows don't show through
+        .animation(.easeInOut(duration: 0.18), value: showSectionPicker)
+    }
+
+    /// A horizontal strip of section chips for the add bar — "Auto" (let the server
+    /// classify), each known section, and "+ New" to name a fresh one.
+    private var sectionPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                addSectionChip(label: "Auto", systemImage: "wand.and.stars", selected: draftSection == nil) {
+                    draftSection = nil
+                }
+                ForEach(sectionSuggestions, id: \.self) { s in
+                    addSectionChip(label: s, systemImage: nil,
+                                   selected: draftSection?.caseInsensitiveCompare(s) == .orderedSame) {
+                        draftSection = s
+                    }
+                }
+                addSectionChip(label: "New", systemImage: "plus", selected: false) {
+                    newSectionName = ""; newSectionPrompt = true
+                }
+            }
+            .padding(.horizontal, 2).padding(.vertical, 1)
+        }
+    }
+
+    private func addSectionChip(label: String, systemImage: String?, selected: Bool, _ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            HStack(spacing: 5) {
+                if let img = systemImage { Image(systemName: img).font(.system(size: 10, weight: .heavy)) }
+                Text(label).font(.system(size: 13, weight: .semibold))
+            }
+            .foregroundStyle(selected ? NK.ink : NK.ink2)
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .background(selected ? NK.primary.opacity(0.12) : NK.card)
+            .overlay(Capsule().strokeBorder(selected ? NK.primary : NK.hair, lineWidth: selected ? 1.5 : 1))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     private func startEdit(_ item: NookAPI.ListItemDTO) {
@@ -708,9 +839,10 @@ struct ListDetailView: View {
     }
 
     private func submit() {
-        let name = draftName, qty = draftQty
+        let name = draftName, qty = draftQty, section = draftSection
         draftName = ""; draftQty = ""
-        Task { await model.add(name: name, quantity: qty) }
+        // Keep draftSection so several items in a row land in the same section.
+        Task { await model.add(name: name, quantity: qty, section: section) }
     }
 }
 

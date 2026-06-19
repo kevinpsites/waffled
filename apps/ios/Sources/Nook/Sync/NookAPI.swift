@@ -84,9 +84,10 @@ struct NookAPI: Sendable {
 
     /// Add a grocery item. Capture folds the quantity into `name` ("milk (2)"); the
     /// Lists screen passes a separate `quantity` so the aisle/board keeps it tidy.
-    func addGroceryItem(name: String, quantity: String? = nil) async throws {
+    func addGroceryItem(name: String, quantity: String? = nil, section: String? = nil) async throws {
         var body: [String: JSONValue] = ["name": .string(name)]
         if let q = quantity, !q.isEmpty { body["quantity"] = .string(q) }
+        if let s = section, !s.isEmpty { body["category"] = .string(s) }
         try await send("POST", "/api/lists/grocery/items", body: body)
     }
 
@@ -981,9 +982,10 @@ struct NookAPI: Sendable {
     }
 
     /// Add an item to a non-grocery list.
-    func addListItem(listId: String, name: String, quantity: String?) async throws {
+    func addListItem(listId: String, name: String, quantity: String?, section: String? = nil) async throws {
         var body: [String: JSONValue] = ["name": .string(name)]
         if let q = quantity, !q.isEmpty { body["quantity"] = .string(q) }
+        if let s = section, !s.isEmpty { body["category"] = .string(s) }
         try await send("POST", "/api/lists/\(listId)/items", body: body)
     }
 
