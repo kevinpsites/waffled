@@ -8,7 +8,7 @@
 // Nothing is written until a row is confirmed. Colors follow the palette: coral
 // for Confirm, violet for the recap accent — no green.
 import { useEffect, useState } from 'react'
-import { useGoalRecap, goalCalendarApi, usePersons, type RecapItem } from '../../lib/api'
+import { useGoalRecap, useGoalSuggestions, goalCalendarApi, usePersons, type RecapItem, type RecapState, type Suggestion, type SuggestionsState } from '../../lib/api'
 import type { Person } from '../../lib/api'
 import { Icon } from '../icons'
 import '../../styles/goals.css'
@@ -44,37 +44,54 @@ interface Draft {
 }
 
 // ── Today entry bar ────────────────────────────────────────────────────────
-// One tappable row that opens the Review slide-over. Renders nothing on a quiet
-// day. The drawer stays mounted while open so "confirm all" can land on its
-// celebratory empty state instead of yanking the panel away.
+// One tappable row that opens the Review slide-over. Combines two queues: linked
+// events to confirm ("to review") and untagged events that might count ("to
+// link"). Renders nothing on a quiet day. Owns both fetches and hands them to the
+// drawer so it stays mounted (so a final confirm/link lands without yanking).
 export function GoalRecapBar() {
-  const { items, loading } = useGoalRecap()
+  const recap = useGoalRecap()
+  const suggest = useGoalSuggestions()
   const [open, setOpen] = useState(false)
-  const has = !loading && items.length > 0
-  const n = items.length
-  const titles = items.slice(0, 3).map((i) => i.title).join(' · ')
+  const nRecap = recap.items.length
+  const nSuggest = suggest.items.length
+  const total = nRecap + nSuggest
+  if (total === 0) return <ReviewDrawer open={false} onClose={() => setOpen(false)} recap={recap} suggest={suggest} />
+
+  // Headline adapts to what's waiting; sub previews the event names.
+  const title =
+    nRecap && nSuggest
+      ? `${nRecap} to review · ${nSuggest} to link`
+      : nRecap
+        ? `${nRecap} ${nRecap === 1 ? 'event is' : 'events are'} waiting to be logged`
+        : `${nSuggest} ${nSuggest === 1 ? 'event' : 'events'} might count toward a goal`
+  const names = [...recap.items.map((i) => i.title), ...suggest.items.map((s) => s.title)].slice(0, 3).join(' · ')
   return (
     <>
-      {has && (
-        <button type="button" className="recap-bar" onClick={() => setOpen(true)}>
-          <span className="recap-bar-ico"><Icon name="spark" /></span>
-          <span className="recap-bar-txt">
-            <span className="recap-bar-title">
-              {n} {n === 1 ? 'event is' : 'events are'} waiting to be logged
-            </span>
-            <span className="recap-bar-sub">{titles} — each adds to a goal.</span>
-          </span>
-          <span className="recap-bar-cta">Review &amp; log ›</span>
-        </button>
-      )}
-      <ReviewDrawer open={open} onClose={() => setOpen(false)} />
+      <button type="button" className="recap-bar" onClick={() => setOpen(true)}>
+        <span className="recap-bar-ico"><Icon name="spark" /></span>
+        <span className="recap-bar-txt">
+          <span className="recap-bar-title">{title}</span>
+          <span className="recap-bar-sub">{names} — each ties to a goal.</span>
+        </span>
+        <span className="recap-bar-cta">Review &amp; log ›</span>
+      </button>
+      <ReviewDrawer open={open} onClose={() => setOpen(false)} recap={recap} suggest={suggest} />
     </>
   )
 }
 
 // ── Review slide-over ────────────────────────────────────────────────────────
 // Opens from the right over Today (scrim + panel). Esc / scrim / "‹ Today" close.
-export function ReviewDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+// Two sections: "Did these happen?" (recap) + "Might count toward a goal"
+// (suggestions). States are passed in (shared with the entry bar).
+function ReviewDrawer({
+  open, onClose, recap, suggest,
+}: {
+  open: boolean
+  onClose: () => void
+  recap: RecapState
+  suggest: SuggestionsState
+}) {
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
@@ -84,6 +101,7 @@ export function ReviewDrawer({ open, onClose }: { open: boolean; onClose: () => 
     return () => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
   if (!open) return null
+  const allClear = recap.items.length === 0 && suggest.items.length === 0
   return (
     <div className="review-scrim" onClick={onClose}>
       <div className="review-drawer" role="dialog" aria-label="Review events" onClick={(e) => e.stopPropagation()}>
@@ -92,8 +110,15 @@ export function ReviewDrawer({ open, onClose }: { open: boolean; onClose: () => 
         </div>
         <div className="review-drawer-body">
           <div className="nk-serif review-title">Review events</div>
-          <div className="review-sub">Events from the last few days that are linked to goals. Confirm what happened.</div>
-          <ReviewList variant="page" />
+          <div className="review-sub">Confirm linked events that have happened, and link any that look like they count.</div>
+          <RecapCard state={recap} variant="page" scoped={false} />
+          <SuggestionCard state={suggest} />
+          {allClear && (
+            <div className="card recap-empty">
+              <span className="recap-empty-emo">🎉</span>
+              <span>You’re all caught up — nothing to review or link.</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -219,16 +244,18 @@ function RecapRow({
   )
 }
 
-// ── The review list ──────────────────────────────────────────────────────────
-// variant 'page'   → full Review screen (header card + "Confirm all", empty state)
-// variant 'inline' → on a goal's detail ("Event to be reviewed", violet header)
-export function ReviewList({ goalId, variant }: { goalId?: string | null; variant: 'page' | 'inline' }) {
-  const { items, loading, refetch } = useGoalRecap(goalId)
+// ── The recap card ─────────────────────────────────────────────────────────
+// "Did these happen?" — linked, ended events awaiting confirmation. Takes a recap
+// state so the caller owns the fetch (the Today drawer shares one fetch with the
+// entry bar; GoalDetail uses the ReviewList wrapper below). Renders null when
+// empty/loading — the drawer owns the combined empty state.
+// variant 'page' → drawer header copy; 'inline' → goal-detail violet header.
+function RecapCard({ state, variant, scoped }: { state: RecapState; variant: 'page' | 'inline'; scoped: boolean }) {
+  const { items, loading, refetch } = state
   const { persons } = usePersons()
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
   const [busy, setBusy] = useState<Record<string, boolean>>({})
   const [allBusy, setAllBusy] = useState(false)
-  const scoped = !!goalId
 
   // Seed a draft for each new item; drop drafts for items that were resolved.
   useEffect(() => {
@@ -297,16 +324,7 @@ export function ReviewList({ goalId, variant }: { goalId?: string | null; varian
     refetch()
   }
 
-  if (loading) return variant === 'page' ? <div className="muted" style={{ padding: 30 }}>Loading…</div> : null
-  if (items.length === 0) {
-    if (variant !== 'page') return null
-    return (
-      <div className="card recap-empty">
-        <span className="recap-empty-emo">🎉</span>
-        <span>You’re all caught up — no events waiting to be reviewed.</span>
-      </div>
-    )
-  }
+  if (loading || items.length === 0) return null
 
   const n = items.length
   const headTitle =
@@ -319,7 +337,7 @@ export function ReviewList({ goalId, variant }: { goalId?: string | null; varian
       : 'Confirm each one to log its progress — or mark it as skipped.'
 
   return (
-    <div className={`card recap-card ${variant === 'inline' ? 'recap-inline' : ''}`}>
+    <div className={`card recap-card recap-card--linked ${variant === 'inline' ? 'recap-inline' : ''}`}>
       <div className="recap-card-top">
         <span className="recap-card-ico"><Icon name="spark" /></span>
         <div className="recap-card-txt">
@@ -352,6 +370,78 @@ export function ReviewList({ goalId, variant }: { goalId?: string | null; varian
             />
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+// Self-fetching wrapper — used on a goal's detail (scoped via goalId). The Today
+// drawer uses RecapCard directly with the bar's shared state.
+export function ReviewList({ goalId, variant }: { goalId?: string | null; variant: 'page' | 'inline' }) {
+  const state = useGoalRecap(goalId)
+  return <RecapCard state={state} variant={variant} scoped={!!goalId} />
+}
+
+// ── The suggestions card ─────────────────────────────────────────────────────
+// "Might count toward a goal" — untagged events the matcher thinks fit a goal.
+// Link applies it (and a past event then becomes a recap item); ✕ dismisses for
+// good. Renders null when empty so the drawer can own the combined empty state.
+function SuggestionCard({ state }: { state: SuggestionsState }) {
+  const { items, loading, refetch } = state
+  const [busy, setBusy] = useState<Record<string, boolean>>({})
+  if (loading || items.length === 0) return null
+
+  async function act(s: Suggestion, fn: () => Promise<unknown>) {
+    setBusy((b) => ({ ...b, [s.eventId]: true }))
+    try {
+      await fn()
+      refetch()
+    } catch {
+      setBusy((b) => ({ ...b, [s.eventId]: false }))
+    }
+  }
+
+  const n = items.length
+  return (
+    <div className="card recap-card recap-card--maybe">
+      <div className="recap-card-top">
+        <span className="recap-card-ico"><Icon name="spark" /></span>
+        <div className="recap-card-txt">
+          <div className="recap-card-title">{n} {n === 1 ? 'event' : 'events'} might count toward a goal</div>
+          <div className="recap-card-sub">Link the ones that fit — or dismiss them.</div>
+        </div>
+      </div>
+      <div className="recap-rows">
+        {items.map((s) => (
+          <div key={s.eventId} className="recap-row">
+            <div className="recap-ico">{s.goalEmoji ?? '🎯'}</div>
+            <div className="recap-main">
+              <div className="recap-name">{s.title}</div>
+              <div className="recap-meta">
+                <span>{whenLabel({ startsAt: s.startsAt, allDay: s.allDay } as RecapItem)}</span>
+                <span className="recap-goalchip">{s.goalEmoji ? `${s.goalEmoji} ` : ''}{s.goalTitle}</span>
+              </div>
+            </div>
+            <div className="recap-act">
+              <button
+                type="button"
+                className="recap-confirm"
+                disabled={!!busy[s.eventId]}
+                onClick={() => act(s, () => goalCalendarApi.link({ eventId: s.eventId, goalId: s.goalId }))}
+              >
+                {busy[s.eventId] ? 'Linking…' : '✓ Link'}
+              </button>
+              <button
+                type="button"
+                className="recap-didnt"
+                disabled={!!busy[s.eventId]}
+                onClick={() => act(s, () => goalCalendarApi.dismiss({ eventId: s.eventId }))}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )

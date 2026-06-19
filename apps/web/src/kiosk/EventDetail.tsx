@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { EventModal } from './components/EventModal'
 import { useTopbarFull } from './topbar-slot'
-import { api, eventsApi, useEvent, useEventsRange, useHousehold, mealsApi, invalidateGetCache, type AgendaEvent } from '../lib/api'
+import { api, eventsApi, useEvent, useEventsRange, useHousehold, useGoals, mealsApi, invalidateGetCache, type AgendaEvent } from '../lib/api'
 import { deleteEventLocal, tombstoneEvent } from '../lib/powersync/events-local'
+import { suggestGoalForEvent } from '../lib/goal-match'
 import { DOW_FULL, MONTHS, fmtTime, durationMin, eventPeople, localDate } from './components/cal-utils'
 
 function durationLabel(mins: number): string {
@@ -82,8 +83,11 @@ export function EventDetail() {
   const navigate = useNavigate()
   const { event, loading, notFound, refetch } = useEvent(id)
   const { household } = useHousehold()
+  const { goals } = useGoals()
   const tz = household?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
   const [editing, setEditing] = useState(false)
+  const [editGoalId, setEditGoalId] = useState<string | null>(null)
+  const [dismissedSuggest, setDismissedSuggest] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -165,6 +169,15 @@ export function EventDetail() {
       ? `${event.calendarName}${event.syncState === 'synced' ? ' · synced from Google' : ' · pending sync'}`
       : 'Nook only'
 
+  // Smart suggestion for an untagged, non-meal, single event that looks like a
+  // goal. "Link" opens the editor pre-linked so the human confirms (and can pick
+  // a checklist step). Hidden once dismissed or if the event is already linked.
+  const attendeeIds = event.participants.length ? event.participants.map((p) => p.id) : event.personId ? [event.personId] : []
+  const suggestedGoal =
+    !event.goalId && !event.rrule && event.origin !== 'meal_plan' && !dismissedSuggest
+      ? suggestGoalForEvent(event.title, null, attendeeIds, goals)
+      : null
+
   return (
     <div className="ed-screen">
       <div className="ed-main">
@@ -187,6 +200,29 @@ export function EventDetail() {
             </span>
           </div>
         </div>
+
+        {suggestedGoal && (
+          <div className="ed-suggest">
+            <span className="ed-suggest-spark">✨</span>
+            <span className="ed-suggest-txt">
+              Looks like this counts toward{' '}
+              <b>{suggestedGoal.emoji ? `${suggestedGoal.emoji} ` : ''}{suggestedGoal.title}</b>
+            </span>
+            <button
+              type="button"
+              className="btn btn-primary ed-suggest-link"
+              onClick={() => {
+                setEditGoalId(suggestedGoal.id)
+                setEditing(true)
+              }}
+            >
+              Link it
+            </button>
+            <button type="button" className="ed-suggest-x" aria-label="Dismiss" onClick={() => setDismissedSuggest(true)}>
+              ✕
+            </button>
+          </div>
+        )}
 
         <div className="card ed-rows">
           {isMeal && recipeId && (
@@ -277,7 +313,17 @@ export function EventDetail() {
         <DayTimeline event={event} tz={tz} />
       </div>
 
-      {editing && <EventModal event={event} onClose={() => setEditing(false)} onSaved={refetch} />}
+      {editing && (
+        <EventModal
+          event={event}
+          prefill={editGoalId ? { goalId: editGoalId } : undefined}
+          onClose={() => {
+            setEditing(false)
+            setEditGoalId(null)
+          }}
+          onSaved={refetch}
+        />
+      )}
     </div>
   )
 }

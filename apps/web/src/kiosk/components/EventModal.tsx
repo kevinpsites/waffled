@@ -1,6 +1,8 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
-import { api, usePersons, useGoals, goalsApi, calendarsApi, mealsApi, localToday, invalidateGetCache, type AgendaEvent, type CalendarLink, type GoalStep } from '../../lib/api'
+import { api, usePersons, useGoals, goalsApi, goalCalendarApi, calendarsApi, mealsApi, localToday, invalidateGetCache, type AgendaEvent, type CalendarLink, type GoalStep } from '../../lib/api'
+import { suggestGoalForEvent } from '../../lib/goal-match'
+import { Icon } from '../icons'
 import { createEventLocal, updateEventLocal, deleteEventLocal, tombstoneEvent } from '../../lib/powersync/events-local'
 
 // Calendars an event can be written to: writable (owner/writer), not read-only.
@@ -56,8 +58,10 @@ function initialForm(event?: AgendaEvent, date?: string, time?: string, prefill?
       allDay: event.allDay,
       participantIds,
       location: event.location ?? '',
-      goalId: event.goalId ?? '',
-      goalStepId: event.goalStepId ?? '',
+      // Editing keeps the event's own link; but when it has none, an incoming
+      // prefill (e.g. "Link" on a suggestion) seeds the suggested goal.
+      goalId: event.goalId ?? prefill?.goalId ?? '',
+      goalStepId: event.goalStepId ?? prefill?.goalStepId ?? '',
     }
   }
   return {
@@ -159,6 +163,67 @@ export function EventModal({
     else if (form.goalStepId && steps.length && !steps.some((s) => s.id === form.goalStepId)) set('goalStepId', '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isChecklistGoal, steps])
+
+  // Smart suggestion: when the event is untagged but its title/people look like a
+  // goal, offer to link it (the human still taps "Link" — never auto-applied).
+  // Only once attendees are chosen, so attribution makes sense.
+  const [dismissed, setDismissed] = useState<Set<string>>(() => new Set())
+  // Instant client-side keyword/concept match — no network, shows immediately.
+  const suggestion = useMemo(() => {
+    if (form.goalId || form.participantIds.length === 0 || form.title.trim().length < 3) return null
+    const g = suggestGoalForEvent(form.title, null, form.participantIds, calendarGoals)
+    return g && !dismissed.has(g.id) ? g : null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.goalId, form.title, form.participantIds, calendarGoals, dismissed])
+
+  // LLM fallback: when keywords found nothing (or tied), ask the server's matcher
+  // (memory → keyword → LLM). Debounced so it fires on a typing pause, not every
+  // keystroke, and cached per (title, people) so it never re-asks the same thing.
+  type Sug = { id: string; title: string; emoji: string | null }
+  const peopleKey = [...form.participantIds].sort().join(',')
+  const [llmSug, setLlmSug] = useState<Sug | null>(null)
+  const [llmThinking, setLlmThinking] = useState(false)
+  const llmCache = useRef<Map<string, Sug | null>>(new Map())
+  useEffect(() => {
+    if (suggestion || form.goalId || form.participantIds.length === 0 || form.title.trim().length < 3) {
+      setLlmSug(null)
+      setLlmThinking(false)
+      return
+    }
+    const key = `${form.title.trim().toLowerCase()}|${peopleKey}`
+    if (llmCache.current.has(key)) {
+      setLlmSug(llmCache.current.get(key)!)
+      setLlmThinking(false)
+      return
+    }
+    let alive = true
+    setLlmSug(null)
+    setLlmThinking(true)
+    const timer = setTimeout(async () => {
+      try {
+        const { suggestion: s } = await goalCalendarApi.suggestOne({ title: form.title.trim(), participantIds: form.participantIds })
+        const val: Sug | null = s ? { id: s.goalId, title: s.goalTitle, emoji: s.goalEmoji } : null
+        llmCache.current.set(key, val)
+        if (alive) setLlmSug(val)
+      } catch {
+        if (alive) setLlmSug(null)
+      } finally {
+        if (alive) setLlmThinking(false)
+      }
+    }, 700)
+    return () => {
+      alive = false
+      clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestion, form.goalId, form.title, peopleKey])
+
+  // What the chip shows: the instant keyword match, else the LLM's pick.
+  const shownSuggestion: Sug | null = suggestion
+    ? { id: suggestion.id, title: suggestion.title, emoji: suggestion.emoji }
+    : llmSug && !dismissed.has(llmSug.id)
+      ? llmSug
+      : null
 
   // For a planned-meal event, resolve its recipe so we can offer "View recipe".
   const isMeal = event?.origin === 'meal_plan'
@@ -392,6 +457,36 @@ export function EventModal({
             <span>Location (optional)</span>
             <input value={form.location} onChange={(e) => set('location', e.target.value)} placeholder="Field 3" />
           </label>
+
+          {/* Smart suggestion — an untagged event that looks like a goal. The
+              instant keyword match shows immediately; if it found nothing we ask
+              the AI (spark bounces while it thinks). One tap links it; ✕ dismisses. */}
+          {!shownSuggestion && llmThinking && (
+            <div className="ev-suggest ev-suggest-thinking">
+              <span className="ai-spark thinking"><Icon name="spark" /></span>
+              <span className="ev-suggest-txt">Looking for a goal this counts toward…</span>
+            </div>
+          )}
+          {shownSuggestion && (
+            <div className="ev-suggest">
+              <span className="ai-spark"><Icon name="spark" /></span>
+              <span className="ev-suggest-txt">
+                Looks like this counts toward{' '}
+                <b>{shownSuggestion.emoji ? `${shownSuggestion.emoji} ` : ''}{shownSuggestion.title}</b>
+              </span>
+              <button type="button" className="ev-suggest-link" onClick={() => set('goalId', shownSuggestion.id)}>
+                Link
+              </button>
+              <button
+                type="button"
+                className="ev-suggest-x"
+                aria-label="Dismiss suggestion"
+                onClick={() => setDismissed((d) => new Set(d).add(shownSuggestion.id))}
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {/* Calendar → goal: tag the event so its completion can count toward a
               goal. Shown only once attendees are chosen and they share an

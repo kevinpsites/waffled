@@ -159,6 +159,45 @@ body {
   flex: 1;
 }
 
+/* Smart goal suggestion inside the event modal — a soft violet nudge. */
+.ev-suggest {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--ai) 8%, #fff);
+  border: 1px solid color-mix(in srgb, var(--ai) 28%, var(--hair));
+}
+.ev-suggest-spark { font-size: 16px; flex: none; }
+.ev-suggest-txt { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; color: var(--ink-2); }
+.ev-suggest-txt b { color: var(--ink); font-weight: 700; }
+.ev-suggest-link {
+  flex: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--ai);
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.ev-suggest-link:hover { filter: brightness(1.05); }
+.ev-suggest-x {
+  flex: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+.ev-suggest-x:hover { color: var(--ink); }
+
 /* ===== calendar screen ===== */
 .cal-screen {
   flex: 1;

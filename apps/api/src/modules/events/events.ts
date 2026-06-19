@@ -8,6 +8,7 @@ import type { PoolClient, QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { requireTenant, type Tenant } from '../households/households'
 import { resolveWriteTarget, resolveWriteTargetById, pushEventNow } from '../calendar/calendar-sync.service'
+import { recordMatch, WEIGHT } from '../goals/goal-match-memory'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -139,6 +140,8 @@ export async function createEvent(tenant: Tenant, input: CreateEventInput): Prom
     const event = ins.rows[0]
     await replaceParticipants(client, tenant.householdId, event.id, personIds)
     await client.query('commit')
+    // A goal picked at create time is a strong human signal — teach the matcher.
+    if (event.goal_id) await recordMatch(tenant.householdId, event.title, event.goal_id, WEIGHT.human)
     // Push outside the transaction; failures are recorded as push_failed (retried
     // on the next sync) and never fail the create.
     if (target) await pushEventNow(tenant.householdId, event.id)
@@ -251,6 +254,9 @@ export async function updateEvent(
     }
     if (personIds) await replaceParticipants(client, householdId, id, personIds)
     await client.query('commit')
+    // Picking a goal on an event (here or via the suggestion link) is a strong
+    // human signal — teach the household matcher.
+    if ('goalId' in patch && event.goal_id) await recordMatch(householdId, event.title, event.goal_id, WEIGHT.human)
     // Mirror the edit to Google only when a Google-owned field changed — person/
     // participants are Nook-owned (Google has no such field), so don't push for them.
     const touchedGoogle = GOOGLE_OWNED_FIELDS.some((f) => f in patch)

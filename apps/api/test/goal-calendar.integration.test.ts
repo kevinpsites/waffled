@@ -255,3 +255,68 @@ describe('calendar → goal recap', () => {
     expect((await recap(g3)).length).toBe(0)
   })
 })
+
+// An untagged event N hours ago with a given title + people (for suggestions).
+async function untaggedEvent(title: string, participantIds: string[], hoursAgo = 24): Promise<string> {
+  const start = new Date(Date.now() - hoursAgo * 3600_000)
+  const end = new Date(start.getTime() + 3600_000)
+  const r = await call('POST', '/api/events', kevin, { title, startsAt: start.toISOString(), endsAt: end.toISOString(), participantIds })
+  return JSON.parse(r.body).event.id
+}
+async function suggestions() {
+  const r = await call('GET', '/api/goal-calendar/suggestions', kevin)
+  return JSON.parse(r.body).items as Array<Record<string, unknown>>
+}
+
+describe('calendar → goal suggestions (Phase B)', () => {
+  it('keyword-matches an untagged event to a goal, then link clears it', async () => {
+    const goalId = await makeGoal({ title: 'Reading hours', category: 'intellectual' })
+    const eventId = await untaggedEvent('Library trip', [kevinId])
+
+    const items = await suggestions()
+    const mine = items.find((s) => s.eventId === eventId)
+    expect(mine).toBeTruthy()
+    expect(mine!.goalId).toBe(goalId)
+    expect(mine!.via).toBe('keyword')
+
+    const lk = await call('POST', '/api/goal-calendar/suggestions/link', kevin, { eventId, goalId })
+    expect(lk.statusCode).toBe(200)
+    // Now tagged → no longer suggested; the event carries the goal link.
+    expect((await suggestions()).find((s) => s.eventId === eventId)).toBeFalsy()
+    const ev = JSON.parse((await call('GET', `/api/events/${eventId}`, kevin)).body).event
+    expect(ev.goalId).toBe(goalId)
+  })
+
+  it('dismiss hides a suggestion for good', async () => {
+    // Distinct concept (swimming) so it can't tie with the reading goal above.
+    await makeGoal({ title: 'Swim 50 laps', category: 'physical' })
+    const eventId = await untaggedEvent('Pool time', [kevinId])
+    expect((await suggestions()).find((s) => s.eventId === eventId)).toBeTruthy()
+    const d = await call('POST', '/api/goal-calendar/suggestions/dismiss', kevin, { eventId })
+    expect(d.statusCode).toBe(200)
+    expect((await suggestions()).find((s) => s.eventId === eventId)).toBeFalsy()
+  })
+
+  it('learned memory matches a phrasing keywords would miss', async () => {
+    // A goal whose title shares no concept with "Trivia night".
+    const goalId = await makeGoal({ title: 'Brain training', category: 'intellectual' })
+    const first = await untaggedEvent('Trivia night', [kevinId])
+    // Keywords can't place it (no shared concept/token) → not suggested yet.
+    expect((await suggestions()).find((s) => s.eventId === first)).toBeFalsy()
+    // Human links it → teaches the household matcher (token "trivia" → goal).
+    await call('POST', '/api/goal-calendar/suggestions/link', kevin, { eventId: first, goalId })
+    // A NEW "Trivia night" is now matched from memory, no LLM needed.
+    const second = await untaggedEvent('Trivia night', [kevinId], 20)
+    const hit = (await suggestions()).find((s) => s.eventId === second)
+    expect(hit).toBeTruthy()
+    expect(hit!.goalId).toBe(goalId)
+    expect(hit!.via).toBe('memory')
+  })
+
+  it('respects the participant superset rule', async () => {
+    // Kevin-only goal; an event with Kelly can't be suggested for it.
+    await makeGoal({ title: 'Reading hours', category: 'intellectual' })
+    const eventId = await untaggedEvent('Library trip', [kevinId, kellyId])
+    expect((await suggestions()).find((s) => s.eventId === eventId)).toBeFalsy()
+  })
+})

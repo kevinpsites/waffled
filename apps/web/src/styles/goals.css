@@ -770,6 +770,15 @@ button.goal-listhead-link:hover {
 /* The review / inline card. */
 .recap-card { padding: 4px 20px 10px; }
 .recap-inline { border: 1px solid color-mix(in srgb, var(--ai) 32%, var(--hair)); }
+/* Two confidence tiers, color-coded: violet = definitely linked (confirm what
+   happened), amber = a maybe (might count — link or dismiss). Coral stays
+   reserved for the action buttons so the card accents don't compete with them. */
+.recap-card--linked { border: 1px solid color-mix(in srgb, var(--ai) 32%, var(--hair)); }
+.recap-card--maybe { border: 1px solid color-mix(in srgb, var(--gold) 50%, var(--hair)); }
+.recap-card--maybe .recap-card-ico { background: linear-gradient(135deg, #F7C46B, var(--gold)); }
+/* Space the stacked cards in the Today drawer. */
+.review-drawer-body .recap-card,
+.review-drawer-body .recap-empty { margin-bottom: 16px; }
 .recap-card-top { display: flex; align-items: center; gap: 13px; padding: 16px 0 14px; }
 .recap-card-ico {
   width: 38px; height: 38px; border-radius: 11px; flex: none; display: grid; place-items: center;

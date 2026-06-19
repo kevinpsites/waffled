@@ -10,6 +10,10 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import { getPool, query } from '../../platform/db'
 import { requireTenant, type Tenant } from '../households/households'
 import { logProgress } from './goals.service'
+import { updateEvent } from '../events/events'
+import { keywordMatch, type MatchGoal } from './goal-match'
+import { loadMemory, memoryMatch, recordMatch, WEIGHT } from './goal-match-memory'
+import { getAiConfig, completeJson } from '../../platform/llm'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -235,6 +239,276 @@ export async function skipRecap(tenant: Tenant, eventId: string, occurrenceDate:
   return true
 }
 
+// ── Smart suggestions (Phase B) ──────────────────────────────────────────────
+// Untagged events that look like they could count toward a goal. Matching is
+// layered cheapest-first: the household's learned memory, then the stateless
+// keyword matcher, then (only for what's left, and only if an AI provider is on)
+// one batched LLM call — whose answers are written back to memory so the family's
+// matcher keeps getting faster. Suggestions cover amount goals (total/count/habit);
+// checklist linking needs a step, which only the event editor offers.
+
+interface SuggestEventRow {
+  event_id: string
+  title: string
+  description: string | null
+  starts_at: Date
+  all_day: boolean
+  person_ids: string[]
+}
+interface SuggestGoalRow {
+  id: string
+  title: string
+  emoji: string | null
+  goal_type: string
+  person_ids: string[]
+}
+
+export interface Suggestion {
+  eventId: string
+  title: string
+  startsAt: Date
+  allDay: boolean
+  goalId: string
+  goalTitle: string
+  goalEmoji: string | null
+  via: 'memory' | 'keyword' | 'llm'
+}
+
+// Goals a given event's attendees are eligible for (participant superset rule;
+// no attendees ⇒ any goal). Mirrors the manual picker + client matcher.
+function eligibleGoals(eventPeople: string[], goals: SuggestGoalRow[]): SuggestGoalRow[] {
+  if (!eventPeople.length) return goals
+  return goals.filter((g) => {
+    const gp = new Set(g.person_ids)
+    return eventPeople.every((id) => gp.has(id))
+  })
+}
+
+export async function suggestionQueue(householdId: string): Promise<Suggestion[]> {
+  // Candidate events: untagged, not a planned meal, single (non-recurring), in a
+  // window around now, not cancelled, not already dismissed.
+  const { rows: events } = await query<SuggestEventRow>(
+    `select e.id as event_id, e.title, e.description, e.starts_at, e.all_day,
+            coalesce((select array_agg(ep.person_id::text)
+                        from event_participants ep
+                       where ep.event_id = e.id and ep.deleted_at is null), '{}') as person_ids
+       from events e
+      where e.household_id = $1
+        and e.deleted_at is null
+        and e.goal_id is null
+        and e.rrule is null
+        and (e.origin is null or e.origin <> 'meal_plan')
+        and (e.status is null or e.status not in ${SKIP_STATUSES})
+        and e.starts_at between now() - interval '7 days' and now() + interval '14 days'
+        and not exists (select 1 from event_suggestion_dismissals d where d.event_id = e.id)
+      order by e.starts_at desc
+      limit 40`,
+    [householdId]
+  )
+  if (events.length === 0) return []
+
+  const { rows: goals } = await query<SuggestGoalRow>(
+    `select g.id, g.title, g.emoji, g.goal_type,
+            coalesce((select array_agg(gp.person_id::text)
+                        from goal_participants gp
+                       where gp.goal_id = g.id and gp.deleted_at is null), '{}') as person_ids
+       from goals g
+      where g.household_id = $1 and g.deleted_at is null and g.auto_from_calendar
+        and g.goal_type in ('total','count','habit')`,
+    [householdId]
+  )
+  if (goals.length === 0) return []
+  const goalById = new Map(goals.map((g) => [g.id, g]))
+
+  const mem = await loadMemory(householdId)
+  const out: Suggestion[] = []
+  const leftover: Array<{ ev: SuggestEventRow; candidates: SuggestGoalRow[] }> = []
+
+  for (const ev of events) {
+    const cands = eligibleGoals(ev.person_ids, goals)
+    if (cands.length === 0) continue
+    const candIds = new Set(cands.map((c) => c.id))
+    // Match on the TITLE only — event descriptions are full of scheduling
+    // boilerplate ("booking", "reschedule", Zoom links) that produces false hits.
+    // 1) learned memory  2) keyword/concept
+    const memId = memoryMatch(ev.title, candIds, mem)
+    const matchId = memId ?? keywordMatch(ev.title, null, cands as MatchGoal[])
+    if (matchId && candIds.has(matchId)) {
+      const g = goalById.get(matchId)!
+      out.push({ eventId: ev.event_id, title: ev.title, startsAt: ev.starts_at, allDay: ev.all_day, goalId: g.id, goalTitle: g.title, goalEmoji: g.emoji, via: memId ? 'memory' : 'keyword' })
+    } else {
+      leftover.push({ ev, candidates: cands })
+    }
+  }
+
+  // 3) LLM fallback for the unmatched — but only events we haven't already asked
+  // about (each event is classified at most once; matches go to memory, so future
+  // loads resolve them instantly without re-paying the LLM). One batched call.
+  if (leftover.length) {
+    const { provider } = await getAiConfig(householdId)
+    if (provider !== 'heuristic') {
+      const { rows: seenRows } = await query<{ event_id: string }>(
+        `select event_id from event_llm_seen where household_id = $1`,
+        [householdId]
+      )
+      const seen = new Set(seenRows.map((r) => r.event_id))
+      const fresh = leftover.filter((l) => !seen.has(l.ev.event_id))
+      if (fresh.length) {
+        // Mark seen up front so a concurrent load doesn't re-ask in parallel.
+        await query(
+          `insert into event_llm_seen (event_id, household_id)
+           select x.id, $1 from unnest($2::uuid[]) as x(id) on conflict do nothing`,
+          [householdId, fresh.map((l) => l.ev.event_id)]
+        )
+        const llmMatches = await llmMatch(householdId, fresh)
+        for (const { ev, candidates } of fresh) {
+          const gid = llmMatches.get(ev.event_id)
+          if (!gid) continue
+          const g = candidates.find((c) => c.id === gid)
+          if (!g) continue
+          out.push({ eventId: ev.event_id, title: ev.title, startsAt: ev.starts_at, allDay: ev.all_day, goalId: g.id, goalTitle: g.title, goalEmoji: g.emoji, via: 'llm' })
+          // Teach the household's matcher so we never pay for this phrasing again.
+          await recordMatch(householdId, ev.title, g.id, WEIGHT.llm)
+        }
+      }
+    }
+  }
+  return out
+}
+
+// One batched classification call: each event → one of its candidate goals, or
+// null. Returns eventId → goalId. Best-effort (any failure ⇒ no LLM matches).
+async function llmMatch(
+  householdId: string,
+  items: Array<{ ev: SuggestEventRow; candidates: SuggestGoalRow[] }>
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>()
+  const payload = {
+    events: items.slice(0, 25).map(({ ev, candidates }) => ({
+      eventId: ev.event_id,
+      title: ev.title,
+      candidates: candidates.map((c) => ({ goalId: c.id, goalTitle: c.title })),
+    })),
+  }
+  const schema = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      matches: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { eventId: { type: 'string' }, goalId: { type: ['string', 'null'] } },
+          required: ['eventId', 'goalId'],
+        },
+      },
+    },
+    required: ['matches'],
+  }
+  try {
+    const { data } = await completeJson(householdId, {
+      system:
+        'You link a family calendar event to the goal it most likely contributes to. ' +
+        'For each event, choose a goalId ONLY from that event\'s candidates, or null if none clearly fits. ' +
+        'Be conservative: a wrong link is worse than no link. Reply via the tool schema.',
+      user: JSON.stringify(payload),
+      schema,
+      schemaName: 'goal_matches',
+      maxTokens: 1024,
+    })
+    const matches = (data as { matches?: Array<{ eventId?: string; goalId?: string | null }> })?.matches ?? []
+    for (const m of matches) if (m.eventId && m.goalId) result.set(m.eventId, m.goalId)
+  } catch {
+    /* LLM unavailable / errored → fall through with no LLM matches */
+  }
+  return result
+}
+
+// One-off preview match for a not-yet-saved event (the modal's live suggestion).
+// memory → keyword → LLM, read-only (no memory writes, no seen-marker — it's a
+// preview; the real signal is recorded when the event is actually saved/linked).
+export async function suggestOne(
+  householdId: string,
+  title: string,
+  participantIds: string[]
+): Promise<{ goalId: string; goalTitle: string; goalEmoji: string | null; via: 'memory' | 'keyword' | 'llm' } | null> {
+  if (!title.trim()) return null
+  const { rows: goals } = await query<SuggestGoalRow>(
+    `select g.id, g.title, g.emoji, g.goal_type,
+            coalesce((select array_agg(gp.person_id::text) from goal_participants gp
+                       where gp.goal_id = g.id and gp.deleted_at is null), '{}') as person_ids
+       from goals g
+      where g.household_id = $1 and g.deleted_at is null and g.auto_from_calendar
+        and g.goal_type in ('total','count','habit')`,
+    [householdId]
+  )
+  const eligible = eligibleGoals(participantIds, goals)
+  if (eligible.length === 0) return null
+  const eligIds = new Set(eligible.map((g) => g.id))
+  const byId = new Map(eligible.map((g) => [g.id, g]))
+  const pack = (id: string, via: 'memory' | 'keyword' | 'llm') => {
+    const g = byId.get(id)!
+    return { goalId: g.id, goalTitle: g.title, goalEmoji: g.emoji, via }
+  }
+
+  const mem = await loadMemory(householdId)
+  const memId = memoryMatch(title, eligIds, mem)
+  if (memId) return pack(memId, 'memory')
+  const kwId = keywordMatch(title, null, eligible)
+  if (kwId) return pack(kwId, 'keyword')
+
+  const { provider } = await getAiConfig(householdId)
+  if (provider !== 'heuristic') {
+    const m = await llmMatch(householdId, [
+      { ev: { event_id: 'preview', title } as SuggestEventRow, candidates: eligible },
+    ])
+    const gid = m.get('preview')
+    if (gid && eligIds.has(gid)) return pack(gid, 'llm')
+  }
+  return null
+}
+
+// Link an untagged event to a goal from its suggestion. Validates the event is
+// still untagged + the goal is auto-counting and eligible, then sets goal_id and
+// teaches the household matcher (a human pick is the strongest signal).
+export async function linkSuggestion(tenant: Tenant, eventId: string, goalId: string): Promise<'linked' | 'invalid'> {
+  const { rows } = await query<{ title: string; person_ids: string[]; goal_people: string[]; auto: boolean; gtype: string }>(
+    `select e.title,
+            coalesce((select array_agg(ep.person_id::text) from event_participants ep
+                       where ep.event_id = e.id and ep.deleted_at is null), '{}') as person_ids,
+            coalesce((select array_agg(gp.person_id::text) from goal_participants gp
+                       where gp.goal_id = g.id and gp.deleted_at is null), '{}') as goal_people,
+            g.auto_from_calendar as auto, g.goal_type as gtype
+       from events e
+       join goals g on g.id = $3
+      where e.id = $1 and e.household_id = $2 and e.deleted_at is null
+        and e.goal_id is null and g.household_id = $2 and g.deleted_at is null`,
+    [eventId, tenant.householdId, goalId]
+  )
+  const row = rows[0]
+  if (!row || !row.auto) return 'invalid'
+  const gp = new Set(row.goal_people)
+  if (row.person_ids.length && !row.person_ids.every((id) => gp.has(id))) return 'invalid'
+  // updateEvent records the human match signal (goalId in patch) — no double count.
+  await updateEvent(tenant.householdId, eventId, { goalId })
+  return 'linked'
+}
+
+export async function dismissSuggestion(tenant: Tenant, eventId: string): Promise<boolean> {
+  const { rows } = await query<{ id: string }>(
+    `select id from events where id = $1 and household_id = $2 and deleted_at is null`,
+    [eventId, tenant.householdId]
+  )
+  if (!rows[0]) return false
+  await query(
+    `insert into event_suggestion_dismissals (household_id, event_id, created_by)
+     values ($1,$2,$3) on conflict (event_id) do nothing`,
+    [tenant.householdId, eventId, tenant.personId]
+  )
+  return true
+}
+
 export function registerGoalCalendarRoutes(api: Api): void {
   // The "did these happen?" queue (Today + goal detail). Optional ?goalId scopes
   // it to one goal.
@@ -280,6 +554,47 @@ export function registerGoalCalendarRoutes(api: Api): void {
     }
     const ok = await skipRecap(tenant, body.eventId, body.occurrenceDate)
     if (!ok) return res.status(404).json({ error: 'NotFound', message: 'event or goal link not found' })
+    return res.status(200).json({ ok: true })
+  })
+
+  // Smart suggestions: untagged events that might count toward a goal.
+  api.get('/api/goal-calendar/suggestions', async (req: Request) => {
+    const tenant = await requireTenant(req)
+    return { items: await suggestionQueue(tenant.householdId) }
+  })
+
+  api.post('/api/goal-calendar/suggestions/link', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const body = (req.body ?? {}) as { eventId?: string; goalId?: string }
+    if (!body.eventId || !UUID_RE.test(body.eventId)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'eventId is required' })
+    }
+    if (!body.goalId || !UUID_RE.test(body.goalId)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'goalId is required' })
+    }
+    const result = await linkSuggestion(tenant, body.eventId, body.goalId)
+    if (result === 'invalid') return res.status(404).json({ error: 'NotFound', message: 'event or goal not linkable' })
+    return res.status(200).json({ ok: true })
+  })
+
+  // Live single-event preview for the create/edit modal (memory → keyword → LLM).
+  api.post('/api/goal-calendar/suggest-one', async (req: Request) => {
+    const tenant = await requireTenant(req)
+    const body = (req.body ?? {}) as { title?: string; participantIds?: string[] }
+    const title = typeof body.title === 'string' ? body.title : ''
+    const personIds = Array.isArray(body.participantIds) ? body.participantIds.filter((p) => typeof p === 'string' && UUID_RE.test(p)) : []
+    if (!title.trim()) return { suggestion: null }
+    return { suggestion: await suggestOne(tenant.householdId, title, personIds) }
+  })
+
+  api.post('/api/goal-calendar/suggestions/dismiss', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const body = (req.body ?? {}) as { eventId?: string }
+    if (!body.eventId || !UUID_RE.test(body.eventId)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'eventId is required' })
+    }
+    const ok = await dismissSuggestion(tenant, body.eventId)
+    if (!ok) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
     return res.status(200).json({ ok: true })
   })
 }

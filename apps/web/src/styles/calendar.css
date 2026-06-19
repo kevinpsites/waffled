@@ -194,6 +194,21 @@
 .ed-hero-time { font-size: 30px; font-weight: 700; }
 .ed-hero-date { font-size: 16px; font-weight: 500; opacity: .92; }
 
+/* Smart goal suggestion banner on an untagged event. */
+.ed-suggest {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px; border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--ai) 8%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--ai) 28%, var(--hair));
+  box-shadow: var(--sh-1);
+}
+.ed-suggest-spark { font-size: 20px; flex: none; }
+.ed-suggest-txt { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 600; color: var(--ink-2); }
+.ed-suggest-txt b { color: var(--ink); font-weight: 700; }
+.ed-suggest-link { flex: none; cursor: pointer; }
+.ed-suggest-x { flex: none; font: inherit; font-size: 14px; color: var(--ink-3); background: none; border: 0; cursor: pointer; padding: 4px 6px; }
+.ed-suggest-x:hover { color: var(--ink); }
+
 .ed-rows { padding: 6px 20px; }
 .ed-row { display: flex; align-items: center; gap: 14px; padding: 15px 0; border-bottom: 1px solid var(--hair-2); }
 .ed-row:last-child { border-bottom: 0; }
