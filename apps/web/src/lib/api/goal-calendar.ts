@@ -46,12 +46,15 @@ export const goalCalendarApi = {
   skip: (body: { eventId: string; occurrenceDate: string }) =>
     apiSend<{ ok: boolean }>('POST', '/api/goal-calendar/recap/skip', body).then(tap('goals')),
   suggestions: () => apiGet<{ items: Suggestion[] }>('/api/goal-calendar/suggestions'),
-  // Live preview for the modal: memory → keyword → LLM for one not-yet-saved event.
-  suggestOne: (body: { title: string; participantIds: string[] }) =>
+  // Live preview for the modal: memory → keyword → LLM for one not-yet-saved
+  // event. Pass an AbortSignal so a superseded request (attendees changed mid-
+  // flight) is cancelled instead of racing the new one.
+  suggestOne: (body: { title: string; participantIds: string[] }, signal?: AbortSignal) =>
     apiSend<{ suggestion: { goalId: string; goalTitle: string; goalEmoji: string | null; via: string } | null }>(
       'POST',
       '/api/goal-calendar/suggest-one',
-      body
+      body,
+      signal
     ),
   // Linking taps goals (a freshly-linked, already-ended event becomes a recap item)
   // and meals/events so the calendar reflects the new link.

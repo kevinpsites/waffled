@@ -37,7 +37,7 @@ export function invalidateGetCache(prefix: string): void {
   for (const k of [...getCache.keys()]) if (k.startsWith(prefix)) getCache.delete(k)
 }
 
-export async function apiSend<T>(method: string, path: string, body?: unknown): Promise<T> {
+export async function apiSend<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const t = token()
   const res = await fetch(path, {
     method,
@@ -46,6 +46,7 @@ export async function apiSend<T>(method: string, path: string, body?: unknown): 
       ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal,
   })
   if (!res.ok) throw new Error(`${method} ${path} -> ${res.status}`)
   return res.json() as Promise<T>

@@ -197,11 +197,12 @@ export function EventModal({
       return
     }
     let alive = true
+    const ctrl = new AbortController()
     setLlmSug(null)
     setLlmThinking(true)
     const timer = setTimeout(async () => {
       try {
-        const { suggestion: s } = await goalCalendarApi.suggestOne({ title: form.title.trim(), participantIds: form.participantIds })
+        const { suggestion: s } = await goalCalendarApi.suggestOne({ title: form.title.trim(), participantIds: form.participantIds }, ctrl.signal)
         const val: Sug | null = s ? { id: s.goalId, title: s.goalTitle, emoji: s.goalEmoji } : null
         llmCache.current.set(key, val)
         if (alive) setLlmSug(val)
@@ -211,9 +212,12 @@ export function EventModal({
         if (alive) setLlmThinking(false)
       }
     }, 700)
+    // Changing attendees/title before the request settles aborts the in-flight one
+    // (and cancels the pending debounce) — only ever one query to the matcher.
     return () => {
       alive = false
       clearTimeout(timer)
+      ctrl.abort()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggestion, form.goalId, form.title, peopleKey])
