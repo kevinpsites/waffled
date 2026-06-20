@@ -87,9 +87,11 @@ body {
   width: 100%;
 }
 
-/* On a roomy landscape display, fill the height and bound it so cards don't spill
-   past the fold — grow cards stretch to fill, their lists (agenda rows, grocery
-   items) scrolling internally. Only in view mode; editing flows naturally. */
+/* On a roomy landscape display, fill the height like the design. A card's content
+   height is its MINIMUM — cards never shrink/clip (flex-shrink:0); grow cards
+   expand to fill any spare room in the column; and if a column's cards exceed its
+   height, that column scrolls rather than squashing them. View mode only — editing
+   flows naturally. */
 @media (min-width: 1101px) and (min-height: 680px) {
   .today-wrap:not(.today-editing) .today-board {
     flex: 1;
@@ -97,15 +99,16 @@ body {
   }
   .today-wrap:not(.today-editing) .today-col {
     min-height: 0;
+    overflow-y: auto;
+  }
+  .today-wrap:not(.today-editing) .today-slot {
+    flex: 0 0 auto;
   }
   .today-wrap:not(.today-editing) .today-slot.grow {
-    flex: 1 1 auto;
-    min-height: 0;
+    flex: 1 0 auto;
   }
   .today-wrap:not(.today-editing) .today-slot.grow > .card {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
+    flex: 1 0 auto;
   }
 }
 

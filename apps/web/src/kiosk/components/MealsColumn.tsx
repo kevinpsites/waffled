@@ -80,7 +80,7 @@ export function WeekDinnersCard() {
   const { entries, loading, error } = useMealsWeek()
   const dinners = entries.filter((e) => e.mealType === 'dinner')
   return (
-    <div className="card" style={{ padding: '15px 18px 8px', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <div className="card" style={{ padding: '15px 18px 8px', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
         <Link to="/meals" className="card-h" style={{ fontSize: 16, textDecoration: 'none', color: 'inherit' }}>
           This week’s dinners

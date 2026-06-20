@@ -17,7 +17,7 @@ export function GroceryCard() {
   }
 
   return (
-    <div className="card" style={{ padding: '18px 20px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+    <div className="card" style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
         <div className="card-h" style={{ fontSize: 17 }}>
           Grocery
