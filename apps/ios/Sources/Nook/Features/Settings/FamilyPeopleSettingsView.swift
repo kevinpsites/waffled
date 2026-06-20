@@ -327,11 +327,7 @@ struct PersonEditorSheet: View {
 
     private static func parse(_ s: String?) -> Date? {
         guard let s, !s.isEmpty else { return nil }
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
-        return f.date(from: String(s.prefix(10)))
+        return DateFmt.date(String(s.prefix(10)), "yyyy-MM-dd", DateFmt.utc)
     }
-    private static func format(_ d: Date) -> String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
-        return f.string(from: d)
-    }
+    private static func format(_ d: Date) -> String { DateFmt.string(d, "yyyy-MM-dd", DateFmt.utc) }
 }

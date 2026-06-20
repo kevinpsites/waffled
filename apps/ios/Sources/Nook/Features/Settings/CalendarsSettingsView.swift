@@ -222,8 +222,7 @@ struct CalendarsSettingsView: View {
     private func shortDay(_ iso: String) -> String {
         let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         guard let d = f.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else { return "" }
-        let out = DateFormatter(); out.dateFormat = "MMM d"; out.timeZone = sync.householdTz
-        return out.string(from: d)
+        return DateFmt.string(d, "MMM d", sync.householdTz)
     }
 
     // MARK: a calendar
@@ -344,7 +343,6 @@ struct CalendarsSettingsView: View {
         let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let d = f.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
         guard let d else { return "" }
-        let out = DateFormatter(); out.dateFormat = "MMM d, h:mm a"; out.timeZone = sync.householdTz
-        return out.string(from: d)
+        return DateFmt.string(d, "MMM d, h:mm a", sync.householdTz)
     }
 }

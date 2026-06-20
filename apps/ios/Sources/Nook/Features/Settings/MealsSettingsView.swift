@@ -224,11 +224,7 @@ struct MealsSettingsView: View {
     }
 
     private static func parseTime(_ s: String) -> Date {
-        let f = DateFormatter(); f.dateFormat = "HH:mm"; f.locale = Locale(identifier: "en_US_POSIX")
-        return f.date(from: s) ?? f.date(from: "12:00")!
+        DateFmt.date(s, "HH:mm", .current) ?? DateFmt.date("12:00", "HH:mm", .current)!
     }
-    private static func fmtTime(_ d: Date) -> String {
-        let f = DateFormatter(); f.dateFormat = "HH:mm"; f.locale = Locale(identifier: "en_US_POSIX")
-        return f.string(from: d)
-    }
+    private static func fmtTime(_ d: Date) -> String { DateFmt.string(d, "HH:mm", .current) }
 }
