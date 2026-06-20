@@ -1363,6 +1363,53 @@ struct NookAPI: Sendable {
         return try await sendReturning("POST", "/api/events", body: body, as: Resp.self).event.id
     }
 
+    // MARK: event detail (the rich detail screen)
+
+    /// One event with its full detail (rrule, Google calendar + sync state, named
+    /// participants, goal link) — fields the thin local mirror doesn't carry.
+    struct EventDetailDTO: Decodable, Sendable {
+        let id: String
+        let title: String
+        let description: String?
+        let location: String?
+        let startsAt: String?
+        let endsAt: String?
+        let allDay: Bool
+        let personId: String?
+        let goalId: String?
+        let goalStepId: String?
+        let rrule: String?
+        let calendarName: String?
+        let syncState: String?
+        let origin: String?
+        let personName: String?
+        let personColor: String?
+        let personEmoji: String?
+        let participants: [Participant]
+        struct Participant: Decodable, Sendable, Identifiable {
+            let id: String
+            let name: String
+            let colorHex: String?
+            let avatarEmoji: String?
+        }
+    }
+    func eventDetail(id: String) async throws -> EventDetailDTO {
+        struct Resp: Decodable { let event: EventDetailDTO }
+        return try await getJSON("/api/events/\(id)", as: Resp.self).event
+    }
+
+    /// The per-event AI insight card (headline + prep advice + optional "leave by").
+    struct EventInsight: Decodable, Sendable {
+        let headline: String
+        let body: String
+        let leaveBy: String?
+        let reminder: String?
+        let via: String?
+    }
+    func eventInsight(id: String) async throws -> EventInsight {
+        try await getJSON("/api/events/\(id)/insight", as: EventInsight.self)
+    }
+
     /// Forward a batch of queued local writes to the server's CRUD sink.
     func uploadCrud(_ ops: [CrudOpDTO]) async throws {
         var req = URLRequest(url: url("/api/powersync/crud"))

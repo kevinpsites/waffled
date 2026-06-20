@@ -6,6 +6,8 @@ import SwiftUI
 struct CalendarView: View {
     @Environment(SyncManager.self) private var sync
     @State private var editing: EventEditTarget?
+    /// Tapping an event opens its full detail (the editor is reached from there).
+    @State private var detailEvent: SyncedEvent?
     /// Remembered across tab switches + launches, so your preferred view sticks.
     @AppStorage("nook.calendarMode") private var mode: CalMode = .agenda
     @State private var filterPerson: String?       // nil = Everyone
@@ -72,6 +74,7 @@ struct CalendarView: View {
             case let .edit(event): EventEditSheet(event: event, initialDate: event.startsAt ?? Date())
             }
         }
+        .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
         }
@@ -137,7 +140,7 @@ struct CalendarView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     dayHeading(group.day)
                     ForEach(group.items) { ev in
-                        EventCard(event: ev, tz: tz) { editing = .edit(ev) }
+                        EventCard(event: ev, tz: tz) { detailEvent = ev }
                     }
                 }
             }
@@ -210,7 +213,7 @@ struct CalendarView: View {
             .buttonStyle(.plain)
         } else {
             VStack(spacing: 8) {
-                ForEach(dayItems) { ev in EventCard(event: ev, tz: tz) { editing = .edit(ev) } }
+                ForEach(dayItems) { ev in EventCard(event: ev, tz: tz) { detailEvent = ev } }
             }
         }
     }
@@ -260,7 +263,7 @@ struct CalendarView: View {
 
         if !allDay.isEmpty {
             VStack(spacing: 6) {
-                ForEach(allDay) { ev in EventCard(event: ev, tz: tz) { editing = .edit(ev) } }
+                ForEach(allDay) { ev in EventCard(event: ev, tz: tz) { detailEvent = ev } }
             }
         }
         ZStack(alignment: .topLeading) {
@@ -292,7 +295,7 @@ struct CalendarView: View {
             let durMin = ev.endsAt.map { max(30, $0.timeIntervalSince(start) / 60) } ?? 60
             let height = max(30, CGFloat(durMin) / 60 * Self.hourHeight - 4)
             let color = Color(hexString: ev.colorHex) ?? NK.ink3
-            Button { editing = .edit(ev) } label: {
+            Button { detailEvent = ev } label: {
                 HStack(spacing: 7) {
                     RoundedRectangle(cornerRadius: 99).fill(color).frame(width: 3)
                     VStack(alignment: .leading, spacing: 1) {
