@@ -474,9 +474,58 @@
 .pm-theme-dow { width: 38px; font-size: 13px; font-weight: 700; color: var(--ink-2); }
 .pm-theme-row .sel { flex: 1; }
 .pm-week { margin-bottom: 6px; }
-/* Already-planned nights shown for context in the month review — muted, no actions. */
-.plan-day-existing { opacity: 0.6; background: var(--card-2); }
-.plan-day-existing .pd-m { font-style: italic; }
+/* "was planned" tag on nights that were already on the calendar. */
+.pm-tag {
+  margin-left: 8px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  background: var(--panel);
+  padding: 2px 6px;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+/* Drag-to-swap: a grip handle on each night; drag onto another night to swap. */
+.pm-grip {
+  flex: none;
+  align-self: center;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px 4px;
+  margin-right: 2px;
+  cursor: grab;
+  opacity: 0.45;
+  touch-action: none;
+  transition: opacity 0.12s ease;
+}
+.plan-day:hover .pm-grip { opacity: 0.8; }
+.pm-grip:hover { opacity: 1; }
+.pm-grip:active { cursor: grabbing; }
+.plan-day.pm-drop { outline: 2px dashed var(--primary); outline-offset: -2px; background: color-mix(in srgb, var(--primary) 8%, var(--card)); }
+.plan-day.pm-dragging { opacity: 0.5; }
+.pm-drag-ghost {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 9999;
+  background: var(--card);
+  border: 1px solid var(--hair);
+  box-shadow: var(--sh-2);
+  border-radius: 999px;
+  padding: 8px 15px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .pm-week-h { font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; margin: 10px 2px 6px; }
 .use-up-list {
   display: flex;
