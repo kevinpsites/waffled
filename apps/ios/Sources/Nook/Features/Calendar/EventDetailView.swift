@@ -140,9 +140,7 @@ struct EventDetailView: View {
             }
         }
         .padding(.horizontal, 14)
-        .background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .nkField()
     }
 
     private func row<Trailing: View>(_ icon: String, _ label: String, _ value: String,

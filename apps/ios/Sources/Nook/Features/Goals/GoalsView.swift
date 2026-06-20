@@ -440,9 +440,7 @@ struct GoalsView: View {
                 }
             }
             .padding(14)
-            .background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .nkField()
         }
         .buttonStyle(.plain)
     }
@@ -1408,9 +1406,7 @@ struct GoalDetailView: View {
         VStack(alignment: .leading, spacing: 12) { content() }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .nkField()
     }
 
     private func monthDay(_ iso: String) -> String { fmtDate(iso, "MMM d") }

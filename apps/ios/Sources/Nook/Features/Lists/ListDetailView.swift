@@ -589,9 +589,7 @@ struct ListDetailView: View {
             }
         }
         .padding(14)
-        .background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .nkField()
     }
 
     @ViewBuilder private func mealRecapRow(_ meal: NookAPI.GroceryBoardDTO.Meal) -> some View {
@@ -805,9 +803,7 @@ struct ListDetailView: View {
                     .onSubmit(submit)
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
-            .background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .nkField()
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -982,9 +978,7 @@ struct ItemDetailEditor: View {
             .font(.system(size: 16, weight: .semibold))
             .padding(.horizontal, 15).padding(.vertical, 13)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .nkField()
     }
 
     private var assigneeRow: some View {
@@ -1072,9 +1066,7 @@ struct PantryStaplesEditor: View {
                             .focused($fieldFocused)
                             .onSubmit { Task { await add() } }
                             .padding(.horizontal, 14).padding(.vertical, 12)
-                            .background(NK.card)
-                            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                            .nkField()
                         Button { Task { await add() } } label: {
                             Text("Add").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
                                 .padding(.horizontal, 18).padding(.vertical, 12)
