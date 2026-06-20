@@ -446,6 +446,24 @@
   font-weight: 650;
   color: var(--ink);
 }
+
+/* ===== Plan-my-month extra guardrails ===== */
+.pm-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--ink);
+  cursor: pointer;
+}
+.pm-toggle input { width: 17px; height: 17px; accent-color: var(--primary); cursor: pointer; }
+.pm-themes { display: flex; flex-direction: column; gap: 7px; }
+.pm-theme-row { display: flex; align-items: center; gap: 10px; }
+.pm-theme-dow { width: 38px; font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.pm-theme-row .sel { flex: 1; }
+.pm-week { margin-bottom: 6px; }
+.pm-week-h { font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; margin: 10px 2px 6px; }
 .use-up-list {
   display: flex;
   flex-wrap: wrap;

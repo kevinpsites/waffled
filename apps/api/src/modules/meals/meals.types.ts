@@ -81,3 +81,21 @@ export interface PlanWeekInput {
   useUp?: string[]
   avoidTitles?: string[] // steer away from these (variety / reshuffle / swap)
 }
+
+// Month planner (dinners). The LLM drafts a rotation POOL of dishes; the server
+// then lays that pool across the month's chosen nights honoring the guardrails.
+export interface PlanMonthInput {
+  start: string // any date in the target month
+  weekdays?: number[] // 0(Sun)–6 to plan; default Mon–Fri
+  skipDates?: string[] // dates to leave unplanned (travel / eating out)
+  cookingFor?: number | null
+  keepInMind?: string | null
+  useUp?: string[]
+  allowRepeats?: boolean // reuse dishes across the month (a rotation)
+  repeatGapDays?: number // min days between the same dish when repeating (default 7)
+  weekdayThemes?: Record<string, string> // dow "0".."6" -> theme key (see MONTH_THEMES)
+  weeknightMaxMin?: number | null // cap weeknight cook time (quick weeknights)
+  leftovers?: boolean // schedule a leftover night after an involved cook
+  avoidTitles?: string[] // reshuffle/swap support
+  dates?: string[] // explicit nights to (re)draft; overrides weekdays/skip when set
+}

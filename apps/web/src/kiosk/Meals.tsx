@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Icon } from './icons'
 import { PlanWeek } from './components/PlanWeek'
+import { PlanMonth } from './components/PlanMonth'
 import { RecipeBrowser, MEALS, MEAL_LABEL, type MealType } from './components/RecipeBrowser'
 import { useTopbarFull } from './topbar-slot'
 import {
@@ -147,6 +148,7 @@ export function Meals() {
   const [filter, setFilter] = useState<'all' | 'dinner'>('all')
   const [picking, setPicking] = useState<{ date: string; mealType: MealType; dayLabel: string } | null>(null)
   const [planning, setPlanning] = useState(false)
+  const [planningMonth, setPlanningMonth] = useState(false)
 
   const weekStartD = useMemo(() => weekStart(anchor), [anchor])
   const monthStartD = useMemo(() => monthStartOf(anchor), [anchor])
@@ -216,6 +218,10 @@ export function Meals() {
     return <PlanWeek startStr={startStr} days={days} onClose={() => setPlanning(false)} onApplied={refetch} />
   }
 
+  if (planningMonth) {
+    return <PlanMonth monthStart={ymd(monthStartD)} onClose={() => setPlanningMonth(false)} onApplied={refetch} />
+  }
+
   if (picking) {
     return (
       <MealPicker
@@ -250,12 +256,10 @@ export function Meals() {
           <Icon name="recipes" />
           <span>Explore recipes</span>
         </button>
-        {view === 'week' && (
-          <button type="button" className="btn btn-ai" style={{ fontSize: 14, padding: '10px 18px' }} onClick={() => setPlanning(true)}>
-            <Icon name="spark" />
-            Plan my week
-          </button>
-        )}
+        <button type="button" className="btn btn-ai" style={{ fontSize: 14, padding: '10px 18px' }} onClick={() => (view === 'month' ? setPlanningMonth(true) : setPlanning(true))}>
+          <Icon name="spark" />
+          {view === 'month' ? 'Plan my month' : 'Plan my week'}
+        </button>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center' }}>
           <button type="button" className="pill meals-nav" aria-label={view === 'month' ? 'Previous month' : 'Previous week'} onClick={() => step(-1)}>
             <Icon name="cl" />

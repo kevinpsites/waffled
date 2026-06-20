@@ -141,6 +141,22 @@ export interface PlanWeekRequest {
   avoidTitles?: string[]
 }
 
+export interface PlanMonthRequest {
+  start: string
+  weekdays?: number[]
+  skipDates?: string[]
+  dates?: string[]
+  cookingFor?: number | null
+  keepInMind?: string | null
+  useUp?: string[]
+  avoidTitles?: string[]
+  allowRepeats?: boolean
+  repeatGapDays?: number
+  weekdayThemes?: Record<string, string>
+  weeknightMaxMin?: number | null
+  leftovers?: boolean
+}
+
 export interface MealCalendarSettings {
   addToCalendar: boolean
   pushToGoogle: boolean
@@ -159,6 +175,8 @@ export const mealsApi = {
   entry: (id: string) => apiGet<{ recipeId: string | null; title: string | null }>(`/api/meals/entry/${id}`),
   planWeek: (req: PlanWeekRequest) =>
     apiSend<{ start: string; mealType: string; suggestions: PlanCard[]; via: string; error?: string }>('POST', '/api/meals/plan-week', req),
+  planMonth: (req: PlanMonthRequest) =>
+    apiSend<{ start: string; mealType: string; suggestions: PlanCard[]; via: string; error?: string }>('POST', '/api/meals/plan-month', req),
   recipes: () => apiGet<{ recipes: Recipe[] }>('/api/recipes'),
   recipe: (id: string) =>
     apiGet<{ recipe: RecipeDetail; ingredients: RecipeIngredient[]; steps: RecipeStep[] }>(`/api/recipes/${id}`),

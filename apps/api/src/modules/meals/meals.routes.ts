@@ -27,6 +27,7 @@ import {
   weekEntries,
   presentEntry,
   planWeek,
+  planMonth,
   MEAL_TYPES,
   DATE_RE,
   todayDate,
@@ -290,6 +291,60 @@ export function registerMealRoutes(api: Api): void {
       }
       const mealType = typeof b.mealType === 'string' ? b.mealType : 'dinner'
       return { start, mealType, suggestions: [], via: 'none', error: message }
+    }
+  })
+
+  // AI "Plan my month": draft a rotation pool and lay it across the month's chosen
+  // dinners with the month guardrails. Applied via POST /api/meals/plan like the week.
+  api.post('/api/meals/plan-month', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const b = (req.body ?? {}) as {
+      start?: string
+      weekdays?: unknown
+      skipDates?: unknown
+      dates?: unknown
+      cookingFor?: unknown
+      keepInMind?: unknown
+      useUp?: unknown
+      avoidTitles?: unknown
+      allowRepeats?: unknown
+      repeatGapDays?: unknown
+      weekdayThemes?: unknown
+      weeknightMaxMin?: unknown
+      leftovers?: unknown
+    }
+    const start = typeof b.start === 'string' && DATE_RE.test(b.start) ? b.start : todayDate()
+    const weekdays = Array.isArray(b.weekdays) ? b.weekdays.filter((n): n is number => typeof n === 'number' && n >= 0 && n <= 6) : undefined
+    const skipDates = Array.isArray(b.skipDates) ? b.skipDates.filter((d): d is string => typeof d === 'string' && DATE_RE.test(d)) : undefined
+    const dates = Array.isArray(b.dates) ? b.dates.filter((d): d is string => typeof d === 'string' && DATE_RE.test(d)) : undefined
+    const useUp = Array.isArray(b.useUp) ? b.useUp.filter((s): s is string => typeof s === 'string' && !!s.trim()).slice(0, 12) : undefined
+    const avoidTitles = Array.isArray(b.avoidTitles) ? b.avoidTitles.filter((s): s is string => typeof s === 'string').slice(0, 60) : undefined
+    const weekdayThemes =
+      b.weekdayThemes && typeof b.weekdayThemes === 'object' && !Array.isArray(b.weekdayThemes)
+        ? Object.fromEntries(Object.entries(b.weekdayThemes as Record<string, unknown>).filter(([k, v]) => /^[0-6]$/.test(k) && typeof v === 'string'))
+        : undefined
+    try {
+      return await planMonth(tenant, {
+        start,
+        weekdays,
+        skipDates,
+        dates,
+        cookingFor: typeof b.cookingFor === 'number' ? b.cookingFor : null,
+        keepInMind: typeof b.keepInMind === 'string' ? b.keepInMind : null,
+        useUp,
+        avoidTitles,
+        allowRepeats: typeof b.allowRepeats === 'boolean' ? b.allowRepeats : undefined,
+        repeatGapDays: typeof b.repeatGapDays === 'number' ? b.repeatGapDays : undefined,
+        weekdayThemes: weekdayThemes as Record<string, string> | undefined,
+        weeknightMaxMin: typeof b.weeknightMaxMin === 'number' ? b.weeknightMaxMin : null,
+        leftovers: typeof b.leftovers === 'boolean' ? b.leftovers : undefined,
+      })
+    } catch (err) {
+      const message = (err as Error).message
+      if (/no ai provider|not configured/i.test(message)) {
+        return res.status(501).json({ error: 'AIUnavailable', message })
+      }
+      return { start, mealType: 'dinner', suggestions: [], via: 'none', error: message }
     }
   })
 }
