@@ -211,3 +211,31 @@ Milestones currently pay nothing (cosmetic). Before wiring real payouts, resolve
   payout or keep it earned? (Lean: keep earned.)
 - Reuses the existing `ledger_entries` + `currencies` economy (a second earn source
   alongside chores), reason e.g. `goal_milestone`.
+
+### UX feedback pass — Jun 2026
+A round of in-app user feedback. **Quick fixes SHIPPED 2026-06-19:** nav labels no
+longer underlined + the Nook "N" links home; Today calendar title sans-serif (was
+serif) and "Family Chores" title-cased; Today chore rows link to `/tasks` and the
+"This week's dinners" header links to `/meals`; Today cards fill but no longer
+overflow the 3-col kiosk (the height-bound breakpoint now actually constrains —
+columns shrink, the grocery/agenda lists scroll internally); long recipe titles
+clamp in the meal-plan grid instead of bleeding; Cook Mode → back no longer loops
+(exit `replace:`es the cook entry); goal-create **name field** is now the visual
+anchor (coral label + large accented input); goal titles display **title-cased via
+CSS** (`text-transform: capitalize`, stored as typed); **goal logs can be backdated**
+("When?" picker in the LogModal → `loggedOn` lands the entry at noon on that local
+day; habit dedupe keys off the chosen day) so a forgotten day can be caught up
+without breaking a streak.
+
+**Deferred (bigger features, captured for the next pass):**
+- **Drag-and-drop "up for grabs" chores** → drop a task into a person's column to
+  assign it. Backend already supports reassign/unassign (commit `28c9e8b`,
+  `POST /api/chore-instances/:id/(claim|assign|unassign)`); this is the kiosk DnD
+  surface (Tasks board) + Today.
+- **Month meal view** — view/plan meals in a month grid alongside the current week
+  view (Meals screen).
+- **Rearrange Today cards** — drag to reorder the homepage cards + persist the
+  layout (likely per-person, a `today_layout` preference).
+- **Pantry-add UX** — adding while viewing the Pantry list silently routes to
+  Groceries instead of staples; staples are managed in Settings. Left as-is pending
+  a clearer repro from the user; revisit the add-bar destination affordance then.
