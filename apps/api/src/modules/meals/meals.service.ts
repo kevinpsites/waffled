@@ -446,6 +446,27 @@ export const MONTH_THEMES: Record<string, { label: string; hint: string; special
   leftovers: { label: 'Leftovers', hint: '', special: 'leftovers' },
 }
 
+// Which themes a recipe fits, derived from its title/category/tags — far more
+// reliable than a weak model's self-tagging (which mislabels, e.g. pasta as grill).
+const THEME_RE: Record<string, RegExp> = {
+  tacos: /\b(taco|burrito|enchilada|quesadilla|fajita|nacho|mexican|carnitas|al pastor)\b/i,
+  pizza: /\b(pizza|flatbread|calzone)\b/i,
+  pasta: /\b(pasta|spaghetti|linguine|penne|lasagn|noodle|macaroni|risotto|gnocchi|fettuccine|ravioli|orzo|carbonara|bolognese|pad thai|ramen|udon)\b/i,
+  seafood: /\b(salmon|shrimp|fish|tuna|cod|crab|seafood|prawn|scallop|tilapia|halibut|mussel|clam|lobster)\b/i,
+  soup: /\b(soup|stew|chili|chowder|bisque|broth)\b/i,
+  breakfast: /\b(pancake|waffle|egg|omelet|omelette|frittata|breakfast|french toast|scramble|hash)\b/i,
+  grill: /\b(grill|grilled|bbq|barbecue|barbeque|skewer|kebab|kabob|kabab|burger|char-?grilled)\b/i,
+}
+const VEG_RE = /\b(vegetarian|vegan|veggie|tofu|paneer|lentil|chickpea|falafel|halloumi|eggplant|cauliflower)\b/i
+
+function recipeThemes(recipe: { title?: string | null; category?: string | null; tags?: string[] | null }): string[] {
+  const hay = `${recipe.title ?? ''} ${recipe.category ?? ''} ${(recipe.tags ?? []).join(' ')}`
+  const out = new Set<string>()
+  for (const [key, re] of Object.entries(THEME_RE)) if (re.test(hay)) out.add(key)
+  if (VEG_RE.test(hay) || /vegetarian|vegan/i.test(recipe.category ?? '')) out.add('meatless')
+  return [...out]
+}
+
 const PLAN_MONTH_POOL_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -608,20 +629,26 @@ export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<
     if (seenTitles.has(nt)) continue
     seenTitles.add(nt)
     const minutes = recipe.cook_time_minutes ?? null
-    const themesArr = Array.isArray(d.themes) ? d.themes.filter((x): x is string => typeof x === 'string') : []
-    pool.push({ title: recipe.title, recipeId: recipe.id, emoji: recipe.emoji ?? null, minutes, effort: effortOf(minutes, typeof d.effort === 'string' ? d.effort : undefined), themes: themesArr })
+    pool.push({ title: recipe.title, recipeId: recipe.id, emoji: recipe.emoji ?? null, minutes, effort: effortOf(minutes, typeof d.effort === 'string' ? d.effort : undefined), themes: recipeThemes(recipe) })
   }
   // Top up from the library with recipes the model didn't pick, up to one distinct
   // recipe per night. So a rich library yields a varied (often fully unique) month
   // even when a weak model under-selects — repeats only happen when the library is
   // genuinely smaller than the month. The LLM's themed/smart picks stay first.
   if (pool.length < targetPool) {
-    for (const r of recipes) {
+    // Top up theme-matching recipes FIRST so themed nights have real options within
+    // the capped pool (otherwise a grilled recipe late in the library never makes it
+    // in, and grill nights fall back to non-grill dishes).
+    const activeSet = new Set(activeThemeKeys)
+    const order = activeSet.size
+      ? [...recipes].sort((a, b) => Number(recipeThemes(b).some((t) => activeSet.has(t))) - Number(recipeThemes(a).some((t) => activeSet.has(t))))
+      : recipes
+    for (const r of order) {
       if (pool.length >= targetPool) break
       const nt = normTitle(r.title)
       if (seenTitles.has(nt)) continue
       seenTitles.add(nt)
-      pool.push({ title: r.title, recipeId: r.id, emoji: r.emoji ?? null, minutes: r.cook_time_minutes ?? null, effort: effortOf(r.cook_time_minutes ?? null), themes: [] })
+      pool.push({ title: r.title, recipeId: r.id, emoji: r.emoji ?? null, minutes: r.cook_time_minutes ?? null, effort: effortOf(r.cook_time_minutes ?? null), themes: recipeThemes(r) })
     }
   }
   if (pool.length === 0) return { start: monthStartStr, mealType, suggestions: [], via }
@@ -631,11 +658,31 @@ export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<
   const weeknightMax = input.weeknightMaxMin ?? null
   const lastUsed: Record<string, string> = {}
   const usedOnce = new Set<string>()
+  const key = (d: PoolDish) => normTitle(d.title)
+  const dowOf = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay()
+  const lru = (arr: PoolDish[]) => arr.slice().sort((a, b) => Date.parse(lastUsed[key(a)] ?? '1970-01-01') - Date.parse(lastUsed[key(b)] ?? '1970-01-01'))
+
+  // Pre-pass: reserve a DISTINCT theme-matching recipe for each themed night (in
+  // date order), so themed nights aren't starved by regular nights eating the few
+  // theme recipes first. When a theme runs out of distinct recipes, those nights
+  // get no reservation and are filled with variety below (no repeat, no label).
+  const reserved: Record<string, PoolDish> = {}
+  for (const date of targetDates) {
+    const tk = themes[String(dowOf(date))]
+    if (!tk || MONTH_THEMES[tk]?.special) continue
+    const matches = lru(pool.filter((d) => !usedOnce.has(key(d)) && d.themes.includes(tk)))
+    if (matches.length) {
+      reserved[date] = matches[0]
+      usedOnce.add(key(matches[0]))
+      lastUsed[key(matches[0])] = date
+    }
+  }
+
   const suggestions: PlanCard[] = []
   let lastCooked: PoolDish | null = null
 
   for (const date of targetDates) {
-    const dow = new Date(`${date}T00:00:00Z`).getUTCDay()
+    const dow = dowOf(date)
     const themeKey = themes[String(dow)]
     const theme = themeKey ? MONTH_THEMES[themeKey] : undefined
     const isWeekend = dow === 0 || dow === 6
@@ -652,29 +699,37 @@ export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<
       continue
     }
 
-    const eligible = (relax: number): PoolDish[] =>
-      pool.filter((d) => {
-        const nt = normTitle(d.title)
-        if (!allowRepeats && usedOnce.has(nt)) return false
-        if (allowRepeats && lastUsed[nt] && daysBetween(lastUsed[nt], date) < repeatGap) return false
-        if (relax < 2 && themeKey && !theme?.special && !d.themes.includes(themeKey)) return false
-        if (relax < 1 && !isWeekend && weeknightMax && d.minutes != null && d.minutes > weeknightMax) return false
-        return true
-      })
-    // relax 0/1 keep the theme constraint; relax ≥2 drops it. Track whether the
-    // dish actually satisfies the theme so we don't mislabel (e.g. tag a chicken
-    // dish "Meatless" just because the pool had no veg option).
-    let cands = eligible(0)
-    let themeSatisfied = !!themeKey
-    if (!cands.length) cands = eligible(1) // relax weeknight effort, keep theme
-    if (!cands.length) { cands = eligible(2); themeSatisfied = false } // relax theme
-    if (!cands.length) { cands = pool.filter((d) => allowRepeats || !usedOnce.has(normTitle(d.title))); themeSatisfied = false }
-    if (!cands.length) { cands = pool; themeSatisfied = false }
-    // Least-recently-used first (never-used sort to the front) for an even spread.
-    cands = cands.slice().sort((a, b) => (Date.parse(lastUsed[normTitle(a.title)] ?? '1970-01-01') - Date.parse(lastUsed[normTitle(b.title)] ?? '1970-01-01')))
-    const pick = cands[0]
-    lastUsed[normTitle(pick.title)] = date
-    usedOnce.add(normTitle(pick.title))
+    let pick: PoolDish
+    let themeSatisfied = false
+    if (reserved[date]) {
+      pick = reserved[date]
+      themeSatisfied = true
+    } else {
+      // No theme (or its recipes ran out) → favor a brand-new recipe for variety;
+      // only repeat (gap-respecting) as a last resort.
+      const fresh = (d: PoolDish) => !usedOnce.has(key(d))
+      const gapOk = (d: PoolDish) => {
+        if (!allowRepeats) return !usedOnce.has(key(d))
+        const last = lastUsed[key(d)]
+        return !last || daysBetween(last, date) >= repeatGap
+      }
+      const weeknightOk = (d: PoolDish) => isWeekend || !weeknightMax || d.minutes == null || d.minutes <= weeknightMax
+      const tiers: Array<(d: PoolDish) => boolean> = [
+        (d) => fresh(d) && weeknightOk(d),
+        (d) => fresh(d),
+        (d) => gapOk(d),
+        () => true,
+      ]
+      let cands: PoolDish[] = []
+      for (const t of tiers) {
+        cands = pool.filter(t)
+        if (cands.length) break
+      }
+      pick = lru(cands)[0]
+      themeSatisfied = !!themeKey && !theme?.special && pick.themes.includes(themeKey)
+    }
+    lastUsed[key(pick)] = date
+    usedOnce.add(key(pick))
     suggestions.push({ date, mealType, title: pick.title, recipeId: pick.recipeId, emoji: pick.emoji, minutes: pick.minutes, servings, note: theme && !theme.special && themeSatisfied ? theme.label : null })
     lastCooked = pick
   }
