@@ -214,11 +214,10 @@ struct CaptureSheet: View {
 
     /// The one-line subtitle under the glance title, per kind.
     private var glanceDetail: String {
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.timeZone = sync.householdTz
         switch editKind {
         case "event":
-            f.dateFormat = evAllDay ? "EEE, MMM d" : "EEE, MMM d · h:mm a"
-            return f.string(from: evDate) + (evAllDay ? " · all day" : "")
+            let pattern = evAllDay ? "EEE, MMM d" : "EEE, MMM d · h:mm a"
+            return DateFmt.string(evDate, pattern, sync.householdTz) + (evAllDay ? " · all day" : "")
         case "task":
             let who = evPerson ?? "Up for grabs"
             let reward = taskStars > 0 ? " · \(taskStars) \(rewardLabel.lowercased())" : ""
@@ -228,8 +227,7 @@ struct CaptureSheet: View {
         case "list":
             return editListName.isEmpty ? "Adds to a list" : "Adds to \(editListName)"
         case "meal":
-            f.dateFormat = "EEE, MMM d"
-            return "\(mealSlot.capitalized) · \(f.string(from: mealDate))"
+            return "\(mealSlot.capitalized) · \(DateFmt.string(mealDate, "EEE, MMM d", sync.householdTz))"
         default: return ""
         }
     }

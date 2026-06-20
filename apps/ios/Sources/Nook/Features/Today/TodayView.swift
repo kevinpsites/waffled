@@ -45,12 +45,7 @@ struct TodayView: View {
         return sync.members.first { ($0.memberType ?? "") == "adult" } ?? sync.members.first
     }
 
-    private var greetingDate: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US"); f.timeZone = sync.householdTz
-        f.dateFormat = "EEEE, MMM d"
-        return f.string(from: Date())
-    }
+    private var greetingDate: String { DateFmt.string(Date(), "EEEE, MMM d", sync.householdTz) }
 
     private var greetingPhrase: String {
         var cal = Calendar(identifier: .gregorian); cal.timeZone = sync.householdTz

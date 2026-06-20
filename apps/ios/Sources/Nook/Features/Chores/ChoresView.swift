@@ -89,19 +89,15 @@ final class ChoresModel {
 
 /// Local-date helpers for the day stepper (household runs in device tz here).
 enum ChoreDates {
-    private static func fmt() -> DateFormatter {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.calendar = .current; f.timeZone = .current
-        return f
-    }
-    static func today() -> String { fmt().string(from: Date()) }
+    static func today() -> String { DateFmt.string(Date(), "yyyy-MM-dd", .current) }
     static func shift(_ d: String, _ days: Int) -> String {
-        guard let date = fmt().date(from: d),
+        guard let date = DateFmt.date(d, "yyyy-MM-dd", .current),
               let shifted = Calendar.current.date(byAdding: .day, value: days, to: date) else { return d }
-        return fmt().string(from: shifted)
+        return DateFmt.string(shifted, "yyyy-MM-dd", .current)
     }
     /// (relative label, full label, isToday) for the header.
     static func meta(_ d: String) -> (rel: String, full: String, isToday: Bool) {
-        guard let date = fmt().date(from: d) else { return ("", d, true) }
+        guard let date = DateFmt.date(d, "yyyy-MM-dd", .current) else { return ("", d, true) }
         let cal = Calendar.current
         let diff = cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: date)).day ?? 0
         let rel: String
@@ -111,8 +107,7 @@ enum ChoreDates {
         case -1: rel = "Yesterday"
         default: rel = diff > 0 ? "In \(diff) days" : "\(-diff) days ago"
         }
-        let out = DateFormatter(); out.dateFormat = "EEEE, MMM d"; out.calendar = .current; out.timeZone = .current
-        return (rel, out.string(from: date), diff == 0)
+        return (rel, DateFmt.string(date, "EEEE, MMM d", .current), diff == 0)
     }
 }
 

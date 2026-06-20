@@ -373,10 +373,7 @@ struct ReviewEventsView: View {
         parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let date = parser.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
         guard let date else { return String(iso.prefix(10)) }
-        let f = DateFormatter()
-        f.calendar = .current; f.timeZone = sync.householdTz
-        f.dateFormat = allDay ? "EEE, MMM d" : "EEE, MMM d · h:mm a"
-        return f.string(from: date)
+        return DateFmt.string(date, allDay ? "EEE, MMM d" : "EEE, MMM d · h:mm a", sync.householdTz)
     }
 }
 
