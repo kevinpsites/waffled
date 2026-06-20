@@ -165,6 +165,47 @@ struct NookAPI: Sendable {
         return try JSONDecoder().decode(PlanWeekResult.self, from: data)
     }
 
+    /// The result of an AI "plan my month" run: drafted nights (`suggestions`) plus
+    /// the month's already-planned dinners (`existing`, read-only context).
+    struct PlanMonthResult: Decodable, Sendable {
+        let start: String
+        let mealType: String
+        let suggestions: [PlanCardDTO]
+        let existing: [PlanCardDTO]?
+        let via: String?
+        let error: String?
+    }
+
+    /// Ask the LLM to draft a month of dinners as a rotation with guardrails (themes,
+    /// repeat gap, weeknight time cap, leftovers). `dates` re-drafts specific nights.
+    func planMonth(start: String, weekdays: [Int]?, skipDates: [String]?, dates: [String]?,
+                   cookingFor: Int?, keepInMind: String?, useUp: [String]?, avoidTitles: [String]?,
+                   allowRepeats: Bool, repeatGapDays: Int, weekdayThemes: [String: String]?,
+                   weeknightMaxMin: Int?, leftovers: Bool) async throws -> PlanMonthResult {
+        var body: [String: JSONValue] = ["start": .string(start)]
+        if let weekdays, !weekdays.isEmpty { body["weekdays"] = .array(weekdays.map { .int($0) }) }
+        if let skipDates, !skipDates.isEmpty { body["skipDates"] = .array(skipDates.map { .string($0) }) }
+        if let dates, !dates.isEmpty { body["dates"] = .array(dates.map { .string($0) }) }
+        if let cookingFor { body["cookingFor"] = .int(cookingFor) }
+        if let keepInMind, !keepInMind.isEmpty { body["keepInMind"] = .string(keepInMind) }
+        if let useUp, !useUp.isEmpty { body["useUp"] = .array(useUp.map { .string($0) }) }
+        if let avoidTitles, !avoidTitles.isEmpty { body["avoidTitles"] = .array(avoidTitles.map { .string($0) }) }
+        body["allowRepeats"] = .bool(allowRepeats)
+        body["repeatGapDays"] = .int(repeatGapDays)
+        if let weekdayThemes, !weekdayThemes.isEmpty { body["weekdayThemes"] = .object(weekdayThemes.mapValues { .string($0) }) }
+        if let weeknightMaxMin { body["weeknightMaxMin"] = .int(weeknightMaxMin) }
+        body["leftovers"] = .bool(leftovers)
+        var req = URLRequest(url: url("/api/meals/plan-month"))
+        req.httpMethod = "POST"
+        authorize(&req)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 120
+        req.httpBody = try JSONEncoder().encode(body)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(resp, data)
+        return try JSONDecoder().decode(PlanMonthResult.self, from: data)
+    }
+
     struct RecipeRef: Decodable { let id: String; let title: String? }
 
     /// The household's recipes — used for best-effort title→recipe matching before

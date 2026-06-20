@@ -1,0 +1,490 @@
+import SwiftUI
+
+/// The AI "Plan my month ✨" flow (mirrors the web's PlanMonth). A config of
+/// guardrails — which weeknights, cooking-for, repeat rotation + gap, quick-
+/// weeknight cap, leftover nights, per-weekday theme nights, use-up, keep-in-mind —
+/// → `POST /api/meals/plan-month` (the server drafts a rotation pool and lays it
+/// across the month) → a per-night review you curate (lock / swap / pick / skip /
+/// reshuffle). Nothing saves until Add; then each night is written via
+/// `SyncManager.setMealPlan` and the grocery list is rebuilt.
+struct PlanMonthSheet: View {
+    /// The 1st of the month being planned (yyyy-MM-dd).
+    let monthStart: String
+    let monthLabel: String
+    let familySize: Int
+    let recipes: RecipesModel
+    let onApplied: () -> Void
+
+    @Environment(SyncManager.self) private var sync
+    @Environment(\.dismiss) private var dismiss
+
+    private enum Phase { case config, loading, review, empty, failed }
+    static let themeOptions: [(key: String, label: String)] = [
+        ("meatless", "Meatless"), ("tacos", "Taco night"), ("pizza", "Pizza night"),
+        ("pasta", "Pasta night"), ("seafood", "Seafood"), ("soup", "Soup & salad"),
+        ("breakfast", "Breakfast for dinner"), ("grill", "Grill night"),
+        ("takeout", "Takeout"), ("leftovers", "Leftovers"),
+    ]
+    private static let dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+    @State private var phase: Phase = .config
+    @State private var weekdays: Set<Int> = [1, 2, 3, 4, 5]   // Mon–Fri
+    @State private var cookingFor = 0                          // 0 ⇒ whole family
+    @State private var allowRepeats = true
+    @State private var repeatGapDays = 7
+    @State private var quickWeeknights = false
+    @State private var weeknightMax = 30
+    @State private var leftovers = false
+    @State private var themes: [Int: String] = [:]            // dow → theme key
+    @State private var useUp: [String] = []
+    @State private var useUpInput = ""
+    @State private var keepInMind = ""
+
+    @State private var suggestions: [NookAPI.PlanCardDTO] = []
+    @State private var existingCount = 0
+    @State private var locked: Set<String> = []
+    @State private var skipped: Set<String> = []
+    @State private var rejected: Set<String> = []
+    @State private var draftingDates: Set<String> = []
+    @State private var redrafting = false
+    @State private var pickTarget: PickTarget?
+    @State private var via: String?
+    @State private var errorMessage: String?
+    @State private var notice: String?
+    @State private var applying = false
+
+    private let api = NookAPI()
+    struct PickTarget: Identifiable { let date: String; var id: String { date } }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                switch phase {
+                case .config:  configView
+                case .loading: loadingView
+                case .review:  reviewView
+                case .empty:   messageView("🎉", "Every night this month is already planned.", "Nothing to draft — you’re set.")
+                case .failed:  messageView("😕", "Couldn’t plan the month", errorMessage ?? "The AI provider didn’t respond. Try again.")
+                }
+            }
+            .background(NK.canvas)
+            .navigationTitle("Plan \(monthLabel)").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+        .sheet(item: $pickTarget) { target in
+            RecipePickerSheet(model: recipes) { recipe in pickRecipe(date: target.date, recipe) }
+        }
+    }
+
+    // MARK: config
+
+    private var configView: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("Nook drafts a dinner rotation for the month from your recipe library, then you tweak it.")
+                        .font(.system(size: 14)).foregroundStyle(NK.ink3).fixedSize(horizontal: false, vertical: true)
+
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "Which weeknights?")
+                        HStack(spacing: 6) { ForEach(0..<7, id: \.self) { weekdayChip($0) } }
+                    }
+
+                    NookCard(padding: 14) {
+                        HStack {
+                            Text("Cooking for").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                            Spacer()
+                            Menu {
+                                Button { cookingFor = 0 } label: { Text("\(familySize) · whole family") }
+                                ForEach(1...8, id: \.self) { n in Button { cookingFor = n } label: { Text("\(n)") } }
+                            } label: { pill(cookingFor == 0 ? "\(familySize) · whole family" : "\(cookingFor)") }
+                        }
+                    }
+
+                    NookCard(padding: 14) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Toggle(isOn: $allowRepeats.animation()) {
+                                Text("Allow repeat meals (a rotation)").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                            }.tint(NK.ai)
+                            if allowRepeats {
+                                HStack {
+                                    Text("No closer than").font(.system(size: 14)).foregroundStyle(NK.ink2)
+                                    Spacer()
+                                    Menu {
+                                        ForEach([3, 5, 7, 10, 14], id: \.self) { d in Button { repeatGapDays = d } label: { Text("\(d) days") } }
+                                    } label: { pill("\(repeatGapDays) days") }
+                                }
+                            }
+                        }
+                    }
+
+                    NookCard(padding: 14) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Toggle(isOn: $quickWeeknights.animation()) {
+                                Text("Quick weeknights").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                            }.tint(NK.ai)
+                            if quickWeeknights {
+                                HStack {
+                                    Text("Under").font(.system(size: 14)).foregroundStyle(NK.ink2)
+                                    Spacer()
+                                    Menu {
+                                        ForEach([20, 30, 45], id: \.self) { m in Button { weeknightMax = m } label: { Text("\(m) min") } }
+                                    } label: { pill("\(weeknightMax) min") }
+                                }
+                            }
+                            Toggle(isOn: $leftovers) {
+                                Text("Leftover nights after a big cook").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                            }.tint(NK.ai)
+                        }
+                    }
+
+                    if !weekdays.isEmpty {
+                        VStack(alignment: .leading, spacing: 9) {
+                            SectionLabel(text: "Theme nights · optional")
+                            VStack(spacing: 8) { ForEach(weekdays.sorted(), id: \.self) { themeRow($0) } }
+                        }
+                    }
+
+                    NookCard(padding: 14) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Use up first").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                            ChipFlow(spacing: 8, lineSpacing: 8) {
+                                ForEach(useUp, id: \.self) { u in useUpChip(u) }
+                                TextField("+ Add", text: $useUpInput)
+                                    .font(.system(size: 14)).textInputAutocapitalization(.never)
+                                    .submitLabel(.done).onSubmit { addUseUp() }
+                                    .frame(minWidth: 80)
+                                    .padding(.horizontal, 12).padding(.vertical, 7).background(NK.panel).clipShape(Capsule())
+                            }
+                        }
+                    }
+
+                    NookCard(padding: 14) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Keep in mind").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                            TextField("e.g. school nights are hectic · no pork", text: $keepInMind, axis: .vertical)
+                                .font(.system(size: 14)).lineLimit(2...4)
+                                .padding(.horizontal, 12).padding(.vertical, 10)
+                                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                        }
+                    }
+                }
+                .padding(20)
+            }
+            VStack(spacing: 0) {
+                Divider().background(NK.hair)
+                Button { Task { await suggest() } } label: {
+                    Text("✨ Plan \(monthLabel)").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 14)
+                        .background(weekdays.isEmpty ? NK.ink3 : NK.ai)
+                        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                }
+                .buttonStyle(.plain).disabled(weekdays.isEmpty)
+                .padding(.horizontal, 16).padding(.vertical, 12)
+            }
+            .background(NK.canvas)
+        }
+    }
+
+    private func pill(_ text: String) -> some View {
+        HStack(spacing: 6) {
+            Text(text).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+            Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 9).background(NK.panel).clipShape(Capsule())
+    }
+
+    private func weekdayChip(_ dow: Int) -> some View {
+        let on = weekdays.contains(dow)
+        return Button {
+            if on { weekdays.remove(dow); themes[dow] = nil } else { weekdays.insert(dow) }
+        } label: {
+            Text(Self.dayNames[dow]).font(.system(size: 13, weight: .heavy)).foregroundStyle(on ? .white : NK.ink2)
+                .frame(maxWidth: .infinity).frame(height: 44)
+                .background(on ? NK.primary : NK.card)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(on ? .clear : NK.hair, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func themeRow(_ dow: Int) -> some View {
+        NookCard(padding: 12) {
+            HStack {
+                Text(Self.dayNames[dow]).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink).frame(width: 44, alignment: .leading)
+                Spacer()
+                Menu {
+                    Button { themes[dow] = nil } label: { Text("No theme") }
+                    ForEach(Self.themeOptions, id: \.key) { t in Button { themes[dow] = t.key } label: { Text(t.label) } }
+                } label: {
+                    pill(themes[dow].flatMap { k in Self.themeOptions.first { $0.key == k }?.label } ?? "No theme")
+                }
+            }
+        }
+    }
+
+    private func useUpChip(_ u: String) -> some View {
+        HStack(spacing: 5) {
+            Text(u).font(.system(size: 14, weight: .medium)).foregroundStyle(NK.ink)
+            Button { useUp.removeAll { $0 == u } } label: {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(NK.ink3)
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 7).background(NK.panel).clipShape(Capsule())
+    }
+
+    private func addUseUp() {
+        let v = useUpInput.trimmingCharacters(in: .whitespaces)
+        guard !v.isEmpty, !useUp.contains(v), useUp.count < 12 else { useUpInput = ""; return }
+        useUp.append(v); useUpInput = ""
+    }
+
+    // MARK: loading / messages
+
+    private var loadingView: some View {
+        VStack(spacing: 16) {
+            ProgressView().controlSize(.large).tint(NK.ai)
+            Text("Drafting your month…").font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
+            Text("Asking the kitchen AI — a month can take a moment on a local model.")
+                .font(.system(size: 13)).foregroundStyle(NK.ink3).multilineTextAlignment(.center).padding(.horizontal, 40)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func messageView(_ emoji: String, _ title: String, _ subtitle: String) -> some View {
+        VStack(spacing: 12) {
+            Text(emoji).font(.system(size: 44))
+            Text(title).font(.system(size: 18, weight: .bold)).foregroundStyle(NK.ink)
+            Text(subtitle).font(.system(size: 14)).foregroundStyle(NK.ink3).multilineTextAlignment(.center).padding(.horizontal, 40)
+            if phase == .failed {
+                Button { phase = .config } label: { Text("Try again").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ai) }
+                    .padding(.top, 4)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: review
+
+    private var reviewView: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Your month").font(NK.serif(17, .bold)).foregroundStyle(NK.ink)
+                            Text(reviewSubtitle).font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
+                        }
+                        Spacer()
+                        Button { Task { await reshuffle() } } label: {
+                            HStack(spacing: 6) {
+                                if redrafting && draftingDates.count > 1 { ProgressView().controlSize(.small).tint(NK.ai) }
+                                else { Text("✨").font(.system(size: 13)) }
+                                Text(redrafting && draftingDates.count > 1 ? "Reshuffling…" : "Reshuffle")
+                                    .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ai)
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 8).background(NK.ai.opacity(0.10)).clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain).disabled(redrafting || unlockedDates.isEmpty)
+                    }
+                    if let notice {
+                        Text(notice).font(.system(size: 12, weight: .medium)).foregroundStyle(NK.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 12).padding(.vertical, 9)
+                            .background(NK.primary.opacity(0.10)).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                    }
+                    ForEach(activeSuggestions) { card in suggestionCard(card) }
+                    Text("Lock the nights you love, swap or pick the rest, ✕ to skip a night.")
+                        .font(.system(size: 12)).foregroundStyle(NK.ink3).frame(maxWidth: .infinity, alignment: .center).padding(.top, 2)
+                }
+                .padding(16)
+            }
+            applyBar
+        }
+    }
+
+    private var reviewSubtitle: String {
+        var parts: [String] = []
+        if let via { parts.append("Drafted via \(viaLabel(via))") }
+        if existingCount > 0 { parts.append("\(existingCount) already planned") }
+        return parts.joined(separator: " · ")
+    }
+    private var activeSuggestions: [NookAPI.PlanCardDTO] { suggestions.filter { !skipped.contains($0.date) } }
+    private var unlockedDates: [String] { activeSuggestions.map(\.date).filter { !locked.contains($0) } }
+
+    private func suggestionCard(_ card: NookAPI.PlanCardDTO) -> some View {
+        let isLocked = locked.contains(card.date)
+        let busy = draftingDates.contains(card.date)
+        return VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                Text(card.emoji ?? "🍽️").font(.system(size: 26))
+                    .frame(width: 46, height: 46).background(RecipeGradient.forCategory(card.mealType))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(weekday(card.date)).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
+                    Text(card.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(2)
+                    HStack(spacing: 8) {
+                        if let m = card.minutes { tag("🕐 \(m)m") }
+                        tag(card.recipeId != nil ? "📖 Library" : "✨ Special")
+                        if let note = card.note, !note.isEmpty { tag(note) }
+                    }
+                }
+                Spacer(minLength: 0)
+                Button { skip(card) } label: {
+                    Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                        .frame(width: 28, height: 28).background(NK.panel).clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
+            Divider().background(NK.hair)
+            HStack(spacing: 8) {
+                actionButton("arrow.triangle.2.circlepath", "Swap") { Task { await swap(card) } }.disabled(redrafting)
+                actionButton("book", "Pick") { pickTarget = PickTarget(date: card.date) }.disabled(redrafting)
+                Spacer()
+                Button { toggleLock(card.date) } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: isLocked ? "lock.fill" : "lock.open").font(.system(size: 12, weight: .bold))
+                        Text(isLocked ? "Locked" : "Lock").font(.system(size: 12, weight: .bold))
+                    }
+                    .foregroundStyle(isLocked ? .white : NK.ink2)
+                    .padding(.horizontal, 12).padding(.vertical, 7).background(isLocked ? NK.primary : NK.panel).clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(13).background(NK.card)
+        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(isLocked ? NK.primary.opacity(0.45) : NK.hair, lineWidth: 1))
+        .overlay { if busy { RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).fill(NK.card.opacity(0.7)).overlay(ProgressView().controlSize(.small).tint(NK.ai)) } }
+        .animation(.easeInOut(duration: 0.15), value: isLocked)
+    }
+
+    private func actionButton(_ icon: String, _ label: String, _ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 12, weight: .bold))
+                Text(label).font(.system(size: 12, weight: .bold))
+            }
+            .foregroundStyle(NK.ink2).padding(.horizontal, 12).padding(.vertical, 7).background(NK.panel).clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func tag(_ t: String) -> some View {
+        Text(t).font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink2)
+            .padding(.horizontal, 7).padding(.vertical, 2).background(NK.panel).clipShape(Capsule()).lineLimit(1)
+    }
+
+    private var applyBar: some View {
+        VStack(spacing: 0) {
+            Divider().background(NK.hair)
+            Button { Task { await apply() } } label: {
+                HStack(spacing: 8) {
+                    if applying { ProgressView().controlSize(.small).tint(.white) }
+                    Text(applying ? "Adding…" : "Add \(activeSuggestions.count) & build list")
+                        .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 14)
+                .background(activeSuggestions.isEmpty ? NK.ink3 : NK.ai)
+                .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            }
+            .buttonStyle(.plain).disabled(activeSuggestions.isEmpty || applying || redrafting)
+            .padding(.horizontal, 16).padding(.vertical, 12)
+        }
+        .background(NK.canvas)
+    }
+
+    // MARK: actions
+
+    private var themesDict: [String: String] {
+        Dictionary(themes.compactMap { (dow, key) in weekdays.contains(dow) ? (String(dow), key) : nil }, uniquingKeysWith: { a, _ in a })
+    }
+
+    private func suggest() async {
+        addUseUp()
+        await draft(dates: [], avoid: Array(rejected), full: true)
+    }
+
+    private func draft(dates: [String], avoid: [String], full: Bool) async {
+        if full { phase = .loading } else { redrafting = true; draftingDates = Set(dates) }
+        defer { redrafting = false; draftingDates = [] }
+        do {
+            let result = try await api.planMonth(
+                start: monthStart,
+                weekdays: full ? weekdays.sorted() : nil,
+                skipDates: full ? skipped.sorted() : nil,
+                dates: full ? nil : dates,
+                cookingFor: cookingFor > 0 ? cookingFor : nil,
+                keepInMind: keepInMind, useUp: Array(useUp.prefix(12)), avoidTitles: avoid,
+                allowRepeats: allowRepeats, repeatGapDays: repeatGapDays,
+                weekdayThemes: themesDict, weeknightMaxMin: quickWeeknights ? weeknightMax : nil, leftovers: leftovers)
+            via = result.via
+            if let err = result.error, result.suggestions.isEmpty { errorMessage = friendly(err); if full { phase = .failed }; return }
+            if full {
+                existingCount = result.existing?.count ?? 0
+                suggestions = result.suggestions.sorted { $0.date < $1.date }
+                guard !suggestions.isEmpty else { phase = .empty; return }
+                phase = .review
+            } else {
+                let byDate = Dictionary(result.suggestions.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
+                suggestions = suggestions.map { byDate[$0.date] ?? $0 }.sorted { $0.date < $1.date }
+                if !dates.contains(where: { byDate[$0] != nil }) {
+                    notice = "No fresh options for that night — tap Pick to choose any recipe."
+                } else { notice = nil }
+            }
+        } catch {
+            errorMessage = "The AI provider didn’t respond. Check your connection and try again."
+            if full { phase = .failed }
+        }
+    }
+
+    private func reshuffle() async {
+        let dates = unlockedDates.sorted()
+        for c in activeSuggestions where dates.contains(c.date) { rejected.insert(c.title) }
+        let lockedTitles = activeSuggestions.filter { locked.contains($0.date) }.map(\.title)
+        await draft(dates: dates, avoid: Array(rejected) + lockedTitles, full: false)
+    }
+
+    private func swap(_ card: NookAPI.PlanCardDTO) async {
+        rejected.insert(card.title)
+        await draft(dates: [card.date], avoid: Array(rejected), full: false)
+    }
+
+    private func pickRecipe(date: String, _ r: NookAPI.RecipeSummary) {
+        if let old = suggestions.first(where: { $0.date == date }) { rejected.insert(old.title) }
+        let card = NookAPI.PlanCardDTO(date: date, mealType: "dinner", title: r.title, recipeId: r.id, emoji: r.emoji,
+                                       minutes: r.cookTimeMinutes, servings: cookingFor > 0 ? cookingFor : familySize, note: "Your pick")
+        suggestions = suggestions.map { $0.date == date ? card : $0 }.sorted { $0.date < $1.date }
+        notice = nil; pickTarget = nil
+    }
+
+    private func toggleLock(_ date: String) { if locked.contains(date) { locked.remove(date) } else { locked.insert(date) } }
+    private func skip(_ card: NookAPI.PlanCardDTO) { withAnimation { skipped.insert(card.date) } }
+
+    private func apply() async {
+        applying = true
+        for card in activeSuggestions {
+            _ = await sync.setMealPlan(date: card.date, mealType: card.mealType,
+                                       recipeId: card.recipeId, title: card.recipeId == nil ? card.title : nil)
+        }
+        await sync.rebuildGroceryFromWeek(weekStart: monthStart)
+        applying = false
+        onApplied()
+        dismiss()
+    }
+
+    // MARK: helpers
+
+    private func friendly(_ err: String) -> String {
+        err == "AIUnavailable" || err == "No AI provider configured"
+            ? "No AI provider is set up. Choose one in Settings → AI & capture." : err
+    }
+    private func viaLabel(_ v: String) -> String {
+        switch v { case "anthropic": return "Claude"; case "openai": return "OpenAI"
+        case "ollama", "local": return "local AI"; default: return v }
+    }
+    private func weekday(_ ymd: String) -> String {
+        guard let d = DateFmt.date(ymd, "yyyy-MM-dd", sync.householdTz) else { return ymd }
+        return DateFmt.string(d, "EEE MMM d", sync.householdTz).uppercased()
+    }
+}

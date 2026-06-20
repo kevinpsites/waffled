@@ -16,6 +16,7 @@ struct MonthPlannerView: View {
     @State private var picking: WeekPlannerView.PlanTarget?
     /// The day currently under a drag (highlighted as the drop target).
     @State private var dropTarget: String?
+    @State private var planningMonth = false
 
     private let weekdaySymbols = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
     private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 5), count: 7) }
@@ -27,6 +28,17 @@ struct MonthPlannerView: View {
                 Text("Dinners for the month · tap to add or open · drag a night onto another to swap")
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                if hasEmptyNight {
+                    Button { planningMonth = true } label: {
+                        HStack(spacing: 7) {
+                            Text("✨").font(.system(size: 15))
+                            Text("Plan my month").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                        }
+                        .frame(maxWidth: .infinity).padding(.vertical, 12)
+                        .background(NK.ai).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
                 weekdayRow
                 LazyVGrid(columns: columns, spacing: 5) {
                     ForEach(gridDays, id: \.self) { day in cell(day) }
@@ -47,6 +59,19 @@ struct MonthPlannerView: View {
                     await load()
                 }
             }
+        }
+        .sheet(isPresented: $planningMonth) {
+            PlanMonthSheet(monthStart: ymd(monthStart), monthLabel: fmt(monthStart, "MMMM"),
+                           familySize: max(1, sync.members.count), recipes: recipes) {
+                Task { await load() }
+            }
+        }
+    }
+
+    /// Any in-month night without a dinner — drives the "Plan my month" CTA.
+    private var hasEmptyNight: Bool {
+        gridDays.contains { day in
+            cal.isDate(day, equalTo: monthStart, toGranularity: .month) && dinnerByDate[ymd(day)] == nil
         }
     }
 
