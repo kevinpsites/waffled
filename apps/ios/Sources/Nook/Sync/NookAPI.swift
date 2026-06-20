@@ -1173,10 +1173,13 @@ struct NookAPI: Sendable {
 
     /// Log progress against a goal: `amount` (can be negative to correct), credited
     /// to `personIds` (one log per person; empty = unattributed pool).
-    func logGoalProgress(goalId: String, amount: Double, personIds: [String], note: String?) async throws {
-        var body: [String: JSONValue] = ["amount": .int(Int(amount))]
+    /// Log progress. `loggedOn` (YYYY-MM-DD) backdates the entry to catch up a missed
+    /// day and keep a streak alive; nil logs against today.
+    func logGoalProgress(goalId: String, amount: Double, personIds: [String], note: String?, loggedOn: String? = nil) async throws {
+        var body: [String: JSONValue] = ["amount": .double(amount)]
         if !personIds.isEmpty { body["personIds"] = .array(personIds.map(JSONValue.string)) }
         if let note, !note.isEmpty { body["note"] = .string(note) }
+        if let loggedOn, !loggedOn.isEmpty { body["loggedOn"] = .string(loggedOn) }
         try await send("POST", "/api/goals/\(goalId)/log", body: body)
     }
 

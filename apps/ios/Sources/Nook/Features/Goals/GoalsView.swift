@@ -58,9 +58,9 @@ final class GoalsModel {
         catch { self.error = true }
     }
 
-    func log(goalId: String, amount: Double, personIds: [String], note: String) async {
+    func log(goalId: String, amount: Double, personIds: [String], note: String, loggedOn: String?) async {
         do {
-            try await api.logGoalProgress(goalId: goalId, amount: amount, personIds: personIds, note: note)
+            try await api.logGoalProgress(goalId: goalId, amount: amount, personIds: personIds, note: note, loggedOn: loggedOn)
             await loadGoals()
         } catch { self.error = true }
     }
@@ -202,8 +202,8 @@ struct GoalsView: View {
         .task { if model.lists.isEmpty { await model.loadLists() } }
         .refreshable { await model.loadLists() }
         .sheet(item: $logging) { g in
-            GoalLogSheet(goal: g) { amount, ids, note in
-                Task { await model.log(goalId: g.id, amount: amount, personIds: ids, note: note) }
+            GoalLogSheet(goal: g) { amount, ids, note, loggedOn in
+                Task { await model.log(goalId: g.id, amount: amount, personIds: ids, note: note, loggedOn: loggedOn) }
             }
         }
         .sheet(isPresented: $creating) {
@@ -460,12 +460,19 @@ struct GoalsView: View {
 struct GoalLogSheet: View {
     @Environment(\.dismiss) private var dismiss
     let goal: NookAPI.Goal
-    let onSave: (Double, [String], String) -> Void
+    /// 4th arg is the backdate (YYYY-MM-DD), or nil for today.
+    let onSave: (Double, [String], String, String?) -> Void
 
     @State private var amount: Double
     @State private var amountText: String
     @State private var who: Set<String>
     @State private var note = ""
+    /// The day this entry counts for — defaults to today, backdate to catch up a streak.
+    @State private var loggedOn = Date()
+
+    private static let ymd: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.calendar = Calendar.current; return f
+    }()
 
     private static let hourUnits: Set<String> = ["hour", "hours", "hr", "hrs"]
     private static let activityChips = ["Bike ride", "Park", "Sports", "Outside play", "Reading", "Art"]
@@ -479,7 +486,7 @@ struct GoalLogSheet: View {
         return [1, 2, 3, 5].map { (label: "\(Int($0))\(u)", value: Double($0)) }
     }
 
-    init(goal: NookAPI.Goal, onSave: @escaping (Double, [String], String) -> Void) {
+    init(goal: NookAPI.Goal, onSave: @escaping (Double, [String], String, String?) -> Void) {
         self.goal = goal
         self.onSave = onSave
         let initial = goal.unit.map { GoalLogSheet.hourUnits.contains($0.lowercased()) } ?? false ? 1.0 : 2.0
@@ -507,6 +514,11 @@ struct GoalLogSheet: View {
                                 .onChange(of: amountText) { _, new in if let v = Double(new) { amount = v } }
                             if let u = goal.unit { Text(u).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3) }
                         }
+                    }
+
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "When?")
+                        whenRow
                     }
 
                     if !goal.participants.isEmpty {
@@ -545,7 +557,8 @@ struct GoalLogSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Log \(goalFmt(amount))\(goal.unit.map { " \($0)" } ?? "")") {
-                        onSave(amount, Array(who), note.trimmingCharacters(in: .whitespacesAndNewlines))
+                        let backdate = Calendar.current.isDateInToday(loggedOn) ? nil : Self.ymd.string(from: loggedOn)
+                        onSave(amount, Array(who), note.trimmingCharacters(in: .whitespacesAndNewlines), backdate)
                         dismiss()
                     }
                     .fontWeight(.semibold)
@@ -571,6 +584,34 @@ struct GoalLogSheet: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+
+    /// Quick Today/Yesterday chips plus a compact picker for any earlier day — so a
+    /// missed log can be backdated without breaking the streak. Future days disabled.
+    private var whenRow: some View {
+        let cal = Calendar.current
+        let today = Date()
+        let yesterday = cal.date(byAdding: .day, value: -1, to: today) ?? today
+        return HStack(spacing: 8) {
+            dayChip("Today", date: today)
+            dayChip("Yesterday", date: yesterday)
+            Spacer()
+            DatePicker("", selection: $loggedOn, in: ...today, displayedComponents: .date)
+                .labelsHidden()
+        }
+    }
+
+    private func dayChip(_ label: String, date: Date) -> some View {
+        let on = Calendar.current.isDate(loggedOn, inSameDayAs: date)
+        return Button { loggedOn = date } label: {
+            Text(label).font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(on ? .white : NK.ink2)
+                .padding(.horizontal, 14).padding(.vertical, 9)
+                .background(on ? NK.primary : NK.card)
+                .overlay(Capsule().strokeBorder(on ? Color.clear : NK.hair, lineWidth: 1))
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     private var whoRow: some View {
@@ -988,9 +1029,9 @@ final class GoalDetailModel {
         catch { self.error = true }
     }
 
-    func log(amount: Double, personIds: [String], note: String) async {
+    func log(amount: Double, personIds: [String], note: String, loggedOn: String?) async {
         do {
-            try await api.logGoalProgress(goalId: goal.id, amount: amount, personIds: personIds, note: note)
+            try await api.logGoalProgress(goalId: goal.id, amount: amount, personIds: personIds, note: note, loggedOn: loggedOn)
             await load()
         } catch { self.error = true }
     }
@@ -1069,8 +1110,8 @@ struct GoalDetailView: View {
         .task { await model.load() }
         .refreshable { await model.load() }
         .sheet(isPresented: $logging) {
-            GoalLogSheet(goal: logGoal) { amount, ids, note in
-                Task { await model.log(amount: amount, personIds: ids, note: note) }
+            GoalLogSheet(goal: logGoal) { amount, ids, note, loggedOn in
+                Task { await model.log(amount: amount, personIds: ids, note: note, loggedOn: loggedOn) }
             }
         }
         .sheet(isPresented: $editing) {
