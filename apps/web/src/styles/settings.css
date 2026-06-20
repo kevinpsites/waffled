@@ -275,7 +275,8 @@ select.sel {
   width: 180px;
 }
 .set-inline-input[type='time'] {
-  width: 120px;
+  /* Roomy enough for "08:00 AM" + the native clock icon without clipping. */
+  width: 158px;
 }
 
 /* Meals panel — toggle checkboxes + participant chips */

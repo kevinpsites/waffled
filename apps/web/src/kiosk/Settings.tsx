@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, goalCalendarApi, groceryApi, usePersons, useCurrencies, useConversions, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import '../styles/settings.css'
@@ -411,9 +411,11 @@ function MealsPanel() {
   const { persons } = usePersons()
   const [cfg, setCfg] = useState<MealCalendarSettings | null>(null)
   const [error, setError] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [dirty, setDirty] = useState(false)
+  const [savedFlash, setSavedFlash] = useState(false)
+  // Auto-save (like pantry staples) — no Save button, so meal settings and
+  // staples behave the same. dirtyRef gates the debounced save so echoing the
+  // server's normalized cfg back into state doesn't trigger another save.
+  const dirtyRef = useRef(false)
 
   useEffect(() => {
     mealsApi
@@ -424,9 +426,24 @@ function MealsPanel() {
 
   function update(patch: Partial<MealCalendarSettings>) {
     setCfg((c) => (c ? { ...c, ...patch } : c))
-    setDirty(true)
-    setSaved(false)
+    dirtyRef.current = true
   }
+
+  useEffect(() => {
+    if (!cfg || !dirtyRef.current) return
+    const t = setTimeout(async () => {
+      try {
+        const s = await mealsApi.setCalendarSettings(cfg)
+        dirtyRef.current = false
+        setCfg(s)
+        setSavedFlash(true)
+        setTimeout(() => setSavedFlash(false), 1800)
+      } catch {
+        setError(true)
+      }
+    }, 600)
+    return () => clearTimeout(t)
+  }, [cfg])
 
   if (error) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Sign this kiosk in to manage meal settings.</div></div>
   if (!cfg) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
@@ -440,24 +457,13 @@ function MealsPanel() {
     update({ participantIds: next.length === allIds.length ? null : next })
   }
 
-  async function save() {
-    if (!cfg) return
-    setSaving(true)
-    try {
-      const s = await mealsApi.setCalendarSettings(cfg)
-      setCfg(s)
-      setDirty(false)
-      setSaved(true)
-    } catch {
-      setError(true)
-    } finally {
-      setSaving(false)
-    }
-  }
-
   return (
     <div className="set-panel">
-      <div className="set-head"><div className="nk-serif set-head-t">Meals</div></div>
+      <div className="set-head" style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+        <div className="nk-serif set-head-t">Meals</div>
+        {savedFlash && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved · meals updated</span>}
+        <span className="tiny muted" style={{ marginLeft: 'auto', fontWeight: 600 }}>Changes save automatically</span>
+      </div>
 
       <div className="set-card">
         <SettingRow icon="📅" title="Add planned meals to the calendar" sub="Each meal you plan shows on the Nook calendar, linked to its recipe.">
@@ -504,13 +510,6 @@ function MealsPanel() {
             />
           </SettingRow>
         ))}
-      </div>
-
-      <div className="set-actions" style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
-        <button type="button" className="btn btn-primary" disabled={!dirty || saving} onClick={save}>
-          {saving ? 'Saving…' : 'Save'}
-        </button>
-        {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved · existing meals updated</span>}
       </div>
 
       <StaplesEditor />
