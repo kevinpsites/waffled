@@ -365,8 +365,6 @@ struct ChoresView: View {
                         }
                     }
                 }
-                .contentShape(Rectangle())
-                .onTapGesture { editor = .edit(inst) }
                 Spacer(minLength: 6)
                 if isAwaiting {
                     HStack(spacing: 6) {
@@ -384,6 +382,10 @@ struct ChoresView: View {
                 }
             }
             .padding(.vertical, 9)
+            // Tap anywhere on the row to edit — the tick and approve/reject Buttons
+            // intercept their own taps, so they're unaffected.
+            .contentShape(Rectangle())
+            .onTapGesture { editor = .edit(inst) }
 
             if isGrabs && claiming == inst.id { claimPicker(inst) }
         }
