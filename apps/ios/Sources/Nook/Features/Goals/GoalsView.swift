@@ -673,6 +673,28 @@ struct GoalCreateSheet: View {
                                         "spiritual": "Spiritual", "creative": "Creative", "social": "Social"]
 
     struct Milestone: Identifiable { let id = UUID(); var emoji: String; var threshold: String; var reward: String }
+
+    /// Sensible starter milestones per goal type (thresholds mean different things —
+    /// streak days for habit, % for checklist, amount otherwise). Mirrors the web.
+    static func defaultMilestones(for type: String) -> [Milestone] {
+        switch type {
+        case "count":
+            return [.init(emoji: "🌱", threshold: "5", reward: "+5 ★ bonus"),
+                    .init(emoji: "⛺", threshold: "10", reward: "Treat"),
+                    .init(emoji: "🏆", threshold: "25", reward: "Big reward")]
+        case "habit":
+            return [.init(emoji: "🌱", threshold: "7", reward: "+10 ★ bonus"),
+                    .init(emoji: "🔥", threshold: "30", reward: "Movie night"),
+                    .init(emoji: "🏆", threshold: "100", reward: "Big reward")]
+        case "checklist":
+            return [.init(emoji: "🌱", threshold: "50", reward: "Halfway treat"),
+                    .init(emoji: "🏆", threshold: "100", reward: "All done — big reward")]
+        default: // total
+            return [.init(emoji: "🌱", threshold: "250", reward: "+25 ★ bonus"),
+                    .init(emoji: "⛺", threshold: "500", reward: "Family movie night"),
+                    .init(emoji: "🏆", threshold: "1000", reward: "Big reward")]
+        }
+    }
     /// A checklist step. `existingId` is the server id when editing (so steps are
     /// updated, not recreated); nil for newly added rows.
     struct Step: Identifiable { let id = UUID(); var existingId: String?; var label: String }
@@ -823,6 +845,11 @@ struct GoalCreateSheet: View {
                 }
             }
             .onAppear(perform: prefill)
+            // Switching type swaps in that type's starter milestones (thresholds mean
+            // different things per type). Only in create — edits keep the goal's own.
+            .onChange(of: goalType) { _, t in
+                if editGoal == nil { milestones = Self.defaultMilestones(for: t) }
+            }
             .sheet(isPresented: $creatingList) {
                 GoalListCreateSheet(members: members) { list in
                     localLists.append(list)
@@ -951,9 +978,27 @@ struct GoalCreateSheet: View {
         .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
     }
 
+    /// What a milestone's "number" means for the current goal type (mirrors the web).
+    private var milestoneHint: String {
+        switch goalType {
+        case "habit":
+            return "Number = 🔥 streak days (e.g. 30 → reward at a 30-day streak)"
+        case "checklist":
+            return "Number = % complete — enter 80 for 80% (100 = all steps done)"
+        default:
+            let u = unit.trimmingCharacters(in: .whitespaces)
+            let noun = u.isEmpty ? "amount" : u
+            let example = u.isEmpty ? "500" : "500 \(u)"
+            return "Number = \(noun) reached (e.g. 500 → reward at \(example))"
+        }
+    }
+
     private var milestoneEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionLabel(text: "Milestones & rewards")
+            Text(milestoneHint)
+                .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                .fixedSize(horizontal: false, vertical: true)
             ForEach($milestones) { $m in
                 HStack(spacing: 8) {
                     TextField("🎯", text: $m.emoji).frame(width: 38).multilineTextAlignment(.center)
