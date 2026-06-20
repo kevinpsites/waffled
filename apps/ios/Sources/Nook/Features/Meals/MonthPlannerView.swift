@@ -14,6 +14,8 @@ struct MonthPlannerView: View {
     @State private var anchor = Date()
     @State private var entries: [NookAPI.WeekEntryDTO] = []
     @State private var picking: WeekPlannerView.PlanTarget?
+    /// The day currently under a drag (highlighted as the drop target).
+    @State private var dropTarget: String?
 
     private let weekdaySymbols = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
     private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 5), count: 7) }
@@ -22,7 +24,7 @@ struct MonthPlannerView: View {
         ScrollView {
             VStack(spacing: 12) {
                 monthHeader
-                Text("Dinners for the month · tap a night to add or open a recipe")
+                Text("Dinners for the month · tap to add or open · drag a night onto another to swap")
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 weekdayRow
@@ -109,19 +111,22 @@ struct MonthPlannerView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 4).padding(.vertical, 5)
-        .frame(maxWidth: .infinity, minHeight: 66, alignment: .top)
-        .background(inMonth ? NK.card : Color.clear)
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .strokeBorder(isToday ? NK.primary : NK.hair, lineWidth: isToday ? 1.5 : 1))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .opacity(inMonth ? 1 : 0.4)
+        let highlighted = dropTarget == ds
+        let visual = content
+            .padding(.horizontal, 4).padding(.vertical, 5)
+            .frame(maxWidth: .infinity, minHeight: 66, alignment: .top)
+            .background(highlighted ? NK.primary.opacity(0.1) : (inMonth ? NK.card : Color.clear))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(highlighted || isToday ? NK.primary : NK.hair, lineWidth: highlighted || isToday ? 2 : 1))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .opacity(inMonth ? 1 : 0.4)
 
         if inMonth {
-            Button { tap(day, entry) } label: { content }
-                .buttonStyle(.plain)
-                .contextMenu {
-                    if let e = entry {
+            let button = Button { tap(day, entry) } label: { visual }.buttonStyle(.plain)
+            if let e = entry {
+                button
+                    .draggable(ds) { dragPreview(e) }
+                    .contextMenu {
                         Button { picking = .init(date: e.date, mealType: "dinner") } label: {
                             Label("Change", systemImage: "arrow.triangle.2.circlepath")
                         }
@@ -129,9 +134,52 @@ struct MonthPlannerView: View {
                             Task { _ = await sync.clearMealPlan(date: e.date, mealType: "dinner"); await load() }
                         } label: { Label("Remove", systemImage: "trash") }
                     }
+                    .dropDestination(for: String.self) { items, _ in drop(items, on: ds) } isTargeted: { over in
+                        dropTarget = over ? ds : (dropTarget == ds ? nil : dropTarget)
+                    }
+            } else {
+                button.dropDestination(for: String.self) { items, _ in drop(items, on: ds) } isTargeted: { over in
+                    dropTarget = over ? ds : (dropTarget == ds ? nil : dropTarget)
                 }
+            }
         } else {
-            content
+            visual
+        }
+    }
+
+    /// A floating chip shown while dragging a night.
+    private func dragPreview(_ e: NookAPI.WeekEntryDTO) -> some View {
+        HStack(spacing: 5) {
+            Text(e.recipe?.emoji ?? (isEatingOut(e) ? "🍴" : "🍽️")).font(.system(size: 14))
+            Text(e.displayTitle).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(NK.card).clipShape(Capsule()).overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    /// Handle a dropped source day onto `target` — swap (or move) the two dinners.
+    private func drop(_ items: [String], on target: String) -> Bool {
+        guard let src = items.first, src != target else { return false }
+        Task { await swap(src, target) }
+        return true
+    }
+
+    /// Swap the dinners on two days (a move when the target is empty).
+    private func swap(_ src: String, _ tgt: String) async {
+        let a = dinnerByDate[src]
+        let b = dinnerByDate[tgt]
+        await place(b, on: src)
+        await place(a, on: tgt)
+        await load()
+    }
+
+    private func place(_ entry: NookAPI.WeekEntryDTO?, on date: String) async {
+        if let e = entry {
+            _ = await sync.setMealPlan(date: date, mealType: "dinner",
+                                       recipeId: e.recipeId, title: e.recipeId == nil ? (e.title ?? e.displayTitle) : nil,
+                                       cookPersonId: e.cook?.personId)
+        } else {
+            _ = await sync.clearMealPlan(date: date, mealType: "dinner")
         }
     }
 
