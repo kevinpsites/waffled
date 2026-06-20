@@ -24,6 +24,7 @@ import { registerGoalRoutes } from './modules/goals/goals.routes'
 import { registerGoalCalendarRoutes } from './modules/goals/goal-calendar'
 import { registerOverviewRoutes } from './modules/overview/overview'
 import { registerTodayLayoutRoutes } from './modules/layout/today-layout'
+import { registerMobileTodayLayoutRoutes } from './modules/layout/mobile-today-layout'
 import { registerPhotoRoutes } from './modules/photos/photos'
 import { registerCaptureRoutes } from './modules/capture/capture'
 import { registerWeatherRoutes } from './integrations/weather'
@@ -157,6 +158,8 @@ registerOverviewRoutes(api)
 
 // Today dashboard card layout (/api/today-layout) — family default + user override
 registerTodayLayoutRoutes(api)
+// Mobile Today card layout (/api/today-layout/mobile) — phone-specific config
+registerMobileTodayLayoutRoutes(api)
 
 // Photos / memories (/api/photos…)
 registerPhotoRoutes(api)
