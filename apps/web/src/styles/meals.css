@@ -447,6 +447,17 @@
   color: var(--ink);
 }
 
+/* "Library is smaller than the month" nudge in the month planner. */
+.plan-lib-hint {
+  background: color-mix(in srgb, var(--gold, #e0a32e) 14%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--gold, #e0a32e) 35%, transparent);
+  border-radius: var(--r-md, 12px);
+  padding: 9px 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
 /* ===== Plan-my-month extra guardrails ===== */
 .pm-toggle {
   display: flex;

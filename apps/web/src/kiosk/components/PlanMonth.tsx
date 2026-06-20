@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { api, usePersons, useRecipes, type PlanCard, type Recipe } from '../../lib/api'
 import { useTopbarFull } from '../topbar-slot'
 import { Icon } from '../icons'
@@ -197,6 +197,22 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
   }
 
   const monthLabel = new Date(`${monthStart}T12:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  // How many dinners this month needs, given the chosen weekdays (minus skipped) —
+  // to nudge "add more recipes" when the library can't cover it without repeats.
+  const cookNightsCount = useMemo(() => {
+    const base = new Date(`${monthStart}T00:00:00`)
+    const y = base.getFullYear()
+    const m = base.getMonth()
+    const dim = new Date(y, m + 1, 0).getDate()
+    let n = 0
+    for (let day = 1; day <= dim; day++) {
+      const dt = new Date(y, m, day)
+      const iso = `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      if (weekdays.has(dt.getDay()) && !removed.has(iso)) n++
+    }
+    return n
+  }, [monthStart, weekdays, removed])
+  const libShort = recipes.length > 0 && recipes.length < cookNightsCount
   const labelFor = (date: string) => {
     const d = new Date(`${date}T12:00:00`)
     return { dow: DOW[d.getDay()], dt: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }
@@ -218,7 +234,13 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
       {/* Left: the guardrails */}
       <div className="plan-config">
         <div className="plan-title nk-serif">Plan {monthLabel}</div>
-        <div className="tiny muted plan-sub">Nook drafts a rotation of dinners and spreads it across the month — then builds your grocery list.</div>
+        <div className="tiny muted plan-sub">Nook drafts a rotation of your recipes and spreads it across the month — then builds your grocery list.</div>
+
+        {libShort && (
+          <div className="plan-lib-hint tiny">
+            📖 You have {recipes.length} recipe{recipes.length === 1 ? '' : 's'} but this month has ~{cookNightsCount} dinners, so some will repeat. Add more in <b>Explore recipes</b> for more variety.
+          </div>
+        )}
 
         <div className="flabel">Which nights?</div>
         <div className="plan-days">

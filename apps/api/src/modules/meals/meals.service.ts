@@ -542,11 +542,12 @@ export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<
     return { start: monthStartStr, mealType, suggestions: [], via: 'none', error: 'Add some recipes to your library first — the month planner only schedules recipes you have.' }
   }
   const allowRepeats = input.allowRepeats !== false // default on for a month
-  // Use as many distinct library recipes as possible so repeats are rare and spread
-  // out (bounded by the library — more recipes ⇒ more variety).
-  const poolSize = allowRepeats
-    ? Math.min(lib.length, Math.max(cookNights.length, lib.length))
-    : Math.min(lib.length, Math.max(1, cookNights.length))
+  // Aim for one distinct library recipe per night (bounded by the library) so the
+  // month is as varied as the library allows — repeats only when there genuinely
+  // aren't enough recipes. The pool is topped up from the library after the LLM
+  // picks, so a weak model under-selecting doesn't force a repetitive month.
+  const targetPool = Math.min(lib.length, Math.max(1, cookNights.length))
+  const poolSize = Math.min(lib.length, Math.max(targetPool, activeThemeKeys.length + 6))
 
   const themeList = activeThemeKeys.map((k) => `${k} (${MONTH_THEMES[k].hint})`)
   const system = [
@@ -610,9 +611,16 @@ export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<
     const themesArr = Array.isArray(d.themes) ? d.themes.filter((x): x is string => typeof x === 'string') : []
     pool.push({ title: recipe.title, recipeId: recipe.id, emoji: recipe.emoji ?? null, minutes, effort: effortOf(minutes, typeof d.effort === 'string' ? d.effort : undefined), themes: themesArr })
   }
-  // Fallback: if the model returned nothing usable, just rotate the library itself.
-  if (pool.length === 0) {
-    for (const r of recipes.slice(0, poolSize)) {
+  // Top up from the library with recipes the model didn't pick, up to one distinct
+  // recipe per night. So a rich library yields a varied (often fully unique) month
+  // even when a weak model under-selects — repeats only happen when the library is
+  // genuinely smaller than the month. The LLM's themed/smart picks stay first.
+  if (pool.length < targetPool) {
+    for (const r of recipes) {
+      if (pool.length >= targetPool) break
+      const nt = normTitle(r.title)
+      if (seenTitles.has(nt)) continue
+      seenTitles.add(nt)
       pool.push({ title: r.title, recipeId: r.id, emoji: r.emoji ?? null, minutes: r.cook_time_minutes ?? null, effort: effortOf(r.cook_time_minutes ?? null), themes: [] })
     }
   }
