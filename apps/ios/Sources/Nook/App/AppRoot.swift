@@ -46,6 +46,8 @@ struct AppRoot: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // App-wide offline / pending-sync strip, pushed below the status bar.
+            .safeAreaInset(edge: .top, spacing: 0) { OfflineBanner() }
 
             NookTabBar(tab: $tab, onCapture: { showCapture = true },
                        onReselect: {
