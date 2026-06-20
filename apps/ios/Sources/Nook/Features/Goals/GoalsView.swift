@@ -632,9 +632,7 @@ struct GoalLogSheet: View {
                             }
                         }
                         .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
-                        .background(on ? NK.primary.opacity(0.12) : NK.card)
-                        .overlay(Capsule().strokeBorder(on ? NK.primary : NK.hair, lineWidth: on ? 1.5 : 1))
-                        .clipShape(Capsule())
+                        .nkChip(selected: on)
                     }
                     .buttonStyle(.plain)
                 }
@@ -757,9 +755,7 @@ struct GoalCreateSheet: View {
                                         .font(.system(size: 13, weight: .semibold))
                                         .foregroundStyle(on ? NK.ink : NK.ink2)
                                         .padding(.horizontal, 12).padding(.vertical, 7)
-                                        .background(on ? NK.primary.opacity(0.12) : NK.card)
-                                        .overlay(Capsule().strokeBorder(on ? NK.primary : NK.hair, lineWidth: on ? 1.5 : 1))
-                                        .clipShape(Capsule())
+                                        .nkChip(selected: on)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -801,9 +797,7 @@ struct GoalCreateSheet: View {
                                         .font(.system(size: 13, weight: .semibold))
                                         .foregroundStyle(on ? c : NK.ink2)
                                         .padding(.horizontal, 12).padding(.vertical, 7)
-                                        .background(on ? c.opacity(0.14) : NK.card)
-                                        .overlay(Capsule().strokeBorder(on ? c : NK.hair, lineWidth: on ? 1.5 : 1))
-                                        .clipShape(Capsule())
+                                        .nkChip(selected: on, tint: c)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -1503,9 +1497,7 @@ struct GoalListCreateSheet: View {
                                             .foregroundStyle(on ? NK.ink : NK.ink2)
                                     }
                                     .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
-                                    .background(on ? c.opacity(0.14) : NK.card)
-                                    .overlay(Capsule().strokeBorder(on ? c : NK.hair, lineWidth: on ? 1.5 : 1))
-                                    .clipShape(Capsule())
+                                    .nkChip(selected: on, tint: c)
                                 }
                                 .buttonStyle(.plain)
                             }

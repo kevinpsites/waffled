@@ -616,9 +616,7 @@ struct ChoreEditSheet: View {
             Text(label).font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(on ? NK.ink : NK.ink2)
                 .padding(.horizontal, 12).padding(.vertical, 7)
-                .background(on ? NK.primary.opacity(0.12) : NK.card)
-                .overlay(Capsule().strokeBorder(on ? NK.primary : NK.hair, lineWidth: on ? 1.5 : 1))
-                .clipShape(Capsule())
+                .nkChip(selected: on)
         }
         .buttonStyle(.plain)
     }

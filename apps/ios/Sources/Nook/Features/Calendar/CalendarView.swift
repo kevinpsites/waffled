@@ -613,9 +613,7 @@ struct EventEditSheet: View {
                                             .foregroundStyle(on ? NK.ink : NK.ink2)
                                     }
                                     .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
-                                    .background(on ? c.opacity(0.14) : NK.card)
-                                    .overlay(Capsule().strokeBorder(on ? c : NK.hair, lineWidth: on ? 1.5 : 1))
-                                    .clipShape(Capsule())
+                                    .nkChip(selected: on, tint: c)
                                 }
                                 .buttonStyle(.plain)
                             }

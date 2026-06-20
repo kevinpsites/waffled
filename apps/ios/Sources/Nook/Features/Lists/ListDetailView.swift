@@ -849,9 +849,7 @@ struct ListDetailView: View {
             }
             .foregroundStyle(selected ? NK.ink : NK.ink2)
             .padding(.horizontal, 12).padding(.vertical, 7)
-            .background(selected ? NK.primary.opacity(0.12) : NK.card)
-            .overlay(Capsule().strokeBorder(selected ? NK.primary : NK.hair, lineWidth: selected ? 1.5 : 1))
-            .clipShape(Capsule())
+            .nkChip(selected: selected)
         }
         .buttonStyle(.plain)
     }
@@ -1020,9 +1018,7 @@ struct ItemDetailEditor: View {
                     .foregroundStyle(selected ? NK.ink : NK.ink2)
             }
             .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
-            .background(selected ? NK.primary.opacity(0.12) : NK.card)
-            .overlay(Capsule().strokeBorder(selected ? NK.primary : NK.hair, lineWidth: selected ? 1.5 : 1))
-            .clipShape(Capsule())
+            .nkChip(selected: selected)
         }
         .buttonStyle(.plain)
     }
@@ -1036,9 +1032,7 @@ struct ItemDetailEditor: View {
                         Text(s).font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(selected ? NK.ink : NK.ink2)
                             .padding(.horizontal, 12).padding(.vertical, 7)
-                            .background(selected ? NK.primary.opacity(0.12) : NK.card)
-                            .overlay(Capsule().strokeBorder(selected ? NK.primary : NK.hair, lineWidth: selected ? 1.5 : 1))
-                            .clipShape(Capsule())
+                            .nkChip(selected: selected)
                     }
                     .buttonStyle(.plain)
                 }
