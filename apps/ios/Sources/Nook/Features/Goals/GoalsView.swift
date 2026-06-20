@@ -663,16 +663,19 @@ struct GoalCreateSheet: View {
 
     private struct TypeOpt { let key, emoji, title, desc: String }
     private static let types = [
-        TypeOpt(key: "count", emoji: "🔢", title: "Count", desc: "Reach a number"),
-        TypeOpt(key: "total", emoji: "⏱️", title: "Total amount", desc: "Add up over time"),
-        TypeOpt(key: "habit", emoji: "🔁", title: "Habit", desc: "Repeat on a cadence"),
-        TypeOpt(key: "checklist", emoji: "🪜", title: "Milestones", desc: "A checklist of steps"),
+        TypeOpt(key: "total", emoji: "⏱️", title: "Total amount", desc: "Adds up — can split (hours, miles)"),
+        TypeOpt(key: "count", emoji: "🔢", title: "Count", desc: "Whole things (books, parks)"),
+        TypeOpt(key: "habit", emoji: "🔁", title: "Habit", desc: "Once a day, on a cadence"),
+        TypeOpt(key: "checklist", emoji: "🪜", title: "Checklist", desc: "Named steps you tick off"),
     ]
     private static let categories = ["physical", "intellectual", "spiritual", "creative", "social"]
     private static let categoryLabel = ["physical": "Physical", "intellectual": "Intellectual",
                                         "spiritual": "Spiritual", "creative": "Creative", "social": "Social"]
 
     struct Milestone: Identifiable { let id = UUID(); var emoji: String; var threshold: String; var reward: String }
+    /// A checklist step. `existingId` is the server id when editing (so steps are
+    /// updated, not recreated); nil for newly added rows.
+    struct Step: Identifiable { let id = UUID(); var existingId: String?; var label: String }
 
     @State private var title = ""
     @State private var goalListId: String?
@@ -693,9 +696,23 @@ struct GoalCreateSheet: View {
         .init(emoji: "⛺", threshold: "500", reward: "Family movie night"),
         .init(emoji: "🏆", threshold: "1000", reward: "Big reward"),
     ]
+    @State private var steps: [Step] = [
+        .init(existingId: nil, label: ""), .init(existingId: nil, label: ""), .init(existingId: nil, label: ""),
+    ]
 
     private var isHabit: Bool { goalType == "habit" }
-    private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var isChecklist: Bool { goalType == "checklist" }
+    private var filledSteps: [Step] { steps.filter { !$0.label.trimmingCharacters(in: .whitespaces).isEmpty } }
+
+    /// Mirrors the web's per-type validation: a name, plus a valid measure.
+    private var canSave: Bool {
+        guard !title.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        switch goalType {
+        case "checklist": return !filledSteps.isEmpty
+        case "habit":     return (Int(habitPer) ?? 0) > 0
+        default:          return (Double(target) ?? 0) > 0 && !unit.trimmingCharacters(in: .whitespaces).isEmpty
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -771,11 +788,20 @@ struct GoalCreateSheet: View {
                         }
                     }
 
-                    toggleRow("📅", "Also auto-count from calendar", "Matching calendar events add progress automatically", $autoFromCalendar)
-                    if autoFromCalendar {
-                        Text("✦ Calendar events you link to this goal show up on Today to confirm — and you can schedule time for it right from the goal.")
-                            .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
-                            .fixedSize(horizontal: false, vertical: true)
+                    // Calendar auto-count is offered for total/count/habit only — a
+                    // checklist's progress comes from ticking steps, not from events.
+                    if !isChecklist {
+                        section("How is progress logged?") {
+                            Text("You can always log it yourself, anytime. Optionally let the calendar count too:")
+                                .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                                .fixedSize(horizontal: false, vertical: true)
+                            toggleRow("📅", "Also auto-count from calendar ✦", "Matching calendar events add progress automatically", $autoFromCalendar)
+                            if autoFromCalendar {
+                                Text("✦ Calendar events you link to this goal show up on Today to confirm — and you can schedule time for it right from the goal.")
+                                    .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                     }
                     toggleRow("⭐", "Feature on the home screen", "Shows big on the family hub", $isFeatured)
                     toggleRow("🏆", "Milestones & rewards", "Bonus stars at custom thresholds", $hasRewards)
@@ -836,28 +862,61 @@ struct GoalCreateSheet: View {
 
     @ViewBuilder private var measureRow: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                if isHabit {
-                    numField($habitPer, width: 70)
-                    Text("× a").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
-                    Picker("Period", selection: $habitPeriod) {
-                        Text("day").tag("day"); Text("week").tag("week"); Text("month").tag("month")
+            if isChecklist {
+                stepsEditor
+            } else {
+                HStack(spacing: 10) {
+                    if isHabit {
+                        numField($habitPer, width: 70)
+                        Text("× a").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
+                        Picker("Period", selection: $habitPeriod) {
+                            Text("day").tag("day"); Text("week").tag("week"); Text("month").tag("month")
+                        }
+                        .pickerStyle(.menu).tint(NK.ink)
+                        Spacer()
+                    } else {
+                        numField($target, width: 90)
+                        plainField("hours", text: $unit)
                     }
-                    .pickerStyle(.menu).tint(NK.ink)
-                    Spacer()
-                } else {
-                    numField($target, width: 90)
-                    plainField("hours", text: $unit)
                 }
             }
             Toggle(isOn: $hasDeadline.animation()) {
-                Text("Set a deadline").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
+                Text(isChecklist ? "Finish by a date" : (isHabit ? "Keep it up until" : "Set a deadline"))
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
             }
             .tint(FamilyColor.wally.solid)
             if hasDeadline {
                 DatePicker("Deadline", selection: $deadline, displayedComponents: .date)
                     .datePickerStyle(.compact).labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
             }
+        }
+    }
+
+    /// Named checklist steps (matches the web): numbered rows you edit + add to.
+    private var stepsEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(steps.enumerated()), id: \.element.id) { idx, _ in
+                HStack(spacing: 8) {
+                    Text("\(idx + 1)").font(.system(size: 13, weight: .heavy)).foregroundStyle(NK.ink3)
+                        .frame(width: 26, height: 38).background(NK.panel)
+                        .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                    TextField("Step \(idx + 1)", text: $steps[idx].label)
+                        .font(.system(size: 15, weight: .semibold))
+                        .padding(.horizontal, 12).padding(.vertical, 10).background(NK.card)
+                        .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                    if steps.count > 1 {
+                        Button { steps.remove(at: idx) } label: {
+                            Image(systemName: "minus.circle.fill").font(.system(size: 18)).foregroundStyle(NK.ink3)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            Button { steps.append(.init(existingId: nil, label: "")) } label: {
+                Label("Add step", systemImage: "plus").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ai)
+            }
+            .buttonStyle(.plain).padding(.top, 2)
         }
     }
 
@@ -950,6 +1009,9 @@ struct GoalCreateSheet: View {
                 .init(emoji: $0.emoji ?? "🎯", threshold: goalFmt($0.threshold), reward: $0.rewardText ?? "")
             }
         }
+        if !g.steps.isEmpty {
+            steps = g.steps.map { .init(existingId: $0.id, label: $0.label) }
+        }
     }
 
     private static func parseDay(_ iso: String) -> Date? {
@@ -968,8 +1030,9 @@ struct GoalCreateSheet: View {
             "logMethod": .string("quick_log"),
             "isFeatured": .bool(isFeatured),
             "hasRewards": .bool(hasRewards),
-            "autoFromCalendar": .bool(autoFromCalendar),
-            "unit": isHabit ? .null : (unit.trimmingCharacters(in: .whitespaces).isEmpty ? .null : .string(unit.trimmingCharacters(in: .whitespaces))),
+            // Checklist progress comes from steps, never from the calendar.
+            "autoFromCalendar": .bool(isChecklist ? false : autoFromCalendar),
+            "unit": (isHabit || isChecklist) ? .null : (unit.trimmingCharacters(in: .whitespaces).isEmpty ? .null : .string(unit.trimmingCharacters(in: .whitespaces))),
             "deadline": hasDeadline ? .string(isoDay(deadline)) : .null,
         ]
         if isHabit {
@@ -977,6 +1040,14 @@ struct GoalCreateSheet: View {
             body["targetValue"] = .int(n)
             body["habitPeriod"] = .string(habitPeriod)
             body["habitTargetPerPeriod"] = .int(n)
+        } else if isChecklist {
+            body["targetValue"] = .null
+            // Named steps; carry the server id on edit so they're updated in place.
+            body["steps"] = .array(filledSteps.map { s in
+                var obj: [String: JSONValue] = ["label": .string(s.label.trimmingCharacters(in: .whitespaces))]
+                if let eid = s.existingId { obj["id"] = .string(eid) }
+                return .object(obj)
+            })
         } else {
             body["targetValue"] = Double(target).map(JSONValue.double) ?? .null
         }
