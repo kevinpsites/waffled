@@ -254,8 +254,65 @@ seeded so per-user behavior is testable. Note: the kiosk is single-identity toda
 the family tier is what the shared kiosk shows.
 
 **Deferred (bigger features, captured for the next pass):**
-- **Month meal view** — view/plan meals in a month grid alongside the current week
-  view (Meals screen).
 - **Pantry-add UX** — adding while viewing the Pantry list silently routes to
   Groceries instead of staples; staples are managed in Settings. Left as-is pending
   a clearer repro from the user; revisit the add-bar destination affordance then.
+
+**Month meal view + planner — SHIPPED 2026-06-20:** Week/Month toggle on the Meals
+screen; dinner-only month grid (`/api/meals/week?days=42`). "Plan my month" drafts a
+rotation: the LLM picks from the recipe library only (never invents), the pool is
+topped up from the library so a rich library yields a varied/unique month, and it's
+laid across the chosen nights honoring repeat-gap, weekday themes (metadata-derived,
+with a reserve pass so themed nights aren't starved), quick-weeknights, and
+leftovers. Already-planned nights show in the review (editable). Drag-to-swap on the
+month grid, week grid, and planner review (optimistic, pointer events). "Eating out"
++ "Leftovers" are always-available picker options. `POST /api/meals/plan-month`.
+
+## Self-hosted (Immich-style) — auth, onboarding, deployment — IN PROGRESS
+**Pivot (2026-06-20):** drop the Terraform/Auth0/cloud-zero path. Ship a self-hosted
+app you `git clone` + `docker compose up` and run; the operator chooses auth (built-in
+password or OIDC) and opts into S3 backup via env. The whole app gates on a JWT
+(`sub → identities → person → household`), so this is an **issuer + onboarding +
+packaging** layer in front — features are unchanged. Decisions: OIDC =
+**backend-mediated** (we run the code flow, mint our own session); sessions =
+**short access + rotating refresh**; images = **GHCR publish + build-from-source
+fallback**.
+
+**Built-in auth — SHIPPED (backend) 2026-06-20** (`modules/auth/auth.ts`, migration
+0040 `credentials` + `refresh_tokens`):
+- `GET  /api/auth/status` → `{ initialized, methods:["password"] }`
+- `POST /api/auth/setup` (one-time, locks once initialized) → `{ accessToken,
+  refreshToken, expiresIn, person, household }`. Body `{ household:{name,timezone},
+  admin:{name,email,password} }` (password ≥ 8).
+- `POST /api/auth/login` `{email,password}` → `{ accessToken, refreshToken, expiresIn }`
+- `POST /api/auth/refresh` `{refreshToken}` → new pair (**rotating, single-use**)
+- `POST /api/auth/logout` `{refreshToken}` → revoke
+- Passwords: Node `scrypt` (no dep). Access = HS256 JWT signed with `LOCAL_JWT_SECRET`
+  (issuer `nook-local`, aud `nook-api`) so `requireAuth` + the PowerSync token
+  exchange validate it unchanged. Refresh = opaque, sha256-at-rest. TTLs env-tunable:
+  `ACCESS_TOKEN_TTL_SECONDS` (default **3600 / 1h**), `REFRESH_TOKEN_TTL_DAYS`
+  (default **60**). Password users reuse `identities` (provider=`password`,
+  subject=credential id). Verified: 5 integration tests + live.
+
+### Mobile app login contract (replaces the hard-coded token)
+The iOS app authenticates with the **same endpoints** — token-based, JSON, no
+web-cookie assumptions:
+1. **Login:** `POST /api/auth/login {email,password}` → store `accessToken` +
+   `refreshToken` in the iOS Keychain.
+2. **Every request:** `Authorization: Bearer <accessToken>` (same header the
+   hard-coded token used). Also feeds the existing `GET /api/powersync/token`
+   exchange — PowerSync unchanged.
+3. **On 401:** `POST /api/auth/refresh {refreshToken}` → **replace BOTH** stored
+   tokens with the response, retry once. If refresh 401s → send back to Login.
+4. **Logout:** `POST /api/auth/logout {refreshToken}` then clear Keychain.
+- **Offline:** the access token is only needed online; offline reads come from the
+  local PowerSync SQLite, and reconnect after up to `REFRESH_TOKEN_TTL_DAYS` is
+  covered by the refresh token — so a 1h access TTL is safe for mobile.
+- **Token compatibility:** access tokens are HS256 over `LOCAL_JWT_SECRET` (issuer
+  `nook-local`, aud `nook-api`). Point the app's env at the **same** `LOCAL_JWT_SECRET`
+  the server uses (supersedes 4.2.1's Auth0 plan).
+
+**Next:** Phase 1b web setup-wizard + login screen (replace the localStorage dev
+token); Phase 2 OIDC (backend-mediated); Phase 3 GHCR images + `.env.example` +
+quickstart (retire Terraform); Phase 4 optional S3 backup + member-management UI
+(invite family members with their own logins).

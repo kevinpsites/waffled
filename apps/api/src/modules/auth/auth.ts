@@ -12,8 +12,11 @@ import { provisionHousehold, presentHousehold, presentPerson } from '../househol
 
 type Api = ReturnType<typeof createAPI>
 
-const ACCESS_TTL_SECONDS = 60 * 15 // 15 min
-const REFRESH_TTL_DAYS = 60
+// Access token is short-lived (online API calls only — offline clients read their
+// local PowerSync DB and need no token); the long refresh token covers reconnects
+// after a long time offline. Both env-tunable.
+const ACCESS_TTL_SECONDS = Number(process.env.ACCESS_TOKEN_TTL_SECONDS) || 60 * 60 // 1h
+const REFRESH_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS) || 60
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
 
 // ── password hashing (Node scrypt — no extra dependency) ─────────────────────
