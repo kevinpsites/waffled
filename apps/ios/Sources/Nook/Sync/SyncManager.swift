@@ -43,6 +43,14 @@ final class SyncManager {
     /// Nudge the goals refresh bus (call after logging/review changes goal progress).
     func touchGoals() { goalsRev += 1 }
 
+    /// The logged-in person's id, resolved from the token (so "my" goals etc. respect
+    /// whoever the device is signed in as). Loaded once.
+    private(set) var currentPersonId: String?
+    func loadIdentity() async {
+        guard currentPersonId == nil else { return }
+        currentPersonId = try? await api.currentPersonId()
+    }
+
     /// The household's reward currencies, loaded once (for chore/goal reward symbols).
     private(set) var currencies: [NookAPI.Currency] = []
     /// The symbol for a currency key (defaults to ⭐ / the household default).

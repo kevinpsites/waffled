@@ -589,6 +589,13 @@ struct NookAPI: Sendable {
     func householdSettings() async throws -> HouseholdSettings {
         try await getJSON("/api/household/settings", as: HouseholdSettings.self)
     }
+
+    /// The logged-in person, resolved server-side from the token's `sub` via the
+    /// identities table. nil if the account hasn't been provisioned yet.
+    func currentPersonId() async throws -> String? {
+        struct Resp: Decodable { let person: Person?; struct Person: Decodable { let id: String } }
+        return try await getJSON("/api/household", as: Resp.self).person?.id
+    }
     /// Edit household name/timezone/weekStart/location (admins).
     func updateHousehold(_ body: [String: JSONValue]) async throws { try await send("PATCH", "/api/household", body: body) }
 
