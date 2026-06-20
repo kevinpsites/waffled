@@ -521,9 +521,5 @@ struct CaptureSheet: View {
 
 private extension View {
     /// The white inner-field treatment used inside the "Nook understood" card.
-    func innerInput() -> some View {
-        background(NK.card2)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
-    }
+    func innerInput() -> some View { nkField(fill: NK.card2) }
 }

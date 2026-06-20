@@ -676,9 +676,6 @@ struct ChoreEditSheet: View {
 private extension View {
     /// The shared NK card-field chrome (white, hairline border, rounded).
     func cardField() -> some View {
-        frame(maxWidth: .infinity, alignment: .leading)
-            .background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        frame(maxWidth: .infinity, alignment: .leading).nkField()
     }
 }

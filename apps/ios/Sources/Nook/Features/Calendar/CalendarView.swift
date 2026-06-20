@@ -962,16 +962,10 @@ struct EventEditSheet: View {
 private extension View {
     /// The outer card-group chrome (white box on the tan sheet, hairline border).
     func cardBox() -> some View {
-        frame(maxWidth: .infinity, alignment: .leading)
-            .background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        frame(maxWidth: .infinity, alignment: .leading).nkField()
     }
     /// The inner input chrome (white, hairline border) — sits on the white box.
     func innerField() -> some View {
-        frame(maxWidth: .infinity, alignment: .leading)
-            .background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        frame(maxWidth: .infinity, alignment: .leading).nkField(radius: NK.rSM)
     }
 }
