@@ -117,16 +117,24 @@ export function registerGoalRoutes(api: Api): void {
     const tenant = await requireTenant(req)
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
-    const body = (req.body ?? {}) as { amount?: unknown; personId?: string; personIds?: string[]; note?: string }
+    const body = (req.body ?? {}) as { amount?: unknown; personId?: string; personIds?: string[]; note?: string; loggedOn?: unknown }
     const amount = Number(body.amount)
     if (!Number.isFinite(amount) || amount === 0) {
       return res.status(400).json({ error: 'BadRequest', message: 'amount must be a non-zero number' })
+    }
+    // Optional backdate to catch up a missed day (e.g. keep a streak alive).
+    let loggedOn: string | null = null
+    if (body.loggedOn != null && body.loggedOn !== '') {
+      if (typeof body.loggedOn !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.loggedOn)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'loggedOn must be a YYYY-MM-DD date' })
+      }
+      loggedOn = body.loggedOn
     }
     if (!(await goalExists(tenant.householdId, id))) {
       return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
     }
     const personIds = Array.isArray(body.personIds) ? body.personIds.filter(Boolean) : body.personId ? [body.personId] : []
-    await logProgress(tenant, id, amount, personIds, body.note ?? null)
+    await logProgress(tenant, id, amount, personIds, body.note ?? null, { at: loggedOn })
     return res.status(201).json({ ok: true })
   })
 

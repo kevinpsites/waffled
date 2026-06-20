@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { api, type Goal, type GoalStep } from '../../lib/api'
+import { api, localToday, type Goal, type GoalStep } from '../../lib/api'
 
 const HOURS = new Set(['hour', 'hours', 'hr', 'hrs'])
 const ACTIVITY_CHIPS = ['🚲 Bike ride', '🏞️ Park', '⚽ Sports', '🌳 Outside play', '📚 Reading', '🎨 Art']
@@ -70,6 +70,12 @@ export function LogModal({
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // Backdate a forgotten log (e.g. catch up yesterday to keep a streak). Defaults
+  // to today; only sent when it differs so normal logs keep their real timestamp.
+  const today = localToday()
+  const [loggedOn, setLoggedOn] = useState<string>(today)
+  // "Already done today" only blocks logging FOR today — you can still backdate.
+  const blocked = doneToday && loggedOn === today
 
   const toggleWho = (id: string) =>
     setWho((w) => (multi ? (w.includes(id) ? w.filter((x) => x !== id) : [...w, id]) : [id]))
@@ -83,12 +89,12 @@ export function LogModal({
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if (!logAmount || saving || doneToday) return
+    if (!logAmount || saving || blocked) return
     setSaving(true)
     try {
       // "Family" is a shared (no-person) log; strip the sentinel before sending.
       const personIds = who.filter((id) => id !== FAMILY)
-      await api.logGoal(goal.id, { amount: logAmount, personIds, note: note.trim() || null })
+      await api.logGoal(goal.id, { amount: logAmount, personIds, note: note.trim() || null, loggedOn: loggedOn !== today ? loggedOn : null })
       onSaved()
       onClose()
     } catch {
@@ -241,6 +247,16 @@ export function LogModal({
             </>
           )}
 
+          <div className="flabel" style={{ marginTop: 16 }}>When?{loggedOn !== today && <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600, color: 'var(--primary)' }}> · catching up</span>}</div>
+          <input
+            className="log-note"
+            type="date"
+            max={today}
+            value={loggedOn}
+            onChange={(e) => setLoggedOn(e.target.value || today)}
+            aria-label="Date this happened"
+          />
+
           <div className="flabel" style={{ marginTop: 16 }}>What did you do? <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 600, color: 'var(--ink-3)' }}>· optional</span></div>
           <input className="log-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Creek hike + fort building" />
           <div className="log-acts">
@@ -249,11 +265,11 @@ export function LogModal({
             ))}
           </div>
 
-          <button type="submit" className="btn btn-primary" disabled={!logAmount || saving || doneToday} style={{ width: '100%', justifyContent: 'center', marginTop: 18 }}>
+          <button type="submit" className="btn btn-primary" disabled={!logAmount || saving || blocked} style={{ width: '100%', justifyContent: 'center', marginTop: 18 }}>
             {saving
               ? 'Saving…'
               : isHabit
-                ? doneToday ? 'Done for today ✓' : '✓ Mark done for today'
+                ? blocked ? 'Done for today ✓' : loggedOn !== today ? '✓ Mark done' : '✓ Mark done for today'
                 : `Log ${logAmount}${goal.unit ? ` ${goal.unit}` : ''}`}
           </button>
         </form>

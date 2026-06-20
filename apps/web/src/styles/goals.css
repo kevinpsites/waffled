@@ -166,6 +166,7 @@ button.goal-listhead-link:hover {
   font-size: 29px;
   font-weight: 600;
   margin: 9px 0 3px;
+  text-transform: capitalize;
 }
 .hero-sub {
   font-size: 13px;
@@ -282,6 +283,36 @@ button.goal-listhead-link:hover {
 .gc-input-serif {
   font-family: var(--serif);
   font-size: 19px;
+}
+/* The goal name is the most important field on the page, so it gets to pop:
+   a bigger label, a larger accented input, and a focus ring — feedback was that
+   it was hard to tell where to actually name the goal. Titles display
+   title-cased (CSS only; stored as typed). */
+.gc-titlefield {
+  background: linear-gradient(180deg, var(--card), var(--card-2));
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  padding: 14px 16px 16px;
+  box-shadow: var(--sh-1);
+}
+.gc-title-label {
+  font-size: 13px;
+  color: var(--primary);
+}
+.gc-input-title {
+  font-size: 24px;
+  padding: 14px 16px;
+  border: 2px solid var(--primary);
+  background: var(--card);
+  text-transform: capitalize;
+}
+.gc-input-title::placeholder {
+  text-transform: none;
+  color: var(--ink-3);
+}
+.gc-input-title:focus {
+  outline: none;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 18%, transparent);
 }
 .gc-chips {
   display: flex;
@@ -440,6 +471,7 @@ button.goal-listhead-link:hover {
   font-size: 32px;
   font-weight: 600;
   margin: 9px 0 4px;
+  text-transform: capitalize;
 }
 .detail-hero-sub {
   font-size: 13.5px;

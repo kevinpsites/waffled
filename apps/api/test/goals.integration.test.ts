@@ -149,6 +149,28 @@ describe('goals api', () => {
     expect(goal.participants[0].progress).toBe(5)
   })
 
+  it('backdates a log to a chosen local day and rejects a malformed date', async () => {
+    const add = await call('POST', '/api/goals', kevin, {
+      title: 'Catch up', goalType: 'count', unit: 'days', targetValue: 30,
+      trackingMode: 'shared_total', participantIds: [kevinId],
+    })
+    const id = JSON.parse(add.body).goal.id
+    // A YYYY-MM-DD backdate is accepted...
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 1, personId: kevinId, loggedOn: '2026-06-15' })).statusCode).toBe(201)
+    // ...a non-date is rejected.
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 1, loggedOn: 'yesterday' })).statusCode).toBe(400)
+    // The entry lands on the chosen day in the household timezone (America/Chicago).
+    await withClient(async (c) => {
+      const r = await c.query<{ d: string }>(
+        `select (gl.logged_at at time zone h.timezone)::date::text d
+           from goal_logs gl join households h on h.id = gl.household_id
+          where gl.goal_id = $1 order by gl.created_at desc limit 1`,
+        [id]
+      )
+      expect(r.rows[0].d).toBe('2026-06-15')
+    })
+  })
+
   it('rejects a zero/NaN amount and an unknown goal (400/404)', async () => {
     const add = await call('POST', '/api/goals', kevin, { title: 'G', goalType: 'count', trackingMode: 'shared_total', targetValue: 1 })
     const id = JSON.parse(add.body).goal.id

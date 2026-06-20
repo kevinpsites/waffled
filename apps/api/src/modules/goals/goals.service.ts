@@ -582,11 +582,15 @@ export async function logProgress(
   amount: number,
   personIds: Array<string | null>,
   note?: string | null,
-  opts?: { source?: string; refType?: string | null; refId?: string | null }
+  opts?: { source?: string; refType?: string | null; refId?: string | null; at?: string | null }
 ): Promise<string[]> {
   const source = opts?.source ?? 'quick_log'
   const refType = opts?.refType ?? null
   const refId = opts?.refId ?? null
+  // Optional backdate (YYYY-MM-DD, household-local). Lands the entry at noon on
+  // that local day so it falls on the intended date in every timezone — used to
+  // catch up a forgotten log without breaking a streak.
+  const at = opts?.at ?? null
   const targets = personIds.length ? personIds : [null]
   const logIds: string[] = []
 
@@ -617,20 +621,25 @@ export async function logProgress(
     // A habit can only be logged once per day per person — logging it five times
     // in an afternoon isn't the point. Skip a same-day duplicate silently.
     if (isHabit) {
+      // Dedupe against the day we're logging FOR (the backdated day if given),
+      // not always "today" — so catching up yesterday doesn't collide with today.
+      const dayExpr = at ? '$4::date' : '(now() at time zone h.timezone)::date'
       const dup = await query(
         `select 1 from goal_logs gl, households h
           where h.id = $1 and gl.household_id = $1 and gl.goal_id = $2 and gl.deleted_at is null
             and gl.person_id is not distinct from $3
-            and (gl.logged_at at time zone h.timezone)::date = (now() at time zone h.timezone)::date
+            and (gl.logged_at at time zone h.timezone)::date = ${dayExpr}
           limit 1`,
-        [tenant.householdId, goalId, targets[i]]
+        at ? [tenant.householdId, goalId, targets[i], at] : [tenant.householdId, goalId, targets[i]]
       )
       if (dup.rowCount) continue
     }
     const ins = await query<{ id: string }>(
-      `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, ref_type, ref_id, created_by)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`,
-      [tenant.householdId, goalId, targets[i], amounts[i], note ?? null, source, refType, refId, tenant.personId]
+      `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, ref_type, ref_id, created_by${at ? ', logged_at' : ''})
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9${at ? `, ($10::date + time '12:00') at time zone (select timezone from households where id = $1)` : ''}) returning id`,
+      at
+        ? [tenant.householdId, goalId, targets[i], amounts[i], note ?? null, source, refType, refId, tenant.personId, at]
+        : [tenant.householdId, goalId, targets[i], amounts[i], note ?? null, source, refType, refId, tenant.personId]
     )
     logIds.push(ins.rows[0].id)
   }

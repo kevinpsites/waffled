@@ -104,7 +104,7 @@ export const goalsApi = {
   goal: (id: string) => apiGet<{ goal: GoalDetail }>(`/api/goals/${id}`),
   createGoal: (input: Record<string, unknown>) => apiSend<{ goal: { id: string } }>('POST', '/api/goals', input).then(tap('goals')),
   updateGoal: (id: string, patch: Record<string, unknown>) => apiSend<{ goal: GoalDetail }>('PATCH', `/api/goals/${id}`, patch).then(tap('goals')),
-  logGoal: (id: string, body: { amount: number; personIds?: string[]; personId?: string | null; note?: string | null }) =>
+  logGoal: (id: string, body: { amount: number; personIds?: string[]; personId?: string | null; note?: string | null; loggedOn?: string | null }) =>
     apiSend<{ ok: boolean }>('POST', `/api/goals/${id}/log`, body).then(tap('goals')),
   toggleStep: (goalId: string, stepId: string, done: boolean) =>
     apiSend<{ ok: boolean }>('PATCH', `/api/goals/${goalId}/steps/${stepId}`, { done }).then(tap('goals')),

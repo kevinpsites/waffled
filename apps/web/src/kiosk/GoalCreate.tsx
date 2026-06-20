@@ -209,9 +209,9 @@ export function GoalCreate() {
     <div className="goal-create">
       {/* form */}
       <div className="gc-form">
-        <div>
-          <div className="flabel">What’s the goal?</div>
-          <input className="gc-input gc-input-serif" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="1,000 Hours Outside" autoFocus />
+        <div className="gc-titlefield">
+          <div className="flabel gc-title-label">Name your goal</div>
+          <input className="gc-input gc-input-serif gc-input-title" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="1,000 Hours Outside" autoFocus />
         </div>
 
         <div>
@@ -367,7 +367,7 @@ export function GoalCreate() {
               <span className="cat-pill hero-pill" style={{ fontSize: 10 }}>
                 ⭐ Featured · {form.trackingMode === 'each_tracks' ? 'each tracks' : 'shared total'}
               </span>
-              <div className="nk-serif" style={{ fontSize: 21, fontWeight: 600, margin: '7px 0 2px' }}>{form.title || 'New goal'}</div>
+              <div className="nk-serif" style={{ fontSize: 21, fontWeight: 600, margin: '7px 0 2px', textTransform: 'capitalize' }}>{form.title || 'New goal'}</div>
               <div style={{ fontSize: 11.5, opacity: 0.9, fontWeight: 600 }}>
                 {form.trackingMode === 'each_tracks' ? 'Each tracks their own' : 'Everyone contributes'}
                 {form.goalType !== 'habit' && form.unit ? ` · tracked in ${form.unit}` : ''}
