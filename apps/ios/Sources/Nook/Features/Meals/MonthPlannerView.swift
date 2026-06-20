@@ -17,6 +17,8 @@ struct MonthPlannerView: View {
     /// The day currently under a drag (highlighted as the drop target).
     @State private var dropTarget: String?
     @State private var planningMonth = false
+    /// The planned night whose action sheet (Open / Change / Remove) is showing.
+    @State private var actionTarget: NookAPI.WeekEntryDTO?
 
     private let weekdaySymbols = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
     private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 5), count: 7) }
@@ -28,17 +30,15 @@ struct MonthPlannerView: View {
                 Text("Dinners for the month · tap to add or open · drag a night onto another to swap")
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                if hasEmptyNight {
-                    Button { planningMonth = true } label: {
-                        HStack(spacing: 7) {
-                            Text("✨").font(.system(size: 15))
-                            Text("Plan my month").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
-                        }
-                        .frame(maxWidth: .infinity).padding(.vertical, 12)
-                        .background(NK.ai).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                Button { planningMonth = true } label: {
+                    HStack(spacing: 7) {
+                        Text("✨").font(.system(size: 15))
+                        Text("Plan my month").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
                     }
-                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity).padding(.vertical, 12)
+                    .background(NK.ai).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
                 }
+                .buttonStyle(.plain)
                 weekdayRow
                 LazyVGrid(columns: columns, spacing: 5) {
                     ForEach(gridDays, id: \.self) { day in cell(day) }
@@ -66,13 +66,25 @@ struct MonthPlannerView: View {
                 Task { await load() }
             }
         }
+        .confirmationDialog(actionTarget?.displayTitle ?? "Dinner",
+                            isPresented: Binding(get: { actionTarget != nil }, set: { if !$0 { actionTarget = nil } }),
+                            titleVisibility: .visible, presenting: actionTarget) { e in
+            if e.recipeId != nil { Button("Open recipe") { openRecipe(e) } }
+            Button("Change") { picking = .init(date: e.date, mealType: "dinner") }
+            Button("Remove", role: .destructive) {
+                Task { _ = await sync.clearMealPlan(date: e.date, mealType: "dinner"); await load() }
+            }
+        }
     }
 
-    /// Any in-month night without a dinner — drives the "Plan my month" CTA.
-    private var hasEmptyNight: Bool {
-        gridDays.contains { day in
-            cal.isDate(day, equalTo: monthStart, toGranularity: .month) && dinnerByDate[ymd(day)] == nil
-        }
+    /// Open a planned night's recipe (or the picker for a free-text night).
+    private func openRecipe(_ e: NookAPI.WeekEntryDTO) {
+        guard let rid = e.recipeId else { picking = .init(date: e.date, mealType: "dinner"); return }
+        let seed = recipes.recipes.first { $0.id == rid }
+            ?? .placeholder(id: rid, title: e.recipe?.title ?? e.displayTitle, emoji: e.recipe?.emoji,
+                            category: e.recipe?.category, cookTimeMinutes: e.recipe?.cookTimeMinutes,
+                            servings: e.recipe?.servings)
+        path.append(.recipe(seed))
     }
 
     // MARK: header
@@ -147,25 +159,19 @@ struct MonthPlannerView: View {
             .opacity(inMonth ? 1 : 0.4)
 
         if inMonth {
-            let button = Button { tap(day, entry) } label: { visual }.buttonStyle(.plain)
-            if let e = entry {
-                button
-                    .draggable(ds) { dragPreview(e) }
-                    .contextMenu {
-                        Button { picking = .init(date: e.date, mealType: "dinner") } label: {
-                            Label("Change", systemImage: "arrow.triangle.2.circlepath")
-                        }
-                        Button(role: .destructive) {
-                            Task { _ = await sync.clearMealPlan(date: e.date, mealType: "dinner"); await load() }
-                        } label: { Label("Remove", systemImage: "trash") }
-                    }
-                    .dropDestination(for: String.self) { items, _ in drop(items, on: ds) } isTargeted: { over in
-                        dropTarget = over ? ds : (dropTarget == ds ? nil : dropTarget)
-                    }
-            } else {
-                button.dropDestination(for: String.self) { items, _ in drop(items, on: ds) } isTargeted: { over in
+            // A plain tappable view (NOT a Button) so .draggable can own the
+            // long-press-drag. Tapping a planned night opens a tap-based action
+            // sheet (Open / Change / Remove) — no long-press menu to fight the drag.
+            let interactive = visual
+                .contentShape(Rectangle())
+                .onTapGesture { if let e = entry { actionTarget = e } else { picking = .init(date: ds, mealType: "dinner") } }
+                .dropDestination(for: String.self) { items, _ in drop(items, on: ds) } isTargeted: { over in
                     dropTarget = over ? ds : (dropTarget == ds ? nil : dropTarget)
                 }
+            if let e = entry {
+                interactive.draggable(ds) { dragPreview(e) }
+            } else {
+                interactive
             }
         } else {
             visual
@@ -210,18 +216,6 @@ struct MonthPlannerView: View {
 
     // MARK: actions
 
-    private func tap(_ day: Date, _ entry: NookAPI.WeekEntryDTO?) {
-        if let e = entry, let rid = e.recipeId {
-            let seed = recipes.recipes.first { $0.id == rid }
-                ?? .placeholder(id: rid, title: e.recipe?.title ?? e.displayTitle, emoji: e.recipe?.emoji,
-                                category: e.recipe?.category, cookTimeMinutes: e.recipe?.cookTimeMinutes,
-                                servings: e.recipe?.servings)
-            path.append(.recipe(seed))
-        } else {
-            // Empty night, or a free-text meal with no recipe → plan/change it.
-            picking = .init(date: ymd(day), mealType: "dinner")
-        }
-    }
 
     private func load() async {
         let all = (try? await NookAPI().mealsWeek(start: ymd(gridStart), days: 42)) ?? []
