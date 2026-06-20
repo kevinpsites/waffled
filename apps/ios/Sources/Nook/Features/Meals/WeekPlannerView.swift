@@ -14,6 +14,8 @@ struct WeekPlannerView: View {
     @State private var loading = true
     @State private var picking: PlanTarget?
     @State private var planningWeek = false
+    /// The day card currently under a drag (highlighted as the drop target).
+    @State private var dropTargetDay: String?
 
     private let api = NookAPI()
 
@@ -103,7 +105,7 @@ struct WeekPlannerView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     Text(weekday(day)).font(.system(size: 13, weight: .heavy)).tracking(0.6)
-                        .foregroundStyle(isToday ? NK.primary : NK.ink2)
+                        .foregroundStyle(isToday || dropTargetDay == ds ? NK.primary : NK.ink2)
                     Text(dayNumber(day)).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
                     if isToday {
                         Text("TODAY").font(.system(size: 10, weight: .heavy)).foregroundStyle(NK.primary)
@@ -122,29 +124,36 @@ struct WeekPlannerView: View {
                 }
             }
         }
+        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous)
+            .strokeBorder(dropTargetDay == ds ? NK.primary : .clear, lineWidth: 2))
+        .dropDestination(for: String.self) { items, _ in dropMeal(items, on: ds) } isTargeted: { over in
+            dropTargetDay = over ? ds : (dropTargetDay == ds ? nil : dropTargetDay)
+        }
     }
 
     private func entryRow(_ e: NookAPI.WeekEntryDTO) -> some View {
         HStack(spacing: 11) {
-            Button { open(e) } label: {
-                HStack(spacing: 11) {
-                    Text(e.recipe?.emoji ?? "🍽️").font(.system(size: 22))
-                        .frame(width: 40, height: 40)
-                        .background(RecipeGradient.forCategory(e.recipe?.category ?? e.mealType))
-                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(e.displayTitle).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                            .lineLimit(1)
-                        HStack(spacing: 8) {
-                            if e.mealType != "dinner" { metaTag(slotLabel(e.mealType)) }
-                            if let t = e.recipe?.cookTimeMinutes { meta("🕐 \(t)m") }
-                            if let cook = e.cook?.name { meta("👩‍🍳 \(cook)") }
-                        }
+            // Plain (not a Button) so .draggable can claim the long-press; tap still
+            // opens the recipe. Drag this meal onto another day to swap that slot.
+            HStack(spacing: 11) {
+                Text(e.recipe?.emoji ?? "🍽️").font(.system(size: 22))
+                    .frame(width: 40, height: 40)
+                    .background(RecipeGradient.forCategory(e.recipe?.category ?? e.mealType))
+                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(e.displayTitle).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                        .lineLimit(1)
+                    HStack(spacing: 8) {
+                        if e.mealType != "dinner" { metaTag(slotLabel(e.mealType)) }
+                        if let t = e.recipe?.cookTimeMinutes { meta("🕐 \(t)m") }
+                        if let cook = e.cook?.name { meta("👩‍🍳 \(cook)") }
                     }
-                    Spacer(minLength: 0)
                 }
+                Spacer(minLength: 0)
             }
-            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .onTapGesture { open(e) }
+            .draggable("\(e.date)|\(e.mealType)") { entryDragPreview(e) }
             Menu {
                 Button { picking = PlanTarget(date: e.date, mealType: e.mealType) } label: {
                     Label("Change", systemImage: "arrow.triangle.2.circlepath")
@@ -181,6 +190,44 @@ struct WeekPlannerView: View {
     private func metaTag(_ t: String) -> some View {
         Text(t).font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink2)
             .padding(.horizontal, 7).padding(.vertical, 2).background(NK.panel).clipShape(Capsule())
+    }
+
+    // MARK: drag-to-swap
+
+    private func entryDragPreview(_ e: NookAPI.WeekEntryDTO) -> some View {
+        HStack(spacing: 5) {
+            Text(e.recipe?.emoji ?? "🍽️").font(.system(size: 14))
+            Text(e.displayTitle).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(NK.card).clipShape(Capsule()).overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    /// Drop a dragged meal ("date|mealType") onto another day — swap that slot.
+    private func dropMeal(_ items: [String], on targetDay: String) -> Bool {
+        guard let payload = items.first else { return false }
+        let parts = payload.split(separator: "|")
+        guard parts.count == 2, String(parts[0]) != targetDay else { return false }
+        Task { await swapMeal(srcDate: String(parts[0]), mealType: String(parts[1]), targetDay: targetDay) }
+        return true
+    }
+
+    private func swapMeal(srcDate: String, mealType: String, targetDay: String) async {
+        let a = entries.first { $0.date == srcDate && $0.mealType == mealType }
+        let b = entries.first { $0.date == targetDay && $0.mealType == mealType }
+        await placeMeal(b, on: srcDate, mealType: mealType)
+        await placeMeal(a, on: targetDay, mealType: mealType)
+        await load()
+    }
+
+    private func placeMeal(_ entry: NookAPI.WeekEntryDTO?, on date: String, mealType: String) async {
+        if let e = entry {
+            _ = await sync.setMealPlan(date: date, mealType: mealType,
+                                       recipeId: e.recipeId, title: e.recipeId == nil ? (e.title ?? e.displayTitle) : nil,
+                                       cookPersonId: e.cook?.personId)
+        } else {
+            _ = await sync.clearMealPlan(date: date, mealType: mealType)
+        }
     }
 
     // MARK: actions
