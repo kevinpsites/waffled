@@ -346,16 +346,13 @@ struct CalendarView: View {
     }
     private func dayTitle(_ key: String) -> String {
         guard let d = dayKeyToDate(key) else { return key }
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.timeZone = tz; f.dateFormat = "EEE · MMM d"
-        return f.string(from: d)
+        return DateFmt.string(d, "EEE · MMM d", tz)
     }
 
     // MARK: helpers
 
     private func monthTitle(_ date: Date, year: Bool) -> String {
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.timeZone = tz
-        f.dateFormat = year ? "MMMM yyyy" : "MMMM"
-        return f.string(from: date)
+        return DateFmt.string(date, year ? "MMMM yyyy" : "MMMM", tz)
     }
 
     private func stepMonth(_ n: Int) {
@@ -364,8 +361,7 @@ struct CalendarView: View {
     }
 
     private func dayKeyToDate(_ key: String) -> Date? {
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = tz; f.dateFormat = "yyyy-MM-dd"
-        return f.date(from: key)
+        return DateFmt.date(key, "yyyy-MM-dd", tz)
     }
 
     struct MonthCell { let key: String; let day: Int; let inMonth: Bool }
@@ -400,14 +396,12 @@ struct CalendarView: View {
         if key == Agenda.todayKey(tz) { return "Today" }
         if key == tomorrow { return "Tomorrow" }
         guard let d = dayKeyToDate(key) else { return key }
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.timeZone = tz; f.dateFormat = "EEEE"
-        return f.string(from: d)
+        return DateFmt.string(d, "EEEE", tz)
     }
 
     private func dateLabel(_ key: String) -> String {
         guard let d = dayKeyToDate(key) else { return "" }
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); f.timeZone = tz; f.dateFormat = "EEE · MMM d"
-        return f.string(from: d)
+        return DateFmt.string(d, "EEE · MMM d", tz)
     }
 }
 
