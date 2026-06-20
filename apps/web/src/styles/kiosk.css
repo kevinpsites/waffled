@@ -59,51 +59,141 @@ body {
 @media (max-width: 720px) {
   .today-wrap > .recap-bar { margin: 6px 16px 0; }
 }
-.today-grid {
-  display: grid;
-  /* minmax(0, …) lets a column shrink below its content's intrinsic width, so a
-     long recipe title caps/ellipsizes instead of stretching the whole column. */
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 0.82fr);
+/* The board is N flex columns (data-driven from the saved layout) so cards can
+   be placed in any column. min-width:0 lets long titles cap instead of widening. */
+.today-board {
+  display: flex;
   gap: 18px;
   padding: 6px 30px 26px;
-  align-content: start;
+  align-items: stretch;
+}
+.today-col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
-/* On a roomy landscape display, fill the height like the design — and actually
-   BOUND it so cards don't spill past the fold. The single grid row stretches to
-   the available height, each column is allowed to shrink (min-height:0), and the
-   scrollable lists inside (agenda rows, grocery items) absorb any overflow
-   instead of pushing the whole page into a scroll. */
+/* On a roomy landscape display, fill the height and bound it so cards don't spill
+   past the fold — cards shrink and their lists (agenda rows, grocery items) scroll
+   internally. Only in view mode; editing flows naturally so nothing is hidden. */
 @media (min-width: 1101px) and (min-height: 680px) {
-  .today-grid {
+  .today-wrap:not(.today-editing) .today-board {
     flex: 1;
     min-height: 0;
-    align-content: stretch;
-    grid-auto-rows: minmax(0, 1fr);
   }
-  .today-grid > * {
+  .today-wrap:not(.today-editing) .today-col {
     min-height: 0;
   }
-  /* The agenda is a single card; let its event list scroll within the column. */
-  .today-grid > .card {
+  .today-wrap:not(.today-editing) .today-col > .card {
+    min-height: 0;
     overflow: auto;
   }
 }
 
+/* Below the kiosk width, stack the columns into a single feed (cards keep their
+   per-column grouping order). */
 @media (max-width: 1100px) {
-  .today-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  .today-board {
+    flex-direction: column;
   }
 }
-
 @media (max-width: 720px) {
-  .today-grid {
-    grid-template-columns: minmax(0, 1fr);
+  .today-board {
     padding: 6px 16px 22px;
   }
   .topbar {
     padding: 16px 16px 10px;
   }
+}
+
+/* ===== Today: Customize (rearrange cards) ===== */
+.today-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 30px 0;
+  justify-content: flex-end;
+}
+.today-toolbar-hint { margin-right: auto; }
+.today-customize { font-weight: 700; }
+.today-src-tag {
+  margin-left: 7px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--lottie);
+  background: color-mix(in srgb, var(--lottie) 14%, transparent);
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+.today-reset {
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+.today-reset:hover { color: var(--primary); }
+
+/* Edit-mode card: a drag bar on top, the card itself made non-interactive so a
+   stray tap doesn't fire a card action mid-rearrange. */
+.today-card-wrap {
+  border: 1.5px dashed var(--hair);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: var(--card-2);
+}
+.today-card-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  background: var(--panel);
+  color: var(--ink-2);
+  font-weight: 700;
+  font-size: 13px;
+}
+.today-card-bar:active { cursor: grabbing; }
+.today-card-grip { font-size: 15px; color: var(--ink-3); }
+.today-card-inner { pointer-events: none; }
+.today-col-empty {
+  border: 1.5px dashed var(--hair);
+  border-radius: var(--r-lg);
+  padding: 28px 12px;
+  text-align: center;
+  color: var(--ink-3);
+  font-weight: 700;
+  font-size: 13px;
+}
+/* Insertion indicator between cards while dragging. */
+.today-drop-line {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--primary);
+  margin: -8px 0;
+}
+.today-drag-ghost {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 9999;
+  background: var(--card);
+  border: 1px solid var(--hair);
+  box-shadow: var(--sh-2);
+  border-radius: 999px;
+  padding: 8px 15px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
 }
 
 /* ===== modal (recipe detail, event create) ===== */

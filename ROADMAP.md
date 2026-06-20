@@ -237,11 +237,23 @@ by the `chores` refetch bus. Uses the existing `POST /api/chore-instances/:id/as
 per-person summary (no columns), so DnD doesn't apply there; the non-drag fallback
 is editing a chore's person in the ChoreModal.
 
+**Rearrange Today cards — SHIPPED 2026-06-19:** the Today dashboard is now a
+data-driven board of cards (agenda, tonight, week, chores, grocery) in a fixed
+3-column grid. A "Customize" mode reveals a drag bar per card; drag (pointer
+events — mouse + touch) to reorder within and between columns, with a floating
+ghost + insertion line, then **Save for me** (per-person override) or **Save for
+everyone** (family default, admin-only). Two tiers stored as jsonb
+(`persons.today_layout` + `households.today_layout`, migration 0038); resolution
+is `user ?? family ?? built-in default`, always normalized to 3 columns with every
+card present (`reconcileLayout`, unit-tested). API: `GET/PUT/DELETE
+/api/today-layout` (`modules/layout/today-layout.ts`). A `dev|kelly` identity was
+seeded so per-user behavior is testable. Note: the kiosk is single-identity today
+(only Kevin had a login), so per-user only differentiates once others get logins —
+the family tier is what the shared kiosk shows.
+
 **Deferred (bigger features, captured for the next pass):**
 - **Month meal view** — view/plan meals in a month grid alongside the current week
   view (Meals screen).
-- **Rearrange Today cards** — drag to reorder the homepage cards + persist the
-  layout (likely per-person, a `today_layout` preference).
 - **Pantry-add UX** — adding while viewing the Pantry list silently routes to
   Groceries instead of staples; staples are managed in Settings. Left as-is pending
   a clearer repro from the user; revisit the add-bar destination affordance then.

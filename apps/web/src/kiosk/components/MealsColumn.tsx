@@ -65,54 +65,67 @@ function TonightCard({ entry }: { entry: WeekEntry }) {
   )
 }
 
-export function MealsColumn() {
+// Tonight's dinner as a standalone Today card (self-fetching). Renders nothing
+// when nothing is planned for today, so it can sit in the draggable board.
+export function TonightCardSlot() {
+  const { entries } = useMealsWeek()
+  const tonight = entries.find((e) => e.mealType === 'dinner' && e.date === localToday()) ?? null
+  if (!tonight) return null
+  return <TonightCard entry={tonight} />
+}
+
+// "This week's dinners" as a standalone Today card (self-fetching).
+export function WeekDinnersCard() {
   const navigate = useNavigate()
   const { entries, loading, error } = useMealsWeek()
   const dinners = entries.filter((e) => e.mealType === 'dinner')
-  const tonight = dinners.find((e) => e.date === localToday()) ?? null
+  return (
+    <div className="card" style={{ padding: '15px 18px 8px', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
+        <Link to="/meals" className="card-h" style={{ fontSize: 16, textDecoration: 'none', color: 'inherit' }}>
+          This week’s dinners
+        </Link>
+        <Link to="/meals" className="tiny muted" style={{ marginLeft: 'auto', textDecoration: 'none', color: 'var(--ink-2)' }}>
+          {dinners.length} planned ›
+        </Link>
+      </div>
+      {loading && <div className="tiny muted" style={{ padding: '6px 0' }}>Loading…</div>}
+      {error && <div className="tiny muted" style={{ padding: '6px 0' }}>Sign this kiosk in to see meals.</div>}
+      {!loading && !error && dinners.length === 0 && (
+        <div className="tiny muted" style={{ padding: '6px 0' }}>No dinners planned yet.</div>
+      )}
+      {dinners.map((e: WeekEntry) => {
+        const clickable = !!e.recipeId
+        const out = isEatingOut(e)
+        return (
+          <div
+            key={e.id}
+            onClick={() => clickable && navigate(`/meals/recipe/${e.recipeId}`)}
+            role={clickable ? 'button' : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            title={clickable ? 'Open recipe' : undefined}
+            style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '6px 0', borderBottom: '1px solid var(--hair-2)', cursor: clickable ? 'pointer' : 'default' }}
+          >
+            <div className="tiny" style={{ width: 34, fontWeight: 700, color: 'var(--ink-2)' }}>
+              {dayAbbrev(e.date)}
+            </div>
+            <div style={{ fontSize: 16, width: 22, textAlign: 'center' }}>{e.recipe?.emoji ?? (out ? '🍴' : '🍽️')}</div>
+            <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{out ? 'Eating out' : e.recipe?.title ?? e.title ?? 'Planned'}</div>
+            {clickable && <div className="tiny muted" style={{ fontSize: 16 }}>›</div>}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
+// The original combined meals column (Tonight + week), composed from the two
+// slots above. Kept for any non-customizable surface and the unit tests.
+export function MealsColumn() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0 }}>
-      {/* Only render the Tonight card when something is planned; otherwise the
-          week list takes the full height. */}
-      {tonight && <TonightCard entry={tonight} />}
-
-      <div className="card" style={{ padding: '15px 18px 8px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
-          <Link to="/meals" className="card-h" style={{ fontSize: 16, textDecoration: 'none', color: 'inherit' }}>
-            This week’s dinners
-          </Link>
-          <Link to="/meals" className="tiny muted" style={{ marginLeft: 'auto', textDecoration: 'none', color: 'var(--ink-2)' }}>
-            {dinners.length} planned ›
-          </Link>
-        </div>
-        {loading && <div className="tiny muted" style={{ padding: '6px 0' }}>Loading…</div>}
-        {error && <div className="tiny muted" style={{ padding: '6px 0' }}>Sign this kiosk in to see meals.</div>}
-        {!loading && !error && dinners.length === 0 && (
-          <div className="tiny muted" style={{ padding: '6px 0' }}>No dinners planned yet.</div>
-        )}
-        {dinners.map((e: WeekEntry) => {
-          const clickable = !!e.recipeId
-          const out = isEatingOut(e)
-          return (
-            <div
-              key={e.id}
-              onClick={() => clickable && navigate(`/meals/recipe/${e.recipeId}`)}
-              role={clickable ? 'button' : undefined}
-              tabIndex={clickable ? 0 : undefined}
-              title={clickable ? 'Open recipe' : undefined}
-              style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '6px 0', borderBottom: '1px solid var(--hair-2)', cursor: clickable ? 'pointer' : 'default' }}
-            >
-              <div className="tiny" style={{ width: 34, fontWeight: 700, color: 'var(--ink-2)' }}>
-                {dayAbbrev(e.date)}
-              </div>
-              <div style={{ fontSize: 16, width: 22, textAlign: 'center' }}>{e.recipe?.emoji ?? (out ? '🍴' : '🍽️')}</div>
-              <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{out ? 'Eating out' : e.recipe?.title ?? e.title ?? 'Planned'}</div>
-              {clickable && <div className="tiny muted" style={{ fontSize: 16 }}>›</div>}
-            </div>
-          )
-        })}
-      </div>
+      <TonightCardSlot />
+      <WeekDinnersCard />
     </div>
   )
 }

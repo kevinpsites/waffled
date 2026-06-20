@@ -23,6 +23,7 @@ import { registerCalendarSyncRoutes } from './modules/calendar/calendar-sync.rou
 import { registerGoalRoutes } from './modules/goals/goals.routes'
 import { registerGoalCalendarRoutes } from './modules/goals/goal-calendar'
 import { registerOverviewRoutes } from './modules/overview/overview'
+import { registerTodayLayoutRoutes } from './modules/layout/today-layout'
 import { registerPhotoRoutes } from './modules/photos/photos'
 import { registerCaptureRoutes } from './modules/capture/capture'
 import { registerWeatherRoutes } from './integrations/weather'
@@ -153,6 +154,9 @@ registerGoalCalendarRoutes(api)
 
 // Person + family overviews (/api/persons/:id/overview, /api/family/overview)
 registerOverviewRoutes(api)
+
+// Today dashboard card layout (/api/today-layout) — family default + user override
+registerTodayLayoutRoutes(api)
 
 // Photos / memories (/api/photos…)
 registerPhotoRoutes(api)

@@ -21,6 +21,7 @@ export * from './weather'
 export * from './meals'
 export * from './photos'
 export * from './capture'
+export * from './today-layout'
 
 import { personsApi } from './persons'
 import { goalsApi } from './goals'
