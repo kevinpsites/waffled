@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { Icon, Check } from './icons'
 import { ChoreModal, type ChoreDraft } from './components/ChoreModal'
@@ -60,7 +60,7 @@ function draftFrom(i: ChoreInstance): ChoreDraft {
 // click a chore to edit; add chores per person or via New.
 export function Tasks() {
   const [date, setDate] = useState(() => localToday())
-  const { instances, loading, error, setDone, refetch } = useDayInstances(date)
+  const { instances, loading, error, setDone, assign, refetch } = useDayInstances(date)
   const { persons } = usePersons()
   const { byKey: currencyByKey, defaultCurrency } = useCurrencies()
   const groups = buildColumns(instances, persons)
@@ -70,6 +70,52 @@ export function Tasks() {
   const [claimId, setClaimId] = useState<string | null>(null)
   const meta = dayMeta(date)
   const isToday = meta.diff === 0
+
+  // Drag-and-drop to reassign a chore between columns. Pointer events (not HTML5
+  // draggable) so it works with both a mouse and the kiosk's touchscreen. `drag`
+  // is set once per drag so the move/up listener effect subscribes only once;
+  // `pos` drives the floating ghost, `overCol` the drop highlight (read live via
+  // a ref inside the up handler).
+  const [drag, setDrag] = useState<{ id: string; from: string | null; title: string; emoji: string | null } | null>(null)
+  const [pos, setPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [overCol, setOverCol] = useState<string | null>(null)
+  const overColRef = useRef<string | null>(null)
+  overColRef.current = overCol
+
+  useEffect(() => {
+    if (!drag) return
+    const move = (e: PointerEvent) => {
+      setPos({ x: e.clientX, y: e.clientY })
+      const el = document.elementFromPoint(e.clientX, e.clientY)
+      const col = el && (el as Element).closest('[data-colkey]')
+      setOverCol(col ? col.getAttribute('data-colkey') : null)
+    }
+    const up = () => {
+      const target = overColRef.current
+      // 'unassigned' column → personId null; a real column → that person id.
+      if (target && target !== (drag.from ?? 'unassigned')) {
+        assign(drag.id, target === 'unassigned' ? null : target)
+      }
+      setDrag(null)
+      setOverCol(null)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    document.body.style.userSelect = 'none'
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      document.body.style.userSelect = ''
+    }
+  }, [drag, assign])
+
+  function startDrag(e: React.PointerEvent, i: ChoreInstance) {
+    e.preventDefault()
+    e.stopPropagation()
+    setPos({ x: e.clientX, y: e.clientY })
+    setOverCol(null)
+    setDrag({ id: i.id, from: i.personId, title: i.choreTitle, emoji: i.emoji })
+  }
 
   // Up-for-grabs: tapping "done" must credit someone, so we ask who did it, then
   // claim + complete in one motion (stars go to the picked person).
@@ -129,8 +175,9 @@ export function Tasks() {
         {!loading && !error && groups.map((g) => {
           const done = g.items.filter((i) => i.status === 'done').length
           const upForGrabs = g.key === 'unassigned'
+          const isDropTarget = !!drag && overCol === g.key && g.key !== (drag.from ?? 'unassigned')
           return (
-            <div className={`chore-col ${upForGrabs ? 'up-for-grabs' : ''}`} key={g.key}>
+            <div className={`chore-col ${upForGrabs ? 'up-for-grabs' : ''} ${isDropTarget ? 'drop-target' : ''}`} key={g.key} data-colkey={g.key}>
               <div className="chore-head">
                 <span className="nm">
                   {upForGrabs ? (
@@ -204,6 +251,16 @@ export function Tasks() {
                         <button type="button" className="claim-x" onClick={() => setClaimId(null)}>×</button>
                       </div>
                     )}
+                    <button
+                      type="button"
+                      className="chore-grip"
+                      aria-label={`Move ${i.choreTitle} to another person`}
+                      title="Drag to assign"
+                      onPointerDown={(e) => startDrag(e, i)}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      ⠿
+                    </button>
                   </div>
                 )
               })}
@@ -220,6 +277,13 @@ export function Tasks() {
 
       {modal && (
         <ChoreModal chore={modal.chore} personId={modal.personId} onClose={() => setModal(null)} onSaved={refetch} />
+      )}
+
+      {drag && (
+        <div className="chore-drag-ghost" style={{ left: pos.x, top: pos.y }}>
+          {drag.emoji ? `${drag.emoji} ` : ''}
+          {drag.title}
+        </div>
       )}
     </div>
   )

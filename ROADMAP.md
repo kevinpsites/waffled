@@ -227,11 +227,17 @@ CSS** (`text-transform: capitalize`, stored as typed); **goal logs can be backda
 day; habit dedupe keys off the chosen day) so a forgotten day can be caught up
 without breaking a streak.
 
+**Drag-and-drop chore reassignment — SHIPPED 2026-06-19:** drag a chore card by its
+grip handle (⠿) between columns on the Tasks board to reassign it — up-for-grabs →
+a person, person → person, or back to up-for-grabs (unassign). Pointer-events based
+(not HTML5 `draggable`) so it works with both a mouse and the kiosk touchscreen;
+floating ghost + drop-target highlight during the drag; optimistic move reconciled
+by the `chores` refetch bus. Uses the existing `POST /api/chore-instances/:id/assign`
+(personId or null). Tasks board only — the Today chores widget is a read-only
+per-person summary (no columns), so DnD doesn't apply there; the non-drag fallback
+is editing a chore's person in the ChoreModal.
+
 **Deferred (bigger features, captured for the next pass):**
-- **Drag-and-drop "up for grabs" chores** → drop a task into a person's column to
-  assign it. Backend already supports reassign/unassign (commit `28c9e8b`,
-  `POST /api/chore-instances/:id/(claim|assign|unassign)`); this is the kiosk DnD
-  surface (Tasks board) + Today.
 - **Month meal view** — view/plan meals in a month grid alongside the current week
   view (Meals screen).
 - **Rearrange Today cards** — drag to reorder the homepage cards + persist the

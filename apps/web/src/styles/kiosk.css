@@ -627,6 +627,55 @@ button.tick {
 .claim-pick-q { font-size: 12px; font-weight: 800; color: var(--ink-3); margin-right: 3px; align-self: center; }
 .claim-pick { flex-wrap: wrap; }
 
+/* ===== chore drag-and-drop (reassign between columns) ===== */
+/* Grip handle on each chore card — pointer-down starts a drag. touch-action:none
+   stops the kiosk from scrolling while you drag. */
+.chore-grip {
+  flex: none;
+  align-self: center;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font-size: 17px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: grab;
+  opacity: 0.45;
+  touch-action: none;
+  transition: opacity 0.12s ease;
+}
+.chore:hover .chore-grip { opacity: 0.8; }
+.chore-grip:hover { opacity: 1; }
+.chore-grip:active { cursor: grabbing; }
+/* Column lights up as a valid drop target while dragging. */
+.chore-col.drop-target {
+  outline: 2px dashed var(--primary);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--primary) 8%, var(--card));
+}
+.chore-col.up-for-grabs.drop-target {
+  background: color-mix(in srgb, var(--primary) 8%, #eef4fe);
+}
+/* The card following the pointer during a drag. */
+.chore-drag-ghost {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 9999;
+  background: var(--card);
+  border: 1px solid var(--hair);
+  box-shadow: var(--sh-2);
+  border-radius: 999px;
+  padding: 8px 15px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Today "Family Chores" rows link to the full chores page — give them a roomy,
    inset hover highlight so the affordance reads without looking cramped. */
 .chores-card-row { border-radius: var(--r-lg); margin: 2px -12px; padding: 10px 12px; transition: background .12s ease; }

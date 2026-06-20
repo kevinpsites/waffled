@@ -46,6 +46,10 @@ export const choresApi = {
   deleteChore: (id: string) => apiDelete(`/api/chores/${id}`).then(tap('chores')),
   claimInstance: (id: string, personId: string) =>
     apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/claim`, { personId }).then(tap('chores')),
+  // Reassign to a person, or unassign back to up-for-grabs (personId null).
+  // Powers the board's drag-and-drop between columns.
+  assignInstance: (id: string, personId: string | null) =>
+    apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/assign`, { personId }).then(tap('chores')),
   approveInstance: (id: string) =>
     // approving awards stars → rewards balances change too
     apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/approve`).then(tap('chores')).then(tap('rewards')),
@@ -82,6 +86,7 @@ export interface InstancesState {
   loading: boolean
   error: boolean
   setDone: (id: string, done: boolean) => Promise<void>
+  assign: (id: string, personId: string | null) => Promise<void>
   refetch: () => void
 }
 
@@ -133,5 +138,21 @@ export function useDayInstances(date?: string): InstancesState {
     }
   }
 
-  return { instances, loading, error, setDone, refetch }
+  // Optimistically move a chore to another column (person, or up-for-grabs when
+  // null). Only personId matters for column placement; the bus refetch reconciles
+  // personName/streak afterwards. Reverts on failure.
+  async function assign(id: string, personId: string | null): Promise<void> {
+    let snapshot: ChoreInstance[] = []
+    setInstances((prev) => {
+      snapshot = prev
+      return prev.map((i) => (i.id === id ? { ...i, personId } : i))
+    })
+    try {
+      await choresApi.assignInstance(id, personId)
+    } catch {
+      setInstances(snapshot)
+    }
+  }
+
+  return { instances, loading, error, setDone, assign, refetch }
 }
