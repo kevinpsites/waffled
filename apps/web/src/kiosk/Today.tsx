@@ -8,16 +8,18 @@ import { CaptureBar } from './components/CaptureBar'
 import { useTopbarRight } from './topbar-slot'
 import { useTodayLayout, type LayoutScope } from '../lib/api'
 
-// The cards that can live on Today, keyed the same as the stored layout. `grow`
-// list-style cards stretch to fill their column (content height is the minimum);
-// the Tonight hero stays its natural size. The label shows in the Customize drag
-// bar (and covers cards that render nothing, like Tonight with no dinner planned).
-const CARDS: Record<string, { label: string; node: ReactNode; grow?: boolean }> = {
-  agenda: { label: 'Agenda', node: <AgendaCard />, grow: true },
+// The cards that can live on Today, keyed the same as the stored layout. `fill`
+// cards are long, scrollable lists (agenda, grocery) — they take the spare room in
+// their column and scroll INSIDE the card, so a 30-item grocery list never stretches
+// the column. Everything else sizes to its content (never shrinks/clips). The label
+// shows in the Customize drag bar (and covers cards that render nothing, like
+// Tonight with no dinner planned).
+const CARDS: Record<string, { label: string; node: ReactNode; fill?: boolean }> = {
+  agenda: { label: 'Agenda', node: <AgendaCard />, fill: true },
   tonight: { label: "Tonight's dinner", node: <TonightCardSlot /> },
-  week: { label: "This week's dinners", node: <WeekDinnersCard />, grow: true },
-  chores: { label: 'Family Chores', node: <ChoresCard />, grow: true },
-  grocery: { label: 'Grocery', node: <GroceryCard />, grow: true },
+  week: { label: "This week's dinners", node: <WeekDinnersCard /> },
+  chores: { label: 'Family Chores', node: <ChoresCard /> },
+  grocery: { label: 'Grocery', node: <GroceryCard />, fill: true },
 }
 
 // Layout helpers (pure). A card lives in exactly one column.
@@ -184,7 +186,7 @@ export function Today() {
                       <div className="today-card-inner">{def.node}</div>
                     </div>
                   ) : (
-                    <div className={`today-slot ${def.grow ? 'grow' : ''}`}>{def.node}</div>
+                    <div className={`today-slot ${def.fill ? 'fill' : ''}`}>{def.node}</div>
                   )}
                 </Fragment>
               )

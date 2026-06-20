@@ -75,9 +75,9 @@ body {
   flex-direction: column;
   gap: 18px;
 }
-/* Each view card sits in a slot. `grow` slots (lists: agenda, week, chores,
-   grocery) stretch to fill the column — content height is the minimum; the
-   Tonight hero keeps its natural size. */
+/* Each view card sits in a slot. `fill` slots are long scrollable lists (agenda,
+   grocery): they take the spare room in the column and scroll INSIDE the card.
+   Every other card sizes to its content and never shrinks. */
 .today-slot {
   display: flex;
   flex-direction: column;
@@ -87,11 +87,10 @@ body {
   width: 100%;
 }
 
-/* On a roomy landscape display, fill the height like the design. A card's content
-   height is its MINIMUM — cards never shrink/clip (flex-shrink:0); grow cards
-   expand to fill any spare room in the column; and if a column's cards exceed its
-   height, that column scrolls rather than squashing them. View mode only — editing
-   flows naturally. */
+/* On a roomy landscape display, fill the height like the design. Content cards
+   size to their content and never shrink/clip; fill cards (agenda, grocery) absorb
+   the leftover room and scroll their list inside the card — so a long grocery list
+   doesn't stretch the column. View mode only — editing flows naturally. */
 @media (min-width: 1101px) and (min-height: 680px) {
   .today-wrap:not(.today-editing) .today-board {
     flex: 1;
@@ -101,14 +100,20 @@ body {
     min-height: 0;
     overflow-y: auto;
   }
+  /* Content cards: their content height, no grow, no shrink. */
   .today-wrap:not(.today-editing) .today-slot {
     flex: 0 0 auto;
   }
-  .today-wrap:not(.today-editing) .today-slot.grow {
-    flex: 1 0 auto;
+  /* Long-list cards: take the leftover space (down to a usable minimum) and
+     scroll their contents internally. */
+  .today-wrap:not(.today-editing) .today-slot.fill {
+    flex: 1 1 0;
+    min-height: 200px;
   }
-  .today-wrap:not(.today-editing) .today-slot.grow > .card {
-    flex: 1 0 auto;
+  .today-wrap:not(.today-editing) .today-slot.fill > .card {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
   }
 }
 
