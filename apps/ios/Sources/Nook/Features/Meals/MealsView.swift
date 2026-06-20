@@ -13,7 +13,7 @@ enum MealsRoute: Hashable {
 struct MealsView: View {
     @Binding var path: [MealsRoute]
     @State private var model = RecipesModel()
-    @State private var section = 0   // 0 = This week, 1 = Recipes
+    @State private var section = 0   // 0 = Week, 1 = Month, 2 = Recipes
 
     /// Fire the headless deep-link at most once per process.
     private static var didDeepLink = false
@@ -23,6 +23,8 @@ struct MealsView: View {
             Group {
                 if section == 0 {
                     WeekPlannerView(recipes: model, path: $path)
+                } else if section == 1 {
+                    MonthPlannerView(recipes: model, path: $path)
                 } else {
                     RecipesLibraryView(model: model)
                 }
@@ -35,10 +37,11 @@ struct MealsView: View {
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Picker("", selection: $section) {
-                        Text("This week").tag(0)
-                        Text("Recipes").tag(1)
+                        Text("Week").tag(0)
+                        Text("Month").tag(1)
+                        Text("Recipes").tag(2)
                     }
-                    .pickerStyle(.segmented).frame(width: 240)
+                    .pickerStyle(.segmented).frame(width: 260)
                 }
             }
             .navigationDestination(for: MealsRoute.self) { route in
@@ -56,7 +59,7 @@ struct MealsView: View {
         guard !Self.didDeepLink, let want = DemoHooks.openRecipe?.lowercased() else { return }
         if let match = model.recipes.first(where: { $0.title.lowercased().contains(want) }) {
             Self.didDeepLink = true
-            section = 1
+            section = 2
             path = [.recipe(match)]
         }
     }

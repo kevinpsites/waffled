@@ -338,9 +338,13 @@ struct NookAPI: Sendable {
     struct GroceryItemDTO: Decodable { let id: String; let checked: Bool }
 
     /// The planned meals for the week starting `start` (YYYY-MM-DD).
-    func mealsWeek(start: String) async throws -> [WeekEntryDTO] {
+    /// Planned meals over a date range. `days` (1–45) widens the window past one
+    /// week — the month grid fetches 42 days. Omitted → the server's default of 7.
+    func mealsWeek(start: String, days: Int? = nil) async throws -> [WeekEntryDTO] {
         struct Resp: Decodable { let entries: [WeekEntryDTO] }
-        return try await getJSON("/api/meals/week?start=\(start)", as: Resp.self).entries
+        var path = "/api/meals/week?start=\(start)"
+        if let days { path += "&days=\(days)" }
+        return try await getJSON(path, as: Resp.self).entries
     }
 
     /// Per-person chore progress for today.

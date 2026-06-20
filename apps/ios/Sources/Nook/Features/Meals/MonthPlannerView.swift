@@ -1,0 +1,195 @@
+import SwiftUI
+
+/// The monthly meal planner — a 6×7 calendar grid of the month's **dinners**
+/// (mirrors the web's dinner-only month view). Tapping a planned night opens its
+/// recipe; tapping an empty in-month night opens the picker; long-press a planned
+/// night to change or remove it. Reads `GET /api/meals/week?days=42`; writes via
+/// `SyncManager.setMealPlan/clearMealPlan` (which bump `mealsRev`).
+struct MonthPlannerView: View {
+    let recipes: RecipesModel
+    @Binding var path: [MealsRoute]
+    @Environment(SyncManager.self) private var sync
+
+    /// Any day inside the month being viewed (defaults to today).
+    @State private var anchor = Date()
+    @State private var entries: [NookAPI.WeekEntryDTO] = []
+    @State private var picking: WeekPlannerView.PlanTarget?
+
+    private let weekdaySymbols = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
+    private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 5), count: 7) }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                monthHeader
+                Text("Dinners for the month · tap a night to add or open a recipe")
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                weekdayRow
+                LazyVGrid(columns: columns, spacing: 5) {
+                    ForEach(gridDays, id: \.self) { day in cell(day) }
+                }
+            }
+            .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 110)
+        }
+        .background(NK.canvas)
+        .task { await load() }
+        .refreshable { await load() }
+        .onChange(of: anchor) { _, _ in Task { await load() } }
+        .onChange(of: sync.mealsRev) { _, _ in Task { await load() } }
+        .sheet(item: $picking) { target in
+            RecipePickerSheet(model: recipes) { recipe in
+                Task {
+                    _ = await sync.setMealPlan(date: target.date, mealType: target.mealType,
+                                               recipeId: recipe.id, title: nil)
+                    await load()
+                }
+            }
+        }
+    }
+
+    // MARK: header
+
+    private var monthHeader: some View {
+        HStack {
+            Button { step(-1) } label: {
+                Image(systemName: "chevron.left").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink2)
+                    .frame(width: 36, height: 36).background(NK.card).clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            VStack(spacing: 1) {
+                Text(fmt(anchor, "MMMM yyyy")).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
+                if !isCurrentMonth {
+                    Button("Jump to this month") { withAnimation { anchor = Date() } }
+                        .font(.system(size: 12, weight: .semibold)).tint(NK.primary)
+                }
+            }
+            Spacer()
+            Button { step(1) } label: {
+                Image(systemName: "chevron.right").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink2)
+                    .frame(width: 36, height: 36).background(NK.card).clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.top, 4)
+    }
+
+    private var weekdayRow: some View {
+        HStack(spacing: 5) {
+            ForEach(weekdaySymbols, id: \.self) { s in
+                Text(s).font(.system(size: 11, weight: .heavy)).foregroundStyle(NK.ink3)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    // MARK: a day cell
+
+    @ViewBuilder private func cell(_ day: Date) -> some View {
+        let ds = ymd(day)
+        let inMonth = cal.isDate(day, equalTo: monthStart, toGranularity: .month)
+        let isToday = ds == ymd(Date())
+        let entry = dinnerByDate[ds]
+
+        let content = VStack(spacing: 2) {
+            HStack(spacing: 0) {
+                Text(dayNum(day))
+                    .font(.system(size: 11, weight: isToday ? .heavy : .semibold))
+                    .foregroundStyle(isToday ? NK.primary : (inMonth ? NK.ink2 : NK.ink3))
+                Spacer(minLength: 0)
+            }
+            if let e = entry, inMonth {
+                Text(e.recipe?.emoji ?? (isEatingOut(e) ? "🍴" : "🍽️")).font(.system(size: 17))
+                Text(e.displayTitle).font(.system(size: 8.5, weight: .semibold)).foregroundStyle(NK.ink2)
+                    .lineLimit(2).multilineTextAlignment(.center).minimumScaleFactor(0.85)
+            } else if inMonth {
+                Spacer(minLength: 0)
+                Image(systemName: "plus").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3.opacity(0.5))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 4).padding(.vertical, 5)
+        .frame(maxWidth: .infinity, minHeight: 66, alignment: .top)
+        .background(inMonth ? NK.card : Color.clear)
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .strokeBorder(isToday ? NK.primary : NK.hair, lineWidth: isToday ? 1.5 : 1))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .opacity(inMonth ? 1 : 0.4)
+
+        if inMonth {
+            Button { tap(day, entry) } label: { content }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    if let e = entry {
+                        Button { picking = .init(date: e.date, mealType: "dinner") } label: {
+                            Label("Change", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        Button(role: .destructive) {
+                            Task { _ = await sync.clearMealPlan(date: e.date, mealType: "dinner"); await load() }
+                        } label: { Label("Remove", systemImage: "trash") }
+                    }
+                }
+        } else {
+            content
+        }
+    }
+
+    // MARK: actions
+
+    private func tap(_ day: Date, _ entry: NookAPI.WeekEntryDTO?) {
+        if let e = entry, let rid = e.recipeId {
+            let seed = recipes.recipes.first { $0.id == rid }
+                ?? .placeholder(id: rid, title: e.recipe?.title ?? e.displayTitle, emoji: e.recipe?.emoji,
+                                category: e.recipe?.category, cookTimeMinutes: e.recipe?.cookTimeMinutes,
+                                servings: e.recipe?.servings)
+            path.append(.recipe(seed))
+        } else {
+            // Empty night, or a free-text meal with no recipe → plan/change it.
+            picking = .init(date: ymd(day), mealType: "dinner")
+        }
+    }
+
+    private func load() async {
+        let all = (try? await NookAPI().mealsWeek(start: ymd(gridStart), days: 42)) ?? []
+        entries = all.filter { $0.mealType == "dinner" }
+    }
+
+    /// A free-text "eating out" night (no recipe) — show a fork instead of a plate.
+    private func isEatingOut(_ e: NookAPI.WeekEntryDTO) -> Bool {
+        guard e.recipeId == nil, let t = e.title?.lowercased() else { return false }
+        return ["eat", "dining", "takeout", "take-out", "take out", "delivery", "order", "out"].contains { t.contains($0) }
+    }
+
+    // MARK: month math (Sunday-start grid, household tz)
+
+    private var dinnerByDate: [String: NookAPI.WeekEntryDTO] {
+        Dictionary(entries.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
+    }
+    private var cal: Calendar {
+        var c = Calendar(identifier: .gregorian); c.timeZone = sync.householdTz; return c
+    }
+    private var monthStart: Date {
+        cal.date(from: cal.dateComponents([.year, .month], from: anchor)) ?? anchor
+    }
+    /// The Sunday on or before the 1st — top-left of the 6×7 grid.
+    private var gridStart: Date {
+        let weekdayIdx = cal.component(.weekday, from: monthStart) - 1   // Sunday → 0
+        return cal.date(byAdding: .day, value: -weekdayIdx, to: monthStart) ?? monthStart
+    }
+    private var gridDays: [Date] { (0..<42).compactMap { cal.date(byAdding: .day, value: $0, to: gridStart) } }
+    private var isCurrentMonth: Bool { cal.isDate(anchor, equalTo: Date(), toGranularity: .month) }
+
+    private func step(_ months: Int) {
+        if let next = cal.date(byAdding: .month, value: months, to: monthStart) {
+            withAnimation { anchor = next }
+        }
+    }
+
+    private func fmt(_ d: Date, _ pattern: String) -> String {
+        let f = DateFormatter(); f.calendar = cal; f.timeZone = sync.householdTz; f.dateFormat = pattern
+        return f.string(from: d)
+    }
+    private func ymd(_ d: Date) -> String { fmt(d, "yyyy-MM-dd") }
+    private func dayNum(_ d: Date) -> String { fmt(d, "d") }
+}
