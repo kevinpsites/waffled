@@ -1363,6 +1363,25 @@ struct NookAPI: Sendable {
         return try await sendReturning("POST", "/api/events", body: body, as: Resp.self).event.id
     }
 
+    /// Update an event via REST (PATCH /api/events/:id) — used when a goal link is
+    /// involved, since the local mirror's events table has no goal_id columns.
+    func updateEvent(id: String, title: String, startsAtISO: String, endsAtISO: String?,
+                     allDay: Bool, location: String?, personIds: [String],
+                     goalId: String?, goalStepId: String?) async throws {
+        let body: [String: JSONValue] = [
+            "title": .string(title),
+            "startsAt": .string(startsAtISO),
+            "endsAt": endsAtISO.map(JSONValue.string) ?? .null,
+            "allDay": .bool(allDay),
+            "location": location.map(JSONValue.string) ?? .null,
+            "personId": personIds.first.map(JSONValue.string) ?? .null,
+            "participantIds": .array(personIds.map(JSONValue.string)),
+            "goalId": goalId.map(JSONValue.string) ?? .null,
+            "goalStepId": goalStepId.map(JSONValue.string) ?? .null,
+        ]
+        try await send("PATCH", "/api/events/\(id)", body: body)
+    }
+
     // MARK: event detail (the rich detail screen)
 
     /// One event with its full detail (rrule, Google calendar + sync state, named

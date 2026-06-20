@@ -7,7 +7,7 @@ struct TodayView: View {
     @Environment(SyncManager.self) private var sync
     @State private var dash = DashboardModel()
     @State private var recipes = RecipesModel()   // backs a recipe pushed from tonight's card
-    @State private var editingEvent: SyncedEvent?
+    @State private var detailEvent: SyncedEvent?
     @State private var showCapture = false
     @State private var dictateOnOpen = false
     @State private var scrolled = false   // cards have scrolled under the header → lift it
@@ -117,9 +117,7 @@ struct TodayView: View {
                 reviewSuggestions = await s ?? []
                 goals = await g ?? []
             }
-            .sheet(item: $editingEvent) { ev in
-                EventEditSheet(event: ev, initialDate: ev.startsAt ?? Date())
-            }
+            .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
             .sheet(isPresented: $showCapture) {
                 CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
             }
@@ -248,7 +246,7 @@ struct TodayView: View {
                     .buttonStyle(.plain)
                 } else {
                     ForEach(Array(todays.enumerated()), id: \.element.id) { idx, ev in
-                        Button { editingEvent = ev } label: {
+                        Button { detailEvent = ev } label: {
                             EventRow(event: ev, tz: sync.householdTz)
                                 .padding(.vertical, 11).contentShape(Rectangle())
                         }

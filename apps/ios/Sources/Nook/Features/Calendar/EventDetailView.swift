@@ -17,6 +17,8 @@ struct EventDetailView: View {
     @State private var loadingInsight = true
     @State private var editing = false
     @State private var confirmDelete = false
+    /// The linked goal's emoji + title (when this event counts toward one).
+    @State private var linkedGoal: (emoji: String?, title: String)?
 
     private var tz: TimeZone { sync.householdTz }
     private var tint: Color { Color(hexString: detail?.personColor ?? event.colorHex ?? "") ?? NK.ink3 }
@@ -55,7 +57,8 @@ struct EventDetailView: View {
             }
             .task { await load() }
             .sheet(isPresented: $editing, onDismiss: { Task { await load() } }) {
-                EventEditSheet(event: event, initialDate: start ?? Date())
+                EventEditSheet(event: event, initialDate: start ?? Date(),
+                               prefillGoalId: detail?.goalId, prefillGoalStepId: detail?.goalStepId)
             }
         }
         .presentationDetents([.large])
@@ -86,14 +89,21 @@ struct EventDetailView: View {
     private var goalChip: some View {
         HStack(spacing: 8) {
             Image(systemName: "target").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ai)
-            Text("Counts toward a goal").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Counts toward this goal").font(.system(size: 11, weight: .heavy)).tracking(0.3).foregroundStyle(NK.ai)
+                Text(goalChipTitle).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink).lineLimit(1)
+            }
             Spacer()
-            Image(systemName: "checkmark.circle.fill").font(.system(size: 14)).foregroundStyle(NK.ai)
+            Image(systemName: "checkmark.circle.fill").font(.system(size: 16)).foregroundStyle(NK.ai)
         }
         .padding(12)
         .background(NK.ai.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.ai.opacity(0.25), lineWidth: 1))
+    }
+    private var goalChipTitle: String {
+        guard let g = linkedGoal else { return "Linked goal" }
+        return "\(g.emoji.map { "\($0) " } ?? "")\(g.title)"
     }
 
     // MARK: details card
@@ -226,8 +236,12 @@ struct EventDetailView: View {
     // MARK: data
 
     private func load() async {
-        async let d = try? await NookAPI().eventDetail(id: event.id)
-        detail = await d
+        detail = try? await NookAPI().eventDetail(id: event.id)
+        if let gid = detail?.goalId, !gid.isEmpty, let g = try? await NookAPI().goalDetail(id: gid) {
+            linkedGoal = (g.emoji, g.title)
+        } else {
+            linkedGoal = nil
+        }
         loadingInsight = true
         insight = try? await NookAPI().eventInsight(id: event.id)
         loadingInsight = false

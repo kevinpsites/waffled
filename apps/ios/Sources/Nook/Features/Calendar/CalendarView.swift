@@ -493,9 +493,11 @@ struct EventEditSheet: View {
     @State private var calendars: [NookAPI.CalendarLink] = []
     @State private var calendarId: String?
     @State private var calTouched = false
-    // Goal linking (create only — the PowerSync events table has no goal columns, so
-    // a goal-tagged create goes through the rich REST route instead of the mirror).
+    // Goal linking, available on create AND edit (consistent picker). The PowerSync
+    // events table has no goal columns, so a goal-linked save goes through the rich
+    // REST route (POST on create, PATCH on edit) instead of the local mirror.
     let prefillGoalId: String?
+    let prefillGoalStepId: String?
     let prefillParticipantIds: [String]?
     @State private var goalId: String?
     @State private var goalStepId: String?
@@ -513,10 +515,12 @@ struct EventEditSheet: View {
     private static let iso = ISO8601DateFormatter()
     private static let durations = [15, 30, 45, 60, 90, 120, 180, 240]
 
-    init(event: SyncedEvent?, initialDate: Date, prefillGoalId: String? = nil, prefillParticipantIds: [String]? = nil) {
+    init(event: SyncedEvent?, initialDate: Date, prefillGoalId: String? = nil,
+         prefillGoalStepId: String? = nil, prefillParticipantIds: [String]? = nil) {
         self.event = event
         self.initialDate = initialDate
         self.prefillGoalId = prefillGoalId
+        self.prefillGoalStepId = prefillGoalStepId
         self.prefillParticipantIds = prefillParticipantIds
         let cal = Calendar.current
         // Create defaults to 5pm on the given day; edit uses the event's times.
@@ -533,6 +537,7 @@ struct EventEditSheet: View {
         _participants = State(initialValue: prefillParticipantIds ?? (event?.personId.map { [$0] } ?? []))
         _location = State(initialValue: event?.location ?? "")
         _goalId = State(initialValue: prefillGoalId)
+        _goalStepId = State(initialValue: prefillGoalStepId)
     }
 
     private var editing: Bool { event != nil }
@@ -617,7 +622,7 @@ struct EventEditSheet: View {
                         }
                     }
 
-                    if !editing { goalSection }
+                    goalSection
 
                     if showCalendarPicker {
                         group("Calendar") {
@@ -870,16 +875,15 @@ struct EventEditSheet: View {
             // Keep the owner (person_id) first, then any other participants.
             if !ids.isEmpty { participants = (participants + ids.filter { !participants.contains($0) }) }
         }
-        if !editing {
-            if calendars.isEmpty {
-                calendars = (try? await NookAPI().calendarLinks()) ?? []
-                recomputeDefaultCalendar()
-            }
-            if eligibleGoals.isEmpty {
-                eligibleGoals = (try? await NookAPI().goalsIn(listId: nil)) ?? []
-            }
-            if let gid = goalId, goalSteps.isEmpty { await loadSteps(for: gid) }
+        if !editing, calendars.isEmpty {
+            calendars = (try? await NookAPI().calendarLinks()) ?? []
+            recomputeDefaultCalendar()
         }
+        // Goals power the "Counts toward" picker on both create and edit.
+        if eligibleGoals.isEmpty {
+            eligibleGoals = (try? await NookAPI().goalsIn(listId: nil)) ?? []
+        }
+        if let gid = goalId, goalSteps.isEmpty { await loadSteps(for: gid) }
     }
 
     /// Default to the owner's ★ calendar (then any of theirs), until manually picked.
@@ -910,8 +914,17 @@ struct EventEditSheet: View {
         let chosenCal = showCalendarPicker ? calendarId : nil
         Task {
             if let event {
-                _ = await sync.updateEvent(id: event.id, title: name, startsAtISO: startISO,
-                                           endsAtISO: endISO, allDay: allDay, location: loc, personIds: ids)
+                if goalId != nil || prefillGoalId != nil {
+                    // A goal link was set, changed, or removed → PATCH the rich REST
+                    // route (the local mirror has no goal columns); PowerSync re-syncs.
+                    _ = try? await NookAPI().updateEvent(
+                        id: event.id, title: name, startsAtISO: startISO, endsAtISO: endISO,
+                        allDay: allDay, location: loc, personIds: ids, goalId: goalId, goalStepId: goalStepId)
+                    sync.touchGoals()
+                } else {
+                    _ = await sync.updateEvent(id: event.id, title: name, startsAtISO: startISO,
+                                               endsAtISO: endISO, allDay: allDay, location: loc, personIds: ids)
+                }
             } else if let gid = goalId {
                 // Goal-linked create goes through the rich REST route (the local
                 // events table has no goal columns); PowerSync down-syncs it back.
