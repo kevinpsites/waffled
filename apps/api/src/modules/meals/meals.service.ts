@@ -536,19 +536,23 @@ export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<
   })
   const activeThemeKeys = [...new Set(Object.values(themes))].filter((k) => MONTH_THEMES[k] && !MONTH_THEMES[k].special)
   const allowRepeats = input.allowRepeats !== false // default on for a month
+  // Bigger pool ⇒ rarer repeats. Aim near one distinct dish per ~1.3 nights so a
+  // dish recurs roughly every 3 weeks, not every other week. (A weak local model
+  // often returns fewer than asked, so we ask generously.)
   const poolSize = allowRepeats
-    ? Math.min(16, Math.max(8, Math.ceil(cookNights.length / 2.5), activeThemeKeys.length + 5))
+    ? Math.min(26, Math.max(12, Math.ceil(cookNights.length / 1.3), activeThemeKeys.length + 6))
     : Math.max(1, cookNights.length)
 
   const themeList = activeThemeKeys.map((k) => `${k} (${MONTH_THEMES[k].hint})`)
   const system = [
     `You plan a month of family DINNERS for a household meal planner — cooking for ${servings}.`,
-    `Draft a ROTATION POOL of exactly ${poolSize} distinct dinners to spread across the month${allowRepeats ? ' (dishes may repeat across the month)' : ''}.`,
-    'Vary cuisines and proteins widely so the rotation stays interesting. Honor every dietary note and any "keep in mind" guidance.',
+    `Draft a ROTATION POOL of ${poolSize} DISTINCT dinners to spread across the month.`,
+    `Variety is the priority: every dish in the pool must be different, spanning a wide range of cuisines and proteins so the month never feels repetitive. Do NOT list the same dish twice.`,
+    `Use the family's library recipes where they fit (return recipeId), but you MUST also INVENT new dishes (recipeId null) to reach ${poolSize} distinct options — never pad the pool by repeating library dishes.`,
+    'Honor every dietary note and any "keep in mind" guidance.',
     input.weeknightMaxMin
       ? `Include several QUICK dishes (<= ${input.weeknightMaxMin} min) for weeknights plus some more involved ones for weekends.`
       : 'Mix quick and more involved dishes.',
-    "Prefer reusing recipes from the family's library when they fit (return recipeId); otherwise a new dish with recipeId null.",
     themeList.length ? `Some nights have themes — make sure the pool covers each, tagging dishes with the theme keys they fit: ${themeList.join(', ')}.` : '',
     'For each dish give: title, optional recipeId, one food emoji, rough minutes, effort ("quick" or "involved"), and themes (array of theme keys, may be empty). Return JSON only.',
   ].filter(Boolean).join('\n')
@@ -570,7 +574,7 @@ export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<
     user,
     schema: PLAN_MONTH_POOL_SCHEMA,
     schemaName: 'meal_pool',
-    maxTokens: 1500,
+    maxTokens: 2200, // room for a larger distinct pool
     timeoutMs: 120_000,
   })
 
