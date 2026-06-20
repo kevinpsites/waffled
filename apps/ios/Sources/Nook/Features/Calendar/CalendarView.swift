@@ -647,7 +647,7 @@ struct EventEditSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
             .task { await load() }
-            .onChange(of: participants) { _, _ in recomputeDefaultCalendar(); scheduleSuggest() }
+            .onChange(of: participants) { _, _ in recomputeDefaultCalendar(); clearOrphanGoal(); scheduleSuggest() }
             .onChange(of: title) { _, _ in scheduleSuggest() }
         }
         .presentationDetents([.large])
@@ -679,7 +679,10 @@ struct EventEditSheet: View {
     // MARK: goal linking (create only)
 
     /// Calendar-opted goals whose participants include every chosen attendee.
+    /// Empty until ≥1 attendee is picked (web: the picker is participant-gated, and
+    /// an empty attendee set must NOT vacuously match every goal).
     private var eligibleGoalsForAttendees: [NookAPI.Goal] {
+        guard !participants.isEmpty else { return [] }
         let att = Set(participants)
         return eligibleGoals.filter { g in
             g.autoFromCalendar
@@ -764,11 +767,22 @@ struct EventEditSheet: View {
         goalSteps = (try? await NookAPI().goalDetail(id: id))?.steps ?? []
     }
 
-    /// Debounced live goal match for the inline hint (create, no goal chosen yet).
+    /// Drop a chosen goal that no longer fits the attendees (mirrors the web's
+    /// orphan-clear). Guarded so an async-loading goal list can't wipe a prefill.
+    private func clearOrphanGoal() {
+        guard !eligibleGoals.isEmpty, let gid = goalId else { return }
+        if !eligibleGoalsForAttendees.contains(where: { $0.id == gid }) {
+            goalId = nil; goalStepId = nil; goalSteps = []; suggestion = nil
+        }
+    }
+
+    /// Debounced live goal match for the inline hint (create, no goal chosen yet) —
+    /// only once attendees are chosen, so a suggestion never names people who aren't
+    /// on the event. Server `suggest-one` runs memory → keyword → LLM.
     private func scheduleSuggest() {
         suggestTask?.cancel()
         let t = title.trimmingCharacters(in: .whitespaces)
-        guard !editing, goalId == nil, t.count >= 3 else { suggestion = nil; return }
+        guard !editing, goalId == nil, !participants.isEmpty, t.count >= 3 else { suggestion = nil; return }
         let ids = participants
         suggestTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(600))
