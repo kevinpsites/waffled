@@ -956,6 +956,20 @@ struct NookAPI: Sendable {
         try await getJSON("/api/lists/grocery/board", as: GroceryBoardDTO.self)
     }
 
+    /// Pantry staples (assumed in-house, left off the list) — the editable master list,
+    /// shared with the Meals settings tab. Add/remove mirror the web's staples modal.
+    func pantryStaples() async throws -> [GroceryBoardDTO.Staple] {
+        struct Resp: Decodable { let staples: [GroceryBoardDTO.Staple] }
+        return try await getJSON("/api/pantry-staples", as: Resp.self).staples
+    }
+    func addPantryStaple(name: String) async throws -> GroceryBoardDTO.Staple {
+        struct Resp: Decodable { let staple: GroceryBoardDTO.Staple }
+        return try await sendReturning("POST", "/api/pantry-staples", body: ["name": .string(name)], as: Resp.self).staple
+    }
+    func removePantryStaple(id: String) async throws {
+        try await delete("/api/pantry-staples/\(id)")
+    }
+
     /// Rebuild the auto-added grocery items from this week's planned meals (keeps
     /// hand-added and checked items). Returns the refreshed board.
     func rebuildGrocery(weekStart: String) async throws -> GroceryBoardDTO {

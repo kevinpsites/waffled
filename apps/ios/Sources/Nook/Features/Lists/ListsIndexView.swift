@@ -76,7 +76,8 @@ struct ListsIndexView: View {
                     .listRowBackground(Color.clear).listRowSeparator(.hidden)
             }
             ForEach(model.lists) { list in
-                NavigationLink(value: HubRoute.list(list)) { row(list) }
+                Button { path.append(.list(list)) } label: { row(list) }
+                    .buttonStyle(.plain)
                     .listRowInsets(EdgeInsets(top: 5, leading: 18, bottom: 5, trailing: 18))
                     .listRowBackground(Color.clear).listRowSeparator(.hidden)
                     .swipeActions(edge: .trailing) {
@@ -124,6 +125,8 @@ struct ListsIndexView: View {
                 Text(list.name).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
                 Spacer(minLength: 8)
                 Text("\(list.itemCount)").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3.opacity(0.55))
             }
         }
     }

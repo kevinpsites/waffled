@@ -198,11 +198,19 @@ final class ListDetailModel {
     }
 
     /// Add a pantry staple to the list anyway (it's normally assumed in-house).
-    func addStaple(_ name: String) async {
+    /// Returns the aisle/section it landed in (for the confirmation toast), or nil.
+    @discardableResult
+    func addStaple(_ name: String) async -> String? {
         do {
             try await api.addGroceryItem(name: name, quantity: nil)
             await load()
-        } catch { self.error = true }
+            return items.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }?.section
+        } catch { self.error = true; return nil }
+    }
+
+    /// Reload just the staples master list (after editing them in the sheet).
+    func reloadStaples() async {
+        staples = (try? await api.pantryStaples()) ?? staples
     }
 
     /// Rebuild the auto items from this week's planned meals (keeps hand-added and
@@ -255,6 +263,10 @@ struct ListDetailView: View {
     @State private var railMeal = "dinner"
     /// Section ids (aisle title or meal-group id) the user has collapsed.
     @State private var collapsed: Set<String> = []
+    /// Transient confirmation banner ("Added Butter to Pantry").
+    @State private var toast: String?
+    @State private var toastTask: Task<Void, Never>?
+    @State private var editingStaples = false
     @FocusState private var focus: Field?
 
     /// Meal-type ordering for the summary filter (matches the web rail).
@@ -264,9 +276,10 @@ struct ListDetailView: View {
 
     private enum Field: Hashable { case add, editName, editQty, search }
 
-    /// True while the user is searching — the search box is focused or has text.
-    /// Used to hide non-item chrome (meals recap, pantry staples) so results stand out.
-    private var searchActive: Bool { focus == .search || !query.isEmpty }
+    /// True once the search box has text (focus alone doesn't count — hiding chrome
+    /// the instant the field is tapped is jarring). Used to hide non-item chrome
+    /// (meals recap, pantry staples) so matching results stand out.
+    private var searchActive: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
 
     /// Jump to the Meals tab and open a recipe — tapping a meal in the recap.
     var openRecipe: (NookAPI.RecipeSummary) -> Void = { _ in }
@@ -340,6 +353,10 @@ struct ListDetailView: View {
                 Task { await model.editDetails(item.id, name: name, quantity: qty, member: member, section: section) }
             }
         }
+        .sheet(isPresented: $editingStaples) {
+            PantryStaplesEditor(initial: model.staples) { Task { await model.reloadStaples() } }
+        }
+        .overlay(alignment: .bottom) { toastBanner }
         .alert("New section", isPresented: $newSectionPrompt) {
             TextField("Section name", text: $newSectionName)
             Button("Cancel", role: .cancel) { newSectionName = "" }
@@ -435,7 +452,7 @@ struct ListDetailView: View {
     private func headerChrome<V: View>(@ViewBuilder _ content: () -> V) -> some View {
         content()
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 6)
+            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 4)
             .background(NK.canvas)
             .listRowInsets(EdgeInsets())
     }
@@ -627,14 +644,30 @@ struct ListDetailView: View {
     /// add one anyway. Mirrors the web rail's staples card.
     @ViewBuilder private var staplesPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("PANTRY CHECK")
-                .font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
+            HStack {
+                Text("PANTRY CHECK")
+                    .font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
+                Spacer()
+                Button { editingStaples = true } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "gearshape").font(.system(size: 11, weight: .bold))
+                        Text("Edit staples").font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(NK.ai)
+                }
+                .buttonStyle(.plain)
+            }
             Text("These staples are assumed in the house, so they’re left off the list. Tap one to add it anyway.")
                 .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink2)
                 .fixedSize(horizontal: false, vertical: true)
             ChipFlow(spacing: 8, lineSpacing: 8) {
                 ForEach(model.staples) { s in
-                    Button { Task { await model.addStaple(s.name) } } label: {
+                    Button {
+                        Task {
+                            let sec = await model.addStaple(s.name)
+                            showToast("Added \(s.name)\(sec.map { " to \($0)" } ?? "")")
+                        }
+                    } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "plus").font(.system(size: 10, weight: .heavy))
                             Text(s.name).font(.system(size: 13, weight: .semibold))
@@ -844,6 +877,33 @@ struct ListDetailView: View {
         // Keep draftSection so several items in a row land in the same section.
         Task { await model.add(name: name, quantity: qty, section: section) }
     }
+
+    /// Show a transient confirmation banner (auto-dismisses).
+    private func showToast(_ message: String) {
+        withAnimation(.spring(response: 0.3)) { toast = message }
+        toastTask?.cancel()
+        toastTask = Task {
+            try? await Task.sleep(for: .seconds(2.2))
+            if !Task.isCancelled { withAnimation { toast = nil } }
+        }
+    }
+
+    /// A pill that floats above the add bar after tapping a pantry staple.
+    @ViewBuilder private var toastBanner: some View {
+        if let t = toast {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.primary)
+                Text(t).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 11)
+            .background(NK.card)
+            .clipShape(Capsule())
+            .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+            .shadow(color: .black.opacity(0.12), radius: 10, y: 3)
+            .padding(.bottom, 150)            // clear the add bar + tab bar
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
 }
 
 /// The fuller "Details" editor reached by swiping a row — name, quantity, assignee,
@@ -985,6 +1045,108 @@ struct ItemDetailEditor: View {
             }
             .padding(.vertical, 1)
         }
+    }
+}
+
+/// Manage the pantry staples master list (assumed in-house, left off the grocery
+/// list). Mirrors the web's "Pantry staples" modal — add via a field, remove via an
+/// ✕ on each chip. The same list is also managed from the Meals settings tab.
+struct PantryStaplesEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    let onChange: () -> Void
+
+    @State private var staples: [NookAPI.GroceryBoardDTO.Staple]
+    @State private var draft = ""
+    @State private var busy = false
+    @FocusState private var fieldFocused: Bool
+    private let api = NookAPI()
+
+    init(initial: [NookAPI.GroceryBoardDTO.Staple], onChange: @escaping () -> Void) {
+        _staples = State(initialValue: initial)
+        self.onChange = onChange
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Assumed in the house — the grocery list leaves these off.")
+                        .font(.system(size: 13, weight: .medium)).foregroundStyle(NK.ink2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 10) {
+                        TextField("Add a staple… (e.g. Soy sauce)", text: $draft)
+                            .font(.system(size: 16, weight: .semibold))
+                            .textInputAutocapitalization(.words).submitLabel(.done)
+                            .focused($fieldFocused)
+                            .onSubmit { Task { await add() } }
+                            .padding(.horizontal, 14).padding(.vertical, 12)
+                            .background(NK.card)
+                            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                        Button { Task { await add() } } label: {
+                            Text("Add").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                                .padding(.horizontal, 18).padding(.vertical, 12)
+                                .background(canAdd ? NK.primary : NK.primary.opacity(0.4))
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain).disabled(!canAdd || busy)
+                    }
+
+                    if staples.isEmpty {
+                        Text("No staples yet.").font(.system(size: 14)).foregroundStyle(NK.ink3)
+                    } else {
+                        ChipFlow(spacing: 8, lineSpacing: 8) {
+                            ForEach(staples) { s in
+                                HStack(spacing: 7) {
+                                    Text(s.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
+                                    Button { Task { await remove(s) } } label: {
+                                        Image(systemName: "xmark").font(.system(size: 10, weight: .heavy)).foregroundStyle(NK.ink3)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.leading, 12).padding(.trailing, 9).padding(.vertical, 8)
+                                .background(NK.card2)
+                                .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+                                .clipShape(Capsule())
+                            }
+                        }
+                    }
+                }
+                .padding(20)
+            }
+            .background(NK.canvas)
+            .navigationTitle("Pantry staples")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private var canAdd: Bool {
+        let n = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !n.isEmpty && !staples.contains { $0.name.caseInsensitiveCompare(n) == .orderedSame }
+    }
+
+    private func add() async {
+        let n = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard canAdd else { return }
+        busy = true; defer { busy = false }
+        do {
+            let s = try await api.addPantryStaple(name: n)
+            withAnimation { staples.append(s) }
+            draft = ""
+            onChange()
+        } catch {}
+    }
+
+    private func remove(_ s: NookAPI.GroceryBoardDTO.Staple) async {
+        let snapshot = staples
+        withAnimation { staples.removeAll { $0.id == s.id } }
+        do { try await api.removePantryStaple(id: s.id); onChange() }
+        catch { staples = snapshot }
     }
 }
 
