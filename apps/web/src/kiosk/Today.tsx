@@ -49,7 +49,7 @@ function dropTargetAt(x: number, y: number): { col: number; index: number } | nu
 // default + optional per-person override) and can be rearranged in a Customize
 // mode via drag-and-drop, then saved for just you or the whole family.
 export function Today() {
-  const { resolved, source, canEditFamily, loading, save, reset } = useTodayLayout()
+  const { resolved, source, loading, save, reset } = useTodayLayout()
   const [editing, setEditing] = useState(false)
   const [layout, setLayout] = useState<string[][]>(resolved)
   const [saving, setSaving] = useState(false)
@@ -141,7 +141,6 @@ export function Today() {
     setSaving(true)
     try {
       await reset('user')
-      if (canEditFamily) await reset('family')
       setEditing(false)
       setDrag(null)
     } finally {
@@ -161,14 +160,9 @@ export function Today() {
       {editing && (
         <div className="today-toolbar">
           <span className="tiny muted today-toolbar-hint">Drag a card by its bar to rearrange</span>
-          <button type="button" className="linkbtn today-reset" disabled={saving} onClick={resetDefault}>Reset to default</button>
           <button type="button" className="pill" style={{ cursor: 'pointer' }} disabled={saving} onClick={cancel}>Cancel</button>
-          <button type="button" className="pill" style={{ cursor: 'pointer' }} disabled={saving} onClick={() => persist('user')}>Save for me</button>
-          {canEditFamily && (
-            <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} disabled={saving} onClick={() => persist('family')}>
-              Save for everyone
-            </button>
-          )}
+          <button type="button" className="pill" style={{ cursor: 'pointer' }} disabled={saving} onClick={resetDefault}>Reset to defaults</button>
+          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} disabled={saving} onClick={() => persist('user')}>Save for me</button>
         </div>
       )}
 

@@ -52,12 +52,13 @@ body {
 /* Wraps the recap banner + the column grid in one flex column so the grid keeps
    filling the height on large displays while the recap sits above it. */
 .today-wrap { display: flex; flex-direction: column; min-height: 0; }
-.today-wrap > .recap-bar { margin: 6px 30px 0; }
+/* Extra bottom margin so the review/link recap bar isn't crowding the cards. */
+.today-wrap > .recap-bar { margin: 6px 30px 16px; }
 @media (min-width: 1101px) and (min-height: 680px) {
   .today-wrap { flex: 1; }
 }
 @media (max-width: 720px) {
-  .today-wrap > .recap-bar { margin: 6px 16px 0; }
+  .today-wrap > .recap-bar { margin: 6px 16px 14px; }
 }
 /* The board is N flex columns (data-driven from the saved layout) so cards can
    be placed in any column. min-width:0 lets long titles cap instead of widening. */
@@ -793,14 +794,14 @@ button.tick {
 .chores-card-row { border-radius: var(--r-lg); margin: 2px -12px; padding: 10px 12px; transition: background .12s ease; }
 .chores-card-row:hover { background: var(--panel); }
 
-/* Today grocery card: scroll the item list within the card instead of letting
-   50 items stretch the whole dashboard. Fills available height, capped so it
-   never drags the page down. */
+/* Today grocery card: the item list grows to fill the card (the card itself is
+   bounded by its column), so the "Add item" input sits at the bottom and a long
+   list scrolls inside. On narrow/unbounded layouts a tall list just scrolls the
+   page, which is fine. */
 .gc-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  max-height: clamp(140px, 38vh, 460px);
   margin-right: -6px;
   padding-right: 6px;
 }
