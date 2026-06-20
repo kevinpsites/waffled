@@ -4,17 +4,20 @@ import { TonightCardSlot, WeekDinnersCard } from './components/MealsColumn'
 import { ChoresCard } from './components/ChoresCard'
 import { GroceryCard } from './components/GroceryCard'
 import { GoalRecapBar } from './components/GoalRecap'
+import { CaptureBar } from './components/CaptureBar'
+import { useTopbarRight } from './topbar-slot'
 import { useTodayLayout, type LayoutScope } from '../lib/api'
 
-// The cards that can live on Today, keyed the same as the stored layout. The
-// label shows in the Customize drag bar (and covers cards that render nothing,
-// like Tonight when no dinner is planned).
-const CARDS: Record<string, { label: string; node: ReactNode }> = {
-  agenda: { label: 'Agenda', node: <AgendaCard /> },
+// The cards that can live on Today, keyed the same as the stored layout. `grow`
+// list-style cards stretch to fill their column (content height is the minimum);
+// the Tonight hero stays its natural size. The label shows in the Customize drag
+// bar (and covers cards that render nothing, like Tonight with no dinner planned).
+const CARDS: Record<string, { label: string; node: ReactNode; grow?: boolean }> = {
+  agenda: { label: 'Agenda', node: <AgendaCard />, grow: true },
   tonight: { label: "Tonight's dinner", node: <TonightCardSlot /> },
-  week: { label: "This week's dinners", node: <WeekDinnersCard /> },
-  chores: { label: 'Family Chores', node: <ChoresCard /> },
-  grocery: { label: 'Grocery', node: <GroceryCard /> },
+  week: { label: "This week's dinners", node: <WeekDinnersCard />, grow: true },
+  chores: { label: 'Family Chores', node: <ChoresCard />, grow: true },
+  grocery: { label: 'Grocery', node: <GroceryCard />, grow: true },
 }
 
 // Layout helpers (pure). A card lives in exactly one column.
@@ -93,6 +96,25 @@ export function Today() {
     }
   }, [drag])
 
+  // Customize button lives in the topbar, to the left of the "Add anything" bar.
+  // Only shown in view mode; the edit toolbar below handles save/cancel. (layout
+  // is kept synced to resolved while not editing, so entering edit needs no snapshot.)
+  useTopbarRight(
+    () =>
+      editing ? (
+        <CaptureBar />
+      ) : (
+        <div className="tb-today-actions">
+          <button type="button" className="pill today-customize" disabled={loading} onClick={() => setEditing(true)}>
+            ⠿ Customize
+            {source === 'user' && <span className="today-src-tag">personal</span>}
+          </button>
+          <CaptureBar />
+        </div>
+      ),
+    [editing, source, loading]
+  )
+
   function startDrag(e: ReactPointerEvent, card: string) {
     e.preventDefault()
     setPos({ x: e.clientX, y: e.clientY })
@@ -100,10 +122,6 @@ export function Today() {
     setDrag({ card })
   }
 
-  function enterEdit() {
-    setLayout(resolved.map((c) => [...c]))
-    setEditing(true)
-  }
   function cancel() {
     setEditing(false)
     setDrag(null)
@@ -140,26 +158,19 @@ export function Today() {
     <div className={`today-wrap ${editing ? 'today-editing' : ''}`}>
       <GoalRecapBar />
 
-      <div className="today-toolbar">
-        {editing ? (
-          <>
-            <span className="tiny muted today-toolbar-hint">Drag a card by its bar to rearrange</span>
-            <button type="button" className="linkbtn today-reset" disabled={saving} onClick={resetDefault}>Reset to default</button>
-            <button type="button" className="pill" style={{ cursor: 'pointer' }} disabled={saving} onClick={cancel}>Cancel</button>
-            <button type="button" className="pill" style={{ cursor: 'pointer' }} disabled={saving} onClick={() => persist('user')}>Save for me</button>
-            {canEditFamily && (
-              <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} disabled={saving} onClick={() => persist('family')}>
-                Save for everyone
-              </button>
-            )}
-          </>
-        ) : (
-          <button type="button" className="pill today-customize" style={{ cursor: 'pointer' }} disabled={loading} onClick={enterEdit}>
-            ⠿ Customize
-            {source === 'user' && <span className="today-src-tag">personal</span>}
-          </button>
-        )}
-      </div>
+      {editing && (
+        <div className="today-toolbar">
+          <span className="tiny muted today-toolbar-hint">Drag a card by its bar to rearrange</span>
+          <button type="button" className="linkbtn today-reset" disabled={saving} onClick={resetDefault}>Reset to default</button>
+          <button type="button" className="pill" style={{ cursor: 'pointer' }} disabled={saving} onClick={cancel}>Cancel</button>
+          <button type="button" className="pill" style={{ cursor: 'pointer' }} disabled={saving} onClick={() => persist('user')}>Save for me</button>
+          {canEditFamily && (
+            <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} disabled={saving} onClick={() => persist('family')}>
+              Save for everyone
+            </button>
+          )}
+        </div>
+      )}
 
       <div className={`today-board ${editing ? 'editing' : ''}`}>
         {display.map((col, ci) => (
@@ -179,7 +190,7 @@ export function Today() {
                       <div className="today-card-inner">{def.node}</div>
                     </div>
                   ) : (
-                    def.node
+                    <div className={`today-slot ${def.grow ? 'grow' : ''}`}>{def.node}</div>
                   )}
                 </Fragment>
               )

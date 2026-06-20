@@ -74,10 +74,21 @@ body {
   flex-direction: column;
   gap: 18px;
 }
+/* Each view card sits in a slot. `grow` slots (lists: agenda, week, chores,
+   grocery) stretch to fill the column — content height is the minimum; the
+   Tonight hero keeps its natural size. */
+.today-slot {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.today-slot > .card {
+  width: 100%;
+}
 
 /* On a roomy landscape display, fill the height and bound it so cards don't spill
-   past the fold — cards shrink and their lists (agenda rows, grocery items) scroll
-   internally. Only in view mode; editing flows naturally so nothing is hidden. */
+   past the fold — grow cards stretch to fill, their lists (agenda rows, grocery
+   items) scrolling internally. Only in view mode; editing flows naturally. */
 @media (min-width: 1101px) and (min-height: 680px) {
   .today-wrap:not(.today-editing) .today-board {
     flex: 1;
@@ -86,7 +97,12 @@ body {
   .today-wrap:not(.today-editing) .today-col {
     min-height: 0;
   }
-  .today-wrap:not(.today-editing) .today-col > .card {
+  .today-wrap:not(.today-editing) .today-slot.grow {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .today-wrap:not(.today-editing) .today-slot.grow > .card {
+    flex: 1;
     min-height: 0;
     overflow: auto;
   }
@@ -117,7 +133,9 @@ body {
   justify-content: flex-end;
 }
 .today-toolbar-hint { margin-right: auto; }
-.today-customize { font-weight: 700; }
+/* Customize button + the Add-anything bar share the topbar's right slot. */
+.tb-today-actions { display: flex; align-items: center; gap: 12px; }
+.today-customize { font-weight: 700; cursor: pointer; }
 .today-src-tag {
   margin-left: 7px;
   font-size: 10px;
