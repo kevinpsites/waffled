@@ -93,7 +93,7 @@ export function AgendaCard() {
   return (
     <div className="card" style={{ padding: '22px 22px 8px', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
-        <div className="card-h nk-serif" style={{ fontSize: 23 }}>
+        <div className="card-h" style={{ fontSize: 23 }}>
           Today
         </div>
         <div className="muted" style={{ fontWeight: 600 }}>

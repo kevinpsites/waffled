@@ -34,7 +34,7 @@ describe('MealsColumn', () => {
     expect(screen.getByText(/Serves 5/)).toBeInTheDocument() // tonight card only
     // week list
     expect(screen.getByText('Chorizo Tacos')).toBeInTheDocument()
-    expect(screen.getByText('2 planned')).toBeInTheDocument()
+    expect(screen.getByText(/2 planned/)).toBeInTheDocument()
   })
 
   it('drops the tonight card and shows the week empty state when nothing is planned', async () => {

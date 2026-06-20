@@ -67,11 +67,24 @@ body {
   align-content: start;
 }
 
-/* On a roomy landscape display, fill the height like the design. */
+/* On a roomy landscape display, fill the height like the design — and actually
+   BOUND it so cards don't spill past the fold. The single grid row stretches to
+   the available height, each column is allowed to shrink (min-height:0), and the
+   scrollable lists inside (agenda rows, grocery items) absorb any overflow
+   instead of pushing the whole page into a scroll. */
 @media (min-width: 1101px) and (min-height: 680px) {
   .today-grid {
     flex: 1;
     min-height: 0;
+    align-content: stretch;
+    grid-auto-rows: minmax(0, 1fr);
+  }
+  .today-grid > * {
+    min-height: 0;
+  }
+  /* The agenda is a single card; let its event list scroll within the column. */
+  .today-grid > .card {
+    overflow: auto;
   }
 }
 
@@ -611,6 +624,11 @@ button.tick {
 .chore-empty { padding: 8px 2px 12px; opacity: .8; }
 .claim-pick-q { font-size: 12px; font-weight: 800; color: var(--ink-3); margin-right: 3px; align-self: center; }
 .claim-pick { flex-wrap: wrap; }
+
+/* Today "Family Chores" rows link to the full chores page — give them a subtle
+   hover so the affordance reads. */
+.chores-card-row { border-radius: var(--r-md); margin: 0 -8px; padding-left: 8px; padding-right: 8px; transition: background .12s ease; }
+.chores-card-row:hover { background: var(--panel); }
 
 /* Today grocery card: scroll the item list within the card instead of letting
    50 items stretch the whole dashboard. Fills available height, capped so it

@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { useMealsWeek, localToday, type WeekEntry } from '../../lib/api'
 
 function dayAbbrev(dateStr: string): string {
@@ -79,12 +79,12 @@ export function MealsColumn() {
 
       <div className="card" style={{ padding: '15px 18px 8px', flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
-          <div className="card-h" style={{ fontSize: 16 }}>
+          <Link to="/meals" className="card-h" style={{ fontSize: 16, textDecoration: 'none', color: 'inherit' }}>
             This week’s dinners
-          </div>
-          <div style={{ marginLeft: 'auto' }} className="tiny muted">
-            {dinners.length} planned
-          </div>
+          </Link>
+          <Link to="/meals" className="tiny muted" style={{ marginLeft: 'auto', textDecoration: 'none', color: 'var(--ink-2)' }}>
+            {dinners.length} planned ›
+          </Link>
         </div>
         {loading && <div className="tiny muted" style={{ padding: '6px 0' }}>Loading…</div>}
         {error && <div className="tiny muted" style={{ padding: '6px 0' }}>Sign this kiosk in to see meals.</div>}
@@ -107,7 +107,7 @@ export function MealsColumn() {
                 {dayAbbrev(e.date)}
               </div>
               <div style={{ fontSize: 16, width: 22, textAlign: 'center' }}>{e.recipe?.emoji ?? (out ? '🍴' : '🍽️')}</div>
-              <div style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{out ? 'Eating out' : e.recipe?.title ?? e.title ?? 'Planned'}</div>
+              <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{out ? 'Eating out' : e.recipe?.title ?? e.title ?? 'Planned'}</div>
               {clickable && <div className="tiny muted" style={{ fontSize: 16 }}>›</div>}
             </div>
           )

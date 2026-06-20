@@ -17,7 +17,7 @@ function rail() {
 describe('kiosk navigation', () => {
   it('renders the Today dashboard at /', async () => {
     renderAt('/')
-    expect(screen.getByText('Family chores')).toBeInTheDocument()
+    expect(screen.getByText('Family Chores')).toBeInTheDocument()
     expect(screen.getByText('This week’s dinners')).toBeInTheDocument()
     // Today is the active rail item
     expect(within(rail()).getByText('Today').closest('a')).toHaveClass('on')
