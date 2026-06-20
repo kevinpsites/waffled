@@ -227,6 +227,53 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   const effectiveRailMeal = availableMealTypes.includes(railMeal as (typeof MEAL_TYPES)[number]) ? railMeal : availableMealTypes[0] ?? 'dinner'
   const railMeals = board.meals.filter((m) => m.mealType === effectiveRailMeal)
 
+  // One section's markup. Sections with a header (aisles / meals) collapse; the
+  // leading ungrouped/manual section has no header and always shows. The section
+  // key is unique (one ungrouped + unique aisle/meal names), so it doubles as the
+  // React key and the collapse key.
+  const renderSection = (sec: { aisle: string | null; items: GroceryBoardItem[]; mealType?: string }) => {
+    const key = `${view}|${sec.aisle ?? '__none__'}`
+    const isCollapsed = !!sec.aisle && collapsed.has(key)
+    return (
+      <div key={key} className="grocery-section">
+        {sec.aisle && (
+          <div className="grocery-section-h" role="button" tabIndex={0} onClick={() => toggleSection(key)}>
+            <span className={`cal-chev ${isCollapsed ? '' : 'open'}`}>›</span>
+            {view === 'aisle' && AISLE_EMOJI[sec.aisle] && <span className="ga-emo">{AISLE_EMOJI[sec.aisle]}</span>}
+            {view === 'meal' && sec.mealType && <span className={`meal-badge mt-${sec.mealType}`}>{MEAL_EMOJI[sec.mealType]} {MEAL_LABEL[sec.mealType]}</span>}
+            {sec.aisle}
+            <span className="ga-n">{sec.items.length}</span>
+          </div>
+        )}
+        {!isCollapsed && sec.items.map((it) => (
+          <ItemRow
+            key={it.id}
+            item={it}
+            colors={colorFor(it.sourceRecipeIds)}
+            onToggle={() => toggle(it)}
+            onSave={(patch) => saveItem(it, patch)}
+            onDelete={() => deleteItem(it)}
+          />
+        ))}
+      </div>
+    )
+  }
+
+  // Split sections into two columns by a prefix/suffix cut weighted by item count.
+  // Because the cut is based on item counts (which don't change when a section is
+  // collapsed), collapsing never moves a section to the other column; and because
+  // it's a prefix/suffix (not interleaved), stacking on mobile keeps aisle order.
+  const weights = sections.map((s) => s.items.length + 2)
+  const totalWeight = weights.reduce((a, b) => a + b, 0)
+  let acc = 0
+  let splitIdx = sections.length
+  for (let i = 0; i < sections.length; i++) {
+    acc += weights[i]
+    if (acc >= totalWeight / 2) { splitIdx = i + 1; break }
+  }
+  const colA = sections.slice(0, splitIdx)
+  const colB = sections.slice(splitIdx)
+
   return (
     <div className="grocery-board">
       <div className="grocery-main">
@@ -260,35 +307,8 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
             )}
             {activeItems.length > 0 && (
               <div className="grocery-cols">
-                {sections.map((sec, i) => {
-                  // Sections with a header (aisles / meals) collapse; the leading
-                  // ungrouped/manual section has no header and stays open.
-                  const key = `${view}|${sec.aisle ?? '__none__'}`
-                  const isCollapsed = !!sec.aisle && collapsed.has(key)
-                  return (
-                    <div key={i} className="grocery-section">
-                      {sec.aisle && (
-                        <div className="grocery-section-h" role="button" tabIndex={0} onClick={() => toggleSection(key)}>
-                          <span className={`cal-chev ${isCollapsed ? '' : 'open'}`}>›</span>
-                          {view === 'aisle' && AISLE_EMOJI[sec.aisle] && <span className="ga-emo">{AISLE_EMOJI[sec.aisle]}</span>}
-                          {view === 'meal' && sec.mealType && <span className={`meal-badge mt-${sec.mealType}`}>{MEAL_EMOJI[sec.mealType]} {MEAL_LABEL[sec.mealType]}</span>}
-                          {sec.aisle}
-                          <span className="ga-n">{sec.items.length}</span>
-                        </div>
-                      )}
-                      {!isCollapsed && sec.items.map((it) => (
-                        <ItemRow
-                          key={it.id}
-                          item={it}
-                          colors={colorFor(it.sourceRecipeIds)}
-                          onToggle={() => toggle(it)}
-                          onSave={(patch) => saveItem(it, patch)}
-                          onDelete={() => deleteItem(it)}
-                        />
-                      ))}
-                    </div>
-                  )
-                })}
+                <div className="grocery-col">{colA.map(renderSection)}</div>
+                {colB.length > 0 && <div className="grocery-col">{colB.map(renderSection)}</div>}
               </div>
             )}
 

@@ -31,12 +31,20 @@
 }
 
 /* two-column flow of aisle sections (like the mock) */
+/* Two real columns (not CSS multi-column) so collapsing a section never reflows
+   sections across columns — each section is assigned a fixed column in JS. */
 .grocery-cols {
-  columns: 2;
-  column-gap: 18px;
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+}
+.grocery-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 .grocery-section {
-  break-inside: avoid;
   margin-bottom: 18px;
 }
 .grocery-section-h {
@@ -48,14 +56,23 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--ink-3);
-  margin: 0 2px 8px;
+  margin: 0 -6px 8px;
+  padding: 4px 6px;
+  border-radius: 8px;
   cursor: pointer;
   user-select: none;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+/* Make the collapse affordance obvious on hover. */
+.grocery-section-h:hover {
+  background: var(--panel);
+  color: var(--ink-2);
 }
 /* The collapse chevron sits a touch smaller than the calendar's so it doesn't
-   dwarf the uppercase section label. */
+   dwarf the uppercase section label, and is solid enough to read as a control. */
 .grocery-section-h .cal-chev {
   font-size: 18px;
+  color: var(--ink-3);
 }
 .grocery-section-h .ga-emo {
   display: inline-grid;
@@ -328,7 +345,7 @@
     grid-template-columns: 1fr;
   }
   .grocery-cols {
-    columns: 1;
+    flex-direction: column;
   }
 }
 @media (max-width: 720px) {
