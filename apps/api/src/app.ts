@@ -24,6 +24,7 @@ import { registerGoalRoutes } from './modules/goals/goals.routes'
 import { registerGoalCalendarRoutes } from './modules/goals/goal-calendar'
 import { registerOverviewRoutes } from './modules/overview/overview'
 import { registerAuthRoutes } from './modules/auth/auth'
+import { registerOidcRoutes } from './modules/auth/oidc'
 import { registerTodayLayoutRoutes } from './modules/layout/today-layout'
 import { registerMobileTodayLayoutRoutes } from './modules/layout/mobile-today-layout'
 import { registerPhotoRoutes } from './modules/photos/photos'
@@ -47,6 +48,10 @@ const PUBLIC_PATHS = new Set([
   '/api/auth/login',
   '/api/auth/refresh',
   '/api/auth/logout',
+  // OIDC login dance runs before a session exists (admin config routes stay gated).
+  '/api/auth/oidc/start',
+  '/api/auth/oidc/callback',
+  '/api/auth/oidc/exchange',
 ])
 
 // Auth gate — verifies the token (sets req.principal) for every non-public route.
@@ -166,6 +171,7 @@ registerGoalCalendarRoutes(api)
 
 // Built-in auth: setup / login / refresh / logout (/api/auth/*)
 registerAuthRoutes(api)
+registerOidcRoutes(api)
 
 // Person + family overviews (/api/persons/:id/overview, /api/family/overview)
 registerOverviewRoutes(api)

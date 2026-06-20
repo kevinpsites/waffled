@@ -9,6 +9,7 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import { config } from '../../platform/config'
 import { query } from '../../platform/db'
 import { provisionHousehold, presentHousehold, presentPerson } from '../households/households'
+import { loginMethods } from './oidc'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -34,14 +35,17 @@ function verifyPassword(pw: string, stored: string): boolean {
 }
 
 // ── tokens ───────────────────────────────────────────────────────────────────
-function mintAccess(sub: string): { token: string; expiresIn: number } {
+// Exported so the OIDC module reaches the *same* session path — a verified OIDC
+// login mints an identical access+refresh pair, keeping everything downstream
+// (requireAuth, the PowerSync exchange) unchanged.
+export function mintAccess(sub: string): { token: string; expiresIn: number } {
   const { secret, issuer, audience } = config.auth.local
   const token = jwt.sign({}, secret, { algorithm: 'HS256', subject: sub, issuer, audience, expiresIn: ACCESS_TTL_SECONDS })
   return { token, expiresIn: ACCESS_TTL_SECONDS }
 }
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex')
 
-async function issueRefresh(personId: string, subject: string): Promise<string> {
+export async function issueRefresh(personId: string, subject: string): Promise<string> {
   const token = randomBytes(32).toString('base64url')
   await query(
     `insert into refresh_tokens (person_id, subject, token_hash, expires_at)
@@ -70,15 +74,10 @@ async function isInitialized(): Promise<boolean> {
   return rows.length > 0
 }
 
-export function authMethods(): string[] {
-  const methods = ['password']
-  // OIDC is added here once configured (phase 2).
-  return methods
-}
-
 export function registerAuthRoutes(api: Api): void {
-  // Public: first-run + which login methods to show.
-  api.get('/api/auth/status', async () => ({ initialized: await isInitialized(), methods: authMethods() }))
+  // Public: first-run + which login methods to show (password and/or OIDC, per the
+  // DB-backed auth_config the admin edits in Settings).
+  api.get('/api/auth/status', async () => ({ initialized: await isInitialized(), ...(await loginMethods()) }))
 
   // Public, one-time: create the first household + admin. Locked once initialized.
   api.post('/api/auth/setup', async (req: Request, res: Response) => {

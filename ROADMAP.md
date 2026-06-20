@@ -312,7 +312,53 @@ web-cookie assumptions:
   `nook-local`, aud `nook-api`). Point the app's env at the **same** `LOCAL_JWT_SECRET`
   the server uses (supersedes 4.2.1's Auth0 plan).
 
-**Next:** Phase 1b web setup-wizard + login screen (replace the localStorage dev
-token); Phase 2 OIDC (backend-mediated); Phase 3 GHCR images + `.env.example` +
-quickstart (retire Terraform); Phase 4 optional S3 backup + member-management UI
-(invite family members with their own logins).
+**Phase 1b — SHIPPED 2026-06-20** (`apps/web`): `AuthGate` (loading/authed/login/
+setup), first-run **Setup wizard** + **Login screen**, `client.ts` session mgmt
+(access + rotating refresh in localStorage, bearer on every call, transparent 401
+refresh-retry), legacy `nook.token` still honored. **Sign out** in Settings (nav
+footer + real About panel; tap-to-confirm) — `authApi.logout()` revokes refresh +
+clears session + fires `nook:auth-changed`. Verified live + 95 web tests green.
+
+### Phase 2 — OIDC, backend-mediated, **Settings-managed** (Immich-style) — IN PROGRESS
+Config is **DB-backed and edited by an admin in Settings**, not env (the operator
+attaches their IdP *after* first-run setup and chooses whether passwords stay on).
+We run the auth-code + PKCE flow server-side and mint our **own** session, so every
+downstream feature is unchanged — OIDC is just another way to reach `mintAccess` +
+`issueRefresh`. No new deps: `jwks-rsa` + `jsonwebtoken` (already used by the Auth0
+path) verify the IdP's ID token; `crypto.ts` (AES-GCM, needs `TOKEN_ENCRYPTION_KEY`)
+encrypts the client secret at rest. Mirrors the Google-calendar OAuth pattern
+(one-time `*_oauth_states` row → public callback → code exchange).
+
+- **Provisioning = invite-gated.** The ID token's *verified* email must match an
+  existing person (by `identities.email` or `credentials.email`); first OIDC login
+  links a new `identities` row (provider `oidc`, namespaced subject). Unknown emails
+  are rejected. (Today only the setup admin has an email on file; Phase 4 member-mgmt
+  adds emails to others to invite them to SSO.)
+- **Password toggle.** Operator can disable password login once OIDC is enabled &
+  validated (lockout-guarded; **break-glass** `AUTH_FORCE_PASSWORD=1` always shows it).
+
+Schema (migration 0041): `auth_config` (singleton: oidc_enabled, issuer_url,
+client_id, client_secret_enc, scopes, button_label, password_login_enabled),
+`oidc_login_states` (state, code_verifier, nonce, redirect_to, created_at — one-time,
+TTL), `auth_handoffs` (code → person_id, subject — one-time, so tokens never ride the
+redirect URL).
+
+Endpoints:
+- `GET  /api/auth/status` → now `{ initialized, methods, oidc?:{buttonLabel} }`
+  (`password` unless disabled; `oidc` when enabled).
+- `GET  /api/auth/oidc/start?redirect=` (public) → 302 to IdP authorize (state+PKCE+nonce).
+- `GET  /api/auth/oidc/callback` (public) → exchange code, verify ID token (JWKS from
+  discovery), resolve invite-gated, mint session → 302 `…/auth/callback?code=<handoff>`.
+- `POST /api/auth/oidc/exchange {code}` (public) → `{ accessToken, refreshToken, expiresIn }`.
+- `GET  /api/auth/config` (admin) → config **sans secret** (+ `secretSet`).
+- `PUT  /api/auth/config` (admin) → set issuer/clientId/clientSecret/buttonLabel/scopes/toggles.
+- `POST /api/auth/config/test` (admin) → fetch `.well-known/openid-configuration`, validate.
+
+Web: Login screen renders password form and/or "Sign in with <label>" per `status`;
+new SPA route `/auth/callback` exchanges the handoff code → `setSession` → home;
+Settings adds an admin **Login & security** panel (OIDC fields + Test + Save, password
+toggle). **Mobile** later reuses `oidc/start` + a deep-link `oidc/callback` → `exchange`.
+
+**Next:** Phase 3 GHCR images + `.env.example` + quickstart (retire Terraform);
+Phase 4 optional S3 backup + member-management UI (invite family members, set their
+emails so they can SSO / set a password).

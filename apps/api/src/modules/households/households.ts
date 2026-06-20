@@ -75,6 +75,45 @@ export async function findTenantBySub(sub: string): Promise<Tenant | null> {
   return r ? { sub, personId: r.person_id, householdId: r.household_id, isAdmin: r.is_admin } : null
 }
 
+// Invite-gated OIDC: a first-time SSO login only succeeds if its verified email
+// already belongs to a person on file (added by an admin / created at setup). We
+// match against both login surfaces — a password credential's email and any
+// identity's email — so e.g. the setup admin can SSO in by their setup email.
+export async function findPersonByEmail(
+  email: string
+): Promise<{ personId: string; householdId: string } | null> {
+  const { rows } = await query<{ person_id: string; household_id: string }>(
+    `select person_id, household_id from credentials
+       where lower(email) = lower($1) and deleted_at is null
+     union
+     select i.person_id, p.household_id
+       from identities i join persons p on p.id = i.person_id and p.deleted_at is null
+      where lower(i.email) = lower($1) and i.deleted_at is null
+     limit 1`,
+    [email]
+  )
+  const r = rows[0]
+  return r ? { personId: r.person_id, householdId: r.household_id } : null
+}
+
+// Link a new auth identity (e.g. OIDC) to an existing person, so subsequent logins
+// resolve straight through findTenantBySub. is_primary stays false — the original
+// (password/setup) identity remains primary.
+export async function linkIdentity(input: {
+  householdId: string
+  personId: string
+  provider: string
+  subject: string
+  email: string | null
+  emailVerified: boolean
+}): Promise<void> {
+  await query(
+    `insert into identities (household_id, person_id, provider, auth0_user_id, email, email_verified, is_primary)
+     values ($1, $2, $3, $4, $5, $6, false)`,
+    [input.householdId, input.personId, input.provider, input.subject, input.email, input.emailVerified]
+  )
+}
+
 export async function getContext(
   tenant: Tenant
 ): Promise<{ household: HouseholdRow; person: PersonRow }> {
