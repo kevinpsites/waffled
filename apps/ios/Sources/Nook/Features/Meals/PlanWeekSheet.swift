@@ -528,14 +528,9 @@ struct PlanWeekSheet: View {
     private var cal: Calendar {
         var c = Calendar(identifier: .gregorian); c.timeZone = sync.householdTz; return c
     }
-    private func ymd(_ d: Date) -> String {
-        let f = DateFormatter(); f.calendar = cal; f.timeZone = sync.householdTz; f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: d)
-    }
-    private func dowLetter(_ d: Date) -> String {
-        let f = DateFormatter(); f.calendar = cal; f.timeZone = sync.householdTz; f.dateFormat = "EEEEE"
-        return f.string(from: d)   // narrow weekday: S M T W T F S
-    }
+    private func ymd(_ d: Date) -> String { DateFmt.string(d, "yyyy-MM-dd", sync.householdTz) }
+    /// Narrow weekday: S M T W T F S
+    private func dowLetter(_ d: Date) -> String { DateFmt.string(d, "EEEEE", sync.householdTz) }
 
     // MARK: helpers
 
@@ -549,9 +544,7 @@ struct PlanWeekSheet: View {
         case "ollama", "local": return "local AI"; default: return v }
     }
     private func weekday(_ ymd: String) -> String {
-        let inF = DateFormatter(); inF.dateFormat = "yyyy-MM-dd"; inF.timeZone = sync.householdTz
-        guard let d = inF.date(from: ymd) else { return ymd }
-        let outF = DateFormatter(); outF.dateFormat = "EEE MMM d"; outF.timeZone = sync.householdTz
-        return outF.string(from: d).uppercased()
+        guard let d = DateFmt.date(ymd, "yyyy-MM-dd", sync.householdTz) else { return ymd }
+        return DateFmt.string(d, "EEE MMM d", sync.householdTz).uppercased()
     }
 }

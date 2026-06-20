@@ -631,11 +631,8 @@ struct ListDetailView: View {
 
     /// "Sun"/"Mon"… from a YYYY-MM-DD(THH…) date string.
     private func weekday(_ iso: String) -> String {
-        let day = String(iso.prefix(10))
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
-        guard let d = f.date(from: day) else { return "" }
-        let out = DateFormatter(); out.dateFormat = "EEE"; out.timeZone = TimeZone(identifier: "UTC")
-        return out.string(from: d)
+        guard let d = DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", DateFmt.utc) else { return "" }
+        return DateFmt.string(d, "EEE", DateFmt.utc)
     }
 
     // MARK: Pantry check (staples)
