@@ -476,7 +476,7 @@ const daysBetween = (a: string, b: string): number =>
 
 type PoolDish = { title: string; recipeId: string | null; emoji: string | null; minutes: number | null; effort: 'quick' | 'involved'; themes: string[] }
 
-export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<{ start: string; mealType: string; suggestions: PlanCard[]; via: string }> {
+export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<{ start: string; mealType: string; suggestions: PlanCard[]; via: string; error?: string }> {
   const mealType = 'dinner'
   const base = new Date(`${input.start}T00:00:00Z`)
   const year = base.getUTCFullYear()
@@ -535,26 +535,31 @@ export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<
     return !(tk && MONTH_THEMES[tk]?.special)
   })
   const activeThemeKeys = [...new Set(Object.values(themes))].filter((k) => MONTH_THEMES[k] && !MONTH_THEMES[k].special)
+  // The plan only ever schedules recipes the family actually has — never invented
+  // dishes (those have no ingredients/steps and can't build a grocery list). So the
+  // pool is capped by the library size; if it's small, repeats are unavoidable.
+  if (lib.length === 0) {
+    return { start: monthStartStr, mealType, suggestions: [], via: 'none', error: 'Add some recipes to your library first — the month planner only schedules recipes you have.' }
+  }
   const allowRepeats = input.allowRepeats !== false // default on for a month
-  // Bigger pool ⇒ rarer repeats. Aim near one distinct dish per ~1.3 nights so a
-  // dish recurs roughly every 3 weeks, not every other week. (A weak local model
-  // often returns fewer than asked, so we ask generously.)
+  // Use as many distinct library recipes as possible so repeats are rare and spread
+  // out (bounded by the library — more recipes ⇒ more variety).
   const poolSize = allowRepeats
-    ? Math.min(26, Math.max(12, Math.ceil(cookNights.length / 1.3), activeThemeKeys.length + 6))
-    : Math.max(1, cookNights.length)
+    ? Math.min(lib.length, Math.max(cookNights.length, lib.length))
+    : Math.min(lib.length, Math.max(1, cookNights.length))
 
   const themeList = activeThemeKeys.map((k) => `${k} (${MONTH_THEMES[k].hint})`)
   const system = [
     `You plan a month of family DINNERS for a household meal planner — cooking for ${servings}.`,
-    `Draft a ROTATION POOL of ${poolSize} DISTINCT dinners to spread across the month.`,
-    `Variety is the priority: every dish in the pool must be different, spanning a wide range of cuisines and proteins so the month never feels repetitive. Do NOT list the same dish twice.`,
-    `Use the family's library recipes where they fit (return recipeId), but you MUST also INVENT new dishes (recipeId null) to reach ${poolSize} distinct options — never pad the pool by repeating library dishes.`,
-    'Honor every dietary note and any "keep in mind" guidance.',
+    `Choose a ROTATION POOL of up to ${poolSize} dinners to spread across the month.`,
+    `CRITICAL: only choose dishes that are in the family's recipe library below — return the recipeId for every dish. NEVER invent a dish that is not in the library.`,
+    `Favor variety: pick as many DIFFERENT library recipes as fit (spanning cuisines/proteins) so the month doesn't feel repetitive. Do not list the same recipe twice.`,
+    'Honor every dietary note and any "keep in mind" guidance when choosing.',
     input.weeknightMaxMin
-      ? `Include several QUICK dishes (<= ${input.weeknightMaxMin} min) for weeknights plus some more involved ones for weekends.`
-      : 'Mix quick and more involved dishes.',
-    themeList.length ? `Some nights have themes — make sure the pool covers each, tagging dishes with the theme keys they fit: ${themeList.join(', ')}.` : '',
-    'For each dish give: title, optional recipeId, one food emoji, rough minutes, effort ("quick" or "involved"), and themes (array of theme keys, may be empty). Return JSON only.',
+      ? `Prefer QUICK library recipes (<= ${input.weeknightMaxMin} min) for weeknights and more involved ones for weekends.`
+      : 'Mix quick and more involved library recipes.',
+    themeList.length ? `Some nights have themes — pick library recipes that fit each and tag them with the theme keys: ${themeList.join(', ')}.` : '',
+    'For each chosen recipe return: recipeId (required), title, emoji, minutes, effort ("quick" or "involved"), and themes (array of theme keys, may be empty). Return JSON only.',
   ].filter(Boolean).join('\n')
   const user = JSON.stringify({
     poolSize,
@@ -578,33 +583,38 @@ export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<
     timeoutMs: 120_000,
   })
 
-  // Normalize the pool: relink library recipes by id/title, dedupe, infer effort.
+  // Effort from cook time vs the weeknight ceiling (default involved when unknown).
+  const effortOf = (minutes: number | null, hint?: string): 'quick' | 'involved' => {
+    if (hint && /involv|long|big|slow/i.test(hint)) return 'involved'
+    if (hint && /quick|fast|easy|simple/i.test(hint)) return 'quick'
+    if (minutes != null && input.weeknightMaxMin) return minutes <= input.weeknightMaxMin ? 'quick' : 'involved'
+    return 'involved'
+  }
+
+  // Normalize the pool — LIBRARY ONLY: every dish must resolve to a real recipe
+  // (by id, else by title). Invented dishes are dropped so we never plan something
+  // the family can't actually cook / build a grocery list for.
   const libIds = new Set(lib.map((r) => r.id))
   const rawPool = ((data as { pool?: unknown[] })?.pool ?? []) as Array<Record<string, unknown>>
   const pool: PoolDish[] = []
   const seenTitles = new Set<string>()
   for (const d of rawPool) {
     const title0 = String(d.title ?? '').trim()
-    if (!title0) continue
     let recipe = typeof d.recipeId === 'string' && libIds.has(d.recipeId) ? recipeById.get(d.recipeId) : undefined
-    if (!recipe) recipe = recipeByTitle.get(normTitle(title0))
-    const title = recipe ? recipe.title : title0
-    const nt = normTitle(title)
+    if (!recipe && title0) recipe = recipeByTitle.get(normTitle(title0))
+    if (!recipe) continue // invented → discard
+    const nt = normTitle(recipe.title)
     if (seenTitles.has(nt)) continue
     seenTitles.add(nt)
-    const minutes = recipe?.cook_time_minutes ?? (typeof d.minutes === 'number' ? Math.round(d.minutes) : null)
-    const effortStr = typeof d.effort === 'string' ? d.effort : ''
-    const effort: 'quick' | 'involved' = /involv|long|big|slow/i.test(effortStr)
-      ? 'involved'
-      : /quick|fast|easy|simple/i.test(effortStr)
-        ? 'quick'
-        : minutes != null && input.weeknightMaxMin
-          ? minutes <= input.weeknightMaxMin
-            ? 'quick'
-            : 'involved'
-          : 'involved'
+    const minutes = recipe.cook_time_minutes ?? null
     const themesArr = Array.isArray(d.themes) ? d.themes.filter((x): x is string => typeof x === 'string') : []
-    pool.push({ title, recipeId: recipe?.id ?? null, emoji: recipe?.emoji ?? (typeof d.emoji === 'string' && d.emoji ? d.emoji : null), minutes, effort, themes: themesArr })
+    pool.push({ title: recipe.title, recipeId: recipe.id, emoji: recipe.emoji ?? null, minutes, effort: effortOf(minutes, typeof d.effort === 'string' ? d.effort : undefined), themes: themesArr })
+  }
+  // Fallback: if the model returned nothing usable, just rotate the library itself.
+  if (pool.length === 0) {
+    for (const r of recipes.slice(0, poolSize)) {
+      pool.push({ title: r.title, recipeId: r.id, emoji: r.emoji ?? null, minutes: r.cook_time_minutes ?? null, effort: effortOf(r.cook_time_minutes ?? null), themes: [] })
+    }
   }
   if (pool.length === 0) return { start: monthStartStr, mealType, suggestions: [], via }
 
