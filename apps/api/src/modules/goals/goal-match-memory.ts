@@ -63,6 +63,52 @@ export async function loadMemory(householdId: string): Promise<Memory> {
   return mem
 }
 
+// ── Settings: view + forget learned matches ─────────────────────────────────
+export interface MemoryGroup {
+  goalId: string
+  goalTitle: string
+  goalEmoji: string | null
+  tokens: Array<{ token: string; weight: number }>
+}
+
+// Learned matches grouped by goal (for Settings → Smart matching). Skips orphaned
+// rows whose goal was deleted.
+export async function loadMemoryGrouped(householdId: string): Promise<MemoryGroup[]> {
+  const { rows } = await query<{ goal_id: string; title: string; emoji: string | null; token: string; weight: number }>(
+    `select m.goal_id, g.title, g.emoji, m.token, m.weight
+       from goal_match_memory m
+       join goals g on g.id = m.goal_id and g.deleted_at is null
+      where m.household_id = $1
+      order by g.title asc, m.weight desc, m.token asc`,
+    [householdId]
+  )
+  const byGoal = new Map<string, MemoryGroup>()
+  for (const r of rows) {
+    let grp = byGoal.get(r.goal_id)
+    if (!grp) {
+      grp = { goalId: r.goal_id, goalTitle: r.title, goalEmoji: r.emoji, tokens: [] }
+      byGoal.set(r.goal_id, grp)
+    }
+    grp.tokens.push({ token: r.token, weight: Number(r.weight) })
+  }
+  return [...byGoal.values()]
+}
+
+// Forget one learned word→goal (the ✕ on a chip), or all words for a goal when
+// token is omitted.
+export async function forgetMemory(householdId: string, goalId: string, token?: string | null): Promise<void> {
+  if (token) {
+    await query(`delete from goal_match_memory where household_id = $1 and goal_id = $2 and token = $3`, [householdId, goalId, token])
+  } else {
+    await query(`delete from goal_match_memory where household_id = $1 and goal_id = $2`, [householdId, goalId])
+  }
+}
+
+// Wipe all learned matches for the household ("Reset learned matches").
+export async function clearMemory(householdId: string): Promise<void> {
+  await query(`delete from goal_match_memory where household_id = $1`, [householdId])
+}
+
 // Best learned match for an event's title among the eligible goals, with its
 // score, or null. Sums learned token weights per goal; needs a clear winner (≥4 ≈
 // one human signal, and strictly ahead of the runner-up) so a single weak hint

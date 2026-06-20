@@ -367,3 +367,15 @@ select.sel {
   border-radius: 8px; background: var(--card-2); padding: 7px 8px; text-align: center; }
 .conv-cur { font: inherit; font-size: 14px; font-weight: 600; color: var(--ink); border: 1px solid var(--hair);
   border-radius: 8px; background: var(--card-2); padding: 7px 9px; cursor: pointer; }
+
+/* Settings → AI → Smart matching: learned word→goal chips */
+.sm-list { display: flex; flex-direction: column; gap: 14px; }
+.sm-group { display: flex; flex-direction: column; gap: 7px; }
+.sm-goal { font-size: 14px; font-weight: 700; color: var(--ink); }
+.sm-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.sm-chip { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 13px; font-weight: 600;
+  color: var(--ink-2); background: var(--card-2); border: 1px solid var(--hair); border-radius: 999px;
+  padding: 5px 10px; cursor: pointer; }
+.sm-chip:hover { border-color: var(--primary); color: var(--ink); }
+.sm-x { font-size: 11px; color: var(--ink-3); }
+.sm-chip:hover .sm-x { color: var(--primary); }

@@ -5,12 +5,16 @@
 // Strategy:
 //   • navigations      → network-first, fall back to the cached app shell
 //   • hashed assets     → cache-first (Vite fingerprints them, so they're immutable)
-//   • GET /api/*        → stale-while-revalidate; on network failure, last-known wins
+//   • GET /api/*        → network-first; fall back to last-known cache when offline
 //   • everything else   → straight to network
 // Non-GET /api requests (mutations) are never cached — they pass through and fail
 // loudly when offline, which is the correct behavior.
+//
+// /api is network-first (not stale-while-revalidate) so a read right after a write
+// reflects the change — SWR returns the page a stale copy and only refreshes its
+// own cache, which made "mutate then refetch" show old data.
 
-const VERSION = 'nook-v2'
+const VERSION = 'nook-v3'
 const SHELL = `${VERSION}-shell`
 const ASSETS = `${VERSION}-assets`
 const API = `${VERSION}-api`
@@ -74,23 +78,18 @@ async function cacheFirst(request) {
   return res
 }
 
-// Return cache immediately when present, refresh in the background; if the
-// network fails and we have a cached copy, that's the "last-known state".
-async function staleWhileRevalidate(request) {
+// Try the network first so a read right after a write is fresh; cache each OK
+// response, and fall back to the last-known cached copy only when offline.
+async function networkFirstApi(request) {
   const cache = await caches.open(API)
-  const cached = await cache.match(request)
-  const network = fetch(request)
-    .then((res) => {
-      if (res.ok) cache.put(request, res.clone())
-      return res
-    })
-    .catch(() => null)
-  if (cached) {
-    network.catch(() => {})
-    return cached
+  try {
+    const res = await fetch(request)
+    if (res.ok) cache.put(request, res.clone())
+    return res
+  } catch {
+    const cached = await cache.match(request)
+    return cached || new Response(JSON.stringify({ offline: true }), { status: 503, headers: { 'content-type': 'application/json' } })
   }
-  const res = await network
-  return res || new Response(JSON.stringify({ offline: true }), { status: 503, headers: { 'content-type': 'application/json' } })
 }
 
 self.addEventListener('fetch', (event) => {
@@ -104,7 +103,7 @@ self.addEventListener('fetch', (event) => {
     return
   }
   if (url.pathname.startsWith('/api/')) {
-    event.respondWith(staleWhileRevalidate(request))
+    event.respondWith(networkFirstApi(request))
     return
   }
   if (isAsset(url)) {

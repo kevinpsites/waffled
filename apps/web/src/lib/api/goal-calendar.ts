@@ -3,7 +3,7 @@
 // the confirm/skip writes. Confirming taps the goals + meals refetch buses so the
 // goal detail / Today refresh once progress lands.
 import { useEffect, useState } from 'react'
-import { apiGet, apiSend } from './client'
+import { apiGet, apiSend, apiDelete } from './client'
 import { tap, useRefetchOn } from './bus'
 
 export interface RecapItem {
@@ -62,6 +62,18 @@ export const goalCalendarApi = {
     apiSend<{ ok: boolean }>('POST', '/api/goal-calendar/suggestions/link', body).then(tap('goals')),
   dismiss: (body: { eventId: string }) =>
     apiSend<{ ok: boolean }>('POST', '/api/goal-calendar/suggestions/dismiss', body),
+  // Settings → Smart matching: the learned word→goal cache, view + forget.
+  memory: () => apiGet<{ groups: MemoryGroup[] }>('/api/goal-calendar/memory'),
+  forgetMemory: (body: { goalId: string; token?: string | null }) =>
+    apiSend<{ ok: boolean }>('POST', '/api/goal-calendar/memory/forget', body),
+  clearMemory: () => apiDelete('/api/goal-calendar/memory'),
+}
+
+export interface MemoryGroup {
+  goalId: string
+  goalTitle: string
+  goalEmoji: string | null
+  tokens: Array<{ token: string; weight: number }>
 }
 
 export interface RecapState {

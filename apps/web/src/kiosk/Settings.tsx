@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, usePersons, useCurrencies, useConversions, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency } from '../lib/api'
+import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, goalCalendarApi, usePersons, useCurrencies, useConversions, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import '../styles/settings.css'
 
@@ -181,6 +181,62 @@ const PROVIDER_META: Record<Provider, { label: string; sub: string; envHint: str
 }
 const PROVIDER_ORDER: Provider[] = ['heuristic', 'ollama', 'anthropic', 'openai']
 
+// Smart matching: the per-household learned word→goal cache that powers calendar
+// suggestions + auto-link. View what's been learned and forget any of it (a single
+// word, or all of it) — so a wrong pattern can be corrected.
+function LearnedMatches() {
+  const [groups, setGroups] = useState<MemoryGroup[] | null>(null)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const load = () => goalCalendarApi.memory().then((d) => setGroups(d.groups)).catch(() => setGroups([]))
+  useEffect(() => { load() }, [])
+
+  async function forget(goalId: string, token: string) {
+    await goalCalendarApi.forgetMemory({ goalId, token })
+    load()
+  }
+  async function clearAll() {
+    if (!confirmClear) { setConfirmClear(true); return }
+    await goalCalendarApi.clearMemory()
+    setConfirmClear(false)
+    load()
+  }
+  if (groups === null) return null
+
+  return (
+    <div className="set-card" style={{ marginTop: 18 }}>
+      <div className="set-row2-t" style={{ marginBottom: 4 }}>Smart matching</div>
+      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 12 }}>
+        Words Nook has learned to link to a goal, from the events you’ve linked. Remove any that look wrong.
+      </div>
+      {groups.length === 0 ? (
+        <div className="tiny muted" style={{ fontWeight: 600 }}>
+          Nothing learned yet — link a few events to goals and it’ll start remembering.
+        </div>
+      ) : (
+        <div className="sm-list">
+          {groups.map((g) => (
+            <div key={g.goalId} className="sm-group">
+              <div className="sm-goal">{g.goalEmoji ? `${g.goalEmoji} ` : ''}{g.goalTitle}</div>
+              <div className="sm-chips">
+                {g.tokens.map((t) => (
+                  <button key={t.token} type="button" className="sm-chip" onClick={() => forget(g.goalId, t.token)} title="Forget this word">
+                    {t.token}<span className="sm-x">✕</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {groups.length > 0 && (
+        <button type="button" className="btn btn-ghost" style={{ marginTop: 14 }} onClick={clearAll}>
+          {confirmClear ? 'Tap again to reset everything' : 'Reset learned matches'}
+        </button>
+      )}
+    </div>
+  )
+}
+
 // AI & capture: pick which engine parses the "Add anything" bar. Credentials live
 // in the server environment (docker-compose / .env) — this only flips the active
 // provider + model. Providers without a key/host configured are disabled here.
@@ -293,6 +349,8 @@ function AiPanel() {
           Keys are read from the server environment and never leave it.
         </span>
       </div>
+
+      <LearnedMatches />
     </div>
   )
 }

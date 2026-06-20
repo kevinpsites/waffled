@@ -12,7 +12,7 @@ import { requireTenant, type Tenant } from '../households/households'
 import { logProgress } from './goals.service'
 import { updateEvent } from '../events/events'
 import { keywordMatch, type MatchGoal } from './goal-match'
-import { loadMemory, memoryMatch, recordMatch, WEIGHT, AUTO_LINK_THRESHOLD } from './goal-match-memory'
+import { loadMemory, loadMemoryGrouped, forgetMemory, clearMemory, memoryMatch, recordMatch, WEIGHT, AUTO_LINK_THRESHOLD } from './goal-match-memory'
 import { getAiConfig, completeJson } from '../../platform/llm'
 
 type Api = ReturnType<typeof createAPI>
@@ -587,6 +587,28 @@ export function registerGoalCalendarRoutes(api: Api): void {
     const personIds = Array.isArray(body.participantIds) ? body.participantIds.filter((p) => typeof p === 'string' && UUID_RE.test(p)) : []
     if (!title.trim()) return { suggestion: null }
     return { suggestion: await suggestOne(tenant.householdId, title, personIds) }
+  })
+
+  // Settings → Smart matching: view + forget the household's learned matches.
+  api.get('/api/goal-calendar/memory', async (req: Request) => {
+    const tenant = await requireTenant(req)
+    return { groups: await loadMemoryGrouped(tenant.householdId) }
+  })
+
+  api.post('/api/goal-calendar/memory/forget', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const body = (req.body ?? {}) as { goalId?: string; token?: string | null }
+    if (!body.goalId || !UUID_RE.test(body.goalId)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'goalId is required' })
+    }
+    await forgetMemory(tenant.householdId, body.goalId, body.token ?? null)
+    return res.status(200).json({ ok: true })
+  })
+
+  api.delete('/api/goal-calendar/memory', async (req: Request) => {
+    const tenant = await requireTenant(req)
+    await clearMemory(tenant.householdId)
+    return { ok: true }
   })
 
   api.post('/api/goal-calendar/suggestions/dismiss', async (req: Request, res: Response) => {
