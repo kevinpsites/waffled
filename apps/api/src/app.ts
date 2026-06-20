@@ -23,6 +23,7 @@ import { registerCalendarSyncRoutes } from './modules/calendar/calendar-sync.rou
 import { registerGoalRoutes } from './modules/goals/goals.routes'
 import { registerGoalCalendarRoutes } from './modules/goals/goal-calendar'
 import { registerOverviewRoutes } from './modules/overview/overview'
+import { registerAuthRoutes } from './modules/auth/auth'
 import { registerTodayLayoutRoutes } from './modules/layout/today-layout'
 import { registerMobileTodayLayoutRoutes } from './modules/layout/mobile-today-layout'
 import { registerPhotoRoutes } from './modules/photos/photos'
@@ -36,7 +37,17 @@ const api = createAPI()
 // Routes that skip auth. /api/auth/keys is the JWKS PowerSync fetches; the Google
 // calendar callback is hit by Google's browser redirect (no Authorization header)
 // and authenticates via its one-time OAuth state instead.
-const PUBLIC_PATHS = new Set(['/healthz', '/api/auth/keys', '/auth/google/calendar/callback'])
+const PUBLIC_PATHS = new Set([
+  '/healthz',
+  '/api/auth/keys',
+  '/auth/google/calendar/callback',
+  // Built-in auth: setup/login/refresh/status run before a session exists.
+  '/api/auth/status',
+  '/api/auth/setup',
+  '/api/auth/login',
+  '/api/auth/refresh',
+  '/api/auth/logout',
+])
 
 // Auth gate — verifies the token (sets req.principal) for every non-public route.
 api.use(async (req: Request, res: Response, next: NextFunction) => {
@@ -152,6 +163,9 @@ registerGoalRoutes(api)
 
 // Calendar → goal auto-counting recap (/api/goal-calendar/recap…)
 registerGoalCalendarRoutes(api)
+
+// Built-in auth: setup / login / refresh / logout (/api/auth/*)
+registerAuthRoutes(api)
 
 // Person + family overviews (/api/persons/:id/overview, /api/family/overview)
 registerOverviewRoutes(api)

@@ -91,6 +91,9 @@ export interface ProvisionInput {
   householdName: string
   timezone: string
   person: { name: string; avatarEmoji: string | null; colorHex: string | null }
+  // Built-in password setup: create a credentials row (id = sub) in the same
+  // transaction so login can resolve email → subject.
+  credential?: { email: string; passwordHash: string }
 }
 
 // Creates household + owner person (adult, admin) + identity in one transaction.
@@ -126,6 +129,14 @@ export async function provisionHousehold(
        values ($1, $2, $3, $4, $5, $6, true)`,
       [household.id, person.id, input.provider, input.sub, input.email, input.emailVerified]
     )
+
+    if (input.credential) {
+      await client.query(
+        `insert into credentials (id, household_id, person_id, email, password_hash)
+         values ($1, $2, $3, $4, $5)`,
+        [input.sub, household.id, person.id, input.credential.email, input.credential.passwordHash]
+      )
+    }
 
     await client.query('commit')
     return { household, person }
