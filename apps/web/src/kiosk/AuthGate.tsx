@@ -1,21 +1,39 @@
 import { useCallback, useEffect, useState, type ReactNode, type FormEvent } from 'react'
-import { authApi, getAccessToken, type SetupInput } from '../lib/api'
+import { authApi, getAccessToken, type AuthStatus, type SetupInput } from '../lib/api'
 import '../styles/auth.css'
 
 type Phase = 'loading' | 'authed' | 'login' | 'setup'
 
 // Gates the whole kiosk: shows the first-run Setup wizard, the Login screen, or the
 // app — driven by whether a session exists and whether the instance is initialized.
+// Also handles the OIDC return at /auth/callback (exchange the handoff → session).
 export function AuthGate({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<Phase>(() => (getAccessToken() ? 'authed' : 'loading'))
+  const [status, setStatus] = useState<AuthStatus | null>(null)
+  const [oidcError, setOidcError] = useState<string | null>(null)
 
   const resolve = useCallback(async () => {
+    // OIDC return: exchange the one-time handoff code for a session, then clean the URL.
+    if (window.location.pathname === '/auth/callback') {
+      const code = new URLSearchParams(window.location.search).get('code')
+      try {
+        if (!code) throw new Error('Sign-in was cancelled.')
+        await authApi.oidcExchange(code) // fires nook:auth-changed on success
+        window.history.replaceState({}, '', '/')
+        return
+      } catch (err) {
+        setOidcError((err as Error).message)
+        window.history.replaceState({}, '', '/')
+        // fall through to render the login screen with the error
+      }
+    }
     if (getAccessToken()) {
       setPhase('authed')
       return
     }
     try {
       const s = await authApi.status()
+      setStatus(s)
       setPhase(s.initialized ? 'login' : 'setup')
     } catch {
       setPhase('login')
@@ -35,7 +53,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   if (phase === 'authed') return <>{children}</>
   if (phase === 'setup') return <SetupWizard />
-  if (phase === 'login') return <LoginScreen />
+  if (phase === 'login') return <LoginScreen status={status} oidcError={oidcError} />
   return (
     <div className="auth-screen">
       <div className="auth-loading">Loading…</div>
@@ -56,11 +74,16 @@ function AuthShell({ title, sub, children }: { title: string; sub: string; child
   )
 }
 
-function LoginScreen() {
+function LoginScreen({ status, oidcError }: { status: AuthStatus | null; oidcError: string | null }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(oidcError)
+
+  // Default to showing the password form until status loads (so we never strand a
+  // user on a blank screen); hide it only when the server says it's disabled.
+  const showPassword = !status || status.methods.includes('password')
+  const showOidc = !!status?.oidc && status.methods.includes('oidc')
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -77,16 +100,24 @@ function LoginScreen() {
 
   return (
     <AuthShell title="Welcome back" sub="Sign in to your family's Nook.">
-      <form onSubmit={submit} className="auth-form">
-        <label className="auth-label">Email</label>
-        <input className="auth-input" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus required />
-        <label className="auth-label">Password</label>
-        <input className="auth-input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        {error && <div className="auth-error">{error}</div>}
-        <button type="submit" className="btn btn-primary auth-submit" disabled={busy || !email || !password}>
-          {busy ? 'Signing in…' : 'Sign in'}
+      {error && <div className="auth-error" style={{ marginBottom: 12 }}>{error}</div>}
+      {showOidc && (
+        <button type="button" className="btn auth-submit auth-sso" style={{ marginTop: 0 }} onClick={() => authApi.startOidc()}>
+          {status!.oidc!.buttonLabel}
         </button>
-      </form>
+      )}
+      {showOidc && showPassword && <div className="auth-or">or</div>}
+      {showPassword && (
+        <form onSubmit={submit} className="auth-form">
+          <label className="auth-label">Email</label>
+          <input className="auth-input" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus required />
+          <label className="auth-label">Password</label>
+          <input className="auth-input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <button type="submit" className="btn btn-primary auth-submit" disabled={busy || !email || !password}>
+            {busy ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+      )}
     </AuthShell>
   )
 }

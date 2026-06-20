@@ -53,6 +53,16 @@
   background: var(--kevin-t);
 }
 
+/* Login & security — vertical form under the OIDC toggle. */
+.sec-form {
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hair, #e4ded4);
+}
+.sec-form .auth-label:first-child {
+  margin-top: 0;
+}
+
 .set-nav-foot {
   margin-top: 10px;
   padding-top: 10px;

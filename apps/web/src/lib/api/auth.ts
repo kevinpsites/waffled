@@ -1,11 +1,12 @@
 // Auth flow — login / first-run setup / logout. These hit the public auth
 // endpoints directly (no bearer) and persist the returned session via setSession,
 // which signals the AuthGate to render the app.
-import { apiGet, setSession, clearSession } from './client'
+import { apiGet, apiSend, setSession, clearSession } from './client'
 
 export interface AuthStatus {
   initialized: boolean
   methods: string[]
+  oidc?: { buttonLabel: string }
 }
 interface SessionResponse {
   accessToken: string
@@ -13,6 +14,27 @@ interface SessionResponse {
   expiresIn: number
   person?: unknown
   household?: unknown
+}
+// Admin-managed OIDC config (Settings → Login & security). The client secret is
+// never returned — `secretSet` reports whether one is stored.
+export interface OidcConfig {
+  oidcEnabled: boolean
+  issuerUrl: string | null
+  clientId: string | null
+  secretSet: boolean
+  scopes: string
+  buttonLabel: string
+  passwordLoginEnabled: boolean
+  encryptionAvailable: boolean
+}
+export interface OidcConfigPatch {
+  oidcEnabled?: boolean
+  issuerUrl?: string | null
+  clientId?: string | null
+  clientSecret?: string | null // omit to keep, "" to clear
+  scopes?: string
+  buttonLabel?: string
+  passwordLoginEnabled?: boolean
 }
 export interface SetupInput {
   household: { name: string; timezone: string }
@@ -38,6 +60,20 @@ export const authApi = {
     const d = await post('/api/auth/setup', input)
     setSession(d.accessToken, d.refreshToken)
   },
+  // Full-page handoff to the backend OIDC flow; it redirects back to /auth/callback.
+  startOidc(): void {
+    window.location.href = `/api/auth/oidc/start?redirect=${encodeURIComponent(window.location.origin + '/')}`
+  },
+  // /auth/callback exchanges the one-time handoff code for a real session.
+  async oidcExchange(code: string): Promise<void> {
+    const d = await post('/api/auth/oidc/exchange', { code })
+    setSession(d.accessToken, d.refreshToken)
+  },
+  // Admin OIDC config (authed; routes require admin).
+  getConfig: () => apiGet<OidcConfig>('/api/auth/config'),
+  saveConfig: (patch: OidcConfigPatch) => apiSend<{ ok: true }>('PUT', '/api/auth/config', patch),
+  testConfig: (issuerUrl: string) =>
+    apiSend<{ ok: boolean; issuer?: string; authorizationEndpoint?: string; message?: string }>('POST', '/api/auth/config/test', { issuerUrl }),
   async logout(): Promise<void> {
     let refreshToken: string | undefined
     try {

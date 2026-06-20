@@ -87,3 +87,32 @@
   padding: 12px;
   font-size: 15px;
 }
+/* SSO button — distinct from the primary password submit (outlined). */
+.auth-sso {
+  border: 1px solid var(--hair, #e4ded4);
+  background: var(--card-2, #faf8f4);
+  color: var(--ink);
+  font-weight: 700;
+}
+.auth-sso:hover {
+  border-color: var(--primary, #e0653f);
+}
+/* "or" divider between SSO and password. */
+.auth-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0 2px;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.auth-or::before,
+.auth-or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--hair, #e4ded4);
+}

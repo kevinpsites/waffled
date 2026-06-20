@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, goalCalendarApi, groceryApi, authApi, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple } from '../lib/api'
+import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, goalCalendarApi, groceryApi, authApi, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import '../styles/settings.css'
 
@@ -7,6 +7,7 @@ const NAV = [
   { key: 'family', icon: '👨‍👩‍👧‍👦', label: 'Family & people' },
   { key: 'ai', icon: '✨', label: 'AI & capture' },
   { key: 'accounts', icon: '🔗', label: 'Accounts' },
+  { key: 'security', icon: '🔒', label: 'Login & security' },
   { key: 'calendars', icon: '📅', label: 'Calendars' },
   { key: 'chores', icon: '⭐', label: 'Chores & rewards' },
   { key: 'meals', icon: '🍽️', label: 'Meals' },
@@ -979,6 +980,146 @@ function AboutPanel() {
   )
 }
 
+// Login & security (admin only) — attach an OIDC/SSO provider and decide whether
+// password login stays on. Immich-style: config lives in the DB, edited here. The
+// client secret is write-only (server returns only whether one is set).
+function SecurityPanel() {
+  const [cfg, setCfg] = useState<OidcConfig | null>(null)
+  const [forbidden, setForbidden] = useState(false)
+  const [enabled, setEnabled] = useState(false)
+  const [issuer, setIssuer] = useState('')
+  const [clientId, setClientId] = useState('')
+  const [secret, setSecret] = useState('') // blank = keep existing
+  const [label, setLabel] = useState('')
+  const [scopes, setScopes] = useState('')
+  const [pwEnabled, setPwEnabled] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  function hydrate(c: OidcConfig) {
+    setCfg(c)
+    setEnabled(c.oidcEnabled)
+    setIssuer(c.issuerUrl ?? '')
+    setClientId(c.clientId ?? '')
+    setLabel(c.buttonLabel)
+    setScopes(c.scopes)
+    setPwEnabled(c.passwordLoginEnabled)
+    setSecret('')
+  }
+  useEffect(() => {
+    authApi.getConfig().then(hydrate).catch(() => setForbidden(true))
+  }, [])
+
+  if (forbidden) return <div className="set-panel"><div className="set-head"><div className="nk-serif set-head-t">Login &amp; security</div></div><div className="set-card" style={{ padding: 22 }}><div className="muted" style={{ fontWeight: 600 }}>Only an admin can manage sign-in settings.</div></div></div>
+  if (!cfg) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
+
+  async function test() {
+    setTestMsg(null)
+    setBusy(true)
+    try {
+      const r = await authApi.testConfig(issuer.trim())
+      setTestMsg(r.ok ? { ok: true, text: `Connected — ${r.issuer}` } : { ok: false, text: r.message || 'Could not reach the provider.' })
+    } catch {
+      setTestMsg({ ok: false, text: 'Could not reach the provider.' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function save(patch: OidcConfigPatch) {
+    setBusy(true)
+    setSaved(false)
+    setError(null)
+    try {
+      await authApi.saveConfig(patch)
+      const fresh = await authApi.getConfig()
+      hydrate(fresh)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1800)
+    } catch {
+      setError('Could not save. Check the issuer, client ID and secret — and that the server has TOKEN_ENCRYPTION_KEY set.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const saveOidc = () =>
+    save({
+      oidcEnabled: enabled,
+      issuerUrl: issuer.trim() || null,
+      clientId: clientId.trim() || null,
+      buttonLabel: label.trim() || 'Sign in with SSO',
+      scopes: scopes.trim() || 'openid email profile',
+      ...(secret ? { clientSecret: secret } : {}),
+    })
+
+  const canDisablePw = cfg.oidcEnabled // server requires OIDC usable; mirror loosely here
+
+  return (
+    <div className="set-panel">
+      <div className="set-head" style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+        <div className="nk-serif set-head-t">Login &amp; security</div>
+        {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+      </div>
+
+      {!cfg.encryptionAvailable && (
+        <div className="set-card" style={{ padding: 18, marginBottom: 16 }}>
+          <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary, #e0653f)' }}>
+            Set <code>TOKEN_ENCRYPTION_KEY</code> in the server environment to store the OIDC client secret securely. OIDC can't be enabled until then.
+          </div>
+        </div>
+      )}
+
+      <div className="set-card" style={{ padding: 18 }}>
+        <SettingRow icon="🔐" title="Single sign-on (OIDC)" sub="Let family members sign in through your identity provider (Authentik, Keycloak, Google, …).">
+          <input type="checkbox" className="set-check" checked={enabled} disabled={!cfg.encryptionAvailable} onChange={(e) => setEnabled(e.target.checked)} />
+        </SettingRow>
+
+        <div className="sec-form">
+          <label className="auth-label">Issuer URL</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input className="set-inline-input" style={{ flex: 1, width: 'auto' }} value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="https://auth.example.com/application/o/nook/" />
+            <button type="button" className="btn btn-ghost" onClick={test} disabled={busy || !issuer.trim()}>Test</button>
+          </div>
+          {testMsg && <div className="tiny" style={{ fontWeight: 700, marginTop: 6, color: testMsg.ok ? 'var(--good, #2e7d32)' : 'var(--primary, #e0653f)' }}>{testMsg.text}</div>}
+
+          <label className="auth-label">Client ID</label>
+          <input className="set-inline-input" style={{ width: '100%' }} value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="nook" />
+
+          <label className="auth-label">Client secret</label>
+          <input className="set-inline-input" style={{ width: '100%' }} type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={cfg.secretSet ? '•••••••• (leave blank to keep)' : 'Paste the client secret'} />
+
+          <label className="auth-label">Button label</label>
+          <input className="set-inline-input" style={{ width: '100%' }} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Sign in with SSO" />
+
+          <label className="auth-label">Scopes</label>
+          <input className="set-inline-input" style={{ width: '100%' }} value={scopes} onChange={(e) => setScopes(e.target.value)} placeholder="openid email profile" />
+
+          <div className="tiny muted" style={{ fontWeight: 600, marginTop: 10 }}>
+            Redirect URI to register at your provider: <code>{window.location.origin}/api/auth/oidc/callback</code>. Sign-in is invite-only — the provider's verified email must already belong to a family member.
+          </div>
+          {error && <div className="auth-error">{error}</div>}
+          <button type="button" className="btn btn-primary" style={{ marginTop: 14 }} onClick={saveOidc} disabled={busy}>Save SSO settings</button>
+        </div>
+      </div>
+
+      <div className="set-card" style={{ marginTop: 16 }}>
+        <SettingRow icon="🔑" title="Password login" sub={canDisablePw ? 'Turn off to require everyone to use SSO.' : 'Enable & save SSO before you can turn this off.'}>
+          <input
+            type="checkbox"
+            className="set-check"
+            checked={pwEnabled}
+            disabled={!canDisablePw && pwEnabled}
+            onChange={(e) => { setPwEnabled(e.target.checked); save({ passwordLoginEnabled: e.target.checked }) }}
+          />
+        </SettingRow>
+      </div>
+    </div>
+  )
+}
+
 export function Settings() {
   const [tab, setTab] = useState('family')
   return (
@@ -996,7 +1137,7 @@ export function Settings() {
         </div>
       </div>
       <div className="set-content">
-        {tab === 'family' ? <FamilyPanel /> : tab === 'ai' ? <AiPanel /> : tab === 'calendars' ? <CalendarsPanel /> : tab === 'meals' ? <MealsPanel /> : tab === 'chores' ? <RewardsSettingsPanel /> : tab === 'about' ? <AboutPanel /> : <Placeholder tab={tab} />}
+        {tab === 'family' ? <FamilyPanel /> : tab === 'ai' ? <AiPanel /> : tab === 'calendars' ? <CalendarsPanel /> : tab === 'meals' ? <MealsPanel /> : tab === 'chores' ? <RewardsSettingsPanel /> : tab === 'security' ? <SecurityPanel /> : tab === 'about' ? <AboutPanel /> : <Placeholder tab={tab} />}
       </div>
     </div>
   )

@@ -334,7 +334,8 @@ export function registerOidcRoutes(api: Api): void {
       const doc = await discover(issuer)
       return { ok: true, issuer: doc.issuer, authorizationEndpoint: doc.authorization_endpoint }
     } catch (err) {
-      return res.status(502).json({ ok: false, message: (err as Error).message })
+      // 200 with ok:false so the client renders the message instead of a throw.
+      return { ok: false, message: (err as Error).message }
     }
   })
 }
