@@ -312,7 +312,12 @@ struct TodayView: View {
         // The token-resolved person if we have it, else the greeting member (first adult).
         let me = sync.currentPersonId ?? greetingMember?.id
         let everyone = Set(sync.members.map(\.id))
-        func isMine(_ g: NookAPI.Goal) -> Bool { me != nil && g.participants.contains { $0.personId == me } }
+        // "Mine" = a goal that's solo to me (my personal list), not a shared/group goal.
+        func isMine(_ g: NookAPI.Goal) -> Bool {
+            guard let me else { return false }
+            return Set(g.participants.map(\.personId)) == [me]
+        }
+        // "Family" = a goal the whole household shares.
         func isFamily(_ g: NookAPI.Goal) -> Bool {
             everyone.count > 1 && everyone.isSubset(of: Set(g.participants.map(\.personId)))
         }
