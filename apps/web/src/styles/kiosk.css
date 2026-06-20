@@ -61,7 +61,9 @@ body {
 }
 .today-grid {
   display: grid;
-  grid-template-columns: 1.15fr 1fr 0.82fr;
+  /* minmax(0, …) lets a column shrink below its content's intrinsic width, so a
+     long recipe title caps/ellipsizes instead of stretching the whole column. */
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 0.82fr);
   gap: 18px;
   padding: 6px 30px 26px;
   align-content: start;
@@ -90,13 +92,13 @@ body {
 
 @media (max-width: 1100px) {
   .today-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 
 @media (max-width: 720px) {
   .today-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     padding: 6px 16px 22px;
   }
   .topbar {
@@ -625,9 +627,9 @@ button.tick {
 .claim-pick-q { font-size: 12px; font-weight: 800; color: var(--ink-3); margin-right: 3px; align-self: center; }
 .claim-pick { flex-wrap: wrap; }
 
-/* Today "Family Chores" rows link to the full chores page — give them a subtle
-   hover so the affordance reads. */
-.chores-card-row { border-radius: var(--r-md); margin: 0 -8px; padding-left: 8px; padding-right: 8px; transition: background .12s ease; }
+/* Today "Family Chores" rows link to the full chores page — give them a roomy,
+   inset hover highlight so the affordance reads without looking cramped. */
+.chores-card-row { border-radius: var(--r-lg); margin: 2px -12px; padding: 10px 12px; transition: background .12s ease; }
 .chores-card-row:hover { background: var(--panel); }
 
 /* Today grocery card: scroll the item list within the card instead of letting

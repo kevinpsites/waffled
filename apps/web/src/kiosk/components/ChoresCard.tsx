@@ -12,7 +12,7 @@ function Ring({ person, sym }: { person: PersonChores; sym: string }) {
     <Link
       to="/tasks"
       className="chores-card-row"
-      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', textDecoration: 'none', color: 'inherit' }}
+      style={{ display: 'flex', alignItems: 'center', gap: 12, textDecoration: 'none', color: 'inherit' }}
     >
       <div style={{ position: 'relative', width: 42, height: 42, flex: 'none' }}>
         <svg viewBox="0 0 42 42" style={{ transform: 'rotate(-90deg)' }}>
