@@ -49,6 +49,13 @@
   text-transform: uppercase;
   color: var(--ink-3);
   margin: 0 2px 8px;
+  cursor: pointer;
+  user-select: none;
+}
+/* The collapse chevron sits a touch smaller than the calendar's so it doesn't
+   dwarf the uppercase section label. */
+.grocery-section-h .cal-chev {
+  font-size: 18px;
 }
 .grocery-section-h .ga-emo {
   display: inline-grid;

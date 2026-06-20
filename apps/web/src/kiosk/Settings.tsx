@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, goalCalendarApi, usePersons, useCurrencies, useConversions, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup } from '../lib/api'
+import { useEffect, useState, type FormEvent } from 'react'
+import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, goalCalendarApi, groceryApi, usePersons, useCurrencies, useConversions, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import '../styles/settings.css'
 
@@ -362,6 +362,48 @@ const MEAL_TIME_ROWS: Array<{ key: string; label: string; icon: string }> = [
   { key: 'snack', label: 'Snack', icon: '🍎' },
 ]
 
+// Pantry staples — assumed-in-house items the grocery auto-build leaves off the
+// list. Same list shown on the Lists grocery board's "Edit staples"; managed here
+// too so it lives with the other meal settings.
+function StaplesEditor() {
+  const [staples, setStaples] = useState<PantryStaple[] | null>(null)
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
+  const load = () => groceryApi.pantryStaples().then((r) => setStaples(r.staples)).catch(() => setStaples([]))
+  useEffect(() => { load() }, [])
+  async function add(e: FormEvent) {
+    e.preventDefault()
+    const name = draft.trim()
+    if (!name || busy) return
+    setBusy(true)
+    try { await groceryApi.addStaple(name); setDraft(''); await load() } finally { setBusy(false) }
+  }
+  async function remove(id: string) { await groceryApi.removeStaple(id); await load() }
+  return (
+    <div className="set-card" style={{ marginTop: 16 }}>
+      <div className="set-row2-t" style={{ margin: '2px 2px 4px' }}>Pantry staples</div>
+      <div className="tiny muted" style={{ fontWeight: 600, margin: '0 2px 12px' }}>
+        Assumed in the house — the grocery list leaves these off. Manage them here or from the Lists grocery board.
+      </div>
+      <form onSubmit={add} style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        <input className="set-inline-input" style={{ flex: 1, width: 'auto' }} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add a staple… (e.g. Soy sauce)" />
+        <button type="submit" className="btn btn-primary" disabled={!draft.trim() || busy}>Add</button>
+      </form>
+      <div className="grocery-staples">
+        {(staples ?? []).map((s) => (
+          <span key={s.id} className="staple-chip editable">
+            {s.name}
+            <button type="button" aria-label={`Remove ${s.name}`} onClick={() => remove(s.id)}>×</button>
+          </span>
+        ))}
+        {staples != null && staples.length === 0 && (
+          <div className="tiny muted" style={{ fontWeight: 600 }}>No staples yet — add the things you always have.</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // Meals: how planned meals show up on the calendar — whether at all, whether they
 // push to Google, whose calendar they belong to, who's invited, and the time each
 // meal type lands at. Changes re-sync meals already on the plan.
@@ -470,6 +512,8 @@ function MealsPanel() {
         </button>
         {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved · existing meals updated</span>}
       </div>
+
+      <StaplesEditor />
     </div>
   )
 }

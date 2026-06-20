@@ -99,6 +99,9 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
   const [refreshing, setRefreshing] = useState(false)
   const [recent, setRecent] = useState<Set<string>>(new Set()) // just-checked, still lingering in the active list
   const [showDone, setShowDone] = useState(false)
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set()) // collapsed aisle/meal sections
+  const toggleSection = (key: string) =>
+    setCollapsed((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n })
   const [railMeal, setRailMeal] = useState<string>('dinner') // which meal type the rail shows
   const rebuilt = useRef(false)
   const addRef = useRef<HTMLInputElement>(null)
@@ -257,28 +260,35 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
             )}
             {activeItems.length > 0 && (
               <div className="grocery-cols">
-                {sections.map((sec, i) => (
-                  <div key={i} className="grocery-section">
-                    {sec.aisle && (
-                      <div className="grocery-section-h">
-                        {view === 'aisle' && AISLE_EMOJI[sec.aisle] && <span className="ga-emo">{AISLE_EMOJI[sec.aisle]}</span>}
-                        {view === 'meal' && sec.mealType && <span className={`meal-badge mt-${sec.mealType}`}>{MEAL_EMOJI[sec.mealType]} {MEAL_LABEL[sec.mealType]}</span>}
-                        {sec.aisle}
-                        <span className="ga-n">{sec.items.length}</span>
-                      </div>
-                    )}
-                    {sec.items.map((it) => (
-                      <ItemRow
-                        key={it.id}
-                        item={it}
-                        colors={colorFor(it.sourceRecipeIds)}
-                        onToggle={() => toggle(it)}
-                        onSave={(patch) => saveItem(it, patch)}
-                        onDelete={() => deleteItem(it)}
-                      />
-                    ))}
-                  </div>
-                ))}
+                {sections.map((sec, i) => {
+                  // Sections with a header (aisles / meals) collapse; the leading
+                  // ungrouped/manual section has no header and stays open.
+                  const key = `${view}|${sec.aisle ?? '__none__'}`
+                  const isCollapsed = !!sec.aisle && collapsed.has(key)
+                  return (
+                    <div key={i} className="grocery-section">
+                      {sec.aisle && (
+                        <div className="grocery-section-h" role="button" tabIndex={0} onClick={() => toggleSection(key)}>
+                          <span className={`cal-chev ${isCollapsed ? '' : 'open'}`}>›</span>
+                          {view === 'aisle' && AISLE_EMOJI[sec.aisle] && <span className="ga-emo">{AISLE_EMOJI[sec.aisle]}</span>}
+                          {view === 'meal' && sec.mealType && <span className={`meal-badge mt-${sec.mealType}`}>{MEAL_EMOJI[sec.mealType]} {MEAL_LABEL[sec.mealType]}</span>}
+                          {sec.aisle}
+                          <span className="ga-n">{sec.items.length}</span>
+                        </div>
+                      )}
+                      {!isCollapsed && sec.items.map((it) => (
+                        <ItemRow
+                          key={it.id}
+                          item={it}
+                          colors={colorFor(it.sourceRecipeIds)}
+                          onToggle={() => toggle(it)}
+                          onSave={(patch) => saveItem(it, patch)}
+                          onDelete={() => deleteItem(it)}
+                        />
+                      ))}
+                    </div>
+                  )
+                })}
               </div>
             )}
 
@@ -350,10 +360,6 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
             {board.staples.map((s) => (
               <button key={s.id} type="button" className="staple-chip" onClick={() => addStapleToList(s.name)}>{s.name}</button>
             ))}
-          </div>
-          <div className="grocery-railfoot">
-            <button type="button" className="btn btn-ghost" onClick={() => addRef.current?.focus()}>＋ Add item</button>
-            <button type="button" className="btn btn-primary" title="Sharing comes with device pairing">⬆ Share</button>
           </div>
         </div>
       </div>
