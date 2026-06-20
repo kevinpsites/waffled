@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, goalCalendarApi, groceryApi, usePersons, useCurrencies, useConversions, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple } from '../lib/api'
+import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, goalCalendarApi, groceryApi, authApi, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import '../styles/settings.css'
 
@@ -798,7 +798,6 @@ const PLACEHOLDERS: Record<string, { title: string; note: string }> = {
   lists: { title: 'Lists', note: 'List defaults & sharing pair with the Lists screen.' },
   display: { title: 'Display & kiosk', note: 'Brightness, screensaver timing & device pairing land with kiosk pairing (3.3).' },
   notifications: { title: 'Notifications', note: 'Push to phones rides APNs + Google reminders (6.7).' },
-  about: { title: 'About', note: 'Nook — Family Hub. Self-hosted. Version and storage info land here.' },
 }
 
 function Placeholder({ tab }: { tab: string }) {
@@ -934,6 +933,52 @@ function ConversionsSection({ currencies }: { currencies: Currency[] }) {
   )
 }
 
+// Sign out — clears the local session (and revokes the refresh token server-side),
+// which fires nook:auth-changed and drops the kiosk back to the Login screen.
+// Tap-to-confirm so a stray touch on the wall-mounted kiosk doesn't sign everyone out.
+function SignOutButton({ className }: { className?: string }) {
+  const [confirm, setConfirm] = useState(false)
+  const [busy, setBusy] = useState(false)
+  async function signOut() {
+    if (!confirm) { setConfirm(true); return }
+    setBusy(true)
+    try {
+      await authApi.logout()
+    } catch {
+      setBusy(false) // logout already clears the local session on its own; only reset if it threw before that
+    }
+  }
+  return (
+    <button type="button" className={className ?? 'btn btn-ghost'} onClick={signOut} disabled={busy}>
+      {busy ? 'Signing out…' : confirm ? 'Tap again to sign out' : '⏻ Sign out'}
+    </button>
+  )
+}
+
+// About / account — what this Nook is, plus the sign-out control. Replaces the old
+// placeholder now that real auth exists.
+function AboutPanel() {
+  const { household } = useHousehold()
+  return (
+    <div className="set-panel">
+      <div className="set-head"><div className="nk-serif set-head-t">About</div></div>
+      <div className="set-card" style={{ padding: 22 }}>
+        <div className="set-row2-t" style={{ marginBottom: 4 }}>Nook — Family Hub</div>
+        <div className="tiny muted" style={{ fontWeight: 600 }}>
+          Self-hosted{household?.name ? ` · ${household.name}` : ''}. Version and storage info land here.
+        </div>
+      </div>
+      <div className="set-card" style={{ marginTop: 18, padding: 22 }}>
+        <div className="set-row2-t" style={{ marginBottom: 4 }}>Account</div>
+        <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 16 }}>
+          Sign this kiosk out to switch to another family member's account.
+        </div>
+        <SignOutButton className="btn btn-primary" />
+      </div>
+    </div>
+  )
+}
+
 export function Settings() {
   const [tab, setTab] = useState('family')
   return (
@@ -946,9 +991,12 @@ export function Settings() {
             {n.label}
           </button>
         ))}
+        <div className="set-nav-foot">
+          <SignOutButton className="set-navitem set-signout" />
+        </div>
       </div>
       <div className="set-content">
-        {tab === 'family' ? <FamilyPanel /> : tab === 'ai' ? <AiPanel /> : tab === 'calendars' ? <CalendarsPanel /> : tab === 'meals' ? <MealsPanel /> : tab === 'chores' ? <RewardsSettingsPanel /> : <Placeholder tab={tab} />}
+        {tab === 'family' ? <FamilyPanel /> : tab === 'ai' ? <AiPanel /> : tab === 'calendars' ? <CalendarsPanel /> : tab === 'meals' ? <MealsPanel /> : tab === 'chores' ? <RewardsSettingsPanel /> : tab === 'about' ? <AboutPanel /> : <Placeholder tab={tab} />}
       </div>
     </div>
   )

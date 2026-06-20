@@ -53,6 +53,20 @@
   background: var(--kevin-t);
 }
 
+.set-nav-foot {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hair, #e4ded4);
+}
+.set-signout {
+  width: 100%;
+  color: var(--primary, #e0653f);
+  font-weight: 700;
+}
+.set-signout:hover {
+  background: color-mix(in srgb, var(--primary, #e0653f) 10%, transparent);
+}
+
 /* content */
 .set-content {
   min-width: 0;
