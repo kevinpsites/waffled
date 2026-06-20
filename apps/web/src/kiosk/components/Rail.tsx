@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router'
+import { NavLink, Link } from 'react-router'
 import { Icon } from '../icons'
 import { SCREENS, SETTINGS, type Screen } from '../nav'
 
@@ -18,7 +18,7 @@ function RailLink({ screen }: { screen: Screen }) {
 export function Rail() {
   return (
     <nav className="rail">
-      <div className="rail-logo nk-serif">N</div>
+      <Link to="/" className="rail-logo nk-serif" aria-label="Home">N</Link>
       <div className="rail-new">New</div>
       {SCREENS.map((s) => (
         <RailLink key={s.path} screen={s} />
