@@ -165,7 +165,7 @@ export function Meals() {
   const startStr = ymd(weekStartD)
   const fetchStart = view === 'month' ? ymd(gridStartD) : startStr
   const fetchDays = view === 'month' ? 42 : 7
-  const { entries, refetch } = useMealsWeek(fetchStart, fetchDays)
+  const { entries, refetch, mutate } = useMealsWeek(fetchStart, fetchDays)
   const { recipes, loading: recipesLoading } = useRecipes()
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStartD, i)), [weekStartD])
@@ -235,15 +235,16 @@ export function Meals() {
   const didDrag = useRef(false)
   const pendingLabel = useRef<{ emoji: string; title: string } | null>(null)
 
-  async function putSlot(date: string, mealType: string, entry: WeekEntry | undefined) {
+  // `quiet` writes don't tap the refetch bus (used for the first of the two swap
+  // writes so the half-swapped state never flashes).
+  async function putSlot(date: string, mealType: string, entry: WeekEntry | undefined, quiet = false) {
     if (entry) {
-      await api.planSlot(
-        entry.recipeId
-          ? { date, mealType, recipeId: entry.recipeId, cookPersonId: entry.cook?.personId ?? null }
-          : { date, mealType, title: entry.title ?? 'Planned', cookPersonId: entry.cook?.personId ?? null }
-      )
+      const slot = entry.recipeId
+        ? { date, mealType, recipeId: entry.recipeId, cookPersonId: entry.cook?.personId ?? null }
+        : { date, mealType, title: entry.title ?? 'Planned', cookPersonId: entry.cook?.personId ?? null }
+      await (quiet ? api.planSlotQuiet : api.planSlot)(slot)
     } else {
-      await api.clearSlot(date, mealType)
+      await (quiet ? api.clearSlotQuiet : api.clearSlot)(date, mealType)
     }
   }
 
@@ -309,10 +310,24 @@ export function Meals() {
         const b = bySlot.get(tgt)
         const [sd, sm] = src.split('|')
         const [td, tm] = tgt.split('|')
+        // Optimistic: swap the two slots' content locally so the grid updates the
+        // instant you drop — no round-trip delay, no half-swapped flash.
+        mutate((prev) => {
+          const rest = prev.filter((e) => `${e.date}|${e.mealType}` !== src && `${e.date}|${e.mealType}` !== tgt)
+          const out = [...rest]
+          if (a) out.push({ ...a, date: td, mealType: tm })
+          if (b) out.push({ ...b, date: sd, mealType: sm })
+          return out
+        })
         void (async () => {
-          await putSlot(td, tm, a)
-          await putSlot(sd, sm, b)
-          refetch()
+          // First write quiet (no refetch); second taps → one reconciling refetch
+          // that matches the optimistic state, so nothing flickers.
+          try {
+            await putSlot(td, tm, a, true)
+            await putSlot(sd, sm, b, false)
+          } catch {
+            refetch() // on failure, fall back to server truth
+          }
         })()
       }
       document.querySelectorAll('.slot-drop, .slot-dragging').forEach((n) => n.classList.remove('slot-drop', 'slot-dragging'))

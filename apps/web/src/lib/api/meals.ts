@@ -183,6 +183,11 @@ export const mealsApi = {
   planSlot: (slot: PlanSlot) => apiSend<{ entry: WeekEntry }>('POST', '/api/meals/plan', slot).then(tap('meals')),
   clearSlot: (date: string, mealType: string) =>
     apiDelete(`/api/meals/plan?date=${date}&mealType=${mealType}`).then(tap('meals')),
+  // Quiet variants don't tap the refetch bus — used mid-swap so two writes don't
+  // each trigger a refetch (which would briefly show the half-swapped state).
+  planSlotQuiet: (slot: PlanSlot) => apiSend<{ entry: WeekEntry }>('POST', '/api/meals/plan', slot),
+  clearSlotQuiet: (date: string, mealType: string) =>
+    apiDelete(`/api/meals/plan?date=${date}&mealType=${mealType}`),
   updateRecipe: (
     id: string,
     patch: { isFavorite?: boolean; title?: string; rating?: number; userNotes?: string; overrides?: RecipeOverrides },
@@ -195,15 +200,17 @@ export interface MealsState {
   loading: boolean
   error: boolean
   refetch: () => void
+  mutate: (fn: (prev: WeekEntry[]) => WeekEntry[]) => void // optimistic local update
 }
 
 // Loads one planned week starting at `start` (YYYY-MM-DD). Refetch after a
 // plan/clear so the grid reflects the mutation.
 export function useMealsWeek(start?: string, days?: number): MealsState {
   const day = start ?? localToday()
-  const [state, setState] = useState<Omit<MealsState, 'refetch'>>({ entries: [], loading: true, error: false })
+  const [state, setState] = useState<Omit<MealsState, 'refetch' | 'mutate'>>({ entries: [], loading: true, error: false })
   const [nonce, setNonce] = useState(0)
   const refetch = useCallback(() => setNonce((n) => n + 1), [])
+  const mutate = useCallback((fn: (prev: WeekEntry[]) => WeekEntry[]) => setState((s) => ({ ...s, entries: fn(s.entries) })), [])
   useEffect(() => {
     let alive = true
     setState((s) => ({ ...s, loading: true }))
@@ -216,7 +223,7 @@ export function useMealsWeek(start?: string, days?: number): MealsState {
     }
   }, [day, days, nonce])
   useRefetchOn(['meals'], refetch)
-  return { ...state, refetch }
+  return { ...state, refetch, mutate }
 }
 
 export interface RecipesState {
