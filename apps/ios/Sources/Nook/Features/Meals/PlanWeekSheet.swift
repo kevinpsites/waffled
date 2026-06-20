@@ -41,6 +41,7 @@ struct PlanWeekSheet: View {
     @State private var errorMessage: String?
     @State private var notice: String?                    // transient re-roll feedback
     @State private var applying = false
+    @State private var dragOverDate: String?              // review card under a drag
 
     private let api = NookAPI()
 
@@ -358,6 +359,34 @@ struct PlanWeekSheet: View {
             }
         }
         .animation(.easeInOut(duration: 0.15), value: isLocked)
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
+            .strokeBorder(dragOverDate == card.date ? NK.ai : .clear, lineWidth: 2))
+        .draggable(card.date) { cardDragPreview(card) }
+        .dropDestination(for: String.self) { items, _ in
+            guard let s = items.first else { return false }
+            swapCards(s, card.date); return true
+        } isTargeted: { over in dragOverDate = over ? card.date : (dragOverDate == card.date ? nil : dragOverDate) }
+    }
+
+    private func cardDragPreview(_ card: NookAPI.PlanCardDTO) -> some View {
+        HStack(spacing: 5) {
+            Text(card.emoji ?? "🍽️").font(.system(size: 14))
+            Text(card.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(NK.card).clipShape(Capsule()).overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    /// Swap the meals on two review nights (keeps each card's date).
+    private func swapCards(_ srcDate: String, _ tgtDate: String) {
+        guard srcDate != tgtDate,
+              let i = suggestions.firstIndex(where: { $0.date == srcDate }),
+              let j = suggestions.firstIndex(where: { $0.date == tgtDate }) else { return }
+        let a = suggestions[i], b = suggestions[j]
+        suggestions[i] = NookAPI.PlanCardDTO(date: a.date, mealType: a.mealType, title: b.title, recipeId: b.recipeId,
+                                             emoji: b.emoji, minutes: b.minutes, servings: b.servings, note: b.note)
+        suggestions[j] = NookAPI.PlanCardDTO(date: b.date, mealType: b.mealType, title: a.title, recipeId: a.recipeId,
+                                             emoji: a.emoji, minutes: a.minutes, servings: a.servings, note: a.note)
     }
 
     private func actionButton(_ icon: String, _ label: String, _ tap: @escaping () -> Void) -> some View {
