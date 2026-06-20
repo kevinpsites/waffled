@@ -474,6 +474,9 @@
 .pm-theme-dow { width: 38px; font-size: 13px; font-weight: 700; color: var(--ink-2); }
 .pm-theme-row .sel { flex: 1; }
 .pm-week { margin-bottom: 6px; }
+/* Already-planned nights shown for context in the month review — muted, no actions. */
+.plan-day-existing { opacity: 0.6; background: var(--card-2); }
+.plan-day-existing .pd-m { font-style: italic; }
 .pm-week-h { font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; margin: 10px 2px 6px; }
 .use-up-list {
   display: flex;

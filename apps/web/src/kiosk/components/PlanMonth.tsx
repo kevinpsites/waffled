@@ -57,6 +57,7 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
   const [keepInMind, setKeepInMind] = useState('')
 
   const [cards, setCards] = useState<PlanCard[]>([])
+  const [existing, setExisting] = useState<PlanCard[]>([]) // already-planned nights (read-only)
   const [locked, setLocked] = useState<Set<string>>(new Set())
   const [removed, setRemoved] = useState<Set<string>>(new Set()) // skipped nights (excluded from apply + redraft)
   const rejected = useRef<Set<string>>(new Set())
@@ -66,7 +67,7 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
   const [via, setVia] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
-  const started = cards.length > 0 || loading || !!error
+  const started = cards.length > 0 || existing.length > 0 || loading || !!error
 
   useTopbarFull(
     () => (
@@ -111,6 +112,7 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
         return
       }
       setVia(r.via)
+      setExisting(r.existing ?? [])
       setCards((prev) => {
         // When redrafting specific dates, keep the others; otherwise replace all.
         const kept = dates ? prev.filter((c) => !dates.includes(c.date)) : []
@@ -217,16 +219,22 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
     const d = new Date(`${date}T12:00:00`)
     return { dow: DOW[d.getDay()], dt: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }
   }
-  // Group the drafted nights by week for the review.
-  const weeks: Array<{ key: string; cards: PlanCard[] }> = []
-  for (const c of cards) {
-    const k = isoWeekKey(c.date)
+  // Group the drafted nights + the month's already-planned nights by week, so the
+  // review shows the whole month (existing nights read-only).
+  type Night = { card: PlanCard; existing: boolean }
+  const allNights: Night[] = [
+    ...cards.map((c) => ({ card: c, existing: false })),
+    ...existing.map((c) => ({ card: c, existing: true })),
+  ].sort((a, b) => (a.card.date < b.card.date ? -1 : 1))
+  const weeks: Array<{ key: string; nights: Night[] }> = []
+  for (const n of allNights) {
+    const k = isoWeekKey(n.card.date)
     let g = weeks.find((w) => w.key === k)
     if (!g) {
-      g = { key: k, cards: [] }
+      g = { key: k, nights: [] }
       weeks.push(g)
     }
-    g.cards.push(c)
+    g.nights.push(n)
   }
 
   return (
@@ -380,8 +388,27 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
           <div key={w.key} className="pm-week">
             <div className="pm-week-h tiny muted">Week of {labelFor(w.key).dt}</div>
             <div className="plan-list">
-              {w.cards.map((c) => {
+              {w.nights.map((n) => {
+                const c = n.card
                 const lab = labelFor(c.date)
+                if (n.existing) {
+                  // Already on the calendar — shown for context, not re-applied or edited.
+                  return (
+                    <div key={c.date} className="plan-day plan-day-existing">
+                      <div className="pd-day">
+                        <div className="pd-dow">{lab.dow}</div>
+                        <div className="pd-dt">{lab.dt}</div>
+                      </div>
+                      <div className="pd-main">
+                        <div className="pd-img">{c.emoji ?? '🍽️'}</div>
+                        <div className="pd-b">
+                          <div className="pd-t">{c.title}</div>
+                          <div className="pd-m">Already planned</div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                }
                 const isLocked = locked.has(c.date)
                 return (
                   <div key={c.date} className={`plan-day ${isLocked ? 'locked' : ''}`}>

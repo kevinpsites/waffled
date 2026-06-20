@@ -497,7 +497,7 @@ const daysBetween = (a: string, b: string): number =>
 
 type PoolDish = { title: string; recipeId: string | null; emoji: string | null; minutes: number | null; effort: 'quick' | 'involved'; themes: string[] }
 
-export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<{ start: string; mealType: string; suggestions: PlanCard[]; via: string; error?: string }> {
+export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<{ start: string; mealType: string; suggestions: PlanCard[]; via: string; error?: string; existing?: PlanCard[] }> {
   const mealType = 'dinner'
   const base = new Date(`${input.start}T00:00:00Z`)
   const year = base.getUTCFullYear()
@@ -516,6 +516,21 @@ export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<
     const t = e.recipe?.title ?? e.title
     if (t) plannedTitles.push(t)
   }
+  // The month's already-planned dinners, surfaced so the review shows the whole
+  // month (existing nights read-only) instead of just the newly-drafted ones.
+  const existing: PlanCard[] = entries
+    .filter((e) => e.mealType === mealType)
+    .map((e) => ({
+      date: e.date,
+      mealType,
+      title: e.recipe?.title ?? e.title ?? 'Planned',
+      recipeId: e.recipeId,
+      emoji: e.recipe?.emoji ?? null,
+      minutes: e.recipe?.cookTimeMinutes ?? null,
+      servings: e.recipe?.servings ?? (input.cookingFor && input.cookingFor > 0 ? input.cookingFor : 4),
+      note: null,
+    }))
+    .sort((a, b) => (a.date < b.date ? -1 : 1))
 
   const weekdays = new Set(input.weekdays && input.weekdays.length ? input.weekdays : [1, 2, 3, 4, 5])
   const skip = new Set(input.skipDates ?? [])
@@ -536,7 +551,7 @@ export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<
     }
   }
   targetDates.sort()
-  if (targetDates.length === 0) return { start: monthStartStr, mealType, suggestions: [], via: 'none' }
+  if (targetDates.length === 0) return { start: monthStartStr, mealType, suggestions: [], via: 'none', existing }
 
   const recipes = await listRecipes(tenant.householdId)
   const lib = recipes.slice(0, 60).map((r) => ({ id: r.id, title: r.title, category: r.category, tags: (r.tags ?? []).slice(0, 4), minutes: r.cook_time_minutes }))
@@ -560,7 +575,7 @@ export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<
   // dishes (those have no ingredients/steps and can't build a grocery list). So the
   // pool is capped by the library size; if it's small, repeats are unavoidable.
   if (lib.length === 0) {
-    return { start: monthStartStr, mealType, suggestions: [], via: 'none', error: 'Add some recipes to your library first — the month planner only schedules recipes you have.' }
+    return { start: monthStartStr, mealType, suggestions: [], via: 'none', error: 'Add some recipes to your library first — the month planner only schedules recipes you have.', existing }
   }
   const allowRepeats = input.allowRepeats !== false // default on for a month
   // Aim for one distinct library recipe per night (bounded by the library) so the
@@ -651,7 +666,7 @@ export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<
       pool.push({ title: r.title, recipeId: r.id, emoji: r.emoji ?? null, minutes: r.cook_time_minutes ?? null, effort: effortOf(r.cook_time_minutes ?? null), themes: recipeThemes(r) })
     }
   }
-  if (pool.length === 0) return { start: monthStartStr, mealType, suggestions: [], via }
+  if (pool.length === 0) return { start: monthStartStr, mealType, suggestions: [], via, existing }
 
   // Lay the pool across the nights.
   const repeatGap = allowRepeats ? Math.max(1, input.repeatGapDays ?? 7) : Number.POSITIVE_INFINITY
@@ -734,5 +749,5 @@ export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<
     lastCooked = pick
   }
 
-  return { start: monthStartStr, mealType, suggestions, via }
+  return { start: monthStartStr, mealType, suggestions, via, existing }
 }
