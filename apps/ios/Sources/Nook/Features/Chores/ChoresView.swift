@@ -429,6 +429,7 @@ struct ChoresView: View {
 /// toggle. Delete when editing. Mirrors the web ChoreModal. NK-styled.
 struct ChoreEditSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(SyncManager.self) private var sync
     let members: [SyncedMember]
     let target: ChoresView.ChoreEditorTarget
     let onSave: (String?, [String: JSONValue]) -> Void
@@ -443,6 +444,8 @@ struct ChoreEditSheet: View {
     @State private var emoji: String
     @State private var personId: String?
     @State private var stars: Int
+    /// Chosen reward currency key; nil = the household default.
+    @State private var currencyKey: String?
     @State private var freq: String        // "daily" | "weekly"
     @State private var days: Set<String>
     @State private var requiresApproval: Bool
@@ -456,12 +459,14 @@ struct ChoreEditSheet: View {
             editChoreId = nil
             _title = State(initialValue: ""); _emoji = State(initialValue: "")
             _personId = State(initialValue: pid); _stars = State(initialValue: 1)
+            _currencyKey = State(initialValue: nil)
             _freq = State(initialValue: "daily"); _days = State(initialValue: [])
             _requiresApproval = State(initialValue: false)
         case let .edit(i):
             editChoreId = i.choreId
             _title = State(initialValue: i.choreTitle); _emoji = State(initialValue: i.emoji ?? "")
             _personId = State(initialValue: i.personId); _stars = State(initialValue: i.rewardAmount)
+            _currencyKey = State(initialValue: i.rewardCurrency)
             let parsed = ChoreEditSheet.parseRrule(i.rrule)
             _freq = State(initialValue: parsed.freq); _days = State(initialValue: Set(parsed.days))
             _requiresApproval = State(initialValue: i.requiresApproval)
@@ -522,27 +527,50 @@ struct ChoreEditSheet: View {
                         }
                     }
 
-                    HStack {
-                        SectionLabel(text: "Stars")
-                        Spacer()
-                        HStack(spacing: 14) {
-                            Button { if stars > 0 { stars -= 1 } } label: {
-                                Image(systemName: "minus.circle.fill").font(.system(size: 24)).foregroundStyle(stars > 0 ? NK.ink2 : NK.hair)
-                            }.buttonStyle(.plain).disabled(stars == 0)
-                            HStack(spacing: 3) {
-                                Image(systemName: "star.fill").font(.system(size: 13)).foregroundStyle(NK.gold)
-                                Text("\(stars)").font(.system(size: 17, weight: .heavy)).foregroundStyle(NK.ink).frame(minWidth: 20)
+                    VStack(alignment: .leading, spacing: 12) {
+                        if currencies.count > 1 {
+                            VStack(alignment: .leading, spacing: 9) {
+                                SectionLabel(text: "Reward")
+                                ChipFlow(spacing: 8, lineSpacing: 8) {
+                                    ForEach(currencies) { c in
+                                        let on = c.key == effectiveCurrencyKey
+                                        let tint = Color(hexString: c.color) ?? NK.gold
+                                        Button { currencyKey = c.key } label: {
+                                            Text("\(c.symbol) \(c.label)")
+                                                .font(.system(size: 14, weight: on ? .bold : .medium))
+                                                .foregroundStyle(on ? NK.ink : NK.ink2)
+                                                .padding(.horizontal, 13).padding(.vertical, 8)
+                                                .background(on ? tint.opacity(0.16) : NK.panel)
+                                                .clipShape(Capsule())
+                                                .overlay(Capsule().strokeBorder(on ? tint.opacity(0.5) : .clear, lineWidth: 1))
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
                             }
-                            Button { stars += 1 } label: {
-                                Image(systemName: "plus.circle.fill").font(.system(size: 24)).foregroundStyle(NK.primary)
-                            }.buttonStyle(.plain)
+                        }
+                        HStack {
+                            SectionLabel(text: currencies.count > 1 ? "Amount" : "Stars")
+                            Spacer()
+                            HStack(spacing: 14) {
+                                Button { if stars > 0 { stars -= 1 } } label: {
+                                    Image(systemName: "minus.circle.fill").font(.system(size: 24)).foregroundStyle(stars > 0 ? NK.ink2 : NK.hair)
+                                }.buttonStyle(.plain).disabled(stars == 0)
+                                HStack(spacing: 3) {
+                                    rewardSymbol
+                                    Text("\(stars)").font(.system(size: 17, weight: .heavy)).foregroundStyle(NK.ink).frame(minWidth: 20)
+                                }
+                                Button { stars += 1 } label: {
+                                    Image(systemName: "plus.circle.fill").font(.system(size: 24)).foregroundStyle(NK.primary)
+                                }.buttonStyle(.plain)
+                            }
                         }
                     }
 
                     Toggle(isOn: $requiresApproval) {
                         VStack(alignment: .leading, spacing: 1) {
                             Text("Needs a parent’s OK").font(.system(size: 14.5, weight: .bold)).foregroundStyle(NK.ink)
-                            Text("Stars are awarded only after a parent approves.")
+                            Text("The reward is awarded only after a parent approves.")
                                 .font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
                         }
                     }
@@ -593,8 +621,26 @@ struct ChoreEditSheet: View {
         .buttonStyle(.plain)
     }
 
+    /// The household's reward currencies (e.g. Stars, plus any custom ones).
+    private var currencies: [NookAPI.Currency] { sync.currencies }
+    /// The selected key, falling back to the household default.
+    private var effectiveCurrencyKey: String? {
+        currencyKey ?? currencies.first(where: { $0.isDefault })?.key
+    }
+    private var selectedCurrency: NookAPI.Currency? {
+        currencies.first { $0.key == effectiveCurrencyKey }
+    }
+    /// The amount stepper's icon — the chosen currency's symbol, else the gold star.
+    @ViewBuilder private var rewardSymbol: some View {
+        if let c = selectedCurrency {
+            Text(c.symbol).font(.system(size: 14))
+        } else {
+            Image(systemName: "star.fill").font(.system(size: 13)).foregroundStyle(NK.gold)
+        }
+    }
+
     private func submit() {
-        let body: [String: JSONValue] = [
+        var body: [String: JSONValue] = [
             "title": .string(title.trimmingCharacters(in: .whitespacesAndNewlines)),
             "emoji": emoji.trimmingCharacters(in: .whitespaces).isEmpty ? .null : .string(emoji.trimmingCharacters(in: .whitespaces)),
             "personId": personId.map(JSONValue.string) ?? .null,
@@ -602,6 +648,11 @@ struct ChoreEditSheet: View {
             "rrule": .string(buildRrule()),
             "requiresApproval": .bool(requiresApproval),
         ]
+        // Pass the chosen currency when the household has more than one (else the
+        // backend uses its default).
+        if currencies.count > 1, let key = effectiveCurrencyKey {
+            body["rewardCurrency"] = .string(key)
+        }
         onSave(editChoreId, body)
         dismiss()
     }
