@@ -31,7 +31,10 @@ export function CookMode() {
   }, [])
 
   const total = steps.length
-  const exit = () => navigate(`/meals/recipe/${id}`)
+  // Replace (not push) the cook-mode history entry with the recipe so pressing
+  // back from the recipe goes to wherever you came from (Today, the meal plan)
+  // instead of bouncing back into cook mode — that round-trip was an endless loop.
+  const exit = () => navigate(`/meals/recipe/${id}`, { replace: true })
 
   useTopbarFull(
     () => (

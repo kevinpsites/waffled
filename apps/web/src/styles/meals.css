@@ -94,6 +94,14 @@
   font-weight: 600;
   line-height: 1.25;
   color: var(--ink);
+  /* Long recipe titles ("Zucchini Linguine with Parmesan…") clamp inside the
+     cell instead of bleeding into neighboring days. */
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .meals-cell .meal-cook {
   position: absolute;
