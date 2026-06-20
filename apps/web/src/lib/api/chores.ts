@@ -1,5 +1,5 @@
 // Chores / tasks domain — client slice, types, and hooks.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiGet, apiSend, apiDelete } from './client'
 import { tap, useRefetchOn } from './bus'
 
@@ -97,10 +97,14 @@ export function useDayInstances(date?: string): InstancesState {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [nonce, setNonce] = useState(0)
+  // Only show the full-screen loader on the very first fetch. Day changes and
+  // bus-triggered refetches (e.g. after a drag-drop reassign) swap the data in
+  // place — blanking to "Loading…" mid-interaction caused a white flash.
+  const didLoad = useRef(false)
 
   useEffect(() => {
     let alive = true
-    setLoading(true)
+    if (!didLoad.current) setLoading(true)
     choresApi
       .choreInstancesForDate(date)
       .then((d) => {
@@ -108,6 +112,7 @@ export function useDayInstances(date?: string): InstancesState {
           setInstances(d.instances)
           setError(false)
           setLoading(false)
+          didLoad.current = true
         }
       })
       .catch(() => {

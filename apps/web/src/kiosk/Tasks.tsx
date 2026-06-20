@@ -204,7 +204,7 @@ export function Tasks() {
                   {upForGrabs ? 'Nothing up for grabs — add one anyone can claim.' : `Nothing for ${g.name} ${isToday ? 'today' : 'this day'}.`}
                 </div>
               )}
-              <div>
+              <div className="chore-list">
               {g.items.map((i) => {
                 const isDone = i.status === 'done'
                 const isAwaiting = i.status === 'awaiting'

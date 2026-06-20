@@ -627,6 +627,10 @@ button.tick {
 .claim-pick-q { font-size: 12px; font-weight: 800; color: var(--ink-3); margin-right: 3px; align-self: center; }
 .claim-pick { flex-wrap: wrap; }
 
+/* The chore cards live in a wrapper inside the column, so the column's flex gap
+   doesn't reach them — space them here so they don't look stacked/broken. */
+.chore-list { display: flex; flex-direction: column; gap: 10px; }
+
 /* ===== chore drag-and-drop (reassign between columns) ===== */
 /* Grip handle on each chore card — pointer-down starts a drag. touch-action:none
    stops the kiosk from scrolling while you drag. */
