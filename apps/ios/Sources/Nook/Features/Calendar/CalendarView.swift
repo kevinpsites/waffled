@@ -499,7 +499,13 @@ struct EventEditSheet: View {
     @State private var eligibleGoals: [NookAPI.Goal] = []
     @State private var goalSteps: [NookAPI.GoalDetail.Step] = []
     @State private var suggestion: NookAPI.GoalSuggestOne?
+    @State private var suggesting = false
     @State private var suggestTask: Task<Void, Never>?
+    // Auto-link: when memory is confident enough the goal is pre-filled; the note
+    // stays until the person overrides the picker (mirrors the web's userTouchedGoal).
+    @State private var autoLinkedId: String?
+    @State private var userTouchedGoal = false
+    @FocusState private var titleFocused: Bool
 
     private static let iso = ISO8601DateFormatter()
     private static let durations = [15, 30, 45, 60, 90, 120, 180, 240]
@@ -545,6 +551,7 @@ struct EventEditSheet: View {
                     group("Title") {
                         TextField("Soccer practice", text: $title)
                             .font(.system(size: 16, weight: .semibold)).textInputAutocapitalization(.sentences)
+                            .focused($titleFocused)
                             .padding(.horizontal, 13).padding(.vertical, 11).innerField()
                     }
 
@@ -647,6 +654,10 @@ struct EventEditSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
             .task { await load() }
+            .task {
+                // Autofocus the title on a fresh event (small delay lets the sheet settle).
+                if !editing { try? await Task.sleep(for: .milliseconds(350)); titleFocused = true }
+            }
             .onChange(of: participants) { _, _ in recomputeDefaultCalendar(); clearOrphanGoal(); scheduleSuggest() }
             .onChange(of: title) { _, _ in scheduleSuggest() }
         }
@@ -694,13 +705,15 @@ struct EventEditSheet: View {
 
     @ViewBuilder private var goalSection: some View {
         let options = eligibleGoalsForAttendees
-        if let s = suggestion, goalId == nil { suggestionHint(s) }
+        if let g = autoLinkedGoal { autoLinkedHint(g) }
+        else if suggesting, goalId == nil { suggestingHint }
+        else if let s = suggestion, goalId == nil { suggestionHint(s) }
         if !options.isEmpty || goalId != nil {
             group("Counts toward · optional") {
                 Menu {
-                    Button("No goal") { goalId = nil; goalStepId = nil; goalSteps = [] }
+                    Button("No goal") { userTouchedGoal = true; autoLinkedId = nil; goalId = nil; goalStepId = nil; goalSteps = [] }
                     ForEach(options) { g in
-                        Button("\(g.emoji.map { "\($0) " } ?? "")\(g.title)") { selectGoal(g.id) }
+                        Button("\(g.emoji.map { "\($0) " } ?? "")\(g.title)") { userTouchedGoal = true; selectGoal(g.id) }
                     }
                 } label: {
                     HStack {
@@ -740,6 +753,43 @@ struct EventEditSheet: View {
         return "Completes: \(s.label)"
     }
 
+    /// The pre-linked goal to surface the "we've learned this" note — only while it's
+    /// still the chosen goal and the person hasn't overridden the picker.
+    private var autoLinkedGoal: NookAPI.Goal? {
+        guard let id = autoLinkedId, goalId == id, !userTouchedGoal else { return nil }
+        return eligibleGoals.first { $0.id == id }
+    }
+
+    /// Auto-link note: memory was confident, so the goal is pre-filled below.
+    private func autoLinkedHint(_ g: NookAPI.Goal) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "sparkles").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ai)
+            Text("Auto-linked to \(g.emoji.map { "\($0) " } ?? "")\(g.title) — we've learned this. Change it below if needed.")
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink2)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 6)
+        }
+        .padding(12)
+        .background(NK.ai.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.ai.opacity(0.25), lineWidth: 1))
+    }
+
+    /// The web's "thinking" box, shown while the server matches a goal.
+    private var suggestingHint: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "sparkles").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ai)
+            Text("Looking for a goal this counts toward…")
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink2)
+            Spacer(minLength: 6)
+            ProgressView().controlSize(.small).tint(NK.ai)
+        }
+        .padding(12)
+        .background(NK.ai.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.ai.opacity(0.25), lineWidth: 1))
+    }
+
     private func suggestionHint(_ s: NookAPI.GoalSuggestOne) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "sparkles").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ai)
@@ -758,7 +808,7 @@ struct EventEditSheet: View {
     }
 
     private func selectGoal(_ id: String) {
-        goalId = id; goalStepId = nil; suggestion = nil
+        goalId = id; goalStepId = nil; suggestion = nil; suggesting = false; suggestTask?.cancel()
         Task { await loadSteps(for: id) }
     }
 
@@ -772,7 +822,7 @@ struct EventEditSheet: View {
     private func clearOrphanGoal() {
         guard !eligibleGoals.isEmpty, let gid = goalId else { return }
         if !eligibleGoalsForAttendees.contains(where: { $0.id == gid }) {
-            goalId = nil; goalStepId = nil; goalSteps = []; suggestion = nil
+            goalId = nil; goalStepId = nil; goalSteps = []; suggestion = nil; autoLinkedId = nil
         }
     }
 
@@ -782,14 +832,29 @@ struct EventEditSheet: View {
     private func scheduleSuggest() {
         suggestTask?.cancel()
         let t = title.trimmingCharacters(in: .whitespaces)
-        guard !editing, goalId == nil, !participants.isEmpty, t.count >= 3 else { suggestion = nil; return }
+        guard !editing, goalId == nil, !userTouchedGoal, !participants.isEmpty, t.count >= 3 else {
+            suggestion = nil; suggesting = false; return
+        }
         let ids = participants
+        suggestion = nil
+        suggesting = true
         suggestTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(600))
             if Task.isCancelled { return }
             let s = try? await NookAPI().suggestOne(title: t, participantIds: ids)
-            if Task.isCancelled || goalId != nil { return }
-            suggestion = s
+            if Task.isCancelled || goalId != nil || userTouchedGoal { return }
+            suggesting = false
+            if let s, s.auto == true {
+                // Learned pattern — pre-link automatically; the note + picker let
+                // the person unlink. (Web: an `auto` result overrides the chip.)
+                suggestion = nil
+                autoLinkedId = s.goalId
+                goalId = s.goalId
+                goalStepId = nil
+                await loadSteps(for: s.goalId)
+            } else {
+                suggestion = s
+            }
         }
     }
 

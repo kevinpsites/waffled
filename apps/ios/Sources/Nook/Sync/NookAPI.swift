@@ -1269,6 +1269,9 @@ struct NookAPI: Sendable {
         let goalTitle: String
         let goalEmoji: String?
         let via: String?
+        /// True when the learned memory score crosses the server's AUTO_LINK_THRESHOLD —
+        /// confident enough to pre-link in the modal (never on a one-off keyword/LLM guess).
+        let auto: Bool?
     }
     func suggestOne(title: String, participantIds: [String]) async throws -> GoalSuggestOne? {
         struct Resp: Decodable { let suggestion: GoalSuggestOne? }
