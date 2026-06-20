@@ -5,13 +5,16 @@ import './styles/nook.css'
 import './styles/kiosk.css'
 import './styles/calendar.css'
 import { KioskRoutes } from './kiosk/routes'
+import { AuthGate } from './kiosk/AuthGate'
 import { registerServiceWorker } from './lib/pwa'
 import { connectPowerSync } from './lib/powersync/db'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <KioskRoutes />
+      <AuthGate>
+        <KioskRoutes />
+      </AuthGate>
     </BrowserRouter>
   </StrictMode>
 )

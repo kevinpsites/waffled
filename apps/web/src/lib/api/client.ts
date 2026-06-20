@@ -1,20 +1,95 @@
 // Shared fetch helpers for the api client. In dev, Vite proxies /api to the api
-// container; in the stack, Caddy does. The kiosk token is a dev shortcut for now
-// — a real device pairing flow (chunk 3.3) replaces it later. Set it via
-// localStorage ('nook.token') at runtime, or VITE_KIOSK_TOKEN at build time.
-function token(): string | undefined {
+// container; in the stack, Caddy does. Auth is a JWT session: a short-lived access
+// token + a rotating refresh token in localStorage (set by the login/setup flow).
+// A 401 transparently refreshes once and retries; a failed refresh clears the
+// session and signals the AuthGate to show the login screen.
+const ACCESS_KEY = 'nook.access'
+const REFRESH_KEY = 'nook.refresh'
+
+export function getAccessToken(): string | undefined {
   try {
-    const t = localStorage.getItem('nook.token')
-    if (t) return t
+    return localStorage.getItem(ACCESS_KEY) || localStorage.getItem('nook.token') || undefined
+  } catch {
+    return import.meta.env.VITE_KIOSK_TOKEN || undefined
+  }
+}
+function getRefreshToken(): string | undefined {
+  try {
+    return localStorage.getItem(REFRESH_KEY) || undefined
+  } catch {
+    return undefined
+  }
+}
+export function setSession(accessToken: string, refreshToken: string): void {
+  try {
+    localStorage.setItem(ACCESS_KEY, accessToken)
+    localStorage.setItem(REFRESH_KEY, refreshToken)
+    localStorage.removeItem('nook.token') // retire the legacy dev key
   } catch {
     /* localStorage unavailable */
   }
-  return import.meta.env.VITE_KIOSK_TOKEN || undefined
+  window.dispatchEvent(new Event('nook:auth-changed'))
+}
+export function clearSession(): void {
+  try {
+    localStorage.removeItem(ACCESS_KEY)
+    localStorage.removeItem(REFRESH_KEY)
+    localStorage.removeItem('nook.token')
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(new Event('nook:auth-changed'))
+}
+
+// Single in-flight refresh shared across concurrent 401s.
+let refreshing: Promise<boolean> | null = null
+function refreshSession(): Promise<boolean> {
+  const rt = getRefreshToken()
+  if (!rt) return Promise.resolve(false)
+  if (!refreshing) {
+    refreshing = fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refreshToken: rt }),
+    })
+      .then(async (res) => {
+        if (!res.ok) return false
+        const d = (await res.json()) as { accessToken: string; refreshToken: string }
+        try {
+          localStorage.setItem(ACCESS_KEY, d.accessToken)
+          localStorage.setItem(REFRESH_KEY, d.refreshToken)
+        } catch {
+          /* ignore */
+        }
+        return true
+      })
+      .catch(() => false)
+      .finally(() => {
+        refreshing = null
+      })
+  }
+  return refreshing
+}
+
+// fetch with the bearer token + one transparent refresh-and-retry on 401.
+async function authFetch(path: string, init: RequestInit): Promise<Response> {
+  const withAuth = (tok?: string): RequestInit => ({
+    ...init,
+    headers: { ...(init.headers as Record<string, string>), ...(tok ? { authorization: `Bearer ${tok}` } : {}) },
+  })
+  let res = await fetch(path, withAuth(getAccessToken()))
+  if (res.status === 401 && getRefreshToken()) {
+    if (await refreshSession()) {
+      res = await fetch(path, withAuth(getAccessToken()))
+    } else {
+      clearSession() // refresh failed → back to login
+    }
+  }
+  return res
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
-  const t = token()
-  const res = await fetch(path, { headers: t ? { authorization: `Bearer ${t}` } : {} })
+  const res = await authFetch(path, {})
   if (!res.ok) throw new Error(`${path} -> ${res.status}`)
   return res.json() as Promise<T>
 }
@@ -38,13 +113,9 @@ export function invalidateGetCache(prefix: string): void {
 }
 
 export async function apiSend<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
-  const t = token()
-  const res = await fetch(path, {
+  const res = await authFetch(path, {
     method,
-    headers: {
-      ...(t ? { authorization: `Bearer ${t}` } : {}),
-      ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
-    },
+    headers: body !== undefined ? { 'content-type': 'application/json' } : {},
     body: body !== undefined ? JSON.stringify(body) : undefined,
     signal,
   })
@@ -53,8 +124,7 @@ export async function apiSend<T>(method: string, path: string, body?: unknown, s
 }
 
 export async function apiDelete(path: string): Promise<void> {
-  const t = token()
-  const res = await fetch(path, { method: 'DELETE', headers: t ? { authorization: `Bearer ${t}` } : {} })
+  const res = await authFetch(path, { method: 'DELETE' })
   if (!res.ok) throw new Error(`DELETE ${path} -> ${res.status}`)
 }
 
