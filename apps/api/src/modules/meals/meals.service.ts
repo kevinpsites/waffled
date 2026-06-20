@@ -250,7 +250,10 @@ interface WeekEntryRow extends QueryResultRow {
   cook_color: string | null
 }
 
-export async function weekEntries(householdId: string, start: string) {
+// `days` (default 7) is the window length — the month grid asks for ~42 days at
+// once so it doesn't fan out a request per week.
+export async function weekEntries(householdId: string, start: string, days = 7) {
+  const span = Math.max(1, Math.min(45, Math.floor(days)))
   const { rows } = await query<WeekEntryRow>(
     `select mpe.id, to_char(mpe.date,'YYYY-MM-DD') as date, mpe.meal_type, mpe.title, mpe.recipe_id,
             r.title as recipe_title, r.emoji as recipe_emoji, r.category,
@@ -260,9 +263,9 @@ export async function weekEntries(householdId: string, start: string) {
        left join recipes r on r.id = mpe.recipe_id and r.deleted_at is null
        left join persons p on p.id = mpe.cook_person_id and p.deleted_at is null
       where mpe.household_id = $1 and mpe.deleted_at is null
-        and mpe.date >= $2::date and mpe.date < ($2::date + 7)
+        and mpe.date >= $2::date and mpe.date < ($2::date + $3::int)
       order by mpe.date, mpe.meal_type`,
-    [householdId, start]
+    [householdId, start, span]
   )
   return rows.map((e) => ({
     id: e.id,

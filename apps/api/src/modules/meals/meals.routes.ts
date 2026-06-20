@@ -247,7 +247,9 @@ export function registerMealRoutes(api: Api): void {
     const tenant = await requireTenant(req)
     const startParam = typeof req.query?.start === 'string' ? req.query.start : ''
     const start = DATE_RE.test(startParam) ? startParam : todayDate()
-    const entries = await weekEntries(tenant.householdId, start)
+    const daysParam = Number(req.query?.days)
+    const days = Number.isFinite(daysParam) && daysParam > 0 ? daysParam : 7
+    const entries = await weekEntries(tenant.householdId, start, days)
     return { start, entries }
   })
 

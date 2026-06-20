@@ -151,7 +151,8 @@ export interface MealCalendarSettings {
 }
 
 export const mealsApi = {
-  mealsWeek: (start: string) => apiGet<{ start: string; entries: WeekEntry[] }>(`/api/meals/week?start=${start}`),
+  mealsWeek: (start: string, days?: number) =>
+    apiGet<{ start: string; entries: WeekEntry[] }>(`/api/meals/week?start=${start}${days ? `&days=${days}` : ''}`),
   calendarSettings: () => apiGet<{ settings: MealCalendarSettings }>('/api/meals/calendar-settings').then((r) => r.settings),
   setCalendarSettings: (patch: Partial<MealCalendarSettings>) =>
     apiSend<{ settings: MealCalendarSettings }>('PUT', '/api/meals/calendar-settings', patch).then((r) => r.settings),
@@ -180,7 +181,7 @@ export interface MealsState {
 
 // Loads one planned week starting at `start` (YYYY-MM-DD). Refetch after a
 // plan/clear so the grid reflects the mutation.
-export function useMealsWeek(start?: string): MealsState {
+export function useMealsWeek(start?: string, days?: number): MealsState {
   const day = start ?? localToday()
   const [state, setState] = useState<Omit<MealsState, 'refetch'>>({ entries: [], loading: true, error: false })
   const [nonce, setNonce] = useState(0)
@@ -189,13 +190,13 @@ export function useMealsWeek(start?: string): MealsState {
     let alive = true
     setState((s) => ({ ...s, loading: true }))
     mealsApi
-      .mealsWeek(day)
+      .mealsWeek(day, days)
       .then((d) => alive && setState({ entries: d.entries, loading: false, error: false }))
       .catch(() => alive && setState({ entries: [], loading: false, error: true }))
     return () => {
       alive = false
     }
-  }, [day, nonce])
+  }, [day, days, nonce])
   useRefetchOn(['meals'], refetch)
   return { ...state, refetch }
 }

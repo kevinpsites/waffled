@@ -8,9 +8,11 @@ import {
   api,
   useMealsWeek,
   useRecipes,
+  localToday,
   type Recipe,
   type WeekEntry,
 } from '../lib/api'
+import { isEatingOut } from './components/MealsColumn'
 import '../styles/meals.css'
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -132,18 +134,37 @@ function MealPicker({
   )
 }
 
+// First day of the month containing `d`.
+function monthStartOf(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1)
+}
+
 export function Meals() {
   const navigate = useNavigate()
-  const [start, setStart] = useState<Date>(() => weekStart(new Date()))
+  const [view, setView] = useState<'week' | 'month'>('week')
+  // One anchor date; the week view reads its week, the month view its month.
+  const [anchor, setAnchor] = useState<Date>(() => new Date())
   const [filter, setFilter] = useState<'all' | 'dinner'>('all')
   const [picking, setPicking] = useState<{ date: string; mealType: MealType; dayLabel: string } | null>(null)
   const [planning, setPlanning] = useState(false)
 
-  const startStr = ymd(start)
-  const { entries, refetch } = useMealsWeek(startStr)
+  const weekStartD = useMemo(() => weekStart(anchor), [anchor])
+  const monthStartD = useMemo(() => monthStartOf(anchor), [anchor])
+  // The month grid is a 6-week (42-day) block starting on the Sunday on/before the 1st.
+  const gridStartD = useMemo(() => {
+    const d = new Date(monthStartD)
+    d.setDate(1 - d.getDay())
+    return d
+  }, [monthStartD])
+
+  const startStr = ymd(weekStartD)
+  const fetchStart = view === 'month' ? ymd(gridStartD) : startStr
+  const fetchDays = view === 'month' ? 42 : 7
+  const { entries, refetch } = useMealsWeek(fetchStart, fetchDays)
   const { recipes, loading: recipesLoading } = useRecipes()
 
-  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(start, i)), [start])
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStartD, i)), [weekStartD])
+  const monthCells = useMemo(() => Array.from({ length: 42 }, (_, i) => addDays(gridStartD, i)), [gridStartD])
 
   // entries keyed by `${date}|${mealType}`.
   const bySlot = useMemo(() => {
@@ -171,6 +192,24 @@ export function Meals() {
     refetch()
   }
 
+  function openPicker(d: Date, mealType: MealType) {
+    setPicking({
+      date: ymd(d),
+      mealType,
+      dayLabel: `${DOW[d.getDay()]} ${d.toLocaleDateString('en-US', { month: 'short' })} ${d.getDate()}`,
+    })
+  }
+
+  // Prev/next steps a week or a month depending on the view; "today" recenters.
+  function step(delta: number) {
+    setAnchor((a) => {
+      const d = new Date(a)
+      if (view === 'month') d.setMonth(d.getMonth() + delta)
+      else d.setDate(d.getDate() + delta * 7)
+      return d
+    })
+  }
+
   const rows: MealType[] = filter === 'dinner' ? ['dinner'] : [...MEALS]
 
   if (planning) {
@@ -191,61 +230,142 @@ export function Meals() {
     )
   }
 
+  const monthLabel = monthStartD.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+
   return (
     <div className="meals-screen">
       <div className="meals-head">
-        <div className="card-h nk-serif" style={{ fontSize: 20 }}>Meal plan</div>
+        <div className="card-h nk-serif" style={{ fontSize: 20 }}>{view === 'month' ? monthLabel : 'Meal plan'}</div>
         <div className="seg">
-          <button className={filter === 'all' ? 'on' : ''} onClick={() => setFilter('all')}>All meals</button>
-          <button className={filter === 'dinner' ? 'on' : ''} onClick={() => setFilter('dinner')}>Dinners</button>
+          <button className={view === 'week' ? 'on' : ''} onClick={() => setView('week')}>Week</button>
+          <button className={view === 'month' ? 'on' : ''} onClick={() => setView('month')}>Month</button>
         </div>
+        {view === 'week' && (
+          <div className="seg">
+            <button className={filter === 'all' ? 'on' : ''} onClick={() => setFilter('all')}>All meals</button>
+            <button className={filter === 'dinner' ? 'on' : ''} onClick={() => setFilter('dinner')}>Dinners</button>
+          </div>
+        )}
         <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate('/meals/recipes')}>
           <Icon name="recipes" />
           <span>Explore recipes</span>
         </button>
-        <button type="button" className="btn btn-ai" style={{ fontSize: 14, padding: '10px 18px' }} onClick={() => setPlanning(true)}>
-          <Icon name="spark" />
-          Plan my week
-        </button>
+        {view === 'week' && (
+          <button type="button" className="btn btn-ai" style={{ fontSize: 14, padding: '10px 18px' }} onClick={() => setPlanning(true)}>
+            <Icon name="spark" />
+            Plan my week
+          </button>
+        )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center' }}>
-          <button type="button" className="pill meals-nav" aria-label="Previous week" onClick={() => setStart((s) => addDays(s, -7))}>
+          <button type="button" className="pill meals-nav" aria-label={view === 'month' ? 'Previous month' : 'Previous week'} onClick={() => step(-1)}>
             <Icon name="cl" />
           </button>
-          <button type="button" className="pill" onClick={() => setStart(weekStart(new Date()))}>This week</button>
-          <button type="button" className="pill meals-nav" aria-label="Next week" onClick={() => setStart((s) => addDays(s, 7))}>
+          <button type="button" className="pill" onClick={() => setAnchor(new Date())}>{view === 'month' ? 'This month' : 'This week'}</button>
+          <button type="button" className="pill meals-nav" aria-label={view === 'month' ? 'Next month' : 'Next week'} onClick={() => step(1)}>
             <Icon name="cr" />
           </button>
         </div>
       </div>
-      <div className="meals-hint">Tap a meal for the recipe · tap + to add one · the avatar is who's cooking</div>
-
-      <div className="meals-grid" style={{ gridTemplateRows: `auto repeat(${rows.length}, 1fr)` }}>
-        <div />
-        {days.map((d) => (
-          <div key={d.toISOString()} className="meals-dow">
-            <div className="dow">{DOW[d.getDay()]}</div>
-            <div className="date">{d.getDate()}</div>
-          </div>
-        ))}
-
-        {rows.map((mealType) => (
-          <Row
-            key={mealType}
-            mealType={mealType}
-            days={days}
-            bySlot={bySlot}
-            onOpen={(id) => navigate(`/meals/recipe/${id}`)}
-            onAdd={(d) =>
-              setPicking({
-                date: ymd(d),
-                mealType,
-                dayLabel: `${DOW[d.getDay()]} ${d.toLocaleDateString('en-US', { month: 'short' })} ${d.getDate()}`,
-              })
-            }
-            onRemove={clearMeal}
-          />
-        ))}
+      <div className="meals-hint">
+        {view === 'month' ? 'Dinners for the month · tap a night to add or open a recipe' : "Tap a meal for the recipe · tap + to add one · the avatar is who's cooking"}
       </div>
+
+      {view === 'month' ? (
+        <div className="meals-month">
+          {DOW.map((d) => (
+            <div key={d} className="mm-dow">{d}</div>
+          ))}
+          {monthCells.map((d) => {
+            const dateStr = ymd(d)
+            const entry = bySlot.get(`${dateStr}|dinner`)
+            const inMonth = d.getMonth() === monthStartD.getMonth()
+            const isToday = dateStr === localToday()
+            return (
+              <MonthCell
+                key={dateStr}
+                date={d}
+                inMonth={inMonth}
+                isToday={isToday}
+                entry={entry}
+                onOpen={() => (entry?.recipeId ? navigate(`/meals/recipe/${entry.recipeId}`) : openPicker(d, 'dinner'))}
+                onAdd={() => openPicker(d, 'dinner')}
+                onRemove={() => clearMeal(dateStr, 'dinner')}
+              />
+            )
+          })}
+        </div>
+      ) : (
+        <div className="meals-grid" style={{ gridTemplateRows: `auto repeat(${rows.length}, 1fr)` }}>
+          <div />
+          {days.map((d) => (
+            <div key={d.toISOString()} className="meals-dow">
+              <div className="dow">{DOW[d.getDay()]}</div>
+              <div className="date">{d.getDate()}</div>
+            </div>
+          ))}
+
+          {rows.map((mealType) => (
+            <Row
+              key={mealType}
+              mealType={mealType}
+              days={days}
+              bySlot={bySlot}
+              onOpen={(id) => navigate(`/meals/recipe/${id}`)}
+              onAdd={(d) => openPicker(d, mealType)}
+              onRemove={clearMeal}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// One day in the month grid (dinner only). Empty cell shows a +; a planned night
+// shows the emoji + title (clamped), with a remove ×. Recipe nights open the
+// recipe; recipe-less / eating-out nights re-open the picker.
+function MonthCell({
+  date,
+  inMonth,
+  isToday,
+  entry,
+  onOpen,
+  onAdd,
+  onRemove,
+}: {
+  date: Date
+  inMonth: boolean
+  isToday: boolean
+  entry: WeekEntry | undefined
+  onOpen: () => void
+  onAdd: () => void
+  onRemove: () => void
+}) {
+  const out = entry ? isEatingOut(entry) : false
+  const title = out ? 'Eating out' : entry?.recipe?.title ?? entry?.title ?? null
+  const emoji = entry?.recipe?.emoji ?? (out ? '🍴' : '🍽️')
+  return (
+    <div className={`mm-cell ${inMonth ? '' : 'mm-out'} ${isToday ? 'mm-today' : ''}`} onClick={entry ? onOpen : onAdd} role="button" tabIndex={0}>
+      <div className="mm-date">{date.getDate()}</div>
+      {entry ? (
+        <div className="mm-meal" title={title ?? undefined}>
+          <span className="mm-emoji">{emoji}</span>
+          <span className="mm-title">{title}</span>
+          <button
+            type="button"
+            className="mm-remove"
+            aria-label="Remove dinner"
+            onClick={(e) => {
+              e.stopPropagation()
+              onRemove()
+            }}
+          >
+            ×
+          </button>
+        </div>
+      ) : (
+        inMonth && <div className="mm-add"><Icon name="plus" /></div>
+      )}
     </div>
   )
 }
