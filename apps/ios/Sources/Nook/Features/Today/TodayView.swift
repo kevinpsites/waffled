@@ -20,6 +20,12 @@ struct TodayView: View {
     /// Which goal the card highlights: "mine" (the logged-in member's) or "family"
     /// (a whole-family goal). Per-device preference; defaults to mine.
     @AppStorage("nook.todayGoalScope") private var goalScope = "mine"
+    /// The resolved card layout (order + hidden) from the server, plus whether this
+    /// member may edit the shared family default. Drives which cards render and how.
+    @State private var cardOrder: [String] = ["agenda", "tonight", "chores", "grocery", "goals"]
+    @State private var hiddenCards: Set<String> = []
+    @State private var canEditFamily = false
+    @State private var showCustomize = false
     /// Today's own nav stack — summary cards (and the greeting avatar) push here so
     /// Back returns to the dashboard. Uses `HubRoute` so the person spotlight,
     /// chores, grocery, and recipe all render with the shared `HubDestination`
@@ -59,21 +65,20 @@ struct TodayView: View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    // The review banner is pinned (transient alert), not customizable.
                     if !reviewRecap.isEmpty || !reviewSuggestions.isEmpty {
                         Button { path.append(.reviewEvents) } label: { reviewCard }.buttonStyle(.plain)
                     }
-                    todayCard
-                    if let summary = dash.tonight?.recipeSummary {
-                        Button { path.append(.recipe(summary)) } label: { tonightCard }.buttonStyle(.plain)
-                    } else {
-                        tonightCard
+                    // The rest render in the user's saved order, hidden cards omitted.
+                    ForEach(cardRows) { row in
+                        switch row {
+                        case let .single(key):
+                            cardView(key)
+                        case let .pair(a, b):
+                            HStack(spacing: 12) { cardView(a); cardView(b) }
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
-                    HStack(spacing: 12) {
-                        Button { path.append(.chores) } label: { choresCard }.buttonStyle(.plain)
-                        Button { path.append(.list(grocerySummary)) } label: { groceryCard }.buttonStyle(.plain)
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
-                    goalsCard
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 6)
@@ -102,6 +107,7 @@ struct TodayView: View {
             // Load the goal-calendar review queues for the entry card (refreshes
             // whenever a review action bumps the goals bus).
             .task { await sync.loadIdentity() }
+            .task { await loadLayout() }
             .task(id: sync.goalsRev) {
                 let api = NookAPI()
                 async let r = try? await api.goalRecap()
@@ -116,6 +122,10 @@ struct TodayView: View {
             }
             .sheet(isPresented: $showCapture) {
                 CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showCustomize) {
+                CustomizeTodaySheet(order: cardOrder, hidden: hiddenCards, canEditFamily: canEditFamily,
+                                    labels: Self.cardLabels) { await loadLayout() }
             }
         }
     }
@@ -158,6 +168,13 @@ struct TodayView: View {
                     .foregroundStyle(NK.ink)
             }
             Spacer()
+            Button { showCustomize = true } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink3)
+                    .frame(width: 40, height: 40)
+                    .background(NK.panel).clipShape(Circle())
+            }
+            .buttonStyle(.plain)
             if let m = greetingMember {
                 Button { path.append(.person(m.id)) } label: {
                     Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 46)
@@ -417,6 +434,62 @@ struct TodayView: View {
         .contentShape(Rectangle())
     }
 
+    // MARK: layout-driven card rendering
+
+    static let cardLabels = [
+        "agenda": "Agenda", "tonight": "Tonight's dinner",
+        "chores": "Chores", "grocery": "Grocery", "goals": "Goals",
+    ]
+    private static let smallCards: Set<String> = ["chores", "grocery"]
+
+    private enum CardRow: Identifiable {
+        case single(String)
+        case pair(String, String)
+        var id: String {
+            switch self { case let .single(k): return k; case let .pair(a, b): return a + "+" + b }
+        }
+    }
+
+    /// Visible cards in saved order, pairing the two small cards (chores/grocery)
+    /// into a 2-up row when they're adjacent — so the default look is preserved.
+    private var cardRows: [CardRow] {
+        let visible = cardOrder.filter { !hiddenCards.contains($0) }
+        var rows: [CardRow] = []
+        var i = 0
+        while i < visible.count {
+            let k = visible[i]
+            if Self.smallCards.contains(k), i + 1 < visible.count, Self.smallCards.contains(visible[i + 1]) {
+                rows.append(.pair(k, visible[i + 1])); i += 2
+            } else {
+                rows.append(.single(k)); i += 1
+            }
+        }
+        return rows
+    }
+
+    @ViewBuilder private func cardView(_ key: String) -> some View {
+        switch key {
+        case "agenda": todayCard
+        case "tonight":
+            if let summary = dash.tonight?.recipeSummary {
+                Button { path.append(.recipe(summary)) } label: { tonightCard }.buttonStyle(.plain)
+            } else {
+                tonightCard
+            }
+        case "chores": Button { path.append(.chores) } label: { choresCard }.buttonStyle(.plain)
+        case "grocery": Button { path.append(.list(grocerySummary)) } label: { groceryCard }.buttonStyle(.plain)
+        case "goals": goalsCard
+        default: EmptyView()
+        }
+    }
+
+    private func loadLayout() async {
+        guard let resp = try? await NookAPI().mobileTodayLayout() else { return }
+        cardOrder = resp.resolved.order
+        hiddenCards = Set(resp.resolved.hidden)
+        canEditFamily = resp.canEditFamily
+    }
+
     private var choresCard: some View {
         NookCard(padding: 15) {
             VStack(alignment: .leading, spacing: 8) {
@@ -473,6 +546,92 @@ struct ProgressBar: View {
             }
         }
         .frame(height: 7)
+    }
+}
+
+/// Reorder + show/hide the Today cards. Saves to the caller's own override
+/// ("Just me") or, for admins, the shared family default ("Everyone").
+struct CustomizeTodaySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let labels: [String: String]
+    let canEditFamily: Bool
+    let onSaved: () async -> Void
+
+    @State private var order: [String]
+    @State private var hidden: Set<String>
+    @State private var scope: String        // "user" | "family"
+    @State private var busy = false
+
+    init(order: [String], hidden: Set<String>, canEditFamily: Bool,
+         labels: [String: String], onSaved: @escaping () async -> Void) {
+        self.labels = labels
+        self.canEditFamily = canEditFamily
+        self.onSaved = onSaved
+        _order = State(initialValue: order)
+        _hidden = State(initialValue: hidden)
+        _scope = State(initialValue: "user")
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if canEditFamily {
+                    Section {
+                        Picker("Applies to", selection: $scope) {
+                            Text("Just me").tag("user")
+                            Text("Everyone").tag("family")
+                        }
+                        .pickerStyle(.segmented)
+                    } footer: {
+                        Text(scope == "family"
+                             ? "Sets the default Today layout for everyone in the household."
+                             : "Your own arrangement, just on this account.")
+                    }
+                }
+
+                Section("Drag to reorder · toggle to show or hide") {
+                    ForEach(order, id: \.self) { key in
+                        HStack(spacing: 10) {
+                            Text(labels[key] ?? key).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                            Spacer()
+                            Toggle("", isOn: Binding(
+                                get: { !hidden.contains(key) },
+                                set: { on in if on { hidden.remove(key) } else { hidden.insert(key) } }
+                            ))
+                            .labelsHidden()
+                            .tint(NK.primary)
+                        }
+                    }
+                    .onMove { idx, dest in order.move(fromOffsets: idx, toOffset: dest) }
+                }
+            }
+            .environment(\.editMode, .constant(.active))
+            .navigationTitle("Customize Today")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { commit { try await NookAPI().saveMobileTodayLayout(scope: scope, order: order, hidden: Array(hidden)) } }
+                        .fontWeight(.semibold).disabled(busy)
+                }
+                ToolbarItem(placement: .bottomBar) {
+                    Button(scope == "family" ? "Reset everyone to default" : "Reset to default", role: .destructive) {
+                        commit { try await NookAPI().resetMobileTodayLayout(scope: scope) }
+                    }
+                    .disabled(busy)
+                }
+            }
+        }
+        .presentationDetents([.large])
+    }
+
+    private func commit(_ op: @escaping () async throws -> Void) {
+        busy = true
+        Task {
+            try? await op()
+            await onSaved()
+            dismiss()
+        }
     }
 }
 

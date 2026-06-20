@@ -596,6 +596,37 @@ struct NookAPI: Sendable {
         struct Resp: Decodable { let person: Person?; struct Person: Decodable { let id: String } }
         return try await getJSON("/api/household", as: Resp.self).person?.id
     }
+
+    // MARK: mobile Today layout (per-user override + family default)
+
+    struct MobileTodayLayout: Decodable, Sendable, Equatable {
+        var order: [String]
+        var hidden: [String]
+    }
+    struct MobileLayoutResponse: Decodable, Sendable {
+        let resolved: MobileTodayLayout
+        let source: String          // "user" | "family" | "default"
+        let cards: [String]
+        let canEditFamily: Bool
+    }
+    func mobileTodayLayout() async throws -> MobileLayoutResponse {
+        try await getJSON("/api/today-layout/mobile", as: MobileLayoutResponse.self)
+    }
+    /// Save the layout to a tier. scope is "user" (own override) or "family" (admins).
+    func saveMobileTodayLayout(scope: String, order: [String], hidden: [String]) async throws {
+        let body: [String: JSONValue] = [
+            "scope": .string(scope),
+            "layout": .object([
+                "order": .array(order.map(JSONValue.string)),
+                "hidden": .array(hidden.map(JSONValue.string)),
+            ]),
+        ]
+        try await send("PUT", "/api/today-layout/mobile", body: body)
+    }
+    /// Reset a tier back to inheriting (user → family, family → built-in default).
+    func resetMobileTodayLayout(scope: String) async throws {
+        try await delete("/api/today-layout/mobile?scope=\(scope)")
+    }
     /// Edit household name/timezone/weekStart/location (admins).
     func updateHousehold(_ body: [String: JSONValue]) async throws { try await send("PATCH", "/api/household", body: body) }
 
