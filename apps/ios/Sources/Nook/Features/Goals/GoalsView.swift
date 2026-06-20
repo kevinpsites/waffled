@@ -448,10 +448,8 @@ struct GoalsView: View {
     }
 
     private func fmtDeadline(_ iso: String) -> String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
-        guard let d = f.date(from: String(iso.prefix(10))) else { return "" }
-        let out = DateFormatter(); out.dateFormat = "MMM d"; out.timeZone = TimeZone(identifier: "UTC")
-        return out.string(from: d)
+        guard let d = DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", DateFmt.utc) else { return "" }
+        return DateFmt.string(d, "MMM d", DateFmt.utc)
     }
 }
 
@@ -469,10 +467,6 @@ struct GoalLogSheet: View {
     @State private var note = ""
     /// The day this entry counts for — defaults to today, backdate to catch up a streak.
     @State private var loggedOn = Date()
-
-    private static let ymd: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.calendar = Calendar.current; return f
-    }()
 
     private static let hourUnits: Set<String> = ["hour", "hours", "hr", "hrs"]
     private static let activityChips = ["Bike ride", "Park", "Sports", "Outside play", "Reading", "Art"]
@@ -557,7 +551,7 @@ struct GoalLogSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Log \(goalFmt(amount))\(goal.unit.map { " \($0)" } ?? "")") {
-                        let backdate = Calendar.current.isDateInToday(loggedOn) ? nil : Self.ymd.string(from: loggedOn)
+                        let backdate = Calendar.current.isDateInToday(loggedOn) ? nil : DateFmt.string(loggedOn, "yyyy-MM-dd", .current)
                         onSave(amount, Array(who), note.trimmingCharacters(in: .whitespacesAndNewlines), backdate)
                         dismiss()
                     }
@@ -1054,8 +1048,7 @@ struct GoalCreateSheet: View {
     }
 
     private static func parseDay(_ iso: String) -> Date? {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
-        return f.date(from: String(iso.prefix(10)))
+        DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", DateFmt.utc)
     }
 
     private func submit() {
@@ -1106,10 +1099,7 @@ struct GoalCreateSheet: View {
         dismiss()
     }
 
-    private func isoDay(_ d: Date) -> String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(identifier: "UTC")
-        return f.string(from: d)
-    }
+    private func isoDay(_ d: Date) -> String { DateFmt.string(d, "yyyy-MM-dd", DateFmt.utc) }
 }
 
 // MARK: - Goal detail
@@ -1431,13 +1421,10 @@ struct GoalDetailView: View {
         let date = inF.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
         guard let date else {
             // Fall back to a plain yyyy-MM-dd date string.
-            let d2 = DateFormatter(); d2.dateFormat = "yyyy-MM-dd"; d2.timeZone = TimeZone(identifier: "UTC")
-            guard let parsed = d2.date(from: String(iso.prefix(10))) else { return "" }
-            let out = DateFormatter(); out.dateFormat = fmt
-            return out.string(from: parsed)
+            guard let parsed = DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", DateFmt.utc) else { return "" }
+            return DateFmt.string(parsed, fmt, .current)
         }
-        let out = DateFormatter(); out.dateFormat = fmt
-        return out.string(from: date)
+        return DateFmt.string(date, fmt, .current)
     }
 }
 
