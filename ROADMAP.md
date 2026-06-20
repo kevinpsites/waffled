@@ -319,7 +319,17 @@ refresh-retry), legacy `nook.token` still honored. **Sign out** in Settings (nav
 footer + real About panel; tap-to-confirm) — `authApi.logout()` revokes refresh +
 clears session + fires `nook:auth-changed`. Verified live + 95 web tests green.
 
-### Phase 2 — OIDC, backend-mediated, **Settings-managed** (Immich-style) — IN PROGRESS
+### Phase 2 — OIDC, backend-mediated, **Settings-managed** (Immich-style) — SHIPPED 2026-06-20
+**Verified live against real Google discovery** (test/enable/status/secret-safe
+readback; `/start` → real authorize URL with S256 PKCE; login SSO button → Google;
+Settings round-trip) + 4 integration tests vs an in-process stub IdP (full
+code→token→JWKS-verify→invite-link→handoff-exchange + not-invited reject). Files:
+`modules/auth/oidc.ts`, migration 0041; web `AuthGate` `/auth/callback`, Settings
+**Login & security** panel. **Mobile** reuses the same flow: open `…/api/auth/oidc/
+start?redirect=<app-deep-link>` in an in-app browser → backend redirects to
+`<deep-link>/auth/callback?code=…` → `POST /api/auth/oidc/exchange {code}` →
+store the returned access+refresh (identical to the password path from there).
+
 Config is **DB-backed and edited by an admin in Settings**, not env (the operator
 attaches their IdP *after* first-run setup and chooses whether passwords stay on).
 We run the auth-code + PKCE flow server-side and mint our **own** session, so every
