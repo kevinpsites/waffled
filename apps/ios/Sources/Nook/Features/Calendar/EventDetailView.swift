@@ -303,8 +303,7 @@ struct EventDetailView: View {
     private var timeLine: String { allDay ? "All day" : (start.map(fmtTime) ?? "") }
     private var dateLine: String {
         guard let s = start else { return "" }
-        let f = DateFormatter(); f.calendar = Calendar(identifier: .gregorian); f.timeZone = tz; f.dateFormat = "EEEE, MMMM d"
-        var line = f.string(from: s)
+        var line = DateFmt.string(s, "EEEE, MMMM d", tz)
         if !allDay, let e = end {
             let mins = max(0, Int(e.timeIntervalSince(s) / 60))
             if mins > 0 { line += " · \(durationLabel(mins))" }
@@ -313,8 +312,7 @@ struct EventDetailView: View {
     }
     private func fmtTime(_ d: Date?) -> String {
         guard let d else { return "" }
-        let f = DateFormatter(); f.timeZone = tz; f.dateFormat = "h:mm a"
-        return f.string(from: d)
+        return DateFmt.string(d, "h:mm a", tz)
     }
     private func durationLabel(_ m: Int) -> String {
         if m < 60 { return "\(m) min" }
@@ -329,10 +327,7 @@ struct EventDetailView: View {
         if r.contains("FREQ=YEARLY") { return "Every year" }
         return "Repeats"
     }
-    private func dayKey(_ d: Date) -> String {
-        let f = DateFormatter(); f.calendar = Calendar(identifier: .gregorian); f.timeZone = tz; f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: d)
-    }
+    private func dayKey(_ d: Date) -> String { DateFmt.string(d, "yyyy-MM-dd", tz) }
     private func parseISO(_ s: String?) -> Date? {
         guard let s else { return nil }
         let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

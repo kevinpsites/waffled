@@ -211,10 +211,7 @@ struct WeekPlannerView: View {
     }
     private var days: [Date] { (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: weekStart) } }
 
-    private func fmt(_ d: Date, _ pattern: String) -> String {
-        let f = DateFormatter(); f.calendar = cal; f.timeZone = sync.householdTz; f.dateFormat = pattern
-        return f.string(from: d)
-    }
+    private func fmt(_ d: Date, _ pattern: String) -> String { DateFmt.string(d, pattern, sync.householdTz) }
     private func ymd(_ d: Date) -> String { fmt(d, "yyyy-MM-dd") }
     private func weekday(_ d: Date) -> String { fmt(d, "EEE").uppercased() }
     private func dayNumber(_ d: Date) -> String { fmt(d, "MMM d") }
