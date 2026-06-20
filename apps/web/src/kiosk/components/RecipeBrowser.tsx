@@ -33,6 +33,7 @@ export function RecipeBrowser({
   onPick,
   onView,
   onEatingOut,
+  onLeftovers,
   selectLabel,
 }: {
   recipes: Recipe[]
@@ -41,6 +42,7 @@ export function RecipeBrowser({
   onPick?: (recipe: Recipe) => void
   onView?: (recipe: Recipe) => void
   onEatingOut?: () => void
+  onLeftovers?: () => void
   selectLabel?: string
 }) {
   const browse = !onPick
@@ -85,6 +87,18 @@ export function RecipeBrowser({
               <div className="rc-m"><span>No cooking tonight</span></div>
               <div className="mp-actions">
                 <button type="button" className="pill btn-primary mp-select" onClick={(e) => { e.stopPropagation(); onEatingOut() }}>Select</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {onLeftovers && (
+          <div className="rc mp-card" role="button" tabIndex={0} onClick={onLeftovers}>
+            <div className="rc-img" style={{ background: 'linear-gradient(135deg,#f0e6d2,#e0cfa8)', fontSize: 34, display: 'grid', placeItems: 'center' }}>🥡</div>
+            <div className="rc-b" style={{ padding: '12px 14px 14px' }}>
+              <div className="rc-t" style={{ fontSize: 16 }}>Leftovers</div>
+              <div className="rc-m"><span>Finish up a previous meal</span></div>
+              <div className="mp-actions">
+                <button type="button" className="pill btn-primary mp-select" onClick={(e) => { e.stopPropagation(); onLeftovers() }}>Select</button>
               </div>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Icon } from './icons'
 import { PlanWeek } from './components/PlanWeek'
@@ -13,7 +13,7 @@ import {
   type Recipe,
   type WeekEntry,
 } from '../lib/api'
-import { isEatingOut } from './components/MealsColumn'
+import { isEatingOut, isLeftovers } from './components/MealsColumn'
 import '../styles/meals.css'
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -35,10 +35,10 @@ function addDays(d: Date, n: number): Date {
   return x
 }
 
-function PlannedCell({ entry, mealType, onOpen, onRemove }: { entry: WeekEntry; mealType: MealType; onOpen: () => void; onRemove: () => void }) {
+function PlannedCell({ entry, mealType, slotKey, onOpen, onRemove }: { entry: WeekEntry; mealType: MealType; slotKey: string; onOpen: () => void; onRemove: () => void }) {
   const title = entry.recipe?.title ?? entry.title ?? 'Planned'
   return (
-    <div className={`meals-cell ${mealType}`} onClick={onOpen} role="button" tabIndex={0} aria-label={`${MEAL_LABEL[mealType]}: ${title}`}>
+    <div className={`meals-cell ${mealType}`} data-slot={slotKey} data-planned="1" onClick={onOpen} role="button" tabIndex={0} aria-label={`${MEAL_LABEL[mealType]}: ${title}`}>
       {entry.cook && (
         <div
           className="meal-cook"
@@ -65,9 +65,9 @@ function PlannedCell({ entry, mealType, onOpen, onRemove }: { entry: WeekEntry; 
   )
 }
 
-function AddCell({ onAdd, label }: { onAdd: () => void; label: string }) {
+function AddCell({ onAdd, label, slotKey }: { onAdd: () => void; label: string; slotKey: string }) {
   return (
-    <div className="meals-cell meals-add" onClick={onAdd} role="button" tabIndex={0} aria-label={label}>
+    <div className="meals-cell meals-add" data-slot={slotKey} onClick={onAdd} role="button" tabIndex={0} aria-label={label}>
       <Icon name="plus" />
     </div>
   )
@@ -84,6 +84,7 @@ function MealPicker({
   onPick,
   onView,
   onEatingOut,
+  onLeftovers,
   onClose,
 }: {
   slot: MealType
@@ -93,6 +94,7 @@ function MealPicker({
   onPick?: (recipe: Recipe) => void
   onView?: (recipe: Recipe) => void
   onEatingOut?: () => void
+  onLeftovers?: () => void
   onClose: () => void
 }) {
   const browse = !onPick
@@ -130,6 +132,7 @@ function MealPicker({
       onPick={onPick}
       onView={onView}
       onEatingOut={onEatingOut}
+      onLeftovers={onLeftovers}
       selectLabel={`Select for ${MEAL_LABEL[slot]}`}
     />
   )
@@ -194,6 +197,13 @@ export function Meals() {
     refetch()
   }
 
+  async function planLeftovers() {
+    if (!picking) return
+    await api.planSlot({ date: picking.date, mealType: picking.mealType, title: 'Leftovers' })
+    setPicking(null)
+    refetch()
+  }
+
   function openPicker(d: Date, mealType: MealType) {
     setPicking({
       date: ymd(d),
@@ -211,6 +221,124 @@ export function Meals() {
       return d
     })
   }
+
+  // ── Drag-to-swap on the grids (month + week) ───────────────────────────────
+  // Pointer events (mouse + touch). A planned cell can be dragged onto any slot to
+  // swap their meals (drop on an empty slot just moves it). Persists immediately.
+  // Event-delegated via data-slot/data-planned so cells stay simple; class toggles
+  // and ghost position are done in the DOM so a drag doesn't re-render the grid.
+  const [dragLabel, setDragLabel] = useState<{ emoji: string; title: string } | null>(null)
+  const ghostRef = useRef<HTMLDivElement>(null)
+  const pending = useRef<{ key: string; x: number; y: number } | null>(null)
+  const dragKeyRef = useRef<string | null>(null)
+  const overRef = useRef<string | null>(null)
+  const didDrag = useRef(false)
+  const pendingLabel = useRef<{ emoji: string; title: string } | null>(null)
+
+  async function putSlot(date: string, mealType: string, entry: WeekEntry | undefined) {
+    if (entry) {
+      await api.planSlot(
+        entry.recipeId
+          ? { date, mealType, recipeId: entry.recipeId, cookPersonId: entry.cook?.personId ?? null }
+          : { date, mealType, title: entry.title ?? 'Planned', cookPersonId: entry.cook?.personId ?? null }
+      )
+    } else {
+      await api.clearSlot(date, mealType)
+    }
+  }
+
+  function gridPointerDown(e: React.PointerEvent) {
+    const cell = (e.target as Element).closest('[data-slot][data-planned]')
+    if (!cell) return
+    const key = cell.getAttribute('data-slot')!
+    const entry = bySlot.get(key)
+    if (!entry) return
+    const out = isEatingOut(entry)
+    const left = isLeftovers(entry)
+    pending.current = { key, x: e.clientX, y: e.clientY }
+    didDrag.current = false
+    // Stash the label for the ghost (only shown once a drag actually starts).
+    pendingLabel.current = {
+      emoji: entry.recipe?.emoji ?? (out ? '🍴' : left ? '🥡' : '🍽️'),
+      title: out ? 'Eating out' : left ? 'Leftovers' : entry.recipe?.title ?? entry.title ?? 'Planned',
+    }
+  }
+
+  // A click right after a drag (pointerup → click) is suppressed so dropping
+  // doesn't also open the recipe/picker.
+  function gridClickCapture(e: React.MouseEvent) {
+    if (didDrag.current) {
+      e.stopPropagation()
+      didDrag.current = false
+    }
+  }
+
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      if (pending.current && !dragKeyRef.current) {
+        const dx = e.clientX - pending.current.x
+        const dy = e.clientY - pending.current.y
+        if (dx * dx + dy * dy > 36) {
+          didDrag.current = true
+          dragKeyRef.current = pending.current.key
+          setDragLabel(pendingLabel.current)
+          document.body.style.userSelect = 'none'
+          document.querySelector(`[data-slot="${CSS.escape(pending.current.key)}"]`)?.classList.add('slot-dragging')
+        }
+      }
+      if (dragKeyRef.current) {
+        if (ghostRef.current) {
+          ghostRef.current.style.left = `${e.clientX}px`
+          ghostRef.current.style.top = `${e.clientY}px`
+        }
+        const el = document.elementFromPoint(e.clientX, e.clientY)
+        const cell = el && (el as Element).closest('[data-slot]')
+        const k = cell ? cell.getAttribute('data-slot') : null
+        if (k !== overRef.current) {
+          document.querySelectorAll('.slot-drop').forEach((n) => n.classList.remove('slot-drop'))
+          if (k && k !== dragKeyRef.current && cell) cell.classList.add('slot-drop')
+          overRef.current = k
+        }
+      }
+    }
+    const up = () => {
+      const src = dragKeyRef.current
+      const tgt = overRef.current
+      if (src && tgt && tgt !== src) {
+        const a = bySlot.get(src)
+        const b = bySlot.get(tgt)
+        const [sd, sm] = src.split('|')
+        const [td, tm] = tgt.split('|')
+        void (async () => {
+          await putSlot(td, tm, a)
+          await putSlot(sd, sm, b)
+          refetch()
+        })()
+      }
+      document.querySelectorAll('.slot-drop, .slot-dragging').forEach((n) => n.classList.remove('slot-drop', 'slot-dragging'))
+      document.body.style.userSelect = ''
+      pending.current = null
+      dragKeyRef.current = null
+      overRef.current = null
+      setDragLabel(null)
+    }
+    const cancel = () => {
+      document.querySelectorAll('.slot-drop, .slot-dragging').forEach((n) => n.classList.remove('slot-drop', 'slot-dragging'))
+      document.body.style.userSelect = ''
+      pending.current = null
+      dragKeyRef.current = null
+      overRef.current = null
+      setDragLabel(null)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', cancel)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', cancel)
+    }
+  }, [bySlot]) // rebind so the swap reads the current slots
 
   const rows: MealType[] = filter === 'dinner' ? ['dinner'] : [...MEALS]
 
@@ -231,6 +359,7 @@ export function Meals() {
         loading={recipesLoading}
         onPick={pick}
         onEatingOut={eatOut}
+        onLeftovers={planLeftovers}
         onClose={() => setPicking(null)}
       />
     )
@@ -271,11 +400,11 @@ export function Meals() {
         </div>
       </div>
       <div className="meals-hint">
-        {view === 'month' ? 'Dinners for the month · tap a night to add or open a recipe' : "Tap a meal for the recipe · tap + to add one · the avatar is who's cooking"}
+        {view === 'month' ? 'Dinners for the month · tap a night to add or open a recipe · drag a meal onto another day to swap' : "Tap a meal for the recipe · tap + to add one · drag a meal to another slot to swap"}
       </div>
 
       {view === 'month' ? (
-        <div className="meals-month">
+        <div className="meals-month" onPointerDown={gridPointerDown} onClickCapture={gridClickCapture}>
           {DOW.map((d) => (
             <div key={d} className="mm-dow">{d}</div>
           ))}
@@ -288,6 +417,7 @@ export function Meals() {
               <MonthCell
                 key={dateStr}
                 date={d}
+                slotKey={`${dateStr}|dinner`}
                 inMonth={inMonth}
                 isToday={isToday}
                 entry={entry}
@@ -299,7 +429,7 @@ export function Meals() {
           })}
         </div>
       ) : (
-        <div className="meals-grid" style={{ gridTemplateRows: `auto repeat(${rows.length}, 1fr)` }}>
+        <div className="meals-grid" style={{ gridTemplateRows: `auto repeat(${rows.length}, 1fr)` }} onPointerDown={gridPointerDown} onClickCapture={gridClickCapture}>
           <div />
           {days.map((d) => (
             <div key={d.toISOString()} className="meals-dow">
@@ -321,6 +451,13 @@ export function Meals() {
           ))}
         </div>
       )}
+
+      {dragLabel && (
+        <div className="grid-drag-ghost" ref={ghostRef}>
+          {dragLabel.emoji ? `${dragLabel.emoji} ` : ''}
+          {dragLabel.title}
+        </div>
+      )}
     </div>
   )
 }
@@ -330,6 +467,7 @@ export function Meals() {
 // recipe; recipe-less / eating-out nights re-open the picker.
 function MonthCell({
   date,
+  slotKey,
   inMonth,
   isToday,
   entry,
@@ -338,6 +476,7 @@ function MonthCell({
   onRemove,
 }: {
   date: Date
+  slotKey: string
   inMonth: boolean
   isToday: boolean
   entry: WeekEntry | undefined
@@ -346,10 +485,11 @@ function MonthCell({
   onRemove: () => void
 }) {
   const out = entry ? isEatingOut(entry) : false
+  const left = entry ? isLeftovers(entry) : false
   const title = out ? 'Eating out' : entry?.recipe?.title ?? entry?.title ?? null
-  const emoji = entry?.recipe?.emoji ?? (out ? '🍴' : '🍽️')
+  const emoji = entry?.recipe?.emoji ?? (out ? '🍴' : left ? '🥡' : '🍽️')
   return (
-    <div className={`mm-cell ${inMonth ? '' : 'mm-out'} ${isToday ? 'mm-today' : ''}`} onClick={entry ? onOpen : onAdd} role="button" tabIndex={0}>
+    <div className={`mm-cell ${inMonth ? '' : 'mm-out'} ${isToday ? 'mm-today' : ''}`} data-slot={slotKey} data-planned={entry ? '1' : undefined} onClick={entry ? onOpen : onAdd} role="button" tabIndex={0}>
       <div className="mm-date">{date.getDate()}</div>
       {entry ? (
         <div className="mm-meal" title={title ?? undefined}>
@@ -403,6 +543,7 @@ function Row({
               key={dateStr}
               entry={entry}
               mealType={mealType}
+              slotKey={`${dateStr}|${mealType}`}
               // Recipe → open it; recipe-less ("Fish"/eating-out) → open the slot
               // picker so you can attach a recipe or change the plan.
               onOpen={() => (entry.recipeId ? onOpen(entry.recipeId) : onAdd(d))}
@@ -413,6 +554,7 @@ function Row({
         return (
           <AddCell
             key={dateStr}
+            slotKey={`${dateStr}|${mealType}`}
             onAdd={() => onAdd(d)}
             label={`Add ${MEAL_LABEL[mealType].toLowerCase()} for ${DOW[d.getDay()]} ${d.getDate()}`}
           />

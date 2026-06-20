@@ -39,6 +39,38 @@
   min-height: 0;
 }
 
+/* ===== Drag-to-swap on the meal grids (month + week) ===== */
+/* Planned cells are drag sources; touch-action:none lets a touch-drag start
+   without the grid scrolling out from under it. */
+.meals-cell[data-planned],
+.mm-cell[data-planned] {
+  touch-action: none;
+}
+.slot-dragging { opacity: 0.4; }
+.slot-drop {
+  outline: 2px dashed var(--primary, #e0653f);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--primary, #e0653f) 10%, var(--card)) !important;
+}
+.grid-drag-ghost {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 9999;
+  background: var(--card);
+  border: 1px solid var(--hair);
+  box-shadow: var(--sh-2);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ===== Month view (dinners only) ===== */
 .meals-month {
   flex: 1;

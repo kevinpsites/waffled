@@ -10,6 +10,11 @@ export function isEatingOut(entry: { recipeId: string | null; title: string | nu
   return !entry.recipeId && /\b(eating|eat|dining|going)\s*out|take\s*-?out|order(ing)?\s+in|delivery|takeaway\b/i.test(entry.title ?? '')
 }
 
+// A recipe-less "Leftovers" night.
+export function isLeftovers(entry: { recipeId: string | null; title: string | null }): boolean {
+  return !entry.recipeId && /^\s*leftovers\s*$/i.test(entry.title ?? '')
+}
+
 // Tonight's dinner — works whether it's a recipe, a recipe-less ("Fish") plan, or
 // an eating-out night. Never vanishes when something is planned.
 function TonightCard({ entry }: { entry: WeekEntry }) {
