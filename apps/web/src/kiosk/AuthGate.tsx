@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode, type FormEvent } from 'react'
+import { useNavigate } from 'react-router'
 import { authApi, getAccessToken, type AuthStatus, type SetupInput } from '../lib/api'
 import '../styles/auth.css'
 
@@ -11,19 +12,22 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<Phase>(() => (getAccessToken() ? 'authed' : 'loading'))
   const [status, setStatus] = useState<AuthStatus | null>(null)
   const [oidcError, setOidcError] = useState<string | null>(null)
+  const navigate = useNavigate()
 
   const resolve = useCallback(async () => {
     // OIDC return: exchange the one-time handoff code for a session, then clean the URL.
+    // Navigate via the router (not history.replaceState) so React Router actually
+    // leaves /auth/callback — otherwise the app mounts with no matching route (blank).
     if (window.location.pathname === '/auth/callback') {
       const code = new URLSearchParams(window.location.search).get('code')
       try {
         if (!code) throw new Error('Sign-in was cancelled.')
         await authApi.oidcExchange(code) // fires nook:auth-changed on success
-        window.history.replaceState({}, '', '/')
+        navigate('/', { replace: true })
         return
       } catch (err) {
         setOidcError((err as Error).message)
-        window.history.replaceState({}, '', '/')
+        navigate('/', { replace: true })
         // fall through to render the login screen with the error
       }
     }
@@ -38,7 +42,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     } catch {
       setPhase('login')
     }
-  }, [])
+  }, [navigate])
 
   useEffect(() => {
     if (phase === 'loading') void resolve()
