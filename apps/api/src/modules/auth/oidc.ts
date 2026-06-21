@@ -191,10 +191,10 @@ export function registerOidcRoutes(api: Api): void {
   // back to the SPA with a one-time handoff code.
   api.get('/api/auth/oidc/callback', async (req: Request, res: Response) => {
     const q = req.query as Record<string, string | undefined>
-    if (q.error) return res.status(400).html(resultPage('Sign-in failed', q.error_description || q.error))
+    if (q.error) return res.status(400).html(resultPage('Sign-in failed', q.error_description || q.error, appOrigin(req)))
     const code = q.code
     const state = q.state
-    if (!code || !state) return res.status(400).html(resultPage('Sign-in failed', 'Missing authorization code or state.'))
+    if (!code || !state) return res.status(400).html(resultPage('Sign-in failed', 'Missing authorization code or state.', appOrigin(req)))
 
     // One-time consume of the state (and sweep expired ones while here).
     const { rows } = await query<{ code_verifier: string; nonce: string; redirect_to: string | null }>(
@@ -205,11 +205,12 @@ export function registerOidcRoutes(api: Api): void {
     )
     await query(`delete from oidc_login_states where created_at <= now() - interval '${STATE_TTL_MIN} minutes'`)
     const st = rows[0]
-    if (!st) return res.status(400).html(resultPage('Sign-in expired', 'This sign-in link expired. Please try again.'))
+    if (!st) return res.status(400).html(resultPage('Sign-in expired', 'This sign-in link expired. Please try again.', appOrigin(req)))
+    const back = appOrigin(req, st.redirect_to)
 
     try {
       const cfg = await getAuthConfig()
-      if (!oidcReady(cfg)) return res.status(404).html(resultPage('Sign-in failed', 'OIDC is not enabled.'))
+      if (!oidcReady(cfg)) return res.status(404).html(resultPage('Sign-in failed', 'OIDC is not enabled.', back))
       const disco = await discover(cfg.issuerUrl!)
       const claims = await exchangeAndVerify(disco, cfg, code, st.code_verifier, st.nonce, callbackUri(req))
 
@@ -222,11 +223,11 @@ export function registerOidcRoutes(api: Api): void {
       if (!tenant) {
         // First SSO login: invite-gated. Require a verified email that's on file.
         if (!email || !emailVerified) {
-          return res.status(403).html(resultPage('Sign-in blocked', 'Your identity provider did not supply a verified email.'))
+          return res.status(403).html(resultPage('Sign-in blocked', 'Your identity provider did not supply a verified email.', back))
         }
         const match = await findPersonByEmail(email)
         if (!match) {
-          return res.status(403).html(resultPage('Not invited', `No Nook account uses ${email}. Ask an admin to add you first.`))
+          return res.status(403).html(resultPage('Not invited', `No Nook account uses ${email}. Ask an admin to add you first.`, back))
         }
         await linkIdentity({ householdId: match.householdId, personId: match.personId, provider: 'oidc', subject, email, emailVerified })
         tenant = { sub: subject, personId: match.personId, householdId: match.householdId, isAdmin: false }
@@ -238,7 +239,7 @@ export function registerOidcRoutes(api: Api): void {
       res.redirect(dest)
     } catch (err) {
       console.error('oidc callback failed', err)
-      return res.status(502).html(resultPage('Sign-in failed', 'Could not complete sign-in. Please try again.'))
+      return res.status(502).html(resultPage('Sign-in failed', 'Could not complete sign-in. Please try again.', back))
     }
   })
 
@@ -382,15 +383,29 @@ function appCallbackUrl(req: Request, redirectTo: string | null, handoff: string
   return `${origin}/auth/callback?code=${encodeURIComponent(handoff)}`
 }
 
+// The SPA's origin: prefer the redirect the /start call carried (the real browser
+// origin), else the derived base URL. Used so error pages link back to the app.
+function appOrigin(req: Request, redirectTo?: string | null): string {
+  if (redirectTo) {
+    try {
+      return new URL(redirectTo).origin
+    } catch {
+      /* fall through to derived base */
+    }
+  }
+  return baseUrl(req)
+}
+
 // Minimal self-contained page for the OAuth dance ending without an SPA redirect
-// (errors). Matches the Google-calendar callback's resultPage convention.
-function resultPage(title: string, message: string): string {
+// (errors). Matches the Google-calendar callback's resultPage convention. backUrl
+// is absolute so "Back to Nook" lands on the SPA, not wherever the api was reached.
+function resultPage(title: string, message: string, backUrl = '/'): string {
   return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title}</title>
 <body style="font-family:system-ui;display:grid;place-items:center;min-height:100vh;margin:0;background:#f6f3ee;color:#2b2b2b">
 <div style="max-width:380px;text-align:center;padding:28px">
 <div style="font-size:22px;font-weight:700;margin-bottom:8px">${title}</div>
 <div style="color:#6b6b6b;font-weight:500">${message}</div>
-<a href="/" style="display:inline-block;margin-top:18px;color:#e0653f;font-weight:700;text-decoration:none">← Back to Nook</a>
+<a href="${backUrl}" style="display:inline-block;margin-top:18px;color:#e0653f;font-weight:700;text-decoration:none">← Back to Nook</a>
 </div></body>`
 }

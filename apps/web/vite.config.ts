@@ -1,9 +1,26 @@
 /// <reference types="vitest/config" />
-import { defineConfig } from 'vite'
+import { defineConfig, type ProxyOptions } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Dev server proxies /api to the local api container so the SPA and api share an
-// origin (no CORS), exactly like Caddy does in the compose stack.
+// Proxy /api to the local api container so the SPA and api share an origin (no
+// CORS), exactly like Caddy does in the stack. We forward the browser's host +
+// proto so the api can build correct absolute URLs (OIDC redirect_uri, the
+// "Back to Nook" links) — otherwise it only sees its own :3000 address and SSO
+// callbacks point at the wrong place.
+const apiProxy: Record<string, ProxyOptions> = {
+  '/api': {
+    target: 'http://localhost:3000',
+    changeOrigin: false,
+    configure: (proxy) => {
+      proxy.on('proxyReq', (proxyReq, req) => {
+        if (req.headers.host) proxyReq.setHeader('x-forwarded-host', req.headers.host)
+        const encrypted = (req.socket as { encrypted?: boolean }).encrypted
+        proxyReq.setHeader('x-forwarded-proto', encrypted ? 'https' : 'http')
+      })
+    },
+  },
+}
+
 export default defineConfig({
   plugins: [react()],
   // @powersync/web ships its own SQLite WASM + worker; pre-bundling breaks them,
@@ -12,17 +29,13 @@ export default defineConfig({
   worker: { format: 'es' },
   server: {
     port: 5175,
-    proxy: {
-      '/api': 'http://localhost:3000',
-    },
+    proxy: apiProxy,
   },
   // `vite preview` mirrors the dev proxy so a production build can be exercised
   // against the local api (and the service worker's /api caching verified).
   preview: {
     port: 4173,
-    proxy: {
-      '/api': 'http://localhost:3000',
-    },
+    proxy: apiProxy,
   },
   test: {
     environment: 'jsdom',
