@@ -82,6 +82,11 @@ final class SyncManager {
 
     init() {
         db = PowerSyncDatabase(schema: SyncSchema.schema, dbFilename: "nook.sqlite")
+        // A dead refresh token (caught mid-request) tears the sync session down too,
+        // so we don't keep retrying with a token that will never be accepted.
+        NotificationCenter.default.addObserver(forName: .nookAuthExpired, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in await self?.signOut() }
+        }
     }
 
     /// Stand up watchers once, then connect. Safe to call on every app launch.
@@ -118,10 +123,26 @@ final class SyncManager {
         await connect()
     }
 
+    /// Tear down the sync session on sign-out: disconnect PowerSync, **clear the
+    /// local SQLite mirror** (so a different household's data never leaks across a
+    /// re-login), drop the observable state, and reset so the next `start()` runs
+    /// fresh. The Keychain tokens are cleared separately by `Session`.
+    func signOut() async {
+        try? await db.disconnectAndClear()
+        watchTask?.cancel(); eventsTask?.cancel(); statusTask?.cancel()
+        watchTask = nil; eventsTask = nil; statusTask = nil
+        members = []; events = []
+        personCount = 0; eventCount = 0; pendingUploads = 0
+        lastSyncedAt = nil; lastError = nil
+        currentPersonId = nil; currencies = []
+        status = .idle
+        started = false
+    }
+
     private func connect() async {
-        guard !AppConfig.devToken.isEmpty else {
+        guard !AppConfig.bearerToken.isEmpty else {
             status = .offline
-            lastError = "No dev token set — paste one in Sync settings."
+            lastError = "Not signed in."
             return
         }
         status = .connecting

@@ -32,7 +32,7 @@ struct SettingsView: View {
             // Web order (with Accounts before AI, per the kiosk's pending update).
             VStack(alignment: .leading, spacing: 10) {
                 row("👨‍👩‍👧‍👦", "Family & People", "Members, roles, household") { path.append(.settingsFamily) }
-                row("🔗", "Accounts", "Sign-in & connections")
+                row("🔗", "Accounts", "Sign-in & sign out") { path.append(.settingsAccount) }
                 row("✨", "AI & Capture", "Provider & model") { path.append(.settingsAI) }
                 row("📅", "Calendars", "Google sync") { path.append(.settingsCalendars) }
                 row("⭐", "Chores & Rewards", "Currencies & conversions") { path.append(.settingsChoresRewards) }
