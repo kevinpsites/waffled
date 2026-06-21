@@ -37,9 +37,12 @@ enum AppConfig {
     }
 
     /// Whether the app has *any* usable token — a real session or a dev token. Used
-    /// to gate the login screen (headless demos with a dev token skip login).
+    /// to gate the login screen (headless demos with a dev token skip login). After an
+    /// explicit sign-out the dev-token fallback is suppressed so logout sticks.
     static var hasUsableToken: Bool {
-        AuthTokens.isSignedIn || !devToken.isEmpty
+        if AuthTokens.isSignedIn { return true }
+        if wasSignedOut { return false }
+        return !devToken.isEmpty
     }
 
     static func setApiBaseURL(_ value: String) {
@@ -49,6 +52,18 @@ enum AppConfig {
     static func setDevToken(_ value: String) {
         UserDefaults.standard.set(value, forKey: tokenKey)
     }
+
+    private static let signedOutKey = "nook.signedOut"
+
+    /// Set when the user explicitly signs out. While set (and there's no real
+    /// session), we ignore the dev-token fallback so logout actually sticks — even
+    /// when a dev/env `NOOK_DEV_TOKEN` is present. Cleared on the next real login.
+    static var wasSignedOut: Bool { UserDefaults.standard.bool(forKey: signedOutKey) }
+    static func markSignedOut() {
+        UserDefaults.standard.set(true, forKey: signedOutKey)
+        UserDefaults.standard.synchronize()   // persist now, before any teardown
+    }
+    static func clearSignedOut() { UserDefaults.standard.removeObject(forKey: signedOutKey) }
 
     static func env(_ key: String) -> String? {
         let v = ProcessInfo.processInfo.environment[key]

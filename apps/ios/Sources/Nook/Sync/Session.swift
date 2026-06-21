@@ -45,6 +45,7 @@ final class Session {
         do {
             let s = try await api.login(email: email, password: password)
             AuthTokens.save(access: s.accessToken, refresh: s.refreshToken)
+            AppConfig.clearSignedOut()
             phase = .authed
             return nil
         } catch let NookAPI.APIError.http(code, _) {
@@ -60,6 +61,7 @@ final class Session {
     func signOut() async {
         let refresh = AuthTokens.refreshToken
         AuthTokens.clear()
+        AppConfig.markSignedOut()   // else the dev-token fallback re-auths us
         phase = .login
         if let refresh { await api.revoke(refreshToken: refresh) }   // best-effort
         status = try? await api.authStatus()

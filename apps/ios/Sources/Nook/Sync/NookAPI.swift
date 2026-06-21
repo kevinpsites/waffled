@@ -1609,7 +1609,7 @@ struct NookAPI: Sendable {
     /// user noticing; if the refresh token is dead, the original 401 is returned and
     /// `.nookAuthExpired` (fired by the refresher) sends the user to login.
     private func perform(_ req: URLRequest) async throws -> (Data, URLResponse) {
-        let (data, resp) = try await perform(req)
+        let (data, resp) = try await URLSession.shared.data(for: req)
         guard (resp as? HTTPURLResponse)?.statusCode == 401,
               AuthTokens.refreshToken != nil,
               await TokenRefresher.shared.refresh() else {
