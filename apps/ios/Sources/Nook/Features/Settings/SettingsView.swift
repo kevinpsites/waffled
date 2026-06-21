@@ -26,13 +26,17 @@ struct ColorSwatchPicker: View {
 /// coming soon so the hub never dead-ends.
 struct SettingsView: View {
     @Binding var path: [HubRoute]
+    @Environment(SyncManager.self) private var sync
+    @Environment(Session.self) private var session
+    @State private var confirmSignOut = false
+    @State private var busy = false
 
     var body: some View {
         ScrollView {
             // Web order (with Accounts before AI, per the kiosk's pending update).
             VStack(alignment: .leading, spacing: 10) {
                 row("👨‍👩‍👧‍👦", "Family & People", "Members, roles, household") { path.append(.settingsFamily) }
-                row("🔗", "Accounts", "Sign-in & sign out") { path.append(.settingsAccount) }
+                row("🔗", "Accounts", "Sign-in & connections") { path.append(.settingsAccount) }
                 row("✨", "AI & Capture", "Provider & model") { path.append(.settingsAI) }
                 row("📅", "Calendars", "Google sync") { path.append(.settingsCalendars) }
                 row("⭐", "Chores & Rewards", "Currencies & conversions") { path.append(.settingsChoresRewards) }
@@ -41,11 +45,46 @@ struct SettingsView: View {
                 row("🖥️", "Display & Kiosk", "Theme & screen")
                 row("🔔", "Notifications", "Reminders")
                 row("ℹ️", "About", "Version & info")
+                signOutFooter
             }
             .padding(16).padding(.bottom, 110)
         }
         .background(NK.canvas)
         .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
+        .task { await sync.loadIdentity() }
+    }
+
+    /// Sign out lives right on the Settings landing (mirrors the web's footer).
+    private var signOutFooter: some View {
+        VStack(spacing: 8) {
+            if let name = signedInName {
+                Text("Signed in as \(name)").font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+            }
+            Button {
+                if confirmSignOut { Task { await signOut() } } else { confirmSignOut = true }
+            } label: {
+                Text(busy ? "Signing out…" : (confirmSignOut ? "Tap again to sign out" : "Sign out"))
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(confirmSignOut ? .white : NK.primary)
+                    .frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .background(confirmSignOut ? NK.primary : NK.card)
+                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
+                        .strokeBorder(confirmSignOut ? .clear : NK.primary.opacity(0.4), lineWidth: 1))
+            }
+            .buttonStyle(.plain).disabled(busy)
+        }
+        .padding(.top, 14)
+    }
+
+    private var signedInName: String? {
+        sync.members.first { $0.id == sync.currentPersonId }?.name
+    }
+
+    private func signOut() async {
+        busy = true
+        await session.signOut()    // clear session, → login (Button's Task survives)
+        await sync.signOut()       // disconnect sync
     }
 
     /// A settings row. `tap == nil` ⇒ not built yet (dimmed + a "Soon" pill).
