@@ -101,7 +101,10 @@ struct AccountSettingsView: View {
 
     private func signOut() async {
         busy = true
-        await sync.signOut()       // disconnect + wipe local mirror
-        await session.signOut()    // revoke refresh, clear Keychain, → login
+        // Flip to login first (clears the Keychain, tears down the authed UI), then
+        // disconnect sync in the background. This Button's Task is unstructured, so it
+        // runs to completion even though this view is removed when `phase` changes.
+        await session.signOut()    // clear Keychain, revoke refresh, → login
+        await sync.signOut()       // disconnect PowerSync + reset sync state
     }
 }

@@ -54,12 +54,15 @@ final class Session {
         }
     }
 
-    /// Revoke the refresh token, clear the Keychain, and return to login.
+    /// Return to login immediately, then revoke + re-probe in the background. Clearing
+    /// the Keychain and flipping `phase` first makes sign-out feel instant and tears
+    /// down the authed UI before any network work (no waiting on a slow revoke).
     func signOut() async {
-        if let rt = AuthTokens.refreshToken { await api.revoke(refreshToken: rt) }
+        let refresh = AuthTokens.refreshToken
         AuthTokens.clear()
-        status = try? await api.authStatus()
         phase = .login
+        if let refresh { await api.revoke(refreshToken: refresh) }   // best-effort
+        status = try? await api.authStatus()
     }
 
     /// Re-probe server status (e.g. after editing the server URL on the login screen).

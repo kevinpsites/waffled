@@ -55,24 +55,42 @@ enum AuthTokens {
     private static let accessKey = "nook.accessToken"
     private static let refreshKey = "nook.refreshToken"
 
-    static var accessToken: String? { Keychain.get(accessKey) }
-    static var refreshToken: String? { Keychain.get(refreshKey) }
+    // In-memory cache, lazily loaded from the Keychain once. `authorize()` reads the
+    // access token on EVERY request; without this cache that's a securityd XPC call
+    // per request, which under the sync/poll retry loops storms securityd into a
+    // thread/memory blow-up (jetsam low-swap kill on sign-out). The Keychain stays
+    // the durable store; this is just the hot-path read cache.
+    private static let lock = NSLock()
+    private static var cache: (access: String?, refresh: String?)?
+
+    private static func loaded() -> (access: String?, refresh: String?) {
+        if let c = cache { return c }
+        let c = (Keychain.get(accessKey), Keychain.get(refreshKey))
+        cache = c
+        return c
+    }
+
+    static var accessToken: String? { lock.lock(); defer { lock.unlock() }; return loaded().access }
+    static var refreshToken: String? { lock.lock(); defer { lock.unlock() }; return loaded().refresh }
 
     /// True once a real login has stored tokens (distinct from the dev-token path).
     static var isSignedIn: Bool { accessToken != nil }
 
     /// Store a fresh access+refresh pair (login, setup, or a rotated refresh).
     static func save(access: String, refresh: String) {
+        lock.lock(); cache = (access, refresh); lock.unlock()
         Keychain.set(accessKey, access)
         Keychain.set(refreshKey, refresh)
     }
 
     /// Replace just the access token (kept for parity; refresh always rotates too).
     static func saveAccess(_ access: String) {
+        lock.lock(); cache = (access, loaded().refresh); lock.unlock()
         Keychain.set(accessKey, access)
     }
 
     static func clear() {
+        lock.lock(); cache = (nil, nil); lock.unlock()
         Keychain.set(accessKey, nil)
         Keychain.set(refreshKey, nil)
     }
