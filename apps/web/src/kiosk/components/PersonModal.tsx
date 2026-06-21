@@ -32,6 +32,22 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
   const [confirmDelete, setConfirmDelete] = useState(false)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
 
+  // Admin + kiosk visibility apply the instant you flip them when editing — they
+  // don't wait on the "Save changes" button. Otherwise toggling Admin and then
+  // saving the Login card (its own button) would quietly discard the admin change.
+  // For a brand-new person there's no id yet, so we just stage it until create.
+  async function toggleField(k: 'isAdmin' | 'showOnKiosk') {
+    const next = !form[k]
+    set(k, next)
+    if (!editing) return
+    try {
+      await personsApi.updatePerson(person!.id, { [k]: next })
+      onSaved()
+    } catch {
+      set(k, !next) // revert on failure
+    }
+  }
+
   // Login management (admin). A login is an email (enables invite-gated SSO) plus
   // an optional password. Driven by local state so status updates without reopening.
   const [loginEmail, setLoginEmail] = useState(person?.loginEmail ?? '')
@@ -157,14 +173,14 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
                 <div style={{ fontWeight: 700, fontSize: 14 }}>Admin (full management)</div>
                 <div className="tiny muted" style={{ fontWeight: 600 }}>Can add people, edit settings</div>
               </div>
-              <Toggle on={form.isAdmin} onClick={() => set('isAdmin', !form.isAdmin)} />
+              <Toggle on={form.isAdmin} onClick={() => toggleField('isAdmin')} />
             </div>
             <div className="set-row" style={{ padding: '12px 0', borderTop: '1px solid var(--hair-2)', display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>Show on kiosk</div>
                 <div className="tiny muted" style={{ fontWeight: 600 }}>Appears on the family display</div>
               </div>
-              <Toggle on={form.showOnKiosk} onClick={() => set('showOnKiosk', !form.showOnKiosk)} />
+              <Toggle on={form.showOnKiosk} onClick={() => toggleField('showOnKiosk')} />
             </div>
           </div>
 

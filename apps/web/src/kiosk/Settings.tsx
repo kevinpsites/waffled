@@ -6,8 +6,7 @@ import '../styles/settings.css'
 const NAV = [
   { key: 'family', icon: '👨‍👩‍👧‍👦', label: 'Family & people' },
   { key: 'ai', icon: '✨', label: 'AI & capture' },
-  { key: 'accounts', icon: '🔗', label: 'Accounts' },
-  { key: 'security', icon: '🔒', label: 'Login & security' },
+  { key: 'security', icon: '🔐', label: 'Accounts & security' },
   { key: 'calendars', icon: '📅', label: 'Calendars' },
   { key: 'chores', icon: '⭐', label: 'Chores & rewards' },
   { key: 'meals', icon: '🍽️', label: 'Meals' },
@@ -41,6 +40,7 @@ function ageFrom(birthday: string | null | undefined): number | null {
 function roleLine(m: SettingsMember): string {
   const parts: string[] = [m.memberType.charAt(0).toUpperCase() + m.memberType.slice(1)]
   if (m.isOwner) parts.push('Owner')
+  else if (m.isAdmin) parts.push('Admin')
   const age = ageFrom(m.birthday)
   if (age != null && m.memberType !== 'adult') parts.push(`age ${age}`)
   if (m.hasLogin) parts.push('signed in')
@@ -793,7 +793,6 @@ function CalendarsPanel() {
 // Sub-tabs that depend on integrations we haven't built yet render their section
 // honestly rather than faking data. (Defended in the build report.)
 const PLACEHOLDERS: Record<string, { title: string; note: string }> = {
-  accounts: { title: 'Accounts', note: 'Google / Apple sign-in and account linking land with auth (M3.3 / M5).' },
   chores: { title: 'Chores & rewards', note: 'Reward styles & the reward shop build on the chores ledger (6.1 / 6.4).' },
   meals: { title: 'Meals', note: 'Meal preferences & dietary defaults pair with the Meals screen.' },
   lists: { title: 'Lists', note: 'List defaults & sharing pair with the Lists screen.' },
@@ -1012,7 +1011,7 @@ function SecurityPanel() {
     authApi.getConfig().then(hydrate).catch(() => setForbidden(true))
   }, [])
 
-  if (forbidden) return <div className="set-panel"><div className="set-head"><div className="nk-serif set-head-t">Login &amp; security</div></div><div className="set-card" style={{ padding: 22 }}><div className="muted" style={{ fontWeight: 600 }}>Only an admin can manage sign-in settings.</div></div></div>
+  if (forbidden) return <div className="set-panel"><div className="set-head"><div className="nk-serif set-head-t">Accounts &amp; security</div></div><div className="set-card" style={{ padding: 22 }}><div className="muted" style={{ fontWeight: 600 }}>Only an admin can manage sign-in settings.</div></div></div>
   if (!cfg) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
 
   async function test() {
@@ -1060,7 +1059,7 @@ function SecurityPanel() {
   return (
     <div className="set-panel">
       <div className="set-head" style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-        <div className="nk-serif set-head-t">Login &amp; security</div>
+        <div className="nk-serif set-head-t">Accounts &amp; security</div>
         {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
       </div>
 
