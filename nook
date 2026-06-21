@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # nook — one-touch control for the local stack (postgres, api, powersync, caddy).
 #
-#   ./nook up        start everything, building images as needed, then show status
+#   ./nook up        start everything (creates .env on first run, builds images,
+#                    runs migrations via the one-shot migrate service), then status
 #   ./nook status    show each container's state + health (✓/✗)
 #   ./nook down      stop & remove the stack
 #   ./nook restart [svc]   restart all (or one) service
 #   ./nook rebuild [svc]   force a rebuild + recreate (all, or one)
 #   ./nook logs [svc]      follow logs (all, or one)
-#   ./nook migrate   apply DB migrations (node-pg-migrate)
+#   ./nook migrate   re-apply DB migrations from the host (also run automatically on up)
 #   ./nook psql      open a psql shell on the database
 #   ./nook token [sub]     mint a dev JWT for localStorage (default sub: dev|demo)
-#   ./nook web       run the Vite dev server (HMR) on :5173
+#   ./nook web       run the Vite dev server (HMR) on :5175
 #
 # Everything is driven off infra/compose so you never type the long flags.
 set -euo pipefail
@@ -29,6 +30,26 @@ c_reset=$'\033[0m'; c_red=$'\033[31m'; c_grn=$'\033[32m'; c_ylw=$'\033[33m'; c_d
 # Read one KEY=value from .env without sourcing it (the file has values with
 # spaces, e.g. GOOGLE_CALENDAR_SCOPES, which `source` chokes on).
 env_val() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true; }
+
+# First-run bootstrap: if there's no .env, copy the example and fill the required
+# secrets with freshly generated values so `./nook up` works on a clean clone with
+# zero manual editing. Existing .env files are never touched.
+ensure_env() {
+  [ -f "$ENV_FILE" ] && return 0
+  echo "${c_dim}No infra/compose/.env — creating it from .env.example…${c_reset}"
+  cp "$ROOT/infra/compose/.env.example" "$ENV_FILE"
+  if command -v openssl >/dev/null 2>&1; then
+    # base64 chars are [A-Za-z0-9+/=] (no '|'), so '|' is a safe sed delimiter.
+    secret_set() { sed -i.bak -E "s|^$1=.*$|$1=$2|" "$ENV_FILE" && rm -f "$ENV_FILE.bak"; }
+    secret_set LOCAL_JWT_SECRET     "$(openssl rand -base64 48 | tr -d '\n')"
+    secret_set TOKEN_ENCRYPTION_KEY "$(openssl rand -base64 32 | tr -d '\n')"
+    secret_set POSTGRES_PASSWORD    "$(openssl rand -base64 24 | tr -d '\n')"
+    echo "${c_grn}Created $ENV_FILE with generated secrets.${c_reset}"
+  else
+    echo "${c_ylw}openssl not found — set LOCAL_JWT_SECRET, TOKEN_ENCRYPTION_KEY, and"
+    echo "POSTGRES_PASSWORD in $ENV_FILE before relying on OIDC/Google or production.${c_reset}"
+  fi
+}
 
 status() {
   local any_fail=0
@@ -58,13 +79,14 @@ status() {
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   up)
-    echo "${c_dim}Starting stack (building as needed)…${c_reset}"
+    ensure_env
+    echo "${c_dim}Starting stack (building as needed, applying migrations)…${c_reset}"
     "${DC[@]}" up -d --build "$@"
     echo; status || true
     ;;
   down)    "${DC[@]}" down "$@" ;;
   restart) "${DC[@]}" restart "$@"; echo; status || true ;;
-  rebuild) "${DC[@]}" up -d --build --force-recreate "$@"; echo; status || true ;;
+  rebuild) ensure_env; "${DC[@]}" up -d --build --force-recreate "$@"; echo; status || true ;;
   logs)    "${DC[@]}" logs -f --tail=120 "$@" ;;
   status|st|ps) status || true ;;
   migrate)

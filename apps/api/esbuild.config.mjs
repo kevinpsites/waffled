@@ -7,6 +7,7 @@ await build({
     server: 'src/server.ts', // container HTTP entrypoint
     lambda: 'src/lambda.ts', // AWS Lambda handler
     'mint-token': 'scripts/mint-token.ts', // dev token CLI
+    migrate: 'scripts/migrate-cli.ts', // in-container migration runner (compose one-shot)
   },
   outdir: 'dist',
   bundle: true,

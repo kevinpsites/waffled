@@ -381,5 +381,31 @@ carries `loginEmail` + `hasPassword`. 6 integration tests + verified live (admin
 grants a login → that member signs in). This is what makes invite-gating useful
 beyond the setup admin.
 
-**Next:** Phase 3 GHCR images + `.env.example` + quickstart (retire Terraform);
-Phase 4 optional S3 backup.
+### Phase 3 — packaging: clone → `docker compose up` → fresh run — IN PROGRESS 2026-06-20
+A clean clone comes up fully working with **no host toolchain** and **no manual
+steps**. Shipped:
+- **In-container migrations.** `scripts/migrate-cli.ts` → bundled `dist/migrate.js`
+  (esbuild entry); the `.sql` migrations ship in the api image
+  (`COPY migrations`). A compose **one-shot `migrate` service** reuses the api image
+  (`command: node dist/migrate.js`), runs after Postgres is healthy, and both `api`
+  and `powersync` gate on it via `service_completed_successfully` — so the schema
+  *and* the PowerSync publication (migration 0003) exist before they start.
+  Idempotent (already-applied migrations skip), so it's safe on every `up`. Verified
+  the bundled runner against the live DB (`__dirname`-relative dir resolution; CJS
+  `import.meta` pitfall avoided by passing the dir explicitly).
+- **Registry-ready images.** `api`/`caddy`/`migrate` carry `image:` names
+  (`${NOOK_API_IMAGE:-nook-api:local}` / `${NOOK_CADDY_IMAGE:-nook-caddy:local}`)
+  alongside `build:`, so the same compose file builds-from-source today and
+  `docker compose pull`s from GHCR once images are published.
+- **One-command fresh run.** `./nook up` auto-creates `infra/compose/.env` from the
+  example with generated secrets (`LOCAL_JWT_SECRET` / `TOKEN_ENCRYPTION_KEY` /
+  `POSTGRES_PASSWORD`) and migrations run automatically — no separate `./nook migrate`.
+- **`.env.example` rewritten** for self-host (required vs optional, sessions, image
+  overrides, `PUBLIC_BASE_URL`) and the api now passes through the auth TTLs +
+  `AUTH_FORCE_PASSWORD` + `PUBLIC_BASE_URL`. README quickstart collapsed to clone + up.
+
+**Deferred (the GitHub part):** publishing the official **GHCR images** + a CI build
+workflow. Until then, build-from-source is the supported path (the image names make
+the switch a pure env change).
+
+**Next:** Phase 3 tail — GHCR publish workflow; Phase 4 optional S3 backup.

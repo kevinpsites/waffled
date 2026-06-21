@@ -32,20 +32,48 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # One-shot: apply DB migrations, then exit. Reuses the api image (just a different
+  # command), so the schema — and the PowerSync publication (migration 0003) — exist
+  # before api/powersync start. Idempotent, so it runs harmlessly on every `up`.
+  migrate:
+    image: ${NOOK_API_IMAGE:-nook-api:local}
+    build:
+      context: ../../apps/api
+    container_name: nook-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    command: ["node", "dist/migrate.js"]
+    restart: "no"
+
   api:
+    # Image name so a `docker compose pull` works once images are published to a
+    # registry (GHCR); with build: present, `up --build` builds + tags it locally.
+    image: ${NOOK_API_IMAGE:-nook-api:local}
     build:
       context: ../../apps/api
     container_name: nook-api
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       PORT: 3000
       # Local auth (HS256). Leave AUTH0_DOMAIN unset to stay dependency-free.
       # mint-token signs with this same secret, so dev tokens validate.
       LOCAL_JWT_SECRET: ${LOCAL_JWT_SECRET:-nook-local-dev-secret-change-me}
-      # Wired now for chunk 2.3 (migrations); unused until the api talks to PG.
+      # Session lifetimes (built-in + OIDC login). Empty → code defaults (1h / 60d).
+      ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-}
+      REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-}
+      # Break-glass: always show the password form even if SSO-only is toggled on.
+      AUTH_FORCE_PASSWORD: ${AUTH_FORCE_PASSWORD:-}
+      # Public origin for redirect URLs (OIDC + Google calendar callbacks). Set this
+      # to your real host when not on localhost; empty → derived from request headers.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       # Returned by /api/powersync/token so clients know where to connect.
       POWERSYNC_PUBLIC_URL: ${POWERSYNC_PUBLIC_URL:-http://localhost:8090}
@@ -86,6 +114,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully   # needs the `powersync` publication (0003)
       api:
         condition: service_started
     command: ['start', '-r', 'unified']    # API server + replication in one container
@@ -111,6 +141,8 @@ services:
     restart: unless-stopped
 
   caddy:
+    # Bakes the built web SPA + serves it; image name makes it registry-publishable.
+    image: ${NOOK_CADDY_IMAGE:-nook-caddy:local}
     build:
       context: ../..                            # repo root, so the web app is in context
       dockerfile: infra/compose/caddy/Dockerfile

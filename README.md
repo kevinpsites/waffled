@@ -33,31 +33,40 @@ attach your own SSO later (see below).
 
 ```bash
 git clone <this-repo> nook && cd nook
-cp infra/compose/.env.example infra/compose/.env   # then edit it (see below)
-./nook up                                           # build + start the stack
-./nook migrate                                       # apply the database schema
+./nook up    # creates .env (with generated secrets), builds images, migrates, starts the stack
 ```
+
+That single command is the whole install — no host toolchain, no separate migrate
+step. On first run `./nook up`:
+
+1. creates `infra/compose/.env` from `.env.example`, generating `LOCAL_JWT_SECRET`,
+   `TOKEN_ENCRYPTION_KEY`, and `POSTGRES_PASSWORD` for you (existing `.env` left alone),
+2. builds the `api` + `caddy` images and pulls Postgres + PowerSync,
+3. runs the one-shot **migrate** service to apply the database schema (so PowerSync's
+   replication publication exists before it starts), then
+4. starts everything and prints a health table.
 
 Open the kiosk at `http://localhost:8080`. On first load you'll get a **setup wizard**:
 enter a household name + timezone and create your **admin account** (name, email,
 password). That's it — you're in.
 
-### Minimum `.env`
+### `.env`
 
-You only need a few values to boot. Generate the secrets with `openssl`:
+`./nook up` writes a working `infra/compose/.env` for you; you only edit it to enable
+optional integrations or to run somewhere other than `localhost`. The required values
+are the three generated secrets plus the `POSTGRES_*` settings. Optional (leave blank
+to skip): `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OLLAMA_HOST` for the AI capture
+bar, and `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_CALENDAR_REDIRECT_URI`
+for 2-way Google Calendar sync. See the comments in `.env.example` for the full list
+(session lifetimes, ports, published-image overrides).
 
-```bash
-LOCAL_JWT_SECRET=$(openssl rand -base64 48)       # signs built-in login sessions
-TOKEN_ENCRYPTION_KEY=$(openssl rand -base64 32)   # AES key for stored secrets (OIDC, Google)
-POSTGRES_USER=nook
-POSTGRES_PASSWORD=$(openssl rand -base64 24)
-POSTGRES_DB=nook
-HTTP_PORT=8080
-```
+### Pre-built images (optional)
 
-Optional integrations (leave blank to skip): `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` /
-`OLLAMA_HOST` for the AI capture bar, and `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` /
-`GOOGLE_CALENDAR_REDIRECT_URI` for 2-way Google Calendar sync.
+The compose stack builds `api` + `caddy` from source by default (tagged
+`nook-api:local` / `nook-caddy:local`). To run from a registry instead of building,
+set `NOOK_API_IMAGE` / `NOOK_CADDY_IMAGE` to published tags (e.g.
+`ghcr.io/you/nook-api:latest`) and `docker compose pull`. *(Publishing the official
+GHCR images is in progress — until then, build-from-source is the path.)*
 
 > For anything other than `localhost`, set `PUBLIC_BASE_URL=https://your.host` so
 > redirect URLs (calendar + OIDC callbacks) are generated correctly.
