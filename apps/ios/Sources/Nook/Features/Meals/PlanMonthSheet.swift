@@ -41,7 +41,12 @@ struct PlanMonthSheet: View {
     @State private var keepInMind = ""
 
     @State private var suggestions: [NookAPI.PlanCardDTO] = []
-    @State private var existingCount = 0
+    /// Dates that already had a dinner when the draft ran (the "was planned" nights).
+    @State private var plannedDates: Set<String> = []
+    /// Existing nights the user has since edited (swap/pick/drag) — these get rewritten.
+    @State private var dirty: Set<String> = []
+    /// Week-start keys the user has collapsed in the review.
+    @State private var collapsedWeeks: Set<String> = []
     @State private var locked: Set<String> = []
     @State private var skipped: Set<String> = []
     @State private var rejected: Set<String> = []
@@ -294,8 +299,13 @@ struct PlanMonthSheet: View {
                             .padding(.horizontal, 12).padding(.vertical, 9)
                             .background(NK.primary.opacity(0.10)).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
                     }
-                    ForEach(activeSuggestions) { card in suggestionCard(card) }
-                    Text("Lock the nights you love, swap or pick the rest, ✕ to skip a night.")
+                    ForEach(weekGroups, id: \.key) { group in
+                        weekHeader(group)
+                        if !collapsedWeeks.contains(group.key) {
+                            ForEach(group.cards) { card in suggestionCard(card) }
+                        }
+                    }
+                    Text("Tap a week to collapse it · lock / swap / pick · drag a night onto another to swap · ✕ to skip.")
                         .font(.system(size: 12)).foregroundStyle(NK.ink3).frame(maxWidth: .infinity, alignment: .center).padding(.top, 2)
                 }
                 .padding(16)
@@ -307,11 +317,49 @@ struct PlanMonthSheet: View {
     private var reviewSubtitle: String {
         var parts: [String] = []
         if let via { parts.append("Drafted via \(viaLabel(via))") }
-        if existingCount > 0 { parts.append("\(existingCount) already planned") }
+        if !plannedDates.isEmpty { parts.append("\(plannedDates.count) already planned") }
         return parts.joined(separator: " · ")
     }
-    private var activeSuggestions: [NookAPI.PlanCardDTO] { suggestions.filter { !skipped.contains($0.date) } }
-    private var unlockedDates: [String] { activeSuggestions.map(\.date).filter { !locked.contains($0) } }
+    private var unlockedDates: [String] { suggestions.map(\.date).filter { !locked.contains($0) } }
+
+    /// Every month night grouped by the Sunday that starts its week, in date order.
+    private var weekGroups: [(key: String, cards: [NookAPI.PlanCardDTO])] {
+        var groups: [String: [NookAPI.PlanCardDTO]] = [:]
+        for c in suggestions { groups[weekKey(c.date), default: []].append(c) }
+        return groups.keys.sorted().map { k in (k, groups[k]!.sorted { $0.date < $1.date }) }
+    }
+
+    /// A tappable week header that collapses/expands the week's nights.
+    private func weekHeader(_ group: (key: String, cards: [NookAPI.PlanCardDTO])) -> some View {
+        let collapsed = collapsedWeeks.contains(group.key)
+        return Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                if collapsed { collapsedWeeks.remove(group.key) } else { collapsedWeeks.insert(group.key) }
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "chevron.right").font(.system(size: 11, weight: .heavy))
+                    .rotationEffect(.degrees(collapsed ? 0 : 90)).foregroundStyle(NK.ink3)
+                Text("Week of \(weekLabel(group.key))").font(.system(size: 12, weight: .heavy)).tracking(0.4).foregroundStyle(NK.ink2)
+                Spacer()
+                Text("\(group.cards.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+            }
+            .padding(.horizontal, 4).padding(.top, 8).padding(.bottom, 2).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func weekKey(_ ymd: String) -> String {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = sync.householdTz
+        guard let d = DateFmt.date(ymd, "yyyy-MM-dd", sync.householdTz) else { return ymd }
+        let weekdayIdx = cal.component(.weekday, from: d) - 1   // Sunday → 0
+        let sunday = cal.date(byAdding: .day, value: -weekdayIdx, to: d) ?? d
+        return DateFmt.string(sunday, "yyyy-MM-dd", sync.householdTz)
+    }
+    private func weekLabel(_ key: String) -> String {
+        guard let d = DateFmt.date(key, "yyyy-MM-dd", sync.householdTz) else { return key }
+        return DateFmt.string(d, "MMM d", sync.householdTz)
+    }
 
     private func suggestionCard(_ card: NookAPI.PlanCardDTO) -> some View {
         let isLocked = locked.contains(card.date)
@@ -327,7 +375,8 @@ struct PlanMonthSheet: View {
                     HStack(spacing: 8) {
                         if let m = card.minutes { tag("🕐 \(m)m") }
                         tag(card.recipeId != nil ? "📖 Library" : "✨ Special")
-                        if let note = card.note, !note.isEmpty { tag(note) }
+                        if plannedDates.contains(card.date) && !dirty.contains(card.date) { tag("Was planned") }
+                        else if let note = card.note, !note.isEmpty { tag(note) }
                     }
                 }
                 Spacer(minLength: 0)
@@ -386,6 +435,7 @@ struct PlanMonthSheet: View {
                                              emoji: b.emoji, minutes: b.minutes, servings: b.servings, note: b.note)
         suggestions[j] = NookAPI.PlanCardDTO(date: b.date, mealType: b.mealType, title: a.title, recipeId: a.recipeId,
                                              emoji: a.emoji, minutes: a.minutes, servings: a.servings, note: a.note)
+        dirty.insert(a.date); dirty.insert(b.date)
     }
 
     private func actionButton(_ icon: String, _ label: String, _ tap: @escaping () -> Void) -> some View {
@@ -410,14 +460,14 @@ struct PlanMonthSheet: View {
             Button { Task { await apply() } } label: {
                 HStack(spacing: 8) {
                     if applying { ProgressView().controlSize(.small).tint(.white) }
-                    Text(applying ? "Adding…" : "Add \(activeSuggestions.count) & build list")
+                    Text(applying ? "Saving…" : "Save month & build list")
                         .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 14)
-                .background(activeSuggestions.isEmpty ? NK.ink3 : NK.ai)
+                .background(suggestions.isEmpty ? NK.ink3 : NK.ai)
                 .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
             }
-            .buttonStyle(.plain).disabled(activeSuggestions.isEmpty || applying || redrafting)
+            .buttonStyle(.plain).disabled(suggestions.isEmpty || applying || redrafting)
             .padding(.horizontal, 16).padding(.vertical, 12)
         }
         .background(NK.canvas)
@@ -450,13 +500,18 @@ struct PlanMonthSheet: View {
             via = result.via
             if let err = result.error, result.suggestions.isEmpty { errorMessage = friendly(err); if full { phase = .failed }; return }
             if full {
-                existingCount = result.existing?.count ?? 0
-                suggestions = result.suggestions.sorted { $0.date < $1.date }
+                // Show the WHOLE month: freshly-drafted empty nights + the nights
+                // that were already planned (editable, badged "Was planned").
+                let existing = result.existing ?? []
+                plannedDates = Set(existing.map(\.date))
+                dirty = []
+                suggestions = (result.suggestions + existing).sorted { $0.date < $1.date }
                 guard !suggestions.isEmpty else { phase = .empty; return }
                 phase = .review
             } else {
                 let byDate = Dictionary(result.suggestions.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
                 suggestions = suggestions.map { byDate[$0.date] ?? $0 }.sorted { $0.date < $1.date }
+                dirty.formUnion(dates.filter { byDate[$0] != nil })   // re-drafted existing nights are now edited
                 if !dates.contains(where: { byDate[$0] != nil }) {
                     notice = "No fresh options for that night — tap Pick to choose any recipe."
                 } else { notice = nil }
@@ -469,8 +524,8 @@ struct PlanMonthSheet: View {
 
     private func reshuffle() async {
         let dates = unlockedDates.sorted()
-        for c in activeSuggestions where dates.contains(c.date) { rejected.insert(c.title) }
-        let lockedTitles = activeSuggestions.filter { locked.contains($0.date) }.map(\.title)
+        for c in suggestions where dates.contains(c.date) { rejected.insert(c.title) }
+        let lockedTitles = suggestions.filter { locked.contains($0.date) }.map(\.title)
         await draft(dates: dates, avoid: Array(rejected) + lockedTitles, full: false)
     }
 
@@ -484,17 +539,27 @@ struct PlanMonthSheet: View {
         let card = NookAPI.PlanCardDTO(date: date, mealType: "dinner", title: r.title, recipeId: r.id, emoji: r.emoji,
                                        minutes: r.cookTimeMinutes, servings: cookingFor > 0 ? cookingFor : familySize, note: "Your pick")
         suggestions = suggestions.map { $0.date == date ? card : $0 }.sorted { $0.date < $1.date }
-        notice = nil; pickTarget = nil
+        dirty.insert(date); notice = nil; pickTarget = nil
     }
 
     private func toggleLock(_ date: String) { if locked.contains(date) { locked.remove(date) } else { locked.insert(date) } }
-    private func skip(_ card: NookAPI.PlanCardDTO) { withAnimation { skipped.insert(card.date) } }
+    /// Drop a night from the plan — removes its card; an originally-planned night
+    /// gets cleared on save.
+    private func skip(_ card: NookAPI.PlanCardDTO) {
+        withAnimation { suggestions.removeAll { $0.date == card.date } }
+        skipped.insert(card.date)
+    }
 
     private func apply() async {
         applying = true
-        for card in activeSuggestions {
+        // Write new drafts + edited existing nights; leave untouched existing nights
+        // alone; clear nights that were planned before but the user skipped.
+        for card in suggestions where !plannedDates.contains(card.date) || dirty.contains(card.date) {
             _ = await sync.setMealPlan(date: card.date, mealType: card.mealType,
                                        recipeId: card.recipeId, title: card.recipeId == nil ? card.title : nil)
+        }
+        for d in skipped where plannedDates.contains(d) {
+            _ = await sync.clearMealPlan(date: d, mealType: "dinner")
         }
         await sync.rebuildGroceryFromWeek(weekStart: monthStart)
         applying = false
