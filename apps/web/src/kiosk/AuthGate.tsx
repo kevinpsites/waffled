@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { authApi, getAccessToken, type AuthStatus, type SetupInput } from '../lib/api'
 import '../styles/auth.css'
@@ -13,12 +13,18 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus | null>(null)
   const [oidcError, setOidcError] = useState<string | null>(null)
   const navigate = useNavigate()
+  // The OIDC handoff is single-use; guard against the exchange firing twice (React
+  // StrictMode runs effects twice in dev), which would 401 the 2nd call and leave a
+  // stale "Invalid or expired sign-in" error that later surfaces on the login screen.
+  const exchangingRef = useRef(false)
 
   const resolve = useCallback(async () => {
     // OIDC return: exchange the one-time handoff code for a session, then clean the URL.
     // Navigate via the router (not history.replaceState) so React Router actually
     // leaves /auth/callback — otherwise the app mounts with no matching route (blank).
     if (window.location.pathname === '/auth/callback') {
+      if (exchangingRef.current) return
+      exchangingRef.current = true
       const code = new URLSearchParams(window.location.search).get('code')
       try {
         if (!code) throw new Error('Sign-in was cancelled.')
@@ -30,6 +36,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
         navigate('/', { replace: true })
         // fall through to render the login screen with the error
       }
+    } else {
+      // Any normal (re)resolve — e.g. after signing out — clears a stale OIDC error
+      // so it never shows up on a login screen the user reached some other way.
+      setOidcError(null)
     }
     if (getAccessToken()) {
       setPhase('authed')
