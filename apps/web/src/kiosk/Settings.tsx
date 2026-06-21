@@ -3,16 +3,18 @@ import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversi
 import { PersonModal } from './components/PersonModal'
 import '../styles/settings.css'
 
+// `admin` tabs are only shown to admins — non-admins can't change those settings,
+// so we don't show options they can't use (they still get About + Sign out).
 const NAV = [
-  { key: 'family', icon: '👨‍👩‍👧‍👦', label: 'Family & people' },
-  { key: 'ai', icon: '✨', label: 'AI & capture' },
-  { key: 'security', icon: '🔐', label: 'Accounts & security' },
-  { key: 'calendars', icon: '📅', label: 'Calendars' },
-  { key: 'chores', icon: '⭐', label: 'Chores & rewards' },
-  { key: 'meals', icon: '🍽️', label: 'Meals' },
-  { key: 'lists', icon: '📝', label: 'Lists' },
-  { key: 'display', icon: '🖥️', label: 'Display & kiosk' },
-  { key: 'notifications', icon: '🔔', label: 'Notifications' },
+  { key: 'family', icon: '👨‍👩‍👧‍👦', label: 'Family & People', admin: true },
+  { key: 'ai', icon: '✨', label: 'AI & Capture', admin: true },
+  { key: 'security', icon: '🔐', label: 'Accounts & Security', admin: true },
+  { key: 'calendars', icon: '📅', label: 'Calendars', admin: true },
+  { key: 'chores', icon: '⭐', label: 'Chores & Rewards', admin: true },
+  { key: 'meals', icon: '🍽️', label: 'Meals', admin: true },
+  { key: 'lists', icon: '📝', label: 'Lists', admin: true },
+  { key: 'display', icon: '🖥️', label: 'Display & Kiosk', admin: true },
+  { key: 'notifications', icon: '🔔', label: 'Notifications', admin: true },
   { key: 'about', icon: 'ℹ️', label: 'About' },
 ]
 
@@ -103,7 +105,7 @@ function FamilyPanel() {
   return (
     <div className="set-panel">
       <div className="set-head">
-        <div className="nk-serif set-head-t">Family &amp; people</div>
+        <div className="nk-serif set-head-t">Family &amp; People</div>
         <div className="tiny muted" style={{ fontWeight: 600 }}>{members.length} {members.length === 1 ? 'person' : 'people'}</div>
       </div>
 
@@ -294,7 +296,7 @@ function AiPanel() {
   return (
     <div className="set-panel">
       <div className="set-head">
-        <div className="nk-serif set-head-t">AI &amp; capture</div>
+        <div className="nk-serif set-head-t">AI &amp; Capture</div>
         <div className="tiny muted" style={{ fontWeight: 600 }}>Powers the “Add anything” bar</div>
       </div>
 
@@ -796,7 +798,7 @@ const PLACEHOLDERS: Record<string, { title: string; note: string }> = {
   chores: { title: 'Chores & rewards', note: 'Reward styles & the reward shop build on the chores ledger (6.1 / 6.4).' },
   meals: { title: 'Meals', note: 'Meal preferences & dietary defaults pair with the Meals screen.' },
   lists: { title: 'Lists', note: 'List defaults & sharing pair with the Lists screen.' },
-  display: { title: 'Display & kiosk', note: 'Brightness, screensaver timing & device pairing land with kiosk pairing (3.3).' },
+  display: { title: 'Display & Kiosk', note: 'Brightness, screensaver timing & device pairing land with kiosk pairing (3.3).' },
   notifications: { title: 'Notifications', note: 'Push to phones rides APNs + Google reminders (6.7).' },
 }
 
@@ -859,7 +861,7 @@ function RewardsSettingsPanel() {
   return (
     <div className="set-panel">
       <div className="set-head">
-        <div className="nk-serif set-head-t">Chores &amp; rewards</div>
+        <div className="nk-serif set-head-t">Chores &amp; Rewards</div>
         <div className="tiny muted" style={{ fontWeight: 600 }}>The currencies your family earns &amp; spends</div>
       </div>
       <div className="set-card" style={{ padding: 18 }}>
@@ -1011,7 +1013,7 @@ function SecurityPanel() {
     authApi.getConfig().then(hydrate).catch(() => setForbidden(true))
   }, [])
 
-  if (forbidden) return <div className="set-panel"><div className="set-head"><div className="nk-serif set-head-t">Accounts &amp; security</div></div><div className="set-card" style={{ padding: 22 }}><div className="muted" style={{ fontWeight: 600 }}>Only an admin can manage sign-in settings.</div></div></div>
+  if (forbidden) return <div className="set-panel"><div className="set-head"><div className="nk-serif set-head-t">Accounts &amp; Security</div></div><div className="set-card" style={{ padding: 22 }}><div className="muted" style={{ fontWeight: 600 }}>Only an admin can manage sign-in settings.</div></div></div>
   if (!cfg) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
 
   async function test() {
@@ -1059,7 +1061,7 @@ function SecurityPanel() {
   return (
     <div className="set-panel">
       <div className="set-head" style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-        <div className="nk-serif set-head-t">Accounts &amp; security</div>
+        <div className="nk-serif set-head-t">Accounts &amp; Security</div>
         {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
       </div>
 
@@ -1120,13 +1122,24 @@ function SecurityPanel() {
 }
 
 export function Settings() {
+  const { household, person } = useHousehold()
   const [tab, setTab] = useState('family')
+
+  // Wait until we know who's signed in, so admins don't flash the trimmed nav.
+  if (!household) return <div className="settings-screen"><div className="set-content"><div className="muted" style={{ padding: 20 }}>Loading…</div></div></div>
+
+  // Non-admins only see what they can actually use (About + Sign out). Admin-only
+  // tabs are hidden rather than shown-then-blocked, so there's nothing to fumble.
+  const isAdmin = person?.isAdmin ?? false
+  const nav = NAV.filter((n) => !n.admin || isAdmin)
+  const activeTab = nav.some((n) => n.key === tab) ? tab : (nav[0]?.key ?? 'about')
+
   return (
     <div className="settings-screen">
       <div className="set-nav">
         <div className="flabel" style={{ margin: '2px 2px 8px' }}>SETTINGS</div>
-        {NAV.map((n) => (
-          <button type="button" key={n.key} className={`set-navitem ${tab === n.key ? 'on' : ''}`} onClick={() => setTab(n.key)}>
+        {nav.map((n) => (
+          <button type="button" key={n.key} className={`set-navitem ${activeTab === n.key ? 'on' : ''}`} onClick={() => setTab(n.key)}>
             <span className="set-navic">{n.icon}</span>
             {n.label}
           </button>
@@ -1136,7 +1149,7 @@ export function Settings() {
         </div>
       </div>
       <div className="set-content">
-        {tab === 'family' ? <FamilyPanel /> : tab === 'ai' ? <AiPanel /> : tab === 'calendars' ? <CalendarsPanel /> : tab === 'meals' ? <MealsPanel /> : tab === 'chores' ? <RewardsSettingsPanel /> : tab === 'security' ? <SecurityPanel /> : tab === 'about' ? <AboutPanel /> : <Placeholder tab={tab} />}
+        {activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <CalendarsPanel /> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
       </div>
     </div>
   )

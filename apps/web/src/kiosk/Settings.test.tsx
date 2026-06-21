@@ -10,6 +10,8 @@ const members = [
 function mockApi() {
   globalThis.fetch = vi.fn(async (url: string) => {
     if (String(url).includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
+    // useHousehold() drives the admin gate — return the owner (an admin).
+    if (String(url).includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household, person: members[0] }) }
     if (String(url).includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
     return { ok: false, status: 404, json: async () => ({}) }
   }) as unknown as typeof fetch
@@ -20,7 +22,7 @@ describe('Settings screen', () => {
     mockApi()
     render(<Settings />)
 
-    expect(screen.getByText('Family & people')).toBeInTheDocument() // nav item
+    expect(await screen.findByText('Family & People')).toBeInTheDocument() // nav item
     expect(await screen.findByText('Kevin')).toBeInTheDocument()
     expect(screen.getByText(/Adult · Owner · signed in/)).toBeInTheDocument()
     expect(screen.getByText('Wally')).toBeInTheDocument()
@@ -45,5 +47,22 @@ describe('Settings screen', () => {
     await screen.findByText('Kevin')
     fireEvent.click(screen.getByText('Notifications'))
     expect(screen.getByText(/Push to phones/)).toBeInTheDocument()
+  })
+
+  it('hides admin-only tabs from non-admins (only About + Sign out)', async () => {
+    // Same data, but the signed-in person is not an admin.
+    globalThis.fetch = vi.fn(async (url: string) => {
+      if (String(url).includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
+      if (String(url).includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household, person: members[1] }) } // Wally, not admin
+      if (String(url).includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+    render(<Settings />)
+
+    expect(await screen.findByText('Nook — Family Hub')).toBeInTheDocument() // About panel content
+    expect(screen.getByText('About', { selector: '.set-navitem' })).toBeInTheDocument()
+    expect(screen.getByText(/Sign out/, { selector: '.set-signout' })).toBeInTheDocument()
+    expect(screen.queryByText('Family & People')).not.toBeInTheDocument()
+    expect(screen.queryByText('Accounts & Security')).not.toBeInTheDocument()
   })
 })

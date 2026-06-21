@@ -184,49 +184,51 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
             </div>
           </div>
 
-          {editing && (
-            <div className="set-card" style={{ padding: 16, marginBottom: 14 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: hasLoginLocal ? 12 : 8 }}>
-                <div style={{ fontSize: 21, width: 30, textAlign: 'center', flex: 'none' }}>🔑</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>Login</div>
-                  <div className="tiny muted" style={{ fontWeight: 600 }}>
-                    {!hasLoginLocal
-                      ? 'No login yet — give them an email to sign in.'
-                      : hasPasswordLocal
-                        ? 'Can sign in with their email & password'
-                        : 'Invited to sign in via SSO (no password set)'}
-                  </div>
-                </div>
-                {loginSaved && <span className="tiny" style={{ fontWeight: 700, color: 'var(--good, #2e7d32)' }}>✓ Saved</span>}
-              </div>
-
-              <label className="field" style={{ marginBottom: 8 }}>
-                <span>Email</span>
-                <input type="email" autoComplete="off" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="name@example.com" />
-              </label>
-              <label className="field" style={{ marginBottom: 8 }}>
-                <span>{hasPasswordLocal ? 'New password (leave blank to keep)' : 'Password (optional — blank invites SSO only)'}</span>
-                <input type="password" autoComplete="new-password" value={loginPw} onChange={(e) => setLoginPw(e.target.value)} placeholder={hasPasswordLocal ? '••••••••' : 'At least 8 characters'} />
-              </label>
-              {loginErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginBottom: 8 }}>{loginErr}</div>}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} disabled={loginBusy || !loginEmail.trim()} onClick={saveLogin}>
-                  {loginBusy ? 'Saving…' : hasLoginLocal ? 'Update login' : 'Give a login'}
-                </button>
-                {hasLoginLocal && !person!.isOwner && (
-                  <button type="button" onClick={removeLogin} style={{ border: 0, background: 'none', color: confirmRemoveLogin ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                    {confirmRemoveLogin ? 'Tap again to remove login' : 'Remove login'}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
           <button type="submit" className="btn btn-primary" disabled={!form.name.trim() || saving} style={{ width: '100%', justifyContent: 'center' }}>
             {saving ? 'Saving…' : editing ? 'Save changes' : 'Add person'}
           </button>
         </form>
+
+        {/* Login lives below "Save changes" with its own buttons — and outside the
+            form so pressing Enter in these fields doesn't trigger the profile save. */}
+        {editing && (
+          <div className="set-card" style={{ padding: 16, marginTop: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: hasLoginLocal ? 12 : 8 }}>
+              <div style={{ fontSize: 21, width: 30, textAlign: 'center', flex: 'none' }}>🔑</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>Login</div>
+                <div className="tiny muted" style={{ fontWeight: 600 }}>
+                  {!hasLoginLocal
+                    ? 'No login yet — give them an email to sign in.'
+                    : hasPasswordLocal
+                      ? 'Can sign in with their email & password'
+                      : 'Invited to sign in via SSO (no password set)'}
+                </div>
+              </div>
+              {loginSaved && <span className="tiny" style={{ fontWeight: 700, color: 'var(--good, #2e7d32)' }}>✓ Saved</span>}
+            </div>
+
+            <label className="field" style={{ marginBottom: 8 }}>
+              <span>Email</span>
+              <input type="email" autoComplete="off" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="name@example.com" />
+            </label>
+            <label className="field" style={{ marginBottom: 8 }}>
+              <span>{hasPasswordLocal ? 'New password (leave blank to keep)' : 'Password (optional — blank invites SSO only)'}</span>
+              <input type="password" autoComplete="new-password" value={loginPw} onChange={(e) => setLoginPw(e.target.value)} placeholder={hasPasswordLocal ? '••••••••' : 'At least 8 characters'} />
+            </label>
+            {loginErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginBottom: 8 }}>{loginErr}</div>}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} disabled={loginBusy || !loginEmail.trim()} onClick={saveLogin}>
+                {loginBusy ? 'Saving…' : hasLoginLocal ? 'Update login' : 'Give a login'}
+              </button>
+              {hasLoginLocal && !person!.isOwner && (
+                <button type="button" onClick={removeLogin} style={{ border: 0, background: 'none', color: confirmRemoveLogin ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  {confirmRemoveLogin ? 'Tap again to remove login' : 'Remove login'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {editing && !person!.isOwner && (
           <button type="button" onClick={del} style={{ display: 'block', margin: '14px auto 0', border: 0, background: 'none', color: confirmDelete ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
