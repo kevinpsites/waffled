@@ -134,8 +134,8 @@ afterAll(async () => {
 })
 
 // Drive the redirect flow: /start → stub /authorize → our /callback → handoff code.
-async function ssoLogin(): Promise<RunResult> {
-  const start = await call('GET', '/api/auth/oidc/start', { query: { redirect: 'http://localhost:8080/' } })
+async function ssoLogin(redirect = 'http://localhost:8080/'): Promise<RunResult> {
+  const start = await call('GET', '/api/auth/oidc/start', { query: { redirect } })
   expect(start.statusCode).toBe(302)
   const authorizeUrl = new URL(loc(start))
   expect(authorizeUrl.origin).toBe(issuer)
@@ -196,6 +196,18 @@ describe('OIDC login', () => {
 
     // The handoff code is single-use.
     expect((await call('POST', '/api/auth/oidc/exchange', { body: { code: handoff } })).statusCode).toBe(401)
+  })
+
+  it('returns a custom-scheme deep link for a native (mobile) redirect', async () => {
+    stubUser = { sub: 'idp-sub-1', email: 'kevin@example.com', email_verified: true }
+    const cb = await ssoLogin('nook://auth/callback')
+    expect(cb.statusCode).toBe(302)
+    // Must be the app's deep link (not "null/auth/callback") so iOS can intercept it.
+    const dest = new URL(loc(cb))
+    expect(dest.protocol).toBe('nook:')
+    expect(loc(cb)).toMatch(/^nook:\/\/auth\/callback\?code=/)
+    const handoff = dest.searchParams.get('code')!
+    expect((await call('POST', '/api/auth/oidc/exchange', { body: { code: handoff } })).statusCode).toBe(200)
   })
 
   it('rejects an SSO login whose email is not on file', async () => {

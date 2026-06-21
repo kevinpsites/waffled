@@ -371,16 +371,26 @@ async function exchangeAndVerify(
 
 // Where to send the browser after a successful callback: the SPA's /auth/callback,
 // which exchanges the handoff code and lands the user in the app.
+//
+// Web passes an http(s) origin (e.g. https://host/) → we append /auth/callback.
+// A native app passes a custom-scheme deep link (e.g. nook://auth/callback) whose
+// `.origin` is the string "null", so we use the deep link itself as the base and
+// just append the handoff code — that's the URL the app's ASWebAuthenticationSession
+// is waiting to intercept.
 function appCallbackUrl(req: Request, redirectTo: string | null, handoff: string): string {
-  let origin = baseUrl(req)
   if (redirectTo) {
     try {
-      origin = new URL(redirectTo).origin
+      const u = new URL(redirectTo)
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+        const sep = redirectTo.includes('?') ? '&' : '?'
+        return `${redirectTo}${sep}code=${encodeURIComponent(handoff)}`
+      }
+      return `${u.origin}/auth/callback?code=${encodeURIComponent(handoff)}`
     } catch {
-      /* keep derived origin */
+      /* fall through to the request-derived origin */
     }
   }
-  return `${origin}/auth/callback?code=${encodeURIComponent(handoff)}`
+  return `${baseUrl(req)}/auth/callback?code=${encodeURIComponent(handoff)}`
 }
 
 // The SPA's origin: prefer the redirect the /start call carried (the real browser
