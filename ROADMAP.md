@@ -369,6 +369,17 @@ new SPA route `/auth/callback` exchanges the handoff code → `setSession` → h
 Settings adds an admin **Login & security** panel (OIDC fields + Test + Save, password
 toggle). **Mobile** later reuses `oidc/start` + a deep-link `oidc/callback` → `exchange`.
 
+### Member management — SHIPPED 2026-06-20
+An admin gives a family **profile** a **login** from the existing PersonModal
+(Settings → Family). A login is a `credentials` row — email always, password
+optional (migration 0042 made `password_hash` nullable): set a password and they
+sign in with the form; set email only and the **invite-gated OIDC** matches them.
+Setting a password also creates a `password` identity (subject = credential id) so
+sub→identity→person resolves. Owner login is protected; removing a login revokes
+sessions. Routes: `PUT/DELETE /api/persons/:id/login` (admin); member list now
+carries `loginEmail` + `hasPassword`. 6 integration tests + verified live (admin
+grants a login → that member signs in). This is what makes invite-gating useful
+beyond the setup admin.
+
 **Next:** Phase 3 GHCR images + `.env.example` + quickstart (retire Terraform);
-Phase 4 optional S3 backup + member-management UI (invite family members, set their
-emails so they can SSO / set a password).
+Phase 4 optional S3 backup.

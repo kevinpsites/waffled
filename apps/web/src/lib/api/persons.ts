@@ -21,6 +21,8 @@ export interface Person {
 
 export interface SettingsMember extends Person {
   hasLogin: boolean
+  loginEmail: string | null
+  hasPassword: boolean
   isOwner: boolean
 }
 
@@ -38,6 +40,11 @@ export const personsApi = {
   createPerson: (input: Record<string, unknown>) => apiSend<{ person: Person }>('POST', '/api/persons', input).then((r) => r.person),
   updatePerson: (id: string, patch: Record<string, unknown>) => apiSend<{ person: Person }>('PATCH', `/api/persons/${id}`, patch).then((r) => r.person),
   deletePerson: (id: string) => apiDelete(`/api/persons/${id}`),
+  // Member login (admin): give a person an email (enables invite-gated SSO) and,
+  // optionally, a password. Omit password to leave it unchanged / invite SSO-only.
+  setLogin: (id: string, input: { email: string; password?: string }) =>
+    apiSend<{ ok: true }>('PUT', `/api/persons/${id}/login`, input),
+  removeLogin: (id: string) => apiDelete(`/api/persons/${id}/login`),
   setSavingToward: (id: string, rewardId: string | null) =>
     apiSend<{ person: Person }>('POST', `/api/persons/${id}/saving-toward`, { rewardId }).then((r) => r.person).then(tap('rewards')),
   household: () => apiGet<{ provisioned: boolean; household?: Household; person?: Person }>('/api/household'),

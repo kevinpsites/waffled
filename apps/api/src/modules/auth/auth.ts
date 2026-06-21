@@ -7,8 +7,8 @@ import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from
 import jwt from 'jsonwebtoken'
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { config } from '../../platform/config'
-import { query } from '../../platform/db'
-import { provisionHousehold, presentHousehold, presentPerson } from '../households/households'
+import { query, getPool } from '../../platform/db'
+import { provisionHousehold, presentHousehold, presentPerson, requireTenant, requireAdmin } from '../households/households'
 import { loginMethods } from './oidc'
 
 type Api = ReturnType<typeof createAPI>
@@ -21,7 +21,7 @@ const REFRESH_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS) || 60
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
 
 // ── password hashing (Node scrypt — no extra dependency) ─────────────────────
-function hashPassword(pw: string): string {
+export function hashPassword(pw: string): string {
   const salt = randomBytes(16)
   const hash = scryptSync(pw, salt, 64)
   return `scrypt$${salt.toString('hex')}$${hash.toString('hex')}`
@@ -134,12 +134,13 @@ export function registerAuthRoutes(api: Api): void {
     const email = b.email?.trim()
     const password = b.password ?? ''
     if (!email || !password) return res.status(400).json({ error: 'BadRequest', message: 'email and password are required' })
-    const { rows } = await query<{ id: string; person_id: string; password_hash: string }>(
+    const { rows } = await query<{ id: string; person_id: string; password_hash: string | null }>(
       `select id, person_id, password_hash from credentials where lower(email) = lower($1) and deleted_at is null limit 1`,
       [email]
     )
     const cred = rows[0]
-    if (!cred || !verifyPassword(password, cred.password_hash)) {
+    // password_hash is null for SSO-only invites — they have no password to verify.
+    if (!cred || !cred.password_hash || !verifyPassword(password, cred.password_hash)) {
       return res.status(401).json({ error: 'Unauthorized', message: 'Invalid email or password.' })
     }
     const access = mintAccess(cred.id)
@@ -163,4 +164,114 @@ export function registerAuthRoutes(api: Api): void {
     if (token) await query(`update refresh_tokens set revoked_at = now() where token_hash = $1 and revoked_at is null`, [sha256(token)])
     return { ok: true }
   })
+
+  // ── member management (admin) ────────────────────────────────────────────────
+  // Give a family member a login: an email (enables invite-gated SSO) and,
+  // optionally, a password. One credential per person; re-PUT to change either.
+  api.put('/api/persons/:id/login', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const personId = req.params.id ?? ''
+    const b = (req.body ?? {}) as { email?: string; password?: string }
+    const email = b.email?.trim()
+    const password = b.password
+    if (!email || !EMAIL_RE.test(email)) return res.status(400).json({ error: 'BadRequest', message: 'a valid email is required' })
+    if (password !== undefined && password !== '' && password.length < 8) {
+      return res.status(400).json({ error: 'BadRequest', message: 'password must be at least 8 characters' })
+    }
+    // The person must belong to the caller's household.
+    const owns = await query(`select 1 from persons where id = $1 and household_id = $2 and deleted_at is null`, [personId, tenant.householdId])
+    if (!owns.rows.length) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
+    try {
+      await setPersonLogin(tenant.householdId, personId, email, password || null)
+      return { ok: true }
+    } catch (err) {
+      if ((err as { code?: string }).code === '23505') {
+        return res.status(409).json({ error: 'Conflict', message: 'That email is already in use.' })
+      }
+      throw err
+    }
+  })
+
+  // Remove a member's login entirely (revokes sessions). The owner keeps theirs.
+  api.delete('/api/persons/:id/login', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const personId = req.params.id ?? ''
+    const h = await query<{ owner_person_id: string | null }>(`select owner_person_id from households where id = $1`, [tenant.householdId])
+    if (h.rows[0]?.owner_person_id === personId) {
+      return res.status(400).json({ error: 'BadRequest', message: "The household owner's login can't be removed." })
+    }
+    const owns = await query(`select 1 from persons where id = $1 and household_id = $2 and deleted_at is null`, [personId, tenant.householdId])
+    if (!owns.rows.length) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
+    await removePersonLogin(personId)
+    return { ok: true }
+  })
+}
+
+// Upsert a person's credential (one per person). Setting a password also ensures a
+// matching identity (provider=password, subject=credential id) exists so password
+// login resolves through sub→identity→person; an email-only invite needs no
+// identity (the OIDC flow creates one on first sign-in, matched via the email).
+async function setPersonLogin(householdId: string, personId: string, email: string, password: string | null): Promise<void> {
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    const existing = await client.query<{ id: string }>(
+      `select id from credentials where person_id = $1 and deleted_at is null limit 1`,
+      [personId]
+    )
+    let credId = existing.rows[0]?.id
+    const hash = password ? hashPassword(password) : undefined
+    if (credId) {
+      await client.query(
+        `update credentials set email = $1, password_hash = coalesce($2, password_hash), updated_at = now() where id = $3`,
+        [email, hash ?? null, credId]
+      )
+    } else {
+      const ins = await client.query<{ id: string }>(
+        `insert into credentials (household_id, person_id, email, password_hash) values ($1, $2, $3, $4) returning id`,
+        [householdId, personId, email, hash ?? null]
+      )
+      credId = ins.rows[0].id
+    }
+    // When a password exists, make sure a password identity points at this credential.
+    if (password) {
+      const ident = await client.query(
+        `select 1 from identities where person_id = $1 and provider = 'password' and deleted_at is null`,
+        [personId]
+      )
+      if (!ident.rows.length) {
+        await client.query(
+          `insert into identities (household_id, person_id, provider, auth0_user_id, email, email_verified, is_primary)
+           values ($1, $2, 'password', $3, $4, true, false)`,
+          [householdId, personId, credId, email]
+        )
+      }
+    }
+    await client.query('commit')
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+// Tear down a member's login: drop the credential + their identities and revoke
+// any live refresh tokens, so they can no longer sign in.
+async function removePersonLogin(personId: string): Promise<void> {
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    await client.query(`update credentials set deleted_at = now() where person_id = $1 and deleted_at is null`, [personId])
+    await client.query(`update identities set deleted_at = now() where person_id = $1 and deleted_at is null`, [personId])
+    await client.query(`update refresh_tokens set revoked_at = now() where person_id = $1 and revoked_at is null`, [personId])
+    await client.query('commit')
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+  }
 }

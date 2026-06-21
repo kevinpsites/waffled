@@ -151,15 +151,23 @@ export async function softDeletePerson(householdId: string, id: string): Promise
 // derived `hasLogin` (has an identity) and `isOwner` flag.
 export async function householdSettings(householdId: string) {
   const h = (await query<HouseholdRow>(`select * from households where id = $1`, [householdId])).rows[0]
-  const { rows } = await query<PersonRow & { has_login: boolean }>(
+  const { rows } = await query<PersonRow & { has_login: boolean; login_email: string | null; has_password: boolean }>(
     `select p.*,
-            exists(select 1 from identities i where i.person_id = p.id and i.deleted_at is null) as has_login
+            exists(select 1 from identities i where i.person_id = p.id and i.deleted_at is null) as has_login,
+            (select c.email from credentials c where c.person_id = p.id and c.deleted_at is null limit 1) as login_email,
+            exists(select 1 from credentials c where c.person_id = p.id and c.deleted_at is null and c.password_hash is not null) as has_password
        from persons p
       where p.household_id = $1 and p.deleted_at is null
       order by p.sort_order, p.created_at`,
     [householdId]
   )
-  const members = rows.map((r) => ({ ...presentPerson(r), hasLogin: r.has_login, isOwner: r.id === h.owner_person_id }))
+  const members = rows.map((r) => ({
+    ...presentPerson(r),
+    hasLogin: r.has_login,
+    loginEmail: r.login_email,
+    hasPassword: r.has_password,
+    isOwner: r.id === h.owner_person_id,
+  }))
   return { household: presentHousehold(h), members }
 }
 

@@ -30,8 +30,52 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
   })
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [inviteNote, setInviteNote] = useState(false)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
+
+  // Login management (admin). A login is an email (enables invite-gated SSO) plus
+  // an optional password. Driven by local state so status updates without reopening.
+  const [loginEmail, setLoginEmail] = useState(person?.loginEmail ?? '')
+  const [loginPw, setLoginPw] = useState('')
+  const [hasLoginLocal, setHasLoginLocal] = useState(!!person?.loginEmail)
+  const [hasPasswordLocal, setHasPasswordLocal] = useState(person?.hasPassword ?? false)
+  const [loginBusy, setLoginBusy] = useState(false)
+  const [loginErr, setLoginErr] = useState<string | null>(null)
+  const [loginSaved, setLoginSaved] = useState(false)
+  const [confirmRemoveLogin, setConfirmRemoveLogin] = useState(false)
+
+  async function saveLogin() {
+    const email = loginEmail.trim()
+    if (!email || loginBusy) return
+    if (loginPw && loginPw.length < 8) { setLoginErr('Password must be at least 8 characters.'); return }
+    setLoginBusy(true); setLoginErr(null); setLoginSaved(false)
+    try {
+      await personsApi.setLogin(person!.id, { email, ...(loginPw ? { password: loginPw } : {}) })
+      if (loginPw) setHasPasswordLocal(true)
+      setHasLoginLocal(true)
+      setLoginPw('')
+      setLoginSaved(true)
+      setTimeout(() => setLoginSaved(false), 1800)
+      onSaved()
+    } catch {
+      setLoginErr('Could not save — that email may already be in use.')
+    } finally {
+      setLoginBusy(false)
+    }
+  }
+
+  async function removeLogin() {
+    if (!confirmRemoveLogin) { setConfirmRemoveLogin(true); return }
+    setLoginBusy(true); setLoginErr(null)
+    try {
+      await personsApi.removeLogin(person!.id)
+      setLoginEmail(''); setLoginPw(''); setHasLoginLocal(false); setHasPasswordLocal(false)
+      onSaved()
+    } catch {
+      setLoginErr('Could not remove the login.')
+    } finally {
+      setLoginBusy(false); setConfirmRemoveLogin(false)
+    }
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -125,28 +169,41 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
           </div>
 
           {editing && (
-            <div className="set-card" style={{ padding: '2px 16px', marginBottom: 14 }}>
-              <div className="set-row" style={{ padding: '13px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div className="set-card" style={{ padding: 16, marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: hasLoginLocal ? 12 : 8 }}>
                 <div style={{ fontSize: 21, width: 30, textAlign: 'center', flex: 'none' }}>🔑</div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>Account</div>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>Login</div>
                   <div className="tiny muted" style={{ fontWeight: 600 }}>
-                    {person!.hasLogin ? 'Signed in with their own account' : person!.memberType === 'kid' ? 'Managed by parents' : 'No login yet'}
+                    {!hasLoginLocal
+                      ? 'No login yet — give them an email to sign in.'
+                      : hasPasswordLocal
+                        ? 'Can sign in with their email & password'
+                        : 'Invited to sign in via SSO (no password set)'}
                   </div>
                 </div>
-                {person!.hasLogin ? (
-                  <span className="tiny" style={{ fontWeight: 700, color: 'var(--wally)' }}>Connected ✓</span>
-                ) : person!.memberType === 'kid' ? (
-                  <span className="tiny muted" style={{ fontWeight: 700 }}>Parental</span>
-                ) : (
-                  <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => setInviteNote(true)}>Invite to sign in</button>
+                {loginSaved && <span className="tiny" style={{ fontWeight: 700, color: 'var(--good, #2e7d32)' }}>✓ Saved</span>}
+              </div>
+
+              <label className="field" style={{ marginBottom: 8 }}>
+                <span>Email</span>
+                <input type="email" autoComplete="off" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="name@example.com" />
+              </label>
+              <label className="field" style={{ marginBottom: 8 }}>
+                <span>{hasPasswordLocal ? 'New password (leave blank to keep)' : 'Password (optional — blank invites SSO only)'}</span>
+                <input type="password" autoComplete="new-password" value={loginPw} onChange={(e) => setLoginPw(e.target.value)} placeholder={hasPasswordLocal ? '••••••••' : 'At least 8 characters'} />
+              </label>
+              {loginErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginBottom: 8 }}>{loginErr}</div>}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} disabled={loginBusy || !loginEmail.trim()} onClick={saveLogin}>
+                  {loginBusy ? 'Saving…' : hasLoginLocal ? 'Update login' : 'Give a login'}
+                </button>
+                {hasLoginLocal && !person!.isOwner && (
+                  <button type="button" onClick={removeLogin} style={{ border: 0, background: 'none', color: confirmRemoveLogin ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                    {confirmRemoveLogin ? 'Tap again to remove login' : 'Remove login'}
+                  </button>
                 )}
               </div>
-              {inviteNote && (
-                <div className="tiny muted" style={{ fontWeight: 600, padding: '0 0 12px', lineHeight: 1.45 }}>
-                  Sign-in invites arrive with Google / Apple login (M5). For now {form.name || 'they'} stays {person!.memberType === 'kid' ? 'parent-managed' : 'without a login'} — the account link will activate here once auth is connected.
-                </div>
-              )}
             </div>
           )}
 
