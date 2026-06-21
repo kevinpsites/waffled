@@ -19,10 +19,27 @@ enum AppConfig {
     /// Local HS256 session token (mint via `just token` / `nook token`). The API's
     /// `requireTenant` validates it and `/api/powersync/token` exchanges it for a
     /// short-lived PowerSync RS256 token.
+    ///
+    /// This is now the *fallback* path: real users sign in (tokens live in the
+    /// Keychain via `AuthTokens`); a pasted/env dev token still works for headless
+    /// demos and local development.
     static var devToken: String {
         env("NOOK_DEV_TOKEN")
             ?? UserDefaults.standard.string(forKey: tokenKey)
             ?? ""
+    }
+
+    /// The bearer token every request carries: a real signed-in access token when
+    /// present, else the dev token. Read at call time so login/refresh/logout take
+    /// effect on the next request.
+    static var bearerToken: String {
+        AuthTokens.accessToken ?? devToken
+    }
+
+    /// Whether the app has *any* usable token — a real session or a dev token. Used
+    /// to gate the login screen (headless demos with a dev token skip login).
+    static var hasUsableToken: Bool {
+        AuthTokens.isSignedIn || !devToken.isEmpty
     }
 
     static func setApiBaseURL(_ value: String) {
@@ -64,4 +81,6 @@ enum DemoHooks {
     static var groceryMode: String? { AppConfig.env("NOOK_GROCERY_MODE") }
     /// On the Meals tab, push a recipe's detail by title substring (verification).
     static var openRecipe: String? { AppConfig.env("NOOK_OPEN_RECIPE") }
+    /// Clear any stored session on launch and start at the login screen (QA/demo).
+    static var resetAuth: Bool { AppConfig.env("NOOK_RESET_AUTH") == "1" }
 }

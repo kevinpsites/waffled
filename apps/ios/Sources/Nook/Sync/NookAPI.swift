@@ -39,11 +39,57 @@ struct NookAPI: Sendable {
 
     enum APIError: Error { case http(Int, String) }
 
+    // MARK: built-in auth (login / refresh / logout)
+    //
+    // The contract the web uses, verbatim — token-based JSON, no cookies. These
+    // calls are public (no bearer) and bypass `perform`'s refresh-retry so a failed
+    // login/refresh can't recurse.
+
+    struct AuthStatus: Decodable, Sendable {
+        let initialized: Bool
+        let methods: [String]
+        let oidc: OIDC?
+        struct OIDC: Decodable, Sendable { let buttonLabel: String? }
+    }
+    struct Session: Decodable, Sendable {
+        let accessToken: String
+        let refreshToken: String
+        let expiresIn: Int?
+    }
+
+    /// Has this instance been set up, and which sign-in methods are offered.
+    func authStatus() async throws -> AuthStatus {
+        let req = URLRequest(url: url("/api/auth/status"))
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(resp, data)
+        return try JSONDecoder().decode(AuthStatus.self, from: data)
+    }
+
+    /// Exchange email + password for an access + refresh pair.
+    func login(email: String, password: String) async throws -> Session {
+        var req = URLRequest(url: url("/api/auth/login"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(["email": email, "password": password])
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(resp, data)
+        return try JSONDecoder().decode(Session.self, from: data)
+    }
+
+    /// Best-effort server-side revocation of a refresh token (logout).
+    func revoke(refreshToken: String) async {
+        var req = URLRequest(url: url("/api/auth/logout"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONEncoder().encode(["refreshToken": refreshToken])
+        _ = try? await URLSession.shared.data(for: req)
+    }
+
     /// Exchange the session token for a short-lived PowerSync token + endpoint.
     func fetchPowerSyncToken() async throws -> TokenResponse {
         var req = URLRequest(url: url("/api/powersync/token"))
         authorize(&req)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await perform(req)
         try check(resp, data)
         return try JSONDecoder().decode(TokenResponse.self, from: data)
     }
@@ -61,7 +107,7 @@ struct NookAPI: Sendable {
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(["text": text])
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await perform(req)
         try check(resp, data)
         return try JSONDecoder().decode(CaptureResponse.self, from: data)
     }
@@ -160,7 +206,7 @@ struct NookAPI: Sendable {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.timeoutInterval = 120
         req.httpBody = try JSONEncoder().encode(body)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await perform(req)
         try check(resp, data)
         return try JSONDecoder().decode(PlanWeekResult.self, from: data)
     }
@@ -201,7 +247,7 @@ struct NookAPI: Sendable {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.timeoutInterval = 120
         req.httpBody = try JSONEncoder().encode(body)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await perform(req)
         try check(resp, data)
         return try JSONDecoder().decode(PlanMonthResult.self, from: data)
     }
@@ -1477,7 +1523,7 @@ struct NookAPI: Sendable {
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(["ops": ops])
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await perform(req)
         try check(resp, data)
     }
 
@@ -1491,7 +1537,7 @@ struct NookAPI: Sendable {
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(body)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await perform(req)
         try check(resp, data)
     }
 
@@ -1502,7 +1548,7 @@ struct NookAPI: Sendable {
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(body)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await perform(req)
         try check(resp, data)
         return try JSONDecoder().decode(T.self, from: data)
     }
@@ -1516,7 +1562,7 @@ struct NookAPI: Sendable {
         authorize(&req)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(body)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await perform(req)
         try check(resp, data)
         return try JSONDecoder().decode(T.self, from: data)
     }
@@ -1526,7 +1572,7 @@ struct NookAPI: Sendable {
         var req = URLRequest(url: url(path))
         req.httpMethod = method
         authorize(&req)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await perform(req)
         try check(resp, data)
         return try JSONDecoder().decode(T.self, from: data)
     }
@@ -1535,7 +1581,7 @@ struct NookAPI: Sendable {
     private func getJSON<T: Decodable>(_ path: String, as: T.Type) async throws -> T {
         var req = URLRequest(url: url(path))
         authorize(&req)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await perform(req)
         try check(resp, data)
         return try JSONDecoder().decode(T.self, from: data)
     }
@@ -1545,7 +1591,7 @@ struct NookAPI: Sendable {
         var req = URLRequest(url: url(path))
         req.httpMethod = "DELETE"
         authorize(&req)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await perform(req)
         try check(resp, data)
     }
 
@@ -1554,7 +1600,24 @@ struct NookAPI: Sendable {
     }
 
     private func authorize(_ req: inout URLRequest) {
-        req.setValue("Bearer \(AppConfig.devToken)", forHTTPHeaderField: "Authorization")
+        req.setValue("Bearer \(AppConfig.bearerToken)", forHTTPHeaderField: "Authorization")
+    }
+
+    /// Run an authed request, transparently refreshing the access token once on a
+    /// 401 and retrying. Mirrors the web's `authFetch`: a single rotating-refresh
+    /// (coordinated by `TokenRefresher`) recovers an expired access token without the
+    /// user noticing; if the refresh token is dead, the original 401 is returned and
+    /// `.nookAuthExpired` (fired by the refresher) sends the user to login.
+    private func perform(_ req: URLRequest) async throws -> (Data, URLResponse) {
+        let (data, resp) = try await perform(req)
+        guard (resp as? HTTPURLResponse)?.statusCode == 401,
+              AuthTokens.refreshToken != nil,
+              await TokenRefresher.shared.refresh() else {
+            return (data, resp)
+        }
+        var retry = req
+        authorize(&retry)   // swap in the freshly-minted access token
+        return try await URLSession.shared.data(for: retry)
     }
 
     private func check(_ resp: URLResponse, _ data: Data) throws {
