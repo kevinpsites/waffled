@@ -76,6 +76,26 @@ struct NookAPI: Sendable {
         return try JSONDecoder().decode(Session.self, from: data)
     }
 
+    /// The deep link the OIDC flow returns to (intercepted by ASWebAuthenticationSession).
+    static let oidcRedirect = "nook://auth/callback"
+
+    /// The URL that kicks off backend-mediated OIDC, carrying our deep-link redirect.
+    func oidcStartURL() -> URL {
+        let encoded = NookAPI.oidcRedirect.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? NookAPI.oidcRedirect
+        return url("/api/auth/oidc/start?redirect=\(encoded)")
+    }
+
+    /// Exchange the one-time handoff `code` (from the deep-link callback) for a session.
+    func oidcExchange(code: String) async throws -> Session {
+        var req = URLRequest(url: url("/api/auth/oidc/exchange"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(["code": code])
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(resp, data)
+        return try JSONDecoder().decode(Session.self, from: data)
+    }
+
     /// Best-effort server-side revocation of a refresh token (logout).
     func revoke(refreshToken: String) async {
         var req = URLRequest(url: url("/api/auth/logout"))

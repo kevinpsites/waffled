@@ -55,6 +55,33 @@ final class Session {
         }
     }
 
+    /// Sign in via backend-mediated OIDC: open the provider in a secure web session,
+    /// capture the deep-link `code`, and exchange it for a session. Returns a
+    /// user-facing error string, or nil on success.
+    func loginWithOIDC() async -> String? {
+        let launcher = OAuthLauncher()
+        guard let callback = await launcher.authorize(url: api.oidcStartURL(), scheme: "nook") else {
+            return nil   // user cancelled the sheet — no error
+        }
+        guard let code = URLComponents(url: callback, resolvingAgainstBaseURL: false)?
+            .queryItems?.first(where: { $0.name == "code" })?.value else {
+            return "Sign-in didn't complete. Please try again."
+        }
+        do {
+            let s = try await api.oidcExchange(code: code)
+            AuthTokens.save(access: s.accessToken, refresh: s.refreshToken)
+            AppConfig.clearSignedOut()
+            phase = .authed
+            return nil
+        } catch let NookAPI.APIError.http(status, _) {
+            return status == 403
+                ? "This account isn't invited to this household yet."
+                : "Couldn't finish single sign-on (error \(status))."
+        } catch {
+            return "Couldn't reach the server to finish sign-in."
+        }
+    }
+
     /// Return to login immediately, then revoke + re-probe in the background. Clearing
     /// the Keychain and flipping `phase` first makes sign-out feel instant and tears
     /// down the authed UI before any network work (no waiting on a slow revoke).

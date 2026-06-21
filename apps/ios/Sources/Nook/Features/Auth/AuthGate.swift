@@ -104,9 +104,32 @@ struct LoginView: View {
             }
             .buttonStyle(.plain).disabled(!canSubmit)
             .padding(.top, 4)
-            // (Single-sign-on lands with the mobile OIDC deep-link flow; password
-            // login is the shipped path for now.)
+
+            if let label = session.status?.oidc?.buttonLabel {
+                ssoButton(label)
+            }
         }
+    }
+
+    /// "Sign in with <provider>" — backend-mediated OIDC via a secure web session.
+    private func ssoButton(_ label: String) -> some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 10) {
+                Rectangle().fill(NK.hair).frame(height: 1)
+                Text("or").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                Rectangle().fill(NK.hair).frame(height: 1)
+            }
+            Button { Task { await submitOIDC() } } label: {
+                Text(busy ? "Opening…" : label)
+                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
+                    .frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .background(NK.card)
+                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            }
+            .buttonStyle(.plain).disabled(busy)
+        }
+        .padding(.top, 8)
     }
 
     private var setupNotice: some View {
@@ -187,6 +210,12 @@ struct LoginView: View {
         guard canSubmit else { return }
         busy = true; error = nil
         error = await session.login(email: email, password: password)
+        busy = false
+    }
+
+    private func submitOIDC() async {
+        busy = true; error = nil
+        error = await session.loginWithOIDC()
         busy = false
     }
 }
