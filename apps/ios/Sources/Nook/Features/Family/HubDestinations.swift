@@ -16,6 +16,7 @@ enum HubRoute: Hashable {
     case settingsCalendars           // Settings → Calendars (Google)
     case settingsAI                  // Settings → AI & capture
     case settingsMeals               // Settings → Meals (calendar)
+    case settingsNotifications       // Settings → Notifications (local event reminders)
     case reviewEvents                // Today → review calendar events that tie to goals
 }
 
@@ -49,6 +50,7 @@ struct HubDestination: View {
         case .settingsCalendars: CalendarsSettingsView()
         case .settingsAI: AISettingsView()
         case .settingsMeals: MealsSettingsView()
+        case .settingsNotifications: NotificationsSettingsView()
         case .reviewEvents: ReviewEventsView(path: $path)
         }
     }

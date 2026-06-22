@@ -8,6 +8,7 @@ import SwiftUI
 struct NookApp: App {
     @State private var sync = SyncManager()
     @State private var session = Session()
+    @State private var notifications = NotificationManager()
 
     var body: some Scene {
         WindowGroup {
@@ -17,6 +18,7 @@ struct NookApp: App {
             }
             .environment(sync)
             .environment(session)
+            .environment(notifications)
             .tint(NK.primary)
             .preferredColorScheme(.light)          // warm-white canvas is a light theme
             .task { await session.bootstrap() }    // read the Keychain / probe auth status

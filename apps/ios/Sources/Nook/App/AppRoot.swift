@@ -9,8 +9,13 @@ enum Tab: Hashable {
 /// Root navigation: the current screen filling the canvas, with a custom bottom
 /// tab bar whose raised center button opens the AI capture sheet.
 struct AppRoot: View {
+    @Environment(SyncManager.self) private var sync
+    @Environment(NotificationManager.self) private var notifications
+    @Environment(\.scenePhase) private var scenePhase
     @State private var tab: Tab = AppRoot.initialTab
     @State private var showCapture = false
+    /// Set when a reminder is tapped — routes the Calendar tab to open that event.
+    @State private var calendarOpenEventId: String?
     /// The Family tab's nav stack, lifted here so other tabs (e.g. a Today card)
     /// can jump straight into a hub destination, and re-tapping Family pops to root.
     @State private var familyPath: [HubRoute] = []
@@ -40,7 +45,7 @@ struct AppRoot: View {
             Group {
                 switch tab {
                 case .today:    TodayView(path: $todayPath, openCalendar: { tab = .calendar })
-                case .calendar: CalendarView()
+                case .calendar: CalendarView(openEventId: $calendarOpenEventId)
                 case .meals:    MealsView(path: $mealsPath)
                 case .family:   FamilyView(path: $familyPath)
                 }
@@ -61,6 +66,33 @@ struct AppRoot: View {
                 .presentationDragIndicator(.visible)
         }
         .onAppear { if DemoHooks.openCapture { showCapture = true } }
+        // Local event reminders (6.7-ios): keep the schedule in step with the synced
+        // events, the signed-in person, and permission changes.
+        .task {
+            await notifications.refreshAuthorization()
+            await sync.loadIdentity()
+            await reconcileReminders()
+        }
+        .onChange(of: sync.events) { _, _ in Task { await reconcileReminders() } }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await notifications.refreshAuthorization(); await reconcileReminders() }
+        }
+        // A tapped reminder deep-links to its event on the Calendar tab.
+        .onChange(of: notifications.pendingEventId) { _, id in
+            guard let id else { return }
+            tab = .calendar
+            calendarOpenEventId = id
+            notifications.pendingEventId = nil
+        }
+    }
+
+    /// Rebuild the local reminder schedule from the current synced state.
+    private func reconcileReminders() async {
+        let names = Dictionary(sync.members.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
+        await notifications.reconcile(
+            events: sync.events, tz: sync.householdTz,
+            myPersonId: sync.currentPersonId, names: names)
     }
 }
 

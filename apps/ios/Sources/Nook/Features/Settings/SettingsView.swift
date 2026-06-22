@@ -28,6 +28,7 @@ struct SettingsView: View {
     @Binding var path: [HubRoute]
     @Environment(SyncManager.self) private var sync
     @Environment(Session.self) private var session
+    @Environment(NotificationManager.self) private var notifications
     @State private var confirmSignOut = false
     @State private var busy = false
 
@@ -43,7 +44,7 @@ struct SettingsView: View {
                 row("🍽️", "Meals", "Calendar & meal times") { path.append(.settingsMeals) }
                 row("📋", "Lists", "Grocery & lists")
                 row("🖥️", "Display & Kiosk", "Theme & screen")
-                row("🔔", "Notifications", "Reminders")
+                row("🔔", "Notifications", "Event reminders") { path.append(.settingsNotifications) }
                 row("ℹ️", "About", "Version & info")
                 signOutFooter
             }
@@ -85,6 +86,7 @@ struct SettingsView: View {
         busy = true
         await session.signOut()    // clear session, → login (Button's Task survives)
         await sync.signOut()       // disconnect sync
+        await notifications.clearOurs()   // drop this household's local reminders
     }
 
     /// A settings row. `tap == nil` ⇒ not built yet (dimmed + a "Soon" pill).

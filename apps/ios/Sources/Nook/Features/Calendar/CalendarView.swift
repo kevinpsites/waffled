@@ -5,6 +5,8 @@ import SwiftUI
 /// and exercises the same synced data as Today.)
 struct CalendarView: View {
     @Environment(SyncManager.self) private var sync
+    /// A reminder tap routes here with the event id to open (see AppRoot).
+    var openEventId: Binding<String?> = .constant(nil)
     @State private var editing: EventEditTarget?
     /// Tapping an event opens its full detail (the editor is reached from there).
     @State private var detailEvent: SyncedEvent?
@@ -78,6 +80,19 @@ struct CalendarView: View {
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
         }
+        // Open the event a tapped reminder routed us to (once it's in the mirror).
+        .task { openReminderEvent(openEventId.wrappedValue) }
+        .onChange(of: openEventId.wrappedValue) { _, id in openReminderEvent(id) }
+        .onChange(of: sync.events) { _, _ in
+            if openEventId.wrappedValue != nil { openReminderEvent(openEventId.wrappedValue) }
+        }
+    }
+
+    /// Open an event's detail by id (from a reminder tap), then clear the request.
+    private func openReminderEvent(_ id: String?) {
+        guard let id, let ev = sync.events.first(where: { $0.id == id }) else { return }
+        detailEvent = ev
+        openEventId.wrappedValue = nil
     }
 
     // MARK: header (month title + view toggle + add)
