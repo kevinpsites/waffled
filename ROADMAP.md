@@ -381,7 +381,7 @@ carries `loginEmail` + `hasPassword`. 6 integration tests + verified live (admin
 grants a login → that member signs in). This is what makes invite-gating useful
 beyond the setup admin.
 
-### Phase 3 — packaging: clone → `docker compose up` → fresh run — IN PROGRESS 2026-06-20
+### Phase 3 — packaging: clone → `docker compose up` → fresh run — DONE 2026-06-22
 A clean clone comes up fully working with **no host toolchain** and **no manual
 steps**. Shipped:
 - **In-container migrations.** `scripts/migrate-cli.ts` → bundled `dist/migrate.js`
@@ -396,7 +396,13 @@ steps**. Shipped:
 - **Registry-ready images.** `api`/`caddy`/`migrate` carry `image:` names
   (`${NOOK_API_IMAGE:-nook-api:local}` / `${NOOK_CADDY_IMAGE:-nook-caddy:local}`)
   alongside `build:`, so the same compose file builds-from-source today and
-  `docker compose pull`s from GHCR once images are published.
+  `docker compose pull`s from GHCR when the overrides point at published tags.
+- **GHCR publish workflow.** `.github/workflows/publish-images.yml` builds both
+  `nook-api` and `nook-caddy` **multi-arch (amd64 + arm64)** and pushes them to
+  `ghcr.io/<owner>/…` on every push to `main` and on `v*` tags (matrix build,
+  Buildx + QEMU, gha layer cache, repo-default `GITHUB_TOKEN` — no extra secrets).
+  Set `NOOK_API_IMAGE` / `NOOK_CADDY_IMAGE` to the published tags + `docker compose
+  pull` to run without a local build.
 - **One-command fresh run.** `./nook up` auto-creates `infra/compose/.env` from the
   example with generated secrets (`LOCAL_JWT_SECRET` / `TOKEN_ENCRYPTION_KEY` /
   `POSTGRES_PASSWORD`) and migrations run automatically — no separate `./nook migrate`.
@@ -404,8 +410,7 @@ steps**. Shipped:
   overrides, `PUBLIC_BASE_URL`) and the api now passes through the auth TTLs +
   `AUTH_FORCE_PASSWORD` + `PUBLIC_BASE_URL`. README quickstart collapsed to clone + up.
 
-**Deferred (the GitHub part):** publishing the official **GHCR images** + a CI build
-workflow. Until then, build-from-source is the supported path (the image names make
-the switch a pure env change).
+Build-from-source stays the zero-config default; pulling published images is a pure
+env change (`NOOK_*_IMAGE` → the GHCR tags).
 
-**Next:** Phase 3 tail — GHCR publish workflow; Phase 4 optional S3 backup.
+**Next:** Phase 4 optional S3 backup.

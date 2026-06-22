@@ -63,10 +63,24 @@ for 2-way Google Calendar sync. See the comments in `.env.example` for the full 
 ### Pre-built images (optional)
 
 The compose stack builds `api` + `caddy` from source by default (tagged
-`nook-api:local` / `nook-caddy:local`). To run from a registry instead of building,
-set `NOOK_API_IMAGE` / `NOOK_CADDY_IMAGE` to published tags (e.g.
-`ghcr.io/you/nook-api:latest`) and `docker compose pull`. *(Publishing the official
-GHCR images is in progress — until then, build-from-source is the path.)*
+`nook-api:local` / `nook-caddy:local`). To skip the local build and run from the
+registry instead, point the image overrides at the published GHCR tags and pull:
+
+```bash
+# in infra/compose/.env
+NOOK_API_IMAGE=ghcr.io/<owner>/nook-api:latest
+NOOK_CADDY_IMAGE=ghcr.io/<owner>/nook-caddy:latest
+```
+
+```bash
+docker compose -f infra/compose/docker-compose.yml --env-file infra/compose/.env pull
+./nook up
+```
+
+Both images are multi-arch (amd64 + arm64), so they run on a regular x86 box or an
+ARM SBC (e.g. a Raspberry Pi). They're published by the
+`.github/workflows/publish-images.yml` GitHub Action on every push to `main` and on
+`v*` tags — no extra setup beyond the repo's default `GITHUB_TOKEN`.
 
 > For anything other than `localhost`, set `PUBLIC_BASE_URL=https://your.host` so
 > redirect URLs (calendar + OIDC callbacks) are generated correctly.
