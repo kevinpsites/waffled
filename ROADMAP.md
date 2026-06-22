@@ -399,8 +399,10 @@ steps**. Shipped:
   `docker compose pull`s from GHCR when the overrides point at published tags.
 - **GHCR publish workflow.** `.github/workflows/publish-images.yml` builds both
   `nook-api` and `nook-caddy` **multi-arch (amd64 + arm64)** and pushes them to
-  `ghcr.io/<owner>/…` on every push to `main` and on `v*` tags (matrix build,
-  Buildx + QEMU, gha layer cache, repo-default `GITHUB_TOKEN` — no extra secrets).
+  `ghcr.io/<owner>/…` **on a `v*` release tag** (or manual dispatch) — *not* every
+  push to main, to conserve Actions minutes (matrix build, Buildx + QEMU, gha layer
+  cache, repo-default `GITHUB_TOKEN` — no extra secrets). Release tags publish
+  `version` / `major.minor` / `latest`; a manual run publishes an `sha-…` tag only.
   Set `NOOK_API_IMAGE` / `NOOK_CADDY_IMAGE` to the published tags + `docker compose
   pull` to run without a local build.
 - **One-command fresh run.** `./nook up` auto-creates `infra/compose/.env` from the

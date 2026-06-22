@@ -9,13 +9,15 @@
 #   NOOK_API_IMAGE=ghcr.io/<owner>/nook-api:latest
 #   NOOK_CADDY_IMAGE=ghcr.io/<owner>/nook-caddy:latest
 # then `docker compose pull && ./nook up`.
+#
+# Runs ONLY on a version tag (e.g. `git tag v0.1.0 && git push --tags`) or a manual
+# dispatch — NOT on every push to main, to conserve Actions minutes.
 name: Publish images
 
 on:
   push:
-    branches: [main]
-    tags: ['v*']
-  workflow_dispatch:        # manual "Run workflow" button
+    tags: ['v*']            # cut a release: `git tag v1.2.3 && git push origin v1.2.3`
+  workflow_dispatch:        # manual "Run workflow" button (builds an sha-tagged image)
 
 # Least-privilege: read the repo, write packages (GHCR).
 permissions:
@@ -58,12 +60,12 @@ jobs:
         with:
           # Owner is whatever account/org this repo lives under; l-cased for GHCR.
           images: ghcr.io/${{ github.repository_owner }}/nook-${{ matrix.name }}
+          # Releases (v* tags) get semver tags + `latest`; manual dispatches get only
+          # an sha tag, so a test build never clobbers `latest`.
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=branch
-            type=ref,event=tag
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=sha,format=short
 
       - name: Build & push
