@@ -21,6 +21,11 @@ struct EventDetailView: View {
     @State private var linkedGoal: (emoji: String?, title: String)?
 
     private var tz: TimeZone { sync.householdTz }
+    /// The id to load full detail / insight / delete against. A recurring occurrence's
+    /// row id (`event.id`) doesn't exist in the `events` table — its detail lives on the
+    /// master, so we resolve through `seriesId` (mirrors the web's getLocalEvent). For a
+    /// single event `seriesId == id`, so this is a no-op there.
+    private var seriesId: String { event.seriesId ?? event.id }
     private var tint: Color { Color(hexString: detail?.personColor ?? event.colorHex ?? "") ?? NK.ink3 }
     private var title: String { detail?.title ?? event.title }
     private var start: Date? { parseISO(detail?.startsAt) ?? event.startsAt }
@@ -38,7 +43,7 @@ struct EventDetailView: View {
                     aiCard
                     timelineCard
                     Button {
-                        if confirmDelete { Task { _ = await sync.deleteEvent(id: event.id); dismiss() } }
+                        if confirmDelete { Task { _ = await sync.deleteEvent(id: seriesId); dismiss() } }
                         else { withAnimation { confirmDelete = true } }
                     } label: {
                         Text(confirmDelete ? "Tap again to delete this event" : "Delete event")
@@ -234,14 +239,14 @@ struct EventDetailView: View {
     // MARK: data
 
     private func load() async {
-        detail = try? await NookAPI().eventDetail(id: event.id)
+        detail = try? await NookAPI().eventDetail(id: seriesId)
         if let gid = detail?.goalId, !gid.isEmpty, let g = try? await NookAPI().goalDetail(id: gid) {
             linkedGoal = (g.emoji, g.title)
         } else {
             linkedGoal = nil
         }
         loadingInsight = true
-        insight = try? await NookAPI().eventInsight(id: event.id)
+        insight = try? await NookAPI().eventInsight(id: seriesId)
         loadingInsight = false
     }
 

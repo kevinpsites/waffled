@@ -600,22 +600,40 @@ final class SyncManager {
     private func watchEvents() {
         eventsTask = Task { [db] in
             do {
+                // UNION of single/Google events (rrule IS NULL — recurring masters are
+                // filtered out, their occurrences render instead) and materialized
+                // occurrences joined to their master. Mirrors the web's AGENDA_SQL
+                // (apps/web/src/lib/powersync/events-local.ts). The watch derives its
+                // tracked tables from this SQL, so `event_occurrences` is picked up too.
                 let stream = try db.watch(
                     sql: """
-                    SELECT e.id, e.title, e.starts_at, e.ends_at, e.all_day, e.location, e.person_id,
+                    SELECT e.id AS id, e.id AS series_id, NULL AS occurrence_start,
+                           e.title, e.starts_at, e.ends_at, e.all_day, e.location, e.person_id,
                            p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
                            (SELECT group_concat(ep.person_id) FROM event_participants ep
                              WHERE ep.event_id = e.id) AS participant_ids
                       FROM events e
                       LEFT JOIN persons p ON p.id = e.person_id
+                     WHERE e.rrule IS NULL
+                    UNION ALL
+                    SELECT o.id AS id, m.id AS series_id, o.original_start AS occurrence_start,
+                           coalesce(o.title, m.title) AS title, o.starts_at, o.ends_at, o.all_day,
+                           coalesce(o.location, m.location) AS location, o.person_id,
+                           p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
+                           (SELECT group_concat(ep.person_id) FROM event_participants ep
+                             WHERE ep.event_id = m.id) AS participant_ids
+                      FROM event_occurrences o
+                      JOIN events m ON m.id = o.event_id
+                      LEFT JOIN persons p ON p.id = o.person_id
                     """,
                     parameters: [],
                     mapper: { cursor in
                         let raw = try cursor.getStringOptional(name: "starts_at")
                         let pids = (try cursor.getStringOptional(name: "participant_ids"))?
                             .split(separator: ",").map(String.init) ?? []
+                        let id = try cursor.getString(name: "id")
                         return SyncedEvent(
-                            id: try cursor.getString(name: "id"),
+                            id: id,
                             title: (try cursor.getStringOptional(name: "title")) ?? "(untitled)",
                             startsAtRaw: raw,
                             startsAt: EventTime.parse(raw),
@@ -625,7 +643,10 @@ final class SyncManager {
                             emoji: try cursor.getStringOptional(name: "person_emoji"),
                             endsAt: EventTime.parse(try cursor.getStringOptional(name: "ends_at")),
                             location: try cursor.getStringOptional(name: "location"),
-                            participantIds: pids
+                            participantIds: pids,
+                            // For a single event series_id == id; occurrence_start is NULL.
+                            seriesId: (try cursor.getStringOptional(name: "series_id")) ?? id,
+                            occurrenceStart: try cursor.getStringOptional(name: "occurrence_start")
                         )
                     }
                 )
