@@ -31,7 +31,8 @@ struct AccountSettingsView: View {
         .background(NK.canvas)
         .navigationTitle("Accounts").navigationBarTitleDisplayMode(.inline)
         .task { await load() }
-        .sheet(isPresented: $showPair) {
+        .refreshable { await loadDevices() }
+        .sheet(isPresented: $showPair, onDismiss: { Task { await loadDevices() } }) {
             PairKioskSheet { await loadDevices() }
         }
     }
@@ -221,23 +222,36 @@ struct PairKioskSheet: View {
     private func success(_ label: String) -> some View {
         VStack(spacing: 12) {
             Text("✅").font(.system(size: 48))
-            Text("“\(label)” is paired").font(.system(size: 18, weight: .bold)).foregroundStyle(NK.ink)
-            Text("The tablet can now show your family’s profile picker.")
+            Text("A device just paired").font(.system(size: 18, weight: .bold)).foregroundStyle(NK.ink)
+            Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink2)
+                .padding(.horizontal, 12).padding(.vertical, 5)
+                .background(NK.panel).clipShape(Capsule())
+            Text("If you’re still naming it on the tablet, the name updates here. Tap Done when you’re finished.")
                 .font(.system(size: 13)).foregroundStyle(NK.ink3).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.top, 40)
     }
 
-    /// Create the code, then poll for the new device that claims it.
+    /// Create the code, then poll for the new device that claims it — and keep polling
+    /// after, so the name stays live while it's still being set on the tablet (the row
+    /// is created with a default label the instant it pairs). Stops when the sheet's
+    /// task is cancelled (on dismiss).
     private func run() async {
         knownIds = Set(((try? await api.kioskDevices()) ?? []).map(\.id))
         do { code = try await api.createPairingCode(label: nil) }
         catch { self.error = "Couldn’t create a pairing code. Admins only."; return }
-        while pairedLabel == nil && !Task.isCancelled {
-            try? await Task.sleep(for: .seconds(5))
-            if let fresh = try? await api.kioskDevices(),
-               let paired = fresh.first(where: { !knownIds.contains($0.id) }) {
+        var pairedId: String?
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(pairedId == nil ? 5 : 3))
+            guard let fresh = try? await api.kioskDevices() else { continue }
+            if pairedId == nil {
+                guard let paired = fresh.first(where: { !knownIds.contains($0.id) }) else { continue }
+                pairedId = paired.id
                 pairedLabel = paired.label
+                await onPaired()
+            } else if let d = fresh.first(where: { $0.id == pairedId }), d.label != pairedLabel {
+                pairedLabel = d.label    // they renamed it on the tablet — reflect it live
                 await onPaired()
             }
         }
