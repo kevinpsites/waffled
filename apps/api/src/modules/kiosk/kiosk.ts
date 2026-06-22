@@ -23,9 +23,25 @@ import {
   hashPassword,
   verifyPassword,
 } from '../auth/auth'
-import { requireTenant, requireAdmin, presentPerson, type PersonRow } from '../households/households'
+import { requireTenant, requireAdmin, findTenantBySub, presentPerson, type PersonRow } from '../households/households'
 
 type Api = ReturnType<typeof createAPI>
+
+// Ambient "family display" settings, stored in households.settings.display.
+interface DisplaySettings {
+  screensaverMinutes: number
+  content: 'photos' | 'clock' | 'off'
+  returnToPicker: boolean
+  resetHomeMinutes: number
+  nightDim: { enabled: boolean; start: string; end: string }
+}
+const DISPLAY_DEFAULTS: DisplaySettings = {
+  screensaverMinutes: 15,
+  content: 'photos',
+  returnToPicker: true,
+  resetHomeMinutes: 3,
+  nightDim: { enabled: false, start: '22:00', end: '07:00' },
+}
 
 const CODE_TTL_MIN = 10
 const PIN_RE = /^\d{4,8}$/
@@ -60,6 +76,45 @@ export async function requireDevice(req: Request): Promise<DevicePrincipal> {
   )
   if (!rows[0]) throw new AuthError('Device revoked', 401)
   return { deviceId, householdId: rows[0].household_id, label: rows[0].label }
+}
+
+// The kiosk display wrapper runs both before a profile is claimed (device token) and
+// after (profile token) — resolve the household from whichever is present.
+async function resolveHouseholdId(req: Request): Promise<string> {
+  const sub = req.principal?.sub
+  if (sub) {
+    const tenant = await findTenantBySub(sub)
+    if (tenant) return tenant.householdId
+  }
+  return (await requireDevice(req)).householdId
+}
+
+async function readDisplay(householdId: string): Promise<DisplaySettings> {
+  const { rows } = await query<{ settings: { display?: Partial<DisplaySettings> } | null }>(
+    `select settings from households where id = $1`,
+    [householdId]
+  )
+  const d = rows[0]?.settings?.display ?? {}
+  return { ...DISPLAY_DEFAULTS, ...d, nightDim: { ...DISPLAY_DEFAULTS.nightDim, ...(d.nightDim ?? {}) } }
+}
+
+const CONTENT_VALUES = new Set(['photos', 'clock', 'off'])
+// Coerce a client patch to the known shape (defends the jsonb blob).
+function sanitizeDisplay(body: unknown): Partial<DisplaySettings> {
+  const b = (body ?? {}) as Record<string, unknown>
+  const out: Partial<DisplaySettings> = {}
+  if (typeof b.screensaverMinutes === 'number') out.screensaverMinutes = Math.max(1, Math.min(120, Math.round(b.screensaverMinutes)))
+  if (typeof b.resetHomeMinutes === 'number') out.resetHomeMinutes = Math.max(0, Math.min(60, Math.round(b.resetHomeMinutes)))
+  if (typeof b.content === 'string' && CONTENT_VALUES.has(b.content)) out.content = b.content as DisplaySettings['content']
+  if (typeof b.returnToPicker === 'boolean') out.returnToPicker = b.returnToPicker
+  const nd = b.nightDim as Record<string, unknown> | undefined
+  if (nd && typeof nd === 'object') {
+    out.nightDim = {} as DisplaySettings['nightDim']
+    if (typeof nd.enabled === 'boolean') out.nightDim.enabled = nd.enabled
+    if (typeof nd.start === 'string') out.nightDim.start = nd.start
+    if (typeof nd.end === 'string') out.nightDim.end = nd.end
+  }
+  return out
 }
 
 export function registerKioskRoutes(api: Api): void {
@@ -142,6 +197,26 @@ export function registerKioskRoutes(api: Api): void {
     if (!label) return res.status(400).json({ error: 'BadRequest', message: 'label is required' })
     await query(`update kiosk_devices set label = $2 where id = $1`, [deviceId, label])
     return { ok: true, label }
+  })
+
+  // ── display / screensaver settings (households.settings.display) ─────────────────
+  // GET is dual-auth (device OR profile) — the display wrapper needs it in both the
+  // picker (device token) and the running app (profile token).
+  api.get('/api/kiosk/display', async (req: Request) => {
+    return readDisplay(await resolveHouseholdId(req))
+  })
+
+  api.put('/api/kiosk/display', async (req: Request) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const patch = sanitizeDisplay(req.body)
+    const current = await readDisplay(tenant.householdId)
+    const next: DisplaySettings = { ...current, ...patch, nightDim: { ...current.nightDim, ...(patch.nightDim ?? {}) } }
+    await query(
+      `update households set settings = coalesce(settings, '{}'::jsonb) || jsonb_build_object('display', $2::jsonb) where id = $1`,
+      [tenant.householdId, JSON.stringify(next)]
+    )
+    return next
   })
 
   // Claim a profile → a real, person-scoped session. The crux of the feature.

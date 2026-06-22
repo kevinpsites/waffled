@@ -219,4 +219,29 @@ describe('kiosk pairing + profile tokens', () => {
     expect(members.find((m: { id: string }) => m.id === kid).hasPin).toBe(true)
     await call('DELETE', `/api/persons/${kid}/pin`, undefined, admin)
   })
+
+  // ── display / screensaver settings ──────────────────────────────────────────────
+  it('serves display defaults and persists an admin PUT (shallow + nested merge)', async () => {
+    const def = json(await call('GET', '/api/kiosk/display', undefined, admin))
+    expect(def).toMatchObject({ screensaverMinutes: 15, content: 'photos', returnToPicker: true, resetHomeMinutes: 3 })
+    expect(def.nightDim).toMatchObject({ enabled: false, start: '22:00', end: '07:00' })
+
+    expect((await call('PUT', '/api/kiosk/display', { screensaverMinutes: 20, content: 'clock', nightDim: { enabled: true } }, admin)).statusCode).toBe(200)
+    const after = json(await call('GET', '/api/kiosk/display', undefined, admin))
+    expect(after.screensaverMinutes).toBe(20)
+    expect(after.content).toBe('clock')
+    expect(after.returnToPicker).toBe(true) // untouched key preserved
+    expect(after.nightDim).toMatchObject({ enabled: true, start: '22:00', end: '07:00' }) // nested merge keeps start/end
+  })
+
+  it('lets a device token read display settings (dual-auth)', async () => {
+    const r = await call('GET', '/api/kiosk/display', undefined, deviceToken)
+    expect(r.statusCode).toBe(200)
+    expect(json(r).content).toBe('clock') // from the PUT above
+  })
+
+  it('rejects a display PUT from a non-admin', async () => {
+    const kidTok = json(await call('POST', `/api/kiosk/profile/${kid}`, {}, deviceToken)).accessToken
+    expect((await call('PUT', '/api/kiosk/display', { screensaverMinutes: 5 }, kidTok)).statusCode).toBe(403)
+  })
 })
