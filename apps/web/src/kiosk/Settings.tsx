@@ -872,7 +872,7 @@ function RewardApprovalCard() {
     <div className="set-card" style={{ padding: 18, marginTop: 14 }}>
       <div className="card-h" style={{ marginBottom: 4 }}>Reward approvals</div>
       <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
-        Sets the default for <b>new</b> rewards — each reward also has its own “Needs a parent’s OK” switch. On = a parent OKs the purchase; off = the kid redeems instantly with what they’ve earned.
+        Sets the default for <b>new</b> rewards. On = a parent OKs the purchase; off = the kid redeems instantly with what they’ve earned. Even if off, each reward can have an override to explicitly require approval.
       </div>
       <SettingRow icon="✅" title="New rewards need a parent’s OK by default"
         sub={requireApproval === false ? 'Off — new rewards are instant unless you switch them on.' : 'On — new rewards wait in the approval queue unless you switch them off.'}>
