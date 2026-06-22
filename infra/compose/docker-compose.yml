@@ -77,6 +77,10 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       # Returned by /api/powersync/token so clients know where to connect.
       POWERSYNC_PUBLIC_URL: ${POWERSYNC_PUBLIC_URL:-http://localhost:8090}
+      # Stable RS256 signing key for PowerSync tokens (base64 of a PEM, or raw PEM).
+      # Empty → an ephemeral key is generated each boot, which breaks sync on every
+      # api restart until PowerSync re-fetches the JWKS. Set this to make it durable.
+      POWERSYNC_JWT_PRIVATE_KEY: ${POWERSYNC_JWT_PRIVATE_KEY:-}
       # --- AI capture bar (6.6): set any subset; pick the active one in Settings.
       # Hosted providers (keys never leave the server):
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

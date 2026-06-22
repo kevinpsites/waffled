@@ -33,7 +33,10 @@ function keys(): SigningKeys {
   if (!signingKeys) {
     let privateKey: KeyObject
     let publicKey: KeyObject
-    const pem = process.env.POWERSYNC_JWT_PRIVATE_KEY
+    // Accept either a raw PEM (multi-line, e.g. via a mounted secret) or a single-line
+    // base64 of that PEM — the latter survives .env / compose interpolation cleanly.
+    const raw = process.env.POWERSYNC_JWT_PRIVATE_KEY
+    const pem = raw?.includes('BEGIN') ? raw : raw ? Buffer.from(raw, 'base64').toString('utf8') : undefined
     if (pem) {
       privateKey = createPrivateKey(pem)
       publicKey = createPublicKey(privateKey)
