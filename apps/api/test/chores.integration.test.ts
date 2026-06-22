@@ -255,6 +255,27 @@ describe('chore management (edit/delete)', () => {
     expect(list.some((i) => i.choreTitle === 'Walk dog')).toBe(false)
   })
 
+  it('propagates requiresApproval to today’s pending instance (gates completion)', async () => {
+    type Inst = { id: string; choreId: string; choreTitle: string; requiresApproval: boolean; status: string }
+    const raw = async () =>
+      JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body).instances as Inst[]
+
+    await call('POST', '/api/chores', kevin, { title: 'Feed fish', personId: kevinId, rewardAmount: 2 })
+    const before = (await raw()).find((i) => i.choreTitle === 'Feed fish')!
+    expect(before.requiresApproval).toBe(false)
+
+    const patched = await call('PATCH', `/api/chores/${before.choreId}`, kevin, { requiresApproval: true })
+    expect(patched.statusCode).toBe(200)
+
+    // the existing instance — not just future ones — now requires approval
+    const after = (await raw()).find((i) => i.choreTitle === 'Feed fish')!
+    expect(after.requiresApproval).toBe(true)
+
+    // and completing it parks in 'awaiting' instead of 'done'
+    const done = await call('POST', `/api/chore-instances/${after.id}/complete`, kevin)
+    expect(JSON.parse(done.body).instance.status).toBe('awaiting')
+  })
+
   it('400 on empty patch, 404 on unknown', async () => {
     expect((await call('PATCH', `/api/chores/${choreId}`, kevin, {})).statusCode).toBe(400)
     expect(

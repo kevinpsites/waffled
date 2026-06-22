@@ -303,6 +303,43 @@ export async function updateChore(
       [(patch.personId as string | null) ?? null, householdId, id]
     )
   }
+
+  // Reward + approval settings are copied onto each instance when it materializes, and
+  // the instance's copy is what drives completion (requires_approval → awaiting) and
+  // the editor's prefill. So a change to them must also flow to not-yet-acted-on
+  // instances — otherwise toggling "Needs a parent's OK" leaves today's instance
+  // unchanged and the edit looks lost (and wouldn't actually gate the next completion).
+  // Done/awaiting instances are left alone, for stars-ledger integrity.
+  if (updated) {
+    const sets2: string[] = []
+    const values2: unknown[] = []
+    let j = 1
+    for (const [field, column] of [
+      ['requiresApproval', 'requires_approval'],
+      ['rewardAmount', 'reward_amount'],
+      ['rewardCurrency', 'reward_currency'],
+    ] as const) {
+      if (field in patch && patch[field] !== undefined) {
+        sets2.push(`${column} = $${j++}`)
+        values2.push(patch[field])
+      }
+    }
+    if (sets2.length) {
+      values2.push(householdId, id)
+      await query(
+        `update chore_instances ci
+            set ${sets2.join(', ')}
+           from households h
+          where ci.household_id = h.id
+            and ci.household_id = $${j++}
+            and ci.chore_id = $${j}
+            and ci.deleted_at is null
+            and ci.status = 'pending'
+            and ci.due_on >= (now() at time zone h.timezone)::date`,
+        values2
+      )
+    }
+  }
   return updated
 }
 
