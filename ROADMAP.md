@@ -53,7 +53,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 ## M3 — Identity & household
 - [x] 3.1 First-login provisioning: `POST /api/households` creates household + owner `person` (adult/admin) + `identity`; `GET /api/household` resolves `sub`→household from the DB (identities table is the authority, not the JWT — so onboarding works pre-Auth0). `GET /api/me` echoes the principal. *(Real login landed via built-in auth + OIDC — see the self-host section — not the originally-planned Auth0/Google swap.)*
 - [x] 3.2 Members CRUD (`/api/persons`): list + create + read-one + update + soft-delete, all household-scoped. Reads open to any member; mutations admin-only; owner protected from deletion
-- [ ] 3.3 Kiosk device pairing + kid profile tokens
+- [x] 3.3 **Kiosk device pairing + kid profile tokens** (DONE 2026-06-22). A tablet is paired once to a household (`kiosk_devices`, migration 0043) and rests on a Netflix-style **profile picker**; tapping a profile mints a *real* person-scoped session (server-enforced attribution + role gates — a kid's token can't approve chores or spend others' stars). The device token (`kind:'device'`) is allowed only on `/api/kiosk/*`; it has no identity row so `requireTenant` rejects it everywhere else. Claiming lazily ensures/resurrects a `kiosk` identity (`kiosk:<personId>`) so the existing sub→identity→person path is unchanged. Optional per-person **PIN** (scrypt, throttled). Pairing via an admin code or a "use this device" promote (Settings → Display & Kiosk). Rail "Switch" + 2-min idle return to the picker. Single-login (no pairing) stays the untouched default. 16 API integration tests + Playwright E2E (pair→pick→PIN→switch). iOS unaffected.
 
 ## M4 — Offline foundation (de-risk #1)
 - [x] 4.1 Self-hosted `powersync` service + `service.yaml`/`sync-config.yaml` (one `household` bucket scoped by the `household_id` JWT claim); logical-replication publication (4.1a); api as PowerSync token authority — JWKS + `/api/powersync/token` (4.1b); service replicating `households`+`persons`, verified healthy (4.1c). *Client sync E2E lands in 4.2.*
@@ -106,10 +106,10 @@ infra milestone is abandoned, not pending; identity shipped via built-in auth + 
 backups moved to Phase 4)*:
 - **Self-host infra:** **Phase 4 — optional S3 backup** (the only remaining packaging
   piece; supersedes 2.4) — *parked*.
-- **Needs a 3rd party / hardware:** real kiosk device pairing + kid tokens (3.3),
-  APNs/web-push delivery for notifications (6.7 tail), Apple/Google **store
-  verification** (7.2), public ingress when going beyond the LAN (7.3).
-  *(Google Calendar sync 5.2–5.6 is DONE; built-in auth + OIDC + iOS native login DONE.)*
+- **Needs a 3rd party / hardware:** APNs/web-push delivery for notifications
+  (6.7 tail), Apple/Google **store verification** (7.2), public ingress when going
+  beyond the LAN (7.3).
+  *(DONE: Google Calendar sync 5.2–5.6; built-in auth + OIDC + iOS native login; **kiosk device pairing + kid profile tokens (3.3)**.)*
 - **Local-only, buildable now:** **6.7 kiosk reminders** (local "due soon" banner +
   `reminders` table — table not built yet), **calendar → goal Phase 2** (recurring
   events; Phase 1 shipped), real photo / chore-proof **blob upload** (6.5 tail),
