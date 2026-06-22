@@ -18,6 +18,7 @@ interface RewardRow extends QueryResultRow {
   cost: number
   currency: string
   sort_order: number
+  requires_approval: boolean
 }
 
 interface RedemptionRow extends QueryResultRow {
@@ -36,7 +37,7 @@ interface RedemptionRow extends QueryResultRow {
 }
 
 function presentReward(r: RewardRow) {
-  return { id: r.id, title: r.title, emoji: r.emoji, cost: r.cost, currency: r.currency, sortOrder: r.sort_order }
+  return { id: r.id, title: r.title, emoji: r.emoji, cost: r.cost, currency: r.currency, sortOrder: r.sort_order, requiresApproval: r.requires_approval }
 }
 
 function presentRedemption(r: RedemptionRow & { person_name?: string | null; avatar_emoji?: string | null; color_hex?: string | null }) {
@@ -65,10 +66,10 @@ export async function listRewards(householdId: string): Promise<RewardRow[]> {
   return rows
 }
 
-// Household reward-approval policy (households.settings.rewards.requireApproval).
-// Defaults to true so existing households keep the parent-approval gate; a parent can
-// turn it off in Settings → Chores & rewards to let kids redeem instantly with currency
-// they've already earned.
+// Household default applied to *new* rewards (households.settings.rewards.requireApproval).
+// Defaults to true. Per-reward `requires_approval` is the actual gate at redeem time; this
+// is just the value a freshly created reward inherits (overridable per reward). A parent
+// sets it in Settings → Chores & rewards.
 export async function getRewardsRequireApproval(householdId: string): Promise<boolean> {
   const { rows } = await query<{ v: boolean | null }>(
     `select (settings #>> '{rewards,requireApproval}')::boolean as v from households where id=$1`,
@@ -132,11 +133,11 @@ export async function balancesSummary(householdId: string) {
   }
 }
 
-// A kid redeems a reward (snapshots cost/title). With the household's approval gate on
-// (default) this is a *pending* request a parent must OK; with it off, the redemption is
-// auto-approved and the debit is written immediately — but a balance guard still applies,
-// so a kid can never redeem what they haven't earned. Returns the redemption row, an
-// `{ error }` (can't afford the auto path), or null (reward not found).
+// A kid redeems a reward (snapshots cost/title). When the *reward* requires approval
+// this is a *pending* request a parent must OK; otherwise it's auto-approved and the debit
+// is written immediately — but a balance guard still applies, so a kid can never redeem
+// what they haven't earned. Returns the redemption row, an `{ error }` (can't afford the
+// auto path), or null (reward not found).
 export async function requestRedemption(tenant: Tenant, rewardId: string, personId: string): Promise<RedemptionRow | { error: string } | null> {
   const { rows } = await query<RewardRow>(
     `select * from rewards where household_id=$1 and id=$2 and deleted_at is null`,
@@ -145,8 +146,8 @@ export async function requestRedemption(tenant: Tenant, rewardId: string, person
   const reward = rows[0]
   if (!reward) return null
 
-  // Gate on → today's behavior: a pending request for the approval queue.
-  if (await getRewardsRequireApproval(tenant.householdId)) {
+  // This reward needs a parent → a pending request for the approval queue.
+  if (reward.requires_approval) {
     const { rows: ins } = await query<RedemptionRow>(
       `insert into reward_redemptions
          (household_id, reward_id, person_id, title, emoji, cost, currency, status, requested_by)
@@ -258,25 +259,29 @@ export function registerRewardRoutes(api: Api): void {
   api.post('/api/rewards', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
     requireAdmin(tenant)
-    const body = (req.body ?? {}) as { title?: string; emoji?: string; cost?: number; currency?: string }
+    const body = (req.body ?? {}) as { title?: string; emoji?: string; cost?: number; currency?: string; requiresApproval?: boolean }
     const title = body.title?.trim()
     if (!title) return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
     const currency = body.currency?.trim() || (await getDefaultCurrencyKey(tenant.householdId))
+    // Inherit the household default unless the create form set it explicitly.
+    const requiresApproval = typeof body.requiresApproval === 'boolean'
+      ? body.requiresApproval
+      : await getRewardsRequireApproval(tenant.householdId)
     const { rows } = await query<RewardRow>(
-      `insert into rewards (household_id, title, emoji, cost, currency)
-       values ($1,$2,$3,$4,$5) returning *`,
-      [tenant.householdId, title, body.emoji ?? null, Math.max(0, Math.round(body.cost ?? 0)), currency]
+      `insert into rewards (household_id, title, emoji, cost, currency, requires_approval)
+       values ($1,$2,$3,$4,$5,$6) returning *`,
+      [tenant.householdId, title, body.emoji ?? null, Math.max(0, Math.round(body.cost ?? 0)), currency, requiresApproval]
     )
     return res.status(201).json({ reward: presentReward(rows[0]) })
   })
 
-  // Edit a reward (title / emoji / cost / currency).
+  // Edit a reward (title / emoji / cost / currency / requiresApproval).
   api.patch('/api/rewards/:id', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
     requireAdmin(tenant)
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
-    const body = (req.body ?? {}) as { title?: string; emoji?: string | null; cost?: number; currency?: string }
+    const body = (req.body ?? {}) as { title?: string; emoji?: string | null; cost?: number; currency?: string; requiresApproval?: boolean }
     const sets: string[] = []
     const vals: unknown[] = []
     let i = 1
@@ -287,6 +292,7 @@ export function registerRewardRoutes(api: Api): void {
     if ('emoji' in body) { sets.push(`emoji = $${i++}`); vals.push(body.emoji ?? null) }
     if (typeof body.cost === 'number') { sets.push(`cost = $${i++}`); vals.push(Math.max(0, Math.round(body.cost))) }
     if (typeof body.currency === 'string' && body.currency.trim()) { sets.push(`currency = $${i++}`); vals.push(body.currency.trim()) }
+    if (typeof body.requiresApproval === 'boolean') { sets.push(`requires_approval = $${i++}`); vals.push(body.requiresApproval) }
     if (sets.length === 0) return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields' })
     vals.push(tenant.householdId, id)
     const { rows } = await query<RewardRow>(

@@ -12,6 +12,7 @@ export interface Reward {
   cost: number
   currency: string
   sortOrder: number
+  requiresApproval: boolean
 }
 
 export interface LedgerEntry {
@@ -54,9 +55,9 @@ export interface Redemption {
 
 export const rewardsApi = {
   rewards: () => apiGet<{ rewards: Reward[] }>('/api/rewards'),
-  createReward: (body: { title: string; emoji?: string | null; cost: number; currency?: string }) =>
+  createReward: (body: { title: string; emoji?: string | null; cost: number; currency?: string; requiresApproval?: boolean }) =>
     apiSend<{ reward: Reward }>('POST', '/api/rewards', body).then((r) => r.reward),
-  updateReward: (id: string, patch: { title?: string; emoji?: string | null; cost?: number; currency?: string }) =>
+  updateReward: (id: string, patch: { title?: string; emoji?: string | null; cost?: number; currency?: string; requiresApproval?: boolean }) =>
     apiSend<{ reward: Reward }>('PATCH', `/api/rewards/${id}`, patch).then((r) => r.reward),
   deleteReward: (id: string) => apiDelete(`/api/rewards/${id}`), // soft archive
   archivedRewards: () => apiGet<{ rewards: Reward[] }>('/api/rewards/archived'), // admin only
