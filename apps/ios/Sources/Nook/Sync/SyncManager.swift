@@ -585,6 +585,13 @@ final class SyncManager {
         return members.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
     }
 
+    /// Whether the signed-in person is an adult — gates the approval surfaces (badge,
+    /// banners, inline cards). Kids can't act on approvals (server-gated too).
+    var isParent: Bool {
+        guard let id = currentPersonId else { return false }
+        return members.first { $0.id == id }?.memberType == "adult"
+    }
+
     // MARK: live state
 
     private func watchMembers() {

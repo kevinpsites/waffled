@@ -186,19 +186,13 @@ struct ChoresView: View {
 
     // MARK: inline approvals ("Needs your OK")
 
-    /// Only adults can act on approvals (server-gated too), so only they see the card.
-    private var isParent: Bool {
-        guard let id = sync.currentPersonId else { return false }
-        return sync.members.first { $0.id == id }?.memberType == "adult"
-    }
-
     /// Chore check-offs waiting on a parent, surfaced inline at the top so you can
     /// Approve/Reject in place — no extra screen. Mirrors the Rewards tab's card, but
     /// scoped to chores (reward purchases live on Today/Rewards). Pulls all awaiting
     /// instances across dates, so it's independent of the day you're viewing.
     @ViewBuilder
     private var approvalsCard: some View {
-        if isParent && !approvals.chores.isEmpty {
+        if sync.isParent && !approvals.chores.isEmpty {
             NookCard(padding: 14) {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 6) {

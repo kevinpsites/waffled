@@ -31,11 +31,7 @@ struct AppRoot: View {
     @State private var approvals = ApprovalsModel()
 
     /// Only adults owe approvals (and only they should see the badge).
-    private var isParent: Bool {
-        guard let id = sync.currentPersonId else { return false }
-        return sync.members.first { $0.id == id }?.memberType == "adult"
-    }
-    private var approvalCount: Int { isParent ? approvals.total : 0 }
+    private var approvalCount: Int { sync.isParent ? approvals.total : 0 }
 
     private static var initialTab: Tab {
         switch DemoHooks.startTab {
@@ -57,7 +53,7 @@ struct AppRoot: View {
                 case .today:    TodayView(path: $todayPath, openCalendar: { tab = .calendar })
                 case .calendar: CalendarView(openEventId: $calendarOpenEventId)
                 case .meals:    MealsView(path: $mealsPath)
-                case .family:   FamilyView(path: $familyPath)
+                case .family:   FamilyView(path: $familyPath, approvals: approvals)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

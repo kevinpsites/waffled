@@ -35,14 +35,8 @@ struct ApprovalsBanner: View {
     let model: ApprovalsModel
     @Environment(SyncManager.self) private var sync
 
-    /// Only adults can act on approvals (server-gated too), so only they see the card.
-    private var isParent: Bool {
-        guard let id = sync.currentPersonId else { return false }
-        return sync.members.first { $0.id == id }?.memberType == "adult"
-    }
-
     var body: some View {
-        if isParent && !model.isEmpty {
+        if sync.isParent && !model.isEmpty {
             NavigationLink(value: HubRoute.approvals) { card }.buttonStyle(.plain)
         }
     }
