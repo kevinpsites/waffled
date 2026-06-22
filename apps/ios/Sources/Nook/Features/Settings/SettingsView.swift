@@ -144,16 +144,15 @@ struct ChoresRewardsSettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                // Economy group: currencies + the trades between them, visually bound
-                // together under one header…
-                VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
+                // Each group is its own boxed "widget" so it's unmistakable what
+                // belongs together: the economy (currencies + their trades)…
+                groupTray {
                     currenciesSection
                     if currencies.count > 1 { conversionsSection }
                 }
-                // …a rule marks the boundary, then the separate redemption policy.
-                Divider().background(NK.hair).padding(.vertical, 2)
-                approvalsSection
+                // …and the separate redemption policy.
+                groupTray { approvalsSection }
             }
             .padding(16).padding(.bottom, 110)
         }
@@ -164,6 +163,18 @@ struct ChoresRewardsSettingsView: View {
         .sheet(item: $editor) { e in
             CurrencyEditorSheet(editing: e.currency, canDelete: currencies.count > 1) { await load() }
         }
+    }
+
+    /// A boxed group "widget" — a warm tray that visually binds its contents together
+    /// and sets them apart from the next group.
+    @ViewBuilder
+    private func groupTray<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 18) { content() }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(NK.panel)
+            .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
     }
 
     private var currenciesSection: some View {
