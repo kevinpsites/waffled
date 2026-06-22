@@ -46,8 +46,15 @@ final class NotificationManager {
         static let allDayHour = "nook.notif.allDayHour"
         static let myOnly = "nook.notif.myEventsOnly"
     }
-    /// Identifier namespace — lets us reconcile *only* our reminders.
+    /// Identifier namespace for auto-scheduled reminders — lets us reconcile *only*
+    /// those (a user's snooze, below, lives under a different prefix so reconcile
+    /// never cancels it).
     static let idPrefix = "nook.evt."
+    /// A snoozed reminder — separate namespace so the reconcile loop leaves it alone.
+    static let snoozePrefix = "nook.snz."
+    /// Category carrying the Snooze / View actions on each reminder.
+    static let categoryId = "EVENT_REMINDER"
+    static let snoozeMinutes = 10
     /// Headroom under the iOS 64-pending cap.
     private static let maxScheduled = 58
 
@@ -58,10 +65,19 @@ final class NotificationManager {
         myEventsOnly = d.object(forKey: K.myOnly) as? Bool ?? true
         delegate.manager = self
         center.delegate = delegate
+        center.setNotificationCategories([Self.reminderCategory()])
         // A dead refresh token signs us out — drop any reminders for the old session.
         NotificationCenter.default.addObserver(forName: .nookAuthExpired, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.clearOurs() }
         }
+    }
+
+    /// Snooze + View actions shown when a reminder is expanded/long-pressed.
+    private static func reminderCategory() -> UNNotificationCategory {
+        let snooze = UNNotificationAction(identifier: "SNOOZE", title: "Snooze \(snoozeMinutes) min", options: [])
+        let view = UNNotificationAction(identifier: "VIEW", title: "View", options: [.foreground])
+        return UNNotificationCategory(identifier: categoryId, actions: [snooze, view],
+                                      intentIdentifiers: [], options: [])
     }
 
     // MARK: authorization
@@ -129,10 +145,12 @@ final class NotificationManager {
         }
     }
 
-    /// Drop every reminder we own (e.g. on sign-out or when reminders are disabled).
+    /// Drop every reminder we own — auto-scheduled *and* snoozed (e.g. on sign-out or
+    /// when reminders are disabled).
     func clearOurs() async {
-        let ids = await ourPendingIds()
-        if !ids.isEmpty { center.removePendingNotificationRequests(withIdentifiers: Array(ids)) }
+        let reqs = await center.pendingNotificationRequests()
+        let ids = reqs.map(\.identifier).filter { $0.hasPrefix("nook.") }
+        if !ids.isEmpty { center.removePendingNotificationRequests(withIdentifiers: ids) }
     }
 
     // MARK: building reminders
@@ -170,8 +188,17 @@ final class NotificationManager {
         c.body = bits.joined(separator: " · ")
         c.sound = .default
         c.threadIdentifier = "nook-events"
+        c.categoryIdentifier = Self.categoryId
         c.userInfo = ["eventId": e.id]
         return c
+    }
+
+    /// Re-deliver a reminder `snoozeMinutes` from now (from the Snooze action). Reuses
+    /// the original content under the snooze namespace so reconcile won't cancel it.
+    func snooze(eventId: String, content: UNNotificationContent) async {
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: TimeInterval(Self.snoozeMinutes * 60), repeats: false)
+        let req = UNNotificationRequest(identifier: Self.snoozePrefix + eventId, content: content, trigger: trigger)
+        try? await center.add(req)
     }
 
     private func ourPendingIds() async -> Set<String> {
@@ -188,8 +215,17 @@ private final class NotifDelegate: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
-        let id = response.notification.request.content.userInfo["eventId"] as? String
-        Task { @MainActor in manager?.pendingEventId = id; completionHandler() }
+        let content = response.notification.request.content
+        let id = content.userInfo["eventId"] as? String
+        switch response.actionIdentifier {
+        case "SNOOZE":
+            Task { @MainActor in
+                if let id { await manager?.snooze(eventId: id, content: content) }
+                completionHandler()
+            }
+        default:   // default tap or the "View" action → deep-link to the event
+            Task { @MainActor in manager?.pendingEventId = id; completionHandler() }
+        }
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter,
