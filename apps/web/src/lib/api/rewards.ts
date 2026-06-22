@@ -68,6 +68,10 @@ export const rewardsApi = {
     apiSend<{ redemption: Redemption }>('POST', `/api/rewards/${rewardId}/redeem`, { personId }).then((r) => r.redemption).then(tap('rewards')),
   approve: (id: string) => apiSend<{ redemption: Redemption }>('POST', `/api/redemptions/${id}/approve`).then((r) => r.redemption).then(tap('rewards')),
   deny: (id: string) => apiSend<{ redemption: Redemption }>('POST', `/api/redemptions/${id}/deny`).then((r) => r.redemption).then(tap('rewards')),
+  // Household reward-approval policy (Settings → Chores & rewards). Off = kids redeem instantly.
+  settings: () => apiGet<{ requireApproval: boolean }>('/api/rewards/settings'),
+  setSettings: (requireApproval: boolean) =>
+    apiSend<{ requireApproval: boolean }>('PUT', '/api/rewards/settings', { requireApproval }).then((r) => r.requireApproval).then(tap('rewards')),
 }
 
 export interface RewardsHubState {

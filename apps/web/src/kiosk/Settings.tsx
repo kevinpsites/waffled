@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, goalCalendarApi, groceryApi, authApi, kioskApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig } from '../lib/api'
+import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, goalCalendarApi, groceryApi, authApi, kioskApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { Screensaver } from './components/Screensaver'
@@ -846,6 +846,43 @@ function CurrencyRow({ c, canDelete }: { c: Currency; canDelete: boolean }) {
   )
 }
 
+// Household reward-approval gate. On (default) → every redemption waits for a parent;
+// off → kids redeem instantly with currency they've already earned (a balance guard
+// still applies server-side). Optimistic toggle, reverts on failure.
+function RewardApprovalCard() {
+  const [requireApproval, setRequireApproval] = useState<boolean | null>(null)
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    let alive = true
+    rewardsApi.settings()
+      .then((s) => alive && setRequireApproval(s.requireApproval))
+      .catch(() => alive && setRequireApproval(true))
+    return () => { alive = false }
+  }, [])
+  async function toggle() {
+    if (requireApproval === null || saving) return
+    const next = !requireApproval
+    setRequireApproval(next)
+    setSaving(true)
+    try { await rewardsApi.setSettings(next) }
+    catch { setRequireApproval(!next) }
+    finally { setSaving(false) }
+  }
+  return (
+    <div className="set-card" style={{ padding: 18, marginTop: 14 }}>
+      <div className="card-h" style={{ marginBottom: 4 }}>Reward approvals</div>
+      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
+        When on, a parent OKs each reward purchase before currency is spent. Turn it off to let kids redeem instantly with what they’ve already earned.
+      </div>
+      <SettingRow icon="✅" title="Reward purchases need a parent’s OK"
+        sub={requireApproval === false ? 'Off — kids redeem instantly if they can afford it.' : 'On — redemptions wait in the approval queue.'}>
+        <input type="checkbox" className="set-check" checked={requireApproval ?? true}
+          disabled={requireApproval === null || saving} onChange={toggle} />
+      </SettingRow>
+    </div>
+  )
+}
+
 function RewardsSettingsPanel() {
   const { currencies, loading } = useCurrencies()
   const [newLabel, setNewLabel] = useState('')
@@ -883,6 +920,8 @@ function RewardsSettingsPanel() {
           <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={adding || !newLabel.trim()} onClick={add}>＋ Add</button>
         </div>
       </div>
+
+      <RewardApprovalCard />
 
       {currencies.length > 1 && <ConversionsSection currencies={currencies} />}
     </div>
