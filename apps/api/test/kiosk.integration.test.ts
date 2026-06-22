@@ -108,6 +108,16 @@ describe('kiosk pairing + profile tokens', () => {
     expect(profiles.every((p) => !('pinHash' in p) && !('pin_hash' in p))).toBe(true)
   })
 
+  it('returns the device label with the profiles, and lets the device name itself', async () => {
+    expect(json(await call('GET', '/api/kiosk/profiles', undefined, deviceToken)).deviceLabel).toBe('Kitchen')
+    // The just-paired device names itself (post-pair step) — no admin needed.
+    expect((await call('PUT', '/api/kiosk/device/label', { label: 'Mud Room' }, deviceToken)).statusCode).toBe(200)
+    expect(json(await call('GET', '/api/kiosk/profiles', undefined, deviceToken)).deviceLabel).toBe('Mud Room')
+    // …and the admin device list reflects it.
+    const dev = json(await call('GET', '/api/kiosk/devices', undefined, admin)).devices.find((d: { label: string }) => d.label === 'Mud Room')
+    expect(dev).toBeTruthy()
+  })
+
   it('rejects a device token on a normal data route (the split)', async () => {
     // Device tokens have no identity row → requireTenant 403s automatically.
     expect((await call('POST', '/api/persons', { name: 'Nope', memberType: 'kid' }, deviceToken)).statusCode).toBe(403)

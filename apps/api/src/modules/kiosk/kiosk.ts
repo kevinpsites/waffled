@@ -45,6 +45,7 @@ const genSecret = () => randomBytes(32).toString('base64url')
 export interface DevicePrincipal {
   deviceId: string
   householdId: string
+  label: string
 }
 
 // A device token guard: only tokens minted by /api/kiosk/device/token pass. Verifies
@@ -53,12 +54,12 @@ export async function requireDevice(req: Request): Promise<DevicePrincipal> {
   const claims = req.principal?.claims
   if (claims?.kind !== 'device') throw new AuthError('Device token required', 403)
   const deviceId = String(req.principal!.sub).replace(/^device:/, '')
-  const { rows } = await query<{ household_id: string }>(
-    `select household_id from kiosk_devices where id = $1 and revoked_at is null`,
+  const { rows } = await query<{ household_id: string; label: string }>(
+    `select household_id, label from kiosk_devices where id = $1 and revoked_at is null`,
     [deviceId]
   )
   if (!rows[0]) throw new AuthError('Device revoked', 401)
-  return { deviceId, householdId: rows[0].household_id }
+  return { deviceId, householdId: rows[0].household_id, label: rows[0].label }
 }
 
 export function registerKioskRoutes(api: Api): void {
@@ -122,7 +123,7 @@ export function registerKioskRoutes(api: Api): void {
 
   // ── profile picker (device-authed) ─────────────────────────────────────────────
   api.get('/api/kiosk/profiles', async (req: Request) => {
-    const { householdId } = await requireDevice(req)
+    const { householdId, label } = await requireDevice(req)
     const { rows } = await query<PersonRow & { has_pin: boolean }>(
       `select p.*, (p.pin_hash is not null) as has_pin
          from persons p
@@ -130,7 +131,17 @@ export function registerKioskRoutes(api: Api): void {
         order by p.sort_order, p.created_at`,
       [householdId]
     )
-    return { profiles: rows.map((r) => ({ ...presentPerson(r), hasPin: r.has_pin })) }
+    return { deviceLabel: label, profiles: rows.map((r) => ({ ...presentPerson(r), hasPin: r.has_pin })) }
+  })
+
+  // A paired device names itself (the post-pair "name this kiosk" step). Device-authed
+  // — the admin rename endpoint below can't be reached without an admin session.
+  api.put('/api/kiosk/device/label', async (req: Request, res: Response) => {
+    const { deviceId } = await requireDevice(req)
+    const label = ((req.body ?? {}) as { label?: string }).label?.trim()
+    if (!label) return res.status(400).json({ error: 'BadRequest', message: 'label is required' })
+    await query(`update kiosk_devices set label = $2 where id = $1`, [deviceId, label])
+    return { ok: true, label }
   })
 
   // Claim a profile → a real, person-scoped session. The crux of the feature.
