@@ -182,6 +182,10 @@ export function registerOidcRoutes(api: Api): void {
       nonce,
       code_challenge: sha256b64url(verifier),
       code_challenge_method: 'S256',
+      // Always show the IdP's account chooser. Without this, an IdP with a live
+      // session (the cookie outlives our sign-out) silently re-authenticates the
+      // same account, so a signed-out user can never pick a different one.
+      prompt: 'select_account',
     })
     res.redirect(`${disco.authorization_endpoint}?${params.toString()}`)
   })
@@ -206,11 +210,10 @@ export function registerOidcRoutes(api: Api): void {
     await query(`delete from oidc_login_states where created_at <= now() - interval '${STATE_TTL_MIN} minutes'`)
     const st = rows[0]
     if (!st) return res.status(400).html(resultPage('Sign-in expired', 'This sign-in link expired. Please try again.', appOrigin(req)))
-    const back = appOrigin(req, st.redirect_to)
 
     try {
       const cfg = await getAuthConfig()
-      if (!oidcReady(cfg)) return res.status(404).html(resultPage('Sign-in failed', 'OIDC is not enabled.', back))
+      if (!oidcReady(cfg)) return failSignIn(req, res, st.redirect_to, 404, 'Sign-in failed', 'OIDC is not enabled.', 'oidc_disabled')
       const disco = await discover(cfg.issuerUrl!)
       const claims = await exchangeAndVerify(disco, cfg, code, st.code_verifier, st.nonce, callbackUri(req))
 
@@ -223,11 +226,11 @@ export function registerOidcRoutes(api: Api): void {
       if (!tenant) {
         // First SSO login: invite-gated. Require a verified email that's on file.
         if (!email || !emailVerified) {
-          return res.status(403).html(resultPage('Sign-in blocked', 'Your identity provider did not supply a verified email.', back))
+          return failSignIn(req, res, st.redirect_to, 403, 'Sign-in blocked', 'Your identity provider did not supply a verified email.', 'no_verified_email')
         }
         const match = await findPersonByEmail(email)
         if (!match) {
-          return res.status(403).html(resultPage('Not invited', `No Nook account uses ${email}. Ask an admin to add you first.`, back))
+          return failSignIn(req, res, st.redirect_to, 403, 'Not invited', `No Nook account uses ${email}. Ask an admin to add you first.`, 'not_invited')
         }
         await linkIdentity({ householdId: match.householdId, personId: match.personId, provider: 'oidc', subject, email, emailVerified })
         tenant = { sub: subject, personId: match.personId, householdId: match.householdId, isAdmin: false }
@@ -239,7 +242,7 @@ export function registerOidcRoutes(api: Api): void {
       res.redirect(dest)
     } catch (err) {
       console.error('oidc callback failed', err)
-      return res.status(502).html(resultPage('Sign-in failed', 'Could not complete sign-in. Please try again.', back))
+      return failSignIn(req, res, st.redirect_to, 502, 'Sign-in failed', 'Could not complete sign-in. Please try again.', 'sign_in_failed')
     }
   })
 
@@ -391,6 +394,39 @@ function appCallbackUrl(req: Request, redirectTo: string | null, handoff: string
     }
   }
   return `${baseUrl(req)}/auth/callback?code=${encodeURIComponent(handoff)}`
+}
+
+// True for a native deep-link redirect (custom scheme like nook://), false for a
+// web origin (http/https) or no redirect.
+function isNativeRedirect(redirectTo: string | null): boolean {
+  if (!redirectTo) return false
+  try {
+    const u = new URL(redirectTo)
+    return u.protocol !== 'http:' && u.protocol !== 'https:'
+  } catch {
+    return false
+  }
+}
+
+// End a failed sign-in. A native client gets the error bounced back through its
+// deep link (so ASWebAuthenticationSession dismisses and the app renders a real,
+// in-app message) — exactly mirroring the success path. A browser gets the
+// self-contained result page with a working "Back to Nook" link.
+function failSignIn(
+  req: Request,
+  res: Response,
+  redirectTo: string | null,
+  status: number,
+  title: string,
+  message: string,
+  errorCode: string
+): void {
+  if (isNativeRedirect(redirectTo)) {
+    const sep = redirectTo!.includes('?') ? '&' : '?'
+    res.redirect(`${redirectTo}${sep}error=${encodeURIComponent(errorCode)}&error_description=${encodeURIComponent(message)}`)
+    return
+  }
+  res.status(status).html(resultPage(title, message, appOrigin(req, redirectTo)))
 }
 
 // The SPA's origin: prefer the redirect the /start call carried (the real browser
