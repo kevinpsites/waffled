@@ -693,6 +693,9 @@ struct NookAPI: Sendable {
             let avatarEmoji, colorHex, birthday, dietaryNotes: String?
             let showOnKiosk: Bool
             let hasLogin: Bool
+            let loginEmail: String?
+            let hasPassword: Bool
+            let hasPin: Bool
             let isOwner: Bool
         }
     }
@@ -748,6 +751,55 @@ struct NookAPI: Sendable {
     func updatePerson(id: String, _ body: [String: JSONValue]) async throws { try await send("PATCH", "/api/persons/\(id)", body: body) }
     /// Soft-delete a member (admins; the household owner can't be removed).
     func deletePerson(id: String) async throws { try await delete("/api/persons/\(id)") }
+
+    // MARK: - Member login + kiosk PIN
+
+    /// Give a member an email + password login (admins). Omit the password to invite
+    /// SSO-only. 409 if the email is already in use.
+    func setPersonLogin(id: String, email: String, password: String?) async throws {
+        var body: [String: JSONValue] = ["email": .string(email)]
+        if let password, !password.isEmpty { body["password"] = .string(password) }
+        try await send("PUT", "/api/persons/\(id)/login", body: body)
+    }
+    /// Remove a member's login (admins; not the owner's).
+    func removePersonLogin(id: String) async throws { try await delete("/api/persons/\(id)/login") }
+
+    /// Set/replace a member's kiosk PIN (self or admin). 4–8 digits.
+    func setPersonPin(id: String, pin: String) async throws {
+        try await send("PUT", "/api/persons/\(id)/pin", body: ["pin": .string(pin)])
+    }
+    /// Clear a member's kiosk PIN.
+    func clearPersonPin(id: String) async throws { try await delete("/api/persons/\(id)/pin") }
+
+    // MARK: - Kiosk device pairing
+
+    struct PairingCode: Decodable, Sendable {
+        let code: String
+        let label: String
+        let expiresAt: String
+    }
+    struct KioskDevice: Decodable, Identifiable, Sendable {
+        let id: String
+        let label: String
+        let lastSeenAt: String?
+        let createdAt: String
+    }
+    /// Mint a one-time pairing code for a new kiosk tablet (admins, ~10-min TTL).
+    func createPairingCode(label: String?) async throws -> PairingCode {
+        var body: [String: JSONValue] = [:]
+        if let label, !label.isEmpty { body["label"] = .string(label) }
+        return try await sendReturning("POST", "/api/kiosk/pairing-code", body: body, as: PairingCode.self)
+    }
+    /// The household's paired kiosk devices (admins).
+    func kioskDevices() async throws -> [KioskDevice] {
+        struct Resp: Decodable { let devices: [KioskDevice] }
+        return try await getJSON("/api/kiosk/devices", as: Resp.self).devices
+    }
+    func renameKioskDevice(id: String, label: String) async throws {
+        try await send("PATCH", "/api/kiosk/devices/\(id)", body: ["label": .string(label)])
+    }
+    /// Revoke (unpair) a kiosk device (admins).
+    func revokeKioskDevice(id: String) async throws { try await delete("/api/kiosk/devices/\(id)") }
 
     // MARK: - Rewards
 

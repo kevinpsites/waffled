@@ -72,6 +72,9 @@ struct FamilyPeopleSettingsView: View {
                     Text(roleLine(m)).font(.system(size: 12.5)).foregroundStyle(NK.ink3)
                 }
                 Spacer(minLength: 0)
+                // Quick badges for who can sign in / has a kiosk PIN.
+                if m.hasLogin { glyph("key.fill") }
+                if m.hasPin { glyph("lock.fill") }
                 Image(systemName: "pencil").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
             }
             .padding(12).background(NK.card)
@@ -79,6 +82,11 @@ struct FamilyPeopleSettingsView: View {
             .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
         }
         .buttonStyle(.plain)
+    }
+
+    private func glyph(_ name: String) -> some View {
+        Image(systemName: name).font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
+            .frame(width: 22, height: 22).background(NK.panel).clipShape(Circle())
     }
 
     private func roleLine(_ m: NookAPI.HouseholdSettings.Member) -> String {
@@ -164,14 +172,20 @@ struct FamilyPeopleSettingsView: View {
     }
 }
 
-/// Add or edit a member (admins). Name · emoji · type · color · birthday · admin ·
-/// show-on-kiosk. The household owner can't be deleted.
+/// Add or edit a member (admins). Editing splits into two tabs, mirroring the web:
+/// **General** (profile) and **Sign-in** (email/password login + kiosk PIN).
+/// Creating a new person shows only the General fields (login/PIN need a saved id).
 struct PersonEditorSheet: View {
     let editing: NookAPI.HouseholdSettings.Member?
     let onDone: () async -> Void
 
     @Environment(SyncManager.self) private var sync
     @Environment(\.dismiss) private var dismiss
+
+    private let api = NookAPI()
+
+    enum Tab: Hashable { case general, signIn }
+    @State private var tab: Tab = .general
 
     @State private var name: String
     @State private var emoji: String
@@ -184,6 +198,22 @@ struct PersonEditorSheet: View {
     @State private var busy = false
     @State private var confirmDelete = false
     @State private var error: String?
+
+    // Sign-in tab: login (email/password) + kiosk PIN.
+    @State private var email: String
+    @State private var password = ""
+    @State private var pin = ""
+    @State private var hasLogin: Bool
+    @State private var hasPassword: Bool
+    @State private var hasPin: Bool
+    @State private var loginBusy = false
+    @State private var loginError: String?
+    @State private var loginNote: String?
+    @State private var confirmRemoveLogin = false
+    @State private var pinBusy = false
+    @State private var pinError: String?
+    @State private var pinNote: String?
+    @State private var confirmRemovePin = false
 
     private let types = ["adult", "teen", "kid"]
 
@@ -199,103 +229,229 @@ struct PersonEditorSheet: View {
         _birthday = State(initialValue: parsed ?? Date())
         _isAdmin = State(initialValue: editing?.isAdmin ?? false)
         _showOnKiosk = State(initialValue: editing?.showOnKiosk ?? true)
+        _email = State(initialValue: editing?.loginEmail ?? "")
+        _hasLogin = State(initialValue: editing?.hasLogin ?? false)
+        _hasPassword = State(initialValue: editing?.hasPassword ?? false)
+        _hasPin = State(initialValue: editing?.hasPin ?? false)
     }
+
+    private var showGeneral: Bool { editing == nil || tab == .general }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    HStack(spacing: 14) {
-                        TextField("🙂", text: $emoji)
-                            .font(.system(size: 30)).multilineTextAlignment(.center)
-                            .frame(width: 64, height: 64).background(NK.panel)
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            .onChange(of: emoji) { _, v in if v.count > 3 { emoji = String(v.prefix(3)) } }
-                        TextField("Name", text: $name)
-                            .font(.system(size: 17, weight: .semibold))
-                            .padding(.horizontal, 14).padding(.vertical, 14)
-                            .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                    }
-
-                    VStack(alignment: .leading, spacing: 9) {
-                        SectionLabel(text: "Type")
-                        HStack(spacing: 0) {
-                            ForEach(types, id: \.self) { t in
-                                Button { memberType = t } label: {
-                                    Text(t.capitalized)
-                                        .font(.system(size: 14, weight: memberType == t ? .bold : .medium))
-                                        .foregroundStyle(memberType == t ? NK.ink : NK.ink3)
-                                        .frame(maxWidth: .infinity).padding(.vertical, 9)
-                                        .background(memberType == t
-                                            ? AnyView(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).fill(NK.card))
-                                            : AnyView(Color.clear))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(3).background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                    }
-
-                    VStack(alignment: .leading, spacing: 9) {
-                        SectionLabel(text: "Color")
-                        ColorSwatchPicker(hex: $colorHex)
-                    }
-
-                    Toggle(isOn: $hasBirthday) {
-                        Text("Birthday").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                    }.tint(NK.primary)
-                    if hasBirthday {
-                        DatePicker("", selection: $birthday, displayedComponents: .date)
-                            .datePickerStyle(.compact).labelsHidden()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
-                    Toggle(isOn: $isAdmin) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("Admin").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                            Text("Can add people & change settings").font(.system(size: 12)).foregroundStyle(NK.ink3)
-                        }
-                    }.tint(NK.primary)
-                    Toggle(isOn: $showOnKiosk) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("Show on kiosk").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                            Text("Appears on the family display").font(.system(size: 12)).foregroundStyle(NK.ink3)
-                        }
-                    }.tint(NK.primary)
-
-                    if let error { Text(error).font(.system(size: 13, weight: .medium)).foregroundStyle(NK.primary) }
-
-                    Button { Task { await save() } } label: {
-                        Text(busy ? "Saving…" : (editing == nil ? "Add person" : "Save"))
-                            .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
-                            .frame(maxWidth: .infinity).padding(.vertical, 14)
-                            .background(name.trimmingCharacters(in: .whitespaces).isEmpty ? NK.ink3 : NK.primary)
-                            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                    }
-                    .buttonStyle(.plain).disabled(busy || name.trimmingCharacters(in: .whitespaces).isEmpty)
-
-                    if let editing, !editing.isOwner {
-                        Button(role: .destructive) {
-                            if confirmDelete { Task { await remove() } } else { confirmDelete = true }
-                        } label: {
-                            Text(confirmDelete ? "Tap again to remove" : "Remove person")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(confirmDelete ? NK.primary : NK.ink3).frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.plain)
-                    } else if editing?.isOwner == true {
-                        Text("The household owner can’t be removed.")
-                            .font(.system(size: 12)).foregroundStyle(NK.ink3).frame(maxWidth: .infinity)
-                    }
+                    if editing != nil { tabPicker }
+                    if showGeneral { generalForm } else { signInForm }
                 }
                 .padding(20)
             }
             .background(NK.canvas)
-            .navigationTitle(editing == nil ? "New person" : "Edit person")
+            .navigationTitle(editing == nil ? "New person" : "Edit \(editing?.name ?? "person")")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
     }
+
+    private var tabPicker: some View {
+        HStack(spacing: 0) {
+            ForEach([Tab.general, Tab.signIn], id: \.self) { t in
+                Button { tab = t } label: {
+                    Text(t == .general ? "General" : "Sign-in")
+                        .font(.system(size: 14, weight: tab == t ? .bold : .medium))
+                        .foregroundStyle(tab == t ? NK.ink : NK.ink3)
+                        .frame(maxWidth: .infinity).padding(.vertical, 9)
+                        .background(tab == t
+                            ? AnyView(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).fill(NK.card))
+                            : AnyView(Color.clear))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3).background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+    }
+
+    // MARK: general (profile)
+
+    @ViewBuilder private var generalForm: some View {
+        HStack(spacing: 14) {
+            TextField("🙂", text: $emoji)
+                .font(.system(size: 30)).multilineTextAlignment(.center)
+                .frame(width: 64, height: 64).background(NK.panel)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .onChange(of: emoji) { _, v in if v.count > 3 { emoji = String(v.prefix(3)) } }
+            TextField("Name", text: $name)
+                .font(.system(size: 17, weight: .semibold))
+                .padding(.horizontal, 14).padding(.vertical, 14)
+                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        }
+
+        VStack(alignment: .leading, spacing: 9) {
+            SectionLabel(text: "Type")
+            HStack(spacing: 0) {
+                ForEach(types, id: \.self) { t in
+                    Button { memberType = t } label: {
+                        Text(t.capitalized)
+                            .font(.system(size: 14, weight: memberType == t ? .bold : .medium))
+                            .foregroundStyle(memberType == t ? NK.ink : NK.ink3)
+                            .frame(maxWidth: .infinity).padding(.vertical, 9)
+                            .background(memberType == t
+                                ? AnyView(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).fill(NK.card))
+                                : AnyView(Color.clear))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(3).background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        }
+
+        VStack(alignment: .leading, spacing: 9) {
+            SectionLabel(text: "Color")
+            ColorSwatchPicker(hex: $colorHex)
+        }
+
+        Toggle(isOn: $hasBirthday) {
+            Text("Birthday").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+        }.tint(NK.primary)
+        if hasBirthday {
+            DatePicker("", selection: $birthday, displayedComponents: .date)
+                .datePickerStyle(.compact).labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+
+        Toggle(isOn: $isAdmin) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Admin").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                Text("Can add people & change settings").font(.system(size: 12)).foregroundStyle(NK.ink3)
+            }
+        }.tint(NK.primary)
+        Toggle(isOn: $showOnKiosk) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Show on kiosk").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                Text("Appears on the family display").font(.system(size: 12)).foregroundStyle(NK.ink3)
+            }
+        }.tint(NK.primary)
+
+        if let error { Text(error).font(.system(size: 13, weight: .medium)).foregroundStyle(NK.primary) }
+
+        Button { Task { await save() } } label: {
+            Text(busy ? "Saving…" : (editing == nil ? "Add person" : "Save"))
+                .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                .frame(maxWidth: .infinity).padding(.vertical, 14)
+                .background(name.trimmingCharacters(in: .whitespaces).isEmpty ? NK.ink3 : NK.primary)
+                .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        }
+        .buttonStyle(.plain).disabled(busy || name.trimmingCharacters(in: .whitespaces).isEmpty)
+
+        if let editing, !editing.isOwner {
+            Button(role: .destructive) {
+                if confirmDelete { Task { await remove() } } else { confirmDelete = true }
+            } label: {
+                Text(confirmDelete ? "Tap again to remove" : "Remove person")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(confirmDelete ? NK.primary : NK.ink3).frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.plain)
+        } else if editing?.isOwner == true {
+            Text("The household owner can’t be removed.")
+                .font(.system(size: 12)).foregroundStyle(NK.ink3).frame(maxWidth: .infinity)
+        }
+    }
+
+    // MARK: sign-in (login + kiosk PIN)
+
+    @ViewBuilder private var signInForm: some View {
+        loginCard
+        pinCard
+    }
+
+    private var loginCard: some View {
+        NookCard {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionLabel(text: "🔑  Login")
+                Text(loginStatus).font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
+                TextField("Email", text: $email)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .keyboardType(.emailAddress).textContentType(.username)
+                    .padding(12).background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                SecureField(hasPassword ? "New password (leave blank to keep)" : "Password (optional — blank invites SSO)", text: $password)
+                    .textContentType(.newPassword)
+                    .padding(12).background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                if let loginError { Text(loginError).font(.system(size: 12.5, weight: .medium)).foregroundStyle(NK.primary) }
+                else if let loginNote { Text(loginNote).font(.system(size: 12.5, weight: .medium)).foregroundStyle(Color(hex: 0x25A368)) }
+
+                Button { Task { await saveLogin() } } label: {
+                    Text(loginBusy ? "Saving…" : (hasLogin ? "Update login" : "Give a login"))
+                        .font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 12)
+                        .background(canSaveLogin ? NK.primary : NK.ink3)
+                        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                }
+                .buttonStyle(.plain).disabled(!canSaveLogin || loginBusy)
+
+                if hasLogin, editing?.isOwner == false {
+                    Button(role: .destructive) {
+                        if confirmRemoveLogin { Task { await removeLogin() } } else { confirmRemoveLogin = true }
+                    } label: {
+                        Text(confirmRemoveLogin ? "Tap again to remove login" : "Remove login")
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .foregroundStyle(confirmRemoveLogin ? NK.primary : NK.ink3).frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var pinCard: some View {
+        NookCard {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionLabel(text: "🔒  Kiosk PIN")
+                Text(hasPin ? "Set — required to open this profile on the kiosk."
+                            : "Optional — set one to protect this profile on a shared kiosk.")
+                    .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
+                SecureField("4–8 digits", text: $pin)
+                    .keyboardType(.numberPad).textContentType(.oneTimeCode)
+                    .onChange(of: pin) { _, v in pin = String(v.filter(\.isNumber).prefix(8)) }
+                    .padding(12).background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                if let pinError { Text(pinError).font(.system(size: 12.5, weight: .medium)).foregroundStyle(NK.primary) }
+                else if let pinNote { Text(pinNote).font(.system(size: 12.5, weight: .medium)).foregroundStyle(Color(hex: 0x25A368)) }
+
+                Button { Task { await savePin() } } label: {
+                    Text(pinBusy ? "Saving…" : (hasPin ? "Update PIN" : "Set PIN"))
+                        .font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 12)
+                        .background(validPin ? NK.primary : NK.ink3)
+                        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                }
+                .buttonStyle(.plain).disabled(!validPin || pinBusy)
+
+                if hasPin {
+                    Button(role: .destructive) {
+                        if confirmRemovePin { Task { await removePin() } } else { confirmRemovePin = true }
+                    } label: {
+                        Text(confirmRemovePin ? "Tap again to remove PIN" : "Remove PIN")
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .foregroundStyle(confirmRemovePin ? NK.primary : NK.ink3).frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var loginStatus: String {
+        if !hasLogin { return "No login yet — add an email so this member can sign in." }
+        return hasPassword ? "Can sign in with email & password." : "Invited via SSO (no password set)."
+    }
+
+    private var trimmedEmail: String { email.trimmingCharacters(in: .whitespaces) }
+    private var canSaveLogin: Bool { trimmedEmail.contains("@") && trimmedEmail.contains(".") }
+    private var validPin: Bool { (4...8).contains(pin.count) && pin.allSatisfy(\.isNumber) }
+
+    // MARK: actions — general
 
     private func payload() -> [String: JSONValue] {
         var b: [String: JSONValue] = [
@@ -323,6 +479,68 @@ struct PersonEditorSheet: View {
         let ok = await sync.deletePerson(id: editing.id)
         busy = false
         if ok { await onDone(); dismiss() } else { error = "Couldn’t remove this person." }
+    }
+
+    // MARK: actions — login
+
+    private func saveLogin() async {
+        guard let id = editing?.id, canSaveLogin else { return }
+        loginBusy = true; loginError = nil; loginNote = nil
+        do {
+            try await api.setPersonLogin(id: id, email: trimmedEmail, password: password.isEmpty ? nil : password)
+            hasLogin = true
+            if !password.isEmpty { hasPassword = true }
+            password = ""
+            loginNote = "Saved."
+            await onDone()
+        } catch let NookAPI.APIError.http(code, _) {
+            loginError = code == 409 ? "That email is already in use."
+                : (code == 400 ? "Check the email, and use 8+ characters for a password."
+                : "Couldn’t save (error \(code)).")
+        } catch { loginError = "Couldn’t reach the server." }
+        loginBusy = false
+    }
+
+    private func removeLogin() async {
+        guard let id = editing?.id else { return }
+        loginBusy = true; loginError = nil; loginNote = nil
+        do {
+            try await api.removePersonLogin(id: id)
+            hasLogin = false; hasPassword = false; email = ""; confirmRemoveLogin = false
+            loginNote = "Login removed."
+            await onDone()
+        } catch let NookAPI.APIError.http(code, _) {
+            loginError = code == 400 ? "The household owner’s login can’t be removed." : "Couldn’t remove the login."
+        } catch { loginError = "Couldn’t reach the server." }
+        loginBusy = false
+    }
+
+    // MARK: actions — PIN
+
+    private func savePin() async {
+        guard let id = editing?.id, validPin else { return }
+        pinBusy = true; pinError = nil; pinNote = nil
+        do {
+            try await api.setPersonPin(id: id, pin: pin)
+            hasPin = true; pin = ""; confirmRemovePin = false
+            pinNote = "PIN saved."
+            await onDone()
+        } catch let NookAPI.APIError.http(code, _) {
+            pinError = code == 400 ? "A PIN must be 4–8 digits." : "Couldn’t save the PIN (error \(code))."
+        } catch { pinError = "Couldn’t reach the server." }
+        pinBusy = false
+    }
+
+    private func removePin() async {
+        guard let id = editing?.id else { return }
+        pinBusy = true; pinError = nil; pinNote = nil
+        do {
+            try await api.clearPersonPin(id: id)
+            hasPin = false; pin = ""; confirmRemovePin = false
+            pinNote = "PIN removed."
+            await onDone()
+        } catch { pinError = "Couldn’t remove the PIN." }
+        pinBusy = false
     }
 
     private static func parse(_ s: String?) -> Date? {
