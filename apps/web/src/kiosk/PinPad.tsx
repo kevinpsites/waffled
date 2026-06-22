@@ -6,6 +6,16 @@ import { kioskApi, KioskClaimError, type KioskProfile } from '../lib/api'
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'del', '0', 'ok']
 
+function wrongMsg(triesLeft?: number): string {
+  if (triesLeft && triesLeft > 0) return `Incorrect PIN — ${triesLeft} ${triesLeft === 1 ? 'try' : 'tries'} left`
+  return 'Incorrect PIN.'
+}
+function lockedMsg(seconds?: number): string {
+  const s = seconds ?? 30
+  if (s >= 60) return `Too many tries. Try again in ${Math.ceil(s / 60)} min.`
+  return `Too many tries. Try again in ${s}s.`
+}
+
 export function PinPad({ profile, onCancel }: { profile: KioskProfile; onCancel: () => void }) {
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -19,7 +29,7 @@ export function PinPad({ profile, onCancel }: { profile: KioskProfile; onCancel:
       await kioskApi.claim(profile.id, pin) // success → setSession → AuthGate flips
     } catch (e) {
       const err = e as KioskClaimError
-      setError(err.status === 429 ? `Too many tries. Wait ${err.retryAfter ?? 60}s.` : 'Incorrect PIN.')
+      setError(err.status === 429 ? lockedMsg(err.retryAfter) : wrongMsg(err.triesLeft))
       setPin('')
       setBusy(false)
     }
@@ -40,10 +50,12 @@ export function PinPad({ profile, onCancel }: { profile: KioskProfile; onCancel:
         </span>
         <div className="kp-title nk-serif">{profile.name}’s PIN</div>
         <div className="kp-dots" aria-label={`${pin.length} digits entered`}>
-          {Array.from({ length: Math.max(4, pin.length) }).map((_, i) => (
-            <span key={i} className={`kp-dot ${i < pin.length ? 'on' : ''}`} />
+          {Array.from({ length: pin.length }).map((_, i) => (
+            <span key={i} className="kp-dot on" />
           ))}
+          {pin.length === 0 && <span className="kp-dots-hint">Enter your PIN</span>}
         </div>
+        <div className="kp-cap">4–8 digits</div>
         {error && <div className="kp-error">{error}</div>}
       </div>
       <div className="kp-pad">

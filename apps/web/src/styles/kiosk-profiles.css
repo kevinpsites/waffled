@@ -103,18 +103,29 @@
 /* PIN pad */
 .kp-dots {
   display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 12px;
   margin-top: 16px;
+  min-height: 18px; /* reserve space so the keypad doesn't jump as dots appear */
 }
 .kp-dot {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 2px solid var(--ink-3, #b8b0a4);
-}
-.kp-dot.on {
   background: var(--ink);
-  border-color: var(--ink);
+}
+.kp-dots-hint {
+  color: var(--ink-3, #b8b0a4);
+  font-weight: 600;
+  font-size: 14px;
+}
+.kp-cap {
+  margin-top: 6px;
+  color: var(--ink-3, #b8b0a4);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 .kp-pad {
   display: grid;

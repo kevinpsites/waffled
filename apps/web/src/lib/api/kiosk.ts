@@ -28,11 +28,13 @@ export interface KioskProfile {
 export class KioskClaimError extends Error {
   status: number
   retryAfter?: number
-  constructor(status: number, message: string, retryAfter?: number) {
+  triesLeft?: number
+  constructor(status: number, message: string, opts?: { retryAfter?: number; triesLeft?: number }) {
     super(message)
     this.name = 'KioskClaimError'
     this.status = status
-    this.retryAfter = retryAfter
+    this.retryAfter = opts?.retryAfter
+    this.triesLeft = opts?.triesLeft
   }
 }
 
@@ -74,8 +76,8 @@ export const kioskApi = {
       body: JSON.stringify(pin !== undefined ? { pin } : {}),
     })
     if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { message?: string; retryAfter?: number }
-      throw new KioskClaimError(res.status, body.message || 'Could not switch profiles.', body.retryAfter)
+      const body = (await res.json().catch(() => ({}))) as { message?: string; retryAfter?: number; triesLeft?: number }
+      throw new KioskClaimError(res.status, body.message || 'Could not switch profiles.', { retryAfter: body.retryAfter, triesLeft: body.triesLeft })
     }
     const d = (await res.json()) as { accessToken: string; refreshToken: string }
     setSession(d.accessToken, d.refreshToken)
