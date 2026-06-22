@@ -103,6 +103,18 @@
   padding: 6px 20px;
 }
 
+/* A warm "tray" that boxes related cards into one widget so it reads as a
+   single group — e.g. the economy (currencies + their conversions), set apart
+   from the separate reward-approval policy. Mirrors the iOS settings grouping. */
+.set-tray {
+  background: var(--panel);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  padding: 12px;
+  margin-top: 14px;
+}
+.set-tray > .set-card:first-child { margin-top: 0; }
+
 /* member rows */
 .set-member {
   display: flex;

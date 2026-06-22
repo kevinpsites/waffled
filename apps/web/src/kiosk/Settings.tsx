@@ -904,26 +904,31 @@ function RewardsSettingsPanel() {
         <div className="nk-serif set-head-t">Chores &amp; Rewards</div>
         <div className="tiny muted" style={{ fontWeight: 600 }}>The currencies your family earns &amp; spends</div>
       </div>
-      <div className="set-card" style={{ padding: 18 }}>
-        <div className="card-h" style={{ marginBottom: 4 }}>Currencies</div>
-        <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
-          Rename stars, add your own, or run several. The <b>default</b> is what new chores award; <b>spendable</b> ones can buy rewards. Set up trades between them under <b>Conversions</b> below.
+      {/* Economy widget — the currencies a family earns/spends and the trades
+          between them belong together, so box them into one tray. */}
+      <div className="set-tray">
+        <div className="set-card" style={{ padding: 18 }}>
+          <div className="card-h" style={{ marginBottom: 4 }}>Currencies</div>
+          <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
+            Rename stars, add your own, or run several. The <b>default</b> is what new chores award; <b>spendable</b> ones can buy rewards. Set up trades between them under <b>Conversions</b> below.
+          </div>
+          {loading ? (
+            <div className="muted" style={{ fontWeight: 600 }}>Loading…</div>
+          ) : (
+            currencies.map((c) => <CurrencyRow key={c.id} c={c} canDelete={currencies.length > 1} />)
+          )}
+          <div className="cur-add">
+            <input className="cur-sym" value={newSymbol} maxLength={2} placeholder="⭐" aria-label="New symbol" onChange={(e) => setNewSymbol(e.target.value)} />
+            <input className="cur-label" value={newLabel} placeholder="Add a currency (e.g. Family Dollars)" aria-label="New label" onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
+            <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={adding || !newLabel.trim()} onClick={add}>＋ Add</button>
+          </div>
         </div>
-        {loading ? (
-          <div className="muted" style={{ fontWeight: 600 }}>Loading…</div>
-        ) : (
-          currencies.map((c) => <CurrencyRow key={c.id} c={c} canDelete={currencies.length > 1} />)
-        )}
-        <div className="cur-add">
-          <input className="cur-sym" value={newSymbol} maxLength={2} placeholder="⭐" aria-label="New symbol" onChange={(e) => setNewSymbol(e.target.value)} />
-          <input className="cur-label" value={newLabel} placeholder="Add a currency (e.g. Family Dollars)" aria-label="New label" onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
-          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={adding || !newLabel.trim()} onClick={add}>＋ Add</button>
-        </div>
+
+        {currencies.length > 1 && <ConversionsSection currencies={currencies} />}
       </div>
 
+      {/* Redemption policy — its own concern, so it sits apart from the economy. */}
       <RewardApprovalCard />
-
-      {currencies.length > 1 && <ConversionsSection currencies={currencies} />}
     </div>
   )
 }
