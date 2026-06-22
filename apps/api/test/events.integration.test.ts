@@ -305,4 +305,86 @@ describe('recurring events api', () => {
     expect(occ).toHaveLength(4)
     expect(occ.every((o: { title: string }) => o.title === 'Soccer practice')).toBe(true)
   })
+
+  // Fresh series per edit-scope test (Oct/Nov 2026) to avoid cross-test coupling.
+  interface Occ { id: string; seriesId: string; occurrenceStart: string; startsAt: string; title: string }
+  async function makeWeekly(title: string, firstTueIso: string, endIso: string): Promise<string> {
+    const add = await call('POST', '/api/events', kevin, {
+      title,
+      startsAt: firstTueIso,
+      endsAt: null,
+      rrule: 'FREQ=WEEKLY;BYDAY=TU',
+      recurrenceEndAt: endIso,
+    })
+    return JSON.parse(add.body).event.id
+  }
+  const list = async (sid: string, from: string, to: string): Promise<Occ[]> => {
+    const r = JSON.parse((await call('GET', `/api/events?from=${from}&to=${to}`, kevin)).body)
+    return r.events.filter((e: Occ) => e.seriesId === sid).sort((a: Occ, b: Occ) => a.startsAt.localeCompare(b.startsAt))
+  }
+
+  it('scope=this edits a single occurrence without touching its siblings', async () => {
+    const sid = await makeWeekly('Yoga', '2026-10-06T14:00:00Z', '2026-10-27T23:59:59Z') // Oct 6,13,20,27
+    const before = await list(sid, '2026-10-01', '2026-10-31')
+    expect(before).toHaveLength(4)
+    const target = before[1] // Oct 13
+    await call('PATCH', `/api/events/${sid}`, kevin, {
+      scope: 'this',
+      occurrenceStart: target.occurrenceStart,
+      title: 'Yoga (special)',
+      startsAt: '2026-10-13T16:00:00Z', // moved +2h
+    })
+    const after = await list(sid, '2026-10-01', '2026-10-31')
+    expect(after).toHaveLength(4)
+    const moved = after.find((o) => o.occurrenceStart === target.occurrenceStart)!
+    expect(moved.startsAt).toBe('2026-10-13T16:00:00.000Z')
+    expect(moved.title).toBe('Yoga (special)')
+    // siblings unchanged
+    expect(after.filter((o) => o.title === 'Yoga')).toHaveLength(3)
+  })
+
+  it('scope=this delete cancels a single occurrence', async () => {
+    const sid = await makeWeekly('Piano', '2026-11-03T14:00:00Z', '2026-11-24T23:59:59Z') // Nov 3,10,17,24
+    const before = await list(sid, '2026-11-01', '2026-11-30')
+    expect(before).toHaveLength(4)
+    const drop = before[2] // Nov 17
+    const del = await call('DELETE', `/api/events/${sid}?scope=this&occurrenceStart=${encodeURIComponent(drop.occurrenceStart)}`, kevin)
+    expect(del.statusCode).toBe(204)
+    const after = await list(sid, '2026-11-01', '2026-11-30')
+    expect(after).toHaveLength(3)
+    expect(after.some((o) => o.occurrenceStart === drop.occurrenceStart)).toBe(false)
+  })
+
+  it('scope=following splits the series at the occurrence', async () => {
+    const sid = await makeWeekly('Standup', '2026-10-06T14:00:00Z', '2026-10-27T23:59:59Z')
+    const before = await list(sid, '2026-10-01', '2026-10-31')
+    const splitAt = before[2] // Oct 20 — this and following change
+    const resp = await call('PATCH', `/api/events/${sid}`, kevin, {
+      scope: 'following',
+      occurrenceStart: splitAt.occurrenceStart,
+      title: 'Standup (new format)',
+    })
+    expect(resp.statusCode).toBe(200)
+    const newSeriesId = JSON.parse(resp.body).event.id
+    expect(newSeriesId).not.toBe(sid)
+
+    const all = JSON.parse((await call('GET', '/api/events?from=2026-10-01&to=2026-10-31', kevin)).body).events as Occ[]
+    const old = all.filter((e) => e.seriesId === sid).sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+    const fresh = all.filter((e) => e.seriesId === newSeriesId).sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+    // original keeps Oct 6, 13; new series carries Oct 20, 27 with the new title
+    expect(old.map((o) => o.startsAt)).toEqual(['2026-10-06T14:00:00.000Z', '2026-10-13T14:00:00.000Z'])
+    expect(old.every((o) => o.title === 'Standup')).toBe(true)
+    expect(fresh.map((o) => o.startsAt)).toEqual(['2026-10-20T14:00:00.000Z', '2026-10-27T14:00:00.000Z'])
+    expect(fresh.every((o) => o.title === 'Standup (new format)')).toBe(true)
+  })
+
+  it('scope=following delete drops the occurrence and everything after it', async () => {
+    const sid = await makeWeekly('Cleanup', '2026-11-03T14:00:00Z', '2026-11-24T23:59:59Z') // Nov 3,10,17,24
+    const before = await list(sid, '2026-11-01', '2026-11-30')
+    const cutoff = before[2] // Nov 17 → drop 17 & 24
+    const del = await call('DELETE', `/api/events/${sid}?scope=following&occurrenceStart=${encodeURIComponent(cutoff.occurrenceStart)}`, kevin)
+    expect(del.statusCode).toBe(204)
+    const after = await list(sid, '2026-11-01', '2026-11-30')
+    expect(after.map((o) => o.startsAt)).toEqual(['2026-11-03T14:00:00.000Z', '2026-11-10T14:00:00.000Z'])
+  })
 })
