@@ -175,7 +175,17 @@
   color: var(--ink);
 }
 
-/* Pairing code display (Settings → Display & Kiosk). */
+/* Night dimming overlay (display mode, scheduled). Below the screensaver (z 1000). */
+.kiosk-dim {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  transition: opacity 0.6s ease;
+}
+
+/* Pairing code display (Settings → Sign-in & Security). */
 .kp-code {
   display: inline-block;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

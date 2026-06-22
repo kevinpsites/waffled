@@ -79,6 +79,8 @@
 .ph-saver-meta { position: absolute; left: 54px; bottom: 90px; text-shadow: 0 2px 14px rgba(0,0,0,.4); }
 .ph-saver-meta .nk-serif { font-size: 34px; font-weight: 600; }
 .ph-saver-meta-sub { font-size: 16px; font-weight: 600; opacity: .9; }
+.ph-saver-next { position: absolute; right: 54px; bottom: 84px; font-size: 20px; font-weight: 700;
+  color: #fff; opacity: .95; text-shadow: 0 2px 14px rgba(0,0,0,.4); }
 .ph-saver-thumbs { position: absolute; left: 50%; bottom: 36px; transform: translateX(-50%);
   display: flex; gap: 12px; align-items: center; }
 .ph-saver-thumb { width: 54px; height: 54px; border-radius: 12px; display: grid; place-items: center;

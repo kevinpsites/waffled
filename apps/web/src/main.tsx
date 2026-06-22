@@ -6,15 +6,18 @@ import './styles/kiosk.css'
 import './styles/calendar.css'
 import { KioskRoutes } from './kiosk/routes'
 import { AuthGate } from './kiosk/AuthGate'
+import { KioskDisplay } from './kiosk/KioskDisplay'
 import { registerServiceWorker } from './lib/pwa'
 import { connectPowerSync } from './lib/powersync/db'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <AuthGate>
-        <KioskRoutes />
-      </AuthGate>
+      <KioskDisplay>
+        <AuthGate>
+          <KioskRoutes />
+        </AuthGate>
+      </KioskDisplay>
     </BrowserRouter>
   </StrictMode>
 )
