@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { personsApi, type SettingsMember } from '../../lib/api'
+import { personsApi, kioskApi, type SettingsMember } from '../../lib/api'
 
 const SWATCHES = ['#2F7FED', '#EC6049', '#25A368', '#8B5CF6', '#E0A500', '#EC4899', '#14B8A6', '#6B7280']
 const MEMBER_TYPES = [
@@ -90,6 +90,44 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
       setLoginErr('Could not remove the login.')
     } finally {
       setLoginBusy(false); setConfirmRemoveLogin(false)
+    }
+  }
+
+  // Kiosk PIN (optional). If set, this person must enter it to switch to their
+  // profile on a shared kiosk. Separate from the password login above.
+  const [pin, setPin] = useState('')
+  const [hasPinLocal, setHasPinLocal] = useState(person?.hasPin ?? false)
+  const [pinBusy, setPinBusy] = useState(false)
+  const [pinErr, setPinErr] = useState<string | null>(null)
+  const [pinSaved, setPinSaved] = useState(false)
+  const [confirmClearPin, setConfirmClearPin] = useState(false)
+
+  async function savePin() {
+    if (!/^\d{4,8}$/.test(pin)) { setPinErr('PIN must be 4–8 digits.'); return }
+    setPinBusy(true); setPinErr(null); setPinSaved(false)
+    try {
+      await kioskApi.setPin(person!.id, pin)
+      setHasPinLocal(true); setPin(''); setPinSaved(true)
+      setTimeout(() => setPinSaved(false), 1800)
+      onSaved()
+    } catch {
+      setPinErr('Could not save the PIN.')
+    } finally {
+      setPinBusy(false)
+    }
+  }
+
+  async function clearPin() {
+    if (!confirmClearPin) { setConfirmClearPin(true); return }
+    setPinBusy(true); setPinErr(null)
+    try {
+      await kioskApi.clearPin(person!.id)
+      setHasPinLocal(false); setPin('')
+      onSaved()
+    } catch {
+      setPinErr('Could not remove the PIN.')
+    } finally {
+      setPinBusy(false); setConfirmClearPin(false)
     }
   }
 
@@ -224,6 +262,46 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
               {hasLoginLocal && !person!.isOwner && (
                 <button type="button" onClick={removeLogin} style={{ border: 0, background: 'none', color: confirmRemoveLogin ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
                   {confirmRemoveLogin ? 'Tap again to remove login' : 'Remove login'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Kiosk PIN — optional per-person protection for switching profiles. */}
+        {editing && (
+          <div className="set-card" style={{ padding: 16, marginTop: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <div style={{ fontSize: 21, width: 30, textAlign: 'center', flex: 'none' }}>🔒</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>Kiosk PIN</div>
+                <div className="tiny muted" style={{ fontWeight: 600 }}>
+                  {hasPinLocal
+                    ? 'Required to switch to this profile on the kiosk'
+                    : 'Optional — set one to protect this profile on the kiosk'}
+                </div>
+              </div>
+              {pinSaved && <span className="tiny" style={{ fontWeight: 700, color: 'var(--good, #2e7d32)' }}>✓ Saved</span>}
+            </div>
+            <label className="field" style={{ marginBottom: 8 }}>
+              <span>{hasPinLocal ? 'New PIN (4–8 digits)' : 'PIN (4–8 digits)'}</span>
+              <input
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                placeholder={hasPinLocal ? '••••' : '1234'}
+              />
+            </label>
+            {pinErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginBottom: 8 }}>{pinErr}</div>}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} disabled={pinBusy || pin.length < 4} onClick={savePin}>
+                {pinBusy ? 'Saving…' : hasPinLocal ? 'Update PIN' : 'Set PIN'}
+              </button>
+              {hasPinLocal && (
+                <button type="button" onClick={clearPin} style={{ border: 0, background: 'none', color: confirmClearPin ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  {confirmClearPin ? 'Tap again to remove PIN' : 'Remove PIN'}
                 </button>
               )}
             </div>

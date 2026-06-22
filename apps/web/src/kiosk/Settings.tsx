@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, goalCalendarApi, groceryApi, authApi, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch } from '../lib/api'
+import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import '../styles/settings.css'
 
@@ -1121,6 +1121,95 @@ function SecurityPanel() {
   )
 }
 
+// Display & Kiosk: pair tablets as shared kiosks (a Netflix-style profile picker),
+// rename/revoke them, and nudge admins to set a PIN (an admin without one can be
+// claimed by anyone tapping their tile).
+function DisplayKioskPanel() {
+  const { members } = useHouseholdSettings()
+  const [devices, setDevices] = useState<KioskDevice[] | null>(null)
+  const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const load = () => kioskApi.devices().then(setDevices).catch(() => setErr('Only an admin can manage devices.'))
+  useEffect(() => { load() }, [])
+
+  const adminsNoPin = members.filter((m) => m.isAdmin && !m.hasPin)
+
+  async function genCode() {
+    setBusy(true)
+    try { setCode(await kioskApi.createPairingCode()) } catch { setErr('Could not create a code.') } finally { setBusy(false) }
+  }
+  async function promote() {
+    if (!window.confirm('Turn this device into the family kiosk? After you switch or sign out it’ll show the profile picker.')) return
+    try { await kioskApi.promote(); window.alert('This device is now a kiosk. Use “Switch” in the rail to reach the picker.'); load() } catch { setErr('Could not set up this device.') }
+  }
+  async function rename(d: KioskDevice) {
+    const label = window.prompt('Device name', d.label)
+    if (!label?.trim()) return
+    await kioskApi.renameDevice(d.id, label.trim()); load()
+  }
+  async function revoke(d: KioskDevice) {
+    if (!window.confirm(`Remove “${d.label}”? It will need to be paired again to act as a kiosk.`)) return
+    await kioskApi.revokeDevice(d.id); load()
+  }
+
+  return (
+    <div className="set-panel">
+      <div className="set-head"><div className="nk-serif set-head-t">Display &amp; Kiosk</div></div>
+
+      {adminsNoPin.length > 0 && (
+        <div className="set-card" style={{ padding: 16, marginBottom: 16, borderLeft: '3px solid var(--primary, #e0653f)' }}>
+          <div className="set-row2-t" style={{ marginBottom: 4 }}>⚠️ Set a PIN for your admins</div>
+          <div className="tiny muted" style={{ fontWeight: 600 }}>
+            On a shared kiosk, anyone can tap an admin profile that has no PIN and gain full control.
+            Add a PIN for {adminsNoPin.map((m) => m.name).join(', ')} in Family &amp; People.
+          </div>
+        </div>
+      )}
+
+      <div className="set-card" style={{ padding: 18 }}>
+        <div className="set-row2-t" style={{ marginBottom: 4 }}>Pair a kiosk</div>
+        <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
+          Turn a tablet into a shared family display with a profile picker. Pair it from here, or set up the
+          tablet itself with a code.
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button type="button" className="btn btn-primary" onClick={promote}>Use this device as a kiosk</button>
+          <button type="button" className="btn btn-ghost" onClick={genCode} disabled={busy}>
+            {busy ? 'Generating…' : 'Generate pairing code'}
+          </button>
+        </div>
+        {code && (
+          <div style={{ marginTop: 14 }}>
+            <div className="kp-code">{code.code}</div>
+            <div className="tiny muted" style={{ fontWeight: 600, marginTop: 6 }}>
+              On the new tablet, open this Nook’s address → “Set up this device as a kiosk” → enter this code. Expires in ~10 minutes.
+            </div>
+          </div>
+        )}
+        {err && <div className="auth-error" style={{ marginTop: 12 }}>{err}</div>}
+      </div>
+
+      <div className="set-card" style={{ marginTop: 16 }}>
+        <div className="set-row2-t" style={{ margin: '2px 2px 4px' }}>Paired devices</div>
+        {devices === null ? (
+          <div className="tiny muted" style={{ fontWeight: 600, padding: '8px 2px' }}>Loading…</div>
+        ) : devices.length === 0 ? (
+          <div className="tiny muted" style={{ fontWeight: 600, padding: '8px 2px' }}>No kiosks paired yet.</div>
+        ) : (
+          devices.map((d) => (
+            <SettingRow key={d.id} icon="🖥️" title={d.label} sub={`Last seen ${fmtWhen(d.lastSeenAt)} · paired ${fmtWhen(d.createdAt)}`}>
+              <button type="button" className="linkbtn" onClick={() => rename(d)}>Rename</button>
+              <button type="button" className="linkbtn" style={{ color: 'var(--primary)' }} onClick={() => revoke(d)}>Remove</button>
+            </SettingRow>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function Settings() {
   const { household, person } = useHousehold()
   const [tab, setTab] = useState('family')
@@ -1149,7 +1238,7 @@ export function Settings() {
         </div>
       </div>
       <div className="set-content">
-        {activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <CalendarsPanel /> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
+        {activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <CalendarsPanel /> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
       </div>
     </div>
   )

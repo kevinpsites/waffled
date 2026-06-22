@@ -2,7 +2,14 @@
 // (which sets the ephemeral profile session), and per-person PIN management.
 // Device-authed calls use deviceFetch (the device bearer); admin calls use the
 // normal authFetch-backed apiSend.
-import { apiSend, deviceFetch, setKioskDevice, setSession } from './client'
+import { apiGet, apiSend, apiDelete, deviceFetch, setKioskDevice, setSession } from './client'
+
+export interface KioskDevice {
+  id: string
+  label: string
+  lastSeenAt: string | null
+  createdAt: string
+}
 
 export interface KioskProfile {
   id: string
@@ -80,5 +87,12 @@ export const kioskApi = {
 
   // Per-person PIN (self or admin). 4–8 digits.
   setPin: (personId: string, pin: string) => apiSend<{ ok: true }>('PUT', `/api/persons/${personId}/pin`, { pin }),
-  clearPin: (personId: string) => apiSend<{ ok: true }>('DELETE', `/api/persons/${personId}/pin`),
+  clearPin: (personId: string) => apiDelete(`/api/persons/${personId}/pin`),
+
+  // ── device management (admin; Settings → Display & Kiosk) ──────────────────────
+  devices: () => apiGet<{ devices: KioskDevice[] }>('/api/kiosk/devices').then((r) => r.devices),
+  createPairingCode: (label?: string) =>
+    apiSend<{ code: string; label: string; expiresAt: string }>('POST', '/api/kiosk/pairing-code', { label }),
+  renameDevice: (id: string, label: string) => apiSend<{ ok: true }>('PATCH', `/api/kiosk/devices/${id}`, { label }),
+  revokeDevice: (id: string) => apiDelete(`/api/kiosk/devices/${id}`),
 }

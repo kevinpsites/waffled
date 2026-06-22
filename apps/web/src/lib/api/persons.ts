@@ -23,6 +23,7 @@ export interface SettingsMember extends Person {
   hasLogin: boolean
   loginEmail: string | null
   hasPassword: boolean
+  hasPin: boolean
   isOwner: boolean
 }
 
