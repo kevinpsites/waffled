@@ -399,6 +399,22 @@ final class SyncManager {
         return ok
     }
 
+    /// Approve a chore completion that was awaiting a parent's OK (awards its stars).
+    @discardableResult
+    func approveChore(id: String) async -> Bool {
+        let ok = await restCommit { try await api.approveChore(id: id) }
+        if ok { choresRev += 1 }
+        return ok
+    }
+
+    /// Reject an awaiting chore completion (sends it back to pending, no stars).
+    @discardableResult
+    func rejectChore(id: String) async -> Bool {
+        let ok = await restCommit { try await api.rejectChore(id: id) }
+        if ok { choresRev += 1 }
+        return ok
+    }
+
     /// Pin (or clear, with `nil`) the reward a person is saving toward. Bumps
     /// `rewardsRev` so the person spotlight and their reward shop reflect it.
     @discardableResult

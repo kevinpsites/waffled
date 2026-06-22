@@ -893,6 +893,12 @@ struct NookAPI: Sendable {
         return try await getJSON("/api/chore-instances/today?date=\(date)", as: Resp.self).instances
     }
 
+    /// All chore completions awaiting a parent's OK, across every date (approvals queue).
+    func awaitingChores() async throws -> [ChoreInstanceDTO] {
+        struct Resp: Decodable { let instances: [ChoreInstanceDTO] }
+        return try await getJSON("/api/chore-instances/awaiting", as: Resp.self).instances
+    }
+
     /// Create a chore definition (admins). Body: title, emoji?, personId?,
     /// rewardAmount?, rrule?, requiresApproval?.
     func createChore(_ body: [String: JSONValue]) async throws { try await send("POST", "/api/chores", body: body) }

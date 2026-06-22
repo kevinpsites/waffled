@@ -15,6 +15,9 @@ struct TodayView: View {
     /// Goal-calendar review queue counts, for the "review events" entry card.
     @State private var reviewRecap: [NookAPI.GoalRecapItem] = []
     @State private var reviewSuggestions: [NookAPI.GoalSuggestionItem] = []
+    /// Pending approvals (reward purchases + chore check-offs), for the parent's
+    /// "Needs your OK" entry card.
+    @State private var approvals = ApprovalsModel()
     /// Household goals (featured-first), for the Today goals card.
     @State private var goals: [NookAPI.Goal] = []
     /// Which goal the card highlights: "mine" (the logged-in member's) or "family"
@@ -45,6 +48,12 @@ struct TodayView: View {
         return sync.members.first { ($0.memberType ?? "") == "adult" } ?? sync.members.first
     }
 
+    /// Only adults see the approvals banner — kids can't act on it (server-gated too).
+    private var isParent: Bool {
+        guard let id = sync.currentPersonId else { return false }
+        return sync.members.first { $0.id == id }?.memberType == "adult"
+    }
+
     private var greetingDate: String { DateFmt.string(Date(), "EEEE, MMM d", sync.householdTz) }
 
     private var greetingPhrase: String {
@@ -60,6 +69,10 @@ struct TodayView: View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    // Parent-only "Needs your OK" banner, pinned above everything.
+                    if isParent && !approvals.isEmpty {
+                        Button { path.append(.approvals) } label: { approvalsCard }.buttonStyle(.plain)
+                    }
                     // The review banner is pinned (transient alert), not customizable.
                     if !reviewRecap.isEmpty || !reviewSuggestions.isEmpty {
                         Button { path.append(.reviewEvents) } label: { reviewCard }.buttonStyle(.plain)
@@ -111,6 +124,10 @@ struct TodayView: View {
                 reviewRecap = await r ?? []
                 reviewSuggestions = await s ?? []
                 goals = await g ?? []
+            }
+            // Pending approvals refresh on load + whenever a chore/reward action lands.
+            .task(id: "\(sync.choresRev)|\(sync.rewardsRev)") {
+                await approvals.load()
             }
             .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
             .sheet(isPresented: $showCapture) {
@@ -177,6 +194,38 @@ struct TodayView: View {
                 Avatar(person: .kelly, emoji: "🦊", size: 46)
             }
         }
+    }
+
+    // MARK: approvals entry card ("Needs your OK")
+
+    /// "N to approve · Ada's reward · Sam's dishes" — a gold-tinted card that opens
+    /// the combined approval queue. Gold (vs. the review card's purple) flags an
+    /// action you need to take, not a confirmation.
+    private var approvalsCard: some View {
+        HStack(spacing: 13) {
+            Image(systemName: "checkmark.seal.fill").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .background(NK.gold)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(approvals.total == 1 ? "1 to approve" : "\(approvals.total) to approve")
+                    .font(.system(size: 16, weight: .heavy)).foregroundStyle(NK.ink)
+                Text(approvalsPreview).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink3).lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            Image(systemName: "chevron.right").font(.system(size: 14, weight: .heavy)).foregroundStyle(NK.gold)
+        }
+        .padding(14)
+        .background(NK.gold.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.gold.opacity(0.30), lineWidth: 1))
+    }
+
+    private var approvalsPreview: String {
+        let red = approvals.redemptions.map { "\($0.personName ?? "Someone")’s \($0.title)" }
+        let ch = approvals.chores.map { "\($0.personName ?? "Someone")’s \($0.choreTitle)" }
+        let preview = (red + ch).prefix(3).joined(separator: " · ")
+        return preview.isEmpty ? "Tap to review reward purchases & chores" : preview
     }
 
     // MARK: review-events entry card (goal-calendar bridge)
