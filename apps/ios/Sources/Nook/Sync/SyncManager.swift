@@ -426,16 +426,16 @@ final class SyncManager {
 
     /// Create a reward in the catalog (admins); bumps `rewardsRev`.
     @discardableResult
-    func createReward(title: String, emoji: String?, cost: Int, currency: String) async -> Bool {
-        let ok = await restCommit { _ = try await api.createReward(title: title, emoji: emoji, cost: cost, currency: currency) }
+    func createReward(title: String, emoji: String?, cost: Int, currency: String, requiresApproval: Bool) async -> Bool {
+        let ok = await restCommit { _ = try await api.createReward(title: title, emoji: emoji, cost: cost, currency: currency, requiresApproval: requiresApproval) }
         if ok { rewardsRev += 1 }
         return ok
     }
 
     /// Edit a reward (admins); bumps `rewardsRev`.
     @discardableResult
-    func updateReward(id: String, title: String, emoji: String?, cost: Int, currency: String) async -> Bool {
-        let ok = await restCommit { _ = try await api.updateReward(id: id, title: title, emoji: emoji, cost: cost, currency: currency) }
+    func updateReward(id: String, title: String, emoji: String?, cost: Int, currency: String, requiresApproval: Bool) async -> Bool {
+        let ok = await restCommit { _ = try await api.updateReward(id: id, title: title, emoji: emoji, cost: cost, currency: currency, requiresApproval: requiresApproval) }
         if ok { rewardsRev += 1 }
         return ok
     }

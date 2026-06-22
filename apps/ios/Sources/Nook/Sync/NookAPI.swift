@@ -646,6 +646,18 @@ struct NookAPI: Sendable {
     /// Soft-delete a currency (can't be the default or the last one).
     func deleteCurrency(id: String) async throws { try await delete("/api/currencies/\(id)") }
 
+    // MARK: - Settings: reward-approval policy
+
+    struct RewardSettings: Decodable, Sendable { let requireApproval: Bool }
+    /// Household reward-approval gate (on = redemptions wait for a parent).
+    func rewardSettings() async throws -> RewardSettings {
+        try await getJSON("/api/rewards/settings", as: RewardSettings.self)
+    }
+    /// Flip the gate (admin-only server-side).
+    func setRewardApproval(_ requireApproval: Bool) async throws {
+        try await send("PUT", "/api/rewards/settings", body: ["requireApproval": .bool(requireApproval)])
+    }
+
     /// A trade rate between two currencies (e.g. 10 ⭐ → 1 🥢).
     struct Conversion: Decodable, Identifiable, Hashable, Sendable {
         let id: String
@@ -811,6 +823,7 @@ struct NookAPI: Sendable {
         let cost: Int
         let currency: String        // currency key (e.g. "stars")
         let sortOrder: Int
+        let requiresApproval: Bool   // per-reward parent-approval gate
     }
 
     /// A reward redemption: request → pending → approved/denied. Carries the
@@ -909,17 +922,17 @@ struct NookAPI: Sendable {
     // MARK: rewards catalog admin
 
     /// Create a reward (admins). Returns the new reward.
-    func createReward(title: String, emoji: String?, cost: Int, currency: String) async throws -> Reward {
+    func createReward(title: String, emoji: String?, cost: Int, currency: String, requiresApproval: Bool) async throws -> Reward {
         struct Resp: Decodable { let reward: Reward }
-        var body: [String: JSONValue] = ["title": .string(title), "cost": .int(cost), "currency": .string(currency)]
+        var body: [String: JSONValue] = ["title": .string(title), "cost": .int(cost), "currency": .string(currency), "requiresApproval": .bool(requiresApproval)]
         body["emoji"] = emoji.map(JSONValue.string) ?? .null
         return try await sendReturning("POST", "/api/rewards", body: body, as: Resp.self).reward
     }
 
-    /// Edit a reward's title/emoji/cost/currency (admins).
-    func updateReward(id: String, title: String, emoji: String?, cost: Int, currency: String) async throws -> Reward {
+    /// Edit a reward's title/emoji/cost/currency/approval (admins).
+    func updateReward(id: String, title: String, emoji: String?, cost: Int, currency: String, requiresApproval: Bool) async throws -> Reward {
         struct Resp: Decodable { let reward: Reward }
-        var body: [String: JSONValue] = ["title": .string(title), "cost": .int(cost), "currency": .string(currency)]
+        var body: [String: JSONValue] = ["title": .string(title), "cost": .int(cost), "currency": .string(currency), "requiresApproval": .bool(requiresApproval)]
         body["emoji"] = emoji.map(JSONValue.string) ?? .null
         return try await sendReturning("PATCH", "/api/rewards/\(id)", body: body, as: Resp.self).reward
     }
