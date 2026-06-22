@@ -26,6 +26,55 @@ final class ApprovalsModel {
     func drop(chore id: String) { chores.removeAll { $0.id == id } }
 }
 
+/// The gold "N to approve" entry card, shown wherever a parent might jump to the
+/// approval queue (Today, Chores, Rewards). Self-navigating — it pushes `.approvals`
+/// in whatever NavigationStack hosts it — and renders nothing for kids or an empty
+/// queue, so callers can drop it in unconditionally. Gold (vs. the review card's
+/// purple) flags an action you need to take, not a confirmation.
+struct ApprovalsBanner: View {
+    let model: ApprovalsModel
+    @Environment(SyncManager.self) private var sync
+
+    /// Only adults can act on approvals (server-gated too), so only they see the card.
+    private var isParent: Bool {
+        guard let id = sync.currentPersonId else { return false }
+        return sync.members.first { $0.id == id }?.memberType == "adult"
+    }
+
+    var body: some View {
+        if isParent && !model.isEmpty {
+            NavigationLink(value: HubRoute.approvals) { card }.buttonStyle(.plain)
+        }
+    }
+
+    private var card: some View {
+        HStack(spacing: 13) {
+            Image(systemName: "checkmark.seal.fill").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .background(NK.gold)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.total == 1 ? "1 to approve" : "\(model.total) to approve")
+                    .font(.system(size: 16, weight: .heavy)).foregroundStyle(NK.ink)
+                Text(preview).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink3).lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            Image(systemName: "chevron.right").font(.system(size: 14, weight: .heavy)).foregroundStyle(NK.gold)
+        }
+        .padding(14)
+        .background(NK.gold.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.gold.opacity(0.30), lineWidth: 1))
+    }
+
+    private var preview: String {
+        let red = model.redemptions.map { "\($0.personName ?? "Someone")’s \($0.title)" }
+        let ch = model.chores.map { "\($0.personName ?? "Someone")’s \($0.choreTitle)" }
+        let preview = (red + ch).prefix(3).joined(separator: " · ")
+        return preview.isEmpty ? "Tap to review reward purchases & chores" : preview
+    }
+}
+
 /// The approval queue reached from the Today "Needs your OK" card. Mirrors the
 /// goal-calendar `ReviewEventsView` pattern: a focused list you clear one tap at a time.
 struct ApprovalsView: View {
@@ -33,32 +82,36 @@ struct ApprovalsView: View {
     @State private var model = ApprovalsModel()
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                if model.loading && model.isEmpty {
-                    NookLoading()
-                } else if model.isEmpty {
-                    NookEmptyState(emoji: "🎉", title: "All caught up",
-                                   message: "No reward purchases or chores waiting on you.")
-                } else {
-                    if !model.redemptions.isEmpty {
-                        SectionLabel(text: "Reward purchases")
-                        ForEach(model.redemptions) { redemptionRow($0) }
-                    }
-                    if !model.chores.isEmpty {
-                        SectionLabel(text: "Chore check-offs").padding(.top, model.redemptions.isEmpty ? 0 : 8)
-                        ForEach(model.chores) { choreRow($0) }
+        GeometryReader { geo in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if model.loading && model.isEmpty {
+                        NookLoading()
+                    } else if model.isEmpty {
+                        NookEmptyState(emoji: "🎉", title: "All caught up",
+                                       message: "No reward purchases or chores waiting on you.")
+                    } else {
+                        if !model.redemptions.isEmpty {
+                            SectionLabel(text: "Reward purchases")
+                            ForEach(model.redemptions) { redemptionRow($0) }
+                        }
+                        if !model.chores.isEmpty {
+                            SectionLabel(text: "Chore check-offs").padding(.top, model.redemptions.isEmpty ? 0 : 8)
+                            ForEach(model.chores) { choreRow($0) }
+                        }
                     }
                 }
+                .padding(16).padding(.bottom, 110)
+                // Fill the viewport so the ScrollView is genuinely scrollable even when
+                // empty — otherwise iOS won't reveal the pull-to-refresh control.
+                .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
             }
-            .padding(16).padding(.bottom, 110)
+            .scrollBounceBehavior(.always)
+            .refreshable { await model.load() }
         }
-        // Bounce even when the queue is short/empty, so pull-to-refresh still triggers.
-        .scrollBounceBehavior(.always)
         .background(NK.canvas)
         .navigationTitle("Needs your OK").navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }
-        .refreshable { await model.load() }
     }
 
     // MARK: rows

@@ -125,6 +125,7 @@ struct ChoreColumn: Identifiable {
 struct ChoresView: View {
     @Environment(SyncManager.self) private var sync
     @State private var model = ChoresModel(date: ChoreDates.today())
+    @State private var approvals = ApprovalsModel()   // parent "needs your OK" banner
     @State private var claiming: String?   // instance id whose "who did it?" picker is open
     @State private var editor: ChoreEditorTarget?
     @State private var collapsed: Set<String> = []   // column ids the user has folded
@@ -145,6 +146,7 @@ struct ChoresView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                ApprovalsBanner(model: approvals)
                 dateNav
                 if model.loading && model.instances.isEmpty {
                     NookLoading(top: 32)
@@ -172,9 +174,9 @@ struct ChoresView: View {
                 }
             }
         }
-        .task(id: sync.choresRev) { await model.load() }
+        .task(id: sync.choresRev) { await model.load(); await approvals.load() }
         .task { await sync.loadCurrencies() }
-        .refreshable { await model.load() }
+        .refreshable { await model.load(); await approvals.load() }
         .sheet(item: $editor) { target in
             ChoreEditSheet(members: sync.members, target: target,
                 onSave: { choreId, body in Task { await model.save(choreId: choreId, body: body) } },
