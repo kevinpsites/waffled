@@ -116,6 +116,31 @@
   height: 1px;
   background: var(--hair, #e4ded4);
 }
+/* Segmented pairing-code input (6 boxes). */
+.pair-code {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+.pair-box {
+  flex: 1;
+  min-width: 0;
+  height: 60px;
+  text-align: center;
+  font-size: 26px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border: 1px solid var(--hair, #e4ded4);
+  border-radius: 12px;
+  background: var(--card-2, #faf8f4);
+  color: var(--ink);
+}
+.pair-box:focus {
+  outline: none;
+  border-color: var(--primary, #e0653f);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary, #e0653f) 18%, transparent);
+}
+
 /* Subtle link under the login form: turn this device into a shared kiosk. */
 .auth-kiosk-link {
   display: block;
