@@ -2,7 +2,15 @@
 // (which sets the ephemeral profile session), and per-person PIN management.
 // Device-authed calls use deviceFetch (the device bearer); admin calls use the
 // normal authFetch-backed apiSend.
-import { apiGet, apiSend, apiDelete, deviceFetch, setKioskDevice, enterKioskMode, setSession } from './client'
+import { apiGet, apiSend, apiDelete, deviceFetch, getAccessToken, setKioskDevice, enterKioskMode, setSession } from './client'
+
+export interface DisplayConfig {
+  screensaverMinutes: number
+  content: 'photos' | 'clock' | 'off'
+  returnToPicker: boolean
+  resetHomeMinutes: number
+  nightDim: { enabled: boolean; start: string; end: string }
+}
 
 export interface KioskDevice {
   id: string
@@ -107,4 +115,14 @@ export const kioskApi = {
     apiSend<{ code: string; label: string; expiresAt: string }>('POST', '/api/kiosk/pairing-code', { label }),
   renameDevice: (id: string, label: string) => apiSend<{ ok: true }>('PATCH', `/api/kiosk/devices/${id}`, { label }),
   revokeDevice: (id: string) => apiDelete(`/api/kiosk/devices/${id}`),
+
+  // ── display / screensaver settings ─────────────────────────────────────────────
+  // Dual-auth GET: use the profile token when signed in, else the device token.
+  async displayConfig(): Promise<DisplayConfig> {
+    if (getAccessToken()) return apiGet<DisplayConfig>('/api/kiosk/display')
+    const res = await deviceFetch('/api/kiosk/display', {})
+    if (!res.ok) throw new Error(`display -> ${res.status}`)
+    return (await res.json()) as DisplayConfig
+  },
+  setDisplayConfig: (patch: Partial<DisplayConfig>) => apiSend<DisplayConfig>('PUT', '/api/kiosk/display', patch),
 }

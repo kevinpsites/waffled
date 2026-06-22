@@ -14,7 +14,8 @@ const REFRESH_KEY = 'nook.refresh'
 const DEVICE_SECRET_KEY = 'nook.kiosk.deviceSecret'
 const DEVICE_ID_KEY = 'nook.kiosk.deviceId'
 const DEVICE_ACCESS_KEY = 'nook.kiosk.deviceAccess'
-const KIOSK_MODE_KEY = 'nook.kiosk.mode'
+const KIOSK_MODE_KEY = 'nook.kiosk.mode'      // device is paired (→ profile picker)
+const DISPLAY_MODE_KEY = 'nook.kiosk.display' // this browser is the always-on display
 
 export function isKioskMode(): boolean {
   try {
@@ -22,6 +23,27 @@ export function isKioskMode(): boolean {
   } catch {
     return false
   }
+}
+
+// "Display mode" = ambient family display (screensaver, keep-awake). Per-device,
+// separate from pairing — a single-account family can turn it on, and a dev browser
+// leaves it off so nothing fires. Pairing implies display mode.
+export function isDisplayMode(): boolean {
+  try {
+    if (localStorage.getItem(DISPLAY_MODE_KEY) === '1') return true
+  } catch {
+    /* ignore */
+  }
+  return isKioskMode()
+}
+export function setDisplayMode(on: boolean): void {
+  try {
+    if (on) localStorage.setItem(DISPLAY_MODE_KEY, '1')
+    else localStorage.removeItem(DISPLAY_MODE_KEY)
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(new Event('nook:auth-changed'))
 }
 export function getDeviceId(): string | undefined {
   try {

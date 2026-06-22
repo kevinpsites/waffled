@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice } from '../lib/api'
+import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, goalCalendarApi, groceryApi, authApi, kioskApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import '../styles/settings.css'
@@ -1285,6 +1285,122 @@ function KioskDevicesSection() {
   )
 }
 
+// Display & Kiosk: a per-device "this is the family display" toggle (enables the
+// screensaver + keep-awake locally) plus household-wide screensaver settings.
+const CONTENT_OPTS: Array<{ key: DisplayConfig['content']; label: string }> = [
+  { key: 'photos', label: 'Photos' },
+  { key: 'clock', label: 'Clock & weather' },
+  { key: 'off', label: 'Off' },
+]
+function DisplayKioskPanel() {
+  const paired = isKioskMode()
+  const [displayOn, setDisplayOn] = useState(isDisplayMode())
+  const [cfg, setCfg] = useState<DisplayConfig | null>(null)
+  const [error, setError] = useState(false)
+  const [savedFlash, setSavedFlash] = useState(false)
+  const dirtyRef = useRef(false)
+
+  useEffect(() => {
+    kioskApi.displayConfig().then((c) => { setCfg(c); setError(false) }).catch(() => setError(true))
+  }, [])
+
+  function update(patch: Partial<DisplayConfig>) {
+    setCfg((c) => (c ? { ...c, ...patch } : c))
+    dirtyRef.current = true
+  }
+  function updateDim(patch: Partial<DisplayConfig['nightDim']>) {
+    setCfg((c) => (c ? { ...c, nightDim: { ...c.nightDim, ...patch } } : c))
+    dirtyRef.current = true
+  }
+
+  // Debounced auto-save (like MealsPanel) — echoing the server's normalized cfg back
+  // into state must not retrigger a save, hence dirtyRef.
+  useEffect(() => {
+    if (!cfg || !dirtyRef.current) return
+    const t = setTimeout(async () => {
+      try {
+        const s = await kioskApi.setDisplayConfig(cfg)
+        dirtyRef.current = false
+        setCfg(s)
+        setSavedFlash(true)
+        setTimeout(() => setSavedFlash(false), 1800)
+      } catch {
+        setError(true)
+      }
+    }, 600)
+    return () => clearTimeout(t)
+  }, [cfg])
+
+  function toggleDisplay() {
+    const next = !displayOn
+    setDisplayMode(next)
+    setDisplayOn(next)
+  }
+
+  return (
+    <div className="set-panel">
+      <div className="set-head" style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+        <div className="nk-serif set-head-t">Display &amp; Kiosk</div>
+        {savedFlash && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+        <span className="tiny muted" style={{ marginLeft: 'auto', fontWeight: 600 }}>Screensaver settings save automatically</span>
+      </div>
+
+      <div className="set-card">
+        <SettingRow icon="🖥️" title="Use this browser as the family display" sub={paired ? 'On — this device is paired as a kiosk.' : 'This device only. Enables the screensaver & keeps the screen awake.'}>
+          <input type="checkbox" className="set-check" checked={displayOn} disabled={paired} onChange={toggleDisplay} />
+        </SettingRow>
+      </div>
+
+      {error && <div className="set-card" style={{ padding: 18, marginTop: 16 }}><div className="muted" style={{ fontWeight: 600 }}>Couldn’t load display settings.</div></div>}
+      {cfg && (
+        <>
+          <div className="set-card" style={{ marginTop: 16 }}>
+            <SettingRow icon="🌅" title="Screensaver after" sub="Minutes of inactivity before the screensaver appears.">
+              <input type="number" min={1} max={120} className="set-inline-input" style={{ width: 80 }} value={cfg.screensaverMinutes} onChange={(e) => update({ screensaverMinutes: Number(e.target.value) || 1 })} />
+            </SettingRow>
+            <div className="set-row2">
+              <div className="set-ic2">🖼️</div>
+              <div style={{ flex: 1 }}>
+                <div className="set-row2-t">What it shows</div>
+                <div className="tiny muted" style={{ fontWeight: 600 }}>Photos need a signed-in profile; the picker always shows the clock.</div>
+              </div>
+              <div className="seg" style={{ width: 'fit-content' }}>
+                {CONTENT_OPTS.map((o) => (
+                  <button type="button" key={o.key} className={cfg.content === o.key ? 'on' : ''} style={{ cursor: 'pointer' }} onClick={() => update({ content: o.key })}>{o.label}</button>
+                ))}
+              </div>
+            </div>
+            <SettingRow icon="🔒" title="Return to profile picker afterward" sub="When the screensaver wakes on a paired kiosk, drop to the profile picker.">
+              <input type="checkbox" className="set-check" checked={cfg.returnToPicker} onChange={(e) => update({ returnToPicker: e.target.checked })} />
+            </SettingRow>
+          </div>
+
+          <div className="set-card" style={{ marginTop: 16 }}>
+            <SettingRow icon="🏠" title="Return to Today when idle" sub="Minutes before an idle screen resets to the dashboard (0 = never).">
+              <input type="number" min={0} max={60} className="set-inline-input" style={{ width: 80 }} value={cfg.resetHomeMinutes} onChange={(e) => update({ resetHomeMinutes: Math.max(0, Number(e.target.value) || 0) })} />
+            </SettingRow>
+          </div>
+
+          <div className="set-card" style={{ marginTop: 16 }}>
+            <SettingRow icon="🌙" title="Night dimming" sub="Dim the display on a schedule (overnight).">
+              <input type="checkbox" className="set-check" checked={cfg.nightDim.enabled} onChange={(e) => updateDim({ enabled: e.target.checked })} />
+            </SettingRow>
+            {cfg.nightDim.enabled && (
+              <SettingRow icon="🕙" title="Dim from → to">
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input type="time" className="set-inline-input" value={cfg.nightDim.start} onChange={(e) => updateDim({ start: e.target.value })} />
+                  <span className="muted">→</span>
+                  <input type="time" className="set-inline-input" value={cfg.nightDim.end} onChange={(e) => updateDim({ end: e.target.value })} />
+                </div>
+              </SettingRow>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export function Settings() {
   const { household, person } = useHousehold()
   // Tab lives in the URL (?tab=) so a refresh returns to where you were.
@@ -1316,7 +1432,7 @@ export function Settings() {
         </div>
       </div>
       <div className="set-content">
-        {activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <CalendarsPanel /> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
+        {activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <CalendarsPanel /> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
       </div>
     </div>
   )
