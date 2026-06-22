@@ -74,6 +74,7 @@ describe('kiosk pairing + profile tokens', () => {
     expect(paired.statusCode).toBe(201)
     deviceSecret = json(paired).deviceSecret
     expect(typeof deviceSecret).toBe('string')
+    expect(typeof json(paired).deviceId).toBe('string')
 
     // One-time: the same code can't be reused.
     expect((await call('POST', '/api/kiosk/pair', { code })).statusCode).toBe(401)
@@ -172,5 +173,38 @@ describe('kiosk pairing + profile tokens', () => {
     const r = await call('POST', `/api/kiosk/profile/${kid}`, {}, deviceToken)
     expect(r.statusCode).toBe(200)
     expect(json(await call('GET', '/api/household', undefined, json(r).accessToken))).toMatchObject({ provisioned: true })
+  })
+
+  // ── device management (admin) ───────────────────────────────────────────────────
+  it('lists, renames, and revokes devices (admin)', async () => {
+    const list = json(await call('GET', '/api/kiosk/devices', undefined, admin))
+    expect(Array.isArray(list.devices)).toBe(true)
+    expect(list.devices.length).toBeGreaterThanOrEqual(2)
+
+    // A fresh device we can safely revoke without disturbing the others.
+    const spare = json(await call('POST', '/api/kiosk/promote', { label: 'Spare' }, admin))
+    const tok = json(await call('POST', '/api/kiosk/device/token', { deviceSecret: spare.deviceSecret })).accessToken
+    expect((await call('GET', '/api/kiosk/profiles', undefined, tok)).statusCode).toBe(200)
+
+    expect((await call('PATCH', `/api/kiosk/devices/${spare.deviceId}`, { label: 'Hallway' }, admin)).statusCode).toBe(200)
+    const renamed = json(await call('GET', '/api/kiosk/devices', undefined, admin)).devices.find((d: { id: string }) => d.id === spare.deviceId)
+    expect(renamed.label).toBe('Hallway')
+
+    // Revoke → both the live token and the secret stop working.
+    expect((await call('DELETE', `/api/kiosk/devices/${spare.deviceId}`, undefined, admin)).statusCode).toBe(200)
+    expect((await call('GET', '/api/kiosk/profiles', undefined, tok)).statusCode).toBe(401)
+    expect((await call('POST', '/api/kiosk/device/token', { deviceSecret: spare.deviceSecret })).statusCode).toBe(401)
+  })
+
+  it('rejects device management for non-admins', async () => {
+    const kidTok = json(await call('POST', `/api/kiosk/profile/${kid}`, {}, deviceToken)).accessToken
+    expect((await call('GET', '/api/kiosk/devices', undefined, kidTok)).statusCode).toBe(403)
+  })
+
+  it('surfaces hasPin in household settings', async () => {
+    await call('PUT', `/api/persons/${kid}/pin`, { pin: '1234' }, admin)
+    const members = json(await call('GET', '/api/household/settings', undefined, admin)).members
+    expect(members.find((m: { id: string }) => m.id === kid).hasPin).toBe(true)
+    await call('DELETE', `/api/persons/${kid}/pin`, undefined, admin)
   })
 })

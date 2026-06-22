@@ -187,6 +187,44 @@ export function registerKioskRoutes(api: Api): void {
     return { ok: true }
   })
 
+  // ── device management (admin, in Settings → Display & Kiosk) ─────────────────────
+  api.get('/api/kiosk/devices', async (req: Request) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const { rows } = await query<{ id: string; label: string; last_seen_at: Date | null; created_at: Date }>(
+      `select id, label, last_seen_at, created_at from kiosk_devices
+        where household_id = $1 and revoked_at is null order by created_at`,
+      [tenant.householdId]
+    )
+    return {
+      devices: rows.map((r) => ({ id: r.id, label: r.label, lastSeenAt: r.last_seen_at, createdAt: r.created_at })),
+    }
+  })
+
+  api.patch('/api/kiosk/devices/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const label = ((req.body ?? {}) as { label?: string }).label?.trim()
+    if (!label) return res.status(400).json({ error: 'BadRequest', message: 'label is required' })
+    const { rowCount } = await query(
+      `update kiosk_devices set label = $3 where id = $1 and household_id = $2 and revoked_at is null`,
+      [req.params.id, tenant.householdId, label]
+    )
+    if (!rowCount) return res.status(404).json({ error: 'NotFound', message: 'device not found' })
+    return { ok: true }
+  })
+
+  api.delete('/api/kiosk/devices/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const { rowCount } = await query(
+      `update kiosk_devices set revoked_at = now() where id = $1 and household_id = $2 and revoked_at is null`,
+      [req.params.id, tenant.householdId]
+    )
+    if (!rowCount) return res.status(404).json({ error: 'NotFound', message: 'device not found' })
+    return { ok: true }
+  })
+
   // ── per-person PIN (self or admin) ─────────────────────────────────────────────
   api.put('/api/persons/:id/pin', async (req: Request, res: Response) => {
     const { personId, tenant } = await requirePinTarget(req, res)
