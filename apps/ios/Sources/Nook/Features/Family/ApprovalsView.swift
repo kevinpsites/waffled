@@ -53,6 +53,8 @@ struct ApprovalsView: View {
             }
             .padding(16).padding(.bottom, 110)
         }
+        // Bounce even when the queue is short/empty, so pull-to-refresh still triggers.
+        .scrollBounceBehavior(.always)
         .background(NK.canvas)
         .navigationTitle("Needs your OK").navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }

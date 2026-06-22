@@ -160,6 +160,8 @@ struct ChoresView: View {
             }
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 110)
         }
+        // Bounce even when nothing's scheduled, so pull-to-refresh still triggers.
+        .scrollBounceBehavior(.always)
         .background(NK.canvas)
         .navigationTitle("Chores")
         .navigationBarTitleDisplayMode(.inline)

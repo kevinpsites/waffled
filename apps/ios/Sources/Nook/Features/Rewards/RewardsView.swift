@@ -235,6 +235,7 @@ struct RewardsView: View {
             }
             .padding(16).padding(.bottom, 110)
         }
+        .scrollBounceBehavior(.always)
         .background(NK.canvas)
         .navigationTitle("Rewards").navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }
@@ -445,6 +446,7 @@ struct RewardShopView: View {
             }
             .padding(16).padding(.bottom, 110)
         }
+        .scrollBounceBehavior(.always)
         .background(NK.canvas)
         .navigationTitle(model.person(personId)?.name ?? "Reward shop")
         .navigationBarTitleDisplayMode(.inline)

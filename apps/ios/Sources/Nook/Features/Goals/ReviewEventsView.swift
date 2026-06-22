@@ -121,6 +121,8 @@ struct ReviewEventsView: View {
             }
             .padding(16).padding(.bottom, 110)
         }
+        // Bounce even when there's nothing to review, so pull-to-refresh still triggers.
+        .scrollBounceBehavior(.always)
         .background(NK.canvas)
         .navigationTitle("Review events")
         .navigationBarTitleDisplayMode(.inline)
