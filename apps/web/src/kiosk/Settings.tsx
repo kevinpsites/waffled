@@ -1151,13 +1151,20 @@ function KioskDevicesSection() {
     const d = dialog
     if (!d) return
     try {
-      if (d.kind === 'promote') { await kioskApi.promote(); setNote('This device is now a kiosk — use “Switch” in the rail to reach the picker.') }
-      else if (d.kind === 'remove' && d.device) await kioskApi.revokeDevice(d.device.id)
+      if (d.kind === 'promote') {
+        const id = await kioskApi.promote()
+        setNote('This device is now a kiosk — use “Switch” in the rail to reach the picker.')
+        load()
+        // Chain straight into naming the new device.
+        setDialog({ kind: 'rename', device: { id, label: 'Kiosk', lastSeenAt: null, createdAt: '' } })
+        return
+      }
+      if (d.kind === 'remove' && d.device) await kioskApi.revokeDevice(d.device.id)
       else if (d.kind === 'rename' && d.device && value) await kioskApi.renameDevice(d.device.id, value)
       load()
+      setDialog(null)
     } catch {
       setErr('That action didn’t work.')
-    } finally {
       setDialog(null)
     }
   }

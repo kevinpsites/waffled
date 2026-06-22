@@ -44,8 +44,9 @@ function getDeviceToken(): string | undefined {
     return undefined
   }
 }
-// Pair this browser as a kiosk: store the secret + flip into kiosk mode. The
-// AuthGate re-resolves to the profile picker.
+// Store the paired device (secret + id + kiosk-mode flag) WITHOUT navigating, so the
+// pairing screen can run its post-pair "name this kiosk" step first. The device token
+// works immediately (the secret is stored). Call enterKioskMode() to actually proceed.
 export function setKioskDevice(deviceSecret: string, deviceId: string): void {
   try {
     localStorage.setItem(DEVICE_SECRET_KEY, deviceSecret)
@@ -54,6 +55,10 @@ export function setKioskDevice(deviceSecret: string, deviceId: string): void {
   } catch {
     /* ignore */
   }
+}
+// Re-resolve the AuthGate now that the device is paired → the profile picker (or, if
+// an admin is still signed in on this browser, just refreshes their session chrome).
+export function enterKioskMode(): void {
   window.dispatchEvent(new Event('nook:auth-changed'))
 }
 // Unpair entirely (admin revoked the device, or the operator un-kiosks it): drop

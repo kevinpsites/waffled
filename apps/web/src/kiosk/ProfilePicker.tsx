@@ -8,6 +8,7 @@ import '../styles/kiosk-profiles.css'
 
 export function ProfilePicker() {
   const [profiles, setProfiles] = useState<KioskProfile[] | null>(null)
+  const [deviceLabel, setDeviceLabel] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const [pinFor, setPinFor] = useState<KioskProfile | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -16,7 +17,11 @@ export function ProfilePicker() {
     let alive = true
     kioskApi
       .profiles()
-      .then((p) => alive && setProfiles(p))
+      .then((d) => {
+        if (!alive) return
+        setProfiles(d.profiles)
+        setDeviceLabel(d.deviceLabel)
+      })
       .catch(() => alive && setError('Couldn’t load profiles. Check the connection.'))
     return () => {
       alive = false
@@ -61,6 +66,7 @@ export function ProfilePicker() {
         ))}
         {profiles && profiles.length === 0 && <div className="kp-empty">No profiles are shown on the kiosk yet.</div>}
       </div>
+      {deviceLabel && <div className="kp-device">🖥️ {deviceLabel}</div>}
     </div>
   )
 }
