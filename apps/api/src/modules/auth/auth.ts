@@ -26,7 +26,7 @@ export function hashPassword(pw: string): string {
   const hash = scryptSync(pw, salt, 64)
   return `scrypt$${salt.toString('hex')}$${hash.toString('hex')}`
 }
-function verifyPassword(pw: string, stored: string): boolean {
+export function verifyPassword(pw: string, stored: string): boolean {
   const [scheme, saltHex, hashHex] = stored.split('$')
   if (scheme !== 'scrypt' || !saltHex || !hashHex) return false
   const expected = Buffer.from(hashHex, 'hex')
@@ -38,12 +38,15 @@ function verifyPassword(pw: string, stored: string): boolean {
 // Exported so the OIDC module reaches the *same* session path — a verified OIDC
 // login mints an identical access+refresh pair, keeping everything downstream
 // (requireAuth, the PowerSync exchange) unchanged.
-export function mintAccess(sub: string): { token: string; expiresIn: number } {
+// `extra` carries optional non-identity claims (e.g. a device token's
+// { kind:'device', household_id }). Default empty → password/OIDC callers are unchanged.
+export function mintAccess(sub: string, extra: Record<string, unknown> = {}): { token: string; expiresIn: number } {
   const { secret, issuer, audience } = config.auth.local
-  const token = jwt.sign({}, secret, { algorithm: 'HS256', subject: sub, issuer, audience, expiresIn: ACCESS_TTL_SECONDS })
+  const token = jwt.sign(extra, secret, { algorithm: 'HS256', subject: sub, issuer, audience, expiresIn: ACCESS_TTL_SECONDS })
   return { token, expiresIn: ACCESS_TTL_SECONDS }
 }
-const sha256 = (s: string) => createHash('sha256').update(s).digest('hex')
+// Shared one-way hash for opaque secrets stored at rest (refresh tokens, device secrets).
+export const sha256 = (s: string) => createHash('sha256').update(s).digest('hex')
 
 export async function issueRefresh(personId: string, subject: string): Promise<string> {
   const token = randomBytes(32).toString('base64url')
