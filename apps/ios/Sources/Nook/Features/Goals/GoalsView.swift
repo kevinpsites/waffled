@@ -183,10 +183,13 @@ struct GoalsView: View {
                         .padding(.top, 2)
                     ForEach(model.more) { moreCard($0) }
                 }
-                if !model.loading && model.visibleGoals.isEmpty {
-                    Text(model.error ? "Couldn’t load goals." : "No goals here yet — add one with ＋.")
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
-                        .padding(.vertical, 24)
+                if model.loading && model.visibleGoals.isEmpty {
+                    NookLoading()
+                } else if model.visibleGoals.isEmpty {
+                    NookEmptyState(
+                        emoji: model.error ? "😕" : "🎯",
+                        title: model.error ? "Couldn’t load goals" : "No goals here yet",
+                        message: model.error ? "Pull to refresh to try again." : "Add one with the ＋ button.")
                 }
             }
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 110)

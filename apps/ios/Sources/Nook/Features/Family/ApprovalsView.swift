@@ -36,9 +36,10 @@ struct ApprovalsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 if model.loading && model.isEmpty {
-                    ProgressView().tint(NK.ink3).frame(maxWidth: .infinity).padding(.top, 48)
+                    NookLoading()
                 } else if model.isEmpty {
-                    emptyState
+                    NookEmptyState(emoji: "🎉", title: "All caught up",
+                                   message: "No reward purchases or chores waiting on you.")
                 } else {
                     if !model.redemptions.isEmpty {
                         SectionLabel(text: "Reward purchases")
@@ -55,6 +56,7 @@ struct ApprovalsView: View {
         .background(NK.canvas)
         .navigationTitle("Needs your OK").navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }
+        .refreshable { await model.load() }
     }
 
     // MARK: rows
@@ -124,16 +126,6 @@ struct ApprovalsView: View {
     @ViewBuilder
     private func rowCard<Content: View>(@ViewBuilder _ content: @escaping () -> Content) -> some View {
         NookCard(padding: 14) { VStack(alignment: .leading, spacing: 10) { content() } }
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 12) {
-            Text("🎉").font(.system(size: 48))
-            Text("All caught up").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
-            Text("No reward purchases or chores waiting on you.")
-                .font(.system(size: 13)).foregroundStyle(NK.ink3).multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity).padding(.top, 56)
     }
 
     /// Optimistically clears the row, runs the decision, and restores the true state

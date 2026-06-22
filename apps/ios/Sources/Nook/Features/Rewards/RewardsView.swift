@@ -226,7 +226,7 @@ struct RewardsView: View {
 
                 SectionLabel(text: "Family balances")
                 if model.people.isEmpty && model.loading {
-                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 40)
+                    NookLoading(top: 40)
                 } else {
                     ForEach(model.people) { p in personRow(p) }
                 }
@@ -440,7 +440,7 @@ struct RewardShopView: View {
                         }
                     }
                 } else if model.loading {
-                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 60)
+                    NookLoading(top: 60)
                 }
             }
             .padding(16).padding(.bottom, 110)

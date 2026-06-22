@@ -79,6 +79,45 @@ struct Avatar: View {
     }
 }
 
+/// A centered loading spinner with the standard Nook tint + breathing room. Use this
+/// for the first-load state of any list screen so the spinner sits consistently across
+/// the app instead of each screen picking its own padding.
+struct NookLoading: View {
+    var top: CGFloat = 48
+    var body: some View {
+        ProgressView()
+            .tint(NK.ink3)
+            .frame(maxWidth: .infinity)
+            .padding(.top, top)
+    }
+}
+
+/// A friendly centered empty state — big emoji, a bold title, and an optional line of
+/// supporting copy. The shared shape behind every "all caught up" / "nothing here yet"
+/// screen so they read the same everywhere.
+struct NookEmptyState: View {
+    let emoji: String
+    let title: String
+    var message: String? = nil
+    var top: CGFloat = 56
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text(emoji).font(.system(size: 48))
+            Text(title).font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
+            if let message {
+                Text(message)
+                    .font(.system(size: 13)).foregroundStyle(NK.ink3)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, top)
+        .padding(.horizontal, 24)
+    }
+}
+
 /// The "Add anything…" capture bar shown on Today. Tapping it is wired by the
 /// caller (Phase 2 opens the AI capture sheet).
 struct AICaptureBar: View {

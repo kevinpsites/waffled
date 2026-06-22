@@ -109,9 +109,11 @@ struct ReviewEventsView: View {
 
                 if model.recap.isEmpty && model.suggestions.isEmpty {
                     if model.loading {
-                        ProgressView().frame(maxWidth: .infinity).padding(.vertical, 60)
+                        NookLoading(top: 60)
                     } else {
-                        emptyState
+                        NookEmptyState(emoji: "🎉",
+                                       title: "You're all caught up",
+                                       message: "Nothing to review or link right now.")
                     }
                 }
                 if !model.recap.isEmpty { recapSection }
@@ -339,16 +341,6 @@ struct ReviewEventsView: View {
         if members.count == 1 { return goalFirstName(members[0].name) }
         if members.count == 2 { return "\(goalFirstName(members[0].name)) & \(goalFirstName(members[1].name))" }
         return "\(members.count) people"
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 8) {
-            Text("🎉").font(.system(size: 40))
-            Text("You're all caught up — nothing to review or link.")
-                .font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink2)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity).padding(.vertical, 50)
     }
 
     // MARK: formatting --------------------------------------------------------

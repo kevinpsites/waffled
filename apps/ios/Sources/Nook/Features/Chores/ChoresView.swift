@@ -146,10 +146,15 @@ struct ChoresView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 dateNav
-                if model.instances.isEmpty && !model.loading {
-                    Text(model.error ? "Couldn’t load chores." : "Nothing scheduled \(ChoreDates.meta(model.date).isToday ? "today" : "this day").")
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
-                        .padding(.vertical, 24)
+                if model.loading && model.instances.isEmpty {
+                    NookLoading(top: 32)
+                } else if model.instances.isEmpty {
+                    NookEmptyState(
+                        emoji: model.error ? "😕" : "✅",
+                        title: model.error ? "Couldn’t load chores"
+                                           : "Nothing scheduled \(ChoreDates.meta(model.date).isToday ? "today" : "this day")",
+                        message: model.error ? "Pull to refresh to try again." : nil,
+                        top: 32)
                 }
                 ForEach(columns) { col in columnCard(col) }
             }

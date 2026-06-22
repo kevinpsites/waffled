@@ -69,9 +69,15 @@ struct ListsIndexView: View {
                     .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 2, trailing: 18))
                     .listRowBackground(Color.clear).listRowSeparator(.hidden)
             }
-            if model.lists.isEmpty && !model.loading {
-                Text(model.error ? "Couldn’t load your lists." : "No lists yet — add one with ＋.")
-                    .font(.system(size: 14)).foregroundStyle(NK.ink3)
+            if model.loading && model.lists.isEmpty {
+                NookLoading(top: 40)
+                    .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 8, trailing: 18))
+                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
+            } else if model.lists.isEmpty {
+                NookEmptyState(
+                    emoji: model.error ? "😕" : "🗒️",
+                    title: model.error ? "Couldn’t load your lists" : "No lists yet",
+                    message: model.error ? "Pull to refresh to try again." : "Add one with the ＋ button.")
                     .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 8, trailing: 18))
                     .listRowBackground(Color.clear).listRowSeparator(.hidden)
             }
