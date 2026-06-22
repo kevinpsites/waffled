@@ -72,14 +72,28 @@ function DisplayLayer() {
     return () => { cancelled = true; lock?.release() }
   }, [])
 
-  // Load settings; refresh when the tab regains focus or the session changes.
+  // Load settings; refresh on focus, session change, an explicit save from this
+  // browser (nook:display-changed), and poll every 2 min so an always-on kiosk picks
+  // up admin edits made elsewhere (it never blurs, so focus alone isn't enough).
   useEffect(() => {
-    const load = () => kioskApi.displayConfig().then(setCfg).catch(() => {})
+    // Keep the same object reference when nothing changed, so polling doesn't churn
+    // the idle effect (which depends on cfg) and perpetually re-arm the timers.
+    const load = () =>
+      kioskApi.displayConfig()
+        .then((c) => setCfg((prev) => (prev && JSON.stringify(prev) === JSON.stringify(c) ? prev : c)))
+        .catch(() => {})
     load()
     const onVis = () => document.visibilityState === 'visible' && load()
     document.addEventListener('visibilitychange', onVis)
     window.addEventListener('nook:auth-changed', load)
-    return () => { document.removeEventListener('visibilitychange', onVis); window.removeEventListener('nook:auth-changed', load) }
+    window.addEventListener('nook:display-changed', load)
+    const poll = setInterval(load, 120_000)
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('nook:auth-changed', load)
+      window.removeEventListener('nook:display-changed', load)
+      clearInterval(poll)
+    }
   }, [])
 
   // Idle watcher (only while the screensaver is NOT up): reset-to-Today, then screensaver.

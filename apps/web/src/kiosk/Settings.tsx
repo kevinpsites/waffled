@@ -1330,6 +1330,8 @@ function DisplayKioskPanel() {
         const s = await kioskApi.setDisplayConfig(cfg)
         dirtyRef.current = false
         setCfg(s)
+        // Let a display layer running in THIS browser reload immediately.
+        window.dispatchEvent(new Event('nook:display-changed'))
         setSavedFlash(true)
         setTimeout(() => setSavedFlash(false), 1800)
       } catch {
@@ -1357,6 +1359,11 @@ function DisplayKioskPanel() {
         <SettingRow icon="🖥️" title="Use this browser as the family display" sub={paired ? 'On — this device is paired as a kiosk.' : 'This device only. Enables the screensaver & keeps the screen awake.'}>
           <input type="checkbox" className="set-check" checked={displayOn} disabled={paired} onChange={toggleDisplay} />
         </SettingRow>
+        {!displayOn && (
+          <div className="tiny muted" style={{ padding: '0 16px 14px', fontWeight: 600 }}>
+            The screensaver, keep-awake and reset-to-Today below only run on a browser that’s set as the display. Turn this on to test them here.
+          </div>
+        )}
       </div>
 
       {error && <div className="set-card" style={{ padding: 18, marginTop: 16 }}><div className="muted" style={{ fontWeight: 600 }}>Couldn’t load display settings.</div></div>}
