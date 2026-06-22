@@ -13,18 +13,29 @@ export function ProfilePicker() {
   const [pinFor, setPinFor] = useState<KioskProfile | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
+  // Refetch on mount, every 60s, and whenever the tab regains focus — so profile
+  // changes an admin makes elsewhere (rename, avatar, add/remove a PIN) show up on
+  // the kiosk without anyone reloading.
   useEffect(() => {
     let alive = true
-    kioskApi
-      .profiles()
-      .then((d) => {
-        if (!alive) return
-        setProfiles(d.profiles)
-        setDeviceLabel(d.deviceLabel)
-      })
-      .catch(() => alive && setError('Couldn’t load profiles. Check the connection.'))
+    const load = () =>
+      kioskApi
+        .profiles()
+        .then((d) => {
+          if (!alive) return
+          setProfiles(d.profiles)
+          setDeviceLabel(d.deviceLabel)
+          setError(null)
+        })
+        .catch(() => alive && setError('Couldn’t load profiles. Check the connection.'))
+    load()
+    const id = setInterval(load, 60_000)
+    const onVis = () => document.visibilityState === 'visible' && load()
+    document.addEventListener('visibilitychange', onVis)
     return () => {
       alive = false
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVis)
     }
   }, [])
 

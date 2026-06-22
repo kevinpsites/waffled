@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router'
 import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -1135,6 +1136,7 @@ function KioskDevicesSection() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
   const [dialog, setDialog] = useState<{ kind: 'remove' | 'promote' | 'rename'; device?: KioskDevice } | null>(null)
 
   const load = () => kioskApi.devices().then(setDevices).catch(() => setErr('Only an admin can manage devices.'))
@@ -1144,8 +1146,36 @@ function KioskDevicesSection() {
 
   async function genCode() {
     setBusy(true)
+    setNote(null)
+    setCopied(false)
     try { setCode(await kioskApi.createPairingCode()) } catch { setErr('Could not create a code.') } finally { setBusy(false) }
   }
+
+  async function copyCode() {
+    if (!code) return
+    try { await navigator.clipboard.writeText(code.code); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { /* clipboard blocked */ }
+  }
+
+  // While a code is shown, poll for the device pairing so the admin sees it land
+  // without a manual refresh. The new device appearing = the code was used.
+  useEffect(() => {
+    if (!code) return
+    const baseline = devices?.length ?? 0
+    const id = setInterval(async () => {
+      try {
+        const list = await kioskApi.devices()
+        setDevices(list)
+        if (list.length > baseline) {
+          const newest = list[list.length - 1]
+          setNote(`✓ “${newest?.label ?? 'A device'}” just paired.`)
+          setCode(null)
+          clearInterval(id)
+        }
+      } catch { /* keep polling */ }
+    }, 5000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code])
 
   async function runDialog(value?: string) {
     const d = dialog
@@ -1195,8 +1225,12 @@ function KioskDevicesSection() {
       {note && <div className="tiny" style={{ fontWeight: 700, color: 'var(--good, #2e7d32)', marginTop: 10 }}>{note}</div>}
       {code && (
         <div style={{ marginTop: 14 }}>
-          <div className="kp-code">{code.code}</div>
-          <div className="tiny muted" style={{ fontWeight: 600, marginTop: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span className="kp-code kp-code-sel">{code.code}</span>
+            <button type="button" className="btn btn-ghost" onClick={copyCode}>{copied ? '✓ Copied' : 'Copy'}</button>
+            <span className="tiny muted" style={{ fontWeight: 600 }}>Waiting for a device to pair…</span>
+          </div>
+          <div className="tiny muted" style={{ fontWeight: 600, marginTop: 8 }}>
             On the new tablet: open this Nook’s address → “Set up this device as a kiosk” → enter this code. One-time, expires in ~10 minutes.
           </div>
         </div>
@@ -1253,7 +1287,10 @@ function KioskDevicesSection() {
 
 export function Settings() {
   const { household, person } = useHousehold()
-  const [tab, setTab] = useState('family')
+  // Tab lives in the URL (?tab=) so a refresh returns to where you were.
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') ?? 'family'
+  const setTab = (key: string) => setParams({ tab: key }, { replace: true })
 
   // Wait until we know who's signed in, so admins don't flash the trimmed nav.
   if (!household) return <div className="settings-screen"><div className="set-content"><div className="muted" style={{ padding: 20 }}>Loading…</div></div></div>

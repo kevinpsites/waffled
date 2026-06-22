@@ -187,6 +187,12 @@
   background: var(--panel, #efeae1);
   color: var(--ink);
 }
+/* The pairing code is meant to be read/copied — make it selectable. */
+.kp-code-sel {
+  user-select: all;
+  -webkit-user-select: all;
+  cursor: text;
+}
 
 /* Rail "switch profile" control (kiosk mode only). */
 .rail-switch {
