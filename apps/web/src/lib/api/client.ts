@@ -6,6 +6,80 @@
 const ACCESS_KEY = 'nook.access'
 const REFRESH_KEY = 'nook.refresh'
 
+// ── kiosk device layer ─────────────────────────────────────────────────────────
+// A paired tablet stores a long-lived device secret (persists across profile
+// switches and idle) and a short-lived device access token minted from it. The
+// access/refresh keys above are reused for the *currently claimed profile* — an
+// ephemeral session cleared on switch/idle while the device stays paired.
+const DEVICE_SECRET_KEY = 'nook.kiosk.deviceSecret'
+const DEVICE_ID_KEY = 'nook.kiosk.deviceId'
+const DEVICE_ACCESS_KEY = 'nook.kiosk.deviceAccess'
+const KIOSK_MODE_KEY = 'nook.kiosk.mode'
+
+export function isKioskMode(): boolean {
+  try {
+    return localStorage.getItem(KIOSK_MODE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+export function getDeviceId(): string | undefined {
+  try {
+    return localStorage.getItem(DEVICE_ID_KEY) || undefined
+  } catch {
+    return undefined
+  }
+}
+function getDeviceSecret(): string | undefined {
+  try {
+    return localStorage.getItem(DEVICE_SECRET_KEY) || undefined
+  } catch {
+    return undefined
+  }
+}
+function getDeviceToken(): string | undefined {
+  try {
+    return localStorage.getItem(DEVICE_ACCESS_KEY) || undefined
+  } catch {
+    return undefined
+  }
+}
+// Pair this browser as a kiosk: store the secret + flip into kiosk mode. The
+// AuthGate re-resolves to the profile picker.
+export function setKioskDevice(deviceSecret: string, deviceId: string): void {
+  try {
+    localStorage.setItem(DEVICE_SECRET_KEY, deviceSecret)
+    localStorage.setItem(DEVICE_ID_KEY, deviceId)
+    localStorage.setItem(KIOSK_MODE_KEY, '1')
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(new Event('nook:auth-changed'))
+}
+// Unpair entirely (admin revoked the device, or the operator un-kiosks it): drop
+// the device + any profile session → back to the normal login screen.
+export function clearKioskDevice(): void {
+  try {
+    for (const k of [DEVICE_SECRET_KEY, DEVICE_ID_KEY, DEVICE_ACCESS_KEY, KIOSK_MODE_KEY, ACCESS_KEY, REFRESH_KEY]) {
+      localStorage.removeItem(k)
+    }
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(new Event('nook:auth-changed'))
+}
+// End just the claimed-profile session (switch profile / idle), keeping the device
+// paired. The AuthGate re-resolves to the picker because kiosk mode is still on.
+export function clearProfileSession(): void {
+  try {
+    localStorage.removeItem(ACCESS_KEY)
+    localStorage.removeItem(REFRESH_KEY)
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(new Event('nook:auth-changed'))
+}
+
 export function getAccessToken(): string | undefined {
   try {
     return localStorage.getItem(ACCESS_KEY) || localStorage.getItem('nook.token') || undefined
@@ -71,6 +145,13 @@ function refreshSession(): Promise<boolean> {
   return refreshing
 }
 
+// A lost session drops to the profile picker in kiosk mode (device stays paired),
+// or to the login screen otherwise.
+function endLostSession(): void {
+  if (isKioskMode()) clearProfileSession()
+  else clearSession()
+}
+
 // fetch with the bearer token + one transparent refresh-and-retry on 401.
 async function authFetch(path: string, init: RequestInit): Promise<Response> {
   const withAuth = (tok?: string): RequestInit => ({
@@ -82,7 +163,60 @@ async function authFetch(path: string, init: RequestInit): Promise<Response> {
     if (await refreshSession()) {
       res = await fetch(path, withAuth(getAccessToken()))
     } else {
-      clearSession() // refresh failed → back to login
+      endLostSession() // refresh failed → picker (kiosk) or login
+    }
+  }
+  return res
+}
+
+// ── device-token fetch (kiosk pre-profile calls) ───────────────────────────────
+// Single in-flight device-token refresh, minted from the stored device secret.
+let refreshingDevice: Promise<boolean> | null = null
+function refreshDeviceToken(): Promise<boolean> {
+  const secret = getDeviceSecret()
+  if (!secret) return Promise.resolve(false)
+  if (!refreshingDevice) {
+    refreshingDevice = fetch('/api/kiosk/device/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ deviceSecret: secret }),
+    })
+      .then(async (res) => {
+        if (!res.ok) return false
+        const d = (await res.json()) as { accessToken: string }
+        try {
+          localStorage.setItem(DEVICE_ACCESS_KEY, d.accessToken)
+        } catch {
+          /* ignore */
+        }
+        return true
+      })
+      .catch(() => false)
+      .finally(() => {
+        refreshingDevice = null
+      })
+  }
+  return refreshingDevice
+}
+
+// fetch with the device bearer (mints one if missing) + one refresh-and-retry on
+// 401. A failed device refresh means the device was revoked → unpair.
+export async function deviceFetch(path: string, init: RequestInit): Promise<Response> {
+  const withAuth = (tok?: string): RequestInit => ({
+    ...init,
+    headers: { ...(init.headers as Record<string, string>), ...(tok ? { authorization: `Bearer ${tok}` } : {}) },
+  })
+  let tok = getDeviceToken()
+  if (!tok) {
+    await refreshDeviceToken()
+    tok = getDeviceToken()
+  }
+  let res = await fetch(path, withAuth(tok))
+  if (res.status === 401) {
+    if (await refreshDeviceToken()) {
+      res = await fetch(path, withAuth(getDeviceToken()))
+    } else {
+      clearKioskDevice() // device revoked → back to login
     }
   }
   return res
