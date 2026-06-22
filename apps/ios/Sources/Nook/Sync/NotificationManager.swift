@@ -95,6 +95,12 @@ final class NotificationManager {
         return granted
     }
 
+    /// Set the app-icon badge (e.g. pending approvals a parent still owes). Silently
+    /// no-ops if badge permission was denied — the in-app tab badge still shows.
+    func setBadge(_ count: Int) async {
+        try? await center.setBadgeCount(max(0, count))
+    }
+
     // MARK: reconcile
 
     /// Re-evaluate scheduled reminders from the latest synced events. Caches the
