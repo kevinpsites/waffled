@@ -115,6 +115,22 @@ client's *Authorized redirect URIs* (alongside the calendar one), set the issuer
 `https://accounts.google.com`, and reuse the same client ID/secret. The sign-in scopes
 (`openid email profile`) are non-sensitive, so no extra Google verification is needed.
 
+**iOS app (native SSO):** the same SSO config drives the mobile app — there's
+**nothing extra to register at the provider**. The flow is backend-mediated, so Google
+(or any IdP) only ever sees your backend's `/api/auth/oidc/callback`, never the app's
+`nook://auth/callback` deep link (the backend appends the one-time handoff code to that
+deep link itself; the app intercepts it via `ASWebAuthenticationSession`). The "Sign in
+with …" button appears in the app automatically whenever `GET /api/auth/status` reports
+OIDC is ready. Two things to get right:
+- The redirect URI Nook sends to the IdP is derived from the host the request arrives
+  on, so the address your **device** uses to reach the API must have a matching
+  `/api/auth/oidc/callback` in the provider's *Authorized redirect URIs*. The simulator
+  reaches `localhost:8080` (already covered); a physical phone reaches your LAN IP or
+  public host. **Set `PUBLIC_BASE_URL`** to pin one stable callback regardless of how the
+  device connects, then register just that one.
+- Point the app at the right server on the login screen's **Server address** field if it
+  isn't the default.
+
 ## Start here
 
 1. Read `docs/ARCHITECTURE.md` — the decisions and why.
