@@ -123,6 +123,17 @@ UI, settings sub-tab depth, event recurrence/overrides, auto-from-calendar goal 
 
 ## Backlog — designed, not yet built
 
+### Tech debt — route auth as middleware (not yet built)
+Almost every API route opens with the same two lines —
+`const tenant = await requireTenant(req)` then (for writes) `requireAdmin(tenant)` —
+copied across chores, rewards, currencies, goals, lists, meals, kiosk, persons, etc.
+Fold this into reusable lambda-api middleware: one that resolves + attaches the tenant
+(short-circuiting 401 when absent) and one that asserts admin (403 otherwise), so routes
+just declare their requirement instead of re-deriving it. Keep `requireTenant`/
+`requireAdmin` as the underlying helpers the middleware calls (and for the few
+dual-auth/device routes that don't fit the common shape). Mechanical, broad, well-tested
+surface — a good standalone pass. *(raised 2026-06-22)*
+
 ### Calendar → goal auto-counting (the "auto-from-calendar" bridge) — PHASE 1 SHIPPED 2026-06-18
 The bidirectional Google Calendar **sync already exists and works** (inbound pull +
 outbound push, per-household OAuth, 5-min poll). The goal side has the **opt-in toggle**
