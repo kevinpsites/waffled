@@ -43,7 +43,7 @@ struct SettingsView: View {
                 row("⭐", "Chores & Rewards", "Currencies & conversions") { path.append(.settingsChoresRewards) }
                 row("🍽️", "Meals", "Calendar & meal times") { path.append(.settingsMeals) }
                 row("📋", "Lists", "Grocery & lists")
-                row("🖥️", "Display & Kiosk", "Theme & screen")
+                row("🖥️", "Display & Kiosk", "Screensaver & idle") { path.append(.settingsDisplay) }
                 row("🔔", "Notifications", "Event reminders") { path.append(.settingsNotifications) }
                 row("ℹ️", "About", "Version & info")
                 signOutFooter

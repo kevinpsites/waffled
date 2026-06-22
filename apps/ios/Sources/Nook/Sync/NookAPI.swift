@@ -687,6 +687,46 @@ struct NookAPI: Sendable {
                                 body: ["personId": .string(personId), "times": .int(times)], as: ConversionResult.self)
     }
 
+    // MARK: - Settings: family display (kiosk screensaver / idle / night-dim)
+
+    /// Household-wide "family display" settings — what a wall tablet or browser signed
+    /// in as a kiosk does when idle. Mirrors the web `DisplayConfig`. Stored in
+    /// households.settings.display; read is open to any member, write is admin-only.
+    struct DisplayConfig: Codable, Sendable, Equatable, Hashable {
+        var screensaverMinutes: Int
+        var content: String            // "photos" | "clock" | "off"
+        var returnToPicker: Bool
+        var resetHomeMinutes: Int      // 0 = never reset to Today
+        var nightDim: NightDim
+        struct NightDim: Codable, Sendable, Equatable, Hashable {
+            var enabled: Bool
+            var start: String          // "HH:mm"
+            var end: String            // "HH:mm"
+        }
+    }
+
+    func displayConfig() async throws -> DisplayConfig {
+        try await getJSON("/api/kiosk/display", as: DisplayConfig.self)
+    }
+
+    /// Save the family-display settings (admin-only server-side). Returns the
+    /// server-normalized config (clamped minutes, coerced fields).
+    @discardableResult
+    func setDisplayConfig(_ cfg: DisplayConfig) async throws -> DisplayConfig {
+        let body: [String: JSONValue] = [
+            "screensaverMinutes": .int(cfg.screensaverMinutes),
+            "content": .string(cfg.content),
+            "returnToPicker": .bool(cfg.returnToPicker),
+            "resetHomeMinutes": .int(cfg.resetHomeMinutes),
+            "nightDim": .object([
+                "enabled": .bool(cfg.nightDim.enabled),
+                "start": .string(cfg.nightDim.start),
+                "end": .string(cfg.nightDim.end),
+            ]),
+        ]
+        return try await sendReturning("PUT", "/api/kiosk/display", body: body, as: DisplayConfig.self)
+    }
+
     // MARK: - Settings: family & household
 
     /// Household settings + members (with owner/login flags) for the Settings screen.

@@ -82,6 +82,7 @@ struct FamilyView: View {
         case "lists": return .lists
         case "photos": return .photos
         case "settings": return .settings
+        case "display": return .settingsDisplay
         default: return nil
         }
     }
