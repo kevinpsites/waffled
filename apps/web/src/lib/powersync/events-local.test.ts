@@ -58,6 +58,21 @@ describe('rowToAgenda', () => {
     expect(rowToAgenda(row({ participants_json: null })).participants).toEqual([])
     expect(rowToAgenda(row({ participants_json: 'not json' })).participants).toEqual([])
   })
+
+  it('defaults seriesId to the row id for a single event', () => {
+    const a = rowToAgenda(row({ id: 'single1' }))
+    expect(a.seriesId).toBe('single1')
+    expect(a.occurrenceStart).toBeNull()
+  })
+
+  it('carries seriesId + occurrenceStart for a recurring occurrence row', () => {
+    const a = rowToAgenda(
+      row({ id: 'occ-row-7', series_id: 'master-1', occurrence_start: '2026-09-08T14:00:00Z' })
+    )
+    expect(a.id).toBe('occ-row-7') // the occurrence row (stable React key)
+    expect(a.seriesId).toBe('master-1') // the master/series handle
+    expect(a.occurrenceStart).toBe('2026-09-08T14:00:00Z') // the edit-scope slot
+  })
 })
 
 describe('eventsForDay', () => {

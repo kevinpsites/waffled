@@ -35,6 +35,11 @@ export interface AgendaEvent {
   // calendar opens the linked recipe when one is tapped.
   origin?: string | null
   originRefId?: string | null
+  // Recurrence: seriesId is the master event (=== id for a single event);
+  // occurrenceStart is the rule slot for a recurring occurrence (else null). These
+  // are the handles for "edit this occurrence / this and following".
+  seriesId?: string
+  occurrenceStart?: string | null
 }
 
 export const eventsApi = {
