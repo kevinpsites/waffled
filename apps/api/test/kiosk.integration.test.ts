@@ -149,7 +149,9 @@ describe('kiosk pairing + profile tokens', () => {
     // No PIN / wrong PIN is rejected.
     expect((await call('POST', `/api/kiosk/profile/${pinKid}`, {}, deviceToken)).statusCode).toBe(401)
     // Throttle: KIOSK_PIN_MAX_ATTEMPTS=3 → the 3rd wrong attempt locks (429).
-    expect((await call('POST', `/api/kiosk/profile/${pinKid}`, { pin: '0000' }, deviceToken)).statusCode).toBe(401)
+    const second = await call('POST', `/api/kiosk/profile/${pinKid}`, { pin: '0000' }, deviceToken)
+    expect(second.statusCode).toBe(401)
+    expect(json(second).triesLeft).toBe(1) // 3 max − 2 used
     expect((await call('POST', `/api/kiosk/profile/${pinKid}`, { pin: '0000' }, deviceToken)).statusCode).toBe(429)
     // Locked: even the correct PIN is refused while locked.
     expect((await call('POST', `/api/kiosk/profile/${pinKid}`, { pin: '4242' }, deviceToken)).statusCode).toBe(429)

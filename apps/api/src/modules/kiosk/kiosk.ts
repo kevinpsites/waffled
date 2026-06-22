@@ -30,7 +30,7 @@ type Api = ReturnType<typeof createAPI>
 const CODE_TTL_MIN = 10
 const PIN_RE = /^\d{4,8}$/
 const PIN_MAX_ATTEMPTS = Number(process.env.KIOSK_PIN_MAX_ATTEMPTS) || 5
-const PIN_LOCKOUT_SECONDS = Number(process.env.KIOSK_PIN_LOCKOUT_SECONDS) || 300
+const PIN_LOCKOUT_SECONDS = Number(process.env.KIOSK_PIN_LOCKOUT_SECONDS) || 30
 
 // Unambiguous human-typable code (no 0/O/1/I) for the pairing flow.
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -161,7 +161,7 @@ export function registerKioskRoutes(api: Api): void {
           return res.status(429).json({ error: 'TooManyRequests', message: 'Too many attempts. Try again soon.', retryAfter: PIN_LOCKOUT_SECONDS })
         }
         await query(`update persons set pin_failed_count = $2 where id = $1`, [personId, next])
-        return res.status(401).json({ error: 'Unauthorized', message: 'Incorrect PIN.' })
+        return res.status(401).json({ error: 'Unauthorized', message: 'Incorrect PIN.', triesLeft: PIN_MAX_ATTEMPTS - next })
       }
       // Correct PIN → clear throttle state.
       await query(`update persons set pin_failed_count = 0, pin_locked_until = null where id = $1`, [personId])
