@@ -24,7 +24,9 @@ struct NotificationsSettingsView: View {
                 card {
                     Toggle(isOn: $n.enabled) {
                         rowLabel("Event reminders", "Get a heads-up before your calendar events")
-                    }.tint(NK.primary)
+                    }
+                    .tint(NK.primary)
+                    .padding(.vertical, 14)
                 }
 
                 if blocked { permissionNotice }
@@ -34,7 +36,7 @@ struct NotificationsSettingsView: View {
                     footnote
                 }
             }
-            .padding(16).padding(.bottom, 110)
+            .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 110)
         }
         .background(NK.canvas)
         .navigationTitle("Notifications").navigationBarTitleDisplayMode(.inline)
@@ -92,6 +94,8 @@ struct NotificationsSettingsView: View {
                 }
                 .buttonStyle(.plain)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 16)
         }
     }
 
@@ -116,7 +120,7 @@ struct NotificationsSettingsView: View {
                 Text(value).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
                 Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
             }
-            .padding(.vertical, 13)
+            .padding(.vertical, 15)
         }
     }
 
@@ -125,7 +129,7 @@ struct NotificationsSettingsView: View {
     @ViewBuilder
     private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 0) { content() }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 18)
             .background(NK.card)
             .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
