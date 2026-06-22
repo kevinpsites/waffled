@@ -8,6 +8,8 @@ import type { PoolClient, QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { requireTenant, type Tenant } from '../households/households'
 import { resolveWriteTarget, resolveWriteTargetById, pushEventNow } from '../calendar/calendar-sync.service'
+import { materializeMaster } from '../calendar/expansion.service'
+import { isValidRrule } from '../calendar/recurrence'
 import { recordMatch, WEIGHT } from '../goals/goal-match-memory'
 
 type Api = ReturnType<typeof createAPI>
@@ -27,6 +29,8 @@ const UPDATABLE: Record<string, string> = {
   personId: 'person_id',
   goalId: 'goal_id',
   goalStepId: 'goal_step_id',
+  rrule: 'rrule',
+  recurrenceEndAt: 'recurrence_end_at',
 }
 
 // Patch fields Google owns — a change to one of these is worth pushing back to
@@ -60,6 +64,11 @@ export interface EventRow extends QueryResultRow {
   person_color?: string | null
   person_emoji?: string | null
   participants?: Participant[]
+  // Recurrence: for a single/Google event series_id === id and occurrence_start is
+  // null; for a Nook-native expanded occurrence series_id is the master, id is the
+  // occurrence row, occurrence_start is the rule slot (the edit-scope handle).
+  series_id?: string
+  occurrence_start?: Date | null
 }
 
 export interface CreateEventInput {
@@ -81,6 +90,13 @@ export interface CreateEventInput {
   // Explicit calendar choice (create-time picker): a calendar id to write to, or
   // null for "Nook only". Omit entirely to auto-route to the owner's ★ default.
   calendarId?: string | null
+  // Recurrence (Nook-native). rrule is an RFC5545 RRULE; rdate/exdate are extra/
+  // excluded occurrence instants (ISO); recurrenceEndAt is a hard stop. Omit for a
+  // single event. Creating with an rrule materializes occurrences immediately.
+  rrule?: string | null
+  rdate?: string[] | null
+  exdate?: string[] | null
+  recurrenceEndAt?: string | null
 }
 
 // Replace an event's participants with the given (deduped) people.
@@ -117,9 +133,10 @@ export async function createEvent(tenant: Tenant, input: CreateEventInput): Prom
     const ins = await client.query<EventRow>(
       `insert into events
          (household_id, calendar_id, title, description, location, starts_at, ends_at, all_day, timezone,
-          person_id, goal_id, goal_step_id, origin, sync_state)
+          person_id, goal_id, goal_step_id, rrule, rdate, exdate, recurrence_end_at, origin, sync_state)
        values ($1,$2,$3,$4,$5,$6,$7, coalesce($8,false),
-               coalesce($9, (select timezone from households where id=$1)), $10, $11, $12, 'manual', $13)
+               coalesce($9, (select timezone from households where id=$1)), $10, $11, $12,
+               $13, $14::timestamptz[], $15::timestamptz[], $16, 'manual', $17)
        returning *`,
       [
         tenant.householdId,
@@ -134,12 +151,19 @@ export async function createEvent(tenant: Tenant, input: CreateEventInput): Prom
         primary,
         input.goalId ?? null,
         input.goalStepId ?? null,
+        input.rrule ?? null,
+        input.rdate ?? null,
+        input.exdate ?? null,
+        input.recurrenceEndAt ?? null,
         target ? 'pending_push' : 'local_only',
       ]
     )
     const event = ins.rows[0]
     await replaceParticipants(client, tenant.householdId, event.id, personIds)
     await client.query('commit')
+    // A new recurring master expands into occurrences right away (don't wait for
+    // the rolling-window tick), so it appears on the calendar immediately.
+    if (event.rrule) await materializeMaster(event.id)
     // A goal picked at create time is a strong human signal — teach the matcher.
     if (event.goal_id) await recordMatch(tenant.householdId, event.title, event.goal_id, WEIGHT.human)
     // Push outside the transaction; failures are recorded as push_failed (retried
@@ -154,32 +178,53 @@ export async function createEvent(tenant: Tenant, input: CreateEventInput): Prom
   }
 }
 
-const PARTICIPANTS_SUBQUERY = `
-  coalesce((
+// Reads UNION two row kinds (see EventRow): plain single/Google events
+// (events.rrule is null) and materialized Nook-native occurrences (joined to their
+// master m). Both expose the same columns + series_id/occurrence_start, so callers
+// and the presenter don't special-case recurrence.
+function participantsSub(idExpr: string): string {
+  return `coalesce((
     select json_agg(json_build_object(
              'id', pp.id, 'name', pp.name, 'colorHex', pp.color_hex, 'avatarEmoji', pp.avatar_emoji)
            order by pp.sort_order, pp.created_at)
       from event_participants ep
       join persons pp on pp.id = ep.person_id and pp.deleted_at is null
-     where ep.event_id = e.id and ep.deleted_at is null
+     where ep.event_id = ${idExpr} and ep.deleted_at is null
   ), '[]'::json) as participants`
+}
 
-const SELECT_WITH_PERSON = `
-  select e.id, e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.person_id, e.goal_id, e.goal_step_id,
+const SINGLE_SELECT = `
+  select e.id as id, e.id as series_id, null::timestamptz as occurrence_start,
+         e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.person_id, e.goal_id, e.goal_step_id,
          e.rrule, e.sync_state, e.origin, e.origin_ref_id, c.summary as calendar_name,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
-         ${PARTICIPANTS_SUBQUERY}
+         ${participantsSub('e.id')}
     from events e
     join households h on h.id = e.household_id
     left join persons p on p.id = e.person_id and p.deleted_at is null
     left join calendars c on c.id = e.calendar_id and c.deleted_at is null
-   where e.household_id = $1 and e.deleted_at is null`
+   where e.household_id = $1 and e.deleted_at is null and e.rrule is null`
+
+const OCC_SELECT = `
+  select o.id as id, m.id as series_id, o.original_start as occurrence_start,
+         coalesce(o.title, m.title) as title, m.description, coalesce(o.location, m.location) as location,
+         o.starts_at, o.ends_at, o.all_day, o.person_id, m.goal_id, m.goal_step_id,
+         m.rrule, m.sync_state, m.origin, m.origin_ref_id, c.summary as calendar_name,
+         p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
+         ${participantsSub('m.id')}
+    from event_occurrences o
+    join events m on m.id = o.event_id and m.deleted_at is null
+    join households h on h.id = o.household_id
+    left join persons p on p.id = o.person_id and p.deleted_at is null
+    left join calendars c on c.id = m.calendar_id and c.deleted_at is null
+   where o.household_id = $1 and o.deleted_at is null`
 
 export async function todayEvents(householdId: string, date: string): Promise<EventRow[]> {
   const { rows } = await query<EventRow>(
-    `${SELECT_WITH_PERSON}
-       and (e.starts_at at time zone h.timezone)::date = $2::date
-     order by e.all_day, e.starts_at`,
+    `${SINGLE_SELECT} and (e.starts_at at time zone h.timezone)::date = $2::date
+     union all
+     ${OCC_SELECT} and (o.starts_at at time zone h.timezone)::date = $2::date
+     order by all_day, starts_at`,
     [householdId, date]
   )
   return rows
@@ -187,16 +232,22 @@ export async function todayEvents(householdId: string, date: string): Promise<Ev
 
 export async function rangeEvents(householdId: string, from: string, to: string): Promise<EventRow[]> {
   const { rows } = await query<EventRow>(
-    `${SELECT_WITH_PERSON}
-       and (e.starts_at at time zone h.timezone)::date between $2::date and $3::date
-     order by e.starts_at`,
+    `${SINGLE_SELECT} and (e.starts_at at time zone h.timezone)::date between $2::date and $3::date
+     union all
+     ${OCC_SELECT} and (o.starts_at at time zone h.timezone)::date between $2::date and $3::date
+     order by starts_at`,
     [householdId, from, to]
   )
   return rows
 }
 
+// Looks up a master/single event by id (not an occurrence). The detail screen for a
+// recurring occurrence fetches its series via series_id.
 export async function getEventById(householdId: string, id: string): Promise<EventRow | null> {
-  const { rows } = await query<EventRow>(`${SELECT_WITH_PERSON} and e.id = $2`, [householdId, id])
+  const { rows } = await query<EventRow>(
+    `${SINGLE_SELECT.replace('and e.rrule is null', '')} and e.id = $2`,
+    [householdId, id]
+  )
   return rows[0] ?? null
 }
 
@@ -261,6 +312,9 @@ export async function updateEvent(
     // participants are Nook-owned (Google has no such field), so don't push for them.
     const touchedGoogle = GOOGLE_OWNED_FIELDS.some((f) => f in patch)
     if (event.calendar_id && touchedGoogle) await pushEventNow(householdId, id)
+    // Re-expand if this is (or just became / stopped being) a recurring master, so
+    // its occurrences reflect the edited rule/timing/fields.
+    if (event.rrule || 'rrule' in patch) await materializeMaster(id)
     return event
   } catch (err) {
     await client.query('rollback')
@@ -309,6 +363,10 @@ export function presentEvent(e: EventRow) {
     personColor: e.person_color ?? null,
     personEmoji: e.person_emoji ?? null,
     participants: e.participants ?? [],
+    // The series this row belongs to + (for a recurring occurrence) which slot —
+    // the handle clients pass back for "edit this occurrence".
+    seriesId: e.series_id ?? e.id,
+    occurrenceStart: e.occurrence_start ?? null,
   }
 }
 
@@ -325,6 +383,9 @@ export function registerEventRoutes(api: Api): void {
     }
     if (!body.startsAt || Number.isNaN(Date.parse(body.startsAt))) {
       return res.status(400).json({ error: 'BadRequest', message: 'startsAt must be a valid timestamp' })
+    }
+    if (body.rrule && !isValidRrule(body.rrule)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'rrule is not a valid RFC5545 recurrence rule' })
     }
     const event = await createEvent(tenant, { ...body, title: body.title.trim() } as CreateEventInput)
     return res.status(201).json({ event: presentEvent(event) })
@@ -368,6 +429,9 @@ export function registerEventRoutes(api: Api): void {
     const patch = (req.body ?? {}) as Record<string, unknown>
     if (typeof patch.startsAt === 'string' && Number.isNaN(Date.parse(patch.startsAt))) {
       return res.status(400).json({ error: 'BadRequest', message: 'startsAt must be a valid timestamp' })
+    }
+    if (typeof patch.rrule === 'string' && patch.rrule && !isValidRrule(patch.rrule)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'rrule is not a valid RFC5545 recurrence rule' })
     }
     const hasField = Object.keys(UPDATABLE).some((field) => field in patch) || 'participantIds' in patch
     if (!hasField) {

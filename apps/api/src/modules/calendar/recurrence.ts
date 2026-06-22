@@ -141,4 +141,14 @@ export function expand(master: MasterEvent, overrides: OverrideRow[], windowStar
   return out
 }
 
+// Validate an RRULE string for the create/patch API: parseable and has a FREQ.
+export function isValidRrule(rrule: string): boolean {
+  try {
+    const opts = RRule.parseString(rrule.replace(/^RRULE:/i, '').trim())
+    return opts.freq !== undefined && opts.freq !== null
+  } catch {
+    return false
+  }
+}
+
 export { toFloating, fromFloating, localDayKey }

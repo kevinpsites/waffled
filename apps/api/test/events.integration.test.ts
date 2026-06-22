@@ -252,3 +252,57 @@ describe('events api', () => {
     expect((await call('DELETE', `/api/events/${id}`, kevin)).statusCode).toBe(404)
   })
 })
+
+describe('recurring events api', () => {
+  // Sep 1 2026 is a Tuesday. Weekly, bounded so the count is deterministic.
+  const WEEKLY = 'FREQ=WEEKLY;BYDAY=TU'
+  let seriesId = ''
+
+  it('rejects an invalid rrule', async () => {
+    const bad = await call('POST', '/api/events', kevin, {
+      title: 'Bad',
+      startsAt: '2026-09-01T14:00:00Z',
+      rrule: 'this-is-not-a-rule',
+    })
+    expect(bad.statusCode).toBe(400)
+  })
+
+  it('creates a weekly series and materializes its occurrences (no duplicate master row)', async () => {
+    const add = await call('POST', '/api/events', kevin, {
+      title: 'Soccer',
+      startsAt: '2026-09-01T14:00:00Z',
+      endsAt: '2026-09-01T15:00:00Z',
+      participantIds: [kevinId],
+      rrule: WEEKLY,
+      recurrenceEndAt: '2026-09-22T23:59:59Z',
+    })
+    expect(add.statusCode).toBe(201)
+    const master = JSON.parse(add.body).event
+    seriesId = master.id
+    expect(master.rrule).toBe(WEEKLY)
+    expect(master.seriesId).toBe(master.id)
+    expect(master.occurrenceStart).toBeNull()
+
+    const r = JSON.parse((await call('GET', '/api/events?from=2026-09-01&to=2026-09-30', kevin)).body)
+    const occ = r.events.filter((e: { seriesId: string }) => e.seriesId === seriesId)
+    // Tuesdays Sep 1, 8, 15, 22
+    expect(occ).toHaveLength(4)
+    // each occurrence inherits master fields + carries its own slot handle
+    for (const o of occ) {
+      expect(o.title).toBe('Soccer')
+      expect(o.rrule).toBe(WEEKLY)
+      expect(o.occurrenceStart).not.toBeNull()
+      expect(o.participants.map((p: { name: string }) => p.name)).toEqual(['Kevin'])
+    }
+    // the master itself is NOT returned as its own row (only occurrences render)
+    expect(r.events.some((e: { id: string }) => e.id === seriesId)).toBe(false)
+  })
+
+  it('re-materializes occurrences when the master is edited (scope=all)', async () => {
+    await call('PATCH', `/api/events/${seriesId}`, kevin, { title: 'Soccer practice' })
+    const r = JSON.parse((await call('GET', '/api/events?from=2026-09-01&to=2026-09-30', kevin)).body)
+    const occ = r.events.filter((e: { seriesId: string }) => e.seriesId === seriesId)
+    expect(occ).toHaveLength(4)
+    expect(occ.every((o: { title: string }) => o.title === 'Soccer practice')).toBe(true)
+  })
+})
