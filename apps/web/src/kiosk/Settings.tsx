@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, goalCalendarApi, groceryApi, authApi, kioskApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig } from '../lib/api'
+import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, goalCalendarApi, groceryApi, authApi, kioskApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
+import { Screensaver } from './components/Screensaver'
 import '../styles/settings.css'
 
 // `admin` tabs are only shown to admins — non-admins can't change those settings,
@@ -1288,7 +1289,7 @@ function KioskDevicesSection() {
 // Display & Kiosk: a per-device "this is the family display" toggle (enables the
 // screensaver + keep-awake locally) plus household-wide screensaver settings.
 const CONTENT_OPTS: Array<{ key: DisplayConfig['content']; label: string }> = [
-  { key: 'photos', label: 'Photos' },
+  { key: 'photos', label: 'Photos + clock' },
   { key: 'clock', label: 'Clock & weather' },
   { key: 'off', label: 'Off' },
 ]
@@ -1298,7 +1299,14 @@ function DisplayKioskPanel() {
   const [cfg, setCfg] = useState<DisplayConfig | null>(null)
   const [error, setError] = useState(false)
   const [savedFlash, setSavedFlash] = useState(false)
+  const [preview, setPreview] = useState(false)
   const dirtyRef = useRef(false)
+  // Live data for the instant preview (and what the real screensaver uses).
+  const wx = useWeather()
+  const { events } = useEventsToday()
+  const { photos } = usePhotos()
+  const { household } = useHousehold()
+  const nextEvent = events.find((e) => new Date(e.startsAt).getTime() > Date.now()) ?? null
 
   useEffect(() => {
     kioskApi.displayConfig().then((c) => { setCfg(c); setError(false) }).catch(() => setError(true))
@@ -1362,12 +1370,15 @@ function DisplayKioskPanel() {
               <div className="set-ic2">🖼️</div>
               <div style={{ flex: 1 }}>
                 <div className="set-row2-t">What it shows</div>
-                <div className="tiny muted" style={{ fontWeight: 600 }}>Photos need a signed-in profile; the picker always shows the clock.</div>
+                <div className="tiny muted" style={{ fontWeight: 600 }}>“Photos + clock” is a photo slideshow with the clock, weather &amp; next event overlaid. Photos need a signed-in profile; the picker always shows the clock.</div>
               </div>
-              <div className="seg" style={{ width: 'fit-content' }}>
-                {CONTENT_OPTS.map((o) => (
-                  <button type="button" key={o.key} className={cfg.content === o.key ? 'on' : ''} style={{ cursor: 'pointer' }} onClick={() => update({ content: o.key })}>{o.label}</button>
-                ))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div className="seg" style={{ width: 'fit-content' }}>
+                  {CONTENT_OPTS.map((o) => (
+                    <button type="button" key={o.key} className={cfg.content === o.key ? 'on' : ''} style={{ cursor: 'pointer' }} onClick={() => update({ content: o.key })}>{o.label}</button>
+                  ))}
+                </div>
+                <button type="button" className="btn btn-ghost" disabled={cfg.content === 'off'} onClick={() => setPreview(true)}>Preview</button>
               </div>
             </div>
             <SettingRow icon="🔒" title="Return to profile picker afterward" sub="When the screensaver wakes on a paired kiosk, drop to the profile picker.">
@@ -1396,6 +1407,17 @@ function DisplayKioskPanel() {
             )}
           </div>
         </>
+      )}
+
+      {preview && cfg && cfg.content !== 'off' && (
+        <Screensaver
+          content={cfg.content === 'photos' ? 'photos' : 'clock'}
+          photos={photos}
+          weather={wx}
+          nextEvent={nextEvent}
+          timezone={household?.timezone}
+          onWake={() => setPreview(false)}
+        />
       )}
     </div>
   )
