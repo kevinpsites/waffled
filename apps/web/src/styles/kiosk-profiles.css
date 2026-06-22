@@ -1,0 +1,159 @@
+/* Kiosk profile picker + PIN pad (the paired-device resting state). */
+.kp-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  padding: 32px;
+  background: var(--bg, #f6f3ee);
+}
+.kp-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.kp-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 26px;
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+  margin-bottom: 14px;
+}
+.kp-title {
+  font-size: 28px;
+  font-weight: 600;
+}
+.kp-sub {
+  color: var(--ink-2);
+  font-weight: 500;
+  margin-top: 4px;
+}
+.kp-error {
+  color: var(--danger, #c0392b);
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+/* Profile grid */
+.kp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, 140px);
+  gap: 20px;
+  justify-content: center;
+  max-width: 760px;
+}
+.kp-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: var(--r-lg, 18px);
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+.kp-tile:hover:not(:disabled),
+.kp-tile:focus-visible {
+  transform: translateY(-3px);
+  background: var(--card, #fff);
+  box-shadow: var(--sh-1, 0 6px 20px rgba(0, 0, 0, 0.08));
+}
+.kp-tile:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.kp-av {
+  width: 104px;
+  height: 104px;
+  border-radius: 24px;
+  display: grid;
+  place-items: center;
+  font-size: 52px;
+}
+.kp-av-lg {
+  width: 88px;
+  height: 88px;
+  border-radius: 22px;
+  font-size: 44px;
+  margin-bottom: 12px;
+}
+.kp-name {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.kp-lock {
+  font-size: 13px;
+}
+.kp-empty {
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+/* PIN pad */
+.kp-dots {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+.kp-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--ink-3, #b8b0a4);
+}
+.kp-dot.on {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+.kp-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 84px);
+  gap: 14px;
+}
+.kp-key {
+  height: 84px;
+  border-radius: 18px;
+  border: none;
+  background: var(--card, #fff);
+  box-shadow: var(--sh-1, 0 4px 14px rgba(0, 0, 0, 0.06));
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform 0.08s ease;
+}
+.kp-key:active:not(:disabled) {
+  transform: scale(0.95);
+}
+.kp-key:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.kp-key-ok {
+  background: var(--accent, #2e7d5b);
+  color: #fff;
+}
+.kp-key-del {
+  background: var(--panel, #efeae1);
+}
+.kp-cancel {
+  background: none;
+  border: none;
+  color: var(--ink-2);
+  font-weight: 600;
+  cursor: pointer;
+}
+.kp-cancel:hover {
+  color: var(--ink);
+}

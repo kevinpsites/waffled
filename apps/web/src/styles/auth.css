@@ -116,3 +116,19 @@
   height: 1px;
   background: var(--hair, #e4ded4);
 }
+/* Subtle link under the login form: turn this device into a shared kiosk. */
+.auth-kiosk-link {
+  display: block;
+  width: 100%;
+  margin-top: 18px;
+  background: none;
+  border: none;
+  color: var(--ink-3, #8a8276);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.auth-kiosk-link:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
