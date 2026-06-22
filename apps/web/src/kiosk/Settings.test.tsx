@@ -52,6 +52,14 @@ describe('Settings screen', () => {
     expect(screen.getByText(/Push to phones/)).toBeInTheDocument()
   })
 
+  it('shows the Display & Kiosk panel with the family-display toggle', async () => {
+    mockApi()
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('Display & Kiosk'))
+    expect(await screen.findByText('Use this browser as the family display')).toBeInTheDocument()
+  })
+
   it('hides admin-only tabs from non-admins (only About + Sign out)', async () => {
     // Same data, but the signed-in person is not an admin.
     globalThis.fetch = vi.fn(async (url: string) => {
