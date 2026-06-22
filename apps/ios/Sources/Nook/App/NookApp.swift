@@ -7,14 +7,19 @@ import SwiftUI
 @main
 struct NookApp: App {
     @State private var sync = SyncManager()
+    @State private var session = Session()
 
     var body: some Scene {
         WindowGroup {
-            AppRoot()
-                .environment(sync)
-                .tint(NK.primary)
-                .preferredColorScheme(.light)   // warm-white canvas is a light theme
-                .task { await sync.start() }     // connect PowerSync + start watching
+            AuthGate {
+                AppRoot()
+                    .task { await sync.start() }   // connect PowerSync once signed in
+            }
+            .environment(sync)
+            .environment(session)
+            .tint(NK.primary)
+            .preferredColorScheme(.light)          // warm-white canvas is a light theme
+            .task { await session.bootstrap() }    // read the Keychain / probe auth status
         }
     }
 }

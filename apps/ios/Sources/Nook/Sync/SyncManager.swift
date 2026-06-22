@@ -82,6 +82,11 @@ final class SyncManager {
 
     init() {
         db = PowerSyncDatabase(schema: SyncSchema.schema, dbFilename: "nook.sqlite")
+        // A dead refresh token (caught mid-request) tears the sync session down too,
+        // so we don't keep retrying with a token that will never be accepted.
+        NotificationCenter.default.addObserver(forName: .nookAuthExpired, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in await self?.signOut() }
+        }
     }
 
     /// Stand up watchers once, then connect. Safe to call on every app launch.
@@ -118,10 +123,32 @@ final class SyncManager {
         await connect()
     }
 
+    /// Tear down the sync session on sign-out: stop the live queries, disconnect
+    /// PowerSync, drop the observable state, and reset so the next `start()` runs
+    /// fresh. Keychain tokens are cleared separately by `Session`.
+    ///
+    /// We `disconnect()` (not `disconnectAndClear()`): clearing the local mirror is
+    /// heavy work to run during teardown and isn't needed for correctness — on the
+    /// next login PowerSync re-scopes its buckets to the new token, the same as the
+    /// web. Keeping teardown light also avoids a memory/Keychain spike at sign-out.
+    func signOut() async {
+        // Stop consuming the live queries BEFORE disconnecting so a watcher can't
+        // race the teardown.
+        watchTask?.cancel(); eventsTask?.cancel(); statusTask?.cancel()
+        watchTask = nil; eventsTask = nil; statusTask = nil
+        try? await db.disconnect()
+        members = []; events = []
+        personCount = 0; eventCount = 0; pendingUploads = 0
+        lastSyncedAt = nil; lastError = nil
+        currentPersonId = nil; currencies = []
+        status = .idle
+        started = false
+    }
+
     private func connect() async {
-        guard !AppConfig.devToken.isEmpty else {
+        guard !AppConfig.bearerToken.isEmpty else {
             status = .offline
-            lastError = "No dev token set — paste one in Sync settings."
+            lastError = "Not signed in."
             return
         }
         status = .connecting

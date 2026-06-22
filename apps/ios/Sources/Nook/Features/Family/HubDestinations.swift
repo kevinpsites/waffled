@@ -10,6 +10,7 @@ enum HubRoute: Hashable {
     case person(String)              // a person spotlight pushed from the people row
     case recipe(NookAPI.RecipeSummary) // a recipe opened from the grocery meal recap
     case rewardShop(String)          // one person's reward shop (from the Rewards overview)
+    case settingsAccount             // Settings → Accounts (sign-in & sign out)
     case settingsFamily              // Settings → Family & people
     case settingsChoresRewards       // Settings → Chores & rewards (currencies + conversions)
     case settingsCalendars           // Settings → Calendars (Google)
@@ -42,6 +43,7 @@ struct HubDestination: View {
         case let .rewardShop(id): RewardShopView(personId: id, path: $path)
         case .photos:           HubPlaceholder(emoji: "📷", title: "Photos", summary: hub?.photosSubtitle ?? "Family photos")
         case .settings:         SettingsView(path: $path)
+        case .settingsAccount:  AccountSettingsView()
         case .settingsFamily:   FamilyPeopleSettingsView()
         case .settingsChoresRewards: ChoresRewardsSettingsView()
         case .settingsCalendars: CalendarsSettingsView()

@@ -8,9 +8,15 @@ final class OAuthLauncher: NSObject, ASWebAuthenticationPresentationContextProvi
     private var session: ASWebAuthenticationSession?
 
     func start(url: URL, scheme: String) async -> Bool {
-        await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+        await authorize(url: url, scheme: scheme) != nil
+    }
+
+    /// Run the web session and resolve with the full callback URL (or nil if the
+    /// user cancelled) — callers that need a query param (e.g. an OIDC `code`) read it.
+    func authorize(url: URL, scheme: String) async -> URL? {
+        await withCheckedContinuation { (cont: CheckedContinuation<URL?, Never>) in
             let s = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme) { callback, _ in
-                cont.resume(returning: callback != nil)
+                cont.resume(returning: callback)
             }
             s.presentationContextProvider = self
             session = s

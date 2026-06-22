@@ -19,10 +19,30 @@ enum AppConfig {
     /// Local HS256 session token (mint via `just token` / `nook token`). The API's
     /// `requireTenant` validates it and `/api/powersync/token` exchanges it for a
     /// short-lived PowerSync RS256 token.
+    ///
+    /// This is now the *fallback* path: real users sign in (tokens live in the
+    /// Keychain via `AuthTokens`); a pasted/env dev token still works for headless
+    /// demos and local development.
     static var devToken: String {
         env("NOOK_DEV_TOKEN")
             ?? UserDefaults.standard.string(forKey: tokenKey)
             ?? ""
+    }
+
+    /// The bearer token every request carries: a real signed-in access token when
+    /// present, else the dev token. Read at call time so login/refresh/logout take
+    /// effect on the next request.
+    static var bearerToken: String {
+        AuthTokens.accessToken ?? devToken
+    }
+
+    /// Whether the app has *any* usable token — a real session or a dev token. Used
+    /// to gate the login screen (headless demos with a dev token skip login). After an
+    /// explicit sign-out the dev-token fallback is suppressed so logout sticks.
+    static var hasUsableToken: Bool {
+        if AuthTokens.isSignedIn { return true }
+        if wasSignedOut { return false }
+        return !devToken.isEmpty
     }
 
     static func setApiBaseURL(_ value: String) {
@@ -32,6 +52,18 @@ enum AppConfig {
     static func setDevToken(_ value: String) {
         UserDefaults.standard.set(value, forKey: tokenKey)
     }
+
+    private static let signedOutKey = "nook.signedOut"
+
+    /// Set when the user explicitly signs out. While set (and there's no real
+    /// session), we ignore the dev-token fallback so logout actually sticks — even
+    /// when a dev/env `NOOK_DEV_TOKEN` is present. Cleared on the next real login.
+    static var wasSignedOut: Bool { UserDefaults.standard.bool(forKey: signedOutKey) }
+    static func markSignedOut() {
+        UserDefaults.standard.set(true, forKey: signedOutKey)
+        UserDefaults.standard.synchronize()   // persist now, before any teardown
+    }
+    static func clearSignedOut() { UserDefaults.standard.removeObject(forKey: signedOutKey) }
 
     static func env(_ key: String) -> String? {
         let v = ProcessInfo.processInfo.environment[key]
@@ -64,4 +96,6 @@ enum DemoHooks {
     static var groceryMode: String? { AppConfig.env("NOOK_GROCERY_MODE") }
     /// On the Meals tab, push a recipe's detail by title substring (verification).
     static var openRecipe: String? { AppConfig.env("NOOK_OPEN_RECIPE") }
+    /// Clear any stored session on launch and start at the login screen (QA/demo).
+    static var resetAuth: Bool { AppConfig.env("NOOK_RESET_AUTH") == "1" }
 }
