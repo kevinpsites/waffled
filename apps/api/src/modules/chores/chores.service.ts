@@ -221,6 +221,35 @@ export async function listTodayInstances(householdId: string, dueOn: string): Pr
   }))
 }
 
+// All instances awaiting a parent's OK, across every date (the approvals queue).
+// Same shape as listTodayInstances; streak isn't meaningful here so it's 0.
+export async function listAwaitingInstances(householdId: string): Promise<TodayInstance[]> {
+  const { rows } = await query<QueryResultRow>(
+    `select ci.id, ci.status, ci.reward_amount, ci.reward_currency, ci.person_id, ci.requires_approval,
+            c.id as chore_id, c.title as chore_title, c.emoji, c.rrule, p.name as person_name
+       from chore_instances ci
+       join chores c on c.id = ci.chore_id and c.deleted_at is null
+       left join persons p on p.id = ci.person_id
+      where ci.household_id = $1 and ci.status = 'awaiting' and ci.deleted_at is null
+      order by ci.due_on desc, p.sort_order nulls last, c.title`,
+    [householdId]
+  )
+  return rows.map((r) => ({
+    id: r.id,
+    choreId: r.chore_id,
+    choreTitle: r.chore_title,
+    emoji: r.emoji,
+    personId: r.person_id,
+    personName: r.person_name,
+    status: r.status,
+    rewardAmount: r.reward_amount,
+    rewardCurrency: r.reward_currency,
+    rrule: r.rrule,
+    requiresApproval: r.requires_approval,
+    streak: 0,
+  }))
+}
+
 export const UPDATABLE_CHORE: Record<string, string> = {
   title: 'title',
   emoji: 'emoji',
