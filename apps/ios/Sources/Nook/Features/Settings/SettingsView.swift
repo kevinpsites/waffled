@@ -145,9 +145,11 @@ struct ChoresRewardsSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
+                // Economy: currencies + the trades between them, grouped together…
                 currenciesSection
-                approvalsSection
                 if currencies.count > 1 { conversionsSection }
+                // …then the separate redemption policy.
+                approvalsSection
             }
             .padding(16).padding(.bottom, 110)
         }
@@ -162,7 +164,7 @@ struct ChoresRewardsSettingsView: View {
 
     private var currenciesSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(text: "Currencies")
+            SectionLabel(text: "Currencies & trades")
             Text("Rename stars, add your own, or run several. The **default** is what new chores award; **spendable** ones can buy rewards.")
                 .font(.system(size: 13)).foregroundStyle(NK.ink2)
                 .fixedSize(horizontal: false, vertical: true)
