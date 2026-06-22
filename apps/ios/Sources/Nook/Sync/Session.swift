@@ -63,8 +63,16 @@ final class Session {
         guard let callback = await launcher.authorize(url: api.oidcStartURL(), scheme: "nook") else {
             return nil   // user cancelled the sheet — no error
         }
-        guard let code = URLComponents(url: callback, resolvingAgainstBaseURL: false)?
-            .queryItems?.first(where: { $0.name == "code" })?.value else {
+        let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems
+        // The backend bounces invite-gating / verification failures back through the
+        // deep link as `error` + `error_description` (instead of a dead-end web page).
+        if let err = items?.first(where: { $0.name == "error" })?.value {
+            let detail = items?.first(where: { $0.name == "error_description" })?.value
+            return detail ?? (err == "not_invited"
+                ? "This account isn't invited to this household yet."
+                : "Single sign-on didn't complete. Please try again.")
+        }
+        guard let code = items?.first(where: { $0.name == "code" })?.value else {
             return "Sign-in didn't complete. Please try again."
         }
         do {
