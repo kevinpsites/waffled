@@ -30,6 +30,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
   })
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [tab, setTab] = useState<'general' | 'signin'>('general')
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
 
   // Admin + kiosk visibility apply the instant you flip them when editing — they
@@ -170,6 +171,15 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
         <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>{editing ? 'Edit person' : 'Add a person'}</div>
 
+        {editing && (
+          <div className="seg" style={{ width: '100%', marginBottom: 16 }}>
+            <button type="button" className={tab === 'general' ? 'on' : ''} style={{ flex: 1, cursor: 'pointer' }} onClick={() => setTab('general')}>General</button>
+            <button type="button" className={tab === 'signin' ? 'on' : ''} style={{ flex: 1, cursor: 'pointer' }} onClick={() => setTab('signin')}>Sign-in</button>
+          </div>
+        )}
+
+        {(!editing || tab === 'general') && (
+        <>
         <form onSubmit={submit}>
           <div className="field-row">
             <label className="field" style={{ flex: 3 }}>
@@ -227,8 +237,20 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
           </button>
         </form>
 
-        {/* Login lives below "Save changes" with its own buttons — and outside the
-            form so pressing Enter in these fields doesn't trigger the profile save. */}
+        {editing && !person!.isOwner && (
+          <button type="button" onClick={del} style={{ display: 'block', margin: '14px auto 0', border: 0, background: 'none', color: confirmDelete ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+            {confirmDelete ? 'Tap again to remove this person' : 'Remove person'}
+          </button>
+        )}
+        {editing && person!.isOwner && (
+          <div className="tiny muted" style={{ textAlign: 'center', marginTop: 12, fontWeight: 600 }}>The household owner can’t be removed.</div>
+        )}
+        </>
+        )}
+
+        {editing && tab === 'signin' && (
+        <>
+        {/* Login + Kiosk PIN — each with its own buttons, outside the profile form. */}
         {editing && (
           <div className="set-card" style={{ padding: 16, marginTop: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: hasLoginLocal ? 12 : 8 }}>
@@ -291,7 +313,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
                 autoComplete="off"
                 value={pin}
                 onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
-                placeholder={hasPinLocal ? '••••' : '1234'}
+                placeholder={hasPinLocal ? 'Enter a new PIN' : 'Enter 4–8 digits'}
               />
             </label>
             {pinErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginBottom: 8 }}>{pinErr}</div>}
@@ -308,13 +330,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
           </div>
         )}
 
-        {editing && !person!.isOwner && (
-          <button type="button" onClick={del} style={{ display: 'block', margin: '14px auto 0', border: 0, background: 'none', color: confirmDelete ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-            {confirmDelete ? 'Tap again to remove this person' : 'Remove person'}
-          </button>
-        )}
-        {editing && person!.isOwner && (
-          <div className="tiny muted" style={{ textAlign: 'center', marginTop: 12, fontWeight: 600 }}>The household owner can’t be removed.</div>
+        </>
         )}
       </div>
     </div>
