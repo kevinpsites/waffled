@@ -11,6 +11,7 @@ import { resolveWriteTarget, resolveWriteTargetById, pushEventNow } from '../cal
 import { materializeMaster } from '../calendar/expansion.service'
 import { isValidRrule } from '../calendar/recurrence'
 import { recordMatch, WEIGHT } from '../goals/goal-match-memory'
+import { upsertSeriesMeta } from './event-series-meta'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -55,6 +56,7 @@ export interface EventRow extends QueryResultRow {
   person_id: string | null
   goal_id?: string | null
   goal_step_id?: string | null
+  ical_uid?: string | null
   rrule?: string | null
   sync_state?: string | null
   calendar_name?: string | null
@@ -308,6 +310,15 @@ export async function updateEvent(
     // Picking a goal on an event (here or via the suggestion link) is a strong
     // human signal — teach the household matcher.
     if ('goalId' in patch && event.goal_id) await recordMatch(householdId, event.title, event.goal_id, WEIGHT.human)
+    // If a goal (or step) link changed on a GOOGLE series instance (one of many
+    // events rows sharing an ical_uid), record it at the series level and fan it out
+    // to every current instance — so the link covers the whole series and a fresh
+    // instance streaming in later inherits it (calendar-sync's applySeriesMeta). A
+    // Nook-native event (no ical_uid) keeps today's single-event behavior.
+    const ical = event.ical_uid as string | null | undefined
+    if (('goalId' in patch || 'goalStepId' in patch) && ical) {
+      await upsertSeriesMeta(householdId, ical, event.goal_id ?? null, event.goal_step_id ?? null)
+    }
     // Mirror the edit to Google only when a Google-owned field changed — person/
     // participants are Nook-owned (Google has no such field), so don't push for them.
     const touchedGoogle = GOOGLE_OWNED_FIELDS.some((f) => f in patch)
