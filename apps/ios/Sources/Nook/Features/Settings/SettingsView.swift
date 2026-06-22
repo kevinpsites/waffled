@@ -144,11 +144,15 @@ struct ChoresRewardsSettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                // Economy: currencies + the trades between them, grouped together…
-                currenciesSection
-                if currencies.count > 1 { conversionsSection }
-                // …then the separate redemption policy.
+            VStack(alignment: .leading, spacing: 18) {
+                // Economy group: currencies + the trades between them, visually bound
+                // together under one header…
+                VStack(alignment: .leading, spacing: 18) {
+                    currenciesSection
+                    if currencies.count > 1 { conversionsSection }
+                }
+                // …a rule marks the boundary, then the separate redemption policy.
+                Divider().background(NK.hair).padding(.vertical, 2)
                 approvalsSection
             }
             .padding(16).padding(.bottom, 110)
@@ -258,7 +262,9 @@ struct ChoresRewardsSettingsView: View {
 
     private var conversionsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(text: "Conversions")
+            // A sub-header (not a full SectionLabel) so it reads as part of the
+            // "Currencies & trades" group rather than a peer section.
+            Text("Conversions").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
             Text("Let the family trade up a tier — e.g. 10 ⭐ → 1 🥢. Anyone can convert their own balance on the Rewards tab.")
                 .font(.system(size: 13)).foregroundStyle(NK.ink2)
                 .fixedSize(horizontal: false, vertical: true)
