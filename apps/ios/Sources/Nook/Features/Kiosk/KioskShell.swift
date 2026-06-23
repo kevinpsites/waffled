@@ -18,7 +18,6 @@ struct KioskShell: View {
     @State private var settingsPath: [HubRoute] = []
     @State private var familyPath: [HubRoute] = []
     @State private var mealsPath: [MealsRoute] = []
-    @State private var calendarEventId: String?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -79,7 +78,7 @@ struct KioskShell: View {
         case .today:
             KioskDashboard(navigate: { selection = $0 })
         case .calendar:
-            CalendarView(openEventId: $calendarEventId)
+            KioskCalendarView()
         case .tasks:
             NavigationStack { ChoresView() }
         case .goals:
