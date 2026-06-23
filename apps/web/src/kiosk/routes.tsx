@@ -11,6 +11,7 @@ import { PersonProfile } from './PersonProfile'
 import { FamilyOverview } from './FamilyOverview'
 import { Meals } from './Meals'
 import { RecipeDetail } from './RecipeDetail'
+import { RecipeEditor } from './RecipeEditor'
 import { CookMode } from './CookMode'
 import { RecipesLibrary } from './RecipesLibrary'
 import { Lists } from './Lists'
@@ -36,7 +37,9 @@ export function KioskRoutes() {
         <Route path="person/:id" element={<PersonProfile />} />
         <Route path="meals" element={<Meals />} />
         <Route path="meals/recipes" element={<RecipesLibrary />} />
+        <Route path="meals/recipe/new" element={<RecipeEditor />} />
         <Route path="meals/recipe/:id" element={<RecipeDetail />} />
+        <Route path="meals/recipe/:id/edit" element={<RecipeEditor />} />
         <Route path="meals/recipe/:id/cook" element={<CookMode />} />
         <Route path="lists" element={<Lists />} />
         <Route path="photos" element={<Photos />} />

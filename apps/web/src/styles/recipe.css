@@ -688,3 +688,106 @@
   color: var(--ink-2);
 }
 .cz-chip-src { font-size: 11px; opacity: 0.8; }
+
+/* ===== recipe editor (new / edit) ============================= */
+.recipe-editor { max-width: 880px; margin: 0 auto; padding: 8px 30px 60px; }
+.re-card { padding: 20px 22px; margin-bottom: 16px; }
+.re-section-h { font-size: 17px; margin-bottom: 14px; }
+
+/* paste-markdown */
+.re-paste-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.re-paste { margin-bottom: 16px; }
+.re-paste-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.re-paste-input { width: 100%; font-size: 13.5px; line-height: 1.55; padding: 12px 14px;
+  border-radius: var(--r-md); border: 1px solid var(--hair); background: var(--card-2); color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+
+/* clean label-over-input field (mirrors the customize modal's .cz-f — single box,
+   no nested borders) */
+.re-f { display: flex; flex-direction: column; gap: 6px; }
+.re-f > span {
+  font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3);
+}
+.re-f input {
+  width: 100%; font: inherit; font-size: 15px; padding: 10px 12px;
+  border-radius: var(--r-md); border: 1px solid var(--hair); background: var(--card-2); color: var(--ink);
+}
+.re-f input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(236,96,73,.12); }
+
+.re-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+.re-title-row { margin-bottom: 14px; }
+.re-emoji { width: 88px; flex: none; }
+.re-emoji input { text-align: center; font-size: 22px; padding: 7px 10px; }
+.re-grow { flex: 1; min-width: 220px; }
+.re-num { width: 132px; flex: none; }
+
+.re-meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px 14px; }
+.re-chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 18px; }
+.re-chip-f { display: flex; flex-direction: column; gap: 7px; }
+
+.re-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.re-card-head .re-section-h { margin-bottom: 0; }
+
+/* ingredient rows */
+.re-ings { display: flex; flex-direction: column; gap: 8px; }
+.re-ing-row { display: grid; grid-template-columns: 60px 80px 1.4fr 1.2fr 110px auto; gap: 8px; align-items: center; }
+.re-ing-row input {
+  width: 100%; font: inherit; font-size: 14px; padding: 9px 11px; border-radius: var(--r-md);
+  border: 1px solid var(--hair); background: var(--card-2); color: var(--ink);
+}
+.re-ing-row input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(236,96,73,.12); }
+
+/* method steps */
+.re-steps { display: flex; flex-direction: column; gap: 12px; }
+.re-step-row { display: flex; gap: 12px; align-items: flex-start; }
+.re-step-n { width: 28px; height: 28px; flex: none; border-radius: 50%; background: var(--panel);
+  display: grid; place-items: center; font-weight: 800; font-size: 14px; color: var(--ink-2); margin-top: 5px; }
+.re-step-body { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.re-step-body > textarea {
+  width: 100%; font: inherit; font-size: 14.5px; line-height: 1.5; padding: 9px 12px; border-radius: var(--r-md);
+  border: 1px solid var(--hair); background: var(--card-2); color: var(--ink); resize: vertical;
+}
+.re-step-body > textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(236,96,73,.12); }
+
+/* per-step ingredient picker — chips drawn from the recipe's ingredients */
+.re-stepings { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+.re-stepings-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--ink-3); margin-right: 2px; }
+.re-stepchip { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 13px; font-weight: 700;
+  border-radius: 999px; line-height: 1; cursor: pointer; }
+/* unselected = outline "+ name" button to add it to the step */
+.re-stepchip.add { padding: 6px 12px; border: 1px dashed var(--hair); background: var(--card-2); color: var(--ink-2); }
+.re-stepchip.add:hover { border-color: var(--primary); color: var(--ink); }
+/* selected = filled chip with an inline per-step amount field */
+.re-stepchip.on { padding: 4px 6px 4px 6px; border: 1px solid var(--hair); background: var(--panel); color: var(--ink); }
+.re-stepchip-amt { width: 64px; font: inherit; font-size: 12.5px; font-weight: 700; text-align: center;
+  padding: 4px 6px; border-radius: 999px; border: 1px solid var(--hair); background: #fff; color: var(--ink); }
+.re-stepchip-amt:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(236,96,73,.12); }
+.re-stepchip-name { padding: 0 2px; }
+.re-stepchip.on button { border: 0; background: rgba(0,0,0,0.08); color: var(--ink-2); width: 18px; height: 18px;
+  border-radius: 999px; font-size: 13px; line-height: 1; cursor: pointer; }
+.re-stepchip-extra { padding: 6px 6px 6px 11px; background: var(--card-2); }
+
+.re-notes { width: 100%; font: inherit; font-size: 14.5px; line-height: 1.5; padding: 11px 13px;
+  border-radius: var(--r-md); border: 1px solid var(--hair); background: var(--card-2); color: var(--ink); resize: vertical; }
+.re-notes:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(236,96,73,.12); }
+
+/* row controls (reorder / remove) */
+.re-row-ctl { display: flex; gap: 4px; align-items: center; }
+.re-row-ctl button { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--hair);
+  background: var(--card); color: var(--ink-2); cursor: pointer; font-size: 14px; font-weight: 700; }
+.re-row-ctl button:hover:not(:disabled) { background: var(--panel); }
+.re-row-ctl button:disabled { opacity: 0.3; cursor: default; }
+.re-row-ctl .re-del { color: var(--danger, #c0392b); }
+
+.re-actions { display: flex; align-items: center; gap: 12px; margin-top: 22px; }
+.re-actions-right { margin-left: auto; display: flex; gap: 10px; }
+.re-delete-btn { color: var(--danger, #c0392b); cursor: pointer; }
+
+@media (max-width: 760px) {
+  .re-meta-grid { grid-template-columns: repeat(2, 1fr); }
+  .re-chips { grid-template-columns: 1fr; }
+  .re-ing-row { grid-template-columns: 56px 1fr auto; }
+  .re-ing-row .re-ing-unit { grid-column: 1 / 2; }
+  .re-ing-row .re-ing-prep, .re-ing-row .re-ing-sec { grid-column: 2 / 3; }
+}

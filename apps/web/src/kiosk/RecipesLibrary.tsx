@@ -60,6 +60,7 @@ export function RecipesLibrary() {
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
         <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate('/meals')}>‹ Meals</button>
         <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600 }}>Recipes</div>
+        <button className="pill btn-primary" style={{ marginLeft: 'auto', color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => navigate('/meals/recipe/new')}>＋ New recipe</button>
       </div>
     ),
     [navigate]
@@ -124,7 +125,9 @@ export function RecipesLibrary() {
       {error && <div className="muted" style={{ padding: 20 }}>Sign this kiosk in to see recipes.</div>}
       {!error && !loading && sorted.length === 0 && (
         <div className="muted" style={{ padding: 20, fontWeight: 600 }}>
-          {recipes.length === 0 ? 'No recipes yet — import some with `just import-recipes`.' : 'No recipes match these filters.'}
+          {recipes.length === 0 ? (
+            <>No recipes yet — tap <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => navigate('/meals/recipe/new')}>＋ New recipe</button> to add your first.</>
+          ) : 'No recipes match these filters.'}
         </div>
       )}
 

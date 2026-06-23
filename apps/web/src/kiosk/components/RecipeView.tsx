@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { groceryApi, mealsApi, useRecipe, type RecipeIngredient, type RecipeOverrides, type RecipeStep } from '../../lib/api'
 import { ScheduleModal } from './ScheduleModal'
-import { CustomizeModal } from './CustomizeModal'
 import '../../styles/recipe.css'
 
 // The one canonical recipe view — hero, metadata chips, scalable ingredients with
@@ -100,7 +99,6 @@ export function RecipeView({ id, onSelect, selectLabel }: { id: string; onSelect
   const [servings, setServings] = useState<number | null>(null)
   const [fav, setFav] = useState(false)
   const [scheduling, setScheduling] = useState(false)
-  const [customizing, setCustomizing] = useState(false)
   const [addedNote, setAddedNote] = useState<string | null>(null)
   const [cooked, setCooked] = useState(0)
   const [notes, setNotes] = useState('')
@@ -185,7 +183,7 @@ export function RecipeView({ id, onSelect, selectLabel }: { id: string; onSelect
             {selectLabel ?? 'Select'}
           </button>
         )}
-        <button type="button" className="pill" onClick={() => setCustomizing(true)}>✏️ Customize</button>
+        <button type="button" className="pill" onClick={() => navigate(`/meals/recipe/${recipe.id}/edit`)}>✏️ Edit</button>
         <button type="button" className="pill rd-fav" aria-label="Favorite" onClick={toggleFav}>{fav ? '❤️' : '🤍'}</button>
         {steps.length > 0 && (
           <button type="button" className="pill" onClick={() => navigate(`/meals/recipe/${recipe.id}/cook`)}>👨‍🍳 Cook</button>
@@ -296,7 +294,6 @@ export function RecipeView({ id, onSelect, selectLabel }: { id: string; onSelect
       {scheduling && (
         <ScheduleModal recipe={recipe} onClose={() => setScheduling(false)} onScheduled={(label) => setAddedNote(`Scheduled for ${label}.`)} />
       )}
-      {customizing && <CustomizeModal recipe={recipe} onClose={() => setCustomizing(false)} onSaved={refetch} />}
     </div>
   )
 }

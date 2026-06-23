@@ -3,6 +3,71 @@ import { useCallback, useEffect, useState } from 'react'
 import { apiGet, apiSend, apiDelete, localToday } from './client'
 import { tap, useRefetchOn } from './bus'
 
+// ── Recipe authoring (create / edit) ─────────────────────────────────────────
+export interface IngredientInput {
+  name: string
+  amount?: number | null
+  unit?: string | null
+  prepNote?: string | null
+  section?: string | null
+  sortOrder?: number | null
+}
+
+export interface StepInput {
+  instruction: string
+  ingredients?: string[]
+}
+
+// What the editor sends to create or fully edit a recipe.
+export interface RecipeWriteInput {
+  title?: string
+  emoji?: string | null
+  description?: string | null
+  category?: string | null
+  tags?: string[] | null
+  servings?: number
+  prepTimeMinutes?: number | null
+  cookTimeMinutes?: number | null
+  imageUrl?: string | null
+  sourceName?: string | null
+  notes?: string | null
+  mealType?: string | null
+  protein?: string | null
+  base?: string | null
+  cuisine?: string | null
+  effort?: string | null
+  cookMethod?: string | null
+  flavorProfile?: string | null
+  dietary?: string[] | null
+  vegetables?: string[] | null
+  collection?: string | null
+  ingredients?: IngredientInput[]
+  steps?: StepInput[]
+}
+
+// The structured result of parsing pasted markdown (POST /api/recipes/parse-markdown).
+export interface ParsedRecipe {
+  recipe: {
+    title: string
+    emoji: string | null
+    servings: number
+    tags: string[]
+    notes: string | null
+    sourceName: string | null
+    mealType: string | null
+    protein: string | null
+    base: string | null
+    cuisine: string | null
+    effort: string | null
+    cookMethod: string | null
+    flavorProfile: string | null
+    dietary: string[]
+    vegetables: string[]
+  }
+  ingredients: IngredientInput[]
+  steps: StepInput[]
+}
+
 export interface MealCook {
   personId: string
   name: string | null
@@ -190,9 +255,13 @@ export const mealsApi = {
     apiDelete(`/api/meals/plan?date=${date}&mealType=${mealType}`),
   updateRecipe: (
     id: string,
-    patch: { isFavorite?: boolean; title?: string; rating?: number; userNotes?: string; overrides?: RecipeOverrides },
+    patch: RecipeWriteInput & { isFavorite?: boolean; rating?: number; userNotes?: string; overrides?: RecipeOverrides },
   ) => apiSend<{ recipe: RecipeDetail }>('PATCH', `/api/recipes/${id}`, patch).then((r) => r.recipe),
   markCooked: (id: string) => apiSend<{ recipe: RecipeDetail }>('POST', `/api/recipes/${id}/cooked`).then((r) => r.recipe),
+  createRecipe: (input: RecipeWriteInput & { title: string }) =>
+    apiSend<{ recipe: RecipeDetail }>('POST', '/api/recipes', input).then(tap('recipes')).then((r) => r.recipe),
+  deleteRecipe: (id: string) => apiDelete(`/api/recipes/${id}`).then(tap('recipes')),
+  parseMarkdown: (markdown: string) => apiSend<ParsedRecipe>('POST', '/api/recipes/parse-markdown', { markdown }),
 }
 
 export interface MealsState {
@@ -234,6 +303,8 @@ export interface RecipesState {
 
 export function useRecipes(): RecipesState {
   const [state, setState] = useState<RecipesState>({ recipes: [], loading: true, error: false })
+  const [nonce, setNonce] = useState(0)
+  const refetch = useCallback(() => setNonce((n) => n + 1), [])
   useEffect(() => {
     let alive = true
     mealsApi
@@ -243,7 +314,8 @@ export function useRecipes(): RecipesState {
     return () => {
       alive = false
     }
-  }, [])
+  }, [nonce])
+  useRefetchOn(['recipes'], refetch)
   return state
 }
 
