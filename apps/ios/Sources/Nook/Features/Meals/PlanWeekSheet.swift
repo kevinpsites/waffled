@@ -47,26 +47,63 @@ struct PlanWeekSheet: View {
 
     struct PickTarget: Identifiable { let date: String; var id: String { date } }
 
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
     var body: some View {
         NavigationStack {
-            Group {
-                switch phase {
-                case .config: configView
-                case .loading: loadingView
-                case .review: reviewView
-                case .empty: messageView("🎉", "Every night this week is already planned.", "Nothing to suggest — you’re all set.")
-                case .failed: messageView("😕", "Couldn’t plan the week", errorMessage ?? "The AI provider didn’t respond. Try again.")
+            content
+                .background(NK.canvas)
+                .navigationTitle("Plan my week").navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 }
-            }
-            .background(NK.canvas)
-            .navigationTitle("Plan my week").navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-            }
         }
+        .modifier(KioskSheetPresentation(kiosk: isKiosk))
         .task { seedDaysIfNeeded() }
         .sheet(item: $pickTarget) { target in
             RecipePickerSheet(model: recipes) { recipe in pickRecipe(date: target.date, recipe) }
+        }
+    }
+
+    /// iPad: a wide two-column sheet — requirements on the left, the AI-drafted meals
+    /// on the right (web-style). iPhone: the sequential config → result phases.
+    @ViewBuilder private var content: some View {
+        if isKiosk {
+            HStack(spacing: 0) {
+                configView.frame(width: 400)
+                Divider()
+                kioskResultPane.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        } else {
+            phaseView
+        }
+    }
+
+    @ViewBuilder private var phaseView: some View {
+        switch phase {
+        case .config: configView
+        case .loading: loadingView
+        case .review: reviewView
+        case .empty: messageView("🎉", "Every night this week is already planned.", "Nothing to suggest — you’re all set.")
+        case .failed: messageView("😕", "Couldn’t plan the week", errorMessage ?? "The AI provider didn’t respond. Try again.")
+        }
+    }
+
+    @ViewBuilder private var kioskResultPane: some View {
+        switch phase {
+        case .config:
+            VStack(spacing: 12) {
+                Text("✨").font(.system(size: 40))
+                Text("Draft your week").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
+                Text("Set the meal, days, and any notes on the left, then tap Plan my week.")
+                    .font(.system(size: 13)).foregroundStyle(NK.ink3)
+                    .multilineTextAlignment(.center).padding(.horizontal, 40)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .loading: loadingView
+        case .review: reviewView
+        case .empty: messageView("🎉", "Every night this week is already planned.", "Nothing to suggest — you’re all set.")
+        case .failed: messageView("😕", "Couldn’t plan the week", errorMessage ?? "The AI provider didn’t respond. Try again.")
         }
     }
 

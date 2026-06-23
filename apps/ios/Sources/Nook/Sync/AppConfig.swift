@@ -87,6 +87,8 @@ enum DemoHooks {
     static var kioskOpenEdit: Bool { AppConfig.env("NOOK_KIOSK_OPEN_EDIT") == "1" }
     /// Initial Meals section for verification: week | month | recipes.
     static var mealsSection: String? { AppConfig.env("NOOK_MEALS_SECTION") }
+    /// Auto-open the "Plan my week" sheet (verification).
+    static var planWeek: Bool { AppConfig.env("NOOK_PLAN_WEEK") == "1" }
     /// Auto-present the Sync panel on the Family screen.
     static var openSync: Bool { AppConfig.env("NOOK_OPEN_SYNC") == "1" }
     /// Insert one offline test event once members have synced.

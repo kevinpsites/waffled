@@ -62,23 +62,59 @@ struct PlanMonthSheet: View {
     private let api = NookAPI()
     struct PickTarget: Identifiable { let date: String; var id: String { date } }
 
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
     var body: some View {
         NavigationStack {
-            Group {
-                switch phase {
-                case .config:  configView
-                case .loading: loadingView
-                case .review:  reviewView
-                case .empty:   messageView("🎉", "Every night this month is already planned.", "Nothing to draft — you’re set.")
-                case .failed:  messageView("😕", "Couldn’t plan the month", errorMessage ?? "The AI provider didn’t respond. Try again.")
-                }
-            }
-            .background(NK.canvas)
-            .navigationTitle("Plan \(monthLabel)").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            content
+                .background(NK.canvas)
+                .navigationTitle("Plan \(monthLabel)").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
+        .modifier(KioskSheetPresentation(kiosk: isKiosk))
         .sheet(item: $pickTarget) { target in
             RecipePickerSheet(model: recipes) { recipe in pickRecipe(date: target.date, recipe) }
+        }
+    }
+
+    /// iPad: requirements (left) + the AI-drafted month (right), web-style.
+    @ViewBuilder private var content: some View {
+        if isKiosk {
+            HStack(spacing: 0) {
+                configView.frame(width: 400)
+                Divider()
+                kioskResultPane.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        } else {
+            phaseView
+        }
+    }
+
+    @ViewBuilder private var phaseView: some View {
+        switch phase {
+        case .config:  configView
+        case .loading: loadingView
+        case .review:  reviewView
+        case .empty:   messageView("🎉", "Every night this month is already planned.", "Nothing to draft — you’re set.")
+        case .failed:  messageView("😕", "Couldn’t plan the month", errorMessage ?? "The AI provider didn’t respond. Try again.")
+        }
+    }
+
+    @ViewBuilder private var kioskResultPane: some View {
+        switch phase {
+        case .config:
+            VStack(spacing: 12) {
+                Text("✨").font(.system(size: 40))
+                Text("Draft your month").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
+                Text("Set your guardrails on the left, then tap Plan my month.")
+                    .font(.system(size: 13)).foregroundStyle(NK.ink3)
+                    .multilineTextAlignment(.center).padding(.horizontal, 40)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .loading: loadingView
+        case .review:  reviewView
+        case .empty:   messageView("🎉", "Every night this month is already planned.", "Nothing to draft — you’re set.")
+        case .failed:  messageView("😕", "Couldn’t plan the month", errorMessage ?? "The AI provider didn’t respond. Try again.")
         }
     }
 

@@ -39,7 +39,7 @@ struct WeekPlannerView: View {
             if isKiosk { kioskWeek } else { phoneWeek }
         }
         .background(NK.canvas)
-        .task { await load() }
+        .task { await load(); if DemoHooks.planWeek { planningWeek = true } }
         .onChange(of: weekOffset) { _, _ in Task { await load() } }
         .onChange(of: sync.mealsRev) { _, _ in Task { await load() } }
         .sheet(item: $picking) { target in
