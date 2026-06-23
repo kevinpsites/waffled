@@ -132,7 +132,9 @@ Make the iPad a *real app you navigate*, like the web. This is the main re-scope
   - [x] **Lists** — `KioskListsView`: master/detail (lists sidebar + selected list's full
         detail incl. the grocery aisle/meal board). Reuses `ListDetailView`.
   - [x] **Goals** — featured hero kept; "More goals" now a multi-column grid on iPad.
-  - [ ] Family · [ ] Photos · [ ] Settings
+  - [x] **Family** — `KioskFamilyView`: per-person overview grid (role, stars, chores
+        progress, today's events) → person spotlight. Drops the rail-redundant hub tiles.
+  - [ ] Photos · [ ] Settings  (low priority — Photos is a placeholder; Settings is a list)
 - [x] Rail shows the signed-in person's avatar (`KioskShell.currentMember`).
 - [ ] Capture sheet + detail sheets sized appropriately for the iPad.
 
