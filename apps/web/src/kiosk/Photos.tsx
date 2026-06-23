@@ -59,6 +59,7 @@ export function Photos() {
   const [adding, setAdding] = useState(false)
   const [detail, setDetail] = useState<Photo | null>(null)
   const [saver, setSaver] = useState<Photo | null>(null)
+  const [albumFilter, setAlbumFilter] = useState<string | null>(null)
 
   // The newest memory drives the banner + the default screensaver.
   const newest = photos[0] ?? null
@@ -68,6 +69,17 @@ export function Photos() {
     [photos, memory]
   )
   const saverThumbs = saver?.memory ? photos.filter((p) => p.memory === saver.memory) : photos
+
+  // Distinct album names (a photo's `memory`), for the filter chips + the add/edit datalists.
+  const albums = useMemo(
+    () => [...new Set(photos.map((p) => p.memory).filter((m): m is string => !!m))],
+    [photos]
+  )
+  // The wall, filtered to the chosen album ("All" → everything).
+  const visiblePhotos = useMemo(
+    () => (albumFilter ? photos.filter((p) => p.memory === albumFilter) : photos),
+    [photos, albumFilter]
+  )
 
   useTopbarRight(
     () => (
@@ -115,28 +127,56 @@ export function Photos() {
         </div>
       )}
 
+      {albums.length > 0 && (
+        <div className="ph-filter">
+          <button
+            type="button"
+            className={`pill ph-chip ${albumFilter === null ? 'on' : ''}`}
+            onClick={() => setAlbumFilter(null)}
+          >
+            All
+          </button>
+          {albums.map((a) => (
+            <button
+              key={a}
+              type="button"
+              className={`pill ph-chip ${albumFilter === a ? 'on' : ''}`}
+              onClick={() => setAlbumFilter(a)}
+            >
+              {a}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="photos-wall-scroll">
-        {photos.length > 0 ? (
+        {visiblePhotos.length > 0 ? (
           <div className="ph-wall">
-            {photos.map((p, i) => (
+            {visiblePhotos.map((p, i) => (
               <PhotoTile key={p.id} photo={p} span={spanFor(i)} onOpen={() => setDetail(p)} onDelete={() => del(p)} />
             ))}
           </div>
         ) : (
-          !loading && <div className="ph-empty">No photos yet — add some with “Add photos”.</div>
+          !loading && (
+            <div className="ph-empty">
+              {photos.length === 0 ? 'No photos yet — add some with “Add photos”.' : 'No photos in this album.'}
+            </div>
+          )
         )}
       </div>
 
-      {adding && <PhotoAdd onClose={() => setAdding(false)} onAdded={refetch} />}
+      {adding && <PhotoAdd onClose={() => setAdding(false)} onAdded={refetch} albums={albums} />}
       {detail && (
         <PhotoDetail
           photo={detail}
           memoryCount={detail.memory ? photos.filter((p) => p.memory === detail.memory).length : 1}
+          albums={albums}
           onClose={() => setDetail(null)}
           onSetScreensaver={(p) => {
             setDetail(null)
             setSaver(p)
           }}
+          onUpdated={refetch}
           onDeleted={refetch}
         />
       )}

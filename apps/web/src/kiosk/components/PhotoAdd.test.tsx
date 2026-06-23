@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { PhotoAdd } from './PhotoAdd'
 
 // Stub the api slice: uploadImage returns a fixed key/url, and api.createPhoto records
-// the inputs it was called with so we can assert the upload key flows through as storageKey.
+// the inputs it was called with so we can assert the upload key + album flow through.
 const created: Record<string, unknown>[] = []
 const uploadImage = vi.fn(async () => ({ key: 'media/up.jpg', url: '/media/up.jpg', contentType: 'image/jpeg' }))
 
@@ -37,11 +37,51 @@ describe('PhotoAdd — upload', () => {
     await screen.findByPlaceholderText('Caption')
     expect(uploadImage).toHaveBeenCalledTimes(1)
 
-    const addBtn = screen.getByRole('button', { name: /Add.*photos/i })
+    const addBtn = screen.getByRole('button', { name: /Add photo/i })
     fireEvent.click(addBtn)
 
     await waitFor(() => expect(created.length).toBe(1))
     expect(created[0]).toMatchObject({ storageKey: 'media/up.jpg' })
     expect(created[0].imageUrl).toBeUndefined()
+  })
+
+  it('sends the entered caption + album (as memory) to createPhoto', async () => {
+    const onAdded = vi.fn()
+    render(<PhotoAdd onClose={() => {}} onAdded={onAdded} albums={['Lake Day']} />)
+
+    pickFile()
+    const caption = (await screen.findByPlaceholderText('Caption')) as HTMLInputElement
+    fireEvent.change(caption, { target: { value: 'Sandcastle' } })
+    const album = screen.getByPlaceholderText('Pick or name an album') as HTMLInputElement
+    fireEvent.change(album, { target: { value: 'Beach Trip' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /Add photo/i }))
+
+    await waitFor(() => expect(created.length).toBe(1))
+    expect(created[0]).toMatchObject({
+      storageKey: 'media/up.jpg',
+      caption: 'Sandcastle',
+      memory: 'Beach Trip',
+      isFavorite: false,
+    })
+    expect(onAdded).toHaveBeenCalled()
+  })
+
+  it('marks the photo favorite when the heart is toggled', async () => {
+    render(<PhotoAdd onClose={() => {}} onAdded={() => {}} />)
+
+    pickFile()
+    await screen.findByPlaceholderText('Caption')
+    fireEvent.click(screen.getByRole('button', { name: /Favorite/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Add photo/i }))
+
+    await waitFor(() => expect(created.length).toBe(1))
+    expect(created[0]).toMatchObject({ isFavorite: true })
+  })
+
+  it('shows a muted, non-clickable Shared album "soon" source', () => {
+    render(<PhotoAdd onClose={() => {}} onAdded={() => {}} />)
+    expect(screen.getByText(/Shared album/)).toBeInTheDocument()
+    expect(screen.getByText('soon')).toBeInTheDocument()
   })
 })

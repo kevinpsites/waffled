@@ -37,8 +37,18 @@ export interface PhotoWriteInput {
   imageUrl?: string | null
   storageKey?: string | null
   memory?: string | null
+  isFavorite?: boolean
   takenAt?: string | null
   [key: string]: unknown
+}
+
+// What the photo-detail edit flow sends — a partial update of the editable fields.
+// A blank caption is rejected server-side (400), so callers keep a non-empty caption.
+export interface PhotoPatchInput {
+  caption?: string
+  memory?: string | null
+  isFavorite?: boolean
+  takenAt?: string | null
 }
 
 export const photosApi = {
@@ -46,6 +56,8 @@ export const photosApi = {
     apiGet<{ photos: Photo[] }>(memory ? `/api/photos?memory=${encodeURIComponent(memory)}` : '/api/photos'),
   photo: (id: string) => apiGet<{ photo: Photo }>(`/api/photos/${id}`),
   createPhoto: (input: PhotoWriteInput) => apiSend<{ photo: { id: string } }>('POST', '/api/photos', input),
+  updatePhoto: (id: string, patch: PhotoPatchInput) =>
+    apiSend<{ photo: Photo }>('PATCH', `/api/photos/${id}`, patch).then((r) => r.photo),
   deletePhoto: (id: string) => apiDelete(`/api/photos/${id}`),
 }
 

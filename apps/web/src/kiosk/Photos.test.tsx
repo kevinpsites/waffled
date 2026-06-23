@@ -87,15 +87,17 @@ describe('Photos home (family wall)', () => {
     expect(screen.getByAltText('Soccer win')).toBeInTheDocument()
   })
 
-  it('opens the photo detail with reactions and details', async () => {
+  it('opens the photo detail with details (no reactions)', async () => {
     mockApi({ photos: [beach, cake] })
     renderHome()
 
     fireEvent.click(await screen.findByText('Beach day'))
-    expect(await screen.findByText('Reactions')).toBeInTheDocument()
-    expect(screen.getByText('Details')).toBeInTheDocument()
-    // Album row reflects the memory; Added by reflects uploader
-    expect(screen.getByText('Lake Day')).toBeInTheDocument()
+    expect(await screen.findByText('Details')).toBeInTheDocument()
+    // reactions card was removed
+    expect(screen.queryByText('Reactions')).not.toBeInTheDocument()
+    // Album row reflects the memory; Added by reflects uploader. "Lake Day" also
+    // appears as a filter chip on the wall behind the overlay, so allow multiple.
+    expect(screen.getAllByText('Lake Day').length).toBeGreaterThan(0)
     expect(screen.getByText('Kelly')).toBeInTheDocument()
     expect(screen.getByText(/Part of “Lake Day”/)).toBeInTheDocument()
   })
@@ -111,20 +113,28 @@ describe('Photos home (family wall)', () => {
     await waitFor(() => expect(screen.queryByText('Tap anywhere to wake')).not.toBeInTheDocument())
   })
 
-  it('adds selected candidate photos through the add overlay', async () => {
-    const created: unknown[] = []
-    mockApi({ photos: [beach], created })
+  it('opens the add overlay with the upload source', async () => {
+    mockApi({ photos: [beach] })
     renderHome()
 
     fireEvent.click(await screen.findByRole('button', { name: /Add photos/ }))
-    // pick two candidate tiles
-    const tiles = document.querySelectorAll('.ap-tile')
-    fireEvent.click(tiles[0])
-    fireEvent.click(tiles[1])
-    // the add button counts the selection
-    fireEvent.click(screen.getByRole('button', { name: /Add\s*2\s*photos/ }))
-    await waitFor(() => expect(created).toHaveLength(2))
-    expect(created[0]).toMatchObject({ memory: 'Lake Day' })
+    // the add overlay shows the real upload source + the "coming soon" album source
+    expect(await screen.findByRole('button', { name: /Upload photo/ })).toBeInTheDocument()
+    expect(screen.getByText('soon')).toBeInTheDocument()
+  })
+
+  it('filters the wall by album chip', async () => {
+    mockApi({ photos: [beach, cake, soccer] })
+    renderHome()
+
+    // soccer has no album → hidden when "Lake Day" is selected
+    await screen.findByText('Soccer win')
+    fireEvent.click(screen.getByRole('button', { name: /^Lake Day$/ }))
+    expect(screen.getByText('Beach day')).toBeInTheDocument()
+    expect(screen.queryByAltText('Soccer win')).not.toBeInTheDocument()
+    // back to All
+    fireEvent.click(screen.getByRole('button', { name: /^All$/ }))
+    expect(screen.getByAltText('Soccer win')).toBeInTheDocument()
   })
 
   it('deletes a photo from the wall', async () => {

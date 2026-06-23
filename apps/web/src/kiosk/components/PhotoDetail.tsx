@@ -2,11 +2,11 @@ import { useState } from 'react'
 import { api, type Photo } from '../../lib/api'
 import { Icon } from '../icons'
 
-// Photo detail overlay — matches photos-detail.png: a back-pill topbar with
-// "Set as screensaver / Share / 🗑", the big photo stage on the left, and the
-// Reactions / Details / "Part of memory" AI cards on the right.
-
-const REACTIONS = ['❤️', '😍', '🎉', '👏']
+// Photo detail overlay — a back-pill topbar with "Set as screensaver / ✏️ Edit /
+// 🗑", the big photo stage on the left, and the Details / "Part of memory" AI
+// cards on the right. Edit mode turns the Details card into editable caption /
+// album (datalist of existing albums) / favorite / date fields; Save PATCHes the
+// photo and refetches the wall.
 
 function fmtDate(iso: string | null): string {
   if (!iso) return '—'
@@ -16,24 +16,70 @@ function fmtWeekday(iso: string | null): string {
   if (!iso) return ''
   return new Date(iso).toLocaleDateString('en-US', { weekday: 'long' })
 }
+// ISO timestamp → YYYY-MM-DD for a <input type=date> value (and back).
+function isoToDateInput(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 export function PhotoDetail({
   photo,
   memoryCount,
+  albums = [],
   onClose,
   onSetScreensaver,
+  onUpdated,
   onDeleted,
 }: {
   photo: Photo
   memoryCount: number
+  albums?: string[]
   onClose: () => void
   onSetScreensaver: (p: Photo) => void
+  onUpdated?: () => void
   onDeleted: () => void
 }) {
   const [confirmDel, setConfirmDel] = useState(false)
-  const [reacted, setReacted] = useState<string | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [caption, setCaption] = useState(photo.caption)
+  const [album, setAlbum] = useState(photo.memory ?? '')
+  const [isFavorite, setIsFavorite] = useState(photo.isFavorite)
+  const [takenDate, setTakenDate] = useState(isoToDateInput(photo.takenAt))
+
   const bg = `linear-gradient(135deg, ${photo.colorHex ?? '#7fc1e8'}, ${shade(photo.colorHex ?? '#7fc1e8')})`
-  const lovers = photo.uploadedBy?.name ? `${firstName(photo.uploadedBy.name)} loved this` : 'Loved by the family'
+
+  function startEdit() {
+    setCaption(photo.caption)
+    setAlbum(photo.memory ?? '')
+    setIsFavorite(photo.isFavorite)
+    setTakenDate(isoToDateInput(photo.takenAt))
+    setEditing(true)
+  }
+
+  async function save() {
+    if (saving) return
+    setSaving(true)
+    try {
+      // takenDate "" means cleared; a date value becomes a noon-local ISO so it lands
+      // on the chosen day regardless of timezone.
+      const takenAt = takenDate ? new Date(`${takenDate}T12:00:00`).toISOString() : null
+      await api.updatePhoto(photo.id, {
+        caption: caption.trim() || photo.caption,
+        memory: album.trim() || null,
+        isFavorite,
+        takenAt,
+      })
+      onUpdated?.()
+      setEditing(false)
+    } catch {
+      /* keep edit mode open on failure */
+    } finally {
+      setSaving(false)
+    }
+  }
 
   async function del() {
     if (!confirmDel) {
@@ -53,9 +99,9 @@ export function PhotoDetail({
             <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={onClose}>‹ Photos</button>
             <div className="tb-right">
               <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => onSetScreensaver(photo)}>Set as screensaver</button>
-              <button type="button" className="pill" style={{ cursor: 'pointer' }}>
-                <Icon name="plus" />Share
-              </button>
+              {!editing && (
+                <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={startEdit}>✏️ Edit</button>
+              )}
               <button type="button" className="icon-btn" style={{ cursor: 'pointer', color: confirmDel ? 'var(--primary)' : undefined }} aria-label="Delete photo" onClick={del}>
                 🗑
               </button>
@@ -76,40 +122,75 @@ export function PhotoDetail({
 
             <div className="pd-side">
               <div className="card" style={{ padding: '18px 20px' }}>
-                <div className="card-h" style={{ fontSize: 17, marginBottom: 12 }}>Reactions</div>
-                <div className="pd-react-row">
-                  {REACTIONS.map((em) => (
-                    <div key={em} className={`pill react ${reacted === em ? 'on' : ''}`} onClick={() => setReacted(em)}>
-                      {em}
-                    </div>
-                  ))}
+                <div className="card-h" style={{ fontSize: 17, marginBottom: 10, display: 'flex', alignItems: 'center' }}>
+                  Details
+                  {!editing && (
+                    <button type="button" className="pill pd-edit-pill" style={{ marginLeft: 'auto' }} onClick={startEdit}>✏️ Edit</button>
+                  )}
                 </div>
-                <div className="pd-loved">
-                  <div className="avstack">
-                    {photo.uploadedBy && (
-                      <div className="av sm" style={{ background: `${photo.uploadedBy.colorHex ?? '#A6A29B'}22` }}>
-                        {photo.uploadedBy.avatarEmoji ?? '🙂'}
-                      </div>
-                    )}
-                  </div>
-                  <span className="tiny muted" style={{ fontWeight: 600 }}>{lovers}</span>
-                </div>
-              </div>
 
-              <div className="card" style={{ padding: '18px 20px' }}>
-                <div className="card-h" style={{ fontSize: 17, marginBottom: 10 }}>Details</div>
-                <div className="set-row" style={{ padding: '11px 0' }}>
-                  <div className="set-tx"><div className="st1">Album</div></div>
-                  <div className="tiny muted" style={{ fontWeight: 600, marginLeft: 'auto' }}>{photo.memory ?? '—'}</div>
-                </div>
-                <div className="set-row" style={{ padding: '11px 0' }}>
-                  <div className="set-tx"><div className="st1">Added by</div></div>
-                  <span className="tiny muted" style={{ fontWeight: 600, marginLeft: 'auto' }}>{photo.uploadedBy?.name ?? '—'}</span>
-                </div>
-                <div className="set-row" style={{ padding: '11px 0', borderBottom: 0 }}>
-                  <div className="set-tx"><div className="st1">Date</div></div>
-                  <div className="tiny muted" style={{ fontWeight: 600, marginLeft: 'auto' }}>{fmtDate(photo.takenAt ?? photo.createdAt)}</div>
-                </div>
+                {editing ? (
+                  <div className="pd-edit">
+                    <label className="ap-field-label">
+                      Caption
+                      <input className="field" placeholder="Caption" value={caption} onChange={(e) => setCaption(e.target.value)} />
+                    </label>
+                    <label className="ap-field-label">
+                      Album
+                      <input
+                        className="field"
+                        list="pd-album-list"
+                        placeholder="Pick or name an album"
+                        value={album}
+                        onChange={(e) => setAlbum(e.target.value)}
+                      />
+                      <datalist id="pd-album-list">
+                        {albums.map((a) => (
+                          <option key={a} value={a} />
+                        ))}
+                      </datalist>
+                    </label>
+                    <label className="ap-field-label">
+                      Date
+                      <input className="field" type="date" value={takenDate} onChange={(e) => setTakenDate(e.target.value)} />
+                    </label>
+                    <div className="ap-form-row">
+                      <button
+                        type="button"
+                        className={`pill ap-fav ${isFavorite ? 'on' : ''}`}
+                        aria-pressed={isFavorite}
+                        onClick={() => setIsFavorite((v) => !v)}
+                      >
+                        {isFavorite ? '❤️' : '🤍'} Favorite
+                      </button>
+                    </div>
+                    <div className="pd-edit-actions">
+                      <button type="button" className="pill" onClick={() => setEditing(false)}>Cancel</button>
+                      <button type="button" className="btn btn-primary" disabled={saving} onClick={save}>
+                        {saving ? 'Saving…' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="set-row" style={{ padding: '11px 0' }}>
+                      <div className="set-tx"><div className="st1">Album</div></div>
+                      <div className="tiny muted" style={{ fontWeight: 600, marginLeft: 'auto' }}>{photo.memory ?? '—'}</div>
+                    </div>
+                    <div className="set-row" style={{ padding: '11px 0' }}>
+                      <div className="set-tx"><div className="st1">Added by</div></div>
+                      <span className="tiny muted" style={{ fontWeight: 600, marginLeft: 'auto' }}>{photo.uploadedBy?.name ?? '—'}</span>
+                    </div>
+                    <div className="set-row" style={{ padding: '11px 0' }}>
+                      <div className="set-tx"><div className="st1">Date</div></div>
+                      <div className="tiny muted" style={{ fontWeight: 600, marginLeft: 'auto' }}>{fmtDate(photo.takenAt ?? photo.createdAt)}</div>
+                    </div>
+                    <div className="set-row" style={{ padding: '11px 0', borderBottom: 0 }}>
+                      <div className="set-tx"><div className="st1">Favorite</div></div>
+                      <div className="tiny muted" style={{ fontWeight: 600, marginLeft: 'auto' }}>{photo.isFavorite ? '❤️ Yes' : 'No'}</div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {photo.memory && (
@@ -129,9 +210,6 @@ export function PhotoDetail({
   )
 }
 
-function firstName(name: string): string {
-  return name.split(' ')[0]
-}
 function shade(hex: string): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex)
   if (!m) return hex
