@@ -117,8 +117,11 @@ Make the iPad a *real app you navigate*, like the web. This is the main re-scope
       for now.)
 - [ ] Then progressively **web-ify each page** for the iPad (multi-column where the web is,
       bigger type/spacing) instead of a stretched phone column. Track per-page below as we go:
-  - [x] **Calendar** — `KioskCalendarView`: width-filling month grid (event chips per day)
-        + side day panel + person filters. (Pending user feedback.)
+  - [x] **Calendar** — `KioskCalendarView` (done, accepted): Month (grid + side day panel),
+        Week & Day (time-grids with overlap lanes), and Agenda (upcoming list + mini-month +
+        "heads up" AI digest + "whose week is busy" bars); person filters. Event detail +
+        editor open as large `.page` modals on iPad (shared `KioskSheetPresentation`); detail
+        is two-column. Test hooks: `NOOK_CAL_MODE`, `NOOK_KIOSK_OPEN_EVENT/EDIT`.
   - [ ] Tasks/Chores · [ ] Goals · [ ] Family · [ ] Meals · [ ] Lists · [ ] Photos · [ ] Settings
 - [ ] Capture sheet + detail sheets sized appropriately for the iPad.
 
