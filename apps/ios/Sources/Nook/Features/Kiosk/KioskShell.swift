@@ -16,7 +16,6 @@ struct KioskShell: View {
     @State private var approvals = ApprovalsModel()
     @State private var goalsPath: [HubRoute] = []
     @State private var rewardsPath: [HubRoute] = []
-    @State private var listsPath: [HubRoute] = []
     @State private var settingsPath: [HubRoute] = []
     @State private var familyPath: [HubRoute] = []
     @State private var mealsPath: [MealsRoute] = []
@@ -115,9 +114,10 @@ struct KioskShell: View {
         case .meals:
             MealsView(path: $mealsPath)
         case .lists:
-            NavigationStack(path: $listsPath) {
-                ListsIndexView(path: $listsPath).hubDestination($listsPath, recipes)
-            }
+            KioskListsView(openRecipe: { recipe in
+                mealsPath = [.recipe(recipe)]
+                selection = .meals
+            })
         case .photos:
             NavigationStack {
                 HubPlaceholder(emoji: "📷", title: "Photos", summary: "Family photos")
