@@ -153,6 +153,7 @@ struct ChoresView: View {
         .background(NK.canvas)
         .navigationTitle("Chores")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(isKiosk ? .hidden : .visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { editor = .new(personId: nil) } label: {
@@ -199,6 +200,9 @@ struct ChoresView: View {
 
     private var kioskContent: some View {
         VStack(spacing: 14) {
+            KioskPageHeader("Chores", "Tick one off — or drag a chore to whoever did it.") {
+                KioskHeaderButton(icon: "plus", label: "New chore") { editor = .new(personId: nil) }
+            }
             if sync.isParent && !approvals.chores.isEmpty { approvalsCard.frame(maxWidth: 760) }
             dateNav.frame(maxWidth: 440)
             if model.loading && model.instances.isEmpty {

@@ -222,6 +222,7 @@ struct RewardsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                if isKiosk { KioskPageHeader("Rewards", "Spend stars on what your family loves.") }
                 if !model.pending.isEmpty { approvalsCard }
 
                 SectionLabel(text: "Family balances")
@@ -238,6 +239,7 @@ struct RewardsView: View {
         .scrollBounceBehavior(.always)
         .background(NK.canvas)
         .navigationTitle("Rewards").navigationBarTitleDisplayMode(.inline)
+        .toolbar(isKiosk ? .hidden : .visible, for: .navigationBar)
         .task { await model.load() }
         .refreshable { await model.load() }
         .onChange(of: sync.rewardsRev) { _, _ in Task { await model.load() } }

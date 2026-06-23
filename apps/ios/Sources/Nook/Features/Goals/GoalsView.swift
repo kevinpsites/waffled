@@ -179,6 +179,11 @@ struct GoalsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                if isKiosk {
+                    KioskPageHeader("Goals", "Log progress and keep your streaks going.") {
+                        KioskHeaderButton(icon: "plus", label: "New goal") { creating = true }
+                    }
+                }
                 listPicker
                 if let list = model.selectedList { listHead(list) }
                 if !model.isIndividual, model.selectedList != nil { filterSeg }
@@ -211,6 +216,7 @@ struct GoalsView: View {
         .background(NK.canvas)
         .navigationTitle("Goals")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(isKiosk ? .hidden : .visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { creating = true } label: { Image(systemName: "plus") }
