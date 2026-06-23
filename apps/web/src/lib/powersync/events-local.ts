@@ -59,6 +59,8 @@ export function isEventTombstoned(id: string): boolean {
 // One row from AGENDA_SQL — events joined to their owner, with participants as JSON.
 export interface LocalEventRow {
   id: string
+  series_id?: string
+  occurrence_start?: string | null
   title: string
   description: string | null
   location: string | null
@@ -132,6 +134,8 @@ export function rowToAgenda(r: LocalEventRow): AgendaEvent {
     personColor: r.person_color,
     personEmoji: r.person_emoji,
     participants,
+    seriesId: r.series_id ?? r.id,
+    occurrenceStart: r.occurrence_start ?? null,
   }
 }
 
@@ -158,31 +162,53 @@ export function eventsForRange(rows: LocalEventRow[], tz: string, from: string, 
     .sort(byStart)
 }
 
-// Pull every (non-deleted — the local DB only holds those) event with owner +
-// participants. We filter/bucket by date in JS since SQLite tz support is weak.
-const AGENDA_SQL = `
-  select e.id, e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.person_id, e.goal_id, e.goal_step_id,
+// Pull every (non-deleted — the local DB only holds those) renderable row with
+// owner + participants. UNION of single/Google events (rrule null) and recurring
+// occurrences joined to their master — mirroring the server's read model. We
+// filter/bucket by date in JS since SQLite tz support is weak.
+const participantsJson = (idExpr: string) => `
+  (select json_group_array(json_object(
+            'id', pp.id, 'name', pp.name, 'colorHex', pp.color_hex, 'avatarEmoji', pp.avatar_emoji)
+            order by pp.sort_order, pp.created_at)
+     from event_participants ep
+     join persons pp on pp.id = ep.person_id
+    where ep.event_id = ${idExpr}) as participants_json`
+
+// Single events (and Google-expanded instances). Also the detail-by-id source.
+const SINGLE_SELECT = `
+  select e.id as id, e.id as series_id, null as occurrence_start,
+         e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.person_id, e.goal_id, e.goal_step_id,
          e.origin, e.origin_ref_id,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
-         (select json_group_array(json_object(
-                   'id', pp.id, 'name', pp.name, 'colorHex', pp.color_hex, 'avatarEmoji', pp.avatar_emoji)
-                   order by pp.sort_order, pp.created_at)
-            from event_participants ep
-            join persons pp on pp.id = ep.person_id
-           where ep.event_id = e.id) as participants_json
+         ${participantsJson('e.id')}
     from events e
-    left join persons p on p.id = e.person_id
-`
+    left join persons p on p.id = e.person_id`
+
+// Materialized occurrences of a recurring master (m) — inherits the master's
+// participants/goal; o carries the (possibly overridden) time/title/location/owner.
+const OCC_SELECT = `
+  select o.id as id, m.id as series_id, o.original_start as occurrence_start,
+         coalesce(o.title, m.title) as title, m.description, coalesce(o.location, m.location) as location,
+         o.starts_at, o.ends_at, o.all_day, o.person_id, m.goal_id, m.goal_step_id,
+         m.origin, m.origin_ref_id,
+         p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
+         ${participantsJson('m.id')}
+    from event_occurrences o
+    join events m on m.id = o.event_id
+    left join persons p on p.id = o.person_id`
+
+const AGENDA_SQL = `${SINGLE_SELECT} where e.rrule is null union all ${OCC_SELECT}`
 
 // A single event by id from the local DB (the detail screen's instant/offline
-// paint). Returns null when PowerSync isn't running or the row isn't local yet —
+// paint). Resolves a master/single by id (a recurring occurrence's detail uses its
+// series id). Returns null when PowerSync isn't running or the row isn't local yet —
 // the caller then leans on REST. tz is accepted for signature symmetry.
 export async function getLocalEvent(id: string, _tz: string): Promise<AgendaEvent | null> {
   if (isEventTombstoned(id)) return null
   const db = getPowerSyncDb()
   if (!db) return null
   try {
-    const row = await db.getOptional<LocalEventRow>(`${AGENDA_SQL} where e.id = ?`, [id])
+    const row = await db.getOptional<LocalEventRow>(`${SINGLE_SELECT} where e.id = ?`, [id])
     return row ? rowToAgenda(row) : null
   } catch {
     return null
@@ -306,7 +332,7 @@ export function watchAgendaRows(onRows: (rows: LocalEventRow[]) => void, onError
         onResult: (result) => onRows(dropTombstoned((result.rows?._array ?? []) as LocalEventRow[])),
         onError: (e) => onError?.(e),
       },
-      { signal: controller.signal, tables: ['events', 'event_participants', 'persons'] }
+      { signal: controller.signal, tables: ['events', 'event_participants', 'event_occurrences', 'persons'] }
     )
   } catch (e) {
     onError?.(e)

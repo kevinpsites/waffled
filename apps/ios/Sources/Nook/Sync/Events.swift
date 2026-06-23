@@ -13,6 +13,12 @@ struct SyncedEvent: Identifiable, Sendable, Equatable {
     var endsAt: Date? = nil
     var location: String? = nil
     var participantIds: [String] = []
+    /// The master/series row this belongs to. For a single (non-recurring) event
+    /// this equals `id`; for a materialized occurrence it's the recurring master's id.
+    var seriesId: String? = nil
+    /// The occurrence's original start (for a recurring instance); nil for a single
+    /// event. Mirrors the web's `occurrenceStart` — used to key per-occurrence state.
+    var occurrenceStart: String? = nil
 }
 
 /// Timestamp handling that mirrors the web client (`events-local.ts`): server-

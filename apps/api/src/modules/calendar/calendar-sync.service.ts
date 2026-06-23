@@ -28,6 +28,7 @@ import {
   type GoogleWriteResult,
 } from '../../integrations/google'
 import type { CalendarSyncResult, HouseholdSyncResult, WriteTarget, PushPendingResult } from './calendar-sync.types'
+import { applySeriesMeta } from '../events/event-series-meta'
 
 const DAY_MS = 86_400_000
 // First-sync window: enough history for "recent" + a year out for planning. After
@@ -154,6 +155,11 @@ async function applyEvent(
       ev.updated,
     ]
   )
+  // Series-level goal inheritance: if this Google instance belongs to a goal-tracked
+  // series (event_series_meta, keyed by ical_uid) and it carries no goal link of its
+  // own, apply the series' goal/step. This is what makes a NEW instance — which Google
+  // streams in with no Nook fields — pick up the series link set earlier on a sibling.
+  await applySeriesMeta(client, cal.household_id, ev.iCalUID ?? null)
   return rows[0]?.inserted ? 'imported' : 'updated'
 }
 

@@ -35,6 +35,11 @@ export interface AgendaEvent {
   // calendar opens the linked recipe when one is tapped.
   origin?: string | null
   originRefId?: string | null
+  // Recurrence: seriesId is the master event (=== id for a single event);
+  // occurrenceStart is the rule slot for a recurring occurrence (else null). These
+  // are the handles for "edit this occurrence / this and following".
+  seriesId?: string
+  occurrenceStart?: string | null
 }
 
 export const eventsApi = {
@@ -60,10 +65,22 @@ export const eventsApi = {
     goalId?: string | null
     goalStepId?: string | null
     calendarId?: string | null
+    rrule?: string | null
+    recurrenceEndAt?: string | null
+    rdate?: string | null
+    exdate?: string | null
   }) => apiSend<{ event: AgendaEvent }>('POST', '/api/events', input),
   updateEvent: (id: string, patch: Record<string, unknown>) =>
     apiSend<{ event: AgendaEvent }>('PATCH', `/api/events/${id}`, patch),
-  deleteEvent: (id: string) => apiDelete(`/api/events/${id}`),
+  // Recurring deletes pass a scope ('this'|'following') + the occurrence slot;
+  // omit opts (or pass scope 'all'/none) to delete the whole series / a single event.
+  deleteEvent: (id: string, opts?: { scope?: string; occurrenceStart?: string | null }) => {
+    const q = new URLSearchParams()
+    if (opts?.scope) q.set('scope', opts.scope)
+    if (opts?.occurrenceStart) q.set('occurrenceStart', opts.occurrenceStart)
+    const qs = q.toString()
+    return apiDelete(`/api/events/${id}${qs ? `?${qs}` : ''}`)
+  },
 }
 
 export interface AgendaState {

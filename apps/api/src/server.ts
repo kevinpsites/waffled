@@ -5,6 +5,7 @@ import http from 'node:http'
 import api from './app'
 import { config } from './platform/config'
 import { startSyncScheduler } from './modules/calendar/calendar-sync.service'
+import { startExpansionScheduler } from './modules/calendar/expansion.service'
 
 interface RunResult {
   statusCode: number
@@ -42,4 +43,6 @@ server.listen(config.port, () => {
   // Background poll: pull Google calendar changes into Nook on an interval so
   // edits/deletes made on the Google side appear without a manual sync.
   startSyncScheduler()
+  // Roll the recurring-event occurrence horizon forward (Google-independent).
+  startExpansionScheduler()
 })
