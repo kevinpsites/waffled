@@ -182,6 +182,43 @@ describe('photos api', () => {
     expect((await call('DELETE', `/api/photos/${id}`, kevin)).statusCode).toBe(404)
   })
 
+  it('patches caption, memory (un-album via ""), and isFavorite', async () => {
+    const add = await call('POST', '/api/photos', kevin, {
+      caption: 'Before',
+      emoji: '📸',
+      colorHex: '#aabbcc',
+      memory: 'Trip',
+    })
+    const id = JSON.parse(add.body).photo.id
+
+    // caption → reflected in GET
+    const capRes = await call('PATCH', `/api/photos/${id}`, kevin, { caption: 'After' })
+    expect(capRes.statusCode).toBe(200)
+    expect(JSON.parse(capRes.body).photo.caption).toBe('After')
+    expect(JSON.parse((await call('GET', `/api/photos/${id}`, kevin)).body).photo.caption).toBe('After')
+
+    // memory → a value, then "" → null
+    const memSet = await call('PATCH', `/api/photos/${id}`, kevin, { memory: 'Lake Day' })
+    expect(JSON.parse(memSet.body).photo.memory).toBe('Lake Day')
+    const memClear = await call('PATCH', `/api/photos/${id}`, kevin, { memory: '' })
+    expect(JSON.parse(memClear.body).photo.memory).toBeNull()
+
+    // isFavorite → true
+    const fav = await call('PATCH', `/api/photos/${id}`, kevin, { isFavorite: true })
+    expect(JSON.parse(fav.body).photo.isFavorite).toBe(true)
+  })
+
+  it('rejects a blank caption patch (400)', async () => {
+    const add = await call('POST', '/api/photos', kevin, { caption: 'Keep me', emoji: '🐶', colorHex: '#cccccc' })
+    const id = JSON.parse(add.body).photo.id
+    expect((await call('PATCH', `/api/photos/${id}`, kevin, { caption: '   ' })).statusCode).toBe(400)
+  })
+
+  it('404s patching unknown / bad ids', async () => {
+    expect((await call('PATCH', '/api/photos/00000000-0000-0000-0000-000000000000', kevin, { caption: 'x' })).statusCode).toBe(404)
+    expect((await call('PATCH', '/api/photos/not-a-uuid', kevin, { caption: 'x' })).statusCode).toBe(404)
+  })
+
   it('stores an uploaded image (storageKey) and resolves imageUrl to a /media URL; delete drops the blob', async () => {
     // Upload a blob via /api/media, then attach it to a photo.
     const up = await call('POST', '/api/media', kevin, { data: PNG_B64, contentType: 'image/png' })

@@ -124,6 +124,43 @@ export async function createPhoto(tenant: Tenant, input: CreatePhotoInput): Prom
   return { id: rows[0].id }
 }
 
+export interface UpdatePhotoInput {
+  caption?: string
+  memory?: string | null
+  isFavorite?: boolean
+  takenAt?: string | null
+}
+
+// Partial update — builds the UPDATE from only the provided fields (mirrors
+// meals.service updateRecipe). Scoped to the household + live rows. Returns the
+// updated, mapped photo, or null if no row matched or nothing was provided.
+export async function updatePhoto(
+  householdId: string,
+  id: string,
+  patch: UpdatePhotoInput
+): Promise<ReturnType<typeof mapPhoto> | null> {
+  const cols: string[] = []
+  const vals: unknown[] = []
+  const set = (col: string, val: unknown) => { cols.push(`${col} = $${cols.length + 1}`); vals.push(val) }
+
+  if (typeof patch.caption === 'string' && patch.caption.trim()) set('caption', patch.caption.trim())
+  // empty / whitespace memory un-albums the photo (NULL).
+  if (patch.memory !== undefined) set('memory', (patch.memory ?? '').trim() || null)
+  if (typeof patch.isFavorite === 'boolean') set('is_favorite', patch.isFavorite)
+  if (patch.takenAt !== undefined) set('taken_at', patch.takenAt ?? null)
+
+  if (cols.length === 0) return null
+
+  const { rows } = await query<{ id: string }>(
+    `update photos set ${cols.join(', ')}
+       where household_id = $${cols.length + 1} and id = $${cols.length + 2} and deleted_at is null
+       returning id`,
+    [...vals, householdId, id]
+  )
+  if (!rows.length) return null
+  return getPhoto(householdId, id)
+}
+
 // Soft-deletes and returns the photo's storage_key (if any) so the caller can
 // best-effort drop the backing blob. Returns false when no live photo matched.
 export async function softDeletePhoto(
@@ -168,6 +205,24 @@ export function registerPhotoRoutes(api: Api): void {
     }
     const photo = await createPhoto(tenant, { ...body, caption: body.caption.trim() } as CreatePhotoInput)
     return res.status(201).json({ photo })
+  })
+
+  api.patch('/api/photos/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'photo not found' })
+    const body = (req.body ?? {}) as Partial<UpdatePhotoInput>
+    if (body.caption !== undefined && !String(body.caption).trim()) {
+      return res.status(400).json({ error: 'BadRequest', message: 'caption cannot be empty' })
+    }
+    const patch: UpdatePhotoInput = {}
+    if (body.caption !== undefined) patch.caption = body.caption
+    if (body.memory !== undefined) patch.memory = body.memory
+    if (typeof body.isFavorite === 'boolean') patch.isFavorite = body.isFavorite
+    if (body.takenAt !== undefined) patch.takenAt = body.takenAt
+    const photo = await updatePhoto(tenant.householdId, id, patch)
+    if (!photo) return res.status(404).json({ error: 'NotFound', message: 'photo not found' })
+    return { photo }
   })
 
   api.delete('/api/photos/:id', async (req: Request, res: Response) => {
