@@ -13,7 +13,6 @@ struct KioskShell: View {
 
     // Shared models / per-page nav stacks for the reused feature views.
     @State private var recipes = RecipesModel()
-    @State private var approvals = ApprovalsModel()
     @State private var goalsPath: [HubRoute] = []
     @State private var rewardsPath: [HubRoute] = []
     @State private var settingsPath: [HubRoute] = []
@@ -110,7 +109,10 @@ struct KioskShell: View {
                 RewardsView(path: $rewardsPath).hubDestination($rewardsPath, recipes)
             }
         case .family:
-            FamilyView(path: $familyPath, approvals: approvals)
+            NavigationStack(path: $familyPath) {
+                KioskFamilyView(path: $familyPath)
+                    .hubDestination($familyPath, recipes)
+            }
         case .meals:
             MealsView(path: $mealsPath)
         case .lists:
