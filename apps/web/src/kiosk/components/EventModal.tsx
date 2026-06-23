@@ -4,7 +4,7 @@ import { api, usePersons, useGoals, goalsApi, goalCalendarApi, calendarsApi, mea
 import { suggestGoalForEvent } from '../../lib/goal-match'
 import { Icon } from '../icons'
 import { createEventLocal, updateEventLocal, deleteEventLocal, tombstoneEvent } from '../../lib/powersync/events-local'
-import { parseRepeat, buildRrule, weekdayCode, WEEKDAYS, type RepeatFreq } from './recurrence'
+import { parseRepeat, buildRrule, describeRrule, weekdayCode, nthWeekdayOfMonth, WEEKDAYS, type RepeatFreq, type CustomUnit } from './recurrence'
 
 // Scope of an edit/delete to a recurring event, surfaced via a small chooser.
 type EditScope = 'this' | 'following' | 'all'
@@ -17,6 +17,47 @@ const REPEAT_OPTIONS: Array<{ value: RepeatFreq; label: string }> = [
   { value: 'custom', label: 'Custom…' },
 ]
 const WEEKDAY_LABELS: Record<string, string> = { SU: 'S', MO: 'M', TU: 'T', WE: 'W', TH: 'T', FR: 'F', SA: 'S' }
+const FULL_WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const ORDINAL_LABEL = ['', 'first', 'second', 'third', 'fourth', 'fifth']
+const clampInterval = (v: string) => Math.max(1, Math.min(99, Math.round(Number(v) || 1)))
+
+// The day-of-week toggle row, shared by the "Weekly" preset and the custom
+// "every N weeks" builder. Empty selection falls back to the event's own weekday.
+function WeekdayChips({ value, weekday, onChange }: { value: string[]; weekday: string; onChange: (next: string[]) => void }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {WEEKDAYS.map((d) => {
+        const on = value.length ? value.includes(d) : d === weekday
+        return (
+          <button
+            type="button"
+            key={d}
+            aria-pressed={on}
+            aria-label={d}
+            onClick={() => {
+              const base = value.length ? value : [weekday]
+              onChange(base.includes(d) ? base.filter((x) => x !== d) : [...base, d])
+            }}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 999,
+              border: `1.5px solid ${on ? 'var(--primary)' : 'transparent'}`,
+              background: on ? 'var(--primary)' : 'var(--card-2)',
+              color: on ? '#fff' : 'var(--ink)',
+              font: 'inherit',
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            {WEEKDAY_LABELS[d]}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 // Calendars an event can be written to: writable (owner/writer), not read-only.
 function isWritable(c: CalendarLink): boolean {
@@ -130,9 +171,11 @@ export function EventModal({
   const [until, setUntil] = useState('')
   const [scopePrompt, setScopePrompt] = useState<null | 'save' | 'delete'>(null)
   const wasRecurring = !!event?.rrule
-  // The event's own weekday — the default day when 'weekly' has nothing selected.
-  const weekday = weekdayCode(new Date(`${form.day}T${form.time || '12:00'}`))
-  const rrule = buildRrule(repeat, weekday)
+  // The event's start, used for the default weekly day and monthly nth-weekday.
+  const startDate = new Date(`${form.day}T${form.time || '12:00'}`)
+  const weekday = weekdayCode(startDate)
+  const rrule = buildRrule(repeat, startDate)
+  const ruleSummary = describeRrule(rrule, startDate)
   const nowRecurring = !!rrule
   const recurrenceEndAt = until ? toIso(until, '23:59') : undefined
 
@@ -583,54 +626,71 @@ export function EventModal({
           {repeat.freq === 'weekly' && (
             <div className="field">
               <span>On days</span>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {WEEKDAYS.map((d) => {
-                  const on = repeat.byday.length ? repeat.byday.includes(d) : d === weekday
-                  return (
-                    <button
-                      type="button"
-                      key={d}
-                      aria-pressed={on}
-                      aria-label={d}
-                      onClick={() =>
-                        setRepeat((r) => {
-                          const base = r.byday.length ? r.byday : [weekday]
-                          const next = base.includes(d) ? base.filter((x) => x !== d) : [...base, d]
-                          return { ...r, byday: next }
-                        })
-                      }
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 999,
-                        border: `1.5px solid ${on ? 'var(--primary)' : 'transparent'}`,
-                        background: on ? 'var(--primary)' : 'var(--card-2)',
-                        color: on ? '#fff' : 'var(--ink)',
-                        font: 'inherit',
-                        fontSize: 14,
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {WEEKDAY_LABELS[d]}
-                    </button>
-                  )
-                })}
-              </div>
+              <WeekdayChips value={repeat.byday} weekday={weekday} onChange={(next) => setRepeat((r) => ({ ...r, byday: next }))} />
             </div>
           )}
 
-          {/* Custom → a raw RRULE the user types (preserved verbatim). */}
+          {/* Custom → a friendly "every N units" builder (no RRULE typing). Weekly
+              shows the day chips; monthly offers day-of-month vs the Nth weekday.
+              The raw rule stays available under Advanced for power users / imports. */}
           {repeat.freq === 'custom' && (
-            <label className="field">
-              <span>Custom rule (RRULE)</span>
-              <input
-                value={repeat.custom}
-                onChange={(e) => setRepeat((r) => ({ ...r, custom: e.target.value }))}
-                placeholder="FREQ=WEEKLY;INTERVAL=2;BYDAY=TU"
-              />
-            </label>
+            <div className="field">
+              <span>Repeat every</span>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={repeat.interval}
+                  onChange={(e) => setRepeat((r) => ({ ...r, interval: clampInterval(e.target.value) }))}
+                  aria-label="Interval"
+                  style={{ width: 76 }}
+                />
+                <select
+                  value={repeat.unit}
+                  onChange={(e) => setRepeat((r) => ({ ...r, unit: e.target.value as CustomUnit }))}
+                  aria-label="Unit"
+                  style={{ flex: 1 }}
+                >
+                  <option value="day">{repeat.interval === 1 ? 'day' : 'days'}</option>
+                  <option value="week">{repeat.interval === 1 ? 'week' : 'weeks'}</option>
+                  <option value="month">{repeat.interval === 1 ? 'month' : 'months'}</option>
+                  <option value="year">{repeat.interval === 1 ? 'year' : 'years'}</option>
+                </select>
+              </div>
+
+              {repeat.unit === 'week' && (
+                <div style={{ marginTop: 10 }}>
+                  <WeekdayChips value={repeat.byday} weekday={weekday} onChange={(next) => setRepeat((r) => ({ ...r, byday: next }))} />
+                </div>
+              )}
+
+              {repeat.unit === 'month' && (
+                <div className="seg" style={{ display: 'inline-flex', marginTop: 10 }}>
+                  <button type="button" className={repeat.monthlyMode === 'day' ? 'on' : ''} onClick={() => setRepeat((r) => ({ ...r, monthlyMode: 'day' }))}>
+                    On day {startDate.getDate()}
+                  </button>
+                  <button type="button" className={repeat.monthlyMode === 'weekday' ? 'on' : ''} onClick={() => setRepeat((r) => ({ ...r, monthlyMode: 'weekday' }))}>
+                    On the {ORDINAL_LABEL[nthWeekdayOfMonth(startDate)] ?? `${nthWeekdayOfMonth(startDate)}th`} {FULL_WEEKDAY[startDate.getDay()]}
+                  </button>
+                </div>
+              )}
+
+              <details style={{ marginTop: 10 }}>
+                <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--ink-2)' }}>Advanced (raw RRULE)</summary>
+                <input
+                  style={{ marginTop: 8 }}
+                  value={repeat.custom}
+                  onChange={(e) => setRepeat((r) => ({ ...r, custom: e.target.value }))}
+                  placeholder="FREQ=WEEKLY;INTERVAL=2;BYDAY=TU"
+                  aria-label="Custom RRULE"
+                />
+              </details>
+            </div>
           )}
+
+          {/* Live plain-English summary so it's clear what will repeat. */}
+          {repeat.freq !== 'none' && <div className="tiny muted" style={{ marginTop: -2 }}>↻ {ruleSummary}</div>}
 
           {repeat.freq !== 'none' && (
             <label className="field">
