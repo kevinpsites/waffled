@@ -289,47 +289,13 @@ struct ListDetailView: View {
         self.openRecipe = openRecipe
     }
 
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
     var body: some View {
-        List {
-            if model.isGrocery && !model.meals.isEmpty && !searchActive {
-                summaryPanel
-                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
-            }
-            if model.items.isEmpty && !model.loading {
-                Text(model.error ? "Couldn’t load this list." : "Nothing here yet.")
-                    .font(.system(size: 14)).foregroundStyle(NK.ink3)
-                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
-            }
-            if model.isGrocery && mode == .meal {
-                ForEach(model.mealSections()) { group in
-                    Section {
-                        if !collapsed.contains(group.id) {
-                            ForEach(group.items) { item in itemRow(item) }
-                        }
-                    } header: { mealHeader(group) }
-                }
-            } else {
-                ForEach(model.activeSections) { group in
-                    Section {
-                        if !collapsed.contains(group.id) {
-                            ForEach(group.items) { item in itemRow(item) }
-                        }
-                    } header: { sectionHeader(group) }
-                }
-            }
-            completedSection
-            if model.isGrocery && !model.staples.isEmpty && !searchActive {
-                staplesPanel
-                    .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 24, trailing: 16))
-                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
-            }
+        Group {
+            if isKiosk { kioskBody } else { phoneBody }
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
         .background(NK.canvas)
-        .safeAreaInset(edge: .top, spacing: 0) { topControls }
-        .safeAreaInset(edge: .bottom, spacing: 0) { addBar }
         .navigationTitle(model.list.name)
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -366,6 +332,79 @@ struct ListDetailView: View {
                 newSectionName = ""
             }
         } message: { Text("New items will be added to this section.") }
+    }
+
+    /// iPhone: items with the meals recap + staples inline in the list.
+    private var phoneBody: some View {
+        List {
+            if model.isGrocery && !model.meals.isEmpty && !searchActive {
+                summaryPanel
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
+            }
+            itemRows
+            if model.isGrocery && !model.staples.isEmpty && !searchActive {
+                staplesPanel
+                    .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 24, trailing: 16))
+                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .safeAreaInset(edge: .top, spacing: 0) { topControls }
+        .safeAreaInset(edge: .bottom, spacing: 0) { addBar }
+    }
+
+    /// iPad: items as the main column + a side panel with this-week's-meals + pantry
+    /// staples (the web grocery layout). The side panel shows only for grocery.
+    private var kioskBody: some View {
+        HStack(spacing: 0) {
+            List { itemRows }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .safeAreaInset(edge: .top, spacing: 0) { topControls }
+                .safeAreaInset(edge: .bottom, spacing: 0) { addBar }
+                .frame(maxWidth: .infinity)
+            if model.isGrocery && !searchActive && (!model.meals.isEmpty || !model.staples.isEmpty) {
+                Rectangle().fill(NK.hair).frame(width: 1)
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 16) {
+                        if !model.meals.isEmpty { summaryPanel }
+                        if !model.staples.isEmpty { staplesPanel }
+                    }
+                    .padding(16)
+                }
+                .frame(width: 340)
+                .background(NK.panel.opacity(0.3))
+            }
+        }
+    }
+
+    /// The list's item sections + completed group — shared by both layouts.
+    @ViewBuilder private var itemRows: some View {
+        if model.items.isEmpty && !model.loading {
+            Text(model.error ? "Couldn’t load this list." : "Nothing here yet.")
+                .font(.system(size: 14)).foregroundStyle(NK.ink3)
+                .listRowSeparator(.hidden).listRowBackground(Color.clear)
+        }
+        if model.isGrocery && mode == .meal {
+            ForEach(model.mealSections()) { group in
+                Section {
+                    if !collapsed.contains(group.id) {
+                        ForEach(group.items) { item in itemRow(item) }
+                    }
+                } header: { mealHeader(group) }
+            }
+        } else {
+            ForEach(model.activeSections) { group in
+                Section {
+                    if !collapsed.contains(group.id) {
+                        ForEach(group.items) { item in itemRow(item) }
+                    }
+                } header: { sectionHeader(group) }
+            }
+        }
+        completedSection
     }
 
     /// Whether to show the search field — only worth the space once a list is long.

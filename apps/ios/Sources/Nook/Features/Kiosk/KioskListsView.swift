@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// The iPad Lists page — a web-like master/detail: a sidebar of the household's lists
-/// on the left, the selected list's full detail (`ListDetailView`, incl. the grocery
-/// aisle/meal board) on the right. Reuses `ListsIndexModel` + `ListDetailView`; the
-/// iPhone keeps the push-navigation `ListsIndexView`. See `apps/ios/IPAD_ROADMAP.md`.
+/// The iPad Lists page. Lists are a compact selector across the top (they matter less
+/// than the content); the selected list fills the page below. For Grocery, the detail
+/// itself shows the items as the main column with a side panel of this-week's-meals +
+/// pantry staples (the web grocery layout — see `ListDetailView.kioskBody`). Reuses
+/// `ListsIndexModel` + `ListDetailView`. iPhone keeps the push-nav `ListsIndexView`.
 struct KioskListsView: View {
     @Environment(SyncManager.self) private var sync
     @State private var model = ListsIndexModel()
@@ -18,15 +19,12 @@ struct KioskListsView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            sidebar.frame(width: 320)
-            Rectangle().fill(NK.hair).frame(width: 1).ignoresSafeArea()
+        VStack(spacing: 0) {
+            selectorBar
+            Rectangle().fill(NK.hair).frame(height: 1)
             Group {
                 if let sel = selected {
-                    NavigationStack {
-                        ListDetailView(list: sel, openRecipe: openRecipe)
-                    }
-                    .id(sel.id)   // fresh detail model when the selection changes
+                    ListDetailView(list: sel, openRecipe: openRecipe).id(sel.id)
                 } else {
                     placeholder
                 }
@@ -43,65 +41,55 @@ struct KioskListsView: View {
         }
     }
 
-    // MARK: sidebar (the lists index)
+    // MARK: list selector (across the top)
 
-    private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Lists").font(NK.serif(28)).foregroundStyle(NK.ink)
-                Spacer()
+    private var selectorBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(model.lists) { list in
+                    Button { selectedId = list.id } label: { listPill(list, isSelected: list.id == selected?.id) }
+                        .buttonStyle(.plain)
+                }
                 Button { creating = true } label: {
-                    Image(systemName: "plus").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.primary)
-                        .frame(width: 38, height: 38).background(NK.card).clipShape(Circle())
-                        .overlay(Circle().strokeBorder(NK.hair, lineWidth: 1))
+                    HStack(spacing: 5) {
+                        Image(systemName: "plus").font(.system(size: 12, weight: .bold))
+                        Text("New list").font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundStyle(NK.ink2)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(NK.card).clipShape(Capsule())
+                    .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 18).padding(.top, 16).padding(.bottom, 10)
-
-            if model.loading && model.lists.isEmpty {
-                NookLoading(top: 32)
-            } else if model.lists.isEmpty {
-                Text(model.error ? "Couldn’t load your lists." : "No lists yet — tap ＋ to add one.")
-                    .font(.system(size: 13)).foregroundStyle(NK.ink3)
-                    .padding(.horizontal, 18).padding(.top, 12)
-            } else {
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 6) {
-                        ForEach(model.lists) { list in
-                            Button { selectedId = list.id } label: { sidebarRow(list, isSelected: list.id == selected?.id) }
-                                .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 12).padding(.bottom, 20)
-                }
-            }
-            Spacer(minLength: 0)
+            .padding(.horizontal, 24).padding(.vertical, 12)
         }
-        .frame(maxHeight: .infinity, alignment: .top)
-        .background(NK.panel.opacity(0.4))
+        .background(NK.canvas)
     }
 
-    private func sidebarRow(_ list: NookAPI.ListSummary, isSelected: Bool) -> some View {
-        HStack(spacing: 12) {
-            Text(list.emoji ?? "📝").font(.system(size: 20))
-                .frame(width: 38, height: 38).background(NK.panel)
-                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-            Text(list.name).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink).lineLimit(1)
-            Spacer(minLength: 6)
-            Text("\(list.itemCount)").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+    private func listPill(_ list: NookAPI.ListSummary, isSelected: Bool) -> some View {
+        HStack(spacing: 8) {
+            Text(list.emoji ?? "📝").font(.system(size: 16))
+            Text(list.name).font(.system(size: 15, weight: .bold))
+                .foregroundStyle(isSelected ? .white : NK.ink2).lineLimit(1)
+            Text("\(list.itemCount)").font(.system(size: 12, weight: .heavy))
+                .foregroundStyle(isSelected ? .white.opacity(0.85) : NK.ink3)
         }
-        .padding(.horizontal, 12).padding(.vertical, 10)
-        .background(isSelected ? NK.card : Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(isSelected ? NK.hair : Color.clear, lineWidth: 1))
+        .padding(.leading, 13).padding(.trailing, 14).padding(.vertical, 8)
+        .background(isSelected ? NK.ink : NK.card)
+        .overlay(Capsule().strokeBorder(isSelected ? Color.clear : NK.hair, lineWidth: 1))
+        .clipShape(Capsule())
     }
 
     private var placeholder: some View {
         VStack(spacing: 10) {
-            Text("🗒️").font(.system(size: 44))
-            Text("Pick a list").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink2)
+            if model.loading {
+                NookLoading(top: 0)
+            } else {
+                Text("🗒️").font(.system(size: 44))
+                Text(model.error ? "Couldn’t load your lists." : "No lists yet — tap “New list”.")
+                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink2)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(NK.canvas)
