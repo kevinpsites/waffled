@@ -234,6 +234,12 @@
   border: 1px solid var(--hair); border-radius: 8px; background: var(--card-2); padding: 6px 8px; }
 select.cap-edit-sub { cursor: pointer; }
 .cap-thinking .cap-icon { color: var(--ai); }
+/* "The model read this differently" — offer its alternative without imposing it. */
+.cap-switch { margin-top: 8px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--ai) 35%, var(--hair));
+  background: color-mix(in srgb, var(--ai) 8%, var(--card-2)); color: var(--ai);
+  border-radius: 999px; padding: 5px 11px; }
+.cap-switch:hover { border-color: var(--ai); background: color-mix(in srgb, var(--ai) 14%, var(--card-2)); }
 
 /* "thinking" — the purple spark bounces while the model responds */
 .ai-spark.thinking { animation: cap-bounce 1s ease-in-out infinite; }

@@ -104,6 +104,14 @@ describe('parseCapture — recurring events', () => {
   it('a bare single weekday is a one-off, not recurring', () => {
     expect(asEvent(p('Soccer Tue 4pm for Wally')).rrule).toBeNull()
   })
+
+  it('strips a leading command + "to X’s calendar" from the title', () => {
+    const e = asEvent(p("Add gymnastics to Lottie's calendar every Tuesday at noon"))
+    expect(e.title).toBe('Gymnastics')
+    expect(e.personName).toBe('Lottie')
+    expect(e.rrule).toBe('FREQ=WEEKLY;BYDAY=TU')
+    expect(new Date(e.startsAt).getHours()).toBe(12)
+  })
 })
 
 describe('parseCapture — grocery', () => {

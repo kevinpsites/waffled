@@ -414,8 +414,12 @@ export function parseCapture(raw: string, persons: string[] = [], now: Date = ne
       allDay = false
     }
     const spans = [day?.span, time?.span, person?.span, ...rec.spans].filter(Boolean) as Span[]
+    let titleRaw = cut(text, spans)
     // A lone "every"/"each"/"and"/"on" can survive next to the stripped weekday.
-    const titleRaw = rec.rrule ? cut(text, spans).replace(/\b(every|each|other|and|on)\b/gi, ' ') : cut(text, spans)
+    if (rec.rrule) titleRaw = titleRaw.replace(/\b(every|each|other|and|on)\b/gi, ' ')
+    titleRaw = titleRaw
+      .replace(/^\s*(?:please\s+|kindly\s+)?(?:add|create|schedule|set\s*up|put|new|make)\b/i, '') // leading command
+      .replace(/\b(?:to|on|in)\s+(?:the\s+|my\s+|our\s+)?calendar\b/gi, '') // "to (the) calendar" destination
     const title = titleCase(tidy(titleRaw)) || 'Event'
     const dayLabel = day?.label ?? target.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
     const whenLabel = [dayLabel, allDay ? 'All day' : time?.label ?? (day?.eveningHint ? '6:00 PM' : '')].filter(Boolean).join(' · ')

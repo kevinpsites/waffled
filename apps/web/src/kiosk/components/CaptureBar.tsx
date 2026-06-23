@@ -29,6 +29,7 @@ const KINDS: Array<{ k: ParsedIntent['kind']; label: string }> = [
   { k: 'meal', label: '🍽️ Meal' },
 ]
 
+const kindLabel = (k: ParsedIntent['kind']) => KINDS.find((x) => x.k === k)?.label ?? 'item'
 const pad = (n: number) => String(n).padStart(2, '0')
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s)
 function localParts(iso: string): { date: string; time: string } {
@@ -221,6 +222,9 @@ export function CaptureBar() {
   const [server, setServer] = useState<{ intent: ParsedIntent | null; via: string; forText: string } | null>(null)
   const [lists, setLists] = useState<ListSummary[]>([])
   const [draft, setDraft] = useState<ParsedIntent | null>(null)
+  // When the LLM disagrees with a confident on-device guess on the *kind*, we keep
+  // the on-device preview and offer the LLM's take — this flips to it on demand.
+  const [preferLlm, setPreferLlm] = useState(false)
   const seq = useRef(0)
   const taRef = useRef<HTMLTextAreaElement>(null)
 
@@ -255,7 +259,7 @@ export function CaptureBar() {
     return () => clearTimeout(id)
   }, [text, names, listNames])
 
-  useEffect(() => { setDraft(null) }, [text])
+  useEffect(() => { setDraft(null); setPreferLlm(false) }, [text])
 
   useEffect(() => {
     const el = taRef.current
@@ -265,8 +269,17 @@ export function CaptureBar() {
   }, [text, expanded])
 
   const usingServer = server && server.forText === text
-  const parsed = usingServer ? server!.intent : localIntent
-  const via = usingServer ? server!.via : 'on-device'
+  const serverIntent = usingServer ? server!.intent : null
+  // The model "upgrade" can be a downgrade — especially a small local model that
+  // flips a clear calendar event into a task. When it disagrees on *kind* with a
+  // CONFIDENT on-device guess, keep ours and offer theirs (one tap), rather than
+  // silently swapping. Agreement (or a weak local fallback) still defers to the model.
+  const disagrees = !!serverIntent && !!localIntent && looksConfident(localIntent, text) && serverIntent.kind !== localIntent.kind
+  const showingServer = usingServer && !(disagrees && !preferLlm)
+  const parsed = showingServer ? serverIntent : localIntent
+  const altIntent = disagrees ? (preferLlm ? localIntent : serverIntent) : null
+  const altFrom = preferLlm ? 'on-device guess' : `${VIA_LABEL[server?.via ?? ''] ?? 'the LLM'}`
+  const via = showingServer ? server!.via : 'on-device'
   // While the model is still thinking and the on-device guess is just a weak
   // grocery fallback, don't assert it — show a thinking row instead.
   const thinkingPlaceholder = !usingServer && thinking && !looksConfident(localIntent, text)
@@ -453,6 +466,11 @@ export function CaptureBar() {
                           <span className="cap-edit-pencil">✎</span>
                         </button>
                         {preview.detail && <div className="cap-detail">{preview.detail}</div>}
+                        {altIntent && (
+                          <button type="button" className="cap-switch" onClick={() => setPreferLlm((v) => !v)}>
+                            ⇔ {altFrom} reads this as {kindLabel(altIntent.kind)} — switch
+                          </button>
+                        )}
                       </>
                     )}
                   </div>
