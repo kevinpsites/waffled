@@ -122,9 +122,15 @@ Make the iPad a *real app you navigate*, like the web. This is the main re-scope
         "heads up" AI digest + "whose week is busy" bars); person filters. Event detail +
         editor open as large `.page` modals on iPad (shared `KioskSheetPresentation`); detail
         is two-column. Test hooks: `NOOK_CAL_MODE`, `NOOK_KIOSK_OPEN_EVENT/EDIT`.
-  - [x] **Chores** — `ChoresView` adaptive: iPad shows a side-by-side Kanban (Up for grabs +
-        one column per person), reusing all row logic (tick/claim/edit/drag-reassign).
-  - [ ] Goals · [ ] Family · [ ] Meals · [ ] Lists · [ ] Photos · [ ] Settings
+  - [x] **Chores** — `ChoresView` adaptive: iPad shows a wrapping Kanban (Up for grabs + one
+        column per person; min-width columns, capped height + internal scroll), reusing all
+        row logic (tick/claim/edit/drag-reassign). Compact approvals card on iPad.
+  - [x] **Rewards** — own rail item (web combines Chores+Rewards; iPad splits them). Reachable;
+        interior still phone layout.
+  - [x] **Meals** — `WeekPlannerView` adaptive: iPad = 7-day grid of compact meal columns
+        (drag-to-swap kept); `RecipesLibraryView` = adaptive multi-column gallery on iPad.
+  - [ ] Goals · [ ] Family · [ ] Lists · [ ] Photos · [ ] Settings
+- [x] Rail shows the signed-in person's avatar (`KioskShell.currentMember`).
 - [ ] Capture sheet + detail sheets sized appropriately for the iPad.
 
 ## Phase 4 — Polish & ship
