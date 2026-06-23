@@ -131,7 +131,8 @@ Make the iPad a *real app you navigate*, like the web. This is the main re-scope
         (drag-to-swap kept); `RecipesLibraryView` = adaptive multi-column gallery on iPad.
   - [x] **Lists** — `KioskListsView`: master/detail (lists sidebar + selected list's full
         detail incl. the grocery aisle/meal board). Reuses `ListDetailView`.
-  - [ ] Goals · [ ] Family · [ ] Photos · [ ] Settings
+  - [x] **Goals** — featured hero kept; "More goals" now a multi-column grid on iPad.
+  - [ ] Family · [ ] Photos · [ ] Settings
 - [x] Rail shows the signed-in person's avatar (`KioskShell.currentMember`).
 - [ ] Capture sheet + detail sheets sized appropriately for the iPad.
 
