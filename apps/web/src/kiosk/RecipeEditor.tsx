@@ -4,7 +4,7 @@ import { useTopbarFull } from './topbar-slot'
 import { ChipEditor } from './components/ChipEditor'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { RECIPE_TEMPLATE, RECIPE_EXAMPLE } from './components/recipe-template'
-import { mealsApi, useRecipe, type IngredientInput, type RecipeMetadataSuggestion, type RecipeWriteInput, type StepInput } from '../lib/api'
+import { mealsApi, uploadImage, useRecipe, type IngredientInput, type RecipeMetadataSuggestion, type RecipeWriteInput, type StepInput } from '../lib/api'
 import '../styles/recipe.css'
 
 // The one unified recipe editor — authoring a brand-new recipe and fully editing an
@@ -104,6 +104,12 @@ export function RecipeEditor() {
   const [vegetables, setVegetables] = useState<string[]>([])
   const [tags, setTags] = useState<string[]>([])
   const [imageUrl, setImageUrl] = useState('')
+  // When the user uploads a photo we carry the returned storageKey (the server resolves
+  // it to the served imageUrl on save). `imagePreview` shows the uploaded image inline.
+  const [storageKey, setStorageKey] = useState<string | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadErr, setUploadErr] = useState<string | null>(null)
   const [notes, setNotes] = useState('')
   const [ings, setIngs] = useState<EditIng[]>([blankIng()])
   const [stps, setStps] = useState<EditStep[]>([blankStep()])
@@ -157,6 +163,7 @@ export function RecipeEditor() {
     setDietary(recipe.dietary ?? [])
     setVegetables(recipe.vegetables ?? [])
     setTags(recipe.tags ?? [])
+    setImagePreview(recipe.imageUrl ?? null)
     setNotes(recipe.userNotes ?? recipe.notes ?? '')
     const ingRows: EditIng[] = ingredients.length
       ? ingredients.map((i) => ({
@@ -210,6 +217,22 @@ export function RecipeEditor() {
     }
   }
 
+  async function onPickImage(file: File | undefined) {
+    if (!file) return
+    setUploadErr(null)
+    setUploading(true)
+    try {
+      const { key, url } = await uploadImage(file)
+      setStorageKey(key)
+      setImageUrl('') // a fresh upload supersedes any typed URL
+      setImagePreview(url)
+    } catch (e) {
+      setUploadErr(e instanceof Error ? e.message : 'Upload failed — please try again.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   function buildPayload(): RecipeWriteInput & { title: string } {
     const num = (s: string) => (s.trim() && Number.isFinite(Number(s)) ? Number(s) : null)
     return {
@@ -230,6 +253,7 @@ export function RecipeEditor() {
       vegetables,
       tags,
       imageUrl: imageUrl.trim() || null,
+      storageKey: storageKey || null,
       notes: notes.trim() || null,
       ingredients: ings.filter((r) => r.name.trim()).map(toIngInput),
       steps: stps.filter((s) => s.instruction.trim()).map((s) => toStepInput(s, ings)),
@@ -450,8 +474,39 @@ export function RecipeEditor() {
           </div>
         </div>
         <label className="re-f" style={{ marginTop: 14 }}>
-          <span>Image URL (optional)</span>
-          <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…" />
+          <span>Photo (optional)</span>
+          <div className="re-image">
+            <div className="re-image-row">
+              <input
+                value={imageUrl}
+                onChange={(e) => { setImageUrl(e.target.value); if (e.target.value.trim()) { setStorageKey(null); setImagePreview(e.target.value.trim()) } }}
+                placeholder="Paste an image URL…"
+              />
+              <label className="pill re-upload-btn" style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                {uploading ? 'Uploading…' : '📷 Upload'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  disabled={uploading}
+                  onChange={(e) => { onPickImage(e.target.files?.[0]); e.target.value = '' }}
+                />
+              </label>
+            </div>
+            {uploadErr && <div className="tiny" style={{ color: 'var(--danger,#c0392b)', fontWeight: 700, marginTop: 6 }}>{uploadErr}</div>}
+            {imagePreview && (
+              <div className="re-image-preview">
+                <img src={imagePreview} alt="Recipe preview" />
+                <button
+                  type="button"
+                  className="pill"
+                  onClick={() => { setStorageKey(null); setImageUrl(''); setImagePreview(null) }}
+                >
+                  Remove
+                </button>
+              </div>
+            )}
+          </div>
         </label>
       </div>
 

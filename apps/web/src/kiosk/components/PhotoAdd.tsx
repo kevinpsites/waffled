@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { api } from '../../lib/api'
+import { useRef, useState } from 'react'
+import { api, uploadImage } from '../../lib/api'
 import { Icon } from '../icons'
 
 // Add-photos overlay — matches photos-add.png: a back-pill topbar, source
@@ -26,7 +26,7 @@ const CANDIDATES: { emoji: string; colorHex: string; caption: string }[] = [
 ]
 
 const SOURCES: [string, string][] = [
-  ['📷', 'Take a photo'],
+  ['📷', 'Upload photo'],
   ['🖼️', 'Phone library'],
   ['☁️', 'Shared album'],
   ['🔗', 'Import a link'],
@@ -39,7 +39,31 @@ export function PhotoAdd({ onClose, onAdded }: { onClose: () => void; onAdded: (
   const [linkCaption, setLinkCaption] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const count = selected.size + (linkOpen && linkUrl.trim() ? 1 : 0)
+  // Uploaded photo: a chosen file is re-encoded + sent to /api/media, and we stage the
+  // returned storageKey (resolved to imageUrl server-side) with an inline preview.
+  const [uploadKey, setUploadKey] = useState<string | null>(null)
+  const [uploadPreview, setUploadPreview] = useState<string | null>(null)
+  const [uploadCaption, setUploadCaption] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [uploadErr, setUploadErr] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const count = selected.size + (linkOpen && linkUrl.trim() ? 1 : 0) + (uploadKey ? 1 : 0)
+
+  async function onPickFile(file: File | undefined) {
+    if (!file) return
+    setUploadErr(null)
+    setUploading(true)
+    try {
+      const { key, url } = await uploadImage(file)
+      setUploadKey(key)
+      setUploadPreview(url)
+    } catch (e) {
+      setUploadErr(e instanceof Error ? e.message : 'Upload failed — please try again.')
+    } finally {
+      setUploading(false)
+    }
+  }
 
   function toggle(i: number) {
     setSelected((s) => {
@@ -60,6 +84,9 @@ export function PhotoAdd({ onClose, onAdded }: { onClose: () => void; onAdded: (
       })
       if (linkOpen && linkUrl.trim()) {
         jobs.push(api.createPhoto({ caption: linkCaption.trim() || 'New photo', imageUrl: linkUrl.trim(), memory: MEMORY }))
+      }
+      if (uploadKey) {
+        jobs.push(api.createPhoto({ caption: uploadCaption.trim() || 'New photo', storageKey: uploadKey, memory: MEMORY }))
       }
       await Promise.all(jobs)
       onAdded()
@@ -88,18 +115,42 @@ export function PhotoAdd({ onClose, onAdded }: { onClose: () => void; onAdded: (
               <div
                 key={t}
                 className="pill"
-                onClick={() => t === 'Import a link' && setLinkOpen((v) => !v)}
+                onClick={() => {
+                  if (t === 'Import a link') setLinkOpen((v) => !v)
+                  else if (t === 'Upload photo') fileRef.current?.click()
+                }}
                 style={t === 'Import a link' ? { boxShadow: linkOpen ? '0 0 0 2px var(--primary)' : undefined } : undefined}
               >
                 {e} {t}
               </div>
             ))}
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={(e) => { onPickFile(e.target.files?.[0]); e.target.value = '' }}
+            />
           </div>
 
           {linkOpen && (
             <div className="ap-link-field">
               <input className="field" placeholder="https://… image link" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} autoFocus />
               <input className="field" placeholder="Caption" value={linkCaption} onChange={(e) => setLinkCaption(e.target.value)} style={{ maxWidth: 200 }} />
+            </div>
+          )}
+
+          {(uploading || uploadErr || uploadPreview) && (
+            <div className="ap-link-field" style={{ alignItems: 'center' }}>
+              {uploading && <span className="tiny muted" style={{ fontWeight: 700 }}>Uploading photo…</span>}
+              {uploadErr && <span className="tiny" style={{ color: 'var(--danger,#c0392b)', fontWeight: 700 }}>{uploadErr}</span>}
+              {uploadPreview && !uploading && (
+                <>
+                  <img src={uploadPreview} alt="Upload preview" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 10 }} />
+                  <input className="field" placeholder="Caption" value={uploadCaption} onChange={(e) => setUploadCaption(e.target.value)} style={{ maxWidth: 200 }} />
+                  <button type="button" className="pill" onClick={() => { setUploadKey(null); setUploadPreview(null); setUploadCaption('') }}>Remove</button>
+                </>
+              )}
             </div>
           )}
 

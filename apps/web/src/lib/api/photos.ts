@@ -28,11 +28,24 @@ export interface Photo {
   createdAt: string
 }
 
+// What the add-photo flows send. A photo is an uploaded blob (storageKey, resolved to
+// imageUrl server-side), a direct image URL, or an emoji + color tile.
+export interface PhotoWriteInput {
+  caption?: string
+  emoji?: string | null
+  colorHex?: string | null
+  imageUrl?: string | null
+  storageKey?: string | null
+  memory?: string | null
+  takenAt?: string | null
+  [key: string]: unknown
+}
+
 export const photosApi = {
   photos: (memory?: string | null) =>
     apiGet<{ photos: Photo[] }>(memory ? `/api/photos?memory=${encodeURIComponent(memory)}` : '/api/photos'),
   photo: (id: string) => apiGet<{ photo: Photo }>(`/api/photos/${id}`),
-  createPhoto: (input: Record<string, unknown>) => apiSend<{ photo: { id: string } }>('POST', '/api/photos', input),
+  createPhoto: (input: PhotoWriteInput) => apiSend<{ photo: { id: string } }>('POST', '/api/photos', input),
   deletePhoto: (id: string) => apiDelete(`/api/photos/${id}`),
 }
 

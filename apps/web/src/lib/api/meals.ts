@@ -29,6 +29,7 @@ export interface RecipeWriteInput {
   prepTimeMinutes?: number | null
   cookTimeMinutes?: number | null
   imageUrl?: string | null
+  storageKey?: string | null
   sourceName?: string | null
   notes?: string | null
   mealType?: string | null
@@ -159,6 +160,7 @@ export interface RecipeDetail extends RecipeMeta {
   prepTimeMinutes: number | null
   cookTimeMinutes: number | null
   servings: number
+  imageUrl: string | null
   sourceName: string | null
   isFavorite: boolean
   cookedCount: number

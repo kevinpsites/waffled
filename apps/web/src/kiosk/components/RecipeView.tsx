@@ -196,7 +196,11 @@ export function RecipeView({ id, onSelect, selectLabel }: { id: string; onSelect
         {/* left: hero + meta + ingredients */}
         <div className="rd-left">
           <div className="rd-hero">
-            <span className="rd-hero-emoji">{recipe.emoji ?? '🍽️'}</span>
+            {recipe.imageUrl ? (
+              <img src={recipe.imageUrl} alt={recipe.title} />
+            ) : (
+              <span className="rd-hero-emoji">{recipe.emoji ?? '🍽️'}</span>
+            )}
           </div>
           <div className="nk-serif rd-title">{recipe.title}</div>
           <div className="rd-meta">
