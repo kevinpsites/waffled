@@ -95,19 +95,24 @@ Goal: the iPad signs in once and stays logged in as one profile, no picker.
 Goal: a wall-sized, native dashboard sized for across-the-room reading — the "looks like
 web" payoff. Native equivalent of the web `Today` dashboard.
 
-- [ ] `KioskRoot` / `KioskDashboard` view — landscape, multi-column, big type/spacing.
-- [ ] Cards, sized large and reusing existing data from `SyncManager`:
-  - [ ] Agenda (this week / upcoming) — scrollable fill card.
-  - [ ] Tonight's meal + this week's dinners.
-  - [ ] Chores due (family-wide).
-  - [ ] Goals.
-  - [ ] (Optional) grocery / lists.
-- [ ] Header: date + time (serif, large) + weather, in household timezone — mirror the web
-      `Topbar`.
-- [ ] Sizing pass: tune type scale, card sizes, and spacing for *distance* viewing — this
-      is the whole reason we went native; don't ship phone-sized cards.
-- [ ] Reuse `DesignSystem/Theme.swift` tokens; introduce iPad-scale constants where the
-      phone values are too small (a kiosk type/spacing scale).
+- [x] `KioskDashboard` view (`Features/Kiosk/KioskDashboard.swift`) — landscape, 3-column,
+      big type/spacing; hosted by `KioskRoot`. Verified rendering live data on iPad sim.
+- [x] Cards, sized large and reusing existing data (`DashboardModel` + `SyncManager` + `NookAPI`):
+  - [x] Agenda — "This week" via `Agenda.upcoming`, grouped by day, scrollable column.
+  - [x] Tonight's dinner (`DashboardModel.tonight`).
+  - [ ] This week's dinners list — not yet (only tonight's). Nice add later.
+  - [x] Chores (family-wide progress + avatars + stars).
+  - [x] Goals (featured goal + progress).
+  - [x] Grocery (remaining count).
+- [x] Header: greeting + date + live ticking clock (`TimelineView`) + weather, in household tz.
+- [x] Sizing pass: kiosk-scale type/spacing throughout (clock 56, event titles 21, etc.) —
+      no phone-sized cards.
+- [x] Reuses `Theme.swift` tokens + a `KioskCard` surface (the wall-display twin of `NookCard`).
+      Kiosk sizes are inline for now; factor into a shared kiosk scale if it grows.
+
+> **Phase 2 complete (first cut).** A working landscape family display with live agenda,
+> meals, chores, goals & grocery. Remaining polish (week-dinners list, per-card
+> customize/reorder) tracked in the Backlog.
 
 ## Phase 3 — Screensaver / idle / display behavior
 
