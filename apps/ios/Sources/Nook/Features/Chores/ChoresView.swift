@@ -143,7 +143,35 @@ struct ChoresView: View {
         }
     }
 
+    /// iPad lays the person columns side-by-side (web-like Kanban); iPhone stacks them.
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
     var body: some View {
+        Group {
+            if isKiosk { kioskContent } else { phoneContent }
+        }
+        .background(NK.canvas)
+        .navigationTitle("Chores")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { editor = .new(personId: nil) } label: {
+                    Label("New chore", systemImage: "plus").labelStyle(.titleAndIcon).fontWeight(.semibold)
+                }
+            }
+        }
+        .task(id: sync.choresRev) { await model.load(); await approvals.load() }
+        .task { await sync.loadCurrencies() }
+        .sheet(item: $editor) { target in
+            ChoreEditSheet(members: sync.members, target: target,
+                onSave: { choreId, body in Task { await model.save(choreId: choreId, body: body) } },
+                onDelete: { choreId in Task { await model.delete(choreId: choreId) } })
+        }
+    }
+
+    // MARK: iPhone — vertical stack of columns
+
+    private var phoneContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 approvalsCard
@@ -164,23 +192,96 @@ struct ChoresView: View {
         }
         // Bounce even when nothing's scheduled, so pull-to-refresh still triggers.
         .scrollBounceBehavior(.always)
-        .background(NK.canvas)
-        .navigationTitle("Chores")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button { editor = .new(personId: nil) } label: {
-                    Label("New chore", systemImage: "plus").labelStyle(.titleAndIcon).fontWeight(.semibold)
+        .refreshable { await model.load(); await approvals.load() }
+    }
+
+    // MARK: iPad — side-by-side Kanban columns
+
+    private var kioskContent: some View {
+        VStack(spacing: 14) {
+            if sync.isParent && !approvals.chores.isEmpty { approvalsCard }
+            dateNav.frame(maxWidth: 440)
+            if model.loading && model.instances.isEmpty {
+                NookLoading(top: 32); Spacer()
+            } else {
+                HStack(alignment: .top, spacing: 14) {
+                    ForEach(columns) { col in kioskColumn(col) }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
-        .task(id: sync.choresRev) { await model.load(); await approvals.load() }
-        .task { await sync.loadCurrencies() }
-        .refreshable { await model.load(); await approvals.load() }
-        .sheet(item: $editor) { target in
-            ChoreEditSheet(members: sync.members, target: target,
-                onSave: { choreId, body in Task { await model.save(choreId: choreId, body: body) } },
-                onDelete: { choreId in Task { await model.delete(choreId: choreId) } })
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    /// One always-open column that fills its share of the width and scrolls its chores
+    /// internally. Reuses the shared row/drag/claim logic + drop target.
+    private func kioskColumn(_ col: ChoreColumn) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 9) {
+                if col.isGrabs {
+                    Text("🙌").font(.system(size: 16)).frame(width: 32, height: 32)
+                        .background(NK.gold.opacity(0.15)).clipShape(Circle())
+                } else {
+                    Avatar(colorHex: col.colorHex, emoji: col.emoji ?? "🙂", size: 32)
+                }
+                Text(col.name).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink).lineLimit(1)
+                Spacer(minLength: 4)
+                let allDone = !col.items.isEmpty && col.done == col.items.count
+                HStack(spacing: 3) {
+                    Image(systemName: allDone ? "checkmark.circle.fill" : "checkmark.circle")
+                        .font(.system(size: 12)).foregroundStyle(allDone ? FamilyColor.wally.solid : NK.ink3)
+                    Text("\(col.done)/\(col.items.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
+                }
+            }
+            .padding(.bottom, 10)
+            Rectangle().fill(NK.hair).frame(height: 1)
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    if col.isGrabs && !col.items.isEmpty {
+                        Text("Tap to claim it, or drag it into someone’s column.")
+                            .font(.system(size: 11.5, weight: .medium)).foregroundStyle(NK.ink3)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8).padding(.bottom, 2)
+                    }
+                    ForEach(Array(col.items.enumerated()), id: \.element.id) { i, inst in
+                        draggableRow(choreRow(inst, isGrabs: col.isGrabs), inst: inst)
+                        if i < col.items.count - 1 { Divider().background(NK.hair) }
+                    }
+                    if col.items.isEmpty {
+                        Text(col.isGrabs ? "Nothing up for grabs." : "Nothing for \(col.name).")
+                            .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 10)
+                    }
+                    Button { editor = .new(personId: col.isGrabs ? nil : col.id) } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
+                            Text("Add chore").font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundStyle(NK.ink3).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.top, 4)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(NK.card)
+        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
+            .strokeBorder(dropTarget == col.id ? NK.primary
+                          : (col.isGrabs ? NK.gold.opacity(0.4) : NK.hair),
+                          lineWidth: dropTarget == col.id ? 2 : 1))
+        .dropDestination(for: String.self) { ids, _ in
+            guard let id = ids.first else { return false }
+            dropTarget = nil
+            if col.isGrabs { Task { await model.unassign(id: id) } }
+            else { Task { await model.assign(id: id, to: col.id) } }
+            return true
+        } isTargeted: { hovering in
+            withAnimation(.easeInOut(duration: 0.12)) {
+                dropTarget = hovering ? col.id : (dropTarget == col.id ? nil : dropTarget)
+            }
         }
     }
 
