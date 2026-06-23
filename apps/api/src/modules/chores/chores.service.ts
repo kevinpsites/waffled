@@ -196,7 +196,9 @@ async function streaksByChore(householdId: string, dueOn: string): Promise<Map<s
 export async function listTodayInstances(householdId: string, dueOn: string): Promise<TodayInstance[]> {
   const { rows } = await query<QueryResultRow>(
     `select ci.id, ci.status, ci.reward_amount, ci.reward_currency, ci.person_id, ci.requires_approval,
-            c.id as chore_id, c.title as chore_title, c.emoji, c.rrule, p.name as person_name
+            ci.due_on::text as due_on,
+            c.id as chore_id, c.title as chore_title, c.emoji, c.rrule,
+            p.name as person_name, p.avatar_emoji, p.color_hex
        from chore_instances ci
        join chores c on c.id = ci.chore_id and c.deleted_at is null
        left join persons p on p.id = ci.person_id
@@ -212,6 +214,9 @@ export async function listTodayInstances(householdId: string, dueOn: string): Pr
     emoji: r.emoji,
     personId: r.person_id,
     personName: r.person_name,
+    personAvatar: r.avatar_emoji,
+    personColor: r.color_hex,
+    dueOn: r.due_on,
     status: r.status,
     rewardAmount: r.reward_amount,
     rewardCurrency: r.reward_currency,
@@ -226,7 +231,9 @@ export async function listTodayInstances(householdId: string, dueOn: string): Pr
 export async function listAwaitingInstances(householdId: string): Promise<TodayInstance[]> {
   const { rows } = await query<QueryResultRow>(
     `select ci.id, ci.status, ci.reward_amount, ci.reward_currency, ci.person_id, ci.requires_approval,
-            c.id as chore_id, c.title as chore_title, c.emoji, c.rrule, p.name as person_name
+            ci.due_on::text as due_on,
+            c.id as chore_id, c.title as chore_title, c.emoji, c.rrule,
+            p.name as person_name, p.avatar_emoji, p.color_hex
        from chore_instances ci
        join chores c on c.id = ci.chore_id and c.deleted_at is null
        left join persons p on p.id = ci.person_id
@@ -241,6 +248,9 @@ export async function listAwaitingInstances(householdId: string): Promise<TodayI
     emoji: r.emoji,
     personId: r.person_id,
     personName: r.person_name,
+    personAvatar: r.avatar_emoji,
+    personColor: r.color_hex,
+    dueOn: r.due_on,
     status: r.status,
     rewardAmount: r.reward_amount,
     rewardCurrency: r.reward_currency,

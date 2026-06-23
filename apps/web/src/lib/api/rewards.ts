@@ -75,6 +75,34 @@ export const rewardsApi = {
     apiSend<{ requireApproval: boolean }>('PUT', '/api/rewards/settings', { requireApproval }).then((r) => r.requireApproval).then(tap('rewards')),
 }
 
+export interface PendingRedemptionsState {
+  pending: Redemption[]
+  loading: boolean
+  refetch: () => void
+}
+
+// Just the parent-approval redemption queue (one fetch) — for surfaces that need
+// the pending count without the full catalog/balances hub, e.g. the Today
+// approvals bar. Re-pulls on any rewards mutation (redeem/approve/deny).
+export function usePendingRedemptions(): PendingRedemptionsState {
+  const [pending, setPending] = useState<Redemption[]>([])
+  const [loading, setLoading] = useState(true)
+  const [nonce, setNonce] = useState(0)
+  useEffect(() => {
+    let alive = true
+    rewardsApi
+      .redemptions('pending')
+      .then((d) => alive && (setPending(d.redemptions), setLoading(false)))
+      .catch(() => alive && (setPending([]), setLoading(false)))
+    return () => {
+      alive = false
+    }
+  }, [nonce])
+  const refetch = useCallback(() => setNonce((n) => n + 1), [])
+  useRefetchOn(['rewards'], refetch)
+  return { pending, loading, refetch }
+}
+
 export interface RewardsHubState {
   rewards: Reward[]
   balances: PersonBalance[]

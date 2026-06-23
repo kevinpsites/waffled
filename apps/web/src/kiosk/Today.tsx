@@ -4,6 +4,7 @@ import { TonightCardSlot, WeekDinnersCard } from './components/MealsColumn'
 import { ChoresCard } from './components/ChoresCard'
 import { GroceryCard } from './components/GroceryCard'
 import { GoalRecapBar } from './components/GoalRecap'
+import { ApprovalsBar } from './components/Approvals'
 import { CaptureBar } from './components/CaptureBar'
 import { useTopbarRight } from './topbar-slot'
 import { useTodayLayout, type LayoutScope } from '../lib/api'
@@ -157,6 +158,7 @@ export function Today() {
 
   return (
     <div className={`today-wrap ${editing ? 'today-editing' : ''}`}>
+      <ApprovalsBar />
       <GoalRecapBar />
 
       {editing && (

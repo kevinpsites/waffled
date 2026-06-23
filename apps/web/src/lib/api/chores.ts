@@ -22,6 +22,9 @@ export interface ChoreInstance {
   emoji: string | null
   personId: string | null
   personName: string | null
+  personAvatar: string | null
+  personColor: string | null
+  dueOn: string
   status: string
   rewardAmount: number | null
   rewardCurrency: string | null
@@ -35,6 +38,9 @@ export const choresApi = {
   // Optional date (YYYY-MM-DD) to look ahead/back; defaults to today.
   choreInstancesForDate: (date?: string) =>
     apiGet<{ date: string; instances: ChoreInstance[] }>(`/api/chore-instances/today${date ? `?date=${date}` : ''}`),
+  // Every chore completion awaiting a parent's OK, across all dates (the approvals
+  // queue) — the date-scoped list above misses ones submitted on earlier days.
+  awaitingInstances: () => apiGet<{ instances: ChoreInstance[] }>('/api/chore-instances/awaiting'),
   completeInstance: (id: string) =>
     apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/complete`).then(tap('chores')).then(tap('rewards')),
   uncompleteInstance: (id: string) =>
@@ -79,6 +85,34 @@ export function useChoresToday(): ChoresState {
   // keep the Today rings in sync when chores are completed/approved elsewhere
   useRefetchOn(['chores'], () => setNonce((n) => n + 1))
   return state
+}
+
+export interface AwaitingState {
+  chores: ChoreInstance[]
+  loading: boolean
+  refetch: () => void
+}
+
+// The cross-date queue of chores waiting on a parent's OK. Drives the Chores-tab
+// "Needs your OK" banner and (combined with pending redemptions) the Today
+// approvals bar. Re-pulls whenever a chore is completed/approved/rejected.
+export function useAwaitingChores(): AwaitingState {
+  const [chores, setChores] = useState<ChoreInstance[]>([])
+  const [loading, setLoading] = useState(true)
+  const [nonce, setNonce] = useState(0)
+  useEffect(() => {
+    let alive = true
+    choresApi
+      .awaitingInstances()
+      .then((d) => alive && (setChores(d.instances), setLoading(false)))
+      .catch(() => alive && (setChores([]), setLoading(false)))
+    return () => {
+      alive = false
+    }
+  }, [nonce])
+  const refetch = useCallback(() => setNonce((n) => n + 1), [])
+  useRefetchOn(['chores'], refetch)
+  return { chores, loading, refetch }
 }
 
 export interface InstancesState {

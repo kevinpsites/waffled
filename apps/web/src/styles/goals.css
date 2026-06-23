@@ -780,6 +780,11 @@ button.goal-listhead-link:hover {
   border-radius: 999px; padding: 9px 16px; white-space: nowrap;
 }
 .recap-bar:hover .recap-bar-cta { background: var(--primary-d); }
+/* Parent-approval variant — gold accent so it reads distinctly from the violet
+   calendar recap bar when both sit at the top of Today. */
+.recap-bar--approve { border-color: color-mix(in srgb, var(--gold) 44%, var(--hair)); }
+.recap-bar--approve:hover { border-color: color-mix(in srgb, var(--gold) 62%, var(--hair)); }
+.recap-bar--approve .recap-bar-ico { background: linear-gradient(135deg, #F7C46B, var(--gold)); }
 
 /* Review slide-over — scrim + right panel over Today. */
 .review-scrim {
@@ -808,8 +813,9 @@ button.goal-listhead-link:hover {
 .recap-card--linked { border: 1px solid color-mix(in srgb, var(--ai) 32%, var(--hair)); }
 .recap-card--maybe { border: 1px solid color-mix(in srgb, var(--gold) 50%, var(--hair)); }
 .recap-card--maybe .recap-card-ico { background: linear-gradient(135deg, #F7C46B, var(--gold)); }
-/* Space the stacked cards in the Today drawer. */
+/* Space the stacked cards in the Today drawer (calendar recap + approval lists). */
 .review-drawer-body .recap-card,
+.review-drawer-body .rw-approvals,
 .review-drawer-body .recap-empty { margin-bottom: 16px; }
 .recap-card-top { display: flex; align-items: center; gap: 13px; padding: 16px 0 14px; }
 .recap-card-ico {

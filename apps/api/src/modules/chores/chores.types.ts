@@ -43,6 +43,9 @@ export interface TodayInstance {
   emoji: string | null
   personId: string | null
   personName: string | null
+  personAvatar: string | null
+  personColor: string | null
+  dueOn: string
   status: string
   rewardAmount: number | null
   rewardCurrency: string | null

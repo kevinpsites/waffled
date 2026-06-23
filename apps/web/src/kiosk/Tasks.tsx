@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router'
 import { Icon, Check } from './icons'
 import { ChoreModal, type ChoreDraft } from './components/ChoreModal'
 import { RewardsPanel } from './components/RewardsPanel'
-import { choresApi, usePersons, useDayInstances, useCurrencies, localToday, type ChoreInstance } from '../lib/api'
+import { ChoreApprovalsCard } from './components/Approvals'
+import { choresApi, usePersons, useDayInstances, useAwaitingChores, useCurrencies, localToday, type ChoreInstance } from '../lib/api'
 
 // Shift a YYYY-MM-DD by N days (local), and describe a day relative to today.
 function shiftDate(d: string, days: number): string {
@@ -62,7 +63,8 @@ export function Tasks() {
   const [date, setDate] = useState(() => localToday())
   const { instances, loading, error, setDone, assign, refetch } = useDayInstances(date)
   const { persons } = usePersons()
-  const { byKey: currencyByKey, defaultCurrency } = useCurrencies()
+  const cur = useCurrencies()
+  const awaiting = useAwaitingChores()
   const groups = buildColumns(instances, persons)
   const [modal, setModal] = useState<{ chore?: ChoreDraft; personId?: string | null } | null>(null)
   const [searchParams] = useSearchParams()
@@ -166,6 +168,12 @@ export function Tasks() {
         </div>
       )}
 
+      {tab === 'chores' && awaiting.chores.length > 0 && (
+        <div style={{ padding: '0 30px 12px' }}>
+          <ChoreApprovalsCard chores={awaiting.chores} cur={cur} busy={null} onApprove={approve} onReject={reject} />
+        </div>
+      )}
+
       {tab === 'rewards' && <RewardsPanel />}
 
       {tab === 'chores' && (
@@ -230,7 +238,7 @@ export function Tasks() {
                         {i.streak >= 2 && <span className="chore-streak" title={`${i.streak}-day streak`}>🔥 {i.streak}</span>}
                       </div>
                       <div className="star">
-                        <span style={{ fontSize: 12 }}>{(i.rewardCurrency ? currencyByKey[i.rewardCurrency] : defaultCurrency)?.symbol ?? '⭐'}</span> {i.rewardAmount ?? 0}
+                        <span style={{ fontSize: 12 }}>{(i.rewardCurrency ? cur.byKey[i.rewardCurrency] : cur.defaultCurrency)?.symbol ?? '⭐'}</span> {i.rewardAmount ?? 0}
                         {isAwaiting && <span className="chore-awaiting-tag">Needs OK</span>}
                       </div>
                     </div>

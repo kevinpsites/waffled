@@ -600,6 +600,7 @@ button.tick {
 .rw-appr-txt { flex: 1; font-size: 14.5px; }
 .rw-appr-name { font-weight: 700; }
 .rw-appr-reward { font-weight: 700; }
+.rw-appr-when { font-weight: 600; color: var(--ink-3); }
 .rw-appr-cost { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-weight: 800; color: var(--lottie); }
 .rw-appr-actions { display: flex; gap: 8px; }
 .rw-appr-actions .pill { cursor: pointer; }
