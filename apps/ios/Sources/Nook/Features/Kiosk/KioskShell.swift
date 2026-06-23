@@ -77,7 +77,7 @@ struct KioskShell: View {
     @ViewBuilder private var detail: some View {
         switch selection {
         case .today:
-            KioskDashboard()
+            KioskDashboard(navigate: { selection = $0 })
         case .calendar:
             CalendarView(openEventId: $calendarEventId)
         case .tasks:

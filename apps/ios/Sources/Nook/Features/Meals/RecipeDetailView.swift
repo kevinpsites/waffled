@@ -22,8 +22,13 @@ struct RecipeDetailView: View {
 
     private let api = NookAPI()
 
-    init(summary: NookAPI.RecipeSummary, model: RecipesModel) {
+    /// When true, jump straight into Cook Mode once the steps load (the iPad Today
+    /// card's "Cook Mode" button uses this). Default false — normal callers unaffected.
+    let autoCook: Bool
+
+    init(summary: NookAPI.RecipeSummary, model: RecipesModel, autoCook: Bool = false) {
         self.model = model
+        self.autoCook = autoCook
         _recipe = State(initialValue: summary)
         _userNotesDraft = State(initialValue: summary.userNotes ?? "")
     }
@@ -64,7 +69,7 @@ struct RecipeDetailView: View {
                 }
             }
         }
-        .task { await loadDetail() }
+        .task { await loadDetail(); if autoCook, !steps.isEmpty { cookMode = true } }
         .fullScreenCover(isPresented: $cookMode) {
             CookModeView(title: r.title, steps: steps, ingredients: ingredients) { markCooked() }
         }
