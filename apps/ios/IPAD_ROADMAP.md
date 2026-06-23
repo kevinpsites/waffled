@@ -98,14 +98,19 @@ web (per the on-device review — see the web `Today` screenshot reference).
 
 Make the iPad a *real app you navigate*, like the web. This is the main re-scoped work.
 
-- [ ] **Nav rail / sidebar** — a left rail (web `KioskLayout` Rail) via `NavigationSplitView`
-      (sidebar + detail), replacing the iPhone bottom tab bar on iPad. Items: Today,
-      Calendar, Tasks/Chores, Goals, Family, Meals, Lists, Photos, Settings.
-- [ ] **Route each item to a working page**, reusing the existing feature views as the
-      starting point (`CalendarView`, `MealsView`, chores/goals/rewards/lists/photos/settings
-      via `HubDestination`). Get everything *reachable & interactive* first.
+- [x] **Nav rail** — `KioskShell` (`Features/Kiosk/KioskShell.swift`): a fixed, always-visible
+      left rail (Today, Calendar, Chores, Goals, Family, Meals, Lists, Photos, Settings;
+      Settings pinned bottom). Used a fixed `HStack` rail (web-faithful, always visible)
+      rather than a collapsible `NavigationSplitView`. `NOOK_KIOSK_PAGE` launch hook drives
+      it headlessly for testing.
+- [x] **Route each item to a working page**, reusing existing feature views — self-contained
+      (`CalendarView`, `MealsView`, `FamilyView`) render directly; inner hub views
+      (`GoalsView`, `ListsIndexView`, `SettingsView`) get a host `NavigationStack` + the shared
+      `HubRoute` destination. **Verified interactive** on iPad sim: Today, Calendar, Chores,
+      Meals, Goals, Settings (Family/Lists/Photos use the same proven wiring).
 - [ ] **Top bar** — date/time + weather + the "Add anything" capture bar (web `Topbar`),
-      so capture works from anywhere.
+      so capture works from anywhere. (Today has its own header; other pages keep their own
+      for now.)
 - [ ] Then progressively **web-ify each page** for the iPad (multi-column where the web is,
       bigger type/spacing) instead of a stretched phone column. Track per-page below as we go:
   - [ ] Calendar · [ ] Tasks/Chores · [ ] Goals · [ ] Family · [ ] Meals · [ ] Lists · [ ] Photos · [ ] Settings
