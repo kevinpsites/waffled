@@ -120,6 +120,7 @@ export function RecipeEditor() {
   // takes shape; show each one inline (per field) to keep or dismiss; never overwrite
   // what the user typed.
   const [suggestion, setSuggestion] = useState<RecipeMetadataSuggestion | null>(null)
+  const [suggesting, setSuggesting] = useState(false) // an AI request is in flight
   const [dismissed, setDismissed] = useState<Set<string>>(new Set()) // individually-dismissed suggestion keys
   const aiOffRef = useRef(false) // stop probing once the server says no provider
   const lastSigRef = useRef('')
@@ -282,12 +283,15 @@ export function RecipeEditor() {
     if (aiOffRef.current || title.trim().length < 3 || ingNames.length < 1 || aiSig === lastSigRef.current) return
     const handle = setTimeout(async () => {
       lastSigRef.current = aiSig
+      setSuggesting(true)
       try {
         const r = await mealsApi.suggestMetadata({ title: title.trim(), ingredients: ingNames, steps: stepTexts })
         if (r.suggestion) { setSuggestion(r.suggestion); setDismissed(new Set()) }
       } catch {
         aiOffRef.current = true // no provider / error → stop probing this session
         setSuggestion(null)
+      } finally {
+        setSuggesting(false)
       }
     }, 1200)
     return () => clearTimeout(handle)
@@ -399,13 +403,15 @@ export function RecipeEditor() {
       <div className="card re-card">
         <div className="re-card-head">
           <div className="card-h re-section-h">Details</div>
-          {aiPending > 0 && (
+          {suggesting ? (
+            <span className="re-ai-thinking"><span className="re-ai-spark">✨</span> Thinking…</span>
+          ) : aiPending > 0 ? (
             <div className="re-ai-actions">
               <span className="re-ai-tag">✨ {aiPending} suggestion{aiPending === 1 ? '' : 's'}</span>
               <button type="button" className="re-ai-chip" onClick={keepAll}>Keep all</button>
               <button type="button" className="re-ai-dismiss" onClick={dismissAll}>Dismiss</button>
             </div>
-          )}
+          ) : null}
         </div>
         <div className="re-meta-grid">
           {META_FIELDS.map((f) => {

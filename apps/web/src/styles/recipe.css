@@ -728,6 +728,13 @@
 .re-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .re-card-head .re-section-h { margin-bottom: 0; }
 
+/* AI auto-fill — "thinking" indicator while a request is in flight */
+.re-ai-thinking { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 800;
+  color: #6b3fb8; padding: 7px 14px; border-radius: 999px; background: linear-gradient(0deg, #efe7ff, #f4efff);
+  box-shadow: var(--sh-1); }
+.re-ai-spark { display: inline-block; animation: re-ai-pulse 1s ease-in-out infinite; }
+@keyframes re-ai-pulse { 0%, 100% { opacity: 0.35; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.15); } }
+
 /* AI auto-fill — header actions */
 .re-ai-actions { display: flex; align-items: center; gap: 8px; }
 .re-ai-tag { font-size: 12.5px; font-weight: 800; color: #6b3fb8; }
