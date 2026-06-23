@@ -171,6 +171,9 @@ struct GoalsView: View {
     private static let heroOrange = LinearGradient(colors: [Color(hex: 0xF3A93B), Color(hex: 0xE08A1C)],
                                                    startPoint: .topLeading, endPoint: .bottomTrailing)
 
+    /// iPad lays the "More goals" out as a multi-column grid (vs. the phone's column).
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -181,7 +184,14 @@ struct GoalsView: View {
                 if !model.more.isEmpty {
                     SectionLabel(text: "More \(model.selectedList?.name ?? "") goals")
                         .padding(.top, 2)
-                    ForEach(model.more) { moreCard($0) }
+                    if isKiosk {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 300, maximum: 460), spacing: 14, alignment: .top)],
+                                  alignment: .leading, spacing: 14) {
+                            ForEach(model.more) { moreCard($0) }
+                        }
+                    } else {
+                        ForEach(model.more) { moreCard($0) }
+                    }
                 }
                 if model.loading && model.visibleGoals.isEmpty {
                     NookLoading()
