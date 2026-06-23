@@ -52,19 +52,21 @@ idiom. We are **not** shipping a second app.
 Goal: the existing app launches on an iPad simulator as a universal binary, even if it
 just looks like a big phone for now. Establishes the target + adaptivity scaffolding.
 
-- [ ] `project.yml`: set `TARGETED_DEVICE_FAMILY: "1,2"` (currently `"1"`, line ~63).
-- [ ] `project.yml`: add iPad orientations to `UISupportedInterfaceOrientations` (currently
-      Portrait-only) — landscape is the natural kiosk orientation. Consider a separate
-      `UISupportedInterfaceOrientations~ipad` so the phone can stay portrait-locked.
-- [ ] `project.yml`: confirm no `UIRequiresFullScreen` needed; decide on multitasking
-      (a wall kiosk likely wants full-screen / no Stage Manager split — revisit).
-- [ ] `xcodegen generate`, then build for an iPad sim destination
-      (`platform=iOS Simulator,name=iPad Pro 13-inch (M4)` or similar) — confirm it runs.
-- [ ] Add an idiom/size-class helper (e.g. `Layout.isKioskClass`) so views can branch
-      cleanly instead of sprinkling `horizontalSizeClass` everywhere. Today there is **zero**
-      adaptive code in the Swift tree — this is the first piece.
-- [ ] Decide the entry fork: at `AppRoot` (or above it), branch idiom →
-      `iPhone: existing tab UI` vs `iPad: new KioskRoot`. iPhone path stays byte-for-byte.
+- [x] `project.yml`: set `TARGETED_DEVICE_FAMILY: "1,2"` (was `"1"`).
+- [x] `project.yml`: iPad orientations via `UISupportedInterfaceOrientations~ipad`
+      (landscape + portrait); phone stays portrait-only.
+- [x] `UIRequiresFullScreen`: **Decided — leave unset for now** (iPad multitasking stays
+      enabled). Revisit and lock to full-screen when we ship a dedicated kiosk mode, so a
+      wall display can't be shrunk into a Stage Manager split.
+- [x] `xcodegen generate` + build for iPad sim (iPad Pro 13-inch M4) — **BUILD SUCCEEDED**,
+      runs and renders the kiosk fork (verified with a dev token + screenshot).
+- [x] Idiom helper: `DeviceExperience` (`App/DeviceExperience.swift`) — `.planner` (iPhone)
+      vs `.kiosk` (iPad), branched on `userInterfaceIdiom`. First adaptive code in the tree.
+- [x] Entry fork: `RootView` in `NookApp.swift` chooses `AppRoot` (iPhone) vs `KioskRoot`
+      (iPad, `Features/Kiosk/KioskRoot.swift`). iPhone path is byte-for-byte unchanged.
+
+> **Phase 0 complete.** Universal binary boots into the kiosk fork on iPad; iPhone planner
+> untouched. `KioskRoot` is a placeholder — Phase 1/2/3 fill it in.
 
 ## Phase 1 — Single-profile auth path
 

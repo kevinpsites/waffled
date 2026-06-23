@@ -13,7 +13,7 @@ struct NookApp: App {
     var body: some Scene {
         WindowGroup {
             AuthGate {
-                AppRoot()
+                RootView()
                     .task { await sync.start() }   // connect PowerSync once signed in
             }
             .environment(sync)
@@ -22,6 +22,18 @@ struct NookApp: App {
             .tint(NK.primary)
             .preferredColorScheme(.light)          // warm-white canvas is a light theme
             .task { await session.bootstrap() }    // read the Keychain / probe auth status
+        }
+    }
+}
+
+/// Picks the per-device experience once we're past the auth gate: the iPhone
+/// *planner* (`AppRoot`) or the iPad family *display* (`KioskRoot`). The split is by
+/// device idiom — see `DeviceExperience` and `apps/ios/IPAD_ROADMAP.md`.
+struct RootView: View {
+    var body: some View {
+        switch DeviceExperience.current {
+        case .planner: AppRoot()
+        case .kiosk:   KioskRoot()
         }
     }
 }
