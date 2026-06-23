@@ -10,7 +10,7 @@
 import { describeRrule } from '../../kiosk/components/recurrence'
 
 export type ParsedIntent =
-  | { kind: 'event'; title: string; startsAt: string; allDay: boolean; personName: string | null; rrule: string | null; scheduleLabel: string; whenLabel: string }
+  | { kind: 'event'; title: string; startsAt: string; allDay: boolean; personName: string | null; rrule: string | null; recurrenceEndAt?: string | null; scheduleLabel: string; whenLabel: string }
   | { kind: 'grocery'; name: string; quantity: string | null }
   | { kind: 'task'; title: string; personName: string | null; stars: number | null; rrule: string | null; scheduleLabel: string }
   | { kind: 'meal'; title: string; date: string | null; mealType: string; whenLabel: string }
@@ -420,7 +420,7 @@ export function parseCapture(raw: string, persons: string[] = [], now: Date = ne
     const dayLabel = day?.label ?? target.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
     const whenLabel = [dayLabel, allDay ? 'All day' : time?.label ?? (day?.eveningHint ? '6:00 PM' : '')].filter(Boolean).join(' · ')
     const scheduleLabel = rec.rrule ? describeRrule(rec.rrule, target) : ''
-    return { kind: 'event', title, startsAt: target.toISOString(), allDay, personName: person?.name ?? null, rrule: rec.rrule, scheduleLabel, whenLabel }
+    return { kind: 'event', title, startsAt: target.toISOString(), allDay, personName: person?.name ?? null, rrule: rec.rrule, recurrenceEndAt: null, scheduleLabel, whenLabel }
   }
 
   // GROCERY — verbs, "to the list", units, or the bare-noun fallback.

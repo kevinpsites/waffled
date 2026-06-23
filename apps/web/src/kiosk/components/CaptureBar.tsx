@@ -81,7 +81,7 @@ function rerouteKind(i: ParsedIntent, kind: ParsedIntent['kind'], today: string)
     case 'event': {
       const d = new Date()
       d.setHours(0, 0, 0, 0)
-      return { kind: 'event', title: primary, startsAt: d.toISOString(), allDay: true, personName, rrule: null, scheduleLabel: '', whenLabel: eventWhen(localToday(), null, true) }
+      return { kind: 'event', title: primary, startsAt: d.toISOString(), allDay: true, personName, rrule: null, recurrenceEndAt: null, scheduleLabel: '', whenLabel: eventWhen(localToday(), null, true) }
     }
     case 'task':
       return { kind: 'task', title: primary, personName, stars: null, rrule: null, scheduleLabel: '' }
@@ -158,8 +158,10 @@ function DraftFields({ intent, persons, lists, set, today }: { intent: ParsedInt
         : v === 'monthly' ? 'FREQ=MONTHLY'
         : v === 'yearly' ? 'FREQ=YEARLY'
         : null
-      set({ ...intent, rrule, scheduleLabel: rrule ? describeRrule(rrule, start) : '' })
+      // Clearing the repeat clears any end date too.
+      set({ ...intent, rrule, recurrenceEndAt: rrule ? intent.recurrenceEndAt ?? null : null, scheduleLabel: rrule ? describeRrule(rrule, start) : '' })
     }
+    const untilDate = intent.recurrenceEndAt ? localParts(intent.recurrenceEndAt).date : ''
     return (
       <>
         <PersonChips persons={persons} value={intent.personName} onChange={(name) => set({ ...intent, personName: name })} noneLabel="Nobody" />
@@ -168,16 +170,29 @@ function DraftFields({ intent, persons, lists, set, today }: { intent: ParsedInt
           {!intent.allDay && <input type="time" className="cap-edit-mini" value={time} onChange={(e) => upd(date, e.target.value, false)} aria-label="Time" />}
           <button type="button" className={`cap-person ${intent.allDay ? 'on' : ''}`} onClick={() => upd(date, time, !intent.allDay)}>All day</button>
         </div>
-        <label className="cap-stars" style={{ gap: 6 }}>Repeats
-          <select value={freq === 'custom' ? 'custom' : freq} onChange={(e) => setFreq(e.target.value)} aria-label="Repeats">
-            <option value="">Does not repeat</option>
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-            <option value="yearly">Yearly</option>
-            {freq === 'custom' && <option value="custom">Custom ({intent.scheduleLabel})</option>}
-          </select>
-        </label>
+        <div className="cap-edit-row">
+          <label className="cap-stars" style={{ gap: 6 }}>Repeats
+            <select className="cap-edit-mini" style={{ cursor: 'pointer' }} value={freq === 'custom' ? 'custom' : freq} onChange={(e) => setFreq(e.target.value)} aria-label="Repeats">
+              <option value="">Does not repeat</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+              {freq === 'custom' && <option value="custom">Custom ({intent.scheduleLabel})</option>}
+            </select>
+          </label>
+          {intent.rrule && (
+            <label className="cap-stars" style={{ gap: 6 }}>Until
+              <input
+                type="date"
+                className="cap-edit-mini"
+                value={untilDate}
+                onChange={(e) => set({ ...intent, recurrenceEndAt: e.target.value ? new Date(`${e.target.value}T23:59:00`).toISOString() : null })}
+                aria-label="Until"
+              />
+            </label>
+          )}
+        </div>
       </>
     )
   }
@@ -280,7 +295,7 @@ export function CaptureBar() {
 
   async function commit(i: ParsedIntent): Promise<string> {
     if (i.kind === 'event') {
-      await api.createEvent({ title: i.title, startsAt: i.startsAt, allDay: i.allDay, personId: personId(i.personName), rrule: i.rrule ?? undefined })
+      await api.createEvent({ title: i.title, startsAt: i.startsAt, allDay: i.allDay, personId: personId(i.personName), rrule: i.rrule ?? undefined, recurrenceEndAt: i.recurrenceEndAt ?? undefined })
       return `Added “${i.title}”${i.rrule ? ' (repeating)' : ''} to the calendar`
     }
     if (i.kind === 'grocery') {
@@ -412,7 +427,9 @@ export function CaptureBar() {
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div className="cap-kind">
                       {preview.kind}
-                      <span className="cap-via">{thinking ? 'thinking…' : `via ${VIA_LABEL[via] ?? via}`}</span>
+                      {/* A confident guess is already shown — the model is just
+                          refining it, so make clear you can submit now. */}
+                      <span className="cap-via">{thinking ? 'improving… · ↵ to add now' : `via ${VIA_LABEL[via] ?? via}`}</span>
                     </div>
 
                     {intent.kind === 'unsupported' ? (
