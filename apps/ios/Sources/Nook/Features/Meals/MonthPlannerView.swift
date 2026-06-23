@@ -24,31 +24,33 @@ struct MonthPlannerView: View {
     private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 5), count: 7) }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                if isKiosk {
-                    kioskMonthHeader
-                } else {
-                    monthHeader
-                    Text("Dinners for the month · tap to add or open · drag a night onto another to swap")
-                        .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button { planningMonth = true } label: {
-                        HStack(spacing: 7) {
-                            Text("✨").font(.system(size: 15))
-                            Text("Plan my month").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+        Group {
+            if isKiosk {
+                kioskMonth
+            } else {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        monthHeader
+                        Text("Dinners for the month · tap to add or open · drag a night onto another to swap")
+                            .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button { planningMonth = true } label: {
+                            HStack(spacing: 7) {
+                                Text("✨").font(.system(size: 15))
+                                Text("Plan my month").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                            }
+                            .frame(maxWidth: .infinity).padding(.vertical, 12)
+                            .background(NK.ai).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
                         }
-                        .frame(maxWidth: .infinity).padding(.vertical, 12)
-                        .background(NK.ai).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                        .buttonStyle(.plain)
+                        weekdayRow
+                        LazyVGrid(columns: columns, spacing: 5) {
+                            ForEach(gridDays, id: \.self) { day in cell(day) }
+                        }
                     }
-                    .buttonStyle(.plain)
-                }
-                weekdayRow
-                LazyVGrid(columns: columns, spacing: 5) {
-                    ForEach(gridDays, id: \.self) { day in cell(day) }
+                    .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 110)
                 }
             }
-            .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 110)
         }
         .background(NK.canvas)
         .task { await load() }
@@ -95,6 +97,34 @@ struct MonthPlannerView: View {
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
 
+    /// `gridDays` chunked into calendar weeks of 7, so the iPad grid can lay equal-height
+    /// rows that stretch to fill the page instead of cramming at the top.
+    private var weekRows: [[Date]] {
+        stride(from: 0, to: gridDays.count, by: 7).map { Array(gridDays[$0 ..< min($0 + 7, gridDays.count)]) }
+    }
+
+    /// iPad month — fills the available height (taller cells) and mirrors the week view's
+    /// padded, non-scrolling layout so the action row lands in the same place on switch.
+    private var kioskMonth: some View {
+        VStack(spacing: 12) {
+            kioskMonthHeader
+            VStack(spacing: 5) {
+                weekdayRow
+                ForEach(weekRows, id: \.self) { week in
+                    HStack(spacing: 5) {
+                        ForEach(week, id: \.self) { day in
+                            cell(day).frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
     /// iPad: month nav + "Plan my month" on one row (matches the week view), instead of
     /// the stacked header + full-width button.
     private var kioskMonthHeader: some View {
@@ -120,7 +150,6 @@ struct MonthPlannerView: View {
             .frame(minWidth: 140)
             Button { step(1) } label: { monthChevron("chevron.right") }
         }
-        .padding(.top, 4)
     }
 
     private func monthChevron(_ s: String) -> some View {
@@ -191,7 +220,8 @@ struct MonthPlannerView: View {
         let highlighted = dropTarget == ds
         let visual = content
             .padding(.horizontal, 4).padding(.vertical, 5)
-            .frame(maxWidth: .infinity, minHeight: 66, alignment: .top)
+            .frame(maxWidth: .infinity, minHeight: isKiosk ? nil : 66,
+                   maxHeight: isKiosk ? .infinity : nil, alignment: .top)
             .background(highlighted ? NK.primary.opacity(0.1) : (inMonth ? NK.card : Color.clear))
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(highlighted || isToday ? NK.primary : NK.hair, lineWidth: highlighted || isToday ? 2 : 1))

@@ -101,11 +101,8 @@ struct WeekPlannerView: View {
 
     private var kioskWeekHeader: some View {
         HStack(spacing: 12) {
-            Picker("", selection: $showAllMeals.animation()) {
-                Text("All meals").tag(true)
-                Text("Dinners").tag(false)
-            }
-            .pickerStyle(.segmented).frame(width: 220)
+            // Plan CTA leads, matching the Month view's header so the button doesn't
+            // jump position when switching Week ⇄ Month.
             if hasEmptyNight {
                 Button { planningWeek = true } label: {
                     HStack(spacing: 6) {
@@ -117,6 +114,11 @@ struct WeekPlannerView: View {
                 }
                 .buttonStyle(.plain)
             }
+            Picker("", selection: $showAllMeals.animation()) {
+                Text("All meals").tag(true)
+                Text("Dinners").tag(false)
+            }
+            .pickerStyle(.segmented).frame(width: 220)
             Spacer()
             Button { withAnimation { weekOffset -= 1 } } label: { weekChevron("chevron.left") }
             VStack(spacing: 1) {

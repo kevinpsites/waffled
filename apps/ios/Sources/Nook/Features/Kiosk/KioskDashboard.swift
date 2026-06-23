@@ -18,6 +18,13 @@ struct KioskDashboard: View {
     @State private var recipeTarget: RecipeTarget?
     @State private var showCapture = false
     @State private var dictateOnOpen = false
+    /// Pinned alert banners (web/phone parity): the parent approval queue and the
+    /// goal-calendar review queue. Both open their focused screen as a page sheet.
+    @State private var approvals = ApprovalsModel()
+    @State private var reviewRecap: [NookAPI.GoalRecapItem] = []
+    @State private var reviewSuggestions: [NookAPI.GoalSuggestionItem] = []
+    @State private var showApprovals = false
+    @State private var showReview = false
     /// The chosen Today layout (persisted) — see `DashLayout`.
     @AppStorage("nook.kioskDashLayout") private var layoutRaw = DashLayout.balanced.rawValue
     private var layout: DashLayout { DashLayout(rawValue: layoutRaw) ?? .balanced }
@@ -29,8 +36,13 @@ struct KioskDashboard: View {
         Array(Agenda.upcoming(sync.events, from: todayKey, tz: tz).prefix(7))
     }
 
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
     var body: some View {
-        dashColumns
+        VStack(spacing: 14) {
+            banners
+            dashColumns
+        }
         .padding(.horizontal, 40)
         .padding(.vertical, 30)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -40,6 +52,16 @@ struct KioskDashboard: View {
         .task(id: "\(tz.identifier)|\(sync.choresRev)|\(sync.groceryRev)|\(sync.mealsRev)|\(sync.goalsRev)") {
             await model.load(todayKey: todayKey)
         }
+        // Pinned-banner queues: approvals refresh on chore/reward actions; the review
+        // queue refreshes whenever a review/goal action bumps the goals bus.
+        .task(id: "\(sync.choresRev)|\(sync.rewardsRev)") { await approvals.load() }
+        .task(id: sync.goalsRev) {
+            let api = NookAPI()
+            async let r = try? await api.goalRecap()
+            async let s = try? await api.goalSuggestions()
+            reviewRecap = await r ?? []
+            reviewSuggestions = await s ?? []
+        }
         .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
         .sheet(item: $recipeTarget) { t in
             NavigationStack { RecipeDetailView(summary: t.summary, model: recipes, autoCook: t.cook) }
@@ -47,6 +69,93 @@ struct KioskDashboard: View {
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showApprovals) {
+            NavigationStack { ApprovalsView() }.modifier(KioskSheetPresentation(kiosk: isKiosk))
+        }
+        .sheet(isPresented: $showReview) {
+            NavigationStack { ReviewEventsView(path: .constant([])) }.modifier(KioskSheetPresentation(kiosk: isKiosk))
+        }
+    }
+
+    // MARK: pinned alert banners
+
+    /// Gold "N to approve" + purple "N to review · M to link" — the same alerts the
+    /// phone/web pin atop Today. Each renders only when it has work and opens its
+    /// focused queue as a page sheet. Hidden entirely (no gap) when both are empty.
+    @ViewBuilder private var banners: some View {
+        if (sync.isParent && !approvals.isEmpty) || !reviewRecap.isEmpty || !reviewSuggestions.isEmpty {
+            VStack(spacing: 12) {
+                if sync.isParent && !approvals.isEmpty {
+                    Button { showApprovals = true } label: { approvalsBanner }.buttonStyle(.plain)
+                }
+                if !reviewRecap.isEmpty || !reviewSuggestions.isEmpty {
+                    Button { showReview = true } label: { reviewBanner }.buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var approvalsBanner: some View {
+        let red = approvals.redemptions.map { "\($0.personName ?? "Someone")’s \($0.title)" }
+        let ch = approvals.chores.map { "\($0.personName ?? "Someone")’s \($0.choreTitle)" }
+        let preview = (red + ch).prefix(3).joined(separator: " · ")
+        return HStack(spacing: 14) {
+            Image(systemName: "checkmark.seal.fill").font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 44, height: 44).background(NK.gold)
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(approvals.total == 1 ? "1 thing waiting for your OK" : "\(approvals.total) things waiting for your OK")
+                    .font(.system(size: 18, weight: .heavy)).foregroundStyle(NK.ink)
+                Text(preview.isEmpty ? "Your OK awards the stars." : "\(preview) — your OK awards the stars.")
+                    .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(NK.ink3).lineLimit(1)
+            }
+            Spacer(minLength: 10)
+            bannerCTA("Review", tint: NK.primary)
+        }
+        .padding(16)
+        .background(NK.card)
+        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.gold.opacity(0.35), lineWidth: 1))
+        .nkShadow1()
+    }
+
+    private var reviewBanner: some View {
+        let nR = reviewRecap.count, nS = reviewSuggestions.count
+        let titles = reviewRecap.map(\.title) + reviewSuggestions.map(\.title)
+        let preview = titles.prefix(3).joined(separator: " · ")
+        return HStack(spacing: 14) {
+            Image(systemName: "sparkles").font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(LinearGradient(colors: [NK.ai2, NK.ai], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(reviewTitle(nR, nS)).font(.system(size: 18, weight: .heavy)).foregroundStyle(NK.ink)
+                Text(preview.isEmpty ? "Each ties to a goal." : "\(preview) — each ties to a goal.")
+                    .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(NK.ink3).lineLimit(1)
+            }
+            Spacer(minLength: 10)
+            bannerCTA("Review & log", tint: NK.primary)
+        }
+        .padding(16)
+        .background(NK.card)
+        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.ai.opacity(0.3), lineWidth: 1))
+        .nkShadow1()
+    }
+
+    private func bannerCTA(_ label: String, tint: Color) -> some View {
+        HStack(spacing: 5) {
+            Text(label).font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+            Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(tint).clipShape(Capsule())
+    }
+
+    private func reviewTitle(_ nR: Int, _ nS: Int) -> String {
+        if nR > 0 && nS > 0 { return "\(nR) to review · \(nS) to link" }
+        if nR > 0 { return nR == 1 ? "1 event to log" : "\(nR) events to log" }
+        return nS == 1 ? "1 event might count" : "\(nS) events might count"
     }
 
     // MARK: columns (preset layouts)
