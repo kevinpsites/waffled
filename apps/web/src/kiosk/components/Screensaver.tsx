@@ -6,6 +6,29 @@ import { useEffect, useState } from 'react'
 import type { Photo, Weather, AgendaEvent } from '../../lib/api'
 import '../../styles/photos.css'
 
+// Pick + order the photos a screensaver should play, given the household display
+// config. Pure: never mutates the input list.
+export function screensaverPhotos(
+  photos: Photo[],
+  cfg: { photoSource?: string; photoAlbum?: string | null; photoShuffle?: boolean },
+): Photo[] {
+  let out: Photo[]
+  if (cfg.photoSource === 'favorites') {
+    out = photos.filter((p) => p.isFavorite)
+  } else if (cfg.photoSource === 'album') {
+    out = cfg.photoAlbum ? photos.filter((p) => p.memory === cfg.photoAlbum) : photos.slice()
+  } else {
+    out = photos.slice()
+  }
+  if (cfg.photoShuffle) {
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[out[i], out[j]] = [out[j], out[i]]
+    }
+  }
+  return out
+}
+
 function shade(hex: string): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex)
   if (!m) return hex
@@ -27,6 +50,7 @@ export function Screensaver({
   weather,
   nextEvent,
   timezone,
+  intervalSeconds = 10,
   onWake,
 }: {
   content: 'photos' | 'clock'
@@ -34,6 +58,7 @@ export function Screensaver({
   weather: Weather | null
   nextEvent: AgendaEvent | null
   timezone?: string
+  intervalSeconds?: number
   onWake: () => void
 }) {
   const [now, setNow] = useState(() => new Date())
@@ -46,9 +71,10 @@ export function Screensaver({
   const photoMode = content === 'photos' && photos.length > 0
   useEffect(() => {
     if (!photoMode) return
-    const t = setInterval(() => setIdx((i) => (i + 1) % photos.length), 10_000)
+    const ms = Math.max(3, intervalSeconds) * 1000
+    const t = setInterval(() => setIdx((i) => (i + 1) % photos.length), ms)
     return () => clearInterval(t)
-  }, [photoMode, photos.length])
+  }, [photoMode, photos.length, intervalSeconds])
 
   const photo = photoMode ? photos[idx % photos.length] : null
   const time = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timezone || undefined }).replace(/\s?[AP]M$/i, '')

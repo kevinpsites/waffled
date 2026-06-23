@@ -10,6 +10,11 @@ export interface DisplayConfig {
   returnToPicker: boolean
   resetHomeMinutes: number
   nightDim: { enabled: boolean; start: string; end: string }
+  // Photo-playback options for the photos screensaver.
+  photoSource: 'all' | 'favorites' | 'album'
+  photoAlbum: string | null
+  photoInterval: number
+  photoShuffle: boolean
 }
 
 export interface KioskDevice {

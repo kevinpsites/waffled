@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, goalCalendarApi, groceryApi, authApi, kioskApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
-import { Screensaver } from './components/Screensaver'
+import { Screensaver, screensaverPhotos } from './components/Screensaver'
 import '../styles/settings.css'
 
 // `admin` tabs are only shown to admins — non-admins can't change those settings,
@@ -1337,6 +1337,12 @@ const CONTENT_OPTS: Array<{ key: DisplayConfig['content']; label: string }> = [
   { key: 'clock', label: 'Clock & weather' },
   { key: 'off', label: 'Off' },
 ]
+const PHOTO_SOURCE_OPTS: Array<{ key: DisplayConfig['photoSource']; label: string }> = [
+  { key: 'all', label: 'All photos' },
+  { key: 'favorites', label: 'Favorites only' },
+  { key: 'album', label: 'Specific album' },
+]
+const INTERVAL_OPTS = [5, 10, 20, 30]
 function DisplayKioskPanel() {
   const paired = isKioskMode()
   const [displayOn, setDisplayOn] = useState(isDisplayMode())
@@ -1351,6 +1357,11 @@ function DisplayKioskPanel() {
   const { photos } = usePhotos()
   const { household } = useHousehold()
   const nextEvent = events.find((e) => new Date(e.startsAt).getTime() > Date.now()) ?? null
+  // Distinct album names (a photo's `memory`), for the "Specific album" picker.
+  const albums = useMemo(
+    () => [...new Set(photos.map((p) => p.memory).filter((m): m is string => !!m))],
+    [photos],
+  )
 
   useEffect(() => {
     kioskApi.displayConfig().then((c) => { setCfg(c); setError(false) }).catch(() => setError(true))
@@ -1414,6 +1425,7 @@ function DisplayKioskPanel() {
       {cfg && (
         <>
           <div className="set-card" style={{ marginTop: 16 }}>
+            <div className="flabel" style={{ padding: '14px 16px 4px' }}>SCREENSAVER</div>
             <SettingRow icon="🌅" title="Screensaver after" sub="Minutes of inactivity before the screensaver appears.">
               <input type="number" min={1} max={120} className="set-inline-input" style={{ width: 80 }} value={cfg.screensaverMinutes} onChange={(e) => update({ screensaverMinutes: Number(e.target.value) || 1 })} />
             </SettingRow>
@@ -1435,6 +1447,64 @@ function DisplayKioskPanel() {
             <SettingRow icon="🔒" title="Return to profile picker afterward" sub="When the screensaver wakes on a paired kiosk, drop to the profile picker.">
               <input type="checkbox" className="set-check" checked={cfg.returnToPicker} onChange={(e) => update({ returnToPicker: e.target.checked })} />
             </SettingRow>
+
+            {cfg.content === 'photos' && (
+              <>
+                <div className="set-row2">
+                  <div className="set-ic2">📷</div>
+                  <div style={{ flex: 1 }}>
+                    <div className="set-row2-t">Photo source</div>
+                    <div className="tiny muted" style={{ fontWeight: 600 }}>Which photos the slideshow plays.</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <div className="seg" style={{ width: 'fit-content' }}>
+                      {PHOTO_SOURCE_OPTS.map((o) => (
+                        <button
+                          type="button"
+                          key={o.key}
+                          className={cfg.photoSource === o.key ? 'on' : ''}
+                          style={{ cursor: o.key === 'album' && albums.length === 0 ? 'not-allowed' : 'pointer' }}
+                          disabled={o.key === 'album' && albums.length === 0}
+                          title={o.key === 'album' && albums.length === 0 ? 'No albums yet — group photos into a memory first.' : undefined}
+                          onClick={() => update({ photoSource: o.key })}
+                        >
+                          {o.label}
+                        </button>
+                      ))}
+                    </div>
+                    {cfg.photoSource === 'album' && albums.length > 0 && (
+                      <select
+                        className="set-inline-input"
+                        value={cfg.photoAlbum ?? ''}
+                        onChange={(e) => update({ photoAlbum: e.target.value || null })}
+                      >
+                        <option value="">Choose an album…</option>
+                        {albums.map((a) => (
+                          <option key={a} value={a}>{a}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                </div>
+
+                <SettingRow icon="⏱️" title="Transition speed" sub="Seconds each photo stays on screen.">
+                  <select
+                    className="set-inline-input"
+                    style={{ width: 110 }}
+                    value={cfg.photoInterval}
+                    onChange={(e) => update({ photoInterval: Number(e.target.value) || 10 })}
+                  >
+                    {INTERVAL_OPTS.map((s) => (
+                      <option key={s} value={s}>{s} seconds</option>
+                    ))}
+                  </select>
+                </SettingRow>
+
+                <SettingRow icon="🔀" title="Shuffle photos" sub="Play the photos in a random order.">
+                  <input type="checkbox" className="set-check" checked={cfg.photoShuffle} onChange={(e) => update({ photoShuffle: e.target.checked })} />
+                </SettingRow>
+              </>
+            )}
           </div>
 
           <div className="set-card" style={{ marginTop: 16 }}>
@@ -1463,10 +1533,11 @@ function DisplayKioskPanel() {
       {preview && cfg && cfg.content !== 'off' && (
         <Screensaver
           content={cfg.content === 'photos' ? 'photos' : 'clock'}
-          photos={photos}
+          photos={screensaverPhotos(photos, cfg)}
           weather={wx}
           nextEvent={nextEvent}
           timezone={household?.timezone}
+          intervalSeconds={cfg.photoInterval}
           onWake={() => setPreview(false)}
         />
       )}

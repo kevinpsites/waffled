@@ -1,8 +1,24 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { Settings } from './Settings'
 
 const renderSettings = () => render(<MemoryRouter><Settings /></MemoryRouter>)
+
+const displayConfig = {
+  screensaverMinutes: 15,
+  content: 'photos',
+  returnToPicker: true,
+  resetHomeMinutes: 3,
+  nightDim: { enabled: false, start: '22:00', end: '07:00' },
+  photoSource: 'all',
+  photoAlbum: null,
+  photoInterval: 10,
+  photoShuffle: false,
+}
+const samplePhotos = [
+  { id: 'ph1', imageUrl: null, caption: 'a', emoji: '🏖️', colorHex: '#7fc1e8', memory: 'Lake Day', takenAt: null, isFavorite: true, reactions: {}, uploadedBy: null, createdAt: '2026-01-01T00:00:00Z' },
+  { id: 'ph2', imageUrl: null, caption: 'b', emoji: '🎂', colorHex: '#7fc1e8', memory: 'Birthday', takenAt: null, isFavorite: false, reactions: {}, uploadedBy: null, createdAt: '2026-01-02T00:00:00Z' },
+]
 
 const household = { id: 'h1', name: 'The Family', timezone: 'America/Chicago', weekStart: 'sunday', ownerPersonId: 'p1' }
 const members = [
@@ -58,6 +74,45 @@ describe('Settings screen', () => {
     await screen.findByText('Kevin')
     fireEvent.click(screen.getByText('Display & Kiosk'))
     expect(await screen.findByText('Use this browser as the family display')).toBeInTheDocument()
+  })
+
+  it('saves screensaver photo-source / interval / shuffle changes', async () => {
+    const puts: Array<Record<string, unknown>> = []
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/api/kiosk/display')) {
+        if (init?.method === 'PUT') {
+          const body = JSON.parse(String(init.body)) as Record<string, unknown>
+          puts.push(body)
+          return { ok: true, json: async () => body }
+        }
+        return { ok: true, json: async () => displayConfig }
+      }
+      if (u.includes('/api/photos')) return { ok: true, json: async () => ({ photos: samplePhotos }) }
+      if (u.includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
+      if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household, person: members[0] }) }
+      if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      if (u.includes('/api/events')) return { ok: true, json: async () => ({ events: [] }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('Display & Kiosk'))
+
+    // The new photo-playback controls render under the Screensaver subheading.
+    expect(await screen.findByText('Photo source')).toBeInTheDocument()
+    expect(screen.getByText('Transition speed')).toBeInTheDocument()
+    expect(screen.getByText('Shuffle photos')).toBeInTheDocument()
+
+    // Favorites-only source → PUT carries photoSource: 'favorites'.
+    fireEvent.click(screen.getByText('Favorites only'))
+    await waitFor(() => expect(puts.some((p) => p.photoSource === 'favorites')).toBe(true))
+
+    // Transition speed select → PUT carries the new photoInterval.
+    const speed = screen.getByDisplayValue('10 seconds') as HTMLSelectElement
+    fireEvent.change(speed, { target: { value: '30' } })
+    await waitFor(() => expect(puts.some((p) => p.photoInterval === 30)).toBe(true))
   })
 
   it('hides admin-only tabs from non-admins (only About + Sign out)', async () => {

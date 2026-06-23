@@ -3,7 +3,7 @@
 // renders nothing extra — zero behavior, no screensaver. When ON it keeps the screen
 // awake, runs one idle watcher (reset-to-Today, then screensaver), shows the
 // screensaver overlay, and applies night dimming on a schedule.
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router'
 import {
   isDisplayMode,
@@ -17,7 +17,7 @@ import {
   type DisplayConfig,
   type AgendaEvent,
 } from '../lib/api'
-import { Screensaver } from './components/Screensaver'
+import { Screensaver, screensaverPhotos } from './components/Screensaver'
 import '../styles/kiosk-profiles.css'
 
 export function KioskDisplay({ children }: { children: ReactNode }) {
@@ -58,6 +58,7 @@ function DisplayLayer() {
   const { events } = useEventsToday()
   const { photos } = usePhotos()
   const [cfg, setCfg] = useState<DisplayConfig | null>(null)
+  const saverPhotos = useMemo(() => screensaverPhotos(photos, cfg ?? {}), [photos, cfg])
   const [saver, setSaver] = useState(false)
   const [dim, setDim] = useState(false)
   const locRef = useRef(location.pathname)
@@ -143,10 +144,11 @@ function DisplayLayer() {
       {saver && cfg && cfg.content !== 'off' && (
         <Screensaver
           content={cfg.content === 'photos' ? 'photos' : 'clock'}
-          photos={photos}
+          photos={saverPhotos}
           weather={wx}
           nextEvent={nextUpcoming(events)}
           timezone={household?.timezone}
+          intervalSeconds={cfg?.photoInterval}
           onWake={() => setSaver(false)}
         />
       )}

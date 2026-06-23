@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { api, usePhotos, useWeather, useHousehold, type Photo } from '../lib/api'
+import { useEffect, useMemo, useState } from 'react'
+import { api, kioskApi, usePhotos, useWeather, useHousehold, type DisplayConfig, type Photo } from '../lib/api'
 import { Icon } from './icons'
 import { useTopbarRight } from './topbar-slot'
 import { PhotoAdd } from './components/PhotoAdd'
@@ -51,6 +51,15 @@ export function Photos() {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [saver, setSaver] = useState<Photo | null>(null)
   const [albumFilter, setAlbumFilter] = useState<string | null>(null)
+  const [displayCfg, setDisplayCfg] = useState<DisplayConfig | null>(null)
+
+  // Pull the household display config once so manual playback uses the same
+  // transition speed as the idle screensaver (tolerate failure → default 10s).
+  useEffect(() => {
+    let alive = true
+    kioskApi.displayConfig().then((c) => alive && setDisplayCfg(c)).catch(() => {})
+    return () => { alive = false }
+  }, [])
 
   // Derive the open detail photo live from the list (by id) so an edit + refetch
   // shows the saved values; a stored snapshot would go stale and look unsaved.
@@ -182,6 +191,7 @@ export function Photos() {
           weather={wx}
           nextEvent={null}
           timezone={household?.timezone}
+          intervalSeconds={displayCfg?.photoInterval}
           onWake={() => setSaver(null)}
         />
       )}

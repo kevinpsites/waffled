@@ -234,6 +234,31 @@ describe('kiosk pairing + profile tokens', () => {
     expect(after.nightDim).toMatchObject({ enabled: true, start: '22:00', end: '07:00' }) // nested merge keeps start/end
   })
 
+  it('serves photo-playback defaults and persists/clamps/sanitizes them', async () => {
+    const def = json(await call('GET', '/api/kiosk/display', undefined, admin))
+    expect(def).toMatchObject({ photoSource: 'all', photoAlbum: null, photoInterval: 10, photoShuffle: false })
+
+    // Persist the new fields; photoInterval clamps to 3–120; a bad photoSource is ignored.
+    expect((await call('PUT', '/api/kiosk/display', {
+      photoSource: 'album', photoAlbum: '  Lake Day  ', photoInterval: 999, photoShuffle: true,
+    }, admin)).statusCode).toBe(200)
+    const a = json(await call('GET', '/api/kiosk/display', undefined, admin))
+    expect(a.photoSource).toBe('album')
+    expect(a.photoAlbum).toBe('Lake Day') // trimmed
+    expect(a.photoInterval).toBe(120) // clamped from 999
+    expect(a.photoShuffle).toBe(true)
+
+    // Low interval clamps up to 3; an invalid source falls back to the stored value.
+    expect((await call('PUT', '/api/kiosk/display', { photoInterval: 1, photoSource: 'bogus' }, admin)).statusCode).toBe(200)
+    const b = json(await call('GET', '/api/kiosk/display', undefined, admin))
+    expect(b.photoInterval).toBe(3)
+    expect(b.photoSource).toBe('album') // unchanged — bad value rejected
+
+    // A blank album string normalizes to null.
+    expect((await call('PUT', '/api/kiosk/display', { photoAlbum: '   ' }, admin)).statusCode).toBe(200)
+    expect(json(await call('GET', '/api/kiosk/display', undefined, admin)).photoAlbum).toBeNull()
+  })
+
   it('lets a device token read display settings (dual-auth)', async () => {
     const r = await call('GET', '/api/kiosk/display', undefined, deviceToken)
     expect(r.statusCode).toBe(200)
