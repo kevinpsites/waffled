@@ -72,15 +72,23 @@ just looks like a big phone for now. Establishes the target + adaptivity scaffol
 
 Goal: the iPad signs in once and stays logged in as one profile, no picker.
 
-- [ ] Confirm the existing persistent-login path (Keychain token store + refresh on 401)
-      keeps the iPad signed in across relaunches indefinitely. Reuse — don't rebuild.
-- [ ] Kiosk-appropriate sign-in screen for iPad (large, simple). Normal login is fine for
-      v1; no device-pairing needed.
-- [ ] No profile picker, no PIN, no "Switch profile" affordance in v1. The signed-in
-      profile *is* the device's identity.
-- [ ] Handle token-expiry gracefully on a wall display (re-auth prompt that doesn't dump
-      the family to a dead screen). Verify refresh-token lifetime is long enough for an
-      always-on device; note any server-side expiry that would force a re-login.
+- [x] Persistent-login path confirmed: `Session.bootstrap()` → `AppConfig.hasUsableToken`
+      (`AuthTokens.isSignedIn`) sends a stored Keychain session straight to `.authed`, so
+      the iPad stays signed in across relaunches. Reused as-is — nothing rebuilt.
+- [x] Kiosk-appropriate sign-in: `LoginView` (`Features/Auth/AuthGate.swift`) now scales up
+      and caps to a centered column on iPad (`isKiosk` / `columnWidth`), with display-specific
+      copy ("Set up your Nook display"). Verified on the iPad sim. iPhone login unchanged
+      (guarded by `isKiosk`; the column cap is wider than phone content).
+- [x] No profile picker, no PIN, no "Switch profile" in v1 — none exists in the kiosk path;
+      the signed-in profile *is* the device's identity.
+- [x] Token-expiry is graceful: the `.nookAuthExpired` path flips `Session.phase` to `.login`,
+      which on iPad shows the same kiosk login (not a dead screen).
+      **Note / follow-up:** refresh-token lifetime is server-side — confirm it's long enough
+      for an always-on display so a wall device isn't forced to re-login often. (Auth0 swaps
+      in at Phase 4; revisit token TTLs then.)
+
+> **Phase 1 complete.** iPad signs in once and stays (single profile, no picker), with a
+> display-sized login that also covers re-auth after expiry.
 
 ## Phase 2 — The family-hub dashboard (the main screen)
 

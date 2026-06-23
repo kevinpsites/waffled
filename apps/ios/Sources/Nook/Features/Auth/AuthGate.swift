@@ -48,6 +48,14 @@ struct LoginView: View {
 
     private var notInitialized: Bool { session.status?.initialized == false }
 
+    /// The iPad runs the family display; its sign-in (initial + re-auth after token
+    /// expiry) reads larger and stays a centered column rather than stretching the
+    /// fields across the panel. See `apps/ios/IPAD_ROADMAP.md` (Phase 1).
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+    /// Cap the sign-in column so the form doesn't span an iPad; a no-op on iPhone
+    /// (the phone's content is already narrower than this).
+    private var columnWidth: CGFloat { isKiosk ? 520 : 460 }
+
     var body: some View {
         ZStack {
             NK.canvas.ignoresSafeArea()
@@ -64,6 +72,7 @@ struct LoginView: View {
                     Spacer(minLength: 24)
                 }
                 .padding(.horizontal, 28)
+                .frame(maxWidth: columnWidth)          // centered, capped column
                 .frame(maxWidth: .infinity, minHeight: 0)
             }
             .scrollDismissesKeyboard(.interactively)
@@ -72,13 +81,15 @@ struct LoginView: View {
 
     private var header: some View {
         VStack(spacing: 10) {
-            Text("🪺").font(.system(size: 56))
-            Text("Welcome to Nook").font(.system(size: 26, weight: .bold)).foregroundStyle(NK.ink)
-            Text("Sign in to your family's household.")
-                .font(.system(size: 15)).foregroundStyle(NK.ink3)
+            Text("🪺").font(.system(size: isKiosk ? 76 : 56))
+            Text(isKiosk ? "Set up your Nook display" : "Welcome to Nook")
+                .font(.system(size: isKiosk ? 34 : 26, weight: .bold)).foregroundStyle(NK.ink)
+            Text(isKiosk ? "Sign in to show your family's hub on this iPad."
+                         : "Sign in to your family's household.")
+                .font(.system(size: isKiosk ? 18 : 15)).foregroundStyle(NK.ink3)
                 .multilineTextAlignment(.center)
         }
-        .padding(.bottom, 28)
+        .padding(.bottom, isKiosk ? 36 : 28)
     }
 
     private var form: some View {
