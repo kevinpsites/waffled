@@ -117,7 +117,9 @@ Make the iPad a *real app you navigate*, like the web. This is the main re-scope
       for now.)
 - [ ] Then progressively **web-ify each page** for the iPad (multi-column where the web is,
       bigger type/spacing) instead of a stretched phone column. Track per-page below as we go:
-  - [ ] Calendar · [ ] Tasks/Chores · [ ] Goals · [ ] Family · [ ] Meals · [ ] Lists · [ ] Photos · [ ] Settings
+  - [x] **Calendar** — `KioskCalendarView`: width-filling month grid (event chips per day)
+        + side day panel + person filters. (Pending user feedback.)
+  - [ ] Tasks/Chores · [ ] Goals · [ ] Family · [ ] Meals · [ ] Lists · [ ] Photos · [ ] Settings
 - [ ] Capture sheet + detail sheets sized appropriately for the iPad.
 
 ## Phase 4 — Polish & ship
