@@ -374,9 +374,9 @@ struct PlanWeekSheet: View {
             Divider().background(NK.hair)
             HStack(spacing: 8) {
                 actionButton("arrow.triangle.2.circlepath", "Swap") { Task { await swap(card) } }
-                    .disabled(redrafting)
+                    .disabled(redrafting || isLocked)
                 actionButton("book", "Pick") { pickTarget = PickTarget(date: card.date) }
-                    .disabled(redrafting)
+                    .disabled(redrafting || isLocked)
                 Spacer()
                 Button { toggleLock(card.date) } label: {
                     HStack(spacing: 5) {
@@ -424,6 +424,7 @@ struct PlanWeekSheet: View {
     /// Swap the meals on two review nights (keeps each card's date).
     private func swapCards(_ srcDate: String, _ tgtDate: String) {
         guard srcDate != tgtDate,
+              !locked.contains(srcDate), !locked.contains(tgtDate),   // locked nights don't move
               let i = suggestions.firstIndex(where: { $0.date == srcDate }),
               let j = suggestions.firstIndex(where: { $0.date == tgtDate }) else { return }
         let a = suggestions[i], b = suggestions[j]
