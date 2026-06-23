@@ -79,6 +79,10 @@ enum DemoHooks {
     /// Initial iPad kiosk page (rail selection): today | calendar | tasks | goals |
     /// family | meals | lists | photos | settings. No effect on iPhone.
     static var kioskPage: String? { AppConfig.env("NOOK_KIOSK_PAGE") }
+    /// Initial iPad calendar mode for verification: month | week | day.
+    static var kioskCalMode: String? { AppConfig.env("NOOK_CAL_MODE") }
+    /// Auto-open the first event's detail on the iPad calendar (verification).
+    static var kioskOpenEvent: Bool { AppConfig.env("NOOK_KIOSK_OPEN_EVENT") == "1" }
     /// Auto-present the Sync panel on the Family screen.
     static var openSync: Bool { AppConfig.env("NOOK_OPEN_SYNC") == "1" }
     /// Insert one offline test event once members have synced.
