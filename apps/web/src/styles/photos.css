@@ -15,9 +15,21 @@
 .ph-banner-title { font-size: 17px; font-weight: 700; }
 .ph-banner .btn-play { font-size: 14px; }
 
-/* an <img> photo fills the tile (emoji tiles use the gradient background) */
-.ph-tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.ph-tile { cursor: pointer; }
+/* aspect-preserving CSS-columns masonry: each photo keeps its real shape (no crop).
+   The wall flows top-to-bottom within columns; .ph-tile heights follow their images. */
+.ph-wall { display: block; grid-template-columns: none; grid-auto-rows: auto;
+  column-count: 3; column-gap: 12px; }
+@media (max-width: 1100px) { .ph-wall { column-count: 2; } }
+@media (max-width: 680px) { .ph-wall { column-count: 1; } }
+
+.ph-tile { cursor: pointer; position: relative; display: block; break-inside: avoid;
+  margin-bottom: 12px; overflow: hidden; }
+/* span classes are no-ops now that the wall is aspect-preserving masonry */
+.ph-tile.wide, .ph-tile.tall { grid-column: auto; grid-row: auto; }
+/* an <img> photo flows in the tile, preserving aspect (emoji tiles use the gradient bg) */
+.ph-tile img { position: static; width: 100%; height: auto; display: block; border-radius: inherit; }
+/* emoji-only tiles have no <img>, so give them a sensible default box + centered emoji */
+.ph-tile.no-img { aspect-ratio: 4 / 3; display: grid; place-items: center; font-size: 56px; }
 .ph-tile.clickable:hover { box-shadow: var(--sh-2); }
 
 /* tile delete affordance on the wall */
@@ -44,12 +56,15 @@
 
 /* the post-upload form: preview + caption / album / favorite */
 .ap-form { display: flex; gap: 18px; align-items: flex-start; padding: 4px 2px; }
-.ap-form-preview { width: 150px; height: 150px; object-fit: cover; border-radius: var(--r-md);
-  box-shadow: var(--sh-1); flex: none; }
+.ap-form-preview { width: 150px; height: 150px; object-fit: contain; background: rgba(0,0,0,.04);
+  border-radius: var(--r-md); box-shadow: var(--sh-1); flex: none; }
 .ap-form-fields { display: flex; flex-direction: column; gap: 12px; max-width: 360px; flex: 1; }
 .ap-field-label { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; font-weight: 700;
   color: var(--ink-3); letter-spacing: .02em; }
 .ap-field-label .field { font-weight: 500; color: var(--ink); }
+/* album dropdown + "new album" text input (PhotoAdd / PhotoDetail edit) */
+.album-picker { display: flex; flex-direction: column; gap: 8px; }
+.album-picker .field { font-weight: 500; color: var(--ink); }
 .ap-form-row { display: flex; gap: 10px; align-items: center; }
 .ap-fav { cursor: pointer; }
 .ap-fav.on { box-shadow: 0 0 0 2px var(--primary); }
@@ -59,7 +74,7 @@
   padding: 2px 30px 26px; min-height: 0; }
 .pd-stage { border-radius: var(--r-xl); display: grid; place-items: center; font-size: 170px;
   box-shadow: var(--sh-2); position: relative; overflow: hidden; }
-.pd-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.pd-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .pd-stage-cap { position: absolute; left: 24px; bottom: 22px; color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,.4); }
 .pd-stage-cap .nk-serif { font-size: 30px; font-weight: 600; }
 .pd-stage-sub { font-size: 14px; font-weight: 600; opacity: .92; }

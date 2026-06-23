@@ -52,8 +52,11 @@ describe('PhotoAdd — upload', () => {
     pickFile()
     const caption = (await screen.findByPlaceholderText('Caption')) as HTMLInputElement
     fireEvent.change(caption, { target: { value: 'Sandcastle' } })
-    const album = screen.getByPlaceholderText('Pick or name an album') as HTMLInputElement
-    fireEvent.change(album, { target: { value: 'Beach Trip' } })
+    // Album is now an AlbumPicker: choose "＋ New album…", then type a new name.
+    const albumSelect = screen.getByRole('combobox') as HTMLSelectElement
+    fireEvent.change(albumSelect, { target: { value: '__new__' } })
+    const albumInput = screen.getByPlaceholderText('New album name') as HTMLInputElement
+    fireEvent.change(albumInput, { target: { value: 'Beach Trip' } })
 
     fireEvent.click(screen.getByRole('button', { name: /Add photo/i }))
 

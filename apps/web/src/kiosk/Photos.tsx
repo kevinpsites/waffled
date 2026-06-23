@@ -22,18 +22,9 @@ function tileBg(photo: Photo): string {
   return `linear-gradient(135deg, ${c}, ${shade(c)})`
 }
 
-// Recreate the mock's masonry rhythm deterministically: the 1st tile is wide,
-// the 3rd is tall, then every 6th wide — so a fresh wall reads like photos.png.
-function spanFor(i: number): string {
-  if (i === 0) return 'wide'
-  if (i === 2) return 'tall'
-  if (i % 6 === 5) return 'wide'
-  return ''
-}
-
-function PhotoTile({ photo, span, onOpen, onDelete }: { photo: Photo; span: string; onOpen: () => void; onDelete: () => void }) {
+function PhotoTile({ photo, onOpen, onDelete }: { photo: Photo; onOpen: () => void; onDelete: () => void }) {
   return (
-    <div className={`ph-tile clickable ${span}`} style={{ background: tileBg(photo) }} onClick={onOpen}>
+    <div className={`ph-tile clickable ${photo.imageUrl ? '' : 'no-img'}`} style={{ background: tileBg(photo) }} onClick={onOpen}>
       {photo.imageUrl ? <img src={photo.imageUrl} alt={photo.caption} /> : photo.emoji ?? '🖼️'}
       <button
         type="button"
@@ -57,9 +48,13 @@ export function Photos() {
   const wx = useWeather()
   const { household } = useHousehold()
   const [adding, setAdding] = useState(false)
-  const [detail, setDetail] = useState<Photo | null>(null)
+  const [detailId, setDetailId] = useState<string | null>(null)
   const [saver, setSaver] = useState<Photo | null>(null)
   const [albumFilter, setAlbumFilter] = useState<string | null>(null)
+
+  // Derive the open detail photo live from the list (by id) so an edit + refetch
+  // shows the saved values; a stored snapshot would go stale and look unsaved.
+  const detail = detailId ? (photos.find((p) => p.id === detailId) ?? null) : null
 
   // The newest memory drives the banner + the default screensaver.
   const newest = photos[0] ?? null
@@ -152,8 +147,8 @@ export function Photos() {
       <div className="photos-wall-scroll">
         {visiblePhotos.length > 0 ? (
           <div className="ph-wall">
-            {visiblePhotos.map((p, i) => (
-              <PhotoTile key={p.id} photo={p} span={spanFor(i)} onOpen={() => setDetail(p)} onDelete={() => del(p)} />
+            {visiblePhotos.map((p) => (
+              <PhotoTile key={p.id} photo={p} onOpen={() => setDetailId(p.id)} onDelete={() => del(p)} />
             ))}
           </div>
         ) : (
@@ -171,9 +166,9 @@ export function Photos() {
           photo={detail}
           memoryCount={detail.memory ? photos.filter((p) => p.memory === detail.memory).length : 1}
           albums={albums}
-          onClose={() => setDetail(null)}
+          onClose={() => setDetailId(null)}
           onSetScreensaver={(p) => {
-            setDetail(null)
+            setDetailId(null)
             setSaver(p)
           }}
           onUpdated={refetch}

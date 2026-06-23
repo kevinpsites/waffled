@@ -70,8 +70,11 @@ describe('PhotoDetail', () => {
 
     const caption = screen.getByPlaceholderText('Caption') as HTMLInputElement
     fireEvent.change(caption, { target: { value: 'Sunset swim' } })
-    const album = screen.getByPlaceholderText('Pick or name an album') as HTMLInputElement
-    fireEvent.change(album, { target: { value: 'Beach Trip' } })
+    // Album is now an AlbumPicker: choose "＋ New album…", then type a new name.
+    const albumSelect = screen.getByRole('combobox') as HTMLSelectElement
+    fireEvent.change(albumSelect, { target: { value: '__new__' } })
+    const albumInput = screen.getByPlaceholderText('New album name') as HTMLInputElement
+    fireEvent.change(albumInput, { target: { value: 'Beach Trip' } })
     fireEvent.click(screen.getByRole('button', { name: /Favorite/ }))
 
     fireEvent.click(screen.getByRole('button', { name: /^Save$/ }))
@@ -84,6 +87,33 @@ describe('PhotoDetail', () => {
       isFavorite: true,
     })
     expect(onUpdated).toHaveBeenCalled()
+  })
+
+  it('selecting an existing album sends it as memory', async () => {
+    renderDetail()
+    fireEvent.click(screen.getAllByRole('button', { name: /✏️ Edit/ })[0])
+    const albumSelect = screen.getByRole('combobox') as HTMLSelectElement
+    fireEvent.change(albumSelect, { target: { value: 'Birthday' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/ }))
+    await waitFor(() => expect(patched.length).toBe(1))
+    expect(patched[0].patch).toMatchObject({ memory: 'Birthday' })
+  })
+
+  it('prefills the Date input from createdAt when takenAt is null', () => {
+    render(
+      <PhotoDetail
+        photo={{ ...photo, takenAt: null }}
+        memoryCount={2}
+        albums={['Lake Day', 'Birthday']}
+        onClose={() => {}}
+        onSetScreensaver={() => {}}
+        onUpdated={onUpdated}
+        onDeleted={() => {}}
+      />
+    )
+    fireEvent.click(screen.getAllByRole('button', { name: /✏️ Edit/ })[0])
+    const date = document.querySelector('input[type="date"]') as HTMLInputElement
+    expect(date.value).not.toBe('')
   })
 
   it('Cancel exits edit mode without saving', () => {

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { api, uploadImage } from '../../lib/api'
+import { AlbumPicker } from './AlbumPicker'
 
 // Add-photos overlay — a back-pill topbar and a single real source: 📷 Upload
 // photo. Nook has no shared-album / phone-library integration yet, so a muted
@@ -117,18 +118,7 @@ export function PhotoAdd({
                   </label>
                   <label className="ap-field-label">
                     Album
-                    <input
-                      className="field"
-                      list="ap-album-list"
-                      placeholder="Pick or name an album"
-                      value={album}
-                      onChange={(e) => setAlbum(e.target.value)}
-                    />
-                    <datalist id="ap-album-list">
-                      {albums.map((a) => (
-                        <option key={a} value={a} />
-                      ))}
-                    </datalist>
+                    <AlbumPicker value={album} onChange={setAlbum} albums={albums} />
                   </label>
                   <div className="ap-form-row">
                     <button

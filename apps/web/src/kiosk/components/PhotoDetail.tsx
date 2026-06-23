@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api, type Photo } from '../../lib/api'
 import { Icon } from '../icons'
+import { AlbumPicker } from './AlbumPicker'
 
 // Photo detail overlay — a back-pill topbar with "Set as screensaver / ✏️ Edit /
 // 🗑", the big photo stage on the left, and the Details / "Part of memory" AI
@@ -47,7 +48,7 @@ export function PhotoDetail({
   const [caption, setCaption] = useState(photo.caption)
   const [album, setAlbum] = useState(photo.memory ?? '')
   const [isFavorite, setIsFavorite] = useState(photo.isFavorite)
-  const [takenDate, setTakenDate] = useState(isoToDateInput(photo.takenAt))
+  const [takenDate, setTakenDate] = useState(isoToDateInput(photo.takenAt ?? photo.createdAt))
 
   const bg = `linear-gradient(135deg, ${photo.colorHex ?? '#7fc1e8'}, ${shade(photo.colorHex ?? '#7fc1e8')})`
 
@@ -55,7 +56,7 @@ export function PhotoDetail({
     setCaption(photo.caption)
     setAlbum(photo.memory ?? '')
     setIsFavorite(photo.isFavorite)
-    setTakenDate(isoToDateInput(photo.takenAt))
+    setTakenDate(isoToDateInput(photo.takenAt ?? photo.createdAt))
     setEditing(true)
   }
 
@@ -137,18 +138,7 @@ export function PhotoDetail({
                     </label>
                     <label className="ap-field-label">
                       Album
-                      <input
-                        className="field"
-                        list="pd-album-list"
-                        placeholder="Pick or name an album"
-                        value={album}
-                        onChange={(e) => setAlbum(e.target.value)}
-                      />
-                      <datalist id="pd-album-list">
-                        {albums.map((a) => (
-                          <option key={a} value={a} />
-                        ))}
-                      </datalist>
+                      <AlbumPicker value={album} onChange={setAlbum} albums={albums} />
                     </label>
                     <label className="ap-field-label">
                       Date
