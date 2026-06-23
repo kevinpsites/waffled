@@ -61,7 +61,12 @@ struct RecipesLibraryView: View {
     @State private var selProtein: Set<String> = []
     @State private var selDietary: Set<String> = []
 
-    private let cols = [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
+    // iPhone: 2 fixed columns. iPad: adaptive — as many ~240pt cards as fit the width.
+    private var cols: [GridItem] {
+        DeviceExperience.current == .kiosk
+            ? [GridItem(.adaptive(minimum: 220, maximum: 320), spacing: 14)]
+            : [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
+    }
 
     var body: some View {
         ScrollView {

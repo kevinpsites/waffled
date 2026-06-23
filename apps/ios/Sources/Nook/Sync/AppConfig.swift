@@ -85,6 +85,8 @@ enum DemoHooks {
     static var kioskOpenEvent: Bool { AppConfig.env("NOOK_KIOSK_OPEN_EVENT") == "1" }
     /// Auto-open the first event's editor on the iPad calendar (verification).
     static var kioskOpenEdit: Bool { AppConfig.env("NOOK_KIOSK_OPEN_EDIT") == "1" }
+    /// Initial Meals section for verification: week | month | recipes.
+    static var mealsSection: String? { AppConfig.env("NOOK_MEALS_SECTION") }
     /// Auto-present the Sync panel on the Family screen.
     static var openSync: Bool { AppConfig.env("NOOK_OPEN_SYNC") == "1" }
     /// Insert one offline test event once members have synced.

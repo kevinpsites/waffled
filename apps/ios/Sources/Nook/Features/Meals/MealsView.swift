@@ -13,7 +13,11 @@ enum MealsRoute: Hashable {
 struct MealsView: View {
     @Binding var path: [MealsRoute]
     @State private var model = RecipesModel()
-    @State private var section = 0   // 0 = Week, 1 = Month, 2 = Recipes
+    @State private var section = MealsView.initialSection   // 0 = Week, 1 = Month, 2 = Recipes
+
+    private static var initialSection: Int {
+        switch DemoHooks.mealsSection { case "month": return 1; case "recipes": return 2; default: return 0 }
+    }
 
     /// Fire the headless deep-link at most once per process.
     private static var didDeepLink = false
