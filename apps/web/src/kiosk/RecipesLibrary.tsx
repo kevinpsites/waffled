@@ -135,7 +135,7 @@ export function RecipesLibrary() {
         {sorted.map((r) => (
           <button key={r.id} type="button" className="rc recipes-card" onClick={() => navigate(`/meals/recipe/${r.id}`)}>
             <div className={`rc-img ${gradClass(r)}`}>
-              {r.emoji ?? '🍽️'}
+              {r.imageUrl ? <img className="rc-img-photo" src={r.imageUrl} alt={r.title} /> : (r.emoji ?? '🍽️')}
               {r.isFavorite && <span className="recipes-fav">❤️</span>}
             </div>
             <div className="rc-b" style={{ padding: '12px 14px 14px' }}>

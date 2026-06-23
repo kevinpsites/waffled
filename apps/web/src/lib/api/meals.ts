@@ -136,6 +136,7 @@ export interface Recipe extends RecipeMeta {
   cookTimeMinutes: number | null
   servings: number
   imageUrl: string | null
+  storageKey: string | null
   sourceName: string | null
   isFavorite: boolean
   cookedCount: number
@@ -161,6 +162,7 @@ export interface RecipeDetail extends RecipeMeta {
   cookTimeMinutes: number | null
   servings: number
   imageUrl: string | null
+  storageKey: string | null
   sourceName: string | null
   isFavorite: boolean
   cookedCount: number

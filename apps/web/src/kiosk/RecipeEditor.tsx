@@ -163,6 +163,15 @@ export function RecipeEditor() {
     setDietary(recipe.dietary ?? [])
     setVegetables(recipe.vegetables ?? [])
     setTags(recipe.tags ?? [])
+    // Restore the existing image so an edit that doesn't touch it re-sends the same
+    // key (a blob) or URL instead of clearing it. A stored blob has a storageKey;
+    // otherwise imageUrl is an external link to keep in the URL field.
+    if (recipe.storageKey) {
+      setStorageKey(recipe.storageKey)
+      setImageUrl('')
+    } else {
+      setImageUrl(recipe.imageUrl ?? '')
+    }
     setImagePreview(recipe.imageUrl ?? null)
     setNotes(recipe.userNotes ?? recipe.notes ?? '')
     const ingRows: EditIng[] = ingredients.length
@@ -265,12 +274,14 @@ export function RecipeEditor() {
     setSaving(true)
     try {
       const payload = buildPayload()
+      // replace: true so the editor page doesn't linger in history — otherwise
+      // "‹ Recipes" from the saved recipe would walk back INTO the editor.
       if (isEdit) {
         await mealsApi.updateRecipe(id!, payload)
-        navigate(`/meals/recipe/${id}`)
+        navigate(`/meals/recipe/${id}`, { replace: true })
       } else {
         const created = await mealsApi.createRecipe(payload)
-        navigate(`/meals/recipe/${created.id}`)
+        navigate(`/meals/recipe/${created.id}`, { replace: true })
       }
     } catch {
       setSaving(false)

@@ -393,6 +393,9 @@ export function presentRecipe(r: RecipeRow) {
     servings: r.servings,
     // A stored blob (storage_key) wins; otherwise fall back to the external link.
     imageUrl: mediaUrl((src.storage_key as string | null) ?? null) ?? r.image_url,
+    // Exposed so the editor can distinguish an uploaded blob from an external URL and
+    // re-send the same key on an edit that doesn't touch the image (else it'd be wiped).
+    storageKey: (src.storage_key as string | null) ?? null,
     sourceName: r.source_name,
     isFavorite: r.is_favorite,
     cookedCount: r.cooked_count,
