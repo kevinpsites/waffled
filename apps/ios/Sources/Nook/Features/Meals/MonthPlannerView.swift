@@ -26,19 +26,23 @@ struct MonthPlannerView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
-                monthHeader
-                Text("Dinners for the month · tap to add or open · drag a night onto another to swap")
-                    .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Button { planningMonth = true } label: {
-                    HStack(spacing: 7) {
-                        Text("✨").font(.system(size: 15))
-                        Text("Plan my month").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                if isKiosk {
+                    kioskMonthHeader
+                } else {
+                    monthHeader
+                    Text("Dinners for the month · tap to add or open · drag a night onto another to swap")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button { planningMonth = true } label: {
+                        HStack(spacing: 7) {
+                            Text("✨").font(.system(size: 15))
+                            Text("Plan my month").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                        }
+                        .frame(maxWidth: .infinity).padding(.vertical, 12)
+                        .background(NK.ai).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
                     }
-                    .frame(maxWidth: .infinity).padding(.vertical, 12)
-                    .background(NK.ai).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
                 weekdayRow
                 LazyVGrid(columns: columns, spacing: 5) {
                     ForEach(gridDays, id: \.self) { day in cell(day) }
@@ -88,6 +92,42 @@ struct MonthPlannerView: View {
     }
 
     // MARK: header
+
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
+    /// iPad: month nav + "Plan my month" on one row (matches the week view), instead of
+    /// the stacked header + full-width button.
+    private var kioskMonthHeader: some View {
+        HStack(spacing: 12) {
+            Button { planningMonth = true } label: {
+                HStack(spacing: 6) {
+                    Text("✨").font(.system(size: 14))
+                    Text("Plan my month").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 9)
+                .background(NK.ai).clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            Button { step(-1) } label: { monthChevron("chevron.left") }
+            VStack(spacing: 1) {
+                Text(fmt(anchor, "MMMM yyyy")).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                if !isCurrentMonth {
+                    Button("This month") { withAnimation { anchor = Date() } }
+                        .font(.system(size: 11, weight: .semibold)).tint(NK.primary)
+                }
+            }
+            .frame(minWidth: 140)
+            Button { step(1) } label: { monthChevron("chevron.right") }
+        }
+        .padding(.top, 4)
+    }
+
+    private func monthChevron(_ s: String) -> some View {
+        Image(systemName: s).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+            .frame(width: 34, height: 34).background(NK.card).clipShape(Circle())
+            .overlay(Circle().strokeBorder(NK.hair, lineWidth: 1))
+    }
 
     private var monthHeader: some View {
         HStack {

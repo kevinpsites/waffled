@@ -38,25 +38,11 @@ struct RecipeDetailView: View {
     private var currentServings: Int { servings ?? baseServings }
     private var ratio: Double { Double(currentServings) / Double(baseServings) }
 
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                hero
-                header
-                if !steps.isEmpty { cookButton }
-                cookedRow
-                if loading && ingredients.isEmpty && steps.isEmpty {
-                    ProgressView().tint(NK.ink3).frame(maxWidth: .infinity).padding(.vertical, 30)
-                } else if error {
-                    Text("Couldn’t load this recipe.").font(.system(size: 14)).foregroundStyle(NK.ink3)
-                        .frame(maxWidth: .infinity).padding(.vertical, 20)
-                } else {
-                    if !ingredients.isEmpty { ingredientsCard; onHandBanner }
-                    if !steps.isEmpty { methodCard }
-                    notesCard
-                }
-            }
-            .padding(16).padding(.bottom, 110)   // clear the floating tab bar
+            detailContent.padding(16).padding(.bottom, 110)   // clear the floating tab bar
         }
         .background(NK.canvas)
         .navigationTitle(r.title)
@@ -81,6 +67,39 @@ struct RecipeDetailView: View {
         .sheet(item: $stepNoteEdit) { edit in
             StepNoteSheet(stepNumber: edit.step, note: noteFor(edit.step)) { text in
                 saveStepNote(step: edit.step, note: text)
+            }
+        }
+    }
+
+    /// iPhone: one column. iPad: hero/header/cook full width, then ingredients (left)
+    /// alongside method + notes (right) — like the web recipe screen, no long scroll.
+    @ViewBuilder private var detailContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            hero
+            header
+            if !steps.isEmpty { cookButton }
+            cookedRow
+            if loading && ingredients.isEmpty && steps.isEmpty {
+                ProgressView().tint(NK.ink3).frame(maxWidth: .infinity).padding(.vertical, 30)
+            } else if error {
+                Text("Couldn’t load this recipe.").font(.system(size: 14)).foregroundStyle(NK.ink3)
+                    .frame(maxWidth: .infinity).padding(.vertical, 20)
+            } else if isKiosk {
+                HStack(alignment: .top, spacing: 20) {
+                    VStack(spacing: 16) {
+                        if !ingredients.isEmpty { ingredientsCard; onHandBanner }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .top)
+                    VStack(spacing: 16) {
+                        if !steps.isEmpty { methodCard }
+                        notesCard
+                    }
+                    .frame(maxWidth: .infinity, alignment: .top)
+                }
+            } else {
+                if !ingredients.isEmpty { ingredientsCard; onHandBanner }
+                if !steps.isEmpty { methodCard }
+                notesCard
             }
         }
     }

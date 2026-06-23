@@ -281,14 +281,16 @@ struct RecipeCard: View {
                 }
             }
             VStack(alignment: .leading, spacing: 5) {
+                // Fixed 2-line title + an always-present meta + collection line, so every
+                // card is the same height regardless of how many tags a recipe has.
                 Text(recipe.title).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
-                    .lineLimit(2).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(2).multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40, alignment: .topLeading)
                 metaLine
-                if let c = recipe.collection {
-                    Text("📁 \(c)").font(.system(size: 11, weight: .medium)).foregroundStyle(NK.ink3).lineLimit(1)
-                }
+                Text(recipe.collection.map { "📁 \($0)" } ?? " ")
+                    .font(.system(size: 11, weight: .medium)).foregroundStyle(NK.ink3).lineLimit(1)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
             .padding(.horizontal, 11).padding(.top, 9).padding(.bottom, 12)
         }
         .nkField()
