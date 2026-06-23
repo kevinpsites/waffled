@@ -104,7 +104,7 @@ export function useAwaitingChores(): AwaitingState {
     let alive = true
     choresApi
       .awaitingInstances()
-      .then((d) => alive && (setChores(d.instances), setLoading(false)))
+      .then((d) => alive && (setChores(d.instances ?? []), setLoading(false)))
       .catch(() => alive && (setChores([]), setLoading(false)))
     return () => {
       alive = false

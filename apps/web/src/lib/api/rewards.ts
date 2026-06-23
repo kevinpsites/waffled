@@ -92,7 +92,7 @@ export function usePendingRedemptions(): PendingRedemptionsState {
     let alive = true
     rewardsApi
       .redemptions('pending')
-      .then((d) => alive && (setPending(d.redemptions), setLoading(false)))
+      .then((d) => alive && (setPending(d.redemptions ?? []), setLoading(false)))
       .catch(() => alive && (setPending([]), setLoading(false)))
     return () => {
       alive = false
