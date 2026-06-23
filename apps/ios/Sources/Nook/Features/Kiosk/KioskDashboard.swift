@@ -20,7 +20,7 @@ struct KioskDashboard: View {
     @State private var dictateOnOpen = false
     /// The chosen Today layout (persisted) — see `DashLayout`.
     @AppStorage("nook.kioskDashLayout") private var layoutRaw = DashLayout.balanced.rawValue
-    private var layout: DashLayout { DashLayout(rawValue: DemoHooks.dashLayout ?? layoutRaw) ?? .balanced }
+    private var layout: DashLayout { DashLayout(rawValue: layoutRaw) ?? .balanced }
 
     private var tz: TimeZone { sync.householdTz }
     private var todayKey: String { Agenda.todayKey(tz) }
