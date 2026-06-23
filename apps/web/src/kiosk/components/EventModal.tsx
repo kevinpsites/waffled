@@ -619,6 +619,11 @@ export function EventModal({
                 </option>
               ))}
             </select>
+            {/* Live summary for the simple presets sits right under the dropdown so
+                it clearly describes the selection (custom shows its own, below). */}
+            {repeat.freq !== 'none' && repeat.freq !== 'custom' && (
+              <div className="tiny muted" style={{ marginTop: 8 }}>↻ {ruleSummary}</div>
+            )}
           </label>
 
           {/* Weekly → which days. Defaults to the event's own weekday when none
@@ -686,11 +691,12 @@ export function EventModal({
                   aria-label="Custom RRULE"
                 />
               </details>
+
+              {/* Summary lives inside the builder card so it reads as part of the
+                  repeat rule, not the Until field below. */}
+              <div className="tiny muted" style={{ marginTop: 12 }}>↻ {ruleSummary}</div>
             </div>
           )}
-
-          {/* Live plain-English summary so it's clear what will repeat. */}
-          {repeat.freq !== 'none' && <div className="tiny muted" style={{ marginTop: -2 }}>↻ {ruleSummary}</div>}
 
           {repeat.freq !== 'none' && (
             <label className="field">
