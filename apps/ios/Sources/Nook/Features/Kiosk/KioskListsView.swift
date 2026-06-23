@@ -76,7 +76,7 @@ struct KioskListsView: View {
                 .foregroundStyle(isSelected ? .white.opacity(0.85) : NK.ink3)
         }
         .padding(.leading, 13).padding(.trailing, 14).padding(.vertical, 8)
-        .background(isSelected ? NK.ink : NK.card)
+        .background(isSelected ? NK.primary : NK.card)
         .overlay(Capsule().strokeBorder(isSelected ? Color.clear : NK.hair, lineWidth: 1))
         .clipShape(Capsule())
     }
