@@ -127,7 +127,10 @@ export function PhotoAdd({ onClose, onAdded }: { onClose: () => void; onAdded: (
             <input
               ref={fileRef}
               type="file"
-              accept="image/*"
+              // Only formats the browser canvas can decode + re-encode. This greys out
+              // HEIC (iPhone's default) in the file picker; uploadImage() also guards at
+              // runtime for drag-drop / pickers that ignore `accept`.
+              accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
               style={{ display: 'none' }}
               onChange={(e) => { onPickFile(e.target.files?.[0]); e.target.value = '' }}
             />

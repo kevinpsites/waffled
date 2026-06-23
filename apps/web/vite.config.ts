@@ -19,6 +19,14 @@ const apiProxy: Record<string, ProxyOptions> = {
       })
     },
   },
+  // Uploaded media (/media/*) is served by Caddy off the shared nook_media volume,
+  // NOT by the api — so in dev we forward to the running stack's Caddy (:8080) the
+  // same way it's served in production. Without this, the dev server returns
+  // index.html for /media URLs and uploaded images render broken.
+  '/media': {
+    target: 'http://localhost:8080',
+    changeOrigin: true,
+  },
 }
 
 export default defineConfig({

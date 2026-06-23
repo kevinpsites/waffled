@@ -486,7 +486,9 @@ export function RecipeEditor() {
                 {uploading ? 'Uploading…' : '📷 Upload'}
                 <input
                   type="file"
-                  accept="image/*"
+                  // Supported, canvas-decodable formats only — greys out HEIC in the
+                  // picker; onPickImage/uploadImage still guard at runtime.
+                  accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
                   style={{ display: 'none' }}
                   disabled={uploading}
                   onChange={(e) => { onPickImage(e.target.files?.[0]); e.target.value = '' }}
