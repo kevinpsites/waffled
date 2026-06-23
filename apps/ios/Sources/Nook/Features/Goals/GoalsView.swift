@@ -173,6 +173,8 @@ struct GoalsView: View {
 
     /// iPad lays the "More goals" out as a multi-column grid (vs. the phone's column).
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+    /// Verification one-shot (NOOK_OPEN_GOAL): open the featured goal once.
+    private static var didOpenGoal = false
 
     var body: some View {
         ScrollView {
@@ -214,7 +216,12 @@ struct GoalsView: View {
                 Button { creating = true } label: { Image(systemName: "plus") }
             }
         }
-        .task { if model.lists.isEmpty { await model.loadLists() } }
+        .task {
+            if model.lists.isEmpty { await model.loadLists() }
+            if DemoHooks.openGoal, !Self.didOpenGoal, let f = model.featured {
+                Self.didOpenGoal = true; path.append(.goal(f))
+            }
+        }
         .refreshable { await model.loadLists() }
         .sheet(item: $logging) { g in
             GoalLogSheet(goal: g) { amount, ids, note, loggedOn in
@@ -1197,15 +1204,30 @@ struct GoalDetailView: View {
                      autoFromCalendar: goal.autoFromCalendar, participants: participants)
     }
 
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 hero
                 if autoFromCalendar { planButton }
-                if let ms = model.detail?.milestones, !ms.isEmpty { milestoneCard(ms) }
-                if !participants.isEmpty { byPersonCard }
-                recentCard
-                deleteButton
+                if isKiosk {
+                    HStack(alignment: .top, spacing: 16) {
+                        VStack(spacing: 16) {
+                            if !participants.isEmpty { byPersonCard }
+                            if let ms = model.detail?.milestones, !ms.isEmpty { milestoneCard(ms) }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .top)
+                        VStack(spacing: 16) { recentCard }
+                            .frame(maxWidth: .infinity, alignment: .top)
+                    }
+                    deleteButton
+                } else {
+                    if let ms = model.detail?.milestones, !ms.isEmpty { milestoneCard(ms) }
+                    if !participants.isEmpty { byPersonCard }
+                    recentCard
+                    deleteButton
+                }
             }
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 110)
         }
