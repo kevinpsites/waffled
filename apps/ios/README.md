@@ -76,7 +76,7 @@ Config comes from the launch environment (or the in-app Sync → Connection pane
 TOKEN=$(…/mint-token.js --sub 'dev|demo')
 SIMCTL_CHILD_NOOK_API_URL=http://localhost:3000 \
 SIMCTL_CHILD_NOOK_DEV_TOKEN="$TOKEN" \
-  xcrun simctl launch booted ai.lorebooks.nook
+  xcrun simctl launch booted com.kevinsites.nook
 ```
 
 The iOS simulator reaches the host Mac on `localhost`. Open **Family → ↻ (Sync)**

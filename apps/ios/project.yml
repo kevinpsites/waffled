@@ -5,7 +5,7 @@
 name: Nook
 
 options:
-  bundleIdPrefix: ai.lorebooks
+  bundleIdPrefix: com.kevinsites
   deploymentTarget:
     iOS: "18.0"          # SwiftData needs 17+; we run on the iPhone 17 Pro / iOS 26.1 sim
   developmentLanguage: en
@@ -45,7 +45,7 @@ targets:
         UILaunchScreen: {}
         # Custom scheme for the Google-calendar OAuth callback (ASWebAuthenticationSession).
         CFBundleURLTypes:
-          - CFBundleURLName: ai.lorebooks.nook.oauth
+          - CFBundleURLName: com.kevinsites.nook.oauth
             CFBundleURLSchemes:
               - nook
         UIApplicationSupportsIndirectInputEvents: true
@@ -59,7 +59,7 @@ targets:
           NSAllowsLocalNetworking: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.lorebooks.nook
+        PRODUCT_BUNDLE_IDENTIFIER: com.kevinsites.nook
         TARGETED_DEVICE_FAMILY: "1"          # iPhone only — this is the phone companion
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
@@ -78,7 +78,7 @@ targets:
       - target: Nook
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.lorebooks.nook.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.kevinsites.nook.tests
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Nook.app/Nook"
         BUNDLE_LOADER: "$(TEST_HOST)"
