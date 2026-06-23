@@ -10,9 +10,11 @@ import {
   setMealSettings,
   resyncMealEvents,
 } from './meal-events'
-import type { RecipeRow, CreateRecipeInput, IngredientInput, RecipeOverrides } from './meals.types'
+import type { RecipeRow, CreateRecipeInput, UpdateRecipeInput, IngredientInput } from './meals.types'
 import {
   createRecipe,
+  updateRecipe,
+  softDeleteRecipe,
   listRecipes,
   getRecipe,
   addIngredients,
@@ -32,6 +34,7 @@ import {
   DATE_RE,
   todayDate,
 } from './meals.service'
+import { parseRecipe } from './recipe-markdown'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -43,6 +46,9 @@ export function registerMealRoutes(api: Api): void {
     const body = (req.body ?? {}) as Partial<CreateRecipeInput>
     if (!body.title || !body.title.trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
+    }
+    if (Array.isArray(body.ingredients) && body.ingredients.some((it) => !it?.name || !String(it.name).trim())) {
+      return res.status(400).json({ error: 'BadRequest', message: 'every ingredient needs a name' })
     }
     const recipe = await createRecipe(tenant, { ...body, title: body.title.trim() } as CreateRecipeInput)
     return res.status(201).json({ recipe: presentRecipe(recipe) })
@@ -74,28 +80,73 @@ export function registerMealRoutes(api: Api): void {
     return { recipe: presentRecipe(recipe), ingredients, steps }
   })
 
-  // Update a recipe (favorite toggle, rename, …).
+  // Update a recipe — favorite/rename/rating/notes/overrides (non-destructive) and
+  // full scalar/metadata edits. Passing `ingredients` or `steps` replaces them
+  // wholesale and detaches an imported recipe from its markdown source.
   api.patch('/api/recipes/:id', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
-    const body = (req.body ?? {}) as { isFavorite?: boolean; title?: string; rating?: number; userNotes?: string; overrides?: RecipeOverrides }
-    const cols: string[] = []
-    const vals: unknown[] = []
-    let i = 1
-    if (typeof body.isFavorite === 'boolean') { cols.push(`is_favorite = $${i++}`); vals.push(body.isFavorite) }
-    if (typeof body.title === 'string' && body.title.trim()) { cols.push(`title = $${i++}`); vals.push(body.title.trim()) }
-    if (typeof body.rating === 'number') { cols.push(`rating = $${i++}`); vals.push(body.rating) }
-    if (typeof body.userNotes === 'string') { cols.push(`user_notes = $${i++}`); vals.push(body.userNotes.trim() || null) }
-    if (body.overrides && typeof body.overrides === 'object') { cols.push(`overrides = $${i++}`); vals.push(JSON.stringify(body.overrides)) }
-    if (cols.length === 0) return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields' })
-    vals.push(tenant.householdId, id)
-    const { rows } = await query<RecipeRow>(
-      `update recipes set ${cols.join(', ')} where household_id = $${i++} and id = $${i} and deleted_at is null returning *`,
-      vals
-    )
-    if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
-    return { recipe: presentRecipe(rows[0]) }
+    const body = (req.body ?? {}) as UpdateRecipeInput
+    if (Array.isArray(body.ingredients) && body.ingredients.some((it) => !it?.name || !String(it.name).trim())) {
+      return res.status(400).json({ error: 'BadRequest', message: 'every ingredient needs a name' })
+    }
+    let recipe
+    try {
+      recipe = await updateRecipe(tenant, id, body)
+    } catch {
+      return res.status(400).json({ error: 'BadRequest', message: 'could not update recipe' })
+    }
+    if (!recipe) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    return { recipe: presentRecipe(recipe) }
+  })
+
+  // Soft-delete a recipe (and its ingredients/steps).
+  api.delete('/api/recipes/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    const deleted = await softDeleteRecipe(tenant, id)
+    if (!deleted) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    return res.status(204).send('')
+  })
+
+  // Parse a pasted Markdown recipe (the blessed format) into the structured shape the
+  // editor prefills from. Does NOT save — the user reviews, then POSTs.
+  api.post('/api/recipes/parse-markdown', async (req: Request, res: Response) => {
+    await requireTenant(req)
+    const body = (req.body ?? {}) as { markdown?: string }
+    if (!body.markdown || !body.markdown.trim()) {
+      return res.status(400).json({ error: 'BadRequest', message: 'markdown is required' })
+    }
+    const r = parseRecipe(body.markdown)
+    return {
+      recipe: {
+        title: r.title,
+        emoji: r.emoji,
+        servings: r.servings,
+        tags: r.tags,
+        notes: r.notes,
+        sourceName: r.sourceName,
+        mealType: r.mealType,
+        protein: r.protein,
+        base: r.base,
+        cuisine: r.cuisine,
+        effort: r.effort,
+        cookMethod: r.cookMethod,
+        flavorProfile: r.flavorProfile,
+        dietary: r.dietary,
+        vegetables: r.vegetables,
+      },
+      ingredients: r.ingredients.map((it) => ({
+        name: it.name || it.display,
+        amount: it.amount,
+        unit: it.unit,
+        prepNote: it.prepNote,
+        section: it.section,
+      })),
+      steps: r.steps.map((s) => ({ instruction: s.text, ingredients: s.ingredients })),
+    }
   })
 
   // Mark a recipe cooked — bumps cooked_count + last_cooked_at (powers "recently

@@ -17,7 +17,27 @@ export interface RecipeRow extends QueryResultRow {
   cooked_count: number
 }
 
-export interface CreateRecipeInput {
+// Rich frontmatter-style metadata, editable in-app (mirrors the markdown source
+// columns). Shared by create + update.
+export interface RecipeMetaInput {
+  mealType?: string | null
+  protein?: string | null
+  base?: string | null
+  cuisine?: string | null
+  effort?: string | null
+  cookMethod?: string | null
+  flavorProfile?: string | null
+  dietary?: string[] | null
+  vegetables?: string[] | null
+  collection?: string | null
+}
+
+export interface StepInput {
+  instruction: string
+  ingredients?: string[]
+}
+
+export interface CreateRecipeInput extends RecipeMetaInput {
   title: string
   emoji?: string | null
   description?: string | null
@@ -29,6 +49,33 @@ export interface CreateRecipeInput {
   imageUrl?: string | null
   sourceName?: string | null
   sourceUrl?: string | null
+  notes?: string | null
+  ingredients?: IngredientInput[]
+  steps?: StepInput[]
+}
+
+// In-app edit of an existing recipe. Scalar/metadata fields are partial; passing
+// `ingredients` or `steps` does a full replace and detaches an imported recipe from
+// its markdown source (so a future re-import skips it). `overrides`/userNotes/etc.
+// keep the legacy non-destructive paths working.
+export interface UpdateRecipeInput extends RecipeMetaInput {
+  isFavorite?: boolean
+  title?: string
+  rating?: number
+  userNotes?: string
+  overrides?: RecipeOverrides
+  emoji?: string | null
+  description?: string | null
+  category?: string | null
+  tags?: string[] | null
+  prepTimeMinutes?: number | null
+  cookTimeMinutes?: number | null
+  servings?: number
+  imageUrl?: string | null
+  sourceName?: string | null
+  notes?: string | null
+  ingredients?: IngredientInput[]
+  steps?: StepInput[]
 }
 
 export interface RecipeIngredientRow extends QueryResultRow {

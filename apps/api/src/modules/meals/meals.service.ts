@@ -1,43 +1,248 @@
 // Meals & recipes — data access + business logic (incl. AI "Plan my week").
 // Routes live in meals.routes.ts; shared types in meals.types.ts.
-import type { QueryResultRow } from 'pg'
-import { query } from '../../platform/db'
+import type { PoolClient, QueryResultRow } from 'pg'
+import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { completeJson } from '../../platform/llm'
+import { aisleFor, isStaple } from '../lists/aisles'
 import type {
   RecipeRow,
   CreateRecipeInput,
+  UpdateRecipeInput,
   RecipeIngredientRow,
   IngredientInput,
+  StepInput,
   RecipeOverrides,
   PlanCard,
   PlanWeekInput,
   PlanMonthInput,
 } from './meals.types'
 
+// Build a verbatim "display" line for an ingredient the user entered as structured
+// parts (so recipe detail + grocery still have the original-style string to fall
+// back on, matching what the markdown importer stores).
+function ingredientDisplay(it: IngredientInput): string {
+  if (it.display && it.display.trim()) return it.display.trim()
+  const qty = [it.amount != null ? String(it.amount) : '', it.unit ?? ''].filter(Boolean).join(' ')
+  const namePart = it.prepNote ? `${it.name}, ${it.prepNote}` : it.name
+  return [qty, namePart].filter(Boolean).join(' ').trim()
+}
+
+async function insertIngredients(
+  client: PoolClient,
+  householdId: string,
+  recipeId: string,
+  items: IngredientInput[]
+): Promise<void> {
+  for (const [i, it] of items.entries()) {
+    const name = it.name.trim()
+    const display = ingredientDisplay(it)
+    await client.query(
+      `insert into recipe_ingredients
+         (household_id, recipe_id, name, amount, unit, prep_note, display, section, aisle, is_staple, sort_order)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [
+        householdId,
+        recipeId,
+        name || display,
+        it.amount ?? null,
+        it.unit ?? null,
+        it.prepNote ?? null,
+        display,
+        it.section ?? null,
+        aisleFor(name || display, it.unit),
+        isStaple(name || display),
+        it.sortOrder ?? i,
+      ]
+    )
+  }
+}
+
+async function insertSteps(
+  client: PoolClient,
+  householdId: string,
+  recipeId: string,
+  steps: StepInput[]
+): Promise<void> {
+  let n = 1
+  for (const s of steps) {
+    const text = s.instruction.trim()
+    if (!text) continue
+    await client.query(
+      `insert into recipe_steps (household_id, recipe_id, step_number, instruction, ingredients)
+       values ($1,$2,$3,$4,$5)`,
+      [householdId, recipeId, n++, text, JSON.stringify((s.ingredients ?? []).map((x) => x.trim()).filter(Boolean))]
+    )
+  }
+}
+
+// Create a recipe + its ingredients/steps in one transaction. In-app recipes are
+// `source_type='manual'` (the column default) so the dev/seed importer never touches
+// them.
 export async function createRecipe(tenant: Tenant, input: CreateRecipeInput): Promise<RecipeRow> {
-  const { rows } = await query<RecipeRow>(
-    `insert into recipes
-       (household_id, title, emoji, description, category, tags,
-        prep_time_minutes, cook_time_minutes, servings, image_url, source_name, source_url)
-     values ($1,$2,$3,$4,$5,$6,$7,$8, coalesce($9,4), $10,$11,$12)
-     returning *`,
-    [
-      tenant.householdId,
-      input.title,
-      input.emoji ?? null,
-      input.description ?? null,
-      input.category ?? null,
-      input.tags ?? null,
-      input.prepTimeMinutes ?? null,
-      input.cookTimeMinutes ?? null,
-      input.servings ?? null,
-      input.imageUrl ?? null,
-      input.sourceName ?? null,
-      input.sourceUrl ?? null,
-    ]
-  )
-  return rows[0]
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    const { rows } = await client.query<RecipeRow>(
+      `insert into recipes
+         (household_id, title, emoji, description, category, tags,
+          prep_time_minutes, cook_time_minutes, servings, image_url, source_name, source_url, notes,
+          meal_type, protein, base, cuisine, effort, cook_method, flavor_profile, dietary, vegetables, collection)
+       values ($1,$2,$3,$4,$5,$6,$7,$8, coalesce($9,4), $10,$11,$12,$13,
+               $14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+       returning *`,
+      [
+        tenant.householdId,
+        input.title,
+        input.emoji ?? null,
+        input.description ?? null,
+        input.category ?? null,
+        input.tags ?? null,
+        input.prepTimeMinutes ?? null,
+        input.cookTimeMinutes ?? null,
+        input.servings ?? null,
+        input.imageUrl ?? null,
+        input.sourceName ?? null,
+        input.sourceUrl ?? null,
+        input.notes ?? null,
+        input.mealType ?? null,
+        input.protein ?? null,
+        input.base ?? null,
+        input.cuisine ?? null,
+        input.effort ?? null,
+        input.cookMethod ?? null,
+        input.flavorProfile ?? null,
+        input.dietary ?? null,
+        input.vegetables ?? null,
+        input.collection ?? null,
+      ]
+    )
+    const recipe = rows[0]
+    if (input.ingredients?.length) await insertIngredients(client, tenant.householdId, recipe.id, input.ingredients)
+    if (input.steps?.length) await insertSteps(client, tenant.householdId, recipe.id, input.steps)
+    await client.query('commit')
+    return recipe
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+// camelCase input field → recipes column, for the partial scalar/metadata update.
+const RECIPE_UPDATE_COLUMNS: Array<[keyof UpdateRecipeInput, string]> = [
+  ['emoji', 'emoji'],
+  ['description', 'description'],
+  ['category', 'category'],
+  ['servings', 'servings'],
+  ['imageUrl', 'image_url'],
+  ['sourceName', 'source_name'],
+  ['notes', 'notes'],
+  ['tags', 'tags'],
+  ['rating', 'rating'],
+  ['prepTimeMinutes', 'prep_time_minutes'],
+  ['cookTimeMinutes', 'cook_time_minutes'],
+  ['mealType', 'meal_type'],
+  ['protein', 'protein'],
+  ['base', 'base'],
+  ['cuisine', 'cuisine'],
+  ['effort', 'effort'],
+  ['cookMethod', 'cook_method'],
+  ['flavorProfile', 'flavor_profile'],
+  ['dietary', 'dietary'],
+  ['vegetables', 'vegetables'],
+  ['collection', 'collection'],
+]
+
+// Update a recipe: any subset of scalar/metadata fields, plus an optional full
+// replace of ingredients/steps. A structural edit (ingredients or steps present)
+// detaches an imported recipe from its markdown source (source_type → 'manual') so
+// the dev/seed importer no longer overwrites it. Returns the updated row, or null if
+// no such recipe (or nothing to update).
+export async function updateRecipe(
+  tenant: Tenant,
+  id: string,
+  patch: UpdateRecipeInput
+): Promise<RecipeRow | null> {
+  const cols: string[] = []
+  const vals: unknown[] = []
+  const set = (col: string, val: unknown) => { cols.push(`${col} = $${cols.length + 1}`); vals.push(val) }
+
+  if (typeof patch.isFavorite === 'boolean') set('is_favorite', patch.isFavorite)
+  if (typeof patch.title === 'string' && patch.title.trim()) set('title', patch.title.trim())
+  if (typeof patch.userNotes === 'string') set('user_notes', patch.userNotes.trim() || null)
+  if (patch.overrides && typeof patch.overrides === 'object') set('overrides', JSON.stringify(patch.overrides))
+  for (const [key, col] of RECIPE_UPDATE_COLUMNS) {
+    if (patch[key] !== undefined) set(col, patch[key] ?? null)
+  }
+
+  const replaceIngredients = Array.isArray(patch.ingredients)
+  const replaceSteps = Array.isArray(patch.steps)
+  // A structural edit detaches an imported recipe; harmless on an already-manual one.
+  if (replaceIngredients || replaceSteps) set('source_type', 'manual')
+
+  if (cols.length === 0 && !replaceIngredients && !replaceSteps) return null
+
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    let recipe: RecipeRow | undefined
+    if (cols.length > 0) {
+      const { rows } = await client.query<RecipeRow>(
+        `update recipes set ${cols.join(', ')} where household_id = $${cols.length + 1} and id = $${cols.length + 2} and deleted_at is null returning *`,
+        [...vals, tenant.householdId, id]
+      )
+      recipe = rows[0]
+    } else {
+      const { rows } = await client.query<RecipeRow>(
+        `select * from recipes where household_id = $1 and id = $2 and deleted_at is null`,
+        [tenant.householdId, id]
+      )
+      recipe = rows[0]
+    }
+    if (!recipe) { await client.query('rollback'); return null }
+
+    if (replaceIngredients) {
+      await client.query(`delete from recipe_ingredients where household_id = $1 and recipe_id = $2`, [tenant.householdId, id])
+      await insertIngredients(client, tenant.householdId, id, patch.ingredients!)
+    }
+    if (replaceSteps) {
+      await client.query(`delete from recipe_steps where household_id = $1 and recipe_id = $2`, [tenant.householdId, id])
+      await insertSteps(client, tenant.householdId, id, patch.steps!)
+    }
+    await client.query('commit')
+    return recipe
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+// Soft-delete a recipe and its ingredient/step rows. Returns true if a recipe was
+// deleted. Planned-meal entries that referenced it simply lose the join (reads filter
+// on recipes.deleted_at).
+export async function softDeleteRecipe(tenant: Tenant, id: string): Promise<boolean> {
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    const { rowCount } = await client.query(
+      `update recipes set deleted_at = now() where household_id = $1 and id = $2 and deleted_at is null`,
+      [tenant.householdId, id]
+    )
+    if (!rowCount) { await client.query('rollback'); return false }
+    await client.query(`update recipe_ingredients set deleted_at = now() where household_id = $1 and recipe_id = $2 and deleted_at is null`, [tenant.householdId, id])
+    await client.query(`update recipe_steps set deleted_at = now() where household_id = $1 and recipe_id = $2 and deleted_at is null`, [tenant.householdId, id])
+    await client.query('commit')
+    return true
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+  }
 }
 
 export async function listRecipes(householdId: string): Promise<RecipeRow[]> {
@@ -63,19 +268,23 @@ export async function addIngredients(
 ): Promise<RecipeIngredientRow[]> {
   const out: RecipeIngredientRow[] = []
   for (const [i, it] of items.entries()) {
+    const name = it.name.trim()
+    const display = ingredientDisplay(it)
     const { rows } = await query<RecipeIngredientRow>(
       `insert into recipe_ingredients
-         (household_id, recipe_id, name, amount, unit, prep_note, display, section, sort_order)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,
+         (household_id, recipe_id, name, amount, unit, prep_note, display, section, aisle, is_staple, sort_order)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,
       [
         tenant.householdId,
         recipeId,
-        it.name,
+        name || display,
         it.amount ?? null,
         it.unit ?? null,
         it.prepNote ?? null,
-        it.display ?? null,
+        display,
         it.section ?? null,
+        aisleFor(name || display, it.unit),
+        isStaple(name || display),
         it.sortOrder ?? i,
       ]
     )

@@ -434,3 +434,143 @@ describe('recipe overrides api', () => {
     expect(detail.recipe.protein).toBe('chicken')
   })
 })
+
+describe('recipe create / edit / delete api (6.3-edit)', () => {
+  it('creates a full recipe (metadata + ingredients + steps) in one call', async () => {
+    const add = await call('POST', '/api/recipes', kevin, {
+      title: 'Weeknight Stir Fry',
+      emoji: '🥡',
+      servings: 3,
+      cookTimeMinutes: 20,
+      cuisine: 'Asian',
+      protein: 'chicken',
+      dietary: ['gluten-free'],
+      vegetables: ['broccoli', 'pepper'],
+      ingredients: [
+        { name: 'chicken thighs', amount: 1, unit: 'lb', section: 'Protein' },
+        { name: 'soy sauce', amount: 2, unit: 'tbsp', prepNote: 'low-sodium', section: 'Sauce' },
+      ],
+      steps: [
+        { instruction: 'Sear the chicken.', ingredients: ['1 lb chicken thighs'] },
+        { instruction: 'Add veg and sauce; toss.' },
+      ],
+    })
+    expect(add.statusCode).toBe(201)
+    const id = JSON.parse(add.body).recipe.id
+
+    const detail = JSON.parse((await call('GET', `/api/recipes/${id}`, kevin)).body)
+    expect(detail.recipe).toMatchObject({ title: 'Weeknight Stir Fry', servings: 3, cuisine: 'Asian', protein: 'chicken' })
+    expect(detail.recipe.dietary).toEqual(['gluten-free'])
+    expect(detail.recipe.vegetables).toEqual(['broccoli', 'pepper'])
+    expect(detail.ingredients).toHaveLength(2)
+    const soy = detail.ingredients.find((i: { name: string }) => i.name === 'soy sauce')
+    expect(soy).toMatchObject({ amount: 2, unit: 'tbsp', section: 'Sauce' })
+    expect(soy.aisle).toBeTruthy() // computed from the name
+    expect(detail.steps).toHaveLength(2)
+    expect(detail.steps[0]).toMatchObject({ stepNumber: 1, instruction: 'Sear the chicken.' })
+    expect(detail.steps[0].ingredients).toEqual(['1 lb chicken thighs'])
+  })
+
+  it('400 when a create includes a nameless ingredient', async () => {
+    const r = await call('POST', '/api/recipes', kevin, {
+      title: 'Bad Recipe',
+      ingredients: [{ amount: 1, unit: 'cup' }],
+    })
+    expect(r.statusCode).toBe(400)
+  })
+
+  it('edits scalar + metadata fields via PATCH', async () => {
+    const add = await call('POST', '/api/recipes', kevin, { title: 'Plain Pasta', servings: 2 })
+    const id = JSON.parse(add.body).recipe.id
+
+    const patch = await call('PATCH', `/api/recipes/${id}`, kevin, {
+      title: 'Cacio e Pepe',
+      servings: 4,
+      cuisine: 'Italian',
+      cookTimeMinutes: 15,
+      emoji: '🧀',
+    })
+    expect(patch.statusCode).toBe(200)
+    const detail = JSON.parse((await call('GET', `/api/recipes/${id}`, kevin)).body)
+    expect(detail.recipe).toMatchObject({ title: 'Cacio e Pepe', servings: 4, cuisine: 'Italian', cookTimeMinutes: 15, emoji: '🧀' })
+  })
+
+  it('full-replaces ingredients/steps and detaches an imported recipe (source_type → manual)', async () => {
+    // seed a recipe that looks imported
+    const id = await withClient(async (c) => {
+      const r = await c.query<{ id: string }>(
+        `insert into recipes (household_id, title, source_type) values ($1,'Imported Dish','markdown_import') returning id`,
+        [await householdOf(c)]
+      )
+      await c.query(
+        `insert into recipe_ingredients (household_id, recipe_id, name) select household_id, id, 'old item' from recipes where id=$1`,
+        [r.rows[0].id]
+      )
+      return r.rows[0].id
+    })
+
+    const patch = await call('PATCH', `/api/recipes/${id}`, kevin, {
+      ingredients: [
+        { name: 'new item A', amount: 1, unit: 'cup' },
+        { name: 'new item B' },
+      ],
+      steps: [{ instruction: 'Do the thing.' }],
+    })
+    expect(patch.statusCode).toBe(200)
+
+    const detail = JSON.parse((await call('GET', `/api/recipes/${id}`, kevin)).body)
+    const names = detail.ingredients.map((i: { name: string }) => i.name)
+    expect(names).toEqual(['new item A', 'new item B']) // old ones gone
+    expect(detail.steps).toHaveLength(1)
+
+    const srcType = await withClient((c) =>
+      c.query<{ source_type: string }>(`select source_type from recipes where id=$1`, [id])
+    )
+    expect(srcType.rows[0].source_type).toBe('manual') // detached
+  })
+
+  it('soft-deletes a recipe (204) and drops it from the list; 404 second time', async () => {
+    const add = await call('POST', '/api/recipes', kevin, { title: 'To Be Deleted' })
+    const id = JSON.parse(add.body).recipe.id
+
+    const del = await call('DELETE', `/api/recipes/${id}`, kevin)
+    expect(del.statusCode).toBe(204)
+
+    expect((await call('GET', `/api/recipes/${id}`, kevin)).statusCode).toBe(404)
+    const titles = JSON.parse((await call('GET', '/api/recipes', kevin)).body).recipes.map((r: { title: string }) => r.title)
+    expect(titles).not.toContain('To Be Deleted')
+
+    expect((await call('DELETE', `/api/recipes/${id}`, kevin)).statusCode).toBe(404)
+  })
+
+  it('parses pasted markdown into the structured editor shape (without saving)', async () => {
+    const markdown = [
+      '---', 'type: dinner', 'cuisine: Mexican', 'tags: [quick]', '---', '',
+      '# Quick Tacos', '', '*2 servings*', '', '## Ingredients', '',
+      '### Filling', '- 1 lb ground beef', '- 1 packet taco seasoning', '',
+      '## Instructions', '', '1. Brown the beef.', '2. Add seasoning and serve.', '',
+      '## Notes', 'Source: Tuesday nights',
+    ].join('\n')
+
+    const res = await call('POST', '/api/recipes/parse-markdown', kevin, { markdown })
+    expect(res.statusCode).toBe(200)
+    const parsed = JSON.parse(res.body)
+    expect(parsed.recipe).toMatchObject({ title: 'Quick Tacos', servings: 2, cuisine: 'Mexican', mealType: 'dinner' })
+    expect(parsed.recipe.sourceName).toBe('Tuesday nights')
+    expect(parsed.ingredients).toHaveLength(2)
+    expect(parsed.ingredients[0].name).toBe('ground beef')
+    expect(parsed.steps).toHaveLength(2)
+    expect(parsed.steps[0].instruction).toContain('Brown the beef')
+
+    // 400 on empty markdown
+    expect((await call('POST', '/api/recipes/parse-markdown', kevin, { markdown: '' })).statusCode).toBe(400)
+  })
+})
+
+// Helper: the household id for Kevin's tenant (used to seed an "imported" recipe).
+async function householdOf(c: Client): Promise<string> {
+  const r = await c.query<{ household_id: string }>(
+    `select household_id from persons where name='Kevin' order by created_at limit 1`
+  )
+  return r.rows[0].household_id
+}
