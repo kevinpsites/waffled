@@ -90,21 +90,30 @@ struct PersonView: View {
             VStack(alignment: .leading, spacing: 16) {
                 header
                 statCards
-                if let ov = model.overview {
-                    let cur = ov.currencies.first { $0.key == ov.savingToward?.currency }
-                    SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, symbol: cur?.symbol,
-                                     canPick: !ov.rewardShop.isEmpty,
-                                     onChange: { showSavingPicker = true },
-                                     onRedeem: redeemSaving)
+                if isKiosk {
+                    HStack(alignment: .top, spacing: 16) {
+                        VStack(spacing: 16) { daySection; addButton }
+                            .frame(maxWidth: .infinity, alignment: .top)
+                        VStack(spacing: 16) { sideCards }
+                            .frame(maxWidth: .infinity, alignment: .top)
+                    }
+                } else {
+                    if let ov = model.overview {
+                        let cur = ov.currencies.first { $0.key == ov.savingToward?.currency }
+                        SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, symbol: cur?.symbol,
+                                         canPick: !ov.rewardShop.isEmpty,
+                                         onChange: { showSavingPicker = true },
+                                         onRedeem: redeemSaving)
+                    }
+                    daySection
+                    if let ov = model.overview {
+                        if ov.categoryBalance.contains(where: { $0.goalCount > 0 }) { balanceCard(ov) }
+                        if !ov.goals.isEmpty { goalsCard(ov) }
+                        starsCard(ov)
+                        if !ov.redemptions.isEmpty { redemptionsCard(ov) }
+                    }
+                    addButton
                 }
-                daySection
-                if let ov = model.overview {
-                    if ov.categoryBalance.contains(where: { $0.goalCount > 0 }) { balanceCard(ov) }
-                    if !ov.goals.isEmpty { goalsCard(ov) }
-                    starsCard(ov)
-                    if !ov.redemptions.isEmpty { redemptionsCard(ov) }
-                }
-                addButton
             }
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 110)
         }
@@ -128,6 +137,25 @@ struct PersonView: View {
                        currencies: model.overview?.currencies ?? [],
                        balances: model.overview?.balances ?? [],
                        conversions: model.conversions) { await model.load() }
+        }
+    }
+
+    /// iPad lays the spotlight out two-column (day on the left, rewards/goals/stars on
+    /// the right); iPhone is a single column.
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
+    /// The rewards/goals/stars cards — the right column on iPad.
+    @ViewBuilder private var sideCards: some View {
+        if let ov = model.overview {
+            let cur = ov.currencies.first { $0.key == ov.savingToward?.currency }
+            SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, symbol: cur?.symbol,
+                             canPick: !ov.rewardShop.isEmpty,
+                             onChange: { showSavingPicker = true },
+                             onRedeem: redeemSaving)
+            if ov.categoryBalance.contains(where: { $0.goalCount > 0 }) { balanceCard(ov) }
+            if !ov.goals.isEmpty { goalsCard(ov) }
+            starsCard(ov)
+            if !ov.redemptions.isEmpty { redemptionsCard(ov) }
         }
     }
 

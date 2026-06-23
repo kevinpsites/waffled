@@ -11,6 +11,8 @@ struct KioskFamilyView: View {
     @State private var stars: [NookAPI.FamilyStarsDTO] = []
 
     private let cols = [GridItem(.adaptive(minimum: 300, maximum: 460), spacing: 16, alignment: .top)]
+    /// Verification one-shot (NOOK_OPEN_PERSON).
+    private static var didOpenPerson = false
 
     var body: some View {
         ScrollView {
@@ -28,7 +30,12 @@ struct KioskFamilyView: View {
         }
         .background(NK.canvas)
         .toolbar(.hidden, for: .navigationBar)   // draws its own "Family" header
-        .task { await sync.loadIdentity(); await load() }
+        .task {
+            await sync.loadIdentity(); await load()
+            if DemoHooks.openPerson, !Self.didOpenPerson, let first = sync.members.first {
+                Self.didOpenPerson = true; path.append(.person(first.id))
+            }
+        }
         .refreshable { await load() }
         .onChange(of: sync.choresRev) { _, _ in Task { await load() } }
     }
