@@ -18,6 +18,9 @@ struct KioskDashboard: View {
     @State private var recipeTarget: RecipeTarget?
     @State private var showCapture = false
     @State private var dictateOnOpen = false
+    /// The chosen Today layout (persisted) — see `DashLayout`.
+    @AppStorage("nook.kioskDashLayout") private var layoutRaw = DashLayout.balanced.rawValue
+    private var layout: DashLayout { DashLayout(rawValue: DemoHooks.dashLayout ?? layoutRaw) ?? .balanced }
 
     private var tz: TimeZone { sync.householdTz }
     private var todayKey: String { Agenda.todayKey(tz) }
@@ -27,13 +30,7 @@ struct KioskDashboard: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 22) {
-            agendaColumn.frame(maxWidth: .infinity)
-            VStack(spacing: 22) { tonightCard; weekDinnersCard; Spacer(minLength: 0) }
-                .frame(maxWidth: .infinity)
-            VStack(spacing: 22) { choresCard; groceryCard; Spacer(minLength: 0) }
-                .frame(maxWidth: .infinity)
-        }
+        dashColumns
         .padding(.horizontal, 40)
         .padding(.vertical, 30)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -52,16 +49,51 @@ struct KioskDashboard: View {
         }
     }
 
+    // MARK: columns (preset layouts)
+
+    private var agendaCol: some View { agendaColumn }
+    private var mealsCol: some View { VStack(spacing: 22) { tonightCard; weekDinnersCard; Spacer(minLength: 0) } }
+    private var choreGroceryCol: some View { VStack(spacing: 22) { choresCard; groceryCard; Spacer(minLength: 0) } }
+
+    /// Column specs (relative width weight + content) for the chosen layout — same
+    /// cards, re-weighted so each preset gives its focus more room.
+    private var columnSpecs: [(weight: CGFloat, view: AnyView)] {
+        switch layout {
+        case .balanced:
+            return [(1, AnyView(agendaCol)), (1, AnyView(mealsCol)), (1, AnyView(choreGroceryCol))]
+        case .agenda:
+            return [(1.7, AnyView(agendaCol)), (0.95, AnyView(mealsCol)), (0.95, AnyView(choreGroceryCol))]
+        case .meals:
+            return [(1.5, AnyView(mealsCol)), (1, AnyView(agendaCol)), (1, AnyView(choreGroceryCol))]
+        }
+    }
+
+    private var dashColumns: some View {
+        GeometryReader { geo in
+            let spacing: CGFloat = 22
+            let specs = columnSpecs
+            let avail = max(0, geo.size.width - spacing * CGFloat(specs.count - 1))
+            let sumW = specs.reduce(0) { $0 + $1.weight }
+            HStack(alignment: .top, spacing: spacing) {
+                ForEach(Array(specs.enumerated()), id: \.offset) { _, spec in
+                    spec.view.frame(width: avail * spec.weight / max(0.001, sumW))
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+        }
+    }
+
     // MARK: header (greeting + capture bar, then date · time · weather)
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 16) {
+            HStack(alignment: .center, spacing: 14) {
                 Text(greetingPhrase).font(NK.serif(40)).foregroundStyle(NK.ink)
                 Spacer(minLength: 12)
+                layoutMenu
                 AICaptureBar(onTap: { dictateOnOpen = false; showCapture = true },
                              onMic: { dictateOnOpen = true; showCapture = true })
-                    .frame(maxWidth: 460)
+                    .frame(maxWidth: 400)
             }
             dateLine
         }
@@ -89,6 +121,27 @@ struct KioskDashboard: View {
     }
 
     private var dot: some View { Text("·").font(.system(size: 18, weight: .bold)).foregroundStyle(NK.ink3) }
+
+    /// The Today-layout switcher (Balanced / Agenda / Meals).
+    private var layoutMenu: some View {
+        Menu {
+            ForEach(DashLayout.allCases, id: \.self) { l in
+                Button { layoutRaw = l.rawValue } label: {
+                    Label(l.label, systemImage: layout == l ? "checkmark" : l.icon)
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "rectangle.3.group").font(.system(size: 13, weight: .semibold))
+                Text(layout.label).font(.system(size: 14, weight: .bold))
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold))
+            }
+            .foregroundStyle(NK.ink2)
+            .padding(.horizontal, 13).padding(.vertical, 9)
+            .background(NK.card).clipShape(Capsule())
+            .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+        }
+    }
 
     private var greetingPhrase: String {
         var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
@@ -421,6 +474,26 @@ final class KioskTodayModel {
         grocery[idx].checked = target
         do { try await api.patchListItem(id: id, checked: target) }
         catch { if let i = grocery.firstIndex(where: { $0.id == id }) { grocery[i].checked = !target } }
+    }
+}
+
+/// The iPad Today preset layouts — same cards, re-weighted columns so each gives its
+/// focus more space (the user picks one in the dashboard header switcher).
+enum DashLayout: String, CaseIterable {
+    case balanced, agenda, meals
+    var label: String {
+        switch self {
+        case .balanced: return "Balanced"
+        case .agenda: return "Agenda-focused"
+        case .meals: return "Meals-focused"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .balanced: return "rectangle.split.3x1"
+        case .agenda: return "list.bullet.rectangle"
+        case .meals: return "fork.knife"
+        }
     }
 }
 
