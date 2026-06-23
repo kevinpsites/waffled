@@ -39,7 +39,7 @@ struct WeekPlannerView: View {
             if isKiosk { kioskWeek } else { phoneWeek }
         }
         .background(NK.canvas)
-        .task { await load(); if DemoHooks.planWeek { planningWeek = true } }
+        .task { await load(); autoPlanOnceIfNeeded() }
         .onChange(of: weekOffset) { _, _ in Task { await load() } }
         .onChange(of: sync.mealsRev) { _, _ in Task { await load() } }
         .sheet(item: $picking) { target in
@@ -403,6 +403,15 @@ struct WeekPlannerView: View {
         loading = true
         entries = (try? await api.mealsWeek(start: ymd(weekStart))) ?? []
         loading = false
+    }
+
+    /// Verification-only: open the plan sheet once when NOOK_PLAN_WEEK=1. One-shot so
+    /// it never re-opens on tab re-entry; no-op on a real device (env unset).
+    private static var didAutoPlan = false
+    private func autoPlanOnceIfNeeded() {
+        guard DemoHooks.planWeek, !Self.didAutoPlan else { return }
+        Self.didAutoPlan = true
+        planningWeek = true
     }
 
     // MARK: date helpers

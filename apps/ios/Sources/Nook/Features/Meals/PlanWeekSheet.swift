@@ -70,7 +70,7 @@ struct PlanWeekSheet: View {
     @ViewBuilder private var content: some View {
         if isKiosk {
             HStack(spacing: 0) {
-                configView.frame(width: 400)
+                configView.frame(width: 300)
                 Divider()
                 kioskResultPane.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -329,7 +329,14 @@ struct PlanWeekSheet: View {
                         .padding(.horizontal, 12).padding(.vertical, 9)
                         .background(NK.primary.opacity(0.10)).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
                     }
-                    ForEach(suggestions) { card in suggestionCard(card) }
+                    if isKiosk {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 300, maximum: 460), spacing: 12, alignment: .top)],
+                                  alignment: .leading, spacing: 12) {
+                            ForEach(suggestions) { card in suggestionCard(card) }
+                        }
+                    } else {
+                        ForEach(suggestions) { card in suggestionCard(card) }
+                    }
                     Text("Lock the nights you love, swap or pick the rest.")
                         .font(.system(size: 12)).foregroundStyle(NK.ink3)
                         .frame(maxWidth: .infinity, alignment: .center).padding(.top, 2)
@@ -375,7 +382,7 @@ struct PlanWeekSheet: View {
                     HStack(spacing: 5) {
                         Image(systemName: isLocked ? "lock.fill" : "lock.open")
                             .font(.system(size: 12, weight: .bold))
-                        Text(isLocked ? "Locked" : "Lock").font(.system(size: 12, weight: .bold))
+                        Text(isLocked ? "Locked" : "Lock").font(.system(size: 12, weight: .bold)).lineLimit(1).fixedSize()
                     }
                     .foregroundStyle(isLocked ? .white : NK.ink2)
                     .padding(.horizontal, 12).padding(.vertical, 7)
@@ -430,7 +437,7 @@ struct PlanWeekSheet: View {
         Button(action: tap) {
             HStack(spacing: 5) {
                 Image(systemName: icon).font(.system(size: 12, weight: .bold))
-                Text(label).font(.system(size: 12, weight: .bold))
+                Text(label).font(.system(size: 12, weight: .bold)).lineLimit(1).fixedSize()
             }
             .foregroundStyle(NK.ink2)
             .padding(.horizontal, 12).padding(.vertical, 7)

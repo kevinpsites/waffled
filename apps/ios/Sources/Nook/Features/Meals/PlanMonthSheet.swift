@@ -81,7 +81,7 @@ struct PlanMonthSheet: View {
     @ViewBuilder private var content: some View {
         if isKiosk {
             HStack(spacing: 0) {
-                configView.frame(width: 400)
+                configView.frame(width: 300)
                 Divider()
                 kioskResultPane.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -338,7 +338,14 @@ struct PlanMonthSheet: View {
                     ForEach(weekGroups, id: \.key) { group in
                         weekHeader(group)
                         if !collapsedWeeks.contains(group.key) {
-                            ForEach(group.cards) { card in suggestionCard(card) }
+                            if isKiosk {
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 300, maximum: 460), spacing: 12, alignment: .top)],
+                                          alignment: .leading, spacing: 12) {
+                                    ForEach(group.cards) { card in suggestionCard(card) }
+                                }
+                            } else {
+                                ForEach(group.cards) { card in suggestionCard(card) }
+                            }
                         }
                     }
                     Text("Tap a week to collapse it · lock / swap / pick · drag a night onto another to swap · ✕ to skip.")
