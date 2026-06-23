@@ -3,6 +3,10 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
 import { Client } from 'pg'
 import jwt from 'jsonwebtoken'
+import { stat, rm } from 'node:fs/promises'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { randomBytes } from 'node:crypto'
 import { runMigrations } from '../src/migrate'
 
 const SECRET = 'nook-local-dev-secret-change-me'
@@ -55,6 +59,7 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 
 const kevin = mint('dev|kevin')
 let kevinId = ''
+let mediaDir = ''
 
 beforeAll(async () => {
   pg = await new PostgreSqlContainer('postgres:16').start()
@@ -62,6 +67,10 @@ beforeAll(async () => {
   await runMigrations(url)
   process.env.DATABASE_URL = url
   delete process.env.AUTH0_DOMAIN
+  mediaDir = join(tmpdir(), `nook-meals-it-${randomBytes(8).toString('hex')}`)
+  process.env.MEDIA_DIR = mediaDir
+  delete process.env.STORAGE_DRIVER
+  delete process.env.MEDIA_BASE_URL
   app = (await import('../src/app')).default
   closePool = (await import('../src/platform/db')).closePool
   const h = await call('POST', '/api/households', kevin, {
@@ -75,7 +84,11 @@ beforeAll(async () => {
 afterAll(async () => {
   await closePool?.()
   await pg?.stop()
+  await rm(mediaDir, { recursive: true, force: true })
 })
+
+const PNG_B64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
 
 async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
   const client = new Client({ connectionString: url })
@@ -573,6 +586,48 @@ describe('recipe create / edit / delete api (6.3-edit)', () => {
       title: 'Spaghetti', ingredients: ['noodles', 'pasta sauce'], steps: ['Boil noodles', 'Add sauce'],
     })
     expect(res.statusCode).toBe(501)
+  })
+})
+
+describe('recipe images (blob storage)', () => {
+  async function upload(): Promise<string> {
+    const up = await call('POST', '/api/media', kevin, { data: PNG_B64, contentType: 'image/png' })
+    expect(up.statusCode).toBe(201)
+    return (JSON.parse(up.body) as { key: string }).key
+  }
+
+  it('creates a recipe with storageKey and resolves imageUrl to a /media URL', async () => {
+    const key = await upload()
+    const res = await call('POST', '/api/recipes', kevin, { title: 'Tacos', storageKey: key, contentType: 'image/png' })
+    expect(res.statusCode).toBe(201)
+    const recipe = JSON.parse(res.body).recipe
+    expect(recipe.imageUrl).toBe(`/media/${key}`)
+    // And it survives a GET (presenter path).
+    const got = JSON.parse((await call('GET', `/api/recipes/${recipe.id}`, kevin)).body).recipe
+    expect(got.imageUrl).toBe(`/media/${key}`)
+  })
+
+  it('PATCH replacing the image drops the old blob; soft-delete drops the current one', async () => {
+    const key1 = await upload()
+    const created = JSON.parse((await call('POST', '/api/recipes', kevin, { title: 'Curry', storageKey: key1 })).body).recipe
+    await stat(join(mediaDir, key1))
+
+    const key2 = await upload()
+    const patched = JSON.parse((await call('PATCH', `/api/recipes/${created.id}`, kevin, { storageKey: key2 })).body).recipe
+    expect(patched.imageUrl).toBe(`/media/${key2}`)
+    // Old blob is gone, new blob remains.
+    await expect(stat(join(mediaDir, key1))).rejects.toMatchObject({ code: 'ENOENT' })
+    await stat(join(mediaDir, key2))
+
+    // Soft-delete drops the current blob.
+    expect((await call('DELETE', `/api/recipes/${created.id}`, kevin)).statusCode).toBe(204)
+    await expect(stat(join(mediaDir, key2))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('falls back to the external image_url when there is no storageKey', async () => {
+    const res = await call('POST', '/api/recipes', kevin, { title: 'Soup', imageUrl: 'https://example.com/soup.jpg' })
+    const recipe = JSON.parse(res.body).recipe
+    expect(recipe.imageUrl).toBe('https://example.com/soup.jpg')
   })
 })
 

@@ -5,6 +5,7 @@ import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { completeJson } from '../../platform/llm'
 import { aisleFor, isStaple } from '../lists/aisles'
+import { getBlobStore, mediaUrl } from '../../platform/storage'
 import type {
   RecipeRow,
   CreateRecipeInput,
@@ -86,10 +87,10 @@ export async function createRecipe(tenant: Tenant, input: CreateRecipeInput): Pr
     const { rows } = await client.query<RecipeRow>(
       `insert into recipes
          (household_id, title, emoji, description, category, tags,
-          prep_time_minutes, cook_time_minutes, servings, image_url, source_name, source_url, notes,
+          prep_time_minutes, cook_time_minutes, servings, image_url, storage_key, content_type, source_name, source_url, notes,
           meal_type, protein, base, cuisine, effort, cook_method, flavor_profile, dietary, vegetables, collection)
-       values ($1,$2,$3,$4,$5,$6,$7,$8, coalesce($9,4), $10,$11,$12,$13,
-               $14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+       values ($1,$2,$3,$4,$5,$6,$7,$8, coalesce($9,4), $10,$11,$12,$13,$14,$15,
+               $16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
        returning *`,
       [
         tenant.householdId,
@@ -102,6 +103,8 @@ export async function createRecipe(tenant: Tenant, input: CreateRecipeInput): Pr
         input.cookTimeMinutes ?? null,
         input.servings ?? null,
         input.imageUrl ?? null,
+        input.storageKey ?? null,
+        input.contentType ?? null,
         input.sourceName ?? null,
         input.sourceUrl ?? null,
         input.notes ?? null,
@@ -137,6 +140,8 @@ const RECIPE_UPDATE_COLUMNS: Array<[keyof UpdateRecipeInput, string]> = [
   ['category', 'category'],
   ['servings', 'servings'],
   ['imageUrl', 'image_url'],
+  ['storageKey', 'storage_key'],
+  ['contentType', 'content_type'],
   ['sourceName', 'source_name'],
   ['notes', 'notes'],
   ['tags', 'tags'],
@@ -184,9 +189,21 @@ export async function updateRecipe(
 
   if (cols.length === 0 && !replaceIngredients && !replaceSteps) return null
 
+  // When the image is being changed, remember the OLD stored key so we can drop its
+  // blob after a successful commit (only if it's actually being replaced/removed).
+  const replacingImage = patch.storageKey !== undefined
+  let oldStorageKey: string | null = null
+
   const client = await getPool().connect()
   try {
     await client.query('begin')
+    if (replacingImage) {
+      const { rows } = await client.query<{ storage_key: string | null }>(
+        `select storage_key from recipes where household_id = $1 and id = $2 and deleted_at is null`,
+        [tenant.householdId, id]
+      )
+      oldStorageKey = rows[0]?.storage_key ?? null
+    }
     let recipe: RecipeRow | undefined
     if (cols.length > 0) {
       const { rows } = await client.query<RecipeRow>(
@@ -212,6 +229,15 @@ export async function updateRecipe(
       await insertSteps(client, tenant.householdId, id, patch.steps!)
     }
     await client.query('commit')
+
+    // Best-effort: drop the replaced blob (only when the key actually changed).
+    if (oldStorageKey && oldStorageKey !== ((recipe as { storage_key?: string | null }).storage_key ?? null)) {
+      try {
+        await getBlobStore().delete(oldStorageKey)
+      } catch {
+        // ignore — an orphaned blob is harmless.
+      }
+    }
     return recipe
   } catch (err) {
     await client.query('rollback')
@@ -228,14 +254,23 @@ export async function softDeleteRecipe(tenant: Tenant, id: string): Promise<bool
   const client = await getPool().connect()
   try {
     await client.query('begin')
-    const { rowCount } = await client.query(
-      `update recipes set deleted_at = now() where household_id = $1 and id = $2 and deleted_at is null`,
+    const { rows } = await client.query<{ storage_key: string | null }>(
+      `update recipes set deleted_at = now() where household_id = $1 and id = $2 and deleted_at is null returning storage_key`,
       [tenant.householdId, id]
     )
-    if (!rowCount) { await client.query('rollback'); return false }
+    if (!rows.length) { await client.query('rollback'); return false }
+    const storageKey = rows[0].storage_key
     await client.query(`update recipe_ingredients set deleted_at = now() where household_id = $1 and recipe_id = $2 and deleted_at is null`, [tenant.householdId, id])
     await client.query(`update recipe_steps set deleted_at = now() where household_id = $1 and recipe_id = $2 and deleted_at is null`, [tenant.householdId, id])
     await client.query('commit')
+    // Best-effort: drop the backing blob. Failure must not fail the delete.
+    if (storageKey) {
+      try {
+        await getBlobStore().delete(storageKey)
+      } catch {
+        // ignore — an orphaned blob is harmless.
+      }
+    }
     return true
   } catch (err) {
     await client.query('rollback')
@@ -356,7 +391,8 @@ export function presentRecipe(r: RecipeRow) {
     prepTimeMinutes: r.prep_time_minutes,
     cookTimeMinutes: r.cook_time_minutes,
     servings: r.servings,
-    imageUrl: r.image_url,
+    // A stored blob (storage_key) wins; otherwise fall back to the external link.
+    imageUrl: mediaUrl((src.storage_key as string | null) ?? null) ?? r.image_url,
     sourceName: r.source_name,
     isFavorite: r.is_favorite,
     cookedCount: r.cooked_count,
@@ -568,6 +604,7 @@ interface WeekEntryRow extends QueryResultRow {
   cook_time_minutes: number | null
   servings: number | null
   image_url: string | null
+  storage_key: string | null
   category: string | null
   cook_person_id: string | null
   cook_name: string | null
@@ -582,7 +619,7 @@ export async function weekEntries(householdId: string, start: string, days = 7) 
   const { rows } = await query<WeekEntryRow>(
     `select mpe.id, to_char(mpe.date,'YYYY-MM-DD') as date, mpe.meal_type, mpe.title, mpe.recipe_id,
             r.title as recipe_title, r.emoji as recipe_emoji, r.category,
-            r.prep_time_minutes, r.cook_time_minutes, r.servings, r.image_url,
+            r.prep_time_minutes, r.cook_time_minutes, r.servings, r.image_url, r.storage_key,
             mpe.cook_person_id, p.name as cook_name, p.avatar_emoji as cook_avatar, p.color_hex as cook_color
        from meal_plan_entries mpe
        left join recipes r on r.id = mpe.recipe_id and r.deleted_at is null
@@ -609,7 +646,7 @@ export async function weekEntries(householdId: string, start: string, days = 7) 
           prepTimeMinutes: e.prep_time_minutes,
           cookTimeMinutes: e.cook_time_minutes,
           servings: e.servings,
-          imageUrl: e.image_url,
+          imageUrl: mediaUrl(e.storage_key) ?? e.image_url,
         }
       : null,
   }))

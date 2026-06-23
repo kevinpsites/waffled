@@ -12,6 +12,8 @@ export interface RecipeRow extends QueryResultRow {
   cook_time_minutes: number | null
   servings: number
   image_url: string | null
+  storage_key: string | null
+  content_type: string | null
   source_name: string | null
   is_favorite: boolean
   cooked_count: number
@@ -47,6 +49,8 @@ export interface CreateRecipeInput extends RecipeMetaInput {
   cookTimeMinutes?: number | null
   servings?: number
   imageUrl?: string | null
+  storageKey?: string | null
+  contentType?: string | null
   sourceName?: string | null
   sourceUrl?: string | null
   notes?: string | null
@@ -72,6 +76,8 @@ export interface UpdateRecipeInput extends RecipeMetaInput {
   cookTimeMinutes?: number | null
   servings?: number
   imageUrl?: string | null
+  storageKey?: string | null
+  contentType?: string | null
   sourceName?: string | null
   notes?: string | null
   ingredients?: IngredientInput[]

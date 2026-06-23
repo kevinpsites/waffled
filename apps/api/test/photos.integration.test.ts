@@ -5,6 +5,10 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
 import { Client } from 'pg'
 import jwt from 'jsonwebtoken'
+import { stat, rm } from 'node:fs/promises'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { randomBytes } from 'node:crypto'
 import { runMigrations } from '../src/migrate'
 
 const SECRET = 'nook-local-dev-secret-change-me'
@@ -15,6 +19,7 @@ let url: string
 let app: any
 let closePool: () => Promise<void>
 let kevinId = ''
+let mediaDir = ''
 
 function mint(sub: string): string {
   return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'nook-local', audience: 'nook-api', expiresIn: '1h' })
@@ -50,6 +55,10 @@ beforeAll(async () => {
   await runMigrations(url)
   process.env.DATABASE_URL = url
   delete process.env.AUTH0_DOMAIN
+  mediaDir = join(tmpdir(), `nook-photos-it-${randomBytes(8).toString('hex')}`)
+  process.env.MEDIA_DIR = mediaDir
+  delete process.env.STORAGE_DRIVER
+  delete process.env.MEDIA_BASE_URL
   app = (await import('../src/app')).default
   closePool = (await import('../src/platform/db')).closePool
   const h = await call('POST', '/api/households', kevin, { name: 'Sites', timezone: 'America/Chicago', person: { name: 'Kevin' } })
@@ -59,7 +68,11 @@ beforeAll(async () => {
 afterAll(async () => {
   await closePool?.()
   await pg?.stop()
+  await rm(mediaDir, { recursive: true, force: true })
 })
+
+const PNG_B64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
 
 async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
   const client = new Client({ connectionString: url })
@@ -167,5 +180,29 @@ describe('photos api', () => {
     const photos = JSON.parse((await call('GET', '/api/photos', kevin)).body).photos
     expect(photos.some((p: { id: string }) => p.id === id)).toBe(false)
     expect((await call('DELETE', `/api/photos/${id}`, kevin)).statusCode).toBe(404)
+  })
+
+  it('stores an uploaded image (storageKey) and resolves imageUrl to a /media URL; delete drops the blob', async () => {
+    // Upload a blob via /api/media, then attach it to a photo.
+    const up = await call('POST', '/api/media', kevin, { data: PNG_B64, contentType: 'image/png' })
+    expect(up.statusCode).toBe(201)
+    const { key } = JSON.parse(up.body) as { key: string }
+    // The blob is on disk after upload.
+    await stat(join(mediaDir, key))
+
+    const add = await call('POST', '/api/photos', kevin, {
+      caption: 'Uploaded shot',
+      storageKey: key,
+      contentType: 'image/png',
+    })
+    expect(add.statusCode).toBe(201)
+    const id = JSON.parse(add.body).photo.id
+
+    const got = JSON.parse((await call('GET', `/api/photos/${id}`, kevin)).body).photo
+    expect(got.imageUrl).toBe(`/media/${key}`)
+
+    // Deleting the photo best-effort removes the backing blob.
+    expect((await call('DELETE', `/api/photos/${id}`, kevin)).statusCode).toBe(204)
+    await expect(stat(join(mediaDir, key))).rejects.toMatchObject({ code: 'ENOENT' })
   })
 })

@@ -10,6 +10,7 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow } from 'pg'
 import { query } from '../../platform/db'
 import { requireTenant, type Tenant } from '../households/households'
+import { getBlobStore, mediaUrl } from '../../platform/storage'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -18,6 +19,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 interface PhotoRow extends QueryResultRow {
   id: string
   image_url: string | null
+  storage_key: string | null
+  content_type: string | null
   caption: string
   emoji: string | null
   color_hex: string | null
@@ -35,7 +38,8 @@ interface PhotoRow extends QueryResultRow {
 function mapPhoto(r: PhotoRow) {
   return {
     id: r.id,
-    imageUrl: r.image_url,
+    // A stored blob (storage_key) wins; otherwise fall back to the external link.
+    imageUrl: mediaUrl(r.storage_key) ?? r.image_url,
     caption: r.caption,
     emoji: r.emoji,
     colorHex: r.color_hex,
@@ -56,7 +60,7 @@ function mapPhoto(r: PhotoRow) {
 }
 
 const SELECT_PHOTO = `
-  select ph.id, ph.image_url, ph.caption, ph.emoji, ph.color_hex, ph.memory,
+  select ph.id, ph.image_url, ph.storage_key, ph.content_type, ph.caption, ph.emoji, ph.color_hex, ph.memory,
          ph.taken_at, ph.is_favorite, ph.reactions, ph.uploaded_by, ph.created_at,
          p.name as uploaded_by_name, p.avatar_emoji as uploaded_by_emoji, p.color_hex as uploaded_by_color
     from photos ph
@@ -85,6 +89,8 @@ export async function getPhoto(householdId: string, id: string) {
 export interface CreatePhotoInput {
   caption: string
   imageUrl?: string | null
+  storageKey?: string | null
+  contentType?: string | null
   emoji?: string | null
   colorHex?: string | null
   memory?: string | null
@@ -97,11 +103,13 @@ export interface CreatePhotoInput {
 export async function createPhoto(tenant: Tenant, input: CreatePhotoInput): Promise<{ id: string }> {
   const { rows } = await query<{ id: string }>(
     `insert into photos
-       (household_id, image_url, caption, emoji, color_hex, memory, taken_at, is_favorite, reactions, uploaded_by, created_by)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning id`,
+       (household_id, image_url, storage_key, content_type, caption, emoji, color_hex, memory, taken_at, is_favorite, reactions, uploaded_by, created_by)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning id`,
     [
       tenant.householdId,
       input.imageUrl ?? null,
+      input.storageKey ?? null,
+      input.contentType ?? null,
       input.caption,
       input.emoji ?? null,
       input.colorHex ?? null,
@@ -116,12 +124,19 @@ export async function createPhoto(tenant: Tenant, input: CreatePhotoInput): Prom
   return { id: rows[0].id }
 }
 
-export async function softDeletePhoto(householdId: string, id: string): Promise<boolean> {
-  const { rowCount } = await query(
-    `update photos set deleted_at = now() where household_id=$1 and id=$2 and deleted_at is null`,
+// Soft-deletes and returns the photo's storage_key (if any) so the caller can
+// best-effort drop the backing blob. Returns false when no live photo matched.
+export async function softDeletePhoto(
+  householdId: string,
+  id: string
+): Promise<{ storageKey: string | null } | false> {
+  const { rows } = await query<{ storage_key: string | null }>(
+    `update photos set deleted_at = now()
+       where household_id=$1 and id=$2 and deleted_at is null
+       returning storage_key`,
     [householdId, id]
   )
-  return !!rowCount
+  return rows.length ? { storageKey: rows[0].storage_key } : false
 }
 
 // ---- routes -----------------------------------------------------------------
@@ -148,8 +163,8 @@ export function registerPhotoRoutes(api: Api): void {
     if (!body.caption || !body.caption.trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'caption is required' })
     }
-    if (!body.imageUrl && !body.emoji) {
-      return res.status(400).json({ error: 'BadRequest', message: 'an image url or an emoji is required' })
+    if (!body.imageUrl && !body.storageKey && !body.emoji) {
+      return res.status(400).json({ error: 'BadRequest', message: 'an image url, an uploaded image, or an emoji is required' })
     }
     const photo = await createPhoto(tenant, { ...body, caption: body.caption.trim() } as CreatePhotoInput)
     return res.status(201).json({ photo })
@@ -159,8 +174,16 @@ export function registerPhotoRoutes(api: Api): void {
     const tenant = await requireTenant(req)
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'photo not found' })
-    const ok = await softDeletePhoto(tenant.householdId, id)
-    if (!ok) return res.status(404).json({ error: 'NotFound', message: 'photo not found' })
+    const deleted = await softDeletePhoto(tenant.householdId, id)
+    if (!deleted) return res.status(404).json({ error: 'NotFound', message: 'photo not found' })
+    // Best-effort: drop the backing blob. A storage failure must not fail the delete.
+    if (deleted.storageKey) {
+      try {
+        await getBlobStore().delete(deleted.storageKey)
+      } catch {
+        // ignore — the row is gone; an orphaned blob is harmless.
+      }
+    }
     return res.status(204).send('')
   })
 }

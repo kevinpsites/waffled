@@ -29,6 +29,7 @@ import { registerKioskRoutes } from './modules/kiosk/kiosk'
 import { registerTodayLayoutRoutes } from './modules/layout/today-layout'
 import { registerMobileTodayLayoutRoutes } from './modules/layout/mobile-today-layout'
 import { registerPhotoRoutes } from './modules/photos/photos'
+import { registerMediaRoutes } from './modules/media/media'
 import { registerCaptureRoutes } from './modules/capture/capture'
 import { registerWeatherRoutes } from './integrations/weather'
 import { registerPowerSyncRoutes } from './modules/powersync/powersync'
@@ -190,6 +191,9 @@ registerMobileTodayLayoutRoutes(api)
 
 // Photos / memories (/api/photos…)
 registerPhotoRoutes(api)
+
+// Blob upload sink (/api/media) — base64 JSON → blob store, returns key + url
+registerMediaRoutes(api)
 
 // Capture-bar LLM parsing + provider config (/api/capture…)
 registerCaptureRoutes(api)
