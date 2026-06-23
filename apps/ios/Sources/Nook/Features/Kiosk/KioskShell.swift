@@ -19,6 +19,12 @@ struct KioskShell: View {
     @State private var familyPath: [HubRoute] = []
     @State private var mealsPath: [MealsRoute] = []
 
+    // Global AI capture — reachable from every page via the rail (the iPad twin of the
+    // phone's always-present capture FAB). Today also has its own inline "Add anything"
+    // bar; both open this same sheet.
+    @State private var showCapture = false
+    @State private var dictateOnOpen = false
+
     /// The signed-in person — drives the rail's "who's logged in" avatar.
     private var currentMember: SyncedMember? {
         sync.members.first { $0.id == sync.currentPersonId }
@@ -33,6 +39,9 @@ struct KioskShell: View {
         }
         .background(NK.canvas)
         .task { await sync.loadIdentity() }
+        .sheet(isPresented: $showCapture) {
+            CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
+        }
     }
 
     // MARK: nav rail
@@ -42,6 +51,7 @@ struct KioskShell: View {
             logo.padding(.top, 16).padding(.bottom, 12)
             ForEach(KioskNav.primary) { railItem($0) }
             Spacer(minLength: 8)
+            captureRailButton
             if let m = currentMember { currentUserChip(m) }
             railItem(.settings)
         }
@@ -50,6 +60,25 @@ struct KioskShell: View {
         .frame(width: 120)
         .frame(maxHeight: .infinity)
         .background(NK.panel.ignoresSafeArea())
+    }
+
+    /// The always-present AI capture entry — a coral ✨ pill pinned in the rail so
+    /// "Add anything" is one tap away on every page (Today's inline bar opens the same sheet).
+    private var captureRailButton: some View {
+        Button { dictateOnOpen = false; showCapture = true } label: {
+            VStack(spacing: 5) {
+                Image(systemName: "sparkles").font(.system(size: 20, weight: .bold))
+                Text("Add").font(.system(size: 11, weight: .bold))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 11)
+            .background(NK.primary)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .nkShadow1()
+        }
+        .buttonStyle(.plain)
+        .padding(.bottom, 4)
     }
 
     /// "Who's logged in" — the signed-in person's avatar at the bottom of the rail.

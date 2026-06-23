@@ -20,6 +20,10 @@ struct KioskListsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            KioskPageHeader("Lists", "Groceries, packing, to-dos — whatever the family needs.") {
+                KioskHeaderButton(icon: "plus", label: "New list") { creating = true }
+            }
+            .padding(.horizontal, 24).padding(.top, 20).padding(.bottom, 4)
             selectorBar
             Rectangle().fill(NK.hair).frame(height: 1)
             Group {

@@ -222,8 +222,19 @@ struct RewardsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                if isKiosk { KioskPageHeader("Rewards", "Spend stars on what your family loves.") }
-                if !model.pending.isEmpty { approvalsCard }
+                if isKiosk {
+                    KioskPageHeader("Rewards", "Spend stars on what your family loves.") {
+                        KioskHeaderButton(icon: "plus", label: "New reward") { editor = .new }
+                    }
+                }
+                if !model.pending.isEmpty {
+                    // Cap + center the approval card on iPad so it reads identically to the
+                    // Chores tab's card (same component) instead of stretching full-bleed and
+                    // throwing the Deny/Approve buttons out to the screen edge.
+                    approvalsCard
+                        .frame(maxWidth: isKiosk ? 760 : .infinity)
+                        .frame(maxWidth: .infinity, alignment: isKiosk ? .center : .leading)
+                }
 
                 SectionLabel(text: "Family balances")
                 if model.people.isEmpty && model.loading {
