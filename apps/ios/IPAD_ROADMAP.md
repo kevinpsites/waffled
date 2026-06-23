@@ -82,17 +82,21 @@ web (per the on-device review — see the web `Today` screenshot reference).
 - [x] Tonight's dinner (basic), Chores (aggregate), Goals (featured), Grocery (count).
 - [x] Header: greeting + date + live clock + weather. `KioskCard` surface.
 
-**Web-parity expansion (the on-device asks):**
-- [ ] **Family Chores → per-person rows** (Kevin 0/3 ★1, Kelly 0/1 ★3, Wally 4/7 ★9, …) with
-      progress ring + stars, like the web. Data already there: `DashboardModel.chores`
-      (`[PersonChoresDTO]` has name/done/total/stars/colorHex/avatarEmoji).
-- [ ] **Tonight's dinner → "View recipe" + "Cook Mode" buttons** (when a recipe is attached).
-- [ ] **Grocery → real item list with checkboxes** (not just a count). Needs
-      `DashboardModel` to expose the `[GroceryItemDTO]` it already fetches; tap to toggle.
-- [ ] **"This week's dinners" card** — the planned dinners list (Tue · Wed …). Expose the
-      week entries `DashboardModel.load` already fetches.
+**Web-parity expansion (the on-device asks) — done, verified on iPad sim:**
+- [x] **Family Chores → per-person rows** with progress-ring avatar + name + done/total +
+      stars (Kevin 0/3 ★1, Kelly 0/1 ★3, Wally 4/7 ★9, Lottie 0/2 ★2). Card → Chores page.
+- [x] **Tonight's dinner → "View recipe" + "Cook Mode" buttons** (when a recipe is attached).
+      Cook Mode jumps straight in via the new additive `RecipeDetailView.autoCook` flag.
+- [x] **Grocery → real named list with checkboxes** (via `groceryBoard()`), optimistic
+      check-off (`patchListItem`); card / "+N more" → Lists page.
+- [x] **"This week's dinners" card** — planned-dinner rows (Tue · Wed …); card → Meals page.
+- [x] Backed by `KioskTodayModel`; agenda rows → event detail sheet, "This week" → Calendar.
 - [ ] (Optional) Pull the top banners over too — "Needs your OK" approvals + "to review/link"
       (the iPhone `ApprovalsBanner` / review card already exist).
+
+> **Phase 2 web-parity done.** The iPad Today closely mirrors the web (3 columns: agenda ·
+> tonight + week dinners · per-person chores + grocery list), each widget linked to its page.
+> (Dropped the standalone Goals card to match the web Today; Goals is its own rail page.)
 
 ## Phase 3 — Navigation shell + all pages (PRIORITY)
 
