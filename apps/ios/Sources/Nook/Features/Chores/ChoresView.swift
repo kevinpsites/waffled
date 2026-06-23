@@ -199,7 +199,7 @@ struct ChoresView: View {
 
     private var kioskContent: some View {
         VStack(spacing: 14) {
-            if sync.isParent && !approvals.chores.isEmpty { approvalsCard }
+            if sync.isParent && !approvals.chores.isEmpty { approvalsCard.frame(maxWidth: 760) }
             dateNav.frame(maxWidth: 440)
             if model.loading && model.instances.isEmpty {
                 NookLoading(top: 32); Spacer()
@@ -240,34 +240,39 @@ struct ChoresView: View {
             }
             .padding(.bottom, 10)
             Rectangle().fill(NK.hair).frame(height: 1)
-            VStack(spacing: 0) {
-                if col.isGrabs && !col.items.isEmpty {
-                    Text("Tap to claim it, or drag it into someone’s column.")
-                        .font(.system(size: 11.5, weight: .medium)).foregroundStyle(NK.ink3)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8).padding(.bottom, 2)
-                }
-                ForEach(Array(col.items.enumerated()), id: \.element.id) { i, inst in
-                    draggableRow(choreRow(inst, isGrabs: col.isGrabs), inst: inst)
-                    if i < col.items.count - 1 { Divider().background(NK.hair) }
-                }
-                if col.items.isEmpty {
-                    Text(col.isGrabs ? "Nothing up for grabs." : "Nothing for \(col.name).")
-                        .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 10)
-                }
-                Button { editor = .new(personId: col.isGrabs ? nil : col.id) } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
-                        Text("Add chore").font(.system(size: 13, weight: .semibold))
+            // Capped height + internal scroll, so a long list stays put instead of
+            // pushing the columns below it down the page.
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    if col.isGrabs && !col.items.isEmpty {
+                        Text("Tap to claim it, or drag it into someone’s column.")
+                            .font(.system(size: 11.5, weight: .medium)).foregroundStyle(NK.ink3)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8).padding(.bottom, 2)
                     }
-                    .foregroundStyle(NK.ink3).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
+                    ForEach(Array(col.items.enumerated()), id: \.element.id) { i, inst in
+                        draggableRow(choreRow(inst, isGrabs: col.isGrabs), inst: inst)
+                        if i < col.items.count - 1 { Divider().background(NK.hair) }
+                    }
+                    if col.items.isEmpty {
+                        Text(col.isGrabs ? "Nothing up for grabs." : "Nothing for \(col.name).")
+                            .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 10)
+                    }
+                    Button { editor = .new(personId: col.isGrabs ? nil : col.id) } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
+                            Text("Add chore").font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundStyle(NK.ink3).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+                .padding(.top, 4)
             }
-            .padding(.top, 4)
         }
         .padding(14)
-        .frame(maxWidth: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity)
+        .frame(height: 460)
         .background(NK.card)
         .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
@@ -313,38 +318,62 @@ struct ChoresView: View {
         }
     }
 
+    @ViewBuilder
     private func approvalRow(_ c: NookAPI.ChoreInstanceDTO) -> some View {
         let m = c.personId.flatMap { id in sync.members.first { $0.id == id } }
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Avatar(colorHex: m?.colorHex, emoji: m?.emoji ?? "🙂", size: 36)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(c.personName ?? "Someone") finished")
-                        .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
-                    HStack(spacing: 6) {
-                        Text("\(c.emoji ?? "🧹") \(c.choreTitle)")
-                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
-                        if c.rewardAmount > 0 {
-                            Text("\(c.rewardAmount)\(sync.currencySymbol(c.rewardCurrency))")
-                                .font(.system(size: 12.5, weight: .heavy)).foregroundStyle(NK.gold)
-                                .padding(.horizontal, 7).padding(.vertical, 2)
-                                .background(NK.gold.opacity(0.14)).clipShape(Capsule())
-                        }
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            HStack(spacing: 8) {
+        if isKiosk {
+            // Compact single line on iPad — full-width buttons read as excessive there.
+            HStack(spacing: 12) {
+                Avatar(colorHex: m?.colorHex, emoji: m?.emoji ?? "🙂", size: 34)
+                approvalText(c)
+                Spacer(minLength: 8)
                 Button { decide(c) { await sync.rejectChore(id: c.id) } } label: {
-                    Text("Not yet").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
-                        .frame(maxWidth: .infinity).padding(.vertical, 9)
+                    Text("Not yet").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink2)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
                         .background(NK.panel).clipShape(Capsule())
                 }.buttonStyle(.plain)
                 Button { decide(c) { await sync.approveChore(id: c.id) } } label: {
-                    Text("Approve").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                        .frame(maxWidth: .infinity).padding(.vertical, 9)
+                    Text("Approve").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 18).padding(.vertical, 8)
                         .background(NK.primary).clipShape(Capsule())
                 }.buttonStyle(.plain)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Avatar(colorHex: m?.colorHex, emoji: m?.emoji ?? "🙂", size: 36)
+                    approvalText(c)
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 8) {
+                    Button { decide(c) { await sync.rejectChore(id: c.id) } } label: {
+                        Text("Not yet").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+                            .frame(maxWidth: .infinity).padding(.vertical, 9)
+                            .background(NK.panel).clipShape(Capsule())
+                    }.buttonStyle(.plain)
+                    Button { decide(c) { await sync.approveChore(id: c.id) } } label: {
+                        Text("Approve").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                            .frame(maxWidth: .infinity).padding(.vertical, 9)
+                            .background(NK.primary).clipShape(Capsule())
+                    }.buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func approvalText(_ c: NookAPI.ChoreInstanceDTO) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(c.personName ?? "Someone") finished")
+                .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+            HStack(spacing: 6) {
+                Text("\(c.emoji ?? "🧹") \(c.choreTitle)")
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                if c.rewardAmount > 0 {
+                    Text("\(c.rewardAmount)\(sync.currencySymbol(c.rewardCurrency))")
+                        .font(.system(size: 12.5, weight: .heavy)).foregroundStyle(NK.gold)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(NK.gold.opacity(0.14)).clipShape(Capsule())
+                }
             }
         }
     }
