@@ -226,7 +226,7 @@ struct RewardsView: View {
 
                 SectionLabel(text: "Family balances")
                 if model.people.isEmpty && model.loading {
-                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 40)
+                    NookLoading(top: 40)
                 } else {
                     ForEach(model.people) { p in personRow(p) }
                 }
@@ -235,6 +235,7 @@ struct RewardsView: View {
             }
             .padding(16).padding(.bottom, 110)
         }
+        .scrollBounceBehavior(.always)
         .background(NK.canvas)
         .navigationTitle("Rewards").navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }
@@ -440,11 +441,12 @@ struct RewardShopView: View {
                         }
                     }
                 } else if model.loading {
-                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 60)
+                    NookLoading(top: 60)
                 }
             }
             .padding(16).padding(.bottom, 110)
         }
+        .scrollBounceBehavior(.always)
         .background(NK.canvas)
         .navigationTitle(model.person(personId)?.name ?? "Reward shop")
         .navigationBarTitleDisplayMode(.inline)
@@ -603,9 +605,12 @@ struct RewardEditorSheet: View {
     @State private var title: String
     @State private var cost: Int
     @State private var currencyKey: String
+    @State private var requiresApproval: Bool
     @State private var busy = false
     @State private var confirmArchive = false
     @FocusState private var titleFocused: Bool
+
+    private let api = NookAPI()
 
     init(editing: NookAPI.Reward?, currencies: [NookAPI.Currency], onDone: @escaping () -> Void) {
         self.editing = editing
@@ -616,6 +621,8 @@ struct RewardEditorSheet: View {
         _cost = State(initialValue: editing?.cost ?? 10)
         let def = currencies.first(where: { $0.isDefault }) ?? currencies.first
         _currencyKey = State(initialValue: editing?.currency ?? def?.key ?? "stars")
+        // New rewards inherit the household default below (.task); edits keep their value.
+        _requiresApproval = State(initialValue: editing?.requiresApproval ?? true)
     }
 
     private var selectedCur: NookAPI.Currency? { currencies.first { $0.key == currencyKey } }
@@ -670,6 +677,19 @@ struct RewardEditorSheet: View {
                         }
                     }
 
+                    NookCard(padding: 14) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Needs a parent’s OK").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                                Spacer()
+                                Toggle("", isOn: $requiresApproval).labelsHidden().tint(NK.primary)
+                            }
+                            Text(requiresApproval ? "Redeeming waits for a parent to approve."
+                                                  : "Redeems instantly if they can afford it.")
+                                .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                        }
+                    }
+
                     Button { Task { await save() } } label: {
                         Text(busy ? "Saving…" : (editing == nil ? "Add reward" : "Save"))
                             .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
@@ -701,6 +721,10 @@ struct RewardEditorSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
             .onAppear { if editing == nil { titleFocused = true } }
+            .task {
+                // New rewards default to the household's setting (Settings → Chores & rewards).
+                if editing == nil, let s = try? await api.rewardSettings() { requiresApproval = s.requireApproval }
+            }
         }
     }
 
@@ -711,9 +735,9 @@ struct RewardEditorSheet: View {
         let e = emoji.trimmingCharacters(in: .whitespaces)
         let ok: Bool
         if let editing {
-            ok = await sync.updateReward(id: editing.id, title: t, emoji: e.isEmpty ? nil : e, cost: max(0, cost), currency: currencyKey)
+            ok = await sync.updateReward(id: editing.id, title: t, emoji: e.isEmpty ? nil : e, cost: max(0, cost), currency: currencyKey, requiresApproval: requiresApproval)
         } else {
-            ok = await sync.createReward(title: t, emoji: e.isEmpty ? nil : e, cost: max(0, cost), currency: currencyKey)
+            ok = await sync.createReward(title: t, emoji: e.isEmpty ? nil : e, cost: max(0, cost), currency: currencyKey, requiresApproval: requiresApproval)
         }
         busy = false
         if ok { onDone(); dismiss() }

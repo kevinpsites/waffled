@@ -28,6 +28,7 @@ struct SettingsView: View {
     @Binding var path: [HubRoute]
     @Environment(SyncManager.self) private var sync
     @Environment(Session.self) private var session
+    @Environment(NotificationManager.self) private var notifications
     @State private var confirmSignOut = false
     @State private var busy = false
 
@@ -42,8 +43,8 @@ struct SettingsView: View {
                 row("⭐", "Chores & Rewards", "Currencies & conversions") { path.append(.settingsChoresRewards) }
                 row("🍽️", "Meals", "Calendar & meal times") { path.append(.settingsMeals) }
                 row("📋", "Lists", "Grocery & lists")
-                row("🖥️", "Display & Kiosk", "Theme & screen")
-                row("🔔", "Notifications", "Reminders")
+                row("🖥️", "Display & Kiosk", "Screensaver & idle") { path.append(.settingsDisplay) }
+                row("🔔", "Notifications", "Event reminders") { path.append(.settingsNotifications) }
                 row("ℹ️", "About", "Version & info")
                 signOutFooter
             }
@@ -85,6 +86,7 @@ struct SettingsView: View {
         busy = true
         await session.signOut()    // clear session, → login (Button's Task survives)
         await sync.signOut()       // disconnect sync
+        await notifications.clearOurs()   // drop this household's local reminders
     }
 
     /// A settings row. `tap == nil` ⇒ not built yet (dimmed + a "Soon" pill).
@@ -128,6 +130,8 @@ struct ChoresRewardsSettingsView: View {
     @State private var toKey = ""
     @State private var fromAmt = 10
     @State private var toAmt = 1
+    @State private var requireApproval: Bool?   // nil until loaded
+    @State private var savingApproval = false
 
     private let api = NookAPI()
 
@@ -140,9 +144,15 @@ struct ChoresRewardsSettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                currenciesSection
-                if currencies.count > 1 { conversionsSection }
+            VStack(alignment: .leading, spacing: 16) {
+                // Each group is its own boxed "widget" so it's unmistakable what
+                // belongs together: the economy (currencies + their trades)…
+                groupTray {
+                    currenciesSection
+                    if currencies.count > 1 { conversionsSection }
+                }
+                // …and the separate redemption policy.
+                groupTray { approvalsSection }
             }
             .padding(16).padding(.bottom, 110)
         }
@@ -155,9 +165,21 @@ struct ChoresRewardsSettingsView: View {
         }
     }
 
+    /// A boxed group "widget" — a warm tray that visually binds its contents together
+    /// and sets them apart from the next group.
+    @ViewBuilder
+    private func groupTray<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 18) { content() }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(NK.panel)
+            .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+
     private var currenciesSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(text: "Currencies")
+            SectionLabel(text: "Currencies & trades")
             Text("Rename stars, add your own, or run several. The **default** is what new chores award; **spendable** ones can buy rewards.")
                 .font(.system(size: 13)).foregroundStyle(NK.ink2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -176,6 +198,46 @@ struct ChoresRewardsSettingsView: View {
                 .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
             }
             .buttonStyle(.plain).padding(.top, 2)
+        }
+    }
+
+    /// Default applied to *new* rewards. Each reward also carries its own approval flag
+    /// (edited in the reward sheet), so this is just the starting value. Off → kids redeem
+    /// instantly with currency they've earned (a balance guard still applies server-side).
+    /// Optimistic toggle, reverts on failure.
+    private var approvalsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(text: "Reward approvals")
+            Text("Sets the default for **new** rewards. On = a parent OKs the purchase; off = the kid redeems instantly with what they’ve earned. Even if off, each reward can have an override to explicitly require approval.")
+                .font(.system(size: 13)).foregroundStyle(NK.ink2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 12) {
+                Text("✅").font(.system(size: 20)).frame(width: 40, height: 40)
+                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                Text("New rewards need a parent’s OK by default")
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                Spacer(minLength: 8)
+                Toggle("", isOn: Binding(
+                    get: { requireApproval ?? true },
+                    set: { setApproval($0) }))
+                    .labelsHidden().tint(NK.primary)
+                    .disabled(requireApproval == nil || savingApproval)
+            }
+            .padding(12).background(NK.card)
+            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        }
+    }
+
+    private func setApproval(_ on: Bool) {
+        let previous = requireApproval
+        requireApproval = on
+        savingApproval = true
+        Task {
+            do { try await api.setRewardApproval(on) }
+            catch { requireApproval = previous }   // revert on failure
+            savingApproval = false
         }
     }
 
@@ -211,7 +273,9 @@ struct ChoresRewardsSettingsView: View {
 
     private var conversionsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(text: "Conversions")
+            // A sub-header (not a full SectionLabel) so it reads as part of the
+            // "Currencies & trades" group rather than a peer section.
+            Text("Conversions").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
             Text("Let the family trade up a tier — e.g. 10 ⭐ → 1 🥢. Anyone can convert their own balance on the Rewards tab.")
                 .font(.system(size: 13)).foregroundStyle(NK.ink2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -296,8 +360,10 @@ struct ChoresRewardsSettingsView: View {
     private func load() async {
         async let cur = api.currencies()
         async let conv = api.conversions()
+        async let approval = api.rewardSettings()
         currencies = (try? await cur) ?? []
         conversions = (try? await conv) ?? []
+        requireApproval = (try? await approval)?.requireApproval ?? true
         // seed the new-conversion currency pickers
         if fromKey.isEmpty || !currencies.contains(where: { $0.key == fromKey }) { fromKey = currencies.first?.key ?? "" }
         if toKey.isEmpty || !currencies.contains(where: { $0.key == toKey }) {

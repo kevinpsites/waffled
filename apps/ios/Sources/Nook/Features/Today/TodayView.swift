@@ -15,6 +15,9 @@ struct TodayView: View {
     /// Goal-calendar review queue counts, for the "review events" entry card.
     @State private var reviewRecap: [NookAPI.GoalRecapItem] = []
     @State private var reviewSuggestions: [NookAPI.GoalSuggestionItem] = []
+    /// Pending approvals (reward purchases + chore check-offs), for the parent's
+    /// "Needs your OK" entry card.
+    @State private var approvals = ApprovalsModel()
     /// Household goals (featured-first), for the Today goals card.
     @State private var goals: [NookAPI.Goal] = []
     /// Which goal the card highlights: "mine" (the logged-in member's) or "family"
@@ -60,6 +63,8 @@ struct TodayView: View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    // Parent-only "Needs your OK" banner, pinned above everything.
+                    ApprovalsBanner(model: approvals)
                     // The review banner is pinned (transient alert), not customizable.
                     if !reviewRecap.isEmpty || !reviewSuggestions.isEmpty {
                         Button { path.append(.reviewEvents) } label: { reviewCard }.buttonStyle(.plain)
@@ -111,6 +116,10 @@ struct TodayView: View {
                 reviewRecap = await r ?? []
                 reviewSuggestions = await s ?? []
                 goals = await g ?? []
+            }
+            // Pending approvals refresh on load + whenever a chore/reward action lands.
+            .task(id: "\(sync.choresRev)|\(sync.rewardsRev)") {
+                await approvals.load()
             }
             .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
             .sheet(isPresented: $showCapture) {

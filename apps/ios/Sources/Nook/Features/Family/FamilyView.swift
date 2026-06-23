@@ -8,9 +8,16 @@ struct FamilyView: View {
     @State private var hub = FamilyHubModel()
     @State private var recipes = RecipesModel()   // backs a recipe pushed from the grocery recap
     @Binding var path: [HubRoute]
+    /// Household-wide pending approvals (owned by AppRoot) — drives the per-tile badges
+    /// so the Family-tab count has a visible trail down to Chores/Rewards.
+    var approvals: ApprovalsModel
     @State private var showSync = false
     @State private var ranDemo = false
     private let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+
+    /// Per-tile approval counts (parents only) — chore check-offs vs reward purchases.
+    private var choreApprovals: Int { sync.isParent ? approvals.chores.count : 0 }
+    private var rewardApprovals: Int { sync.isParent ? approvals.redemptions.count : 0 }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -48,9 +55,9 @@ struct FamilyView: View {
 
                 SectionLabel(text: "Everything else").padding(.bottom, 11)
                 LazyVGrid(columns: cols, spacing: 12) {
-                    tile("✅", "Chores", hub.choresSubtitle, FamilyColor.wally.tint, .chores)
+                    tile("✅", "Chores", hub.choresSubtitle, FamilyColor.wally.tint, .chores, badge: choreApprovals)
                     tile("🎯", "Goals", hub.goalsSubtitle, Color(hex: 0xE8F0E4), .goals)
-                    tile("⭐", "Rewards", hub.rewardsSubtitle, Color(hex: 0xFDF0D6), .rewards)
+                    tile("⭐", "Rewards", hub.rewardsSubtitle, Color(hex: 0xFDF0D6), .rewards, badge: rewardApprovals)
                     tile("📋", "Lists", hub.listsSubtitle, FamilyColor.kevin.tint, .lists)
                     tile("📷", "Photos", hub.photosSubtitle, Color(hex: 0xDFF0EF), .photos)
                     tile("⚙️", "Settings", "People, calendars, AI", NK.panel, .settings)
@@ -61,7 +68,7 @@ struct FamilyView: View {
         }
         .background(NK.canvas)
         .toolbar(.hidden, for: .navigationBar)   // the screen draws its own "Family" header
-        .refreshable { await hub.load() }
+        .refreshable { await hub.load(); await approvals.load() }
         .task { await hub.load() }
         .sheet(isPresented: $showSync) { SyncStatusView() }
         .onAppear(perform: runDemoHooksIfSet)
@@ -75,6 +82,7 @@ struct FamilyView: View {
         case "lists": return .lists
         case "photos": return .photos
         case "settings": return .settings
+        case "display": return .settingsDisplay
         default: return nil
         }
     }
@@ -154,7 +162,7 @@ struct FamilyView: View {
         }
     }
 
-    private func tile(_ emoji: String, _ name: String, _ sub: String, _ accent: Color, _ route: HubRoute) -> some View {
+    private func tile(_ emoji: String, _ name: String, _ sub: String, _ accent: Color, _ route: HubRoute, badge: Int = 0) -> some View {
         NavigationLink(value: route) {
             NookCard(padding: 15) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -163,17 +171,35 @@ struct FamilyView: View {
                             .frame(width: 42, height: 42)
                             .background(accent)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(alignment: .topTrailing) {
+                                if badge > 0 { tileBadge(badge).offset(x: 7, y: -7) }
+                            }
                         Spacer()
                         Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(NK.ink3)
                     }
                     Text(name).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink).padding(.top, 11)
-                    Text(sub).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink3).padding(.top, 2)
+                    Text(badge > 0 ? approvalSub(badge) : sub)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(badge > 0 ? NK.gold : NK.ink3).padding(.top, 2)
                 }
             }
         }
         .buttonStyle(.plain)
     }
+
+    /// "N to approve" overrides the tile's usual summary when something's waiting, so
+    /// the trail from the tab badge reads all the way down.
+    private func approvalSub(_ n: Int) -> String { n == 1 ? "1 to approve" : "\(n) to approve" }
+
+    private func tileBadge(_ n: Int) -> some View {
+        Text(n > 9 ? "9+" : "\(n)")
+            .font(.system(size: 11, weight: .heavy)).foregroundStyle(.white)
+            .padding(.horizontal, n > 9 ? 4 : 5).padding(.vertical, 1.5)
+            .background(Capsule().fill(NK.gold))
+            .overlay(Capsule().stroke(NK.card, lineWidth: 1.5))
+            .fixedSize()
+    }
 }
 
-#Preview { FamilyView(path: .constant([])).environment(SyncManager()) }
+#Preview { FamilyView(path: .constant([]), approvals: ApprovalsModel()).environment(SyncManager()) }

@@ -646,6 +646,18 @@ struct NookAPI: Sendable {
     /// Soft-delete a currency (can't be the default or the last one).
     func deleteCurrency(id: String) async throws { try await delete("/api/currencies/\(id)") }
 
+    // MARK: - Settings: reward-approval policy
+
+    struct RewardSettings: Decodable, Sendable { let requireApproval: Bool }
+    /// Household reward-approval gate (on = redemptions wait for a parent).
+    func rewardSettings() async throws -> RewardSettings {
+        try await getJSON("/api/rewards/settings", as: RewardSettings.self)
+    }
+    /// Flip the gate (admin-only server-side).
+    func setRewardApproval(_ requireApproval: Bool) async throws {
+        try await send("PUT", "/api/rewards/settings", body: ["requireApproval": .bool(requireApproval)])
+    }
+
     /// A trade rate between two currencies (e.g. 10 ⭐ → 1 🥢).
     struct Conversion: Decodable, Identifiable, Hashable, Sendable {
         let id: String
@@ -675,6 +687,46 @@ struct NookAPI: Sendable {
                                 body: ["personId": .string(personId), "times": .int(times)], as: ConversionResult.self)
     }
 
+    // MARK: - Settings: family display (kiosk screensaver / idle / night-dim)
+
+    /// Household-wide "family display" settings — what a wall tablet or browser signed
+    /// in as a kiosk does when idle. Mirrors the web `DisplayConfig`. Stored in
+    /// households.settings.display; read is open to any member, write is admin-only.
+    struct DisplayConfig: Codable, Sendable, Equatable, Hashable {
+        var screensaverMinutes: Int
+        var content: String            // "photos" | "clock" | "off"
+        var returnToPicker: Bool
+        var resetHomeMinutes: Int      // 0 = never reset to Today
+        var nightDim: NightDim
+        struct NightDim: Codable, Sendable, Equatable, Hashable {
+            var enabled: Bool
+            var start: String          // "HH:mm"
+            var end: String            // "HH:mm"
+        }
+    }
+
+    func displayConfig() async throws -> DisplayConfig {
+        try await getJSON("/api/kiosk/display", as: DisplayConfig.self)
+    }
+
+    /// Save the family-display settings (admin-only server-side). Returns the
+    /// server-normalized config (clamped minutes, coerced fields).
+    @discardableResult
+    func setDisplayConfig(_ cfg: DisplayConfig) async throws -> DisplayConfig {
+        let body: [String: JSONValue] = [
+            "screensaverMinutes": .int(cfg.screensaverMinutes),
+            "content": .string(cfg.content),
+            "returnToPicker": .bool(cfg.returnToPicker),
+            "resetHomeMinutes": .int(cfg.resetHomeMinutes),
+            "nightDim": .object([
+                "enabled": .bool(cfg.nightDim.enabled),
+                "start": .string(cfg.nightDim.start),
+                "end": .string(cfg.nightDim.end),
+            ]),
+        ]
+        return try await sendReturning("PUT", "/api/kiosk/display", body: body, as: DisplayConfig.self)
+    }
+
     // MARK: - Settings: family & household
 
     /// Household settings + members (with owner/login flags) for the Settings screen.
@@ -693,6 +745,9 @@ struct NookAPI: Sendable {
             let avatarEmoji, colorHex, birthday, dietaryNotes: String?
             let showOnKiosk: Bool
             let hasLogin: Bool
+            let loginEmail: String?
+            let hasPassword: Bool
+            let hasPin: Bool
             let isOwner: Bool
         }
     }
@@ -749,6 +804,55 @@ struct NookAPI: Sendable {
     /// Soft-delete a member (admins; the household owner can't be removed).
     func deletePerson(id: String) async throws { try await delete("/api/persons/\(id)") }
 
+    // MARK: - Member login + kiosk PIN
+
+    /// Give a member an email + password login (admins). Omit the password to invite
+    /// SSO-only. 409 if the email is already in use.
+    func setPersonLogin(id: String, email: String, password: String?) async throws {
+        var body: [String: JSONValue] = ["email": .string(email)]
+        if let password, !password.isEmpty { body["password"] = .string(password) }
+        try await send("PUT", "/api/persons/\(id)/login", body: body)
+    }
+    /// Remove a member's login (admins; not the owner's).
+    func removePersonLogin(id: String) async throws { try await delete("/api/persons/\(id)/login") }
+
+    /// Set/replace a member's kiosk PIN (self or admin). 4–8 digits.
+    func setPersonPin(id: String, pin: String) async throws {
+        try await send("PUT", "/api/persons/\(id)/pin", body: ["pin": .string(pin)])
+    }
+    /// Clear a member's kiosk PIN.
+    func clearPersonPin(id: String) async throws { try await delete("/api/persons/\(id)/pin") }
+
+    // MARK: - Kiosk device pairing
+
+    struct PairingCode: Decodable, Sendable {
+        let code: String
+        let label: String
+        let expiresAt: String
+    }
+    struct KioskDevice: Decodable, Identifiable, Sendable {
+        let id: String
+        let label: String
+        let lastSeenAt: String?
+        let createdAt: String
+    }
+    /// Mint a one-time pairing code for a new kiosk tablet (admins, ~10-min TTL).
+    func createPairingCode(label: String?) async throws -> PairingCode {
+        var body: [String: JSONValue] = [:]
+        if let label, !label.isEmpty { body["label"] = .string(label) }
+        return try await sendReturning("POST", "/api/kiosk/pairing-code", body: body, as: PairingCode.self)
+    }
+    /// The household's paired kiosk devices (admins).
+    func kioskDevices() async throws -> [KioskDevice] {
+        struct Resp: Decodable { let devices: [KioskDevice] }
+        return try await getJSON("/api/kiosk/devices", as: Resp.self).devices
+    }
+    func renameKioskDevice(id: String, label: String) async throws {
+        try await send("PATCH", "/api/kiosk/devices/\(id)", body: ["label": .string(label)])
+    }
+    /// Revoke (unpair) a kiosk device (admins).
+    func revokeKioskDevice(id: String) async throws { try await delete("/api/kiosk/devices/\(id)") }
+
     // MARK: - Rewards
 
     /// One reward in the household catalog — costs `cost` of `currency`.
@@ -759,6 +863,7 @@ struct NookAPI: Sendable {
         let cost: Int
         let currency: String        // currency key (e.g. "stars")
         let sortOrder: Int
+        let requiresApproval: Bool   // per-reward parent-approval gate
     }
 
     /// A reward redemption: request → pending → approved/denied. Carries the
@@ -857,17 +962,17 @@ struct NookAPI: Sendable {
     // MARK: rewards catalog admin
 
     /// Create a reward (admins). Returns the new reward.
-    func createReward(title: String, emoji: String?, cost: Int, currency: String) async throws -> Reward {
+    func createReward(title: String, emoji: String?, cost: Int, currency: String, requiresApproval: Bool) async throws -> Reward {
         struct Resp: Decodable { let reward: Reward }
-        var body: [String: JSONValue] = ["title": .string(title), "cost": .int(cost), "currency": .string(currency)]
+        var body: [String: JSONValue] = ["title": .string(title), "cost": .int(cost), "currency": .string(currency), "requiresApproval": .bool(requiresApproval)]
         body["emoji"] = emoji.map(JSONValue.string) ?? .null
         return try await sendReturning("POST", "/api/rewards", body: body, as: Resp.self).reward
     }
 
-    /// Edit a reward's title/emoji/cost/currency (admins).
-    func updateReward(id: String, title: String, emoji: String?, cost: Int, currency: String) async throws -> Reward {
+    /// Edit a reward's title/emoji/cost/currency/approval (admins).
+    func updateReward(id: String, title: String, emoji: String?, cost: Int, currency: String, requiresApproval: Bool) async throws -> Reward {
         struct Resp: Decodable { let reward: Reward }
-        var body: [String: JSONValue] = ["title": .string(title), "cost": .int(cost), "currency": .string(currency)]
+        var body: [String: JSONValue] = ["title": .string(title), "cost": .int(cost), "currency": .string(currency), "requiresApproval": .bool(requiresApproval)]
         body["emoji"] = emoji.map(JSONValue.string) ?? .null
         return try await sendReturning("PATCH", "/api/rewards/\(id)", body: body, as: Resp.self).reward
     }
@@ -891,6 +996,12 @@ struct NookAPI: Sendable {
     func choreInstances(date: String) async throws -> [ChoreInstanceDTO] {
         struct Resp: Decodable { let instances: [ChoreInstanceDTO] }
         return try await getJSON("/api/chore-instances/today?date=\(date)", as: Resp.self).instances
+    }
+
+    /// All chore completions awaiting a parent's OK, across every date (approvals queue).
+    func awaitingChores() async throws -> [ChoreInstanceDTO] {
+        struct Resp: Decodable { let instances: [ChoreInstanceDTO] }
+        return try await getJSON("/api/chore-instances/awaiting", as: Resp.self).instances
     }
 
     /// Create a chore definition (admins). Body: title, emoji?, personId?,

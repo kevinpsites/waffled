@@ -16,7 +16,10 @@ enum HubRoute: Hashable {
     case settingsCalendars           // Settings → Calendars (Google)
     case settingsAI                  // Settings → AI & capture
     case settingsMeals               // Settings → Meals (calendar)
+    case settingsDisplay             // Settings → Display & Kiosk (family-display screensaver)
+    case settingsNotifications       // Settings → Notifications (local event reminders)
     case reviewEvents                // Today → review calendar events that tie to goals
+    case approvals                   // Today → pending reward purchases + chore check-offs
 }
 
 /// Renders a `HubRoute` destination. Shared by the Family hub and the Today tab so
@@ -49,7 +52,10 @@ struct HubDestination: View {
         case .settingsCalendars: CalendarsSettingsView()
         case .settingsAI: AISettingsView()
         case .settingsMeals: MealsSettingsView()
+        case .settingsDisplay: DisplayKioskSettingsView()
+        case .settingsNotifications: NotificationsSettingsView()
         case .reviewEvents: ReviewEventsView(path: $path)
+        case .approvals: ApprovalsView()
         }
     }
 }

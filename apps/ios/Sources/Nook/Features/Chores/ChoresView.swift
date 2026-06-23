@@ -125,6 +125,7 @@ struct ChoreColumn: Identifiable {
 struct ChoresView: View {
     @Environment(SyncManager.self) private var sync
     @State private var model = ChoresModel(date: ChoreDates.today())
+    @State private var approvals = ApprovalsModel()   // parent "needs your OK" banner
     @State private var claiming: String?   // instance id whose "who did it?" picker is open
     @State private var editor: ChoreEditorTarget?
     @State private var collapsed: Set<String> = []   // column ids the user has folded
@@ -145,16 +146,24 @@ struct ChoresView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                approvalsCard
                 dateNav
-                if model.instances.isEmpty && !model.loading {
-                    Text(model.error ? "Couldn’t load chores." : "Nothing scheduled \(ChoreDates.meta(model.date).isToday ? "today" : "this day").")
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
-                        .padding(.vertical, 24)
+                if model.loading && model.instances.isEmpty {
+                    NookLoading(top: 32)
+                } else if model.instances.isEmpty {
+                    NookEmptyState(
+                        emoji: model.error ? "😕" : "✅",
+                        title: model.error ? "Couldn’t load chores"
+                                           : "Nothing scheduled \(ChoreDates.meta(model.date).isToday ? "today" : "this day")",
+                        message: model.error ? "Pull to refresh to try again." : nil,
+                        top: 32)
                 }
                 ForEach(columns) { col in columnCard(col) }
             }
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 110)
         }
+        // Bounce even when nothing's scheduled, so pull-to-refresh still triggers.
+        .scrollBounceBehavior(.always)
         .background(NK.canvas)
         .navigationTitle("Chores")
         .navigationBarTitleDisplayMode(.inline)
@@ -165,13 +174,86 @@ struct ChoresView: View {
                 }
             }
         }
-        .task(id: sync.choresRev) { await model.load() }
+        .task(id: sync.choresRev) { await model.load(); await approvals.load() }
         .task { await sync.loadCurrencies() }
-        .refreshable { await model.load() }
+        .refreshable { await model.load(); await approvals.load() }
         .sheet(item: $editor) { target in
             ChoreEditSheet(members: sync.members, target: target,
                 onSave: { choreId, body in Task { await model.save(choreId: choreId, body: body) } },
                 onDelete: { choreId in Task { await model.delete(choreId: choreId) } })
+        }
+    }
+
+    // MARK: inline approvals ("Needs your OK")
+
+    /// Chore check-offs waiting on a parent, surfaced inline at the top so you can
+    /// Approve/Reject in place — no extra screen. Mirrors the Rewards tab's card, but
+    /// scoped to chores (reward purchases live on Today/Rewards). Pulls all awaiting
+    /// instances across dates, so it's independent of the day you're viewing.
+    @ViewBuilder
+    private var approvalsCard: some View {
+        if sync.isParent && !approvals.chores.isEmpty {
+            NookCard(padding: 14) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 6) {
+                        Text("Needs your OK").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                        Text("\(approvals.chores.count)").font(.system(size: 12, weight: .heavy)).foregroundStyle(NK.primary)
+                            .padding(.horizontal, 7).padding(.vertical, 2)
+                            .background(NK.primary.opacity(0.12)).clipShape(Capsule())
+                    }
+                    ForEach(Array(approvals.chores.enumerated()), id: \.element.id) { idx, c in
+                        if idx > 0 { Divider().background(NK.hair) }
+                        approvalRow(c)
+                    }
+                }
+            }
+        }
+    }
+
+    private func approvalRow(_ c: NookAPI.ChoreInstanceDTO) -> some View {
+        let m = c.personId.flatMap { id in sync.members.first { $0.id == id } }
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Avatar(colorHex: m?.colorHex, emoji: m?.emoji ?? "🙂", size: 36)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(c.personName ?? "Someone") finished")
+                        .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                    HStack(spacing: 6) {
+                        Text("\(c.emoji ?? "🧹") \(c.choreTitle)")
+                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                        if c.rewardAmount > 0 {
+                            Text("\(c.rewardAmount)\(sync.currencySymbol(c.rewardCurrency))")
+                                .font(.system(size: 12.5, weight: .heavy)).foregroundStyle(NK.gold)
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(NK.gold.opacity(0.14)).clipShape(Capsule())
+                        }
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 8) {
+                Button { decide(c) { await sync.rejectChore(id: c.id) } } label: {
+                    Text("Not yet").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+                        .frame(maxWidth: .infinity).padding(.vertical, 9)
+                        .background(NK.panel).clipShape(Capsule())
+                }.buttonStyle(.plain)
+                Button { decide(c) { await sync.approveChore(id: c.id) } } label: {
+                    Text("Approve").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 9)
+                        .background(NK.primary).clipShape(Capsule())
+                }.buttonStyle(.plain)
+            }
+        }
+    }
+
+    /// Optimistically drop the row, run the decision, then refresh both the queue and
+    /// the columns (approve moves the chore to done, reject sends it back to pending).
+    private func decide(_ c: NookAPI.ChoreInstanceDTO, _ op: @escaping () async -> Bool) {
+        approvals.drop(chore: c.id)
+        Task {
+            let ok = await op()
+            await approvals.load()
+            if ok { await model.load() }
         }
     }
 

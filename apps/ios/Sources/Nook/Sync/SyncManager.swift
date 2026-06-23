@@ -399,6 +399,22 @@ final class SyncManager {
         return ok
     }
 
+    /// Approve a chore completion that was awaiting a parent's OK (awards its stars).
+    @discardableResult
+    func approveChore(id: String) async -> Bool {
+        let ok = await restCommit { try await api.approveChore(id: id) }
+        if ok { choresRev += 1 }
+        return ok
+    }
+
+    /// Reject an awaiting chore completion (sends it back to pending, no stars).
+    @discardableResult
+    func rejectChore(id: String) async -> Bool {
+        let ok = await restCommit { try await api.rejectChore(id: id) }
+        if ok { choresRev += 1 }
+        return ok
+    }
+
     /// Pin (or clear, with `nil`) the reward a person is saving toward. Bumps
     /// `rewardsRev` so the person spotlight and their reward shop reflect it.
     @discardableResult
@@ -410,16 +426,16 @@ final class SyncManager {
 
     /// Create a reward in the catalog (admins); bumps `rewardsRev`.
     @discardableResult
-    func createReward(title: String, emoji: String?, cost: Int, currency: String) async -> Bool {
-        let ok = await restCommit { _ = try await api.createReward(title: title, emoji: emoji, cost: cost, currency: currency) }
+    func createReward(title: String, emoji: String?, cost: Int, currency: String, requiresApproval: Bool) async -> Bool {
+        let ok = await restCommit { _ = try await api.createReward(title: title, emoji: emoji, cost: cost, currency: currency, requiresApproval: requiresApproval) }
         if ok { rewardsRev += 1 }
         return ok
     }
 
     /// Edit a reward (admins); bumps `rewardsRev`.
     @discardableResult
-    func updateReward(id: String, title: String, emoji: String?, cost: Int, currency: String) async -> Bool {
-        let ok = await restCommit { _ = try await api.updateReward(id: id, title: title, emoji: emoji, cost: cost, currency: currency) }
+    func updateReward(id: String, title: String, emoji: String?, cost: Int, currency: String, requiresApproval: Bool) async -> Bool {
+        let ok = await restCommit { _ = try await api.updateReward(id: id, title: title, emoji: emoji, cost: cost, currency: currency, requiresApproval: requiresApproval) }
         if ok { rewardsRev += 1 }
         return ok
     }
@@ -567,6 +583,13 @@ final class SyncManager {
     func member(named name: String?) -> SyncedMember? {
         guard let name else { return nil }
         return members.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    /// Whether the signed-in person is an adult — gates the approval surfaces (badge,
+    /// banners, inline cards). Kids can't act on approvals (server-gated too).
+    var isParent: Bool {
+        guard let id = currentPersonId else { return false }
+        return members.first { $0.id == id }?.memberType == "adult"
     }
 
     // MARK: live state
