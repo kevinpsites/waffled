@@ -16,6 +16,13 @@ struct WeekPlannerView: View {
     @State private var planningWeek = false
     /// The day card currently under a drag (highlighted as the drop target).
     @State private var dropTargetDay: String?
+    /// iPad grid: which "date|mealType" cell is under a drag, and whether all meal
+    /// rows show (vs. dinner only) — mirrors the web "All meals / Dinners" toggle.
+    @State private var dropTargetSlot: String?
+    @State private var showAllMeals = true
+
+    private let mealSlots = ["breakfast", "lunch", "dinner", "snack"]
+    private var visibleSlots: [String] { showAllMeals ? mealSlots : ["dinner"] }
 
     private let api = NookAPI()
 
@@ -65,91 +72,146 @@ struct WeekPlannerView: View {
         .refreshable { await load() }
     }
 
-    // MARK: iPad — 7-day grid
+    // MARK: iPad — meal-type × day grid (web-like)
 
     private var kioskWeek: some View {
-        VStack(spacing: 14) {
-            weekHeader.frame(maxWidth: 480)
-            if hasEmptyNight { planWeekButton.frame(maxWidth: 300) }
-            HStack(alignment: .top, spacing: 10) {
-                ForEach(days, id: \.self) { day in kioskDayColumn(day) }
+        VStack(spacing: 12) {
+            kioskWeekHeader
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    Color.clear.frame(width: rowLabelWidth)
+                    ForEach(days, id: \.self) { day in kioskDayHeader(day).frame(maxWidth: .infinity) }
+                }
+                ForEach(visibleSlots, id: \.self) { slot in
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(slotLabel(slot)).font(.system(size: 13, weight: .heavy))
+                            .foregroundStyle(NK.ink2).frame(width: rowLabelWidth, alignment: .leading)
+                        ForEach(days, id: \.self) { day in kioskSlotCell(day: day, slot: slot) }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    private func kioskDayColumn(_ day: Date) -> some View {
-        let ds = ymd(day)
-        let dayEntries = entries.filter { $0.date == ds }.sorted { slotOrder($0.mealType) < slotOrder($1.mealType) }
-        let isToday = ds == ymd(Date())
-        return VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(weekday(day)).font(.system(size: 12, weight: .heavy)).tracking(0.5)
-                    .foregroundStyle(isToday || dropTargetDay == ds ? NK.primary : NK.ink2)
-                Text(dayNumber(day)).font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
+    private var rowLabelWidth: CGFloat { 76 }
+
+    private var kioskWeekHeader: some View {
+        HStack(spacing: 12) {
+            Picker("", selection: $showAllMeals.animation()) {
+                Text("All meals").tag(true)
+                Text("Dinners").tag(false)
             }
-            Rectangle().fill(NK.hair).frame(height: 1)
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(dayEntries) { e in kioskEntry(e) }
-                    if dayEntries.isEmpty || !dayEntries.contains(where: { $0.mealType == "dinner" }) {
-                        kioskPlanButton(date: ds)
+            .pickerStyle(.segmented).frame(width: 220)
+            if hasEmptyNight {
+                Button { planningWeek = true } label: {
+                    HStack(spacing: 6) {
+                        Text("✨").font(.system(size: 14))
+                        Text("Plan my week").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
                     }
+                    .padding(.horizontal, 14).padding(.vertical, 9)
+                    .background(NK.ai).clipShape(Capsule())
                 }
-                .padding(.top, 2)
+                .buttonStyle(.plain)
             }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(isToday ? NK.primary.opacity(0.05) : NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-            .strokeBorder(dropTargetDay == ds ? NK.primary : NK.hair, lineWidth: dropTargetDay == ds ? 2 : 1))
-        .dropDestination(for: String.self) { items, _ in dropMeal(items, on: ds) } isTargeted: { over in
-            dropTargetDay = over ? ds : (dropTargetDay == ds ? nil : dropTargetDay)
+            Spacer()
+            Button { withAnimation { weekOffset -= 1 } } label: { weekChevron("chevron.left") }
+            VStack(spacing: 1) {
+                Text(weekTitle).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                if weekOffset != 0 {
+                    Button("This week") { withAnimation { weekOffset = 0 } }
+                        .font(.system(size: 11, weight: .semibold)).tint(NK.primary)
+                }
+            }
+            .frame(minWidth: 130)
+            Button { withAnimation { weekOffset += 1 } } label: { weekChevron("chevron.right") }
         }
     }
 
-    /// A compact meal card for a day column: a colored emoji tile + title + slot tag.
-    /// Tap opens the recipe; drag swaps days; long-press → change/remove.
-    private func kioskEntry(_ e: NookAPI.WeekEntryDTO) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(e.recipe?.emoji ?? "🍽️").font(.system(size: 26))
-                .frame(maxWidth: .infinity, minHeight: 54, alignment: .center)
-                .background(RecipeGradient.forCategory(e.recipe?.category ?? e.mealType))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            Text(e.displayTitle).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(2)
-            if e.mealType != "dinner" { metaTag(slotLabel(e.mealType)) }
+    private func weekChevron(_ s: String) -> some View {
+        Image(systemName: s).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+            .frame(width: 34, height: 34).background(NK.card).clipShape(Circle())
+            .overlay(Circle().strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    private func kioskDayHeader(_ day: Date) -> some View {
+        let isToday = ymd(day) == ymd(Date())
+        return VStack(spacing: 1) {
+            Text(weekday(day)).font(.system(size: 12, weight: .heavy)).foregroundStyle(isToday ? NK.primary : NK.ink2)
+            Text(fmt(day, "d")).font(.system(size: 13, weight: .bold))
+                .foregroundStyle(isToday ? .white : NK.ink)
+                .frame(width: 26, height: 26)
+                .background(isToday ? NK.primary : Color.clear).clipShape(Circle())
+        }
+    }
+
+    private func kioskSlotCell(day: Date, slot: String) -> some View {
+        let ds = ymd(day)
+        let cellId = "\(ds)|\(slot)"
+        let entry = entries.first { $0.date == ds && $0.mealType == slot }
+        return Group {
+            if let e = entry { kioskMealCard(e) } else { kioskEmptyCell(date: ds, slot: slot) }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
+            .strokeBorder(dropTargetSlot == cellId ? NK.primary : .clear, lineWidth: 2))
+        .dropDestination(for: String.self) { items, _ in
+            guard let p = items.first else { return false }
+            let parts = p.split(separator: "|")
+            guard parts.count == 2, !(String(parts[0]) == ds && String(parts[1]) == slot) else { return false }
+            Task { await swapSlots(srcDate: String(parts[0]), srcSlot: String(parts[1]), dstDate: ds, dstSlot: slot) }
+            return true
+        } isTargeted: { over in
+            dropTargetSlot = over ? cellId : (dropTargetSlot == cellId ? nil : dropTargetSlot)
+        }
+    }
+
+    private func kioskMealCard(_ e: NookAPI.WeekEntryDTO) -> some View {
+        VStack(spacing: 4) {
+            if let emoji = e.recipe?.emoji { Text(emoji).font(.system(size: 22)) }
+            Text(e.displayTitle).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink)
+                .multilineTextAlignment(.center).lineLimit(3)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(8)
+        .background(NK.ai.opacity(0.09))
+        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(alignment: .topLeading) {
+            Button {
+                Task { _ = await sync.clearMealPlan(date: e.date, mealType: e.mealType); await load() }
+            } label: {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(NK.ink3)
+                    .frame(width: 20, height: 20).background(NK.card).clipShape(Circle())
+            }
+            .buttonStyle(.plain).padding(5)
         }
         .contentShape(Rectangle())
         .onTapGesture { open(e) }
         .draggable("\(e.date)|\(e.mealType)") { entryDragPreview(e) }
-        .contextMenu {
-            Button { picking = PlanTarget(date: e.date, mealType: e.mealType) } label: {
-                Label("Change", systemImage: "arrow.triangle.2.circlepath")
-            }
-            Button(role: .destructive) {
-                Task { _ = await sync.clearMealPlan(date: e.date, mealType: e.mealType); await load() }
-            } label: { Label("Remove", systemImage: "trash") }
-        }
     }
 
-    private func kioskPlanButton(date: String) -> some View {
-        Button { picking = PlanTarget(date: date, mealType: "dinner") } label: {
-            VStack(spacing: 4) {
-                Image(systemName: "plus").font(.system(size: 14, weight: .bold))
-                Text("Plan dinner").font(.system(size: 12, weight: .semibold))
-            }
-            .foregroundStyle(NK.ink3)
-            .frame(maxWidth: .infinity).padding(.vertical, 16)
-            .background(NK.card2)
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-                .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundStyle(NK.hair))
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+    private func kioskEmptyCell(date: String, slot: String) -> some View {
+        Button { picking = PlanTarget(date: date, mealType: slot) } label: {
+            Image(systemName: "plus").font(.system(size: 17)).foregroundStyle(NK.ink3)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(NK.card.opacity(0.35))
+                .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundStyle(NK.hair))
+                .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+
+    /// Swap two slots — works across days *and* meal types (grid drag).
+    private func swapSlots(srcDate: String, srcSlot: String, dstDate: String, dstSlot: String) async {
+        let a = entries.first { $0.date == srcDate && $0.mealType == srcSlot }
+        let b = entries.first { $0.date == dstDate && $0.mealType == dstSlot }
+        await placeMeal(b, on: srcDate, mealType: srcSlot)
+        await placeMeal(a, on: dstDate, mealType: dstSlot)
+        await load()
     }
 
     private var planWeekButton: some View {
