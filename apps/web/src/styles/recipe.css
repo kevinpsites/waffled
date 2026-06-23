@@ -728,6 +728,12 @@
 .re-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .re-card-head .re-section-h { margin-bottom: 0; }
 
+/* quiet AI auto-fill chip */
+.re-ai-chip { font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; padding: 7px 14px;
+  border-radius: 999px; border: 1px solid transparent; color: #6b3fb8;
+  background: linear-gradient(0deg, #efe7ff, #f4efff); box-shadow: var(--sh-1); }
+.re-ai-chip:hover { background: #e9ddff; }
+
 /* ingredient rows */
 .re-ings { display: flex; flex-direction: column; gap: 8px; }
 .re-ing-row { display: grid; grid-template-columns: 60px 80px 1.4fr 1.2fr 110px auto; gap: 8px; align-items: center; }

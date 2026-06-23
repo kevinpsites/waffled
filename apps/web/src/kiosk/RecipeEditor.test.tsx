@@ -5,7 +5,7 @@ import { TopbarSlotProvider } from './topbar-slot'
 
 interface Sent { method: string; url: string; body: unknown }
 
-function mockApi(sent: Sent[], parsed?: unknown) {
+function mockApi(sent: Sent[], parsed?: unknown, suggest?: unknown) {
   globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
     const u = String(url)
     const method = init?.method ?? 'GET'
@@ -13,6 +13,10 @@ function mockApi(sent: Sent[], parsed?: unknown) {
     sent.push({ method, url: u, body })
     if (u.endsWith('/api/recipes/parse-markdown') && method === 'POST') {
       return { ok: true, json: async () => parsed }
+    }
+    if (u.endsWith('/api/recipes/suggest-metadata') && method === 'POST') {
+      if (!suggest) return { ok: false, status: 501, json: async () => ({}) }
+      return { ok: true, json: async () => suggest }
     }
     if (u.endsWith('/api/recipes') && method === 'POST') {
       return { ok: true, json: async () => ({ recipe: { id: 'new-id', title: body.title } }) }
@@ -81,6 +85,33 @@ describe('RecipeEditor — new', () => {
     await waitFor(() => expect(sent.some((s) => s.url.endsWith('/api/recipes') && s.method === 'POST')).toBe(true))
     const b = sent.find((s) => s.url.endsWith('/api/recipes') && s.method === 'POST')!.body as { steps: { ingredients: string[] }[] }
     expect(b.steps[0].ingredients).toEqual(['1 cup water'])
+  })
+
+  it('quiet AI suggestion fills empty fields only and merges arrays', async () => {
+    const sent: Sent[] = []
+    mockApi(sent, undefined, {
+      suggestion: {
+        cuisine: 'Italian', mealType: 'dinner', protein: 'chicken', base: 'pasta',
+        effort: null, cookMethod: 'stovetop', flavorProfile: null,
+        dietary: ['gluten-free'], vegetables: ['spinach'], tags: ['quick'],
+      },
+      via: 'test',
+    })
+    renderNew()
+
+    fireEvent.change(screen.getByPlaceholderText('Recipe title'), { target: { value: 'Spaghetti' } })
+    fireEvent.change(screen.getByPlaceholderText('ingredient'), { target: { value: 'noodles' } })
+    // pre-fill protein so we can prove it is NOT overwritten
+    fireEvent.change(screen.getByPlaceholderText('chicken, beef, tofu…'), { target: { value: 'beef' } })
+
+    // chip appears after the debounced background call
+    const chip = await screen.findByText(/apply/i, {}, { timeout: 4000 })
+    fireEvent.click(chip)
+
+    expect((screen.getByPlaceholderText('Italian, Thai…') as HTMLInputElement).value).toBe('Italian') // empty → filled
+    expect((screen.getByPlaceholderText('chicken, beef, tofu…') as HTMLInputElement).value).toBe('beef') // yours → kept
+    expect(screen.getByText('spinach')).toBeTruthy() // vegetable chip merged in
+    expect(screen.getByText('gluten-free')).toBeTruthy()
   })
 
   it('paste → parse prefills the form', async () => {

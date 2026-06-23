@@ -45,6 +45,20 @@ export interface RecipeWriteInput {
   steps?: StepInput[]
 }
 
+// AI-inferred metadata for the editor's quiet auto-fill (POST /api/recipes/suggest-metadata).
+export interface RecipeMetadataSuggestion {
+  cuisine: string | null
+  mealType: string | null
+  protein: string | null
+  base: string | null
+  effort: string | null
+  cookMethod: string | null
+  flavorProfile: string | null
+  dietary: string[]
+  vegetables: string[]
+  tags: string[]
+}
+
 // The structured result of parsing pasted markdown (POST /api/recipes/parse-markdown).
 export interface ParsedRecipe {
   recipe: {
@@ -262,6 +276,8 @@ export const mealsApi = {
     apiSend<{ recipe: RecipeDetail }>('POST', '/api/recipes', input).then(tap('recipes')).then((r) => r.recipe),
   deleteRecipe: (id: string) => apiDelete(`/api/recipes/${id}`).then(tap('recipes')),
   parseMarkdown: (markdown: string) => apiSend<ParsedRecipe>('POST', '/api/recipes/parse-markdown', { markdown }),
+  suggestMetadata: (input: { title: string; ingredients: string[]; steps: string[] }) =>
+    apiSend<{ suggestion: RecipeMetadataSuggestion | null; via: string; error?: string }>('POST', '/api/recipes/suggest-metadata', input),
 }
 
 export interface MealsState {

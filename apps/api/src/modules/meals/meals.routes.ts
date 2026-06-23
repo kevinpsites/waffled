@@ -15,6 +15,7 @@ import {
   createRecipe,
   updateRecipe,
   softDeleteRecipe,
+  suggestRecipeMetadata,
   listRecipes,
   getRecipe,
   addIngredients,
@@ -146,6 +147,27 @@ export function registerMealRoutes(api: Api): void {
         section: it.section,
       })),
       steps: r.steps.map((s) => ({ instruction: s.text, ingredients: s.ingredients })),
+    }
+  })
+
+  // AI auto-fill: infer recipe metadata (cuisine/base/method/vegetables/…) from the
+  // title + ingredients + steps. 501 when no LLM provider is configured.
+  api.post('/api/recipes/suggest-metadata', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const b = (req.body ?? {}) as { title?: string; ingredients?: unknown; steps?: unknown }
+    if (!b.title || !b.title.trim()) {
+      return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
+    }
+    const ingredients = Array.isArray(b.ingredients) ? b.ingredients.filter((x): x is string => typeof x === 'string' && !!x.trim()) : []
+    const steps = Array.isArray(b.steps) ? b.steps.filter((x): x is string => typeof x === 'string' && !!x.trim()) : []
+    try {
+      return await suggestRecipeMetadata(tenant, { title: b.title.trim(), ingredients, steps })
+    } catch (err) {
+      const message = (err as Error).message
+      if (/no ai provider|not configured|not selected/i.test(message)) {
+        return res.status(501).json({ error: 'AIUnavailable', message })
+      }
+      return res.status(200).json({ suggestion: null, via: 'none', error: message })
     }
   })
 

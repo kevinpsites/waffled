@@ -379,6 +379,121 @@ export function presentRecipe(r: RecipeRow) {
   }
 }
 
+// ── AI metadata auto-fill (6.3-edit) ─────────────────────────────────────────
+// Infer a recipe's taxonomy (cuisine / meal type / protein / base / effort / cook
+// method / flavor) + the vegetables it uses and a few tags from the title +
+// ingredients + steps, so the cook only types the recipe itself. Vegetables are
+// pulled ONLY from the listed ingredients (never invented); scalar fields reuse the
+// household's existing values where they fit so library filters stay consistent.
+
+export interface SuggestMetadataInput {
+  title: string
+  ingredients: string[]
+  steps: string[]
+}
+
+export interface RecipeMetadataSuggestion {
+  cuisine: string | null
+  mealType: string | null
+  protein: string | null
+  base: string | null
+  effort: string | null
+  cookMethod: string | null
+  flavorProfile: string | null
+  dietary: string[]
+  vegetables: string[]
+  tags: string[]
+}
+
+const SUGGEST_META_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    cuisine: { type: ['string', 'null'], description: 'e.g. Italian, Thai, Mexican' },
+    mealType: { type: ['string', 'null'], description: 'dinner | breakfast | lunch | side | dessert | snack' },
+    protein: { type: ['string', 'null'], description: 'main protein, e.g. chicken, beef, tofu, none' },
+    base: { type: ['string', 'null'], description: 'starch/base, e.g. pasta, rice, potato, none' },
+    effort: { type: ['string', 'null'], description: 'weeknight | weekend' },
+    cookMethod: { type: ['string', 'null'], description: 'e.g. stovetop, oven, sheet-pan, grill, slow-cooker' },
+    flavorProfile: { type: ['string', 'null'], description: 'e.g. savory, spicy, fresh, comforting' },
+    dietary: { type: 'array', items: { type: 'string' }, description: 'e.g. vegetarian, vegan, gluten-free — only if clearly true' },
+    vegetables: { type: 'array', items: { type: 'string' }, description: 'vegetables that appear in the ingredient list ONLY — do not invent' },
+    tags: { type: 'array', items: { type: 'string' }, description: 'up to 3 short free-form tags (e.g. quick, one-pot, kid-friendly)' },
+  },
+  required: ['cuisine', 'mealType', 'protein', 'base', 'effort', 'cookMethod', 'flavorProfile', 'dietary', 'vegetables', 'tags'],
+}
+
+async function distinctMeta(householdId: string): Promise<Record<string, string[]>> {
+  const cols = ['cuisine', 'protein', 'base', 'meal_type', 'effort', 'cook_method'] as const
+  const out: Record<string, string[]> = {}
+  for (const c of cols) {
+    const { rows } = await query<{ v: string }>(
+      `select distinct ${c} as v from recipes where household_id = $1 and deleted_at is null and ${c} is not null and ${c} <> '' order by v limit 40`,
+      [householdId]
+    )
+    out[c] = rows.map((r) => r.v)
+  }
+  return out
+}
+
+export async function suggestRecipeMetadata(
+  tenant: Tenant,
+  input: SuggestMetadataInput
+): Promise<{ suggestion: RecipeMetadataSuggestion; via: string }> {
+  const existing = await distinctMeta(tenant.householdId)
+  const system = [
+    'You label a cooking recipe with structured metadata for a family recipe app.',
+    'Infer each field from the title, ingredients, and steps. Use null for a field you cannot confidently infer; never guess wildly.',
+    'VEGETABLES: list only vegetables that actually appear in the ingredient list — do NOT invent any.',
+    'Keep values short and canonical (a word or two). PREFER reusing one of the existing values listed below when it fits, so filters stay consistent.',
+    'Only mark a dietary tag (vegetarian/vegan/gluten-free/…) when the ingredients clearly support it. Return JSON only.',
+  ].join('\n')
+  const user = JSON.stringify({
+    title: input.title,
+    ingredients: input.ingredients.slice(0, 40),
+    steps: input.steps.slice(0, 25),
+    existingValues: {
+      cuisine: existing.cuisine,
+      protein: existing.protein,
+      base: existing.base,
+      mealType: existing.meal_type,
+      effort: existing.effort,
+      cookMethod: existing.cook_method,
+    },
+  })
+
+  const { data, via } = await completeJson(tenant.householdId, {
+    system,
+    user,
+    schema: SUGGEST_META_SCHEMA,
+    schemaName: 'recipe_metadata',
+    maxTokens: 500,
+    timeoutMs: 60_000,
+  })
+
+  const d = (data ?? {}) as Record<string, unknown>
+  const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() && v.trim().toLowerCase() !== 'none' ? v.trim() : null)
+  const arr = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && !!x.trim()).map((x) => x.trim()) : [])
+  // Vegetables must be grounded in the listed ingredients (defense-in-depth on the prompt).
+  const ingHay = input.ingredients.join(' ').toLowerCase()
+  const vegetables = arr(d.vegetables).filter((v) => ingHay.includes(v.toLowerCase()))
+  return {
+    suggestion: {
+      cuisine: str(d.cuisine),
+      mealType: str(d.mealType),
+      protein: str(d.protein),
+      base: str(d.base),
+      effort: str(d.effort),
+      cookMethod: str(d.cookMethod),
+      flavorProfile: str(d.flavorProfile),
+      dietary: arr(d.dietary),
+      vegetables,
+      tags: arr(d.tags).slice(0, 3),
+    },
+    via,
+  }
+}
+
 export const MEAL_TYPES = new Set(['breakfast', 'lunch', 'dinner', 'snack'])
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 

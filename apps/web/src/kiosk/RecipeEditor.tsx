@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
 import { ChipEditor } from './components/ChipEditor'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { RECIPE_TEMPLATE, RECIPE_EXAMPLE } from './components/recipe-template'
-import { mealsApi, useRecipe, type IngredientInput, type RecipeWriteInput, type StepInput } from '../lib/api'
+import { mealsApi, useRecipe, type IngredientInput, type RecipeMetadataSuggestion, type RecipeWriteInput, type StepInput } from '../lib/api'
 import '../styles/recipe.css'
 
 // The one unified recipe editor — authoring a brand-new recipe and fully editing an
@@ -115,6 +115,12 @@ export function RecipeEditor() {
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [prefilled, setPrefilled] = useState(false)
+
+  // Quiet AI auto-fill: compute a metadata suggestion in the background as the recipe
+  // takes shape; surface an "apply" chip; never overwrite what the user typed.
+  const [suggestion, setSuggestion] = useState<RecipeMetadataSuggestion | null>(null)
+  const aiOffRef = useRef(false) // stop probing once the server says no provider
+  const lastSigRef = useRef('')
 
   useTopbarFull(
     () => (
@@ -258,6 +264,50 @@ export function RecipeEditor() {
 
   const namedIngs = ings.filter((g) => g.name.trim())
 
+  // ── quiet AI auto-fill ──
+  const META_AI_KEYS = ['cuisine', 'protein', 'mealType', 'base', 'effort', 'cookMethod', 'flavorProfile'] as const
+  const ingNames = ings.map((g) => g.name.trim()).filter(Boolean)
+  const stepTexts = stps.map((s) => s.instruction.trim()).filter(Boolean)
+  const aiSig = JSON.stringify([title.trim(), ingNames, stepTexts])
+
+  useEffect(() => {
+    if (aiOffRef.current || title.trim().length < 3 || ingNames.length < 1 || aiSig === lastSigRef.current) return
+    const handle = setTimeout(async () => {
+      lastSigRef.current = aiSig
+      try {
+        const r = await mealsApi.suggestMetadata({ title: title.trim(), ingredients: ingNames, steps: stepTexts })
+        if (r.suggestion) setSuggestion(r.suggestion)
+      } catch {
+        aiOffRef.current = true // no provider / error → stop probing this session
+        setSuggestion(null)
+      }
+    }, 1200)
+    return () => clearTimeout(handle)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiSig])
+
+  const newItems = (cur: string[], sug: string[]) => sug.filter((x) => !cur.some((c) => c.toLowerCase() === x.toLowerCase()))
+  let aiPending = 0
+  if (suggestion) {
+    for (const k of META_AI_KEYS) if (!meta[k]?.trim() && suggestion[k]) aiPending++
+    aiPending += newItems(dietary, suggestion.dietary).length
+    aiPending += newItems(vegetables, suggestion.vegetables).length
+    aiPending += newItems(tags, suggestion.tags).length
+  }
+
+  function applySuggestions() {
+    if (!suggestion) return
+    setMeta((m) => {
+      const next = { ...m }
+      for (const k of META_AI_KEYS) if (!next[k]?.trim() && suggestion[k]) next[k] = suggestion[k] as string
+      return next
+    })
+    setDietary((d) => [...d, ...newItems(d, suggestion.dietary)])
+    setVegetables((v) => [...v, ...newItems(v, suggestion.vegetables)])
+    setTags((t) => [...t, ...newItems(t, suggestion.tags)])
+    setSuggestion(null)
+  }
+
   if (isEdit && loading && !prefilled) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
 
   return (
@@ -310,7 +360,14 @@ export function RecipeEditor() {
 
       {/* metadata */}
       <div className="card re-card">
-        <div className="card-h re-section-h">Details</div>
+        <div className="re-card-head">
+          <div className="card-h re-section-h">Details</div>
+          {suggestion && aiPending > 0 && (
+            <button type="button" className="re-ai-chip" onClick={applySuggestions}>
+              ✨ {aiPending} suggestion{aiPending === 1 ? '' : 's'} — apply
+            </button>
+          )}
+        </div>
         <div className="re-meta-grid">
           {META_FIELDS.map((f) => (
             <label key={f.key} className="re-f">

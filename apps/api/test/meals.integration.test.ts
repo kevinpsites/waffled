@@ -565,6 +565,15 @@ describe('recipe create / edit / delete api (6.3-edit)', () => {
     // 400 on empty markdown
     expect((await call('POST', '/api/recipes/parse-markdown', kevin, { markdown: '' })).statusCode).toBe(400)
   })
+
+  it('suggest-metadata requires a title (400) and 501s with no AI provider configured', async () => {
+    expect((await call('POST', '/api/recipes/suggest-metadata', kevin, { ingredients: ['pasta'] })).statusCode).toBe(400)
+    // The test container has no LLM provider selected → heuristic → 501.
+    const res = await call('POST', '/api/recipes/suggest-metadata', kevin, {
+      title: 'Spaghetti', ingredients: ['noodles', 'pasta sauce'], steps: ['Boil noodles', 'Add sauce'],
+    })
+    expect(res.statusCode).toBe(501)
+  })
 })
 
 // Helper: the household id for Kevin's tenant (used to seed an "imported" recipe).
