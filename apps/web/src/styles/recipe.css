@@ -728,11 +728,40 @@
 .re-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .re-card-head .re-section-h { margin-bottom: 0; }
 
-/* quiet AI auto-fill chip */
+/* AI auto-fill — header actions */
+.re-ai-actions { display: flex; align-items: center; gap: 8px; }
+.re-ai-tag { font-size: 12.5px; font-weight: 800; color: #6b3fb8; }
 .re-ai-chip { font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; padding: 7px 14px;
   border-radius: 999px; border: 1px solid transparent; color: #6b3fb8;
   background: linear-gradient(0deg, #efe7ff, #f4efff); box-shadow: var(--sh-1); }
 .re-ai-chip:hover { background: #e9ddff; }
+.re-ai-dismiss { font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; padding: 7px 10px;
+  border: 0; background: none; color: var(--ink-3); border-radius: 999px; }
+.re-ai-dismiss:hover { color: var(--ink); background: var(--panel); }
+
+/* AI suggestion — scalar field (suggested value shown as ghost + keep/dismiss) */
+.re-f-sug > span { color: #6b3fb8; }
+.re-sug-field { display: flex; align-items: center; gap: 6px; }
+.re-sug-field input { flex: 1; font: inherit; font-size: 15px; padding: 10px 12px; border-radius: var(--r-md);
+  border: 1px solid #cdb6f0; background: #faf7ff; color: var(--ink); }
+.re-sug-field input::placeholder { color: #8b6fc4; font-weight: 700; }
+.re-sug-field input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(236,96,73,.12); }
+.re-sug-ok, .re-sug-no { flex: none; width: 30px; height: 34px; border-radius: 9px; cursor: pointer; font-size: 15px; font-weight: 800; }
+.re-sug-ok { border: 1px solid #cdb6f0; background: #efe7ff; color: #5a2ea6; }
+.re-sug-ok:hover { background: #e3d4ff; }
+.re-sug-no { border: 1px solid var(--hair); background: var(--card); color: var(--ink-3); }
+.re-sug-no:hover { color: var(--ink); }
+
+/* AI suggestion — array ghost chips (dietary / vegetables / tags) */
+.re-sug-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.re-sug-chip { display: inline-flex; align-items: center; border-radius: 999px; border: 1px dashed #cdb6f0; background: #faf7ff; }
+.re-sug-chip-add { font: inherit; font-size: 12.5px; font-weight: 700; color: #6b3fb8; cursor: pointer;
+  border: 0; background: none; padding: 5px 4px 5px 11px; }
+.re-sug-chip-x { border: 0; background: none; color: #a98fd6; cursor: pointer; font-size: 13px; padding: 5px 9px 5px 4px; }
+.re-sug-chip-x:hover { color: #5a2ea6; }
+
+/* bottom "add row" button (keyboard flow: tab past the rows to add another) */
+.re-add-row { margin-top: 12px; cursor: pointer; }
 
 /* ingredient rows */
 .re-ings { display: flex; flex-direction: column; gap: 8px; }

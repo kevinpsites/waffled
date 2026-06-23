@@ -104,14 +104,35 @@ describe('RecipeEditor — new', () => {
     // pre-fill protein so we can prove it is NOT overwritten
     fireEvent.change(screen.getByPlaceholderText('chicken, beef, tofu…'), { target: { value: 'beef' } })
 
-    // chip appears after the debounced background call
-    const chip = await screen.findByText(/apply/i, {}, { timeout: 4000 })
-    fireEvent.click(chip)
+    // suggestions surface after the debounced background call; Keep all applies them
+    const keepAll = await screen.findByText('Keep all', {}, { timeout: 4000 })
+    fireEvent.click(keepAll)
 
     expect((screen.getByPlaceholderText('Italian, Thai…') as HTMLInputElement).value).toBe('Italian') // empty → filled
     expect((screen.getByPlaceholderText('chicken, beef, tofu…') as HTMLInputElement).value).toBe('beef') // yours → kept
     expect(screen.getByText('spinach')).toBeTruthy() // vegetable chip merged in
     expect(screen.getByText('gluten-free')).toBeTruthy()
+  })
+
+  it('accepts a single inline suggestion via ✓ without applying the others', async () => {
+    const sent: Sent[] = []
+    mockApi(sent, undefined, {
+      suggestion: {
+        cuisine: 'Italian', mealType: null, protein: null, base: 'pasta',
+        effort: null, cookMethod: null, flavorProfile: null,
+        dietary: [], vegetables: [], tags: [],
+      },
+      via: 'test',
+    })
+    renderNew()
+    fireEvent.change(screen.getByPlaceholderText('Recipe title'), { target: { value: 'Spaghetti' } })
+    fireEvent.change(screen.getByPlaceholderText('ingredient'), { target: { value: 'noodles' } })
+
+    await screen.findByLabelText('Use Italian', {}, { timeout: 4000 })
+    fireEvent.click(screen.getByLabelText('Use Italian'))
+
+    expect(screen.getByDisplayValue('Italian')).toBeTruthy() // cuisine accepted
+    expect(screen.getByPlaceholderText('✨ pasta')).toBeTruthy() // base suggestion still pending
   })
 
   it('paste → parse prefills the form', async () => {

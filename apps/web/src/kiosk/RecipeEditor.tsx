@@ -117,10 +117,18 @@ export function RecipeEditor() {
   const [prefilled, setPrefilled] = useState(false)
 
   // Quiet AI auto-fill: compute a metadata suggestion in the background as the recipe
-  // takes shape; surface an "apply" chip; never overwrite what the user typed.
+  // takes shape; show each one inline (per field) to keep or dismiss; never overwrite
+  // what the user typed.
   const [suggestion, setSuggestion] = useState<RecipeMetadataSuggestion | null>(null)
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set()) // individually-dismissed suggestion keys
   const aiOffRef = useRef(false) // stop probing once the server says no provider
   const lastSigRef = useRef('')
+
+  // Keyboard flow: focus the newly-added ingredient/step row so the cursor stays put.
+  const ingListRef = useRef<HTMLDivElement>(null)
+  const stepListRef = useRef<HTMLDivElement>(null)
+  const focusIngRef = useRef(false)
+  const focusStepRef = useRef(false)
 
   useTopbarFull(
     () => (
@@ -276,7 +284,7 @@ export function RecipeEditor() {
       lastSigRef.current = aiSig
       try {
         const r = await mealsApi.suggestMetadata({ title: title.trim(), ingredients: ingNames, steps: stepTexts })
-        if (r.suggestion) setSuggestion(r.suggestion)
+        if (r.suggestion) { setSuggestion(r.suggestion); setDismissed(new Set()) }
       } catch {
         aiOffRef.current = true // no provider / error → stop probing this session
         setSuggestion(null)
@@ -286,27 +294,56 @@ export function RecipeEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiSig])
 
-  const newItems = (cur: string[], sug: string[]) => sug.filter((x) => !cur.some((c) => c.toLowerCase() === x.toLowerCase()))
-  let aiPending = 0
-  if (suggestion) {
-    for (const k of META_AI_KEYS) if (!meta[k]?.trim() && suggestion[k]) aiPending++
-    aiPending += newItems(dietary, suggestion.dietary).length
-    aiPending += newItems(vegetables, suggestion.vegetables).length
-    aiPending += newItems(tags, suggestion.tags).length
+  // A scalar suggestion shows only when the field is empty and not dismissed.
+  const sugScalar = (key: string): string | null => {
+    if (!suggestion || dismissed.has(key) || meta[key]?.trim()) return null
+    const v = (suggestion as unknown as Record<string, unknown>)[key]
+    return typeof v === 'string' && v.trim() ? v : null
   }
+  // Array suggestions: items not already present and not dismissed.
+  const sugItems = (prefix: string, cur: string[], sug: string[]): string[] =>
+    sug.filter((x) => !cur.some((c) => c.toLowerCase() === x.toLowerCase()) && !dismissed.has(`${prefix}:${x.toLowerCase()}`))
 
-  function applySuggestions() {
+  const sugDietary = suggestion ? sugItems('dietary', dietary, suggestion.dietary) : []
+  const sugVeg = suggestion ? sugItems('veg', vegetables, suggestion.vegetables) : []
+  const sugTags = suggestion ? sugItems('tag', tags, suggestion.tags) : []
+  const aiPending =
+    (suggestion ? META_AI_KEYS.filter((k) => sugScalar(k)).length : 0) + sugDietary.length + sugVeg.length + sugTags.length
+
+  const dismiss = (key: string) => setDismissed((d) => new Set(d).add(key))
+  const acceptScalar = (key: string, val: string) => setMeta((m) => ({ ...m, [key]: val }))
+  const acceptItem = (set: typeof setDietary, cur: string[], val: string) => set([...cur, val])
+
+  function keepAll() {
     if (!suggestion) return
     setMeta((m) => {
       const next = { ...m }
-      for (const k of META_AI_KEYS) if (!next[k]?.trim() && suggestion[k]) next[k] = suggestion[k] as string
+      for (const k of META_AI_KEYS) { const v = sugScalar(k); if (v) next[k] = v }
       return next
     })
-    setDietary((d) => [...d, ...newItems(d, suggestion.dietary)])
-    setVegetables((v) => [...v, ...newItems(v, suggestion.vegetables)])
-    setTags((t) => [...t, ...newItems(t, suggestion.tags)])
+    if (sugDietary.length) setDietary((d) => [...d, ...sugDietary])
+    if (sugVeg.length) setVegetables((v) => [...v, ...sugVeg])
+    if (sugTags.length) setTags((t) => [...t, ...sugTags])
     setSuggestion(null)
   }
+  const dismissAll = () => { setSuggestion(null); setDismissed(new Set()) }
+
+  function addIngredient() { setIngs((rs) => [...rs, blankIng()]); focusIngRef.current = true }
+  function addStep() { setStps((rs) => [...rs, blankStep()]); focusStepRef.current = true }
+
+  // After adding a row, drop the cursor into it so entry stays on the keyboard.
+  useEffect(() => {
+    if (!focusIngRef.current) return
+    focusIngRef.current = false
+    const rows = ingListRef.current?.querySelectorAll('.re-ing-row')
+    ;(rows?.[rows.length - 1]?.querySelector('input') as HTMLInputElement | undefined)?.focus()
+  }, [ings.length])
+  useEffect(() => {
+    if (!focusStepRef.current) return
+    focusStepRef.current = false
+    const rows = stepListRef.current?.querySelectorAll('.re-step-row')
+    ;(rows?.[rows.length - 1]?.querySelector('textarea') as HTMLTextAreaElement | undefined)?.focus()
+  }, [stps.length])
 
   if (isEdit && loading && !prefilled) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
 
@@ -320,9 +357,9 @@ export function RecipeEditor() {
       )}
 
       {pasteOpen && (
-        <div className="card re-paste">
+        <div className="card re-card re-paste">
           <div className="re-paste-head">
-            <div className="card-h">Paste a recipe in Markdown</div>
+            <div className="card-h re-section-h">Paste a recipe in Markdown</div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" className="pill" onClick={() => setMarkdown(RECIPE_TEMPLATE)}>Use template</button>
               <button type="button" className="pill" onClick={() => setMarkdown(RECIPE_EXAMPLE)}>See example</button>
@@ -362,24 +399,49 @@ export function RecipeEditor() {
       <div className="card re-card">
         <div className="re-card-head">
           <div className="card-h re-section-h">Details</div>
-          {suggestion && aiPending > 0 && (
-            <button type="button" className="re-ai-chip" onClick={applySuggestions}>
-              ✨ {aiPending} suggestion{aiPending === 1 ? '' : 's'} — apply
-            </button>
+          {aiPending > 0 && (
+            <div className="re-ai-actions">
+              <span className="re-ai-tag">✨ {aiPending} suggestion{aiPending === 1 ? '' : 's'}</span>
+              <button type="button" className="re-ai-chip" onClick={keepAll}>Keep all</button>
+              <button type="button" className="re-ai-dismiss" onClick={dismissAll}>Dismiss</button>
+            </div>
           )}
         </div>
         <div className="re-meta-grid">
-          {META_FIELDS.map((f) => (
-            <label key={f.key} className="re-f">
-              <span>{f.label}</span>
-              <input value={meta[f.key] ?? ''} onChange={(e) => setMeta((m) => ({ ...m, [f.key]: e.target.value }))} placeholder={f.placeholder} />
-            </label>
-          ))}
+          {META_FIELDS.map((f) => {
+            const sv = sugScalar(f.key)
+            return (
+              <label key={f.key} className={`re-f${sv ? ' re-f-sug' : ''}`}>
+                <span>{f.label}</span>
+                {sv ? (
+                  <div className="re-sug-field">
+                    <input value={meta[f.key] ?? ''} onChange={(e) => setMeta((m) => ({ ...m, [f.key]: e.target.value }))} placeholder={`✨ ${sv}`} />
+                    <button type="button" className="re-sug-ok" title={`Use “${sv}”`} aria-label={`Use ${sv}`} onClick={() => acceptScalar(f.key, sv)}>✓</button>
+                    <button type="button" className="re-sug-no" title="Dismiss" aria-label="Dismiss suggestion" onClick={() => dismiss(f.key)}>×</button>
+                  </div>
+                ) : (
+                  <input value={meta[f.key] ?? ''} onChange={(e) => setMeta((m) => ({ ...m, [f.key]: e.target.value }))} placeholder={f.placeholder} />
+                )}
+              </label>
+            )
+          })}
         </div>
         <div className="re-chips">
-          <div className="re-chip-f"><div className="cz-label">Dietary</div><ChipEditor items={dietary} onChange={setDietary} placeholder="gluten-free, vegan…" color="#ede4ff" /></div>
-          <div className="re-chip-f"><div className="cz-label">Vegetables</div><ChipEditor items={vegetables} onChange={setVegetables} placeholder="spinach, tomato…" color="#e4f5e9" /></div>
-          <div className="re-chip-f"><div className="cz-label">Tags</div><ChipEditor items={tags} onChange={setTags} placeholder="family-favorite…" color="#e9eef6" /></div>
+          <div className="re-chip-f">
+            <div className="cz-label">Dietary</div>
+            <ChipEditor items={dietary} onChange={setDietary} placeholder="gluten-free, vegan…" color="#ede4ff" />
+            <SugChips items={sugDietary} onAccept={(v) => acceptItem(setDietary, dietary, v)} onDismiss={(v) => dismiss(`dietary:${v.toLowerCase()}`)} />
+          </div>
+          <div className="re-chip-f">
+            <div className="cz-label">Vegetables</div>
+            <ChipEditor items={vegetables} onChange={setVegetables} placeholder="spinach, tomato…" color="#e4f5e9" />
+            <SugChips items={sugVeg} onAccept={(v) => acceptItem(setVegetables, vegetables, v)} onDismiss={(v) => dismiss(`veg:${v.toLowerCase()}`)} />
+          </div>
+          <div className="re-chip-f">
+            <div className="cz-label">Tags</div>
+            <ChipEditor items={tags} onChange={setTags} placeholder="family-favorite…" color="#e9eef6" />
+            <SugChips items={sugTags} onAccept={(v) => acceptItem(setTags, tags, v)} onDismiss={(v) => dismiss(`tag:${v.toLowerCase()}`)} />
+          </div>
         </div>
         <label className="re-f" style={{ marginTop: 14 }}>
           <span>Image URL (optional)</span>
@@ -389,11 +451,8 @@ export function RecipeEditor() {
 
       {/* ingredients */}
       <div className="card re-card">
-        <div className="re-card-head">
-          <div className="card-h re-section-h">Ingredients</div>
-          <button type="button" className="pill" onClick={() => setIngs((rs) => [...rs, blankIng()])}>+ Add ingredient</button>
-        </div>
-        <div className="re-ings">
+        <div className="card-h re-section-h" style={{ marginBottom: 14 }}>Ingredients</div>
+        <div className="re-ings" ref={ingListRef}>
           {ings.map((row, i) => (
             <div key={i} className="re-ing-row">
               <input className="re-ing-amt" value={row.amount} onChange={(e) => setIngs((rs) => patch(rs, i, { amount: e.target.value }))} placeholder="2" />
@@ -402,22 +461,20 @@ export function RecipeEditor() {
               <input className="re-ing-prep" value={row.prepNote} onChange={(e) => setIngs((rs) => patch(rs, i, { prepNote: e.target.value }))} placeholder="diced (optional)" />
               <input className="re-ing-sec" value={row.section} onChange={(e) => setIngs((rs) => patch(rs, i, { section: e.target.value }))} placeholder="section" />
               <div className="re-row-ctl">
-                <button type="button" aria-label="Move up" disabled={i === 0} onClick={() => moveIng(i, -1)}>↑</button>
-                <button type="button" aria-label="Move down" disabled={i === ings.length - 1} onClick={() => moveIng(i, 1)}>↓</button>
-                <button type="button" aria-label="Remove" className="re-del" onClick={() => setIngs((rs) => rs.filter((_, j) => j !== i))}>×</button>
+                <button type="button" tabIndex={-1} aria-label="Move up" disabled={i === 0} onClick={() => moveIng(i, -1)}>↑</button>
+                <button type="button" tabIndex={-1} aria-label="Move down" disabled={i === ings.length - 1} onClick={() => moveIng(i, 1)}>↓</button>
+                <button type="button" tabIndex={-1} aria-label="Remove" className="re-del" onClick={() => setIngs((rs) => rs.filter((_, j) => j !== i))}>×</button>
               </div>
             </div>
           ))}
         </div>
+        <button type="button" className="pill re-add-row" onClick={addIngredient}>+ Add ingredient</button>
       </div>
 
       {/* steps */}
       <div className="card re-card">
-        <div className="re-card-head">
-          <div className="card-h re-section-h">Method</div>
-          <button type="button" className="pill" onClick={() => setStps((rs) => [...rs, blankStep()])}>+ Add step</button>
-        </div>
-        <div className="re-steps">
+        <div className="card-h re-section-h" style={{ marginBottom: 14 }}>Method</div>
+        <div className="re-steps" ref={stepListRef}>
           {stps.map((s, i) => (
             <div key={i} className="re-step-row">
               <div className="re-step-n">{i + 1}</div>
@@ -439,7 +496,7 @@ export function RecipeEditor() {
                             aria-label={`Amount of ${g.name} for this step`}
                           />
                           <span className="re-stepchip-name">{g.name}</span>
-                          <button type="button" aria-label={`Remove ${g.name} from step`} onClick={() => removePick(i, g.uid)}>×</button>
+                          <button type="button" tabIndex={-1} aria-label={`Remove ${g.name} from step`} onClick={() => removePick(i, g.uid)}>×</button>
                         </span>
                       )
                     }
@@ -450,19 +507,20 @@ export function RecipeEditor() {
                   {s.extra.map((x, j) => (
                     <span key={`x${j}`} className="re-stepchip on re-stepchip-extra">
                       <span className="re-stepchip-name">{x}</span>
-                      <button type="button" aria-label={`Remove ${x} from step`} onClick={() => removeExtra(i, j)}>×</button>
+                      <button type="button" tabIndex={-1} aria-label={`Remove ${x} from step`} onClick={() => removeExtra(i, j)}>×</button>
                     </span>
                   ))}
                 </div>
               </div>
               <div className="re-row-ctl">
-                <button type="button" aria-label="Move up" disabled={i === 0} onClick={() => moveStep(i, -1)}>↑</button>
-                <button type="button" aria-label="Move down" disabled={i === stps.length - 1} onClick={() => moveStep(i, 1)}>↓</button>
-                <button type="button" aria-label="Remove" className="re-del" onClick={() => setStps((rs) => rs.filter((_, j) => j !== i))}>×</button>
+                <button type="button" tabIndex={-1} aria-label="Move up" disabled={i === 0} onClick={() => moveStep(i, -1)}>↑</button>
+                <button type="button" tabIndex={-1} aria-label="Move down" disabled={i === stps.length - 1} onClick={() => moveStep(i, 1)}>↓</button>
+                <button type="button" tabIndex={-1} aria-label="Remove" className="re-del" onClick={() => setStps((rs) => rs.filter((_, j) => j !== i))}>×</button>
               </div>
             </div>
           ))}
         </div>
+        <button type="button" className="pill re-add-row" onClick={addStep}>+ Add step</button>
       </div>
 
       <div className="card re-card">
@@ -490,6 +548,22 @@ export function RecipeEditor() {
           onClose={() => setConfirmDelete(false)}
         />
       )}
+    </div>
+  )
+}
+
+// Visible AI suggestions for an array field — ghost chips you tap to keep (✨) or
+// dismiss (×). Nothing is added until you tap.
+function SugChips({ items, onAccept, onDismiss }: { items: string[]; onAccept: (v: string) => void; onDismiss: (v: string) => void }) {
+  if (!items.length) return null
+  return (
+    <div className="re-sug-chips">
+      {items.map((v) => (
+        <span key={v} className="re-sug-chip">
+          <button type="button" className="re-sug-chip-add" onClick={() => onAccept(v)} title={`Add ${v}`}>✨ {v}</button>
+          <button type="button" className="re-sug-chip-x" aria-label={`Dismiss ${v}`} onClick={() => onDismiss(v)}>×</button>
+        </span>
+      ))}
     </div>
   )
 }
