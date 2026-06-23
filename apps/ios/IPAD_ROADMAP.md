@@ -129,7 +129,9 @@ Make the iPad a *real app you navigate*, like the web. This is the main re-scope
         interior still phone layout.
   - [x] **Meals** — `WeekPlannerView` adaptive: iPad = 7-day grid of compact meal columns
         (drag-to-swap kept); `RecipesLibraryView` = adaptive multi-column gallery on iPad.
-  - [ ] Goals · [ ] Family · [ ] Lists · [ ] Photos · [ ] Settings
+  - [x] **Lists** — `KioskListsView`: master/detail (lists sidebar + selected list's full
+        detail incl. the grocery aisle/meal board). Reuses `ListDetailView`.
+  - [ ] Goals · [ ] Family · [ ] Photos · [ ] Settings
 - [x] Rail shows the signed-in person's avatar (`KioskShell.currentMember`).
 - [ ] Capture sheet + detail sheets sized appropriately for the iPad.
 
