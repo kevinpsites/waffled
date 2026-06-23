@@ -63,7 +63,7 @@ struct KioskCalendarView: View {
             CalTimeGrid(days: weekDays(selectedDay), tz: tz, events: filtered,
                         showDayHeaders: true, selectedDay: selectedDay,
                         onTapEvent: { detailEvent = $0 }, onAddAt: { editing = .new($0) },
-                        onPickDay: { selectedDay = $0 })
+                        onPickDay: { day in withAnimation { selectedDay = day; mode = .day } })
         case .day:
             CalTimeGrid(days: [selectedDay], tz: tz, events: filtered,
                         showDayHeaders: false, selectedDay: selectedDay,
