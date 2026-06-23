@@ -1,10 +1,12 @@
 # Nook iPad — Project Roadmap
 
-A living checklist for bringing Nook to iPad as a **family display / kiosk**. Check
-items off as we land them; keep the rationale notes so we don't lose context about
-*why* a decision was made or *what's deferred and why it's safe to defer*.
+A living checklist for bringing Nook to iPad as a **full, interactive, web-like native
+app**. Check items off as we land them; keep the rationale notes so we don't lose context
+about *why* a decision was made or *what's deferred and why it's safe to defer*.
 
-> **Status:** Planning. No iPad code written yet. `apps/ios` is still iPhone-only.
+> **Status:** Phases 0–2 done (universal app, single-profile login, Today dashboard).
+> Re-scoped 2026-06-23: the iPad is a **full app like the web** — sidebar nav + every page,
+> fully interactive — not just a dashboard. The screensaver is now low-priority.
 
 ---
 
@@ -12,190 +14,153 @@ items off as we land them; keep the rationale notes so we don't lose context abo
 
 - **iPhone** = the *personal planner* — the native app we already have. An individual
   checks their day, captures events, manages their stuff. **Untouched by this work.**
-- **iPad** = the *family display / kiosk* — a wall- or counter-mounted hub, viewed from
-  across the room, that looks closer to the web dashboard: big agenda, tonight's meal,
-  chores, goals, plus a screensaver (clock / weather / photos).
+- **iPad** = the **web app, native and sized up** — a left **nav rail** + every page
+  (Today, Calendar, Tasks/Chores, Goals, Family, Meals, Lists, Photos, Settings), fully
+  interactive, with rich web-parity widgets. It can sit on a counter as a family hub, but
+  it is a *real app you navigate*, not a passive display. Mirrors `apps/web/src/kiosk/`
+  (`KioskLayout` rail + `Topbar` + routed pages), re-laid-out big for the iPad.
 
 Both ship in **one universal app** — same bundle ID (`com.kevinsites.nook`), one App Store
-listing, one download. The device picks the right experience at runtime by size class /
-idiom. We are **not** shipping a second app.
+listing, one download. The device picks the right experience at runtime by idiom. We are
+**not** shipping a second app.
 
 ---
 
 ## Decisions locked in (don't relitigate without a reason)
 
-1. **Universal app, not a separate target.** Flip `TARGETED_DEVICE_FAMILY` to `"1,2"`.
-   One binary, one listing. iPad layouts live behind size-class / idiom checks inside the
-   same app.
-2. **Native SwiftUI, not a WKWebView wrap of the web kiosk.** Rationale: the user's core
-   pain is that the web kiosk renders *too small* on the iPad's dense display (it's
-   px-pinned, tuned for a 1280×800 counter tablet at arm's length, with no root font-size
-   or scale factor to turn — fixing it cleanly means converting ~500+ px values *in the
-   web app*, which also leaks into every web user). Native gives us exact sizing control
-   (size classes + Dynamic Type) for at-a-distance reading — the one thing we most need.
-3. **Reuse the existing iOS data layer.** `SyncManager` (PowerSync), `NookAPI`, the design
-   tokens in `DesignSystem/Theme.swift` (already ported 1:1 from the web), and the existing
-   `DisplayConfig` read/write (`Features/Settings/DisplayKioskSettingsView.swift`) all carry
-   over. The iPad work is **screens**, not a new data/sync/auth stack.
-4. **v1 is single-profile, no picker.** iPad signs in once and *stays* — one profile, no
-   profile-picker round-trip, no switching. This is just a **normal persistent login**
-   (refresh-token persistence + Keychain token store + 401-refresh already exist). **Zero
-   new server work for v1.** The shared multi-profile picker / PIN / device-pairing is
-   explicitly **deferred** (see Backlog) and layers on top without rework.
-5. **v1 is kiosk-only.** "iPad as a personal planner" (a signed-in individual using the
-   iPad like a big iPhone, with adaptive planner screens) is **deferred** (see Backlog).
+1. **Universal app, not a separate target.** `TARGETED_DEVICE_FAMILY "1,2"`. One binary,
+   one listing. iPad layouts live behind idiom checks inside the same app.
+2. **Native SwiftUI, not a WKWebView wrap.** The web kiosk renders *too small* on the iPad
+   (px-pinned, no scale factor); native gives exact sizing control for the iPad. Confirmed
+   on-device: sizing looks good.
+3. **Reuse the existing iOS data layer + feature views.** `SyncManager` (PowerSync),
+   `NookAPI`, `Theme.swift` tokens — and the existing phone feature views (`CalendarView`,
+   `MealsView`, chores/goals/lists/etc. via `HubDestination`) become the iPad's pages,
+   progressively re-laid-out to match the web. The iPad work is **navigation + screens**,
+   not a new data/sync/auth stack.
+4. **Single-profile, no picker (for now).** iPad signs in once and *stays* — one profile,
+   no picker, no switching. Normal persistent login (Keychain + 401-refresh). Full
+   interactivity does **not** require multi-profile; the shared profile-picker flow stays
+   **deferred** (see Backlog) and layers on top without rework.
+5. **iPad is a full interactive app**, navigable to every page — the web experience, native.
+   The **family-display / screensaver** mode is a *secondary, low-priority* overlay
+   (Phase 5), not the point. (Was originally scoped kiosk-display-first; re-scoped
+   2026-06-23 per on-device review.)
 
 ---
 
-## Phase 0 — Make the app run on iPad at all
+## Phase 0 — Make the app run on iPad at all ✅
 
-Goal: the existing app launches on an iPad simulator as a universal binary, even if it
-just looks like a big phone for now. Establishes the target + adaptivity scaffolding.
-
-- [x] `project.yml`: set `TARGETED_DEVICE_FAMILY: "1,2"` (was `"1"`).
+- [x] `project.yml`: `TARGETED_DEVICE_FAMILY: "1,2"` (was `"1"`).
 - [x] `project.yml`: iPad orientations via `UISupportedInterfaceOrientations~ipad`
       (landscape + portrait); phone stays portrait-only.
-- [x] `UIRequiresFullScreen`: **Decided — leave unset for now** (iPad multitasking stays
-      enabled). Revisit and lock to full-screen when we ship a dedicated kiosk mode, so a
-      wall display can't be shrunk into a Stage Manager split.
-- [x] `xcodegen generate` + build for iPad sim (iPad Pro 13-inch M4) — **BUILD SUCCEEDED**,
-      runs and renders the kiosk fork (verified with a dev token + screenshot).
+- [x] `UIRequiresFullScreen` left unset (iPad multitasking stays enabled).
+- [x] `xcodegen generate` + build for iPad sim — BUILD SUCCEEDED, verified on device.
 - [x] Idiom helper: `DeviceExperience` (`App/DeviceExperience.swift`) — `.planner` (iPhone)
-      vs `.kiosk` (iPad), branched on `userInterfaceIdiom`. First adaptive code in the tree.
-- [x] Entry fork: `RootView` in `NookApp.swift` chooses `AppRoot` (iPhone) vs `KioskRoot`
-      (iPad, `Features/Kiosk/KioskRoot.swift`). iPhone path is byte-for-byte unchanged.
+      vs `.kiosk` (iPad).
+- [x] Entry fork: `RootView` in `NookApp.swift` → `AppRoot` (iPhone) vs `KioskRoot` (iPad).
+      iPhone path byte-for-byte unchanged.
 
-> **Phase 0 complete.** Universal binary boots into the kiosk fork on iPad; iPhone planner
-> untouched. `KioskRoot` is a placeholder — Phase 1/2/3 fill it in.
+## Phase 1 — Single-profile auth path ✅
 
-## Phase 1 — Single-profile auth path
+- [x] Persistent login reused as-is (`Session.bootstrap` / `hasUsableToken` → `.authed`).
+- [x] iPad-sized sign-in: `LoginView` scales up + caps to a centered column (`isKiosk` /
+      `columnWidth`); iPhone login unchanged.
+- [x] No picker / PIN / switch — the signed-in profile is the device's identity.
+- [x] Token-expiry routes back to the same login (not a dead screen).
+      Follow-up: confirm refresh-token TTL is long enough for an always-on device (Auth0 era).
 
-Goal: the iPad signs in once and stays logged in as one profile, no picker.
+## Phase 2 — Today dashboard + web-parity widgets
 
-- [x] Persistent-login path confirmed: `Session.bootstrap()` → `AppConfig.hasUsableToken`
-      (`AuthTokens.isSignedIn`) sends a stored Keychain session straight to `.authed`, so
-      the iPad stays signed in across relaunches. Reused as-is — nothing rebuilt.
-- [x] Kiosk-appropriate sign-in: `LoginView` (`Features/Auth/AuthGate.swift`) now scales up
-      and caps to a centered column on iPad (`isKiosk` / `columnWidth`), with display-specific
-      copy ("Set up your Nook display"). Verified on the iPad sim. iPhone login unchanged
-      (guarded by `isKiosk`; the column cap is wider than phone content).
-- [x] No profile picker, no PIN, no "Switch profile" in v1 — none exists in the kiosk path;
-      the signed-in profile *is* the device's identity.
-- [x] Token-expiry is graceful: the `.nookAuthExpired` path flips `Session.phase` to `.login`,
-      which on iPad shows the same kiosk login (not a dead screen).
-      **Note / follow-up:** refresh-token lifetime is server-side — confirm it's long enough
-      for an always-on display so a wall device isn't forced to re-login often. (Auth0 swaps
-      in at Phase 4; revisit token TTLs then.)
+The Today *home* of the full app. First cut done; now expanding the widgets to match the
+web (per the on-device review — see the web `Today` screenshot reference).
 
-> **Phase 1 complete.** iPad signs in once and stays (single profile, no picker), with a
-> display-sized login that also covers re-auth after expiry.
+**Done (first cut):**
+- [x] `KioskDashboard` (`Features/Kiosk/KioskDashboard.swift`) — landscape, 3-column,
+      big type; hosted by `KioskRoot`. Live data verified on device.
+- [x] Agenda — "This week" via `Agenda.upcoming`, grouped by day.
+- [x] Tonight's dinner (basic), Chores (aggregate), Goals (featured), Grocery (count).
+- [x] Header: greeting + date + live clock + weather. `KioskCard` surface.
 
-## Phase 2 — The family-hub dashboard (the main screen)
+**Web-parity expansion (the on-device asks):**
+- [ ] **Family Chores → per-person rows** (Kevin 0/3 ★1, Kelly 0/1 ★3, Wally 4/7 ★9, …) with
+      progress ring + stars, like the web. Data already there: `DashboardModel.chores`
+      (`[PersonChoresDTO]` has name/done/total/stars/colorHex/avatarEmoji).
+- [ ] **Tonight's dinner → "View recipe" + "Cook Mode" buttons** (when a recipe is attached).
+- [ ] **Grocery → real item list with checkboxes** (not just a count). Needs
+      `DashboardModel` to expose the `[GroceryItemDTO]` it already fetches; tap to toggle.
+- [ ] **"This week's dinners" card** — the planned dinners list (Tue · Wed …). Expose the
+      week entries `DashboardModel.load` already fetches.
+- [ ] (Optional) Pull the top banners over too — "Needs your OK" approvals + "to review/link"
+      (the iPhone `ApprovalsBanner` / review card already exist).
 
-Goal: a wall-sized, native dashboard sized for across-the-room reading — the "looks like
-web" payoff. Native equivalent of the web `Today` dashboard.
+## Phase 3 — Navigation shell + all pages (PRIORITY)
 
-- [x] `KioskDashboard` view (`Features/Kiosk/KioskDashboard.swift`) — landscape, 3-column,
-      big type/spacing; hosted by `KioskRoot`. Verified rendering live data on iPad sim.
-- [x] Cards, sized large and reusing existing data (`DashboardModel` + `SyncManager` + `NookAPI`):
-  - [x] Agenda — "This week" via `Agenda.upcoming`, grouped by day, scrollable column.
-  - [x] Tonight's dinner (`DashboardModel.tonight`).
-  - [ ] This week's dinners list — not yet (only tonight's). Nice add later.
-  - [x] Chores (family-wide progress + avatars + stars).
-  - [x] Goals (featured goal + progress).
-  - [x] Grocery (remaining count).
-- [x] Header: greeting + date + live ticking clock (`TimelineView`) + weather, in household tz.
-- [x] Sizing pass: kiosk-scale type/spacing throughout (clock 56, event titles 21, etc.) —
-      no phone-sized cards.
-- [x] Reuses `Theme.swift` tokens + a `KioskCard` surface (the wall-display twin of `NookCard`).
-      Kiosk sizes are inline for now; factor into a shared kiosk scale if it grows.
+Make the iPad a *real app you navigate*, like the web. This is the main re-scoped work.
 
-> **Phase 2 complete (first cut).** A working landscape family display with live agenda,
-> meals, chores, goals & grocery. Remaining polish (week-dinners list, per-card
-> customize/reorder) tracked in the Backlog.
-
-## Phase 3 — Screensaver / idle / display behavior
-
-Goal: native equivalent of the web screensaver layer, driven by the **same** `DisplayConfig`
-the iOS settings already manage. Server already serves it; we just render it.
-
-- [ ] Read `DisplayConfig` (`screensaverMinutes`, `content` = photos/clock/off,
-      `resetHomeMinutes`, `nightDim {enabled,start,end}`, `returnToPicker`). The model +
-      API call already exist in the iOS app (`NookAPI.DisplayConfig`).
-- [ ] Idle watcher: after `screensaverMinutes`, show screensaver; after `resetHomeMinutes`,
-      reset to the dashboard.
-- [ ] Screensaver content:
-  - [ ] Clock + weather + next event overlay.
-  - [ ] Photos slideshow (cycle), with the clock overlaid.
-  - [ ] `off` = no screensaver.
-- [ ] Night dimming: dim overlay on the `nightDim` schedule (handle overnight wrap).
-- [ ] Keep-awake: prevent the iPad from sleeping while in kiosk mode
-      (`UIApplication.isIdleTimerDisabled`) — the native, reliable equivalent of the web's
-      `navigator.wakeLock`.
-- [ ] `returnToPicker` is a **no-op in v1** (no picker yet) — wire it when multi-profile lands.
+- [ ] **Nav rail / sidebar** — a left rail (web `KioskLayout` Rail) via `NavigationSplitView`
+      (sidebar + detail), replacing the iPhone bottom tab bar on iPad. Items: Today,
+      Calendar, Tasks/Chores, Goals, Family, Meals, Lists, Photos, Settings.
+- [ ] **Route each item to a working page**, reusing the existing feature views as the
+      starting point (`CalendarView`, `MealsView`, chores/goals/rewards/lists/photos/settings
+      via `HubDestination`). Get everything *reachable & interactive* first.
+- [ ] **Top bar** — date/time + weather + the "Add anything" capture bar (web `Topbar`),
+      so capture works from anywhere.
+- [ ] Then progressively **web-ify each page** for the iPad (multi-column where the web is,
+      bigger type/spacing) instead of a stretched phone column. Track per-page below as we go:
+  - [ ] Calendar · [ ] Tasks/Chores · [ ] Goals · [ ] Family · [ ] Meals · [ ] Lists · [ ] Photos · [ ] Settings
+- [ ] Capture sheet + detail sheets sized appropriately for the iPad.
 
 ## Phase 4 — Polish & ship
 
-- [ ] iPad app icon / launch screen check (universal asset catalog).
-- [ ] Real-device test on an actual iPad mounted/at distance — verify legibility.
-- [ ] Orientation lock behavior (landscape kiosk vs phone portrait).
-- [ ] App Store: confirm the single universal listing shows iPad screenshots; update
-      listing copy to mention the family-display use.
-- [ ] Update `apps/ios/README.md` to document the iPad kiosk mode + how to run it on the sim.
+- [ ] iPad app icon / launch screen (universal asset catalog).
+- [ ] Orientation behavior (landscape-first on iPad; phone stays portrait).
+- [ ] App Store: single universal listing + iPad screenshots; listing copy.
+- [ ] Update `apps/ios/README.md` with the iPad experience + how to run it.
+
+## Phase 5 — Family-display / screensaver mode (LOW priority)
+
+Demoted 2026-06-23: a *secondary* idle/display overlay, not core. (The web's own
+screensaver isn't fully baked either.) Driven by the same `DisplayConfig`
+(`Features/Settings/DisplayKioskSettingsView.swift` already reads/writes it).
+
+- [ ] Idle watcher → screensaver after `screensaverMinutes`; reset to Today after
+      `resetHomeMinutes`.
+- [ ] Screensaver content: clock + weather + next event; photos slideshow; `off`.
+- [ ] Night dimming on the `nightDim` schedule; keep-awake (`isIdleTimerDisabled`).
+- [ ] `returnToPicker` — no-op until multi-profile lands.
 
 ---
 
 ## Backlog — deferred, with enough context to resume
 
-These were **intentionally** deferred to keep v1 small. Each layers on top of v1 without
-throwing it away.
-
 ### A. Multi-profile shared kiosk (Netflix-style picker)
 
-The shared-display flow: device rests on a **profile picker**, anyone taps in (optional
-PIN), gets an ephemeral session, auto-logs-out on idle. This is what the **web kiosk already
-does** — port the model, don't reinvent it.
+Shared-display flow: device rests on a **profile picker**, anyone taps in (optional PIN),
+ephemeral session, auto-logs-out on idle. The **web kiosk already does this** — port it.
+- Web: `ProfilePicker.tsx`, `PinPad.tsx`, `PairDevice.tsx`, device-secret auth in
+  `lib/api/kiosk.ts`, `AuthGate.tsx` picker logic.
+- **Missing server-side (either platform):** no device→person binding — `kiosk_devices`
+  has no `claimed_person_id` / auto-claim / "skip picker". A device pairs to a *household*,
+  then `claim(personId)` mints a per-profile session.
+- v1's single-profile login is a clean subset; the picker is additive.
 
-- The web has: `ProfilePicker.tsx`, `PinPad.tsx`, `PairDevice.tsx`, device-secret auth in
-  `lib/api/kiosk.ts`, and `AuthGate.tsx` picker-vs-app logic.
-- **Missing even on the server** (would need building for *either* platform): there is **no
-  device→person binding** — `kiosk_devices` has no `claimed_person_id`, no auto-claim
-  endpoint, no "skip picker" setting. A device pairs to a *household*, then `claim(personId)`
-  mints a per-profile session.
-- iPad work when we pick this up: native profile picker + PIN pad, device-pairing flow
-  (pairing code entry + device naming), device-secret auth layer, ephemeral session
-  handling, and wiring `returnToPicker` (Phase 3) to drop back to the picker on wake.
-- v1's single-profile login is a clean subset — adding the picker is additive.
+### B. Nice-to-haves
 
-### B. iPad as a personal planner
-
-Let the iPad *also* run as one person's signed-in planner (a big-iPhone experience),
-chosen at setup, not just a shared display.
-
-- Needs adaptive iPad layouts for the *planner* screens (Today, Calendar, Chores, Goals,
-  etc.) — `NavigationSplitView` sidebar + detail rather than the phone's bottom tab bar.
-- Today every planner screen is single-column phone-shaped; this is the larger layout
-  effort we deliberately scoped out of v1.
-- The Phase 0 idiom fork + size-class scaffolding is the hook this hangs off of.
-
-### C. Nice-to-haves
-
-- [ ] Per-card customization / reorder on the kiosk dashboard (web `Today` has draggable
-      cards).
-- [ ] Recurrence **creation** on iOS (currently read-only on iOS; creation is web-only).
-- [ ] Guided in-app "set this iPad up as your family display" onboarding.
+- [ ] Per-card customize / reorder on Today (web has draggable cards + the `Customize` button).
+- [ ] Recurrence **creation** on iOS (currently read-only; creation is web-only).
 
 ---
 
-## Reference — current state (as of planning)
+## Reference — current state
 
-- `apps/ios/project.yml`: `TARGETED_DEVICE_FAMILY: "1"`, portrait-only, deployment iOS 18.
-- Root nav: custom bottom tab bar in `Sources/Nook/App/AppRoot.swift` (not `TabView`);
-  tabs: today / calendar / meals / family.
-- **Zero** adaptive/size-class code anywhere in `Sources/`.
-- Data layer ready to reuse: `SyncManager` (PowerSync), `NookAPI`, `DesignSystem/Theme.swift`.
-- `DisplayConfig` already read/written by `Features/Settings/DisplayKioskSettingsView.swift`
-  (today it *remote-controls* the web kiosk; the iPad will *be* a display that consumes it).
-- Web kiosk (the experience we're nativizing): `apps/web/src/kiosk/` — `KioskDisplay.tsx`,
-  `KioskLayout.tsx`, `Today.tsx`, `components/Screensaver.tsx`, `ProfilePicker.tsx`,
-  `PinPad.tsx`; config shape in `apps/web/src/lib/api/kiosk.ts`.
+- Root nav today: custom bottom tab bar in `App/AppRoot.swift` (iPhone); iPad forks to
+  `KioskRoot` → `KioskDashboard`. No `NavigationSplitView` yet (Phase 3 adds it).
+- Existing reusable feature views: `Features/Calendar/CalendarView`, `Features/Meals/*`,
+  `Features/Family/*` + `HubDestination` (chores/goals/rewards/lists/photos/settings),
+  `Features/Today/TodayView` (the iPhone dashboard, mirrors the web `Today`).
+- Data layer: `SyncManager` (PowerSync), `NookAPI`, `DashboardModel`, `Theme.swift` tokens.
+- Web app we're mirroring: `apps/web/src/kiosk/` — `KioskLayout` (rail + topbar + outlet),
+  `nav.ts` (the rail items), `Today.tsx` (the dashboard), per-feature pages.
+- On-device LAN testing: see memory `ipad-on-device-lan` (set app "Server address" to the
+  Mac's LAN IP).
