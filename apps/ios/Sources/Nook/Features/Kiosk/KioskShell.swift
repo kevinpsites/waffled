@@ -8,16 +8,23 @@ import SwiftUI
 /// they get a host `NavigationStack` + the shared `HubRoute` destination. See
 /// `apps/ios/IPAD_ROADMAP.md` (Phase 3).
 struct KioskShell: View {
+    @Environment(SyncManager.self) private var sync
     @State private var selection: KioskNav = KioskNav(rawValue: DemoHooks.kioskPage ?? "") ?? .today
 
     // Shared models / per-page nav stacks for the reused feature views.
     @State private var recipes = RecipesModel()
     @State private var approvals = ApprovalsModel()
     @State private var goalsPath: [HubRoute] = []
+    @State private var rewardsPath: [HubRoute] = []
     @State private var listsPath: [HubRoute] = []
     @State private var settingsPath: [HubRoute] = []
     @State private var familyPath: [HubRoute] = []
     @State private var mealsPath: [MealsRoute] = []
+
+    /// The signed-in person — drives the rail's "who's logged in" avatar.
+    private var currentMember: SyncedMember? {
+        sync.members.first { $0.id == sync.currentPersonId }
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -27,6 +34,7 @@ struct KioskShell: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(NK.canvas)
+        .task { await sync.loadIdentity() }
     }
 
     // MARK: nav rail
@@ -36,6 +44,7 @@ struct KioskShell: View {
             logo.padding(.top, 16).padding(.bottom, 12)
             ForEach(KioskNav.primary) { railItem($0) }
             Spacer(minLength: 8)
+            if let m = currentMember { currentUserChip(m) }
             railItem(.settings)
         }
         .padding(.horizontal, 10)
@@ -43,6 +52,18 @@ struct KioskShell: View {
         .frame(width: 120)
         .frame(maxHeight: .infinity)
         .background(NK.panel.ignoresSafeArea())
+    }
+
+    /// "Who's logged in" — the signed-in person's avatar at the bottom of the rail.
+    private func currentUserChip(_ m: SyncedMember) -> some View {
+        VStack(spacing: 4) {
+            Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 40)
+                .overlay(Circle().strokeBorder(NK.card, lineWidth: 2))
+            Text(m.name.split(separator: " ").first.map(String.init) ?? m.name)
+                .font(.system(size: 10.5, weight: .bold)).foregroundStyle(NK.ink2).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
     }
 
     private var logo: some View {
@@ -85,6 +106,10 @@ struct KioskShell: View {
             NavigationStack(path: $goalsPath) {
                 GoalsView(path: $goalsPath).hubDestination($goalsPath, recipes)
             }
+        case .rewards:
+            NavigationStack(path: $rewardsPath) {
+                RewardsView(path: $rewardsPath).hubDestination($rewardsPath, recipes)
+            }
         case .family:
             FamilyView(path: $familyPath, approvals: approvals)
         case .meals:
@@ -108,17 +133,19 @@ struct KioskShell: View {
 /// The rail items, in web order (`apps/web/src/kiosk/nav.ts`). Settings is pinned to
 /// the bottom of the rail, so it's separated out from `primary`.
 enum KioskNav: String, CaseIterable, Identifiable {
-    case today, calendar, tasks, goals, family, meals, lists, photos, settings
+    case today, calendar, tasks, rewards, goals, family, meals, lists, photos, settings
     var id: String { rawValue }
 
-    /// Everything above the bottom-pinned Settings.
-    static let primary: [KioskNav] = [.today, .calendar, .tasks, .goals, .family, .meals, .lists, .photos]
+    /// Everything above the bottom-pinned Settings. Note: web combines Chores + Rewards
+    /// into one tab; on iPad we split Rewards into its own rail item (a deliberate divergence).
+    static let primary: [KioskNav] = [.today, .calendar, .tasks, .rewards, .goals, .family, .meals, .lists, .photos]
 
     var label: String {
         switch self {
         case .today: return "Today"
         case .calendar: return "Calendar"
         case .tasks: return "Chores"
+        case .rewards: return "Rewards"
         case .goals: return "Goals"
         case .family: return "Family"
         case .meals: return "Meals"
@@ -133,6 +160,7 @@ enum KioskNav: String, CaseIterable, Identifiable {
         case .today: return "house.fill"
         case .calendar: return "calendar"
         case .tasks: return "checklist"
+        case .rewards: return "star.fill"
         case .goals: return "target"
         case .family: return "person.2.fill"
         case .meals: return "fork.knife"

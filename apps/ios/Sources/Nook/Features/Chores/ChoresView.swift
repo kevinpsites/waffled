@@ -204,18 +204,22 @@ struct ChoresView: View {
             if model.loading && model.instances.isEmpty {
                 NookLoading(top: 32); Spacer()
             } else {
-                HStack(alignment: .top, spacing: 14) {
-                    ForEach(columns) { col in kioskColumn(col) }
+                // Columns keep a minimum width and wrap onto new rows; the board scrolls.
+                ScrollView(showsIndicators: false) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 240, maximum: 380), spacing: 14, alignment: .top)],
+                              alignment: .leading, spacing: 14) {
+                        ForEach(columns) { col in kioskColumn(col) }
+                    }
+                    .padding(.bottom, 20)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    /// One always-open column that fills its share of the width and scrolls its chores
-    /// internally. Reuses the shared row/drag/claim logic + drop target.
+    /// One always-open column (content-sized; the board wraps + scrolls). Reuses the
+    /// shared row/drag/claim logic + drop target.
     private func kioskColumn(_ col: ChoreColumn) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 9) {
@@ -236,36 +240,34 @@ struct ChoresView: View {
             }
             .padding(.bottom, 10)
             Rectangle().fill(NK.hair).frame(height: 1)
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    if col.isGrabs && !col.items.isEmpty {
-                        Text("Tap to claim it, or drag it into someone’s column.")
-                            .font(.system(size: 11.5, weight: .medium)).foregroundStyle(NK.ink3)
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8).padding(.bottom, 2)
-                    }
-                    ForEach(Array(col.items.enumerated()), id: \.element.id) { i, inst in
-                        draggableRow(choreRow(inst, isGrabs: col.isGrabs), inst: inst)
-                        if i < col.items.count - 1 { Divider().background(NK.hair) }
-                    }
-                    if col.items.isEmpty {
-                        Text(col.isGrabs ? "Nothing up for grabs." : "Nothing for \(col.name).")
-                            .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 10)
-                    }
-                    Button { editor = .new(personId: col.isGrabs ? nil : col.id) } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
-                            Text("Add chore").font(.system(size: 13, weight: .semibold))
-                        }
-                        .foregroundStyle(NK.ink3).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
-                    }
-                    .buttonStyle(.plain)
+            VStack(spacing: 0) {
+                if col.isGrabs && !col.items.isEmpty {
+                    Text("Tap to claim it, or drag it into someone’s column.")
+                        .font(.system(size: 11.5, weight: .medium)).foregroundStyle(NK.ink3)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8).padding(.bottom, 2)
                 }
-                .padding(.top, 4)
+                ForEach(Array(col.items.enumerated()), id: \.element.id) { i, inst in
+                    draggableRow(choreRow(inst, isGrabs: col.isGrabs), inst: inst)
+                    if i < col.items.count - 1 { Divider().background(NK.hair) }
+                }
+                if col.items.isEmpty {
+                    Text(col.isGrabs ? "Nothing up for grabs." : "Nothing for \(col.name).")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 10)
+                }
+                Button { editor = .new(personId: col.isGrabs ? nil : col.id) } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
+                        Text("Add chore").font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundStyle(NK.ink3).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
+                }
+                .buttonStyle(.plain)
             }
+            .padding(.top, 4)
         }
         .padding(14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, alignment: .top)
         .background(NK.card)
         .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
