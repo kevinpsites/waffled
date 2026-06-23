@@ -76,6 +76,9 @@ enum AppConfig {
 enum DemoHooks {
     /// Initial tab: today | calendar | meals | family.
     static var startTab: String? { AppConfig.env("NOOK_START_TAB") }
+    /// Initial iPad kiosk page (rail selection): today | calendar | tasks | goals |
+    /// family | meals | lists | photos | settings. No effect on iPhone.
+    static var kioskPage: String? { AppConfig.env("NOOK_KIOSK_PAGE") }
     /// Auto-present the Sync panel on the Family screen.
     static var openSync: Bool { AppConfig.env("NOOK_OPEN_SYNC") == "1" }
     /// Insert one offline test event once members have synced.

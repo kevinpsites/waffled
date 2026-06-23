@@ -1,14 +1,14 @@
 import SwiftUI
 
-/// The iPad family-display root — the kiosk experience.
+/// The iPad app root — the full, interactive, web-like experience.
 ///
-/// Hosts the wall-sized dashboard (Phase 2). Phase 3 will layer the screensaver /
-/// idle reset / night-dim over this same root, driven by `DisplayConfig`. The data
-/// layer (`SyncManager`) is shared with the iPhone planner — see
-/// `apps/ios/IPAD_ROADMAP.md`.
+/// Hosts `KioskShell` (the nav rail + every page). `KioskDashboard` is the shell's
+/// Today page. A family-display / screensaver overlay may layer over this later
+/// (Phase 5, low priority). The data layer (`SyncManager`) is shared with the iPhone
+/// planner — see `apps/ios/IPAD_ROADMAP.md`.
 struct KioskRoot: View {
     var body: some View {
-        KioskDashboard()
+        KioskShell()
     }
 }
 
