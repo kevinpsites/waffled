@@ -682,7 +682,7 @@ struct EventEditSheet: View {
             .onChange(of: participants) { _, _ in recomputeDefaultCalendar(); clearOrphanGoal(); scheduleSuggest() }
             .onChange(of: title) { _, _ in scheduleSuggest() }
         }
-        .presentationDetents([.large])
+        .modifier(KioskSheetPresentation(kiosk: DeviceExperience.current == .kiosk))
     }
 
     private var bottomBar: some View {

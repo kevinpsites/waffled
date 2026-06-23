@@ -49,7 +49,7 @@ struct EventDetailView: View {
                                prefillGoalId: detail?.goalId, prefillGoalStepId: detail?.goalStepId)
             }
         }
-        .modifier(EventDetailPresentation(kiosk: isKiosk))
+        .modifier(KioskSheetPresentation(kiosk: isKiosk))
     }
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
@@ -372,9 +372,10 @@ struct EventDetailView: View {
     }
 }
 
-/// Presentation sizing for the event detail: a large `.page`-sized modal on the iPad
-/// (bigger, web-like — but not full screen), the standard large sheet on iPhone.
-private struct EventDetailPresentation: ViewModifier {
+/// Presentation sizing for calendar sheets (event detail + editor): a large
+/// `.page`-sized modal on the iPad (bigger, web-like — but not full screen), the
+/// standard large sheet on iPhone. Shared by `EventDetailView` and `EventEditSheet`.
+struct KioskSheetPresentation: ViewModifier {
     let kiosk: Bool
     func body(content: Content) -> some View {
         if kiosk {

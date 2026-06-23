@@ -8,16 +8,18 @@ import SwiftUI
 struct KioskCalendarView: View {
     @Environment(SyncManager.self) private var sync
 
-    enum Mode: String, CaseIterable { case month, week, day
+    enum Mode: String, CaseIterable { case month, week, day, agenda
         var label: String { rawValue.capitalized }
     }
 
     @State private var mode: Mode = Mode(rawValue: DemoHooks.kioskCalMode ?? "") ?? .month
     @State private var monthAnchor = Date()
+    @State private var miniAnchor = Date()
     @State private var selectedDay = Agenda.todayKey(TimeZone.current)
     @State private var filterPerson: String?
     @State private var editing: CalendarView.EventEditTarget?
     @State private var detailEvent: SyncedEvent?
+    @State private var headsUp: NookAPI.HeadsUp?
 
     private var tz: TimeZone { sync.householdTz }
 
@@ -42,11 +44,11 @@ struct KioskCalendarView: View {
         }
         .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
         .task {
-            guard DemoHooks.kioskOpenEvent else { return }
+            guard DemoHooks.kioskOpenEvent || DemoHooks.kioskOpenEdit else { return }
             for _ in 0..<40 { if !sync.events.isEmpty { break }; try? await Task.sleep(nanoseconds: 150_000_000) }
-            if detailEvent == nil {
-                detailEvent = selectedItems.first ?? filtered.sorted { ($0.startsAt ?? .distantFuture) < ($1.startsAt ?? .distantFuture) }.first
-            }
+            let ev = selectedItems.first ?? filtered.sorted { ($0.startsAt ?? .distantFuture) < ($1.startsAt ?? .distantFuture) }.first
+            if DemoHooks.kioskOpenEdit, let ev { editing = .edit(ev) }
+            else if detailEvent == nil, let ev { detailEvent = ev }
         }
     }
 
@@ -67,6 +69,8 @@ struct KioskCalendarView: View {
                         showDayHeaders: false, selectedDay: selectedDay,
                         onTapEvent: { detailEvent = $0 }, onAddAt: { editing = .new($0) },
                         onPickDay: { _ in })
+        case .agenda:
+            agendaContent
         }
     }
 
@@ -76,20 +80,22 @@ struct KioskCalendarView: View {
         VStack(spacing: 12) {
             HStack(spacing: 14) {
                 Text(navTitle).font(NK.serif(34)).foregroundStyle(NK.ink).lineLimit(1)
-                Button { step(-1) } label: { chevron("chevron.left") }
-                Button { step(1) } label: { chevron("chevron.right") }
-                Button { withAnimation { monthAnchor = Date(); selectedDay = Agenda.todayKey(tz) } } label: {
-                    Text("Today").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
-                        .padding(.horizontal, 14).padding(.vertical, 8)
-                        .background(NK.card).clipShape(Capsule())
-                        .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+                if mode != .agenda {
+                    Button { step(-1) } label: { chevron("chevron.left") }
+                    Button { step(1) } label: { chevron("chevron.right") }
+                    Button { withAnimation { monthAnchor = Date(); selectedDay = Agenda.todayKey(tz) } } label: {
+                        Text("Today").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+                            .padding(.horizontal, 14).padding(.vertical, 8)
+                            .background(NK.card).clipShape(Capsule())
+                            .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
                 Spacer()
                 Picker("", selection: $mode.animation()) {
                     ForEach(Mode.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
-                .pickerStyle(.segmented).labelsHidden().frame(width: 240)
+                .pickerStyle(.segmented).labelsHidden().frame(width: 300)
                 Button { editing = .new(dayKeyToDate(selectedDay) ?? Date()) } label: {
                     HStack(spacing: 7) {
                         Image(systemName: "plus").font(.system(size: 15, weight: .bold))
@@ -114,6 +120,8 @@ struct KioskCalendarView: View {
         case .day:
             guard let d = dayKeyToDate(selectedDay) else { return selectedDay }
             return DateFmt.string(d, "EEEE, MMM d", tz)
+        case .agenda:
+            return DateFmt.string(Date(), "EEE, MMMM d", tz)
         }
     }
 
@@ -124,6 +132,7 @@ struct KioskCalendarView: View {
             if let d = cal.date(byAdding: .month, value: n, to: monthAnchor) { withAnimation { monthAnchor = d } }
         case .week: shiftDay(n * 7)
         case .day: shiftDay(n)
+        case .agenda: break   // no month/week stepping in agenda
         }
     }
 
@@ -279,6 +288,183 @@ struct KioskCalendarView: View {
         .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
     }
 
+    // MARK: agenda (upcoming list + mini-month + heads-up + busy bars)
+
+    private var agendaContent: some View {
+        HStack(alignment: .top, spacing: 20) {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("What's coming up").font(NK.serif(28)).foregroundStyle(NK.ink)
+                    let groups = Agenda.upcoming(filtered, from: Agenda.todayKey(tz), tz: tz)
+                    if groups.isEmpty {
+                        Text("Nothing upcoming.").font(.system(size: 16)).foregroundStyle(NK.ink3).padding(.vertical, 14)
+                    } else {
+                        ForEach(groups, id: \.day) { g in
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 8) {
+                                    Text(relativeLabel(g.day)).font(NK.serif(20)).foregroundStyle(NK.ink)
+                                    Text(agendaDateLabel(g.day)).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                                }
+                                ForEach(g.items) { ev in EventCard(event: ev, tz: tz) { detailEvent = ev } }
+                            }
+                        }
+                    }
+                }
+                .padding(.bottom, 20)
+            }
+            .frame(maxWidth: .infinity)
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 16) { miniMonth; headsUpCard; busyCard }
+                .padding(.bottom, 20)
+            }
+            .frame(width: 360)
+        }
+        .task(id: sync.events.count) { await loadHeadsUp() }
+    }
+
+    private func agendaDateLabel(_ key: String) -> String {
+        guard let d = dayKeyToDate(key) else { return "" }
+        return DateFmt.string(d, "EEE · MMM d", tz)
+    }
+
+    private var miniMonth: some View {
+        let cells = monthCells(miniAnchor)
+        return VStack(spacing: 8) {
+            HStack {
+                Text(DateFmt.string(miniAnchor, "MMMM", tz)).font(NK.serif(20)).foregroundStyle(NK.ink)
+                Spacer()
+                Button { stepMini(-1) } label: { miniChevron("chevron.left") }
+                Button { stepMini(1) } label: { miniChevron("chevron.right") }
+            }
+            HStack(spacing: 0) {
+                ForEach(Array(["S", "M", "T", "W", "T", "F", "S"].enumerated()), id: \.offset) { _, d in
+                    Text(d).font(.system(size: 11, weight: .heavy)).foregroundStyle(NK.ink3).frame(maxWidth: .infinity)
+                }
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7), spacing: 4) {
+                ForEach(cells, id: \.key) { cell in miniCell(cell) }
+            }
+        }
+        .padding(16)
+        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    private func miniCell(_ cell: CalendarView.MonthCell) -> some View {
+        let isToday = cell.key == Agenda.todayKey(tz)
+        let colors = dotColors(cell.key)
+        return Button { withAnimation { selectedDay = cell.key; mode = .day } } label: {
+            VStack(spacing: 2) {
+                Text("\(cell.day)")
+                    .font(.system(size: 13, weight: isToday ? .heavy : .semibold))
+                    .foregroundStyle(cell.inMonth ? (isToday ? .white : NK.ink) : NK.ink3.opacity(0.5))
+                    .frame(width: 26, height: 26)
+                    .background(isToday ? NK.primary : Color.clear).clipShape(Circle())
+                HStack(spacing: 2) {
+                    ForEach(Array(colors.prefix(3).enumerated()), id: \.offset) { _, hex in
+                        Circle().fill(Color(hexString: hex) ?? NK.ink3).frame(width: 4, height: 4)
+                    }
+                }
+                .frame(height: 4)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var headsUpCard: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "sparkles").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ai)
+                .frame(width: 32, height: 32).background(NK.ai.opacity(0.12)).clipShape(Circle())
+            VStack(alignment: .leading, spacing: 4) {
+                Text(headsUp?.headline ?? "Heads up this week").font(.system(size: 15, weight: .heavy)).foregroundStyle(NK.ink)
+                if let h = headsUp {
+                    Text(h.body).font(.system(size: 13)).foregroundStyle(NK.ink2).fixedSize(horizontal: false, vertical: true)
+                } else {
+                    HStack(spacing: 6) {
+                        Text("Thinking…").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                        ProgressView().controlSize(.small).tint(NK.ai)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(NK.ai.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.ai.opacity(0.2), lineWidth: 1))
+    }
+
+    @ViewBuilder private var busyCard: some View {
+        let rows = busyRows
+        if !rows.isEmpty {
+            let maxCount = rows.map(\.count).max() ?? 1
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Whose week is busy?").font(.system(size: 16, weight: .heavy)).foregroundStyle(NK.ink)
+                ForEach(rows, id: \.member.id) { row in
+                    HStack(spacing: 10) {
+                        Avatar(colorHex: row.member.colorHex, emoji: row.member.emoji ?? "🙂", size: 28)
+                        Text(row.member.name).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                            .frame(width: 66, alignment: .leading).lineLimit(1)
+                        GeometryReader { g in
+                            let tint = Color(hexString: row.member.colorHex) ?? NK.ink3
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(tint.opacity(0.18))
+                                Capsule().fill(tint).frame(width: g.size.width * CGFloat(row.count) / CGFloat(maxCount))
+                            }
+                        }
+                        .frame(height: 10)
+                        Text("\(row.count)").font(.system(size: 14, weight: .heavy)).foregroundStyle(NK.ink2)
+                    }
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        }
+    }
+
+    private var busyRows: [(member: SyncedMember, count: Int)] {
+        let week = Set(weekDays(Agenda.todayKey(tz)))
+        var counts: [String: Int] = [:]
+        for e in filtered {
+            guard week.contains(Agenda.dayKey(e, tz)) else { continue }
+            var ids = Set(e.participantIds)
+            if let p = e.personId { ids.insert(p) }
+            for id in ids { counts[id, default: 0] += 1 }
+        }
+        return sync.members.compactMap { m in counts[m.id].map { (member: m, count: $0) } }
+            .filter { $0.count > 0 }
+            .sorted { $0.count > $1.count }
+    }
+
+    private func dotColors(_ key: String) -> [String] {
+        var seen = Set<String>(); var colors: [String] = []
+        for e in filtered where Agenda.dayKey(e, tz) == key {
+            let hex = e.colorHex ?? "#A6A29B"
+            if seen.insert(hex).inserted { colors.append(hex) }
+        }
+        return colors
+    }
+
+    private func stepMini(_ n: Int) {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        if let d = cal.date(byAdding: .month, value: n, to: miniAnchor) { withAnimation { miniAnchor = d } }
+    }
+
+    private func miniChevron(_ s: String) -> some View {
+        Image(systemName: s).font(.system(size: 11, weight: .heavy)).foregroundStyle(NK.ink2)
+            .frame(width: 28, height: 28).background(NK.panel).clipShape(Circle())
+    }
+
+    private func loadHeadsUp() async {
+        let week = weekDays(Agenda.todayKey(tz))
+        guard let from = week.first, let to = week.last else { return }
+        headsUp = try? await NookAPI().headsUp(from: from, to: to)
+    }
+
     // MARK: helpers
 
     private func dayKeyToDate(_ key: String) -> Date? { DateFmt.date(key, "yyyy-MM-dd", tz) }
@@ -358,14 +544,18 @@ struct CalTimeGrid: View {
                                 hourRow(h).frame(height: hourHeight, alignment: .top).id(h)
                             }
                         }
-                        // Equal-width day columns; blocks fill their column, offset by time.
+                        // Equal-width day columns; overlapping events split into lanes.
                         HStack(spacing: 4) {
                             Color.clear.frame(width: gutter)
                             ForEach(days, id: \.self) { key in
-                                ZStack(alignment: .topLeading) {
-                                    ForEach(timed(key)) { ev in block(ev) }
+                                GeometryReader { colGeo in
+                                    ZStack(alignment: .topLeading) {
+                                        ForEach(placedEvents(key), id: \.event.id) { placed in
+                                            block(placed, colWidth: colGeo.size.width)
+                                        }
+                                    }
                                 }
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                             }
                         }
                         .frame(height: 24 * hourHeight, alignment: .topLeading)
@@ -437,33 +627,73 @@ struct CalTimeGrid: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    @ViewBuilder private func block(_ ev: SyncedEvent) -> some View {
+    /// An event placed into a lane within its overlap cluster.
+    struct PlacedEvent { let event: SyncedEvent; let lane: Int; let lanes: Int }
+
+    /// Lay a day's timed events into side-by-side lanes so overlaps don't obscure each
+    /// other (interval partitioning: cluster transitively-overlapping events, then
+    /// greedily assign each the first free lane).
+    private func placedEvents(_ key: String) -> [PlacedEvent] {
+        func startOf(_ e: SyncedEvent) -> Date { e.startsAt ?? .distantPast }
+        func endOf(_ e: SyncedEvent) -> Date {
+            let s = e.startsAt ?? .distantPast
+            let dur = e.endsAt.map { max(1800, $0.timeIntervalSince(s)) } ?? 3600   // ≥30 min
+            return s.addingTimeInterval(dur)
+        }
+        let sorted = timed(key)
+        var result: [PlacedEvent] = []
+        var i = 0
+        while i < sorted.count {
+            var clusterEnd = endOf(sorted[i])
+            var j = i + 1
+            while j < sorted.count, startOf(sorted[j]) < clusterEnd {
+                clusterEnd = max(clusterEnd, endOf(sorted[j])); j += 1
+            }
+            let cluster = Array(sorted[i..<j])
+            var laneEnds: [Date] = []
+            var assigned: [(SyncedEvent, Int)] = []
+            for e in cluster {
+                if let li = laneEnds.firstIndex(where: { startOf(e) >= $0 }) {
+                    laneEnds[li] = endOf(e); assigned.append((e, li))
+                } else {
+                    laneEnds.append(endOf(e)); assigned.append((e, laneEnds.count - 1))
+                }
+            }
+            for (e, li) in assigned { result.append(PlacedEvent(event: e, lane: li, lanes: laneEnds.count)) }
+            i = j
+        }
+        return result
+    }
+
+    @ViewBuilder private func block(_ placed: PlacedEvent, colWidth: CGFloat) -> some View {
+        let ev = placed.event
         if let start = ev.startsAt {
             let (h, m) = hourMinute(start)
             let y = (CGFloat(h) + CGFloat(m) / 60) * hourHeight
             let durMin = ev.endsAt.map { max(30, $0.timeIntervalSince(start) / 60) } ?? 60
             let height = max(26, CGFloat(durMin) / 60 * hourHeight - 3)
+            let laneW = colWidth / CGFloat(placed.lanes)
             let color = Color(hexString: ev.colorHex) ?? NK.ink3
             Button { onTapEvent(ev) } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     RoundedRectangle(cornerRadius: 99).fill(color).frame(width: 3)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(ev.title).font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink).lineLimit(1)
-                        if height > 38 {
+                        Text(ev.title).font(.system(size: placed.lanes > 1 ? 12 : 13, weight: .bold))
+                            .foregroundStyle(NK.ink).lineLimit(placed.lanes > 2 ? 1 : 2)
+                        if height > 38, placed.lanes < 3 {
                             Text(EventTime.timeLabel(start, tz)).font(.system(size: 11, weight: .medium)).foregroundStyle(NK.ink3)
                         }
                     }
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 7).padding(.vertical, 4)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .frame(height: height, alignment: .topLeading)
+                .padding(.horizontal, 6).padding(.vertical, 4)
+                .frame(width: max(0, laneW - 3), height: height, alignment: .topLeading)
                 .background(color.opacity(0.14))
                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(NK.card, lineWidth: 1))
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, 2)
-            .offset(y: y)
+            .offset(x: laneW * CGFloat(placed.lane) + 1, y: y)
         }
     }
 

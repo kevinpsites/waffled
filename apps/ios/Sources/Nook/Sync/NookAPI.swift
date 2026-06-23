@@ -466,6 +466,12 @@ struct NookAPI: Sendable {
         return try await getJSON("/api/lists/grocery", as: Resp.self).items
     }
 
+    /// The week's "heads up" digest (busiest day / conflicts) for the agenda view.
+    struct HeadsUp: Decodable, Sendable { let headline: String; let body: String }
+    func headsUp(from: String, to: String) async throws -> HeadsUp {
+        try await getJSON("/api/calendar/heads-up?from=\(from)&to=\(to)", as: HeadsUp.self)
+    }
+
     // MARK: Google Calendar links (for the event editor's calendar picker)
 
     /// One linked Google calendar. `accessRole` owner/writer = writable; the ★
