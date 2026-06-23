@@ -341,32 +341,56 @@ struct RewardsView: View {
         }
     }
 
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
+    @ViewBuilder
     private func approvalRow(_ r: NookAPI.RewardRedemption) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Avatar(colorHex: r.personColor, emoji: r.personAvatar ?? "🙂", size: 36)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(r.personName ?? "Someone") wants")
-                        .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
-                    HStack(spacing: 6) {
-                        Text("\(r.emoji ?? "🎁") \(r.title)")
-                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
-                        coin(r.currency, r.cost)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            HStack(spacing: 8) {
+        if isKiosk {
+            // Compact single line on iPad — full-width buttons read as excessive there.
+            HStack(spacing: 12) {
+                Avatar(colorHex: r.personColor, emoji: r.personAvatar ?? "🙂", size: 34)
+                approvalText(r)
+                Spacer(minLength: 8)
                 Button { act { await sync.denyRedemption(id: r.id) } } label: {
-                    Text("Deny").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
-                        .frame(maxWidth: .infinity).padding(.vertical, 9)
-                        .background(NK.panel).clipShape(Capsule())
+                    Text("Deny").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink2)
+                        .padding(.horizontal, 16).padding(.vertical, 8).background(NK.panel).clipShape(Capsule())
                 }.buttonStyle(.plain)
                 Button { act { await sync.approveRedemption(id: r.id) } } label: {
-                    Text("Approve").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                        .frame(maxWidth: .infinity).padding(.vertical, 9)
-                        .background(NK.primary).clipShape(Capsule())
+                    Text("Approve").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 18).padding(.vertical, 8).background(NK.primary).clipShape(Capsule())
                 }.buttonStyle(.plain)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Avatar(colorHex: r.personColor, emoji: r.personAvatar ?? "🙂", size: 36)
+                    approvalText(r)
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 8) {
+                    Button { act { await sync.denyRedemption(id: r.id) } } label: {
+                        Text("Deny").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+                            .frame(maxWidth: .infinity).padding(.vertical, 9)
+                            .background(NK.panel).clipShape(Capsule())
+                    }.buttonStyle(.plain)
+                    Button { act { await sync.approveRedemption(id: r.id) } } label: {
+                        Text("Approve").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                            .frame(maxWidth: .infinity).padding(.vertical, 9)
+                            .background(NK.primary).clipShape(Capsule())
+                    }.buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func approvalText(_ r: NookAPI.RewardRedemption) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(r.personName ?? "Someone") wants")
+                .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+            HStack(spacing: 6) {
+                Text("\(r.emoji ?? "🎁") \(r.title)")
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                coin(r.currency, r.cost)
             }
         }
     }

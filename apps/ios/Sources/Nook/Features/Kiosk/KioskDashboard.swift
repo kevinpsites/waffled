@@ -16,6 +16,8 @@ struct KioskDashboard: View {
     @State private var recipes = RecipesModel()
     @State private var detailEvent: SyncedEvent?
     @State private var recipeTarget: RecipeTarget?
+    @State private var showCapture = false
+    @State private var dictateOnOpen = false
 
     private var tz: TimeZone { sync.householdTz }
     private var todayKey: String { Agenda.todayKey(tz) }
@@ -45,38 +47,48 @@ struct KioskDashboard: View {
         .sheet(item: $recipeTarget) { t in
             NavigationStack { RecipeDetailView(summary: t.summary, model: recipes, autoCook: t.cook) }
         }
+        .sheet(isPresented: $showCapture) {
+            CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
+        }
     }
 
-    // MARK: header (date · clock · weather)
+    // MARK: header (greeting + capture bar, then date · time · weather)
 
     private var header: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 16) {
                 Text(greetingPhrase).font(NK.serif(40)).foregroundStyle(NK.ink)
-                Text(DateFmt.string(Date(), "EEEE, MMMM d", tz))
-                    .font(.system(size: 19, weight: .semibold)).foregroundStyle(NK.ink2)
+                Spacer(minLength: 12)
+                AICaptureBar(onTap: { dictateOnOpen = false; showCapture = true },
+                             onMic: { dictateOnOpen = true; showCapture = true })
+                    .frame(maxWidth: 460)
             }
-            Spacer()
-            if let w = model.weather, w.configured, let t = w.tempF {
-                Text("\(w.emoji ?? "") \(Int(t.rounded()))°")
-                    .font(.system(size: 30, weight: .semibold)).foregroundStyle(NK.ink2)
-                    .padding(.trailing, 8)
-            }
-            clock
+            dateLine
         }
-        .padding(.horizontal, 40).padding(.top, 26).padding(.bottom, 18)
+        .padding(.horizontal, 40).padding(.top, 22).padding(.bottom, 16)
         .frame(maxWidth: .infinity)
         .background(NK.canvas)
     }
 
-    private var clock: some View {
+    /// Date · time · weather on one line, ticking on the minute.
+    private var dateLine: some View {
         TimelineView(.periodic(from: .now, by: 30)) { ctx in
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(DateFmt.string(ctx.date, "h:mm", tz)).font(NK.serif(56)).foregroundStyle(NK.ink)
-                Text(DateFmt.string(ctx.date, "a", tz)).font(.system(size: 20, weight: .bold)).foregroundStyle(NK.ink3)
+            HStack(spacing: 10) {
+                Text(DateFmt.string(Date(), "EEEE, MMMM d", tz))
+                    .font(.system(size: 18, weight: .semibold)).foregroundStyle(NK.ink2)
+                dot
+                Text(DateFmt.string(ctx.date, "h:mm a", tz))
+                    .font(.system(size: 18, weight: .semibold)).foregroundStyle(NK.ink2)
+                if let w = model.weather, w.configured, let t = w.tempF {
+                    dot
+                    Text("\(w.emoji ?? "") \(Int(t.rounded()))°")
+                        .font(.system(size: 18, weight: .semibold)).foregroundStyle(NK.ink2)
+                }
             }
         }
     }
+
+    private var dot: some View { Text("·").font(.system(size: 18, weight: .bold)).foregroundStyle(NK.ink3) }
 
     private var greetingPhrase: String {
         var cal = Calendar(identifier: .gregorian); cal.timeZone = tz

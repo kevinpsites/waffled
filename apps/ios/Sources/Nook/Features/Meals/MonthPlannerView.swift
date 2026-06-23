@@ -113,7 +113,7 @@ struct MonthPlannerView: View {
             VStack(spacing: 1) {
                 Text(fmt(anchor, "MMMM yyyy")).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
                 if !isCurrentMonth {
-                    Button("This month") { withAnimation { anchor = Date() } }
+                    Button("Jump to this month") { withAnimation { anchor = Date() } }
                         .font(.system(size: 11, weight: .semibold)).tint(NK.primary)
                 }
             }

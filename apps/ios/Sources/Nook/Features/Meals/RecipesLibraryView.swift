@@ -60,6 +60,7 @@ struct RecipesLibraryView: View {
     @State private var selCuisine: Set<String> = []
     @State private var selProtein: Set<String> = []
     @State private var selDietary: Set<String> = []
+    @FocusState private var searchFocused: Bool
 
     // iPhone: 2 fixed columns. iPad: adaptive — as many ~240pt cards as fit the width.
     private var cols: [GridItem] {
@@ -78,6 +79,10 @@ struct RecipesLibraryView: View {
         .background(NK.canvas)
         .refreshable { await model.load() }
         .onChange(of: sync.mealsRev) { _, _ in Task { await model.load() } }
+        // In pick mode (the planner's "Choose a recipe" sheet), focus search on open.
+        .task {
+            if onPick != nil { try? await Task.sleep(for: .milliseconds(350)); searchFocused = true }
+        }
     }
 
     /// Inline search field — kept in the content (not `.searchable`), since the Meals
@@ -88,6 +93,7 @@ struct RecipesLibraryView: View {
             TextField("Search recipes, cuisine, a veggie…", text: $query)
                 .font(.system(size: 15)).textInputAutocapitalization(.never).autocorrectionDisabled()
                 .submitLabel(.search)
+                .focused($searchFocused)
             if !query.isEmpty {
                 Button { query = "" } label: {
                     Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(NK.ink3)

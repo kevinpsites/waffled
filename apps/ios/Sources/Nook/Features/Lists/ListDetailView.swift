@@ -846,7 +846,7 @@ struct ListDetailView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
-        .padding(.bottom, 78)            // clear the floating tab bar
+        .padding(.bottom, isKiosk ? 14 : 78)   // iPhone clears the floating tab bar; iPad has none
         .background(NK.canvas)           // opaque strip so rows don't show through
         .animation(.easeInOut(duration: 0.18), value: showSectionPicker)
     }

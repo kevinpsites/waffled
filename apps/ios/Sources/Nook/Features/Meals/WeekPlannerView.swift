@@ -122,7 +122,7 @@ struct WeekPlannerView: View {
             VStack(spacing: 1) {
                 Text(weekTitle).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
                 if weekOffset != 0 {
-                    Button("This week") { withAnimation { weekOffset = 0 } }
+                    Button("Jump to this week") { withAnimation { weekOffset = 0 } }
                         .font(.system(size: 11, weight: .semibold)).tint(NK.primary)
                 }
             }
