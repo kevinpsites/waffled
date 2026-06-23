@@ -91,11 +91,13 @@ struct PersonView: View {
                 header
                 statCards
                 if isKiosk {
-                    HStack(alignment: .top, spacing: 16) {
-                        VStack(spacing: 16) { daySection; addButton }
-                            .frame(maxWidth: .infinity, alignment: .top)
-                        VStack(spacing: 16) { sideCards }
-                            .frame(maxWidth: .infinity, alignment: .top)
+                    // Grouped into logical sections (Today · Goals & balance · Rewards),
+                    // each balanced on its own — not one heavy column beside a light one.
+                    daySection
+                    addButton
+                    if let ov = model.overview {
+                        goalsSection(ov)
+                        rewardsSection(ov)
                     }
                 } else {
                     if let ov = model.overview {
@@ -144,18 +146,42 @@ struct PersonView: View {
     /// the right); iPhone is a single column.
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
 
-    /// The rewards/goals/stars cards — the right column on iPad.
-    @ViewBuilder private var sideCards: some View {
-        if let ov = model.overview {
-            let cur = ov.currencies.first { $0.key == ov.savingToward?.currency }
-            SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, symbol: cur?.symbol,
-                             canPick: !ov.rewardShop.isEmpty,
-                             onChange: { showSavingPicker = true },
-                             onRedeem: redeemSaving)
-            if ov.categoryBalance.contains(where: { $0.goalCount > 0 }) { balanceCard(ov) }
-            if !ov.goals.isEmpty { goalsCard(ov) }
-            starsCard(ov)
-            if !ov.redemptions.isEmpty { redemptionsCard(ov) }
+    /// "Goals & balance" — the whole-person balance beside the goals list (or one of
+    /// them full-width when the other is absent).
+    @ViewBuilder private func goalsSection(_ ov: NookAPI.PersonOverview) -> some View {
+        let hasBalance = ov.categoryBalance.contains(where: { $0.goalCount > 0 })
+        let hasGoals = !ov.goals.isEmpty
+        if hasBalance || hasGoals {
+            SectionLabel(text: "Goals & balance").padding(.top, 4)
+            if hasBalance && hasGoals {
+                HStack(alignment: .top, spacing: 16) {
+                    balanceCard(ov).frame(maxWidth: .infinity, alignment: .top)
+                    goalsCard(ov).frame(maxWidth: .infinity, alignment: .top)
+                }
+            } else if hasBalance {
+                balanceCard(ov)
+            } else {
+                goalsCard(ov)
+            }
+        }
+    }
+
+    /// "Rewards & currencies" — saving-toward + redemptions on the left, the currency /
+    /// chores balances on the right.
+    @ViewBuilder private func rewardsSection(_ ov: NookAPI.PersonOverview) -> some View {
+        SectionLabel(text: "Rewards & currencies").padding(.top, 4)
+        HStack(alignment: .top, spacing: 16) {
+            VStack(spacing: 16) {
+                let cur = ov.currencies.first { $0.key == ov.savingToward?.currency }
+                SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, symbol: cur?.symbol,
+                                 canPick: !ov.rewardShop.isEmpty,
+                                 onChange: { showSavingPicker = true },
+                                 onRedeem: redeemSaving)
+                if !ov.redemptions.isEmpty { redemptionsCard(ov) }
+            }
+            .frame(maxWidth: .infinity, alignment: .top)
+            VStack(spacing: 16) { starsCard(ov) }
+                .frame(maxWidth: .infinity, alignment: .top)
         }
     }
 
