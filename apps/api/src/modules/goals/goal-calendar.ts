@@ -73,41 +73,75 @@ function defaultPersonIds(row: RecapRow): string[] {
   return both.length ? both : (row.goal_person_ids ?? [])
 }
 
-// Pending recap items: linked single events whose occurrence has ended and that
-// haven't been confirmed or skipped yet. Optionally scoped to one goal.
+// Pending recap items: linked occurrences whose time has passed and that haven't
+// been confirmed or skipped yet. UNION of single events and Nook-native recurring
+// occurrences (linked via their master m). For both, the idempotency key is
+// (event_id, occurrence_date, goal_id) — a recurring series uses the MASTER id as
+// event_id and the occurrence's local date, so each weekly instance recaps once and
+// confirm/skip work unchanged. Optionally scoped to one goal.
 export async function recapQueue(householdId: string, goalId?: string | null) {
   const { rows } = await query<RecapRow>(
-    `select e.id as event_id, e.title, e.starts_at, e.ends_at, e.all_day,
-            (e.starts_at at time zone h.timezone)::date::text as occurrence_date,
-            g.id as goal_id, g.title as goal_title, g.emoji as goal_emoji,
-            g.goal_type, g.unit, g.tracking_mode,
-            e.goal_step_id, gs.label as step_label,
-            coalesce((select array_agg(ep.person_id::text)
-                        from event_participants ep
-                       where ep.event_id = e.id and ep.deleted_at is null), '{}') as event_person_ids,
-            coalesce((select array_agg(gp.person_id::text)
-                        from goal_participants gp
-                       where gp.goal_id = g.id and gp.deleted_at is null), '{}') as goal_person_ids
-       from events e
-       join households h on h.id = e.household_id
-       join goals g on g.id = e.goal_id and g.deleted_at is null and g.auto_from_calendar
-       left join goal_steps gs on gs.id = e.goal_step_id and gs.deleted_at is null
-       left join event_goal_logs egl
-         on egl.event_id = e.id and egl.goal_id = e.goal_id
-        and egl.occurrence_date = (e.starts_at at time zone h.timezone)::date
-      where e.household_id = $1
-        and e.deleted_at is null
-        and e.goal_id is not null
-        and e.rrule is null
-        and coalesce(e.ends_at, e.starts_at) <= now()
-        and (e.status is null or e.status not in ${SKIP_STATUSES})
-        and egl.id is null
-        -- A checklist recap needs a still-pending step to tick; amount-based goals
-        -- (total/count/habit) surface regardless.
-        and (g.goal_type <> 'checklist' or (gs.id is not null and gs.done_at is null))
-        and ($2::uuid is null or g.id = $2)
-      order by coalesce(e.ends_at, e.starts_at) desc
-      limit 50`,
+    `select * from (
+       select e.id as event_id, e.title, e.starts_at, e.ends_at, e.all_day,
+              (e.starts_at at time zone h.timezone)::date::text as occurrence_date,
+              g.id as goal_id, g.title as goal_title, g.emoji as goal_emoji,
+              g.goal_type, g.unit, g.tracking_mode,
+              e.goal_step_id, gs.label as step_label,
+              coalesce((select array_agg(ep.person_id::text)
+                          from event_participants ep
+                         where ep.event_id = e.id and ep.deleted_at is null), '{}') as event_person_ids,
+              coalesce((select array_agg(gp.person_id::text)
+                          from goal_participants gp
+                         where gp.goal_id = g.id and gp.deleted_at is null), '{}') as goal_person_ids,
+              coalesce(e.ends_at, e.starts_at) as ended_at
+         from events e
+         join households h on h.id = e.household_id
+         join goals g on g.id = e.goal_id and g.deleted_at is null and g.auto_from_calendar
+         left join goal_steps gs on gs.id = e.goal_step_id and gs.deleted_at is null
+         left join event_goal_logs egl
+           on egl.event_id = e.id and egl.goal_id = e.goal_id
+          and egl.occurrence_date = (e.starts_at at time zone h.timezone)::date
+        where e.household_id = $1
+          and e.deleted_at is null
+          and e.goal_id is not null
+          and e.rrule is null
+          and coalesce(e.ends_at, e.starts_at) <= now()
+          and (e.status is null or e.status not in ${SKIP_STATUSES})
+          and egl.id is null
+          -- A checklist recap needs a still-pending step to tick; amount-based goals
+          -- (total/count/habit) surface regardless.
+          and (g.goal_type <> 'checklist' or (gs.id is not null and gs.done_at is null))
+          and ($2::uuid is null or g.id = $2)
+       union all
+       select m.id as event_id, coalesce(o.title, m.title) as title, o.starts_at, o.ends_at, o.all_day,
+              (o.starts_at at time zone h.timezone)::date::text as occurrence_date,
+              g.id as goal_id, g.title as goal_title, g.emoji as goal_emoji,
+              g.goal_type, g.unit, g.tracking_mode,
+              m.goal_step_id, gs.label as step_label,
+              coalesce((select array_agg(ep.person_id::text)
+                          from event_participants ep
+                         where ep.event_id = m.id and ep.deleted_at is null), '{}') as event_person_ids,
+              coalesce((select array_agg(gp.person_id::text)
+                          from goal_participants gp
+                         where gp.goal_id = g.id and gp.deleted_at is null), '{}') as goal_person_ids,
+              coalesce(o.ends_at, o.starts_at) as ended_at
+         from event_occurrences o
+         join events m on m.id = o.event_id and m.deleted_at is null and m.goal_id is not null
+         join households h on h.id = o.household_id
+         join goals g on g.id = m.goal_id and g.deleted_at is null and g.auto_from_calendar
+         left join goal_steps gs on gs.id = m.goal_step_id and gs.deleted_at is null
+         left join event_goal_logs egl
+           on egl.event_id = m.id and egl.goal_id = m.goal_id
+          and egl.occurrence_date = (o.starts_at at time zone h.timezone)::date
+        where o.household_id = $1
+          and o.deleted_at is null
+          and coalesce(o.ends_at, o.starts_at) <= now()
+          and egl.id is null
+          and (g.goal_type <> 'checklist' or (gs.id is not null and gs.done_at is null))
+          and ($2::uuid is null or g.id = $2)
+     ) q
+     order by ended_at desc
+     limit 50`,
     [householdId, goalId ?? null]
   )
   return rows.map((r) => ({
@@ -285,9 +319,9 @@ function eligibleGoals(eventPeople: string[], goals: SuggestGoalRow[]): SuggestG
 }
 
 export async function suggestionQueue(householdId: string): Promise<Suggestion[]> {
-  // Candidate events: untagged, not a planned meal, single (non-recurring), in a
-  // window around now, not cancelled, not already dismissed.
-  const { rows: events } = await query<SuggestEventRow>(
+  // Candidate single events: untagged, not a planned meal, in a window around now,
+  // not cancelled, not already dismissed.
+  const { rows: singles } = await query<SuggestEventRow>(
     `select e.id as event_id, e.title, e.description, e.starts_at, e.all_day,
             coalesce((select array_agg(ep.person_id::text)
                         from event_participants ep
@@ -305,6 +339,28 @@ export async function suggestionQueue(householdId: string): Promise<Suggestion[]
       limit 40`,
     [householdId]
   )
+  // Candidate recurring series: untagged masters represented by their nearest
+  // in-window occurrence (one suggestion per series; linking sets the master goal,
+  // which then applies to every occurrence). event_id is the master id.
+  const { rows: recurring } = await query<SuggestEventRow>(
+    `select distinct on (m.id) m.id as event_id, m.title, m.description, o.starts_at, o.all_day,
+            coalesce((select array_agg(ep.person_id::text)
+                        from event_participants ep
+                       where ep.event_id = m.id and ep.deleted_at is null), '{}') as person_ids
+       from event_occurrences o
+       join events m on m.id = o.event_id and m.deleted_at is null and m.rrule is not null
+            and m.goal_id is null
+            and (m.origin is null or m.origin <> 'meal_plan')
+            and (m.status is null or m.status not in ${SKIP_STATUSES})
+      where o.household_id = $1
+        and o.deleted_at is null
+        and o.starts_at between now() - interval '7 days' and now() + interval '14 days'
+        and not exists (select 1 from event_suggestion_dismissals d where d.event_id = m.id)
+      order by m.id, o.starts_at
+      limit 40`,
+    [householdId]
+  )
+  const events = [...singles, ...recurring]
   if (events.length === 0) return []
 
   const { rows: goals } = await query<SuggestGoalRow>(

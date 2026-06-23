@@ -320,3 +320,78 @@ describe('calendar → goal suggestions (Phase B)', () => {
     expect((await suggestions()).find((s) => s.eventId === eventId)).toBeFalsy()
   })
 })
+
+describe('calendar → goal recap (recurring)', () => {
+  const day = 86_400_000
+  // A weekly linked series with 3 past, ended occurrences (−21, −14, −7 days).
+  async function weeklyLinked(goalId: string): Promise<string> {
+    const start = new Date(Date.now() - 21 * day)
+    const end = new Date(start.getTime() + 60 * 60_000) // 1h
+    const r = await call('POST', '/api/events', kevin, {
+      title: 'Weekly session',
+      startsAt: start.toISOString(),
+      endsAt: end.toISOString(),
+      participantIds: [kevinId],
+      goalId,
+      rrule: 'FREQ=WEEKLY',
+      recurrenceEndAt: new Date(Date.now() - day).toISOString(),
+    })
+    return JSON.parse(r.body).event.id
+  }
+
+  it('recaps each past occurrence of a recurring series (keyed by the master id)', async () => {
+    const goalId = await makeGoal({ title: 'Weekly hours' })
+    const seriesId = await weeklyLinked(goalId)
+
+    const items = await recap(goalId)
+    expect(items).toHaveLength(3)
+    // every item belongs to the master series, with a distinct occurrence date
+    expect(items.every((i) => i.eventId === seriesId)).toBe(true)
+    expect(new Set(items.map((i) => i.occurrenceDate)).size).toBe(3)
+    expect(items.every((i) => i.suggestedAmount === 1)).toBe(true) // 1h duration
+
+    // confirm one occurrence → only that instance leaves the queue; idempotent
+    const first = items[0]
+    const c = await call('POST', '/api/goal-calendar/recap/confirm', kevin, {
+      eventId: first.eventId,
+      occurrenceDate: first.occurrenceDate,
+      amount: 1,
+      personIds: [kevinId],
+    })
+    expect(c.statusCode).toBe(201)
+    const dup = await call('POST', '/api/goal-calendar/recap/confirm', kevin, {
+      eventId: first.eventId,
+      occurrenceDate: first.occurrenceDate,
+      amount: 1,
+      personIds: [kevinId],
+    })
+    expect(JSON.parse(dup.body).status).toBe('duplicate')
+
+    const after = await recap(goalId)
+    expect(after).toHaveLength(2)
+    expect(after.some((i) => i.occurrenceDate === first.occurrenceDate)).toBe(false)
+  })
+
+  it('suggests linking an untagged recurring series (one suggestion, master id)', async () => {
+    // Distinctive token ("quokka") so memory matching is unambiguous in the shared
+    // test household (common words get polluted by other tests' learned matches).
+    const goalId = await makeGoal({ title: 'Quokka outings', category: 'physical' })
+    const single = await untaggedEvent('Quokka outing', [kevinId])
+    await call('POST', '/api/goal-calendar/suggestions/link', kevin, { eventId: single, goalId })
+
+    // An untagged weekly series of the same phrasing, with an occurrence in-window.
+    const start = new Date(Date.now() - 2 * day)
+    const r = await call('POST', '/api/events', kevin, {
+      title: 'Quokka outing',
+      startsAt: start.toISOString(),
+      endsAt: new Date(start.getTime() + 45 * 60_000).toISOString(),
+      participantIds: [kevinId],
+      rrule: 'FREQ=WEEKLY',
+      recurrenceEndAt: new Date(Date.now() + 30 * day).toISOString(),
+    })
+    const seriesId = JSON.parse(r.body).event.id
+    const hits = (await suggestions()).filter((s) => s.eventId === seriesId)
+    expect(hits).toHaveLength(1) // one per series, not per occurrence
+    expect(hits[0].goalId).toBe(goalId)
+  })
+})

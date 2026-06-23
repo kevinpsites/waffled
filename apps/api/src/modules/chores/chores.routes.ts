@@ -13,6 +13,7 @@ import {
   ensureTodayInstances,
   todaySummary,
   listTodayInstances,
+  listAwaitingInstances,
   completeInstance,
   uncompleteInstance,
   claimInstance,
@@ -87,6 +88,15 @@ export function registerChoreRoutes(api: Api): void {
     await ensureTodayInstances(tenant.householdId, date)
     const instances = await listTodayInstances(tenant.householdId, date)
     return { date, instances }
+  })
+
+  // All chore completions awaiting a parent's OK, across dates — for the mobile
+  // approvals queue (the date-scoped lists above miss ones from earlier days).
+  // Read-only; approval/rejection still goes through the :id endpoints below.
+  api.get('/api/chore-instances/awaiting', async (req: Request) => {
+    const tenant = await requireTenant(req)
+    const instances = await listAwaitingInstances(tenant.householdId)
+    return { instances }
   })
 
   // Complete / uncomplete an instance (any member can; e.g. a parent on the kiosk).

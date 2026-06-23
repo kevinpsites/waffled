@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
-import { authApi, getAccessToken, type AuthStatus, type SetupInput } from '../lib/api'
+import { authApi, getAccessToken, isKioskMode, type AuthStatus, type SetupInput } from '../lib/api'
+import { ProfilePicker } from './ProfilePicker'
+import { PairDevice } from './PairDevice'
 import '../styles/auth.css'
 
-type Phase = 'loading' | 'authed' | 'login' | 'setup'
+type Phase = 'loading' | 'authed' | 'login' | 'setup' | 'picker'
 
 // Gates the whole kiosk: shows the first-run Setup wizard, the Login screen, or the
 // app — driven by whether a session exists and whether the instance is initialized.
@@ -45,6 +47,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
       setPhase('authed')
       return
     }
+    // Paired kiosk with no active profile → the profile picker (not the login form).
+    if (isKioskMode()) {
+      setPhase('picker')
+      return
+    }
     try {
       const s = await authApi.status()
       setStatus(s)
@@ -67,6 +74,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   if (phase === 'authed') return <>{children}</>
   if (phase === 'setup') return <SetupWizard />
+  if (phase === 'picker') return <ProfilePicker />
   if (phase === 'login') return <LoginScreen status={status} oidcError={oidcError} />
   return (
     <div className="auth-screen">
@@ -93,6 +101,9 @@ function LoginScreen({ status, oidcError }: { status: AuthStatus | null; oidcErr
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(oidcError)
+  const [pairing, setPairing] = useState(false)
+
+  if (pairing) return <PairDevice onCancel={() => setPairing(false)} />
 
   // Default to showing the password form until status loads (so we never strand a
   // user on a blank screen); hide it only when the server says it's disabled.
@@ -132,6 +143,9 @@ function LoginScreen({ status, oidcError }: { status: AuthStatus | null; oidcErr
           </button>
         </form>
       )}
+      <button type="button" className="auth-kiosk-link" onClick={() => setPairing(true)}>
+        Set up this device as a kiosk
+      </button>
     </AuthShell>
   )
 }

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { personsApi, type SettingsMember } from '../../lib/api'
+import { personsApi, kioskApi, type SettingsMember } from '../../lib/api'
 
 const SWATCHES = ['#2F7FED', '#EC6049', '#25A368', '#8B5CF6', '#E0A500', '#EC4899', '#14B8A6', '#6B7280']
 const MEMBER_TYPES = [
@@ -30,6 +30,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
   })
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [tab, setTab] = useState<'general' | 'signin'>('general')
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
 
   // Admin + kiosk visibility apply the instant you flip them when editing — they
@@ -93,6 +94,44 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
     }
   }
 
+  // Kiosk PIN (optional). If set, this person must enter it to switch to their
+  // profile on a shared kiosk. Separate from the password login above.
+  const [pin, setPin] = useState('')
+  const [hasPinLocal, setHasPinLocal] = useState(person?.hasPin ?? false)
+  const [pinBusy, setPinBusy] = useState(false)
+  const [pinErr, setPinErr] = useState<string | null>(null)
+  const [pinSaved, setPinSaved] = useState(false)
+  const [confirmClearPin, setConfirmClearPin] = useState(false)
+
+  async function savePin() {
+    if (!/^\d{4,8}$/.test(pin)) { setPinErr('PIN must be 4–8 digits.'); return }
+    setPinBusy(true); setPinErr(null); setPinSaved(false)
+    try {
+      await kioskApi.setPin(person!.id, pin)
+      setHasPinLocal(true); setPin(''); setPinSaved(true)
+      setTimeout(() => setPinSaved(false), 1800)
+      onSaved()
+    } catch {
+      setPinErr('Could not save the PIN.')
+    } finally {
+      setPinBusy(false)
+    }
+  }
+
+  async function clearPin() {
+    if (!confirmClearPin) { setConfirmClearPin(true); return }
+    setPinBusy(true); setPinErr(null)
+    try {
+      await kioskApi.clearPin(person!.id)
+      setHasPinLocal(false); setPin('')
+      onSaved()
+    } catch {
+      setPinErr('Could not remove the PIN.')
+    } finally {
+      setPinBusy(false); setConfirmClearPin(false)
+    }
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (!form.name.trim() || saving) return
@@ -132,6 +171,15 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
         <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>{editing ? 'Edit person' : 'Add a person'}</div>
 
+        {editing && (
+          <div className="seg" style={{ width: '100%', marginBottom: 16 }}>
+            <button type="button" className={tab === 'general' ? 'on' : ''} style={{ flex: 1, cursor: 'pointer' }} onClick={() => setTab('general')}>General</button>
+            <button type="button" className={tab === 'signin' ? 'on' : ''} style={{ flex: 1, cursor: 'pointer' }} onClick={() => setTab('signin')}>Sign-in</button>
+          </div>
+        )}
+
+        {(!editing || tab === 'general') && (
+        <>
         <form onSubmit={submit}>
           <div className="field-row">
             <label className="field" style={{ flex: 3 }}>
@@ -189,8 +237,20 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
           </button>
         </form>
 
-        {/* Login lives below "Save changes" with its own buttons — and outside the
-            form so pressing Enter in these fields doesn't trigger the profile save. */}
+        {editing && !person!.isOwner && (
+          <button type="button" onClick={del} style={{ display: 'block', margin: '14px auto 0', border: 0, background: 'none', color: confirmDelete ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+            {confirmDelete ? 'Tap again to remove this person' : 'Remove person'}
+          </button>
+        )}
+        {editing && person!.isOwner && (
+          <div className="tiny muted" style={{ textAlign: 'center', marginTop: 12, fontWeight: 600 }}>The household owner can’t be removed.</div>
+        )}
+        </>
+        )}
+
+        {editing && tab === 'signin' && (
+        <>
+        {/* Login + Kiosk PIN — each with its own buttons, outside the profile form. */}
         {editing && (
           <div className="set-card" style={{ padding: 16, marginTop: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: hasLoginLocal ? 12 : 8 }}>
@@ -230,13 +290,47 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
           </div>
         )}
 
-        {editing && !person!.isOwner && (
-          <button type="button" onClick={del} style={{ display: 'block', margin: '14px auto 0', border: 0, background: 'none', color: confirmDelete ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-            {confirmDelete ? 'Tap again to remove this person' : 'Remove person'}
-          </button>
+        {/* Kiosk PIN — optional per-person protection for switching profiles. */}
+        {editing && (
+          <div className="set-card" style={{ padding: 16, marginTop: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <div style={{ fontSize: 21, width: 30, textAlign: 'center', flex: 'none' }}>🔒</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>Kiosk PIN</div>
+                <div className="tiny muted" style={{ fontWeight: 600 }}>
+                  {hasPinLocal
+                    ? 'Required to switch to this profile on the kiosk'
+                    : 'Optional — set one to protect this profile on the kiosk'}
+                </div>
+              </div>
+              {pinSaved && <span className="tiny" style={{ fontWeight: 700, color: 'var(--good, #2e7d32)' }}>✓ Saved</span>}
+            </div>
+            <label className="field" style={{ marginBottom: 8 }}>
+              <span>{hasPinLocal ? 'New PIN (4–8 digits)' : 'PIN (4–8 digits)'}</span>
+              <input
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                placeholder={hasPinLocal ? 'Enter a new PIN' : 'Enter 4–8 digits'}
+              />
+            </label>
+            {pinErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginBottom: 8 }}>{pinErr}</div>}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} disabled={pinBusy || pin.length < 4} onClick={savePin}>
+                {pinBusy ? 'Saving…' : hasPinLocal ? 'Update PIN' : 'Set PIN'}
+              </button>
+              {hasPinLocal && (
+                <button type="button" onClick={clearPin} style={{ border: 0, background: 'none', color: confirmClearPin ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  {confirmClearPin ? 'Tap again to remove PIN' : 'Remove PIN'}
+                </button>
+              )}
+            </div>
+          </div>
         )}
-        {editing && person!.isOwner && (
-          <div className="tiny muted" style={{ textAlign: 'center', marginTop: 12, fontWeight: 600 }}>The household owner can’t be removed.</div>
+
+        </>
         )}
       </div>
     </div>

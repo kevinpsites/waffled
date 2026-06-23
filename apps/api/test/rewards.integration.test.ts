@@ -80,6 +80,11 @@ async function grantStars(personId: string, amount: number) {
   )
 }
 
+async function starsOf(personId: string): Promise<number> {
+  const people = JSON.parse((await call('GET', '/api/balances', kevin)).body).people
+  return people.find((p: { personId: string }) => p.personId === personId)?.stars ?? 0
+}
+
 describe('rewards api', () => {
   let rewardId = ''
 
@@ -146,5 +151,56 @@ describe('rewards api', () => {
     expect((await call('DELETE', `/api/rewards/${rewardId}`, kevin)).statusCode).toBe(204)
     const list = JSON.parse((await call('GET', '/api/rewards', kevin)).body).rewards
     expect(list.some((r: { id: string }) => r.id === rewardId)).toBe(false)
+  })
+})
+
+describe('reward approval — per-reward flag + household default', () => {
+  it('new rewards inherit the household default (default true)', async () => {
+    expect(JSON.parse((await call('GET', '/api/rewards/settings', kevin)).body).requireApproval).toBe(true)
+    const r = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Default reward', cost: 1 })).body).reward
+    expect(r.requiresApproval).toBe(true)
+  })
+
+  it('rejects a non-boolean default (400)', async () => {
+    expect((await call('PUT', '/api/rewards/settings', kevin, { requireApproval: 'yes' })).statusCode).toBe(400)
+  })
+
+  it('a reward with approval OFF auto-approves + debits immediately (no queue)', async () => {
+    const r = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Instant', emoji: '⚡', cost: 2, requiresApproval: false })).body).reward
+    expect(r.requiresApproval).toBe(false)
+    await grantStars(kevinId, 2)
+    const before = await starsOf(kevinId)
+
+    const red = await call('POST', `/api/rewards/${r.id}/redeem`, kevin, { personId: kevinId })
+    expect(red.statusCode).toBe(201)
+    expect(JSON.parse(red.body).redemption.status).toBe('approved')
+    const pending = JSON.parse((await call('GET', '/api/redemptions?status=pending', kevin)).body).redemptions
+    expect(pending.some((x: { rewardId: string }) => x.rewardId === r.id)).toBe(false)
+    expect(await starsOf(kevinId)).toBe(before - 2)
+  })
+
+  it('approval-OFF but unaffordable is blocked (409) and debits nothing', async () => {
+    const r = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Yacht', emoji: '🛥️', cost: 1_000_000, requiresApproval: false })).body).reward
+    const before = await starsOf(kevinId)
+    expect((await call('POST', `/api/rewards/${r.id}/redeem`, kevin, { personId: kevinId })).statusCode).toBe(409)
+    expect(await starsOf(kevinId)).toBe(before)
+  })
+
+  it('an approval-ON reward still queues regardless of the household default', async () => {
+    // flip the default off — a reward explicitly set ON must still pend…
+    expect((await call('PUT', '/api/rewards/settings', kevin, { requireApproval: false })).statusCode).toBe(200)
+    const gated = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Gated', cost: 1, requiresApproval: true })).body).reward
+    await grantStars(kevinId, 1)
+    const red = await call('POST', `/api/rewards/${gated.id}/redeem`, kevin, { personId: kevinId })
+    expect(JSON.parse(red.body).redemption.status).toBe('pending')
+    // …while a default-inheriting reward created now is OFF (auto).
+    const auto = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Auto', cost: 1 })).body).reward
+    expect(auto.requiresApproval).toBe(false)
+  })
+
+  it('PATCH can flip a reward’s approval flag', async () => {
+    const r = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Flip', cost: 1, requiresApproval: true })).body).reward
+    const upd = JSON.parse((await call('PATCH', `/api/rewards/${r.id}`, kevin, { requiresApproval: false })).body).reward
+    expect(upd.requiresApproval).toBe(false)
   })
 })

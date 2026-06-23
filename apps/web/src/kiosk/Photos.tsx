@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
-import { api, usePhotos, type Photo } from '../lib/api'
+import { useMemo, useState } from 'react'
+import { api, usePhotos, useWeather, useHousehold, type Photo } from '../lib/api'
 import { Icon } from './icons'
 import { useTopbarRight } from './topbar-slot'
 import { PhotoAdd } from './components/PhotoAdd'
 import { PhotoDetail } from './components/PhotoDetail'
+import { Screensaver } from './components/Screensaver'
 import '../styles/photos.css'
 
 // Photos home — the family wall (matches photos.png): a "NEW MEMORY" banner over
@@ -51,44 +52,10 @@ function PhotoTile({ photo, span, onOpen, onDelete }: { photo: Photo; span: stri
   )
 }
 
-// Full-screen screensaver takeover — mirrors photos-screensaver.png.
-function Screensaver({ photo, thumbs, onWake }: { photo: Photo; thumbs: Photo[]; onWake: () => void }) {
-  const [now, setNow] = useState(() => new Date())
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 30_000)
-    return () => clearInterval(t)
-  }, [])
-  const time = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(/\s?[AP]M$/i, '')
-  const date = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-  const bg = tileBg(photo)
-  return (
-    <div className="ph-saver" style={{ background: bg }} onClick={onWake} role="button" aria-label="Wake screensaver">
-      {photo.imageUrl && <img className="ph-saver-img" src={photo.imageUrl} alt="" />}
-      <div className="ph-saver-scrim" />
-      <div className="ph-saver-clock">
-        <div className="nk-serif ph-saver-time">{time}</div>
-        <div className="ph-saver-date">{date} · 60° &amp; clear</div>
-      </div>
-      <div className="ph-saver-weather">☀️</div>
-      {!photo.imageUrl && <div className="ph-saver-hero">{photo.emoji ?? '🏖️'}</div>}
-      <div className="ph-saver-meta">
-        <div className="nk-serif">{photo.memory ?? photo.caption}</div>
-        <div className="ph-saver-meta-sub">{thumbs.length} photos from {weekdayOf(photo)}</div>
-      </div>
-      <div className="ph-saver-thumbs">
-        {thumbs.slice(0, 5).map((p, i) => (
-          <div key={p.id} className={`ph-saver-thumb ${i === 0 ? 'on' : ''}`} style={{ background: tileBg(p) }}>
-            {p.imageUrl ? <img src={p.imageUrl} alt="" /> : p.emoji ?? '🖼️'}
-          </div>
-        ))}
-      </div>
-      <div className="ph-saver-wake">Tap anywhere to wake</div>
-    </div>
-  )
-}
-
 export function Photos() {
   const { photos, loading, error, refetch } = usePhotos()
+  const wx = useWeather()
+  const { household } = useHousehold()
   const [adding, setAdding] = useState(false)
   const [detail, setDetail] = useState<Photo | null>(null)
   const [saver, setSaver] = useState<Photo | null>(null)
@@ -173,7 +140,16 @@ export function Photos() {
           onDeleted={refetch}
         />
       )}
-      {saver && <Screensaver photo={saver} thumbs={saverThumbs} onWake={() => setSaver(null)} />}
+      {saver && (
+        <Screensaver
+          content="photos"
+          photos={saverThumbs}
+          weather={wx}
+          nextEvent={null}
+          timezone={household?.timezone}
+          onWake={() => setSaver(null)}
+        />
+      )}
     </div>
   )
 }

@@ -4,6 +4,19 @@ import { api, usePersons, useGoals, goalsApi, goalCalendarApi, calendarsApi, mea
 import { suggestGoalForEvent } from '../../lib/goal-match'
 import { Icon } from '../icons'
 import { createEventLocal, updateEventLocal, deleteEventLocal, tombstoneEvent } from '../../lib/powersync/events-local'
+import { parseRepeat, buildRrule, weekdayCode, WEEKDAYS, type RepeatFreq } from './recurrence'
+
+// Scope of an edit/delete to a recurring event, surfaced via a small chooser.
+type EditScope = 'this' | 'following' | 'all'
+const REPEAT_OPTIONS: Array<{ value: RepeatFreq; label: string }> = [
+  { value: 'none', label: 'Does not repeat' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekdays', label: 'Weekdays (Mon–Fri)' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'custom', label: 'Custom…' },
+]
+const WEEKDAY_LABELS: Record<string, string> = { SU: 'S', MO: 'M', TU: 'T', WE: 'W', TH: 'T', FR: 'F', SA: 'S' }
 
 // Calendars an event can be written to: writable (owner/writer), not read-only.
 function isWritable(c: CalendarLink): boolean {
@@ -109,6 +122,19 @@ export function EventModal({
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
+
+  // Recurrence picker state: parse the event's existing rule for editing; `until`
+  // starts empty (empty = "no end / leave unchanged"). The scope prompt is the
+  // in-modal "This / This and following / All events" chooser for recurring edits.
+  const [repeat, setRepeat] = useState(() => parseRepeat(event?.rrule))
+  const [until, setUntil] = useState('')
+  const [scopePrompt, setScopePrompt] = useState<null | 'save' | 'delete'>(null)
+  const wasRecurring = !!event?.rrule
+  // The event's own weekday — the default day when 'weekly' has nothing selected.
+  const weekday = weekdayCode(new Date(`${form.day}T${form.time || '12:00'}`))
+  const rrule = buildRrule(repeat, weekday)
+  const nowRecurring = !!rrule
+  const recurrenceEndAt = until ? toIso(until, '23:59') : undefined
 
   // "Counts toward" is gated on who's attending: with nobody selected there's
   // nothing to attribute, so the picker is hidden. Once people are chosen, only
@@ -335,10 +361,9 @@ export function EventModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, calTouched, primary, writableCals])
 
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    if (!form.title.trim() || saving) return
-    setSaving(true)
+  // The current form as the shapes the save paths need: `draft` for the local DB
+  // (personIds), `restPayload` for REST (participantIds).
+  function buildPayloads() {
     const startsAt = form.allDay ? toIso(form.day, '12:00') : toIso(form.day, form.time)
     // Timed events get start + duration; all-day events have no end.
     const endsAt = form.allDay ? null : new Date(new Date(startsAt).getTime() + form.durationMin * 60000).toISOString()
@@ -356,6 +381,58 @@ export function EventModal({
       goalStepId: isChecklistGoal ? form.goalStepId || null : null,
     }
     const restPayload = { ...draft, participantIds: draft.personIds }
+    return { draft, restPayload, chosenCal }
+  }
+
+  // Save a recurring create/edit through REST (recurring events are server-
+  // materialized — the local-first path can't expand the rule). `scope` only
+  // applies when editing an already-recurring event.
+  async function saveRecurring(scope?: EditScope) {
+    const { restPayload } = buildPayloads()
+    try {
+      if (!editing) {
+        await api.createEvent({ ...restPayload, rrule, recurrenceEndAt })
+      } else if (wasRecurring) {
+        // 'this'/'following' edit only the occurrence's own fields; only 'all'
+        // (editing the master) changes the rule itself.
+        await api.updateEvent(event!.seriesId ?? event!.id, {
+          ...restPayload,
+          scope,
+          occurrenceStart: event!.occurrenceStart,
+          ...(scope === 'all' ? { rrule, recurrenceEndAt } : {}),
+        })
+        invalidateGetCache(`/api/events/${event!.id}/insight`)
+      } else {
+        // A single event being made recurring — no scope dialog; promote in place.
+        await api.updateEvent(event!.id, { ...restPayload, rrule, recurrenceEndAt })
+        invalidateGetCache(`/api/events/${event!.id}/insight`)
+      }
+      invalidateGetCache('/api/calendar/heads-up')
+      onSaved()
+      onClose()
+    } catch (err) {
+      console.error('event save failed', err)
+      setSaving(false)
+      setScopePrompt(null)
+    }
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    if (!form.title.trim() || saving) return
+    // Recurring create/edit goes through REST. Editing an already-recurring event
+    // first asks which occurrences to change.
+    if (nowRecurring || wasRecurring) {
+      if (editing && wasRecurring) {
+        setScopePrompt('save')
+        return
+      }
+      setSaving(true)
+      await saveRecurring()
+      return
+    }
+    setSaving(true)
+    const { draft, restPayload, chosenCal } = buildPayloads()
     try {
       // Prefer the local DB (instant, offline-capable); fall back to REST when
       // PowerSync isn't running.
@@ -377,8 +454,30 @@ export function EventModal({
     }
   }
 
+  async function deleteRecurring(scope: EditScope) {
+    try {
+      if (scope === 'all') {
+        await api.deleteEvent(event!.seriesId ?? event!.id)
+      } else {
+        await api.deleteEvent(event!.seriesId ?? event!.id, { scope, occurrenceStart: event!.occurrenceStart })
+      }
+      invalidateGetCache('/api/calendar/heads-up')
+      onSaved()
+      onClose()
+    } catch (err) {
+      console.error('event delete failed', err)
+      setSaving(false)
+      setScopePrompt(null)
+    }
+  }
+
   async function del() {
     if (!editing || saving) return
+    // Recurring events choose a scope instead of the tap-again confirm.
+    if (wasRecurring) {
+      setScopePrompt('delete')
+      return
+    }
     if (!confirmDelete) {
       setConfirmDelete(true)
       return
@@ -399,6 +498,14 @@ export function EventModal({
       console.error('event delete failed', err)
       setSaving(false)
     }
+  }
+
+  // The scope chooser picked an option — run the right action and dismiss it.
+  function onScopeChosen(scope: EditScope) {
+    setSaving(true)
+    if (scopePrompt === 'delete') void deleteRecurring(scope)
+    else void saveRecurring(scope)
+    setScopePrompt(null)
   }
 
   return (
@@ -455,6 +562,82 @@ export function EventModal({
             <input type="checkbox" checked={form.allDay} onChange={(e) => set('allDay', e.target.checked)} style={{ width: 'auto' }} />
             <span style={{ margin: 0 }}>All day</span>
           </label>
+
+          <label className="field">
+            <span>Repeats</span>
+            <select
+              value={repeat.freq}
+              onChange={(e) => setRepeat((r) => ({ ...r, freq: e.target.value as RepeatFreq }))}
+              style={{ width: '100%' }}
+            >
+              {REPEAT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {/* Weekly → which days. Defaults to the event's own weekday when none
+              are chosen (mirrors buildRrule). */}
+          {repeat.freq === 'weekly' && (
+            <div className="field">
+              <span>On days</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {WEEKDAYS.map((d) => {
+                  const on = repeat.byday.length ? repeat.byday.includes(d) : d === weekday
+                  return (
+                    <button
+                      type="button"
+                      key={d}
+                      aria-pressed={on}
+                      aria-label={d}
+                      onClick={() =>
+                        setRepeat((r) => {
+                          const base = r.byday.length ? r.byday : [weekday]
+                          const next = base.includes(d) ? base.filter((x) => x !== d) : [...base, d]
+                          return { ...r, byday: next }
+                        })
+                      }
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 999,
+                        border: `1.5px solid ${on ? 'var(--primary)' : 'transparent'}`,
+                        background: on ? 'var(--primary)' : 'var(--card-2)',
+                        color: on ? '#fff' : 'var(--ink)',
+                        font: 'inherit',
+                        fontSize: 14,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {WEEKDAY_LABELS[d]}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Custom → a raw RRULE the user types (preserved verbatim). */}
+          {repeat.freq === 'custom' && (
+            <label className="field">
+              <span>Custom rule (RRULE)</span>
+              <input
+                value={repeat.custom}
+                onChange={(e) => setRepeat((r) => ({ ...r, custom: e.target.value }))}
+                placeholder="FREQ=WEEKLY;INTERVAL=2;BYDAY=TU"
+              />
+            </label>
+          )}
+
+          {repeat.freq !== 'none' && (
+            <label className="field">
+              <span>Until (optional)</span>
+              <input type="date" value={until} onChange={(e) => setUntil(e.target.value)} />
+            </label>
+          )}
 
           <div className="field">
             <span>Who</span>
@@ -645,6 +828,29 @@ export function EventModal({
             </button>
           </div>
         </form>
+
+        {/* Recurring edit/delete scope chooser — which occurrences the action
+            applies to. Sits over the modal as a small overlay. */}
+        {scopePrompt && (
+          <div className="modal-overlay" onClick={() => { setScopePrompt(null); setSaving(false) }}>
+            <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 360 }}>
+              <div className="nk-serif" style={{ fontSize: 19, fontWeight: 600, marginBottom: 14 }}>
+                {scopePrompt === 'delete' ? 'Delete recurring event' : 'Edit recurring event'}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+                <button type="button" className="btn btn-ghost" style={{ justifyContent: 'center' }} onClick={() => onScopeChosen('this')}>
+                  This event
+                </button>
+                <button type="button" className="btn btn-ghost" style={{ justifyContent: 'center' }} onClick={() => onScopeChosen('following')}>
+                  This and following events
+                </button>
+                <button type="button" className="btn btn-primary" style={{ justifyContent: 'center' }} onClick={() => onScopeChosen('all')}>
+                  All events
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

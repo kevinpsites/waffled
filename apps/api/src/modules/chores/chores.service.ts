@@ -221,6 +221,35 @@ export async function listTodayInstances(householdId: string, dueOn: string): Pr
   }))
 }
 
+// All instances awaiting a parent's OK, across every date (the approvals queue).
+// Same shape as listTodayInstances; streak isn't meaningful here so it's 0.
+export async function listAwaitingInstances(householdId: string): Promise<TodayInstance[]> {
+  const { rows } = await query<QueryResultRow>(
+    `select ci.id, ci.status, ci.reward_amount, ci.reward_currency, ci.person_id, ci.requires_approval,
+            c.id as chore_id, c.title as chore_title, c.emoji, c.rrule, p.name as person_name
+       from chore_instances ci
+       join chores c on c.id = ci.chore_id and c.deleted_at is null
+       left join persons p on p.id = ci.person_id
+      where ci.household_id = $1 and ci.status = 'awaiting' and ci.deleted_at is null
+      order by ci.due_on desc, p.sort_order nulls last, c.title`,
+    [householdId]
+  )
+  return rows.map((r) => ({
+    id: r.id,
+    choreId: r.chore_id,
+    choreTitle: r.chore_title,
+    emoji: r.emoji,
+    personId: r.person_id,
+    personName: r.person_name,
+    status: r.status,
+    rewardAmount: r.reward_amount,
+    rewardCurrency: r.reward_currency,
+    rrule: r.rrule,
+    requiresApproval: r.requires_approval,
+    streak: 0,
+  }))
+}
+
 export const UPDATABLE_CHORE: Record<string, string> = {
   title: 'title',
   emoji: 'emoji',
@@ -273,6 +302,43 @@ export async function updateChore(
           and ci.due_on >= (now() at time zone h.timezone)::date`,
       [(patch.personId as string | null) ?? null, householdId, id]
     )
+  }
+
+  // Reward + approval settings are copied onto each instance when it materializes, and
+  // the instance's copy is what drives completion (requires_approval → awaiting) and
+  // the editor's prefill. So a change to them must also flow to not-yet-acted-on
+  // instances — otherwise toggling "Needs a parent's OK" leaves today's instance
+  // unchanged and the edit looks lost (and wouldn't actually gate the next completion).
+  // Done/awaiting instances are left alone, for stars-ledger integrity.
+  if (updated) {
+    const sets2: string[] = []
+    const values2: unknown[] = []
+    let j = 1
+    for (const [field, column] of [
+      ['requiresApproval', 'requires_approval'],
+      ['rewardAmount', 'reward_amount'],
+      ['rewardCurrency', 'reward_currency'],
+    ] as const) {
+      if (field in patch && patch[field] !== undefined) {
+        sets2.push(`${column} = $${j++}`)
+        values2.push(patch[field])
+      }
+    }
+    if (sets2.length) {
+      values2.push(householdId, id)
+      await query(
+        `update chore_instances ci
+            set ${sets2.join(', ')}
+           from households h
+          where ci.household_id = h.id
+            and ci.household_id = $${j++}
+            and ci.chore_id = $${j}
+            and ci.deleted_at is null
+            and ci.status = 'pending'
+            and ci.due_on >= (now() at time zone h.timezone)::date`,
+        values2
+      )
+    }
   }
   return updated
 }

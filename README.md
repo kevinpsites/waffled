@@ -79,8 +79,10 @@ docker compose -f infra/compose/docker-compose.yml --env-file infra/compose/.env
 
 Both images are multi-arch (amd64 + arm64), so they run on a regular x86 box or an
 ARM SBC (e.g. a Raspberry Pi). They're published by the
-`.github/workflows/publish-images.yml` GitHub Action on every push to `main` and on
-`v*` tags — no extra setup beyond the repo's default `GITHUB_TOKEN`.
+`.github/workflows/publish-images.yml` GitHub Action **when you cut a release** —
+`git tag v0.1.0 && git push origin v0.1.0` — which builds the `v0.1.0` / `0.1` /
+`latest` tags (or trigger it manually from the Actions tab for an `sha-…` test build).
+No extra setup beyond the repo's default `GITHUB_TOKEN`.
 
 > For anything other than `localhost`, set `PUBLIC_BASE_URL=https://your.host` so
 > redirect URLs (calendar + OIDC callbacks) are generated correctly.

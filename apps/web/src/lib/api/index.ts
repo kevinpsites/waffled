@@ -5,7 +5,8 @@
 // Adding a domain: create ./<domain>.ts exporting `<domain>Api` + types/hooks,
 // then add one `export * from` line and one spread below. That's the only shared
 // touch — keep it append-only.
-export { localToday, invalidateGetCache, getAccessToken, setSession, clearSession } from './client'
+export { localToday, invalidateGetCache, getAccessToken, setSession, clearSession, isKioskMode, isDisplayMode, setDisplayMode, clearKioskDevice, clearProfileSession, enterKioskMode, getDeviceId } from './client'
+export * from './kiosk'
 export * from './bus'
 export * from './persons'
 export * from './goals'

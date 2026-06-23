@@ -53,7 +53,7 @@ function buildColumns(instances: ChoreInstance[], persons: PersonLite[]): Column
 }
 
 function draftFrom(i: ChoreInstance): ChoreDraft {
-  return { id: i.choreId, title: i.choreTitle, emoji: i.emoji, personId: i.personId, rewardAmount: i.rewardAmount, rewardCurrency: i.rewardCurrency, rrule: i.rrule }
+  return { id: i.choreId, title: i.choreTitle, emoji: i.emoji, personId: i.personId, rewardAmount: i.rewardAmount, rewardCurrency: i.rewardCurrency, rrule: i.rrule, requiresApproval: i.requiresApproval }
 }
 
 // The Tasks screen: today's chores per person. Tick to complete/uncomplete;

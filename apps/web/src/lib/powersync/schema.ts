@@ -21,6 +21,7 @@ const events = new Table({
   goal_step_id: column.text,
   origin: column.text,
   origin_ref_id: column.text,
+  rrule: column.text, // non-null marks a recurring master (its occurrences render instead)
   updated_at: column.text,
 })
 
@@ -28,6 +29,22 @@ const event_participants = new Table({
   household_id: column.text,
   event_id: column.text,
   person_id: column.text,
+})
+
+// Materialized occurrences of a recurring master (event_id). Clients render these
+// as plain dated rows; the server worker keeps them in sync.
+const event_occurrences = new Table({
+  household_id: column.text,
+  event_id: column.text,
+  override_id: column.text,
+  original_start: column.text,
+  person_id: column.text,
+  title: column.text,
+  location: column.text,
+  starts_at: column.text,
+  ends_at: column.text,
+  all_day: column.integer,
+  starts_on: column.text,
 })
 
 const persons = new Table({
@@ -46,4 +63,4 @@ const households = new Table({
   week_start: column.text,
 })
 
-export const AppSchema = new Schema({ events, event_participants, persons, households })
+export const AppSchema = new Schema({ events, event_participants, event_occurrences, persons, households })

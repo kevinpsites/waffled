@@ -33,12 +33,30 @@ enum SyncSchema {
             .text("status"),
             .text("person_id"),
             .text("origin"),
+            // non-null marks a recurring master (its occurrences render instead)
+            .text("rrule"),
             .text("updated_at"),
         ]),
         Table(name: "event_participants", columns: [
             .text("household_id"),
             .text("event_id"),
             .text("person_id"),
+        ]),
+        // Materialized occurrences of a recurring master (event_id). Read as plain
+        // dated rows (no client-side RRULE expansion); the server worker keeps them
+        // in sync. Mirrors the web client schema's `event_occurrences` table.
+        Table(name: "event_occurrences", columns: [
+            .text("household_id"),
+            .text("event_id"),
+            .text("override_id"),
+            .text("original_start"),
+            .text("person_id"),
+            .text("title"),
+            .text("location"),
+            .text("starts_at"),
+            .text("ends_at"),
+            .integer("all_day"),
+            .text("starts_on"),
         ]),
     ])
 }

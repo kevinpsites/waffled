@@ -16,18 +16,22 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] 0.2 Work through `BOOTSTRAP.md` (console) → collect secrets into secrets store *(human, parallel)*
 
 ## M1 — Infrastructure as code
+> **⛔ SUPERSEDED by the self-hosted pivot (2026-06-20) — see the "Self-hosted (Immich-style)" section below.**
+> Nook is now `git clone` + `./nook up` Docker Compose, not Terraform/AWS/Auth0. The
+> cloud IaC milestone below is abandoned; kept for history. (Backups moved to Phase 4
+> S3 backup; identity moved to built-in auth + OIDC.)
 - [x] 1.0 **Data model design** — `docs/DATA_MODEL.md` (all domains, ERD, sync/conflict, decisions)
-- [ ] 1.1 Terraform **bootstrap** stack: encrypted state S3 bucket + DynamoDB lock table
-- [ ] 1.2 Terraform **AWS**: web bucket + CloudFront (OAC), backups bucket (versioned + lifecycle), scoped backup IAM
-- [ ] 1.3 Terraform **Auth0**: provider, native-iOS app, web SPA, API/audience, Google + Apple connections, `household_id` action
-- [ ] 1.4 *(optional)* Terraform **GCP**: project + enable Calendar API
+- [ ] ~~1.1 Terraform **bootstrap** stack: encrypted state S3 bucket + DynamoDB lock table~~ *(dropped — no AWS)*
+- [ ] ~~1.2 Terraform **AWS**: web bucket + CloudFront (OAC), backups bucket (versioned + lifecycle), scoped backup IAM~~ *(dropped — Caddy serves the SPA; backups → Phase 4)*
+- [ ] ~~1.3 Terraform **Auth0**: provider, native-iOS app, web SPA, API/audience, Google + Apple connections, `household_id` action~~ *(dropped — built-in auth + OIDC instead)*
+- [ ] ~~1.4 *(optional)* Terraform **GCP**: project + enable Calendar API~~ *(dropped — operator registers their own Google OAuth client)*
 
 ## M2 — Backend skeleton & local stack
 - [x] 2.1 `docker-compose.yml`: Postgres (logical replication) + Caddy + `.env.example` + `justfile` (up/down/logs)
-- [x] 2.2 `api` (lambda-api, **TypeScript** → esbuild bundle): `/healthz` + JWT middleware (local HS256 now, Auth0 RS256 on swap; extracts `household_id` → `req.tenant`); multi-stage Dockerfile; behind Caddy; `mint-token` dev CLI
+- [x] 2.2 `api` (lambda-api, **TypeScript** → esbuild bundle): `/healthz` + JWT middleware (local HS256 — *the pivot kept HS256 and dropped the planned Auth0 RS256 swap*; extracts `household_id` → `req.tenant`); multi-stage Dockerfile; behind Caddy; `mint-token` dev CLI
 - [x] 2.2t **Test harness** (Vitest + Testcontainers; wiremock for external HTTP) + retrofit 2.2 tests. See `docs/TESTING.md`. **Test-first from here on.**
 - [x] 2.3 DB migration tooling (**node-pg-migrate**, SQL files) + first migration: `households`, `persons`, `identities` (+ `set_updated_at` trigger, FKs, partial indexes). `just migrate`; test-first via a Postgres testcontainer
-- [ ] 2.4 `backup` service (pg_dump→S3) + `just restore-check` (restore into throwaway PG, assert row counts)
+- [ ] 2.4 `backup` service (pg_dump→S3) + restore-check (restore into throwaway PG, assert row counts) — *now tracked as **Phase 4 — optional S3 backup** in the self-host section*
 
 ## MW — Web & kiosk (apps/web)
 - [x] W1a Web scaffold (Vite + React + TS) + kiosk shell: design system (nook.css) ported, 1280×800 scaling stage, nav rail + topbar (live clock) + AI capture bar
@@ -47,14 +51,14 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] W3 Web management dashboard (full SPA: setup, calendar, lists, …) — grows alongside the backend domains
 
 ## M3 — Identity & household
-- [x] 3.1 First-login provisioning: `POST /api/households` creates household + owner `person` (adult/admin) + `identity`; `GET /api/household` resolves `sub`→household from the DB (identities table is the authority, not the JWT — so onboarding works pre-Auth0). `GET /api/me` echoes the principal. *(Auth0/Google login swaps in at M5; PowerSync gets the `household_id` claim then.)*
+- [x] 3.1 First-login provisioning: `POST /api/households` creates household + owner `person` (adult/admin) + `identity`; `GET /api/household` resolves `sub`→household from the DB (identities table is the authority, not the JWT — so onboarding works pre-Auth0). `GET /api/me` echoes the principal. *(Real login landed via built-in auth + OIDC — see the self-host section — not the originally-planned Auth0/Google swap.)*
 - [x] 3.2 Members CRUD (`/api/persons`): list + create + read-one + update + soft-delete, all household-scoped. Reads open to any member; mutations admin-only; owner protected from deletion
-- [ ] 3.3 Kiosk device pairing + kid profile tokens
+- [x] 3.3 **Kiosk device pairing + kid profile tokens** (DONE 2026-06-22). A tablet is paired once to a household (`kiosk_devices`, migration 0043) and rests on a Netflix-style **profile picker**; tapping a profile mints a *real* person-scoped session (server-enforced attribution + role gates — a kid's token can't approve chores or spend others' stars). The device token (`kind:'device'`) is allowed only on `/api/kiosk/*`; it has no identity row so `requireTenant` rejects it everywhere else. Claiming lazily ensures/resurrects a `kiosk` identity (`kiosk:<personId>`) so the existing sub→identity→person path is unchanged. Optional per-person **PIN** (scrypt, throttled). Pairing via an admin code or a "use this device" promote (Settings → Display & Kiosk). Rail "Switch" + 2-min idle return to the picker. Single-login (no pairing) stays the untouched default. 16 API integration tests + Playwright E2E (pair→pick→PIN→switch). iOS unaffected.
 
 ## M4 — Offline foundation (de-risk #1)
 - [x] 4.1 Self-hosted `powersync` service + `service.yaml`/`sync-config.yaml` (one `household` bucket scoped by the `household_id` JWT claim); logical-replication publication (4.1a); api as PowerSync token authority — JWKS + `/api/powersync/token` (4.1b); service replicating `households`+`persons`, verified healthy (4.1c). *Client sync E2E lands in 4.2.*
 - [x] 4.2 iOS skeleton (SwiftUI) + PowerSync Swift SDK sync; **airplane-mode read/write + reconnect demonstrated**. `apps/ios` XcodeGen project (SwiftUI + SwiftData-for-local + PowerSync), Nook design system ported, 5-tab nav. PowerSync client mirrors `persons`/`events`/`households`/`event_participants` to on-device SQLite (schema + connector mirror the web client); `fetchCredentials` exchanges the session token at `/api/powersync/token`; `uploadData` drains queued writes to `/api/powersync/crud`. **Verified E2E on the iPhone 17 Pro sim against the live stack:** family renders from local SQLite, an event created on-device round-tripped to Postgres, offline read kept working with the backend stopped, an offline write queued and then **drained on reconnect**. Auth via local HS256 dev token (Auth0 login split out to 4.2.1). *Tooling note: pinned to a locally-patched PowerSync 1.14.3 — the released SDK's `weak let` doesn't compile under Xcode 26.1 / Swift 6.2; revert once upstream fixes it.*
-- [ ] 4.2.1 iOS **Auth0 login** (Sign in with Apple + Google) replaces the dev token; the minted JWT keeps the same `household_id` claim shape, so PowerSync sync rules are unchanged. Depends on Terraform Auth0 (1.3).
+- [x] ~~4.2.1 iOS **Auth0 login** (Sign in with Apple + Google)~~ **DONE differently — native auth, not Auth0.** The iOS app now signs in with the **built-in login + OIDC** flow (Keychain token store, 401-refresh, `ASWebAuthenticationSession` SSO) — same `/api/auth/*` endpoints as web, minted HS256 JWT keeps the `household_id` claim so PowerSync rules are unchanged. (Merged via `ios/mobile`.)
 
 ## M5 — Calendar (de-risk #2, the core tenet)
 **Part 1 (Nook-native, no Google) — done:** `events` migration, events api (create + today
@@ -87,13 +91,14 @@ agenda + range), kiosk agenda card + Calendar month-grid screen. Part 2 below is
 ## M7 — Harden & "make it real"
 - [~] 7.1 Kiosk PWA: service worker + cached last-known state (survive backend blips)
 - [ ] 7.2 Submit Google + Apple production verification
-- [ ] 7.3 Public ingress (Cloudflare Tunnel/VPS) when onboarding non-household users; DB stays on tailnet
+- [ ] 7.3 Public ingress when exposing the stack beyond the LAN — Caddy auto-TLS via `CADDY_SITE_ADDRESS` + `PUBLIC_BASE_URL` (or a Cloudflare Tunnel in front). *(Self-host reframe: no tailnet assumption; the operator chooses how to expose it.)*
 - [ ] 7.4 Observability (logs/metrics/health) + scheduled restore drills
 
 ---
 
 ### Current focus
-**Feature surface complete for a single self-hosted household on the dev token.** Every M6
+**Feature surface complete + self-host packaging shipped — a fresh `git clone` + `./nook up`
+comes up with real auth (built-in password / OIDC) and runs.** Every M6
 domain is built and mock-faithful: Today (4 live cards), Tasks/chores (full stars loop —
 rewards catalog → redeem → parent-approve → ledger debit, weekly schedules, up-for-grabs claim,
 parent-approval, streaks), Lists/grocery (auto-built aisle board, quantity-merge, by-meal),
@@ -102,13 +107,20 @@ substitution-aware grocery build), Goals + rewards (membership model, edit, deta
 person + family overview), Photos, Calendar (native events + month grid + create/edit/delete),
 and a cross-surface live-refresh bus. Still **zero external dependencies**.
 
-**What's left splits two ways:**
-- **Needs a 3rd party** (can't do local-only): Terraform/AWS/Auth0/GCP (1.x), Google
-  console secrets (0.2), real device pairing (3.3), iOS app (4.2), APNs/web-push delivery
-  for notifications (6.7 tail), public ingress + store verification (7.2–7.3).
-  *(Google Calendar sync 5.2–5.6 is DONE — per-household OAuth, inbound+outbound, 5-min poll.)*
-- **Local-only, buildable now**: **calendar → goal auto-counting** *(designed, not built — see backlog; activates the `auto_from_calendar` toggle)*, **6.7 kiosk reminders** (local "due soon" banner + `reminders` table — no `reminders` table yet), real photo/chore-proof upload (6.5 tail), **2.4 backup/restore-check** (local target).
-  *(Done since last edit: 6.6 capture parser verified end-to-end; 7.1 PWA — `sw.js` + `manifest.webmanifest` + `lib/pwa.ts` present; meals "plan my week".)*
+**What's left** *(reconciled to the self-host pivot — the old Terraform/AWS/Auth0/GCP
+infra milestone is abandoned, not pending; identity shipped via built-in auth + OIDC,
+backups moved to Phase 4)*:
+- **Self-host infra:** **Phase 4 — optional S3 backup** (the only remaining packaging
+  piece; supersedes 2.4) — *parked*.
+- **Needs a 3rd party / hardware:** APNs/web-push delivery for notifications
+  (6.7 tail), Apple/Google **store verification** (7.2), public ingress when going
+  beyond the LAN (7.3).
+  *(DONE: Google Calendar sync 5.2–5.6; built-in auth + OIDC + iOS native login; **kiosk device pairing + kid profile tokens (3.3)**.)*
+- **Local-only, buildable now:** **6.7 kiosk reminders** (local "due soon" banner +
+  `reminders` table — table not built yet), **calendar → goal Phase 2** (recurring
+  events; Phase 1 shipped), real photo / chore-proof **blob upload** (6.5 tail),
+  **6.6-names** server-side fuzzy person resolution, **7.4** observability + restore
+  drills, milestone reward **payouts** (deferred by design — see backlog).
 
 Other deferred polish folded into done items: AI "Nook suggests" cards (→6.6-ai), list-sharing
 UI, settings sub-tab depth, event recurrence/overrides, auto-from-calendar goal logging (M5).
@@ -116,6 +128,17 @@ UI, settings sub-tab depth, event recurrence/overrides, auto-from-calendar goal 
 ---
 
 ## Backlog — designed, not yet built
+
+### Tech debt — route auth as middleware (not yet built)
+Almost every API route opens with the same two lines —
+`const tenant = await requireTenant(req)` then (for writes) `requireAdmin(tenant)` —
+copied across chores, rewards, currencies, goals, lists, meals, kiosk, persons, etc.
+Fold this into reusable lambda-api middleware: one that resolves + attaches the tenant
+(short-circuiting 401 when absent) and one that asserts admin (403 otherwise), so routes
+just declare their requirement instead of re-deriving it. Keep `requireTenant`/
+`requireAdmin` as the underlying helpers the middleware calls (and for the few
+dual-auth/device routes that don't fit the common shape). Mechanical, broad, well-tested
+surface — a good standalone pass. *(raised 2026-06-22)*
 
 ### Calendar → goal auto-counting (the "auto-from-calendar" bridge) — PHASE 1 SHIPPED 2026-06-18
 The bidirectional Google Calendar **sync already exists and works** (inbound pull +
@@ -274,7 +297,12 @@ leftovers. Already-planned nights show in the review (editable). Drag-to-swap on
 month grid, week grid, and planner review (optimistic, pointer events). "Eating out"
 + "Leftovers" are always-available picker options. `POST /api/meals/plan-month`.
 
-## Self-hosted (Immich-style) — auth, onboarding, deployment — IN PROGRESS
+## Self-hosted (Immich-style) — auth, onboarding, deployment — Phases 1–3 DONE, Phase 4 parked
+**This section is the current spine of the project** (replaces M0–M1's cloud/Auth0 plan).
+Status: Phase 1 built-in auth · Phase 2 OIDC · member management · Phase 3 packaging +
+GHCR — all **shipped**; iOS native login/OIDC **merged**. Only **Phase 4 (optional S3
+backup)** remains, and it's parked.
+
 **Pivot (2026-06-20):** drop the Terraform/Auth0/cloud-zero path. Ship a self-hosted
 app you `git clone` + `docker compose up` and run; the operator chooses auth (built-in
 password or OIDC) and opts into S3 backup via env. The whole app gates on a JWT
@@ -405,8 +433,10 @@ steps**. Shipped:
   `docker compose pull`s from GHCR when the overrides point at published tags.
 - **GHCR publish workflow.** `.github/workflows/publish-images.yml` builds both
   `nook-api` and `nook-caddy` **multi-arch (amd64 + arm64)** and pushes them to
-  `ghcr.io/<owner>/…` on every push to `main` and on `v*` tags (matrix build,
-  Buildx + QEMU, gha layer cache, repo-default `GITHUB_TOKEN` — no extra secrets).
+  `ghcr.io/<owner>/…` **on a `v*` release tag** (or manual dispatch) — *not* every
+  push to main, to conserve Actions minutes (matrix build, Buildx + QEMU, gha layer
+  cache, repo-default `GITHUB_TOKEN` — no extra secrets). Release tags publish
+  `version` / `major.minor` / `latest`; a manual run publishes an `sha-…` tag only.
   Set `NOOK_API_IMAGE` / `NOOK_CADDY_IMAGE` to the published tags + `docker compose
   pull` to run without a local build.
 - **One-command fresh run.** `./nook up` auto-creates `infra/compose/.env` from the

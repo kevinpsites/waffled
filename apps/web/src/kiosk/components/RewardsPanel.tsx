@@ -208,15 +208,25 @@ function RewardModal({ reward, currencies, onClose, onSaved }: { reward?: Reward
   const [emoji, setEmoji] = useState(reward?.emoji ?? '🎁')
   const [cost, setCost] = useState(reward?.cost ?? 10)
   const [currencyKey, setCurrencyKey] = useState(() => reward?.currency ?? (spendable.find((c) => c.isDefault) ?? spendable[0])?.key ?? 'stars')
+  const [requiresApproval, setRequiresApproval] = useState(reward?.requiresApproval ?? true)
   const [saving, setSaving] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   const selected = currencies.find((c) => c.key === currencyKey)
+
+  // New rewards inherit the household default (Settings → Chores & rewards); edits keep
+  // the reward's own value.
+  useEffect(() => {
+    if (editing) return
+    let alive = true
+    rewardsApi.settings().then((s) => alive && setRequiresApproval(s.requireApproval)).catch(() => {})
+    return () => { alive = false }
+  }, [editing])
 
   async function save() {
     if (!title.trim()) return
     setSaving(true)
     try {
-      const body = { title: title.trim(), emoji: emoji.trim() || null, cost: Math.max(0, Math.round(cost || 0)), currency: currencyKey }
+      const body = { title: title.trim(), emoji: emoji.trim() || null, cost: Math.max(0, Math.round(cost || 0)), currency: currencyKey, requiresApproval }
       if (editing) await rewardsApi.updateReward(reward!.id, body)
       else await rewardsApi.createReward(body)
       onSaved()
@@ -269,6 +279,15 @@ function RewardModal({ reward, currencies, onClose, onSaved }: { reward?: Reward
             <span className="rw-cost-sym">{selected?.symbol ?? '⭐'}</span>
             <input type="number" min={0} value={cost} onChange={(e) => setCost(Number(e.target.value))} aria-label="Cost" />
           </div>
+        </label>
+        <label className="rw-cost-field" style={{ marginTop: 12 }}>
+          <span>
+            Needs a parent’s OK
+            <span className="tiny muted" style={{ display: 'block', fontWeight: 600 }}>
+              {requiresApproval ? 'Redeeming waits for approval.' : 'Redeems instantly if affordable.'}
+            </span>
+          </span>
+          <input type="checkbox" className="set-check" checked={requiresApproval} onChange={(e) => setRequiresApproval(e.target.checked)} aria-label="Needs a parent's OK" />
         </label>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 18 }}>
           {editing && (

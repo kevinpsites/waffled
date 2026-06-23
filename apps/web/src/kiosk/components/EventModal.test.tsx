@@ -83,4 +83,51 @@ describe('EventModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tap again to delete' }))
     await waitFor(() => expect(deleted).toHaveLength(1))
   })
+
+  it('renders the Repeats control with weekly day chips', () => {
+    mockEventApi([], [])
+    renderModal(<EventModal date="2026-06-22" onClose={vi.fn()} onSaved={vi.fn()} />)
+    // The Repeats select starts on "Does not repeat".
+    const repeats = screen.getByDisplayValue('Does not repeat')
+    fireEvent.change(repeats, { target: { value: 'weekly' } })
+    // Day chips (one per weekday) surface once weekly is chosen.
+    expect(screen.getByRole('button', { name: 'MO' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'FR' })).toBeTruthy()
+  })
+
+  it('creates a recurring event with an rrule via REST', async () => {
+    const calls: Array<{ url: string; body: Record<string, unknown> }> = []
+    globalThis.fetch = vi.fn(async (url: string, opts?: { method?: string; body?: string }) => {
+      if (String(url).includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      if (String(url).includes('/api/events') && opts?.method === 'POST') {
+        calls.push({ url: String(url), body: JSON.parse(opts.body!) })
+        return { ok: true, json: async () => ({ event: { id: 'e1' } }) }
+      }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    renderModal(<EventModal date="2026-06-22" onClose={vi.fn()} onSaved={vi.fn()} />)
+    fireEvent.change(screen.getByPlaceholderText('Soccer practice'), { target: { value: 'Standup' } })
+    fireEvent.change(screen.getByDisplayValue('Does not repeat'), { target: { value: 'weekly' } })
+    fireEvent.click(screen.getByRole('button', { name: /Add event/ }))
+
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(calls[0].body).toMatchObject({ title: 'Standup' })
+    expect(String(calls[0].body.rrule)).toContain('FREQ=WEEKLY')
+  })
+
+  it('surfaces the edit-scope dialog when saving an already-recurring event', async () => {
+    const patched: unknown[] = []
+    mockEventApi(patched, [])
+    const recurring = { ...sampleEvent, rrule: 'FREQ=WEEKLY;BYDAY=MO', seriesId: 'e1', occurrenceStart: '2026-06-22T22:00:00Z' }
+    renderModal(<EventModal event={recurring} onClose={vi.fn()} onSaved={vi.fn()} />)
+    fireEvent.change(screen.getByDisplayValue('Old title'), { target: { value: 'New title' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    // Save does not fire immediately — the scope chooser appears first.
+    expect(patched).toHaveLength(0)
+    const thisOne = await screen.findByRole('button', { name: 'This event' })
+    fireEvent.click(thisOne)
+    await waitFor(() => expect(patched).toHaveLength(1))
+    expect(patched[0]).toMatchObject({ title: 'New title', scope: 'this', occurrenceStart: '2026-06-22T22:00:00Z' })
+  })
 })

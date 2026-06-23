@@ -12,6 +12,7 @@ export interface Reward {
   cost: number
   currency: string
   sortOrder: number
+  requiresApproval: boolean
 }
 
 export interface LedgerEntry {
@@ -54,9 +55,9 @@ export interface Redemption {
 
 export const rewardsApi = {
   rewards: () => apiGet<{ rewards: Reward[] }>('/api/rewards'),
-  createReward: (body: { title: string; emoji?: string | null; cost: number; currency?: string }) =>
+  createReward: (body: { title: string; emoji?: string | null; cost: number; currency?: string; requiresApproval?: boolean }) =>
     apiSend<{ reward: Reward }>('POST', '/api/rewards', body).then((r) => r.reward),
-  updateReward: (id: string, patch: { title?: string; emoji?: string | null; cost?: number; currency?: string }) =>
+  updateReward: (id: string, patch: { title?: string; emoji?: string | null; cost?: number; currency?: string; requiresApproval?: boolean }) =>
     apiSend<{ reward: Reward }>('PATCH', `/api/rewards/${id}`, patch).then((r) => r.reward),
   deleteReward: (id: string) => apiDelete(`/api/rewards/${id}`), // soft archive
   archivedRewards: () => apiGet<{ rewards: Reward[] }>('/api/rewards/archived'), // admin only
@@ -68,6 +69,10 @@ export const rewardsApi = {
     apiSend<{ redemption: Redemption }>('POST', `/api/rewards/${rewardId}/redeem`, { personId }).then((r) => r.redemption).then(tap('rewards')),
   approve: (id: string) => apiSend<{ redemption: Redemption }>('POST', `/api/redemptions/${id}/approve`).then((r) => r.redemption).then(tap('rewards')),
   deny: (id: string) => apiSend<{ redemption: Redemption }>('POST', `/api/redemptions/${id}/deny`).then((r) => r.redemption).then(tap('rewards')),
+  // Household reward-approval policy (Settings → Chores & rewards). Off = kids redeem instantly.
+  settings: () => apiGet<{ requireApproval: boolean }>('/api/rewards/settings'),
+  setSettings: (requireApproval: boolean) =>
+    apiSend<{ requireApproval: boolean }>('PUT', '/api/rewards/settings', { requireApproval }).then((r) => r.requireApproval).then(tap('rewards')),
 }
 
 export interface RewardsHubState {

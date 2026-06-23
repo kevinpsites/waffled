@@ -25,6 +25,7 @@ import { registerGoalCalendarRoutes } from './modules/goals/goal-calendar'
 import { registerOverviewRoutes } from './modules/overview/overview'
 import { registerAuthRoutes } from './modules/auth/auth'
 import { registerOidcRoutes } from './modules/auth/oidc'
+import { registerKioskRoutes } from './modules/kiosk/kiosk'
 import { registerTodayLayoutRoutes } from './modules/layout/today-layout'
 import { registerMobileTodayLayoutRoutes } from './modules/layout/mobile-today-layout'
 import { registerPhotoRoutes } from './modules/photos/photos'
@@ -52,6 +53,9 @@ const PUBLIC_PATHS = new Set([
   '/api/auth/oidc/start',
   '/api/auth/oidc/callback',
   '/api/auth/oidc/exchange',
+  // Kiosk pairing: both authenticate via a code/secret in the body, pre-session.
+  '/api/kiosk/pair',
+  '/api/kiosk/device/token',
 ])
 
 // Auth gate — verifies the token (sets req.principal) for every non-public route.
@@ -172,6 +176,9 @@ registerGoalCalendarRoutes(api)
 // Built-in auth: setup / login / refresh / logout (/api/auth/*)
 registerAuthRoutes(api)
 registerOidcRoutes(api)
+
+// Kiosk device pairing + profile tokens (/api/kiosk/*)
+registerKioskRoutes(api)
 
 // Person + family overviews (/api/persons/:id/overview, /api/family/overview)
 registerOverviewRoutes(api)

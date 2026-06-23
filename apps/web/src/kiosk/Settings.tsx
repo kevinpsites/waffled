@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, goalCalendarApi, groceryApi, authApi, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch } from '../lib/api'
+import { useSearchParams } from 'react-router'
+import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, goalCalendarApi, groceryApi, authApi, kioskApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
+import { ConfirmDialog } from './components/ConfirmDialog'
+import { Screensaver } from './components/Screensaver'
 import '../styles/settings.css'
 
 // `admin` tabs are only shown to admins — non-admins can't change those settings,
@@ -8,7 +11,7 @@ import '../styles/settings.css'
 const NAV = [
   { key: 'family', icon: '👨‍👩‍👧‍👦', label: 'Family & People', admin: true },
   { key: 'ai', icon: '✨', label: 'AI & Capture', admin: true },
-  { key: 'security', icon: '🔐', label: 'Accounts & Security', admin: true },
+  { key: 'security', icon: '🔐', label: 'Sign-in & Security', admin: true },
   { key: 'calendars', icon: '📅', label: 'Calendars', admin: true },
   { key: 'chores', icon: '⭐', label: 'Chores & Rewards', admin: true },
   { key: 'meals', icon: '🍽️', label: 'Meals', admin: true },
@@ -798,7 +801,7 @@ const PLACEHOLDERS: Record<string, { title: string; note: string }> = {
   chores: { title: 'Chores & rewards', note: 'Reward styles & the reward shop build on the chores ledger (6.1 / 6.4).' },
   meals: { title: 'Meals', note: 'Meal preferences & dietary defaults pair with the Meals screen.' },
   lists: { title: 'Lists', note: 'List defaults & sharing pair with the Lists screen.' },
-  display: { title: 'Display & Kiosk', note: 'Brightness, screensaver timing & device pairing land with kiosk pairing (3.3).' },
+  display: { title: 'Display & Kiosk', note: 'Brightness & screensaver timing land here. Kiosk device pairing moved to Sign-in & Security.' },
   notifications: { title: 'Notifications', note: 'Push to phones rides APNs + Google reminders (6.7).' },
 }
 
@@ -843,6 +846,43 @@ function CurrencyRow({ c, canDelete }: { c: Currency; canDelete: boolean }) {
   )
 }
 
+// Household reward-approval gate. On (default) → every redemption waits for a parent;
+// off → kids redeem instantly with currency they've already earned (a balance guard
+// still applies server-side). Optimistic toggle, reverts on failure.
+function RewardApprovalCard() {
+  const [requireApproval, setRequireApproval] = useState<boolean | null>(null)
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    let alive = true
+    rewardsApi.settings()
+      .then((s) => alive && setRequireApproval(s.requireApproval))
+      .catch(() => alive && setRequireApproval(true))
+    return () => { alive = false }
+  }, [])
+  async function toggle() {
+    if (requireApproval === null || saving) return
+    const next = !requireApproval
+    setRequireApproval(next)
+    setSaving(true)
+    try { await rewardsApi.setSettings(next) }
+    catch { setRequireApproval(!next) }
+    finally { setSaving(false) }
+  }
+  return (
+    <div className="set-card" style={{ padding: 18, marginTop: 14 }}>
+      <div className="card-h" style={{ marginBottom: 4 }}>Reward approvals</div>
+      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
+        Sets the default for <b>new</b> rewards. On = a parent OKs the purchase; off = the kid redeems instantly with what they’ve earned. Even if off, each reward can have an override to explicitly require approval.
+      </div>
+      <SettingRow icon="✅" title="New rewards need a parent’s OK by default"
+        sub={requireApproval === false ? 'Off — new rewards are instant unless you switch them on.' : 'On — new rewards wait in the approval queue unless you switch them off.'}>
+        <input type="checkbox" className="set-check" checked={requireApproval ?? true}
+          disabled={requireApproval === null || saving} onChange={toggle} />
+      </SettingRow>
+    </div>
+  )
+}
+
 function RewardsSettingsPanel() {
   const { currencies, loading } = useCurrencies()
   const [newLabel, setNewLabel] = useState('')
@@ -864,24 +904,31 @@ function RewardsSettingsPanel() {
         <div className="nk-serif set-head-t">Chores &amp; Rewards</div>
         <div className="tiny muted" style={{ fontWeight: 600 }}>The currencies your family earns &amp; spends</div>
       </div>
-      <div className="set-card" style={{ padding: 18 }}>
-        <div className="card-h" style={{ marginBottom: 4 }}>Currencies</div>
-        <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
-          Rename stars, add your own, or run several. The <b>default</b> is what new chores award; <b>spendable</b> ones can buy rewards. Set up trades between them under <b>Conversions</b> below.
+      {/* Economy widget — the currencies a family earns/spends and the trades
+          between them belong together, so box them into one tray. */}
+      <div className="set-tray">
+        <div className="set-card" style={{ padding: 18 }}>
+          <div className="card-h" style={{ marginBottom: 4 }}>Currencies</div>
+          <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
+            Rename stars, add your own, or run several. The <b>default</b> is what new chores award; <b>spendable</b> ones can buy rewards. Set up trades between them under <b>Conversions</b> below.
+          </div>
+          {loading ? (
+            <div className="muted" style={{ fontWeight: 600 }}>Loading…</div>
+          ) : (
+            currencies.map((c) => <CurrencyRow key={c.id} c={c} canDelete={currencies.length > 1} />)
+          )}
+          <div className="cur-add">
+            <input className="cur-sym" value={newSymbol} maxLength={2} placeholder="⭐" aria-label="New symbol" onChange={(e) => setNewSymbol(e.target.value)} />
+            <input className="cur-label" value={newLabel} placeholder="Add a currency (e.g. Family Dollars)" aria-label="New label" onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
+            <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={adding || !newLabel.trim()} onClick={add}>＋ Add</button>
+          </div>
         </div>
-        {loading ? (
-          <div className="muted" style={{ fontWeight: 600 }}>Loading…</div>
-        ) : (
-          currencies.map((c) => <CurrencyRow key={c.id} c={c} canDelete={currencies.length > 1} />)
-        )}
-        <div className="cur-add">
-          <input className="cur-sym" value={newSymbol} maxLength={2} placeholder="⭐" aria-label="New symbol" onChange={(e) => setNewSymbol(e.target.value)} />
-          <input className="cur-label" value={newLabel} placeholder="Add a currency (e.g. Family Dollars)" aria-label="New label" onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
-          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={adding || !newLabel.trim()} onClick={add}>＋ Add</button>
-        </div>
+
+        {currencies.length > 1 && <ConversionsSection currencies={currencies} />}
       </div>
 
-      {currencies.length > 1 && <ConversionsSection currencies={currencies} />}
+      {/* Redemption policy — its own concern, so it sits apart from the economy. */}
+      <RewardApprovalCard />
     </div>
   )
 }
@@ -1013,7 +1060,7 @@ function SecurityPanel() {
     authApi.getConfig().then(hydrate).catch(() => setForbidden(true))
   }, [])
 
-  if (forbidden) return <div className="set-panel"><div className="set-head"><div className="nk-serif set-head-t">Accounts &amp; Security</div></div><div className="set-card" style={{ padding: 22 }}><div className="muted" style={{ fontWeight: 600 }}>Only an admin can manage sign-in settings.</div></div></div>
+  if (forbidden) return <div className="set-panel"><div className="set-head"><div className="nk-serif set-head-t">Sign-in &amp; Security</div></div><div className="set-card" style={{ padding: 22 }}><div className="muted" style={{ fontWeight: 600 }}>Only an admin can manage sign-in settings.</div></div></div>
   if (!cfg) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
 
   async function test() {
@@ -1061,7 +1108,7 @@ function SecurityPanel() {
   return (
     <div className="set-panel">
       <div className="set-head" style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-        <div className="nk-serif set-head-t">Accounts &amp; Security</div>
+        <div className="nk-serif set-head-t">Sign-in &amp; Security</div>
         {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
       </div>
 
@@ -1117,13 +1164,322 @@ function SecurityPanel() {
           />
         </SettingRow>
       </div>
+
+      <KioskDevicesSection />
+    </div>
+  )
+}
+
+// Kiosk devices — lives inside Sign-in & Security (all auth/session config in one
+// place). Pair tablets as shared kiosks, rename/revoke them, and nudge admins to set
+// a PIN (an admin without one can be claimed by anyone tapping their tile). Uses the
+// in-app ConfirmDialog, never native popups.
+function KioskDevicesSection() {
+  const { members } = useHouseholdSettings()
+  const [devices, setDevices] = useState<KioskDevice[] | null>(null)
+  const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [note, setNote] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [dialog, setDialog] = useState<{ kind: 'remove' | 'promote' | 'rename'; device?: KioskDevice } | null>(null)
+
+  const load = () => kioskApi.devices().then(setDevices).catch(() => setErr('Only an admin can manage devices.'))
+  useEffect(() => { load() }, [])
+
+  const adminsNoPin = members.filter((m) => m.isAdmin && !m.hasPin)
+
+  async function genCode() {
+    setBusy(true)
+    setNote(null)
+    setCopied(false)
+    try { setCode(await kioskApi.createPairingCode()) } catch { setErr('Could not create a code.') } finally { setBusy(false) }
+  }
+
+  async function copyCode() {
+    if (!code) return
+    try { await navigator.clipboard.writeText(code.code); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { /* clipboard blocked */ }
+  }
+
+  // While a code is shown, poll for the device pairing so the admin sees it land
+  // without a manual refresh. The new device appearing = the code was used.
+  useEffect(() => {
+    if (!code) return
+    const baseline = devices?.length ?? 0
+    const id = setInterval(async () => {
+      try {
+        const list = await kioskApi.devices()
+        setDevices(list)
+        if (list.length > baseline) {
+          const newest = list[list.length - 1]
+          setNote(`✓ “${newest?.label ?? 'A device'}” just paired.`)
+          setCode(null)
+          clearInterval(id)
+        }
+      } catch { /* keep polling */ }
+    }, 5000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code])
+
+  async function runDialog(value?: string) {
+    const d = dialog
+    if (!d) return
+    try {
+      if (d.kind === 'promote') {
+        const id = await kioskApi.promote()
+        setNote('This device is now a kiosk — use “Switch” in the rail to reach the picker.')
+        load()
+        // Chain straight into naming the new device.
+        setDialog({ kind: 'rename', device: { id, label: 'Kiosk', lastSeenAt: null, createdAt: '' } })
+        return
+      }
+      if (d.kind === 'remove' && d.device) await kioskApi.revokeDevice(d.device.id)
+      else if (d.kind === 'rename' && d.device && value) await kioskApi.renameDevice(d.device.id, value)
+      load()
+      setDialog(null)
+    } catch {
+      setErr('That action didn’t work.')
+      setDialog(null)
+    }
+  }
+
+  return (
+    <div className="set-card" style={{ marginTop: 16, padding: 18 }}>
+      <div className="card-h" style={{ marginBottom: 4 }}>Kiosk devices</div>
+      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
+        Turn a tablet into a shared family display with a profile picker. Pair it from here, or set up the tablet itself with a code.
+      </div>
+
+      {adminsNoPin.length > 0 && (
+        <div className="set-card" style={{ padding: 14, marginBottom: 14, borderLeft: '3px solid var(--primary, #e0653f)' }}>
+          <div className="set-row2-t" style={{ marginBottom: 4 }}>⚠️ Set a PIN for your admins</div>
+          <div className="tiny muted" style={{ fontWeight: 600 }}>
+            On a shared kiosk, anyone can tap an admin profile with no PIN and gain full control.
+            Add a PIN for {adminsNoPin.map((m) => m.name).join(', ')} in Family &amp; People.
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button type="button" className="btn btn-primary" onClick={() => setDialog({ kind: 'promote' })}>Use this device as a kiosk</button>
+        <button type="button" className="btn btn-ghost" onClick={genCode} disabled={busy}>
+          {busy ? 'Generating…' : 'Generate pairing code'}
+        </button>
+      </div>
+      {note && <div className="tiny" style={{ fontWeight: 700, color: 'var(--good, #2e7d32)', marginTop: 10 }}>{note}</div>}
+      {code && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span className="kp-code kp-code-sel">{code.code}</span>
+            <button type="button" className="btn btn-ghost" onClick={copyCode}>{copied ? '✓ Copied' : 'Copy'}</button>
+            <span className="tiny muted" style={{ fontWeight: 600 }}>Waiting for a device to pair…</span>
+          </div>
+          <div className="tiny muted" style={{ fontWeight: 600, marginTop: 8 }}>
+            On the new tablet: open this Nook’s address → “Set up this device as a kiosk” → enter this code. One-time, expires in ~10 minutes.
+          </div>
+        </div>
+      )}
+      {err && <div className="auth-error" style={{ marginTop: 12 }}>{err}</div>}
+
+      <div style={{ marginTop: 16 }}>
+        <div className="set-row2-t" style={{ margin: '2px 2px 4px' }}>Paired devices</div>
+        {devices === null ? (
+          <div className="tiny muted" style={{ fontWeight: 600, padding: '8px 2px' }}>Loading…</div>
+        ) : devices.length === 0 ? (
+          <div className="tiny muted" style={{ fontWeight: 600, padding: '8px 2px' }}>No kiosks paired yet.</div>
+        ) : (
+          devices.map((d) => (
+            <SettingRow key={d.id} icon="🖥️" title={d.label} sub={`Last seen ${fmtWhen(d.lastSeenAt)} · paired ${fmtWhen(d.createdAt)}`}>
+              <button type="button" className="linkbtn" onClick={() => setDialog({ kind: 'rename', device: d })}>Rename</button>
+              <button type="button" className="linkbtn" style={{ color: 'var(--primary)' }} onClick={() => setDialog({ kind: 'remove', device: d })}>Remove</button>
+            </SettingRow>
+          ))
+        )}
+      </div>
+
+      {dialog?.kind === 'promote' && (
+        <ConfirmDialog
+          title="Use this device as a kiosk?"
+          message="After you switch profiles or sign out, this device will show the family profile picker."
+          confirmLabel="Use as kiosk"
+          onConfirm={runDialog}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === 'remove' && dialog.device && (
+        <ConfirmDialog
+          title={`Remove “${dialog.device.label}”?`}
+          message="It will need to be paired again to act as a kiosk."
+          confirmLabel="Remove"
+          danger
+          onConfirm={runDialog}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === 'rename' && dialog.device && (
+        <ConfirmDialog
+          title="Rename device"
+          confirmLabel="Save"
+          input={{ label: 'Device name', placeholder: 'Kitchen', initial: dialog.device.label }}
+          onConfirm={runDialog}
+          onClose={() => setDialog(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+// Display & Kiosk: a per-device "this is the family display" toggle (enables the
+// screensaver + keep-awake locally) plus household-wide screensaver settings.
+const CONTENT_OPTS: Array<{ key: DisplayConfig['content']; label: string }> = [
+  { key: 'photos', label: 'Photos + clock' },
+  { key: 'clock', label: 'Clock & weather' },
+  { key: 'off', label: 'Off' },
+]
+function DisplayKioskPanel() {
+  const paired = isKioskMode()
+  const [displayOn, setDisplayOn] = useState(isDisplayMode())
+  const [cfg, setCfg] = useState<DisplayConfig | null>(null)
+  const [error, setError] = useState(false)
+  const [savedFlash, setSavedFlash] = useState(false)
+  const [preview, setPreview] = useState(false)
+  const dirtyRef = useRef(false)
+  // Live data for the instant preview (and what the real screensaver uses).
+  const wx = useWeather()
+  const { events } = useEventsToday()
+  const { photos } = usePhotos()
+  const { household } = useHousehold()
+  const nextEvent = events.find((e) => new Date(e.startsAt).getTime() > Date.now()) ?? null
+
+  useEffect(() => {
+    kioskApi.displayConfig().then((c) => { setCfg(c); setError(false) }).catch(() => setError(true))
+  }, [])
+
+  function update(patch: Partial<DisplayConfig>) {
+    setCfg((c) => (c ? { ...c, ...patch } : c))
+    dirtyRef.current = true
+  }
+  function updateDim(patch: Partial<DisplayConfig['nightDim']>) {
+    setCfg((c) => (c ? { ...c, nightDim: { ...c.nightDim, ...patch } } : c))
+    dirtyRef.current = true
+  }
+
+  // Debounced auto-save (like MealsPanel) — echoing the server's normalized cfg back
+  // into state must not retrigger a save, hence dirtyRef.
+  useEffect(() => {
+    if (!cfg || !dirtyRef.current) return
+    const t = setTimeout(async () => {
+      try {
+        const s = await kioskApi.setDisplayConfig(cfg)
+        dirtyRef.current = false
+        setCfg(s)
+        // Let a display layer running in THIS browser reload immediately.
+        window.dispatchEvent(new Event('nook:display-changed'))
+        setSavedFlash(true)
+        setTimeout(() => setSavedFlash(false), 1800)
+      } catch {
+        setError(true)
+      }
+    }, 600)
+    return () => clearTimeout(t)
+  }, [cfg])
+
+  function toggleDisplay() {
+    const next = !displayOn
+    setDisplayMode(next)
+    setDisplayOn(next)
+  }
+
+  return (
+    <div className="set-panel">
+      <div className="set-head" style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+        <div className="nk-serif set-head-t">Display &amp; Kiosk</div>
+        {savedFlash && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+        <span className="tiny muted" style={{ marginLeft: 'auto', fontWeight: 600 }}>Screensaver settings save automatically</span>
+      </div>
+
+      <div className="set-card">
+        <SettingRow icon="🖥️" title="Use this browser as the family display" sub={paired ? 'On — this device is paired as a kiosk.' : 'This device only. Enables the screensaver & keeps the screen awake.'}>
+          <input type="checkbox" className="set-check" checked={displayOn} disabled={paired} onChange={toggleDisplay} />
+        </SettingRow>
+        {!displayOn && (
+          <div className="tiny muted" style={{ padding: '0 16px 14px', fontWeight: 600 }}>
+            The screensaver, keep-awake and reset-to-Today below only run on a browser that’s set as the display. Turn this on to test them here.
+          </div>
+        )}
+      </div>
+
+      {error && <div className="set-card" style={{ padding: 18, marginTop: 16 }}><div className="muted" style={{ fontWeight: 600 }}>Couldn’t load display settings.</div></div>}
+      {cfg && (
+        <>
+          <div className="set-card" style={{ marginTop: 16 }}>
+            <SettingRow icon="🌅" title="Screensaver after" sub="Minutes of inactivity before the screensaver appears.">
+              <input type="number" min={1} max={120} className="set-inline-input" style={{ width: 80 }} value={cfg.screensaverMinutes} onChange={(e) => update({ screensaverMinutes: Number(e.target.value) || 1 })} />
+            </SettingRow>
+            <div className="set-row2">
+              <div className="set-ic2">🖼️</div>
+              <div style={{ flex: 1 }}>
+                <div className="set-row2-t">What it shows</div>
+                <div className="tiny muted" style={{ fontWeight: 600 }}>“Photos + clock” is a photo slideshow with the clock, weather &amp; next event overlaid. Photos need a signed-in profile; the picker always shows the clock.</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div className="seg" style={{ width: 'fit-content' }}>
+                  {CONTENT_OPTS.map((o) => (
+                    <button type="button" key={o.key} className={cfg.content === o.key ? 'on' : ''} style={{ cursor: 'pointer' }} onClick={() => update({ content: o.key })}>{o.label}</button>
+                  ))}
+                </div>
+                <button type="button" className="btn btn-ghost" disabled={cfg.content === 'off'} onClick={() => setPreview(true)}>Preview</button>
+              </div>
+            </div>
+            <SettingRow icon="🔒" title="Return to profile picker afterward" sub="When the screensaver wakes on a paired kiosk, drop to the profile picker.">
+              <input type="checkbox" className="set-check" checked={cfg.returnToPicker} onChange={(e) => update({ returnToPicker: e.target.checked })} />
+            </SettingRow>
+          </div>
+
+          <div className="set-card" style={{ marginTop: 16 }}>
+            <SettingRow icon="🏠" title="Return to Today when idle" sub="Minutes before an idle screen resets to the dashboard (0 = never).">
+              <input type="number" min={0} max={60} className="set-inline-input" style={{ width: 80 }} value={cfg.resetHomeMinutes} onChange={(e) => update({ resetHomeMinutes: Math.max(0, Number(e.target.value) || 0) })} />
+            </SettingRow>
+          </div>
+
+          <div className="set-card" style={{ marginTop: 16 }}>
+            <SettingRow icon="🌙" title="Night dimming" sub="Dim the display on a schedule (overnight).">
+              <input type="checkbox" className="set-check" checked={cfg.nightDim.enabled} onChange={(e) => updateDim({ enabled: e.target.checked })} />
+            </SettingRow>
+            {cfg.nightDim.enabled && (
+              <SettingRow icon="🕙" title="Dim from → to">
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input type="time" className="set-inline-input" value={cfg.nightDim.start} onChange={(e) => updateDim({ start: e.target.value })} />
+                  <span className="muted">→</span>
+                  <input type="time" className="set-inline-input" value={cfg.nightDim.end} onChange={(e) => updateDim({ end: e.target.value })} />
+                </div>
+              </SettingRow>
+            )}
+          </div>
+        </>
+      )}
+
+      {preview && cfg && cfg.content !== 'off' && (
+        <Screensaver
+          content={cfg.content === 'photos' ? 'photos' : 'clock'}
+          photos={photos}
+          weather={wx}
+          nextEvent={nextEvent}
+          timezone={household?.timezone}
+          onWake={() => setPreview(false)}
+        />
+      )}
     </div>
   )
 }
 
 export function Settings() {
   const { household, person } = useHousehold()
-  const [tab, setTab] = useState('family')
+  // Tab lives in the URL (?tab=) so a refresh returns to where you were.
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') ?? 'family'
+  const setTab = (key: string) => setParams({ tab: key }, { replace: true })
 
   // Wait until we know who's signed in, so admins don't flash the trimmed nav.
   if (!household) return <div className="settings-screen"><div className="set-content"><div className="muted" style={{ padding: 20 }}>Loading…</div></div></div>
@@ -1149,7 +1505,7 @@ export function Settings() {
         </div>
       </div>
       <div className="set-content">
-        {activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <CalendarsPanel /> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
+        {activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <CalendarsPanel /> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
       </div>
     </div>
   )

@@ -488,6 +488,12 @@ struct EventEditSheet: View {
     let event: SyncedEvent?
     let initialDate: Date
 
+    /// The id to edit/delete against. A recurring occurrence's row id doesn't exist in
+    /// the `events` table — it lives on the master, so we resolve through `seriesId`
+    /// (an edit applies to the whole series; iOS has no per-occurrence scope dialog yet).
+    /// For a single event `seriesId == id`, so this is a no-op there.
+    private var editId: String? { event.map { $0.seriesId ?? $0.id } }
+
     @State private var title: String
     @State private var day: Date
     @State private var start: Date
@@ -683,7 +689,7 @@ struct EventEditSheet: View {
         HStack(spacing: 14) {
             if editing {
                 Button {
-                    if confirmDelete { Task { _ = await sync.deleteEvent(id: event!.id) }; dismiss() }
+                    if confirmDelete { Task { if let id = editId { _ = await sync.deleteEvent(id: id) } }; dismiss() }
                     else { withAnimation { confirmDelete = true } }
                 } label: {
                     Text(confirmDelete ? "Tap again" : "Delete")
@@ -878,7 +884,7 @@ struct EventEditSheet: View {
     private func load() async {
         if editing, !loadedParticipants {
             loadedParticipants = true
-            let ids = await sync.eventParticipantIds(event!.id)
+            let ids = await sync.eventParticipantIds(editId ?? event!.id)
             // Keep the owner (person_id) first, then any other participants.
             if !ids.isEmpty { participants = (participants + ids.filter { !participants.contains($0) }) }
         }
@@ -920,16 +926,16 @@ struct EventEditSheet: View {
         let ids = Array(participants)
         let chosenCal = showCalendarPicker ? calendarId : nil
         Task {
-            if let event {
+            if let editId {
                 if goalId != nil || prefillGoalId != nil {
                     // A goal link was set, changed, or removed → PATCH the rich REST
                     // route (the local mirror has no goal columns); PowerSync re-syncs.
                     _ = try? await NookAPI().updateEvent(
-                        id: event.id, title: name, startsAtISO: startISO, endsAtISO: endISO,
+                        id: editId, title: name, startsAtISO: startISO, endsAtISO: endISO,
                         allDay: allDay, location: loc, personIds: ids, goalId: goalId, goalStepId: goalStepId)
                     sync.touchGoals()
                 } else {
-                    _ = await sync.updateEvent(id: event.id, title: name, startsAtISO: startISO,
+                    _ = await sync.updateEvent(id: editId, title: name, startsAtISO: startISO,
                                                endsAtISO: endISO, allDay: allDay, location: loc, personIds: ids)
                 }
             } else if let gid = goalId {
