@@ -65,6 +65,13 @@
   overflow: hidden; cursor: pointer; box-shadow: var(--sh-1); }
 .wk-ev-t { font-size: 10.5px; font-weight: 700; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wk-ev-title { font-size: 12.5px; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Recurring-occurrence marker on event chips (month/week/day). */
+.ev-rep { opacity: 0.6; font-weight: 700; }
+/* Sub-sections inside the single Repeats box (interval/days, ends, summary) so
+   the whole repeat rule reads as one grouped control, not several boxes. */
+.rep-grp { margin-top: 14px; }
+.rep-sub { display: block; font-size: 13px; font-weight: 600; color: var(--ink-2); margin-bottom: 6px; }
+.rep-summary { margin-top: 14px; }
 /* short events: time + title share one line so nothing gets clipped to nothing */
 .wk-ev.tight { padding: 1px 7px; display: flex; align-items: baseline; gap: 6px; }
 .wk-ev.tight .wk-ev-t { font-size: 10px; flex: none; }

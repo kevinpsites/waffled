@@ -162,7 +162,7 @@ export function WeekView({
                         }}
                       >
                         <div className="wk-ev-t">{fmtTime(e)}</div>
-                        <div className="wk-ev-title">{e.title}</div>
+                        <div className="wk-ev-title">{e.occurrenceStart && <span className="ev-rep" title="Repeats">↻ </span>}{e.title}</div>
                       </div>
                     )
                   })}

@@ -36,9 +36,10 @@ describe('buildRrule — custom builder', () => {
     expect(buildRrule(st({ freq: 'custom', unit: 'week', interval: 2, byday: ['TU', 'TH'] }), MON)).toBe('FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH')
     expect(buildRrule(st({ freq: 'custom', unit: 'week', interval: 2, byday: [] }), MON)).toBe('FREQ=WEEKLY;INTERVAL=2;BYDAY=MO')
   })
-  it('every N months by day-of-month vs nth weekday', () => {
+  it('every N months by day-of-month vs nth weekday vs last weekday', () => {
     expect(buildRrule(st({ freq: 'custom', unit: 'month', interval: 2, monthlyMode: 'day' }), TUE_2ND)).toBe('FREQ=MONTHLY;INTERVAL=2')
     expect(buildRrule(st({ freq: 'custom', unit: 'month', interval: 1, monthlyMode: 'weekday' }), TUE_2ND)).toBe('FREQ=MONTHLY;BYDAY=2TU')
+    expect(buildRrule(st({ freq: 'custom', unit: 'month', interval: 1, monthlyMode: 'lastWeekday' }), TUE_2ND)).toBe('FREQ=MONTHLY;BYDAY=-1TU')
   })
   it('every N years', () => {
     expect(buildRrule(st({ freq: 'custom', unit: 'year', interval: 2 }), MON)).toBe('FREQ=YEARLY;INTERVAL=2')
@@ -71,6 +72,7 @@ describe('parseRepeat', () => {
     expect(parseRepeat('FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH')).toEqual(st({ freq: 'custom', unit: 'week', interval: 2, byday: ['TU', 'TH'] }))
     expect(parseRepeat('FREQ=MONTHLY;INTERVAL=2')).toEqual(st({ freq: 'custom', unit: 'month', interval: 2, monthlyMode: 'day' }))
     expect(parseRepeat('FREQ=MONTHLY;BYDAY=2TU')).toEqual(st({ freq: 'custom', unit: 'month', interval: 1, monthlyMode: 'weekday' }))
+    expect(parseRepeat('FREQ=MONTHLY;BYDAY=-1TU')).toEqual(st({ freq: 'custom', unit: 'month', interval: 1, monthlyMode: 'lastWeekday' }))
     expect(parseRepeat('FREQ=YEARLY;INTERVAL=2')).toEqual(st({ freq: 'custom', unit: 'year', interval: 2 }))
   })
   it('preserves bounded / unrepresentable rules as advanced custom', () => {
@@ -88,6 +90,7 @@ describe('parseRepeat', () => {
       'FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH',
       'FREQ=MONTHLY;INTERVAL=2',
       'FREQ=MONTHLY;BYDAY=2TU',
+      'FREQ=MONTHLY;BYDAY=-1TU',
       'FREQ=YEARLY;INTERVAL=2',
     ]
     for (const rule of rules) expect(buildRrule(parseRepeat(rule), TUE_2ND)).toBe(rule)
@@ -102,6 +105,7 @@ describe('describeRrule', () => {
     expect(describeRrule('FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', MON)).toBe('Every weekday (Mon–Fri)')
     expect(describeRrule('FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH', MON)).toBe('Every 2 weeks on Tue, Thu')
     expect(describeRrule('FREQ=MONTHLY;BYDAY=2TU', MON)).toBe('Every month on the second Tuesday')
+    expect(describeRrule('FREQ=MONTHLY;BYDAY=-1FR', MON)).toBe('Every month on the last Friday')
     expect(describeRrule('FREQ=YEARLY;INTERVAL=2', MON)).toBe('Every 2 years')
   })
   it('appends a COUNT and falls back to the raw rule when unrecognised', () => {

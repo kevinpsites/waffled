@@ -1,25 +1,17 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { EventModal } from './components/EventModal'
 import { useTopbarFull } from './topbar-slot'
 import { api, eventsApi, useEvent, useEventsRange, useHousehold, useGoals, mealsApi, invalidateGetCache, type AgendaEvent } from '../lib/api'
 import { deleteEventLocal, tombstoneEvent } from '../lib/powersync/events-local'
 import { suggestGoalForEvent } from '../lib/goal-match'
-import { DOW_FULL, MONTHS, fmtTime, durationMin, eventPeople, localDate } from './components/cal-utils'
+import { describeRrule } from './components/recurrence'
+import { DOW_FULL, MONTHS, fmtTime, durationMin, eventPeople, localDate, eventDetailPath } from './components/cal-utils'
 
 function durationLabel(mins: number): string {
   if (mins % 60 === 0) return `${mins / 60} hr`
   if (mins < 60) return `${mins} min`
   return `${Math.floor(mins / 60)} hr ${mins % 60} min`
-}
-
-function repeatLabel(rrule: string): string {
-  const freq = /FREQ=([A-Z]+)/.exec(rrule)?.[1]
-  if (freq === 'DAILY') return 'Every day'
-  if (freq === 'WEEKLY') return 'Every week on this day'
-  if (freq === 'MONTHLY') return 'Every month'
-  if (freq === 'YEARLY') return 'Every year'
-  return 'Repeats'
 }
 
 // Relative gap label between a row event and the focused event ("1.5 hr later").
@@ -62,7 +54,7 @@ function DayTimeline({ event, tz }: { event: AgendaEvent; tz: string }) {
             className={`ed-fall-row ${me ? 'me' : 'clickable'}`}
             role={me ? undefined : 'button'}
             tabIndex={me ? undefined : 0}
-            onClick={me ? undefined : () => navigate(`/calendar/event/${e.id}`)}
+            onClick={me ? undefined : () => navigate(eventDetailPath(e))}
           >
             <div className="ed-fall-time">{e.allDay ? 'all day' : fmtTime(e)}</div>
             <div className="ed-fall-bar" style={{ background: color }} />
@@ -80,6 +72,10 @@ function DayTimeline({ event, tz }: { event: AgendaEvent; tz: string }) {
 
 export function EventDetail() {
   const { id = '' } = useParams()
+  // A recurring occurrence opens its series (id) with the slot in `?on=` — used to
+  // show the right date and scope edits/deletes to just this one.
+  const [searchParams] = useSearchParams()
+  const occurrenceOn = searchParams.get('on')
   const navigate = useNavigate()
   const { event, loading, notFound, refetch } = useEvent(id)
   const { household } = useHousehold()
@@ -124,7 +120,11 @@ export function EventDetail() {
     }
     setDeleting(true)
     try {
-      if (!(await deleteEventLocal(id))) {
+      if (event?.rrule && occurrenceOn) {
+        // Viewing one occurrence of a series → delete just this one (cancel it).
+        // Series-wide deletes go through Edit → the modal's this/following/all chooser.
+        await api.deleteEvent(id, { scope: 'this', occurrenceStart: occurrenceOn })
+      } else if (!(await deleteEventLocal(id))) {
         await api.deleteEvent(id)
         tombstoneEvent(id)
       }
@@ -144,7 +144,7 @@ export function EventDetail() {
         </button>
         <div className="ed-actions">
           <button type="button" className="pill" onClick={del}>
-            🗑 {confirmDelete ? 'Confirm' : 'Delete'}
+            🗑 {confirmDelete ? 'Confirm' : event?.rrule && occurrenceOn ? 'Delete this' : 'Delete'}
           </button>
           <button type="button" className="pill" onClick={() => setEditing(true)}>
             ✎ Edit
@@ -155,48 +155,62 @@ export function EventDetail() {
         </div>
       </div>
     ),
-    [confirmDelete, deleting, id]
+    [confirmDelete, deleting, id, event?.rrule, occurrenceOn]
   )
 
   if (loading && !event) return <div className="muted" style={{ padding: 40 }}>Loading…</div>
   if (notFound || !event) return <div className="muted" style={{ padding: 40 }}>This event no longer exists.</div>
 
-  const color = event.personColor ?? '#6B6B70'
-  const start = new Date(event.startsAt)
-  const people = eventPeople(event)
+  // For a recurring occurrence (opened via ?on=), show THIS slot's date/time and
+  // carry the series id + slot into edits/deletes — the loaded `event` is the
+  // master, whose own date is the series' first occurrence.
+  const view: AgendaEvent =
+    event.rrule && occurrenceOn
+      ? {
+          ...event,
+          startsAt: occurrenceOn,
+          endsAt: event.endsAt ? new Date(new Date(occurrenceOn).getTime() + durationMin(event) * 60_000).toISOString() : null,
+          seriesId: event.id,
+          occurrenceStart: occurrenceOn,
+        }
+      : event
+
+  const color = view.personColor ?? '#6B6B70'
+  const start = new Date(view.startsAt)
+  const people = eventPeople(view)
   const calStatus =
-    event.calendarName
-      ? `${event.calendarName}${event.syncState === 'synced' ? ' · synced from Google' : ' · pending sync'}`
+    view.calendarName
+      ? `${view.calendarName}${view.syncState === 'synced' ? ' · synced from Google' : ' · pending sync'}`
       : 'Nook only'
 
   // Smart suggestion for an untagged, non-meal, single event that looks like a
   // goal. "Link" opens the editor pre-linked so the human confirms (and can pick
   // a checklist step). Hidden once dismissed or if the event is already linked.
-  const attendeeIds = event.participants.length ? event.participants.map((p) => p.id) : event.personId ? [event.personId] : []
+  const attendeeIds = view.participants.length ? view.participants.map((p) => p.id) : view.personId ? [view.personId] : []
   const suggestedGoal =
-    !event.goalId && !event.rrule && event.origin !== 'meal_plan' && !dismissedSuggest
-      ? suggestGoalForEvent(event.title, null, attendeeIds, goals)
+    !view.goalId && !view.rrule && view.origin !== 'meal_plan' && !dismissedSuggest
+      ? suggestGoalForEvent(view.title, null, attendeeIds, goals)
       : null
 
   return (
     <div className="ed-screen">
       <div className="ed-main">
         <div className="ed-hero" style={{ background: `linear-gradient(135deg, ${color}, ${color}cc)` }}>
-          {event.personName && (
+          {view.personName && (
             <span className="ed-hero-who">
-              {event.personEmoji ?? '🙂'} {event.personName}
+              {view.personEmoji ?? '🙂'} {view.personName}
             </span>
           )}
-          <div className="ed-hero-title nk-serif">{event.title}</div>
+          <div className="ed-hero-title nk-serif">{view.title}</div>
           <div className="ed-hero-when">
-            {event.allDay ? (
+            {view.allDay ? (
               <span className="ed-hero-time">All day</span>
             ) : (
-              <span className="ed-hero-time">{fmtTime(event)}</span>
+              <span className="ed-hero-time">{fmtTime(view)}</span>
             )}
             <span className="ed-hero-date">
               {DOW_FULL[start.getDay()]}, {MONTHS[start.getMonth()]} {start.getDate()}
-              {!event.allDay && ` · ${durationLabel(durationMin(event))}`}
+              {!view.allDay && ` · ${durationLabel(durationMin(view))}`}
             </span>
           </div>
         </div>
@@ -232,13 +246,13 @@ export function EventDetail() {
               <span className="ed-row-go">›</span>
             </button>
           )}
-          {event.location && (
+          {view.location && (
             <div className="ed-row">
               <span className="ed-row-ic">📍</span>
-              <span className="ed-row-main"><span className="ed-row-k">Location</span><span className="ed-row-v">{event.location}</span></span>
+              <span className="ed-row-main"><span className="ed-row-k">Location</span><span className="ed-row-v">{view.location}</span></span>
               <a
                 className="pill ed-row-act"
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`}
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(view.location)}`}
                 target="_blank"
                 rel="noreferrer"
               >
@@ -249,12 +263,12 @@ export function EventDetail() {
           <div className="ed-row">
             <span className="ed-row-ic">📅</span>
             <span className="ed-row-main"><span className="ed-row-k">Calendar</span><span className="ed-row-v">{calStatus}</span></span>
-            {event.syncState === 'synced' && <span className="ed-dot" style={{ background: color }} />}
+            {view.syncState === 'synced' && <span className="ed-dot" style={{ background: color }} />}
           </div>
-          {event.rrule && (
+          {view.rrule && (
             <div className="ed-row">
               <span className="ed-row-ic">🔁</span>
-              <span className="ed-row-main"><span className="ed-row-k">Repeats</span><span className="ed-row-v">{repeatLabel(event.rrule)}</span></span>
+              <span className="ed-row-main"><span className="ed-row-k">Repeats</span><span className="ed-row-v">{describeRrule(view.rrule, new Date(view.startsAt))}</span></span>
             </div>
           )}
           {people.length > 0 && (
@@ -275,10 +289,10 @@ export function EventDetail() {
           )}
         </div>
 
-        {event.description && (
+        {view.description && (
           <div className="card ed-notes">
             <div className="card-h" style={{ marginBottom: 8 }}>Notes</div>
-            <div className="ed-notes-b">{event.description}</div>
+            <div className="ed-notes-b">{view.description}</div>
           </div>
         )}
       </div>
@@ -310,12 +324,12 @@ export function EventDetail() {
           </div>
         </div>
 
-        <DayTimeline event={event} tz={tz} />
+        <DayTimeline event={view} tz={tz} />
       </div>
 
       {editing && (
         <EventModal
-          event={event}
+          event={view}
           prefill={editGoalId ? { goalId: editGoalId } : undefined}
           onClose={() => {
             setEditing(false)

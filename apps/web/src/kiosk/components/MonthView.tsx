@@ -71,6 +71,7 @@ export function MonthView({
                       onOpenEvent(e)
                     }}
                   >
+                    {e.occurrenceStart && <span className="ev-rep" title="Repeats">↻ </span>}
                     {e.title}
                   </div>
                 )

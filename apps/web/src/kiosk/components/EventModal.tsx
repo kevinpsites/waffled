@@ -4,7 +4,7 @@ import { api, usePersons, useGoals, goalsApi, goalCalendarApi, calendarsApi, mea
 import { suggestGoalForEvent } from '../../lib/goal-match'
 import { Icon } from '../icons'
 import { createEventLocal, updateEventLocal, deleteEventLocal, tombstoneEvent } from '../../lib/powersync/events-local'
-import { parseRepeat, buildRrule, describeRrule, weekdayCode, nthWeekdayOfMonth, WEEKDAYS, type RepeatFreq, type CustomUnit } from './recurrence'
+import { parseRepeat, buildRrule, describeRrule, weekdayCode, nthWeekdayOfMonth, WEEKDAYS, type RepeatFreq, type CustomUnit, type MonthlyMode } from './recurrence'
 
 // Scope of an edit/delete to a recurring event, surfaced via a small chooser.
 type EditScope = 'this' | 'following' | 'all'
@@ -164,20 +164,29 @@ export function EventModal({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
 
-  // Recurrence picker state: parse the event's existing rule for editing; `until`
-  // starts empty (empty = "no end / leave unchanged"). The scope prompt is the
-  // in-modal "This / This and following / All events" chooser for recurring edits.
-  const [repeat, setRepeat] = useState(() => parseRepeat(event?.rrule))
+  // Recurrence picker state. The end condition (Never / on a date / after N) is
+  // separate: COUNT rides in the rrule, an end date rides in recurrenceEndAt. We
+  // strip COUNT out of the stored rule before parsing so the freq builder reads
+  // cleanly, then re-apply it from the end picker.
+  const initialCount = event?.rrule ? /;?COUNT=(\d+)/i.exec(event.rrule)?.[1] ?? null : null
+  const [repeat, setRepeat] = useState(() => parseRepeat(event?.rrule?.replace(/;?COUNT=\d+/i, '')))
+  const [endMode, setEndMode] = useState<'never' | 'on' | 'after'>(initialCount ? 'after' : 'never')
   const [until, setUntil] = useState('')
+  const [count, setCount] = useState(initialCount ? Number(initialCount) : 10)
   const [scopePrompt, setScopePrompt] = useState<null | 'save' | 'delete'>(null)
   const wasRecurring = !!event?.rrule
   // The event's start, used for the default weekly day and monthly nth-weekday.
   const startDate = new Date(`${form.day}T${form.time || '12:00'}`)
   const weekday = weekdayCode(startDate)
-  const rrule = buildRrule(repeat, startDate)
-  const ruleSummary = describeRrule(rrule, startDate)
+  const baseRrule = buildRrule(repeat, startDate)
+  // COUNT lives in the rule; an end date is passed separately as recurrenceEndAt.
+  const rrule = baseRrule && endMode === 'after' && count > 0 ? `${baseRrule};COUNT=${count}` : baseRrule
+  const recurrenceEndAt = endMode === 'on' && until ? toIso(until, '23:59') : undefined
+  const ruleSummary = (() => {
+    const s = describeRrule(rrule, startDate)
+    return endMode === 'on' && until ? `${s}, until ${until}` : s
+  })()
   const nowRecurring = !!rrule
-  const recurrenceEndAt = until ? toIso(until, '23:59') : undefined
 
   // "Counts toward" is gated on who's attending: with nobody selected there's
   // nothing to attribute, so the picker is hidden. Once people are chosen, only
@@ -606,7 +615,10 @@ export function EventModal({
             <span style={{ margin: 0 }}>All day</span>
           </label>
 
-          <label className="field">
+          {/* One box for the whole repeat rule — frequency, the custom builder, and
+              the end condition are all facets of the same thing, so they live
+              together rather than in separate cards. */}
+          <div className="field">
             <span>Repeats</span>
             <select
               value={repeat.freq}
@@ -619,91 +631,108 @@ export function EventModal({
                 </option>
               ))}
             </select>
-            {/* Live summary for the simple presets sits right under the dropdown so
-                it clearly describes the selection (custom shows its own, below). */}
-            {repeat.freq !== 'none' && repeat.freq !== 'custom' && (
-              <div className="tiny muted" style={{ marginTop: 8 }}>↻ {ruleSummary}</div>
-            )}
-          </label>
 
-          {/* Weekly → which days. Defaults to the event's own weekday when none
-              are chosen (mirrors buildRrule). */}
-          {repeat.freq === 'weekly' && (
-            <div className="field">
-              <span>On days</span>
-              <WeekdayChips value={repeat.byday} weekday={weekday} onChange={(next) => setRepeat((r) => ({ ...r, byday: next }))} />
-            </div>
-          )}
-
-          {/* Custom → a friendly "every N units" builder (no RRULE typing). Weekly
-              shows the day chips; monthly offers day-of-month vs the Nth weekday.
-              The raw rule stays available under Advanced for power users / imports. */}
-          {repeat.freq === 'custom' && (
-            <div className="field">
-              <span>Repeat every</span>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input
-                  type="number"
-                  min={1}
-                  max={99}
-                  value={repeat.interval}
-                  onChange={(e) => setRepeat((r) => ({ ...r, interval: clampInterval(e.target.value) }))}
-                  aria-label="Interval"
-                  style={{ width: 76 }}
-                />
-                <select
-                  value={repeat.unit}
-                  onChange={(e) => setRepeat((r) => ({ ...r, unit: e.target.value as CustomUnit }))}
-                  aria-label="Unit"
-                  style={{ flex: 1 }}
-                >
-                  <option value="day">{repeat.interval === 1 ? 'day' : 'days'}</option>
-                  <option value="week">{repeat.interval === 1 ? 'week' : 'weeks'}</option>
-                  <option value="month">{repeat.interval === 1 ? 'month' : 'months'}</option>
-                  <option value="year">{repeat.interval === 1 ? 'year' : 'years'}</option>
-                </select>
+            {/* Weekly preset → which days (defaults to the event's own weekday). */}
+            {repeat.freq === 'weekly' && (
+              <div className="rep-grp">
+                <span className="rep-sub">On days</span>
+                <WeekdayChips value={repeat.byday} weekday={weekday} onChange={(next) => setRepeat((r) => ({ ...r, byday: next }))} />
               </div>
+            )}
 
-              {repeat.unit === 'week' && (
-                <div style={{ marginTop: 10 }}>
-                  <WeekdayChips value={repeat.byday} weekday={weekday} onChange={(next) => setRepeat((r) => ({ ...r, byday: next }))} />
+            {/* Custom → a friendly "every N units" builder (no RRULE typing). Weekly
+                shows day chips; monthly offers day-of-month / Nth / last weekday.
+                The raw rule stays under Advanced for power users / imports. */}
+            {repeat.freq === 'custom' && (
+              <div className="rep-grp">
+                <span className="rep-sub">Repeat every</span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={99}
+                    value={repeat.interval}
+                    onChange={(e) => setRepeat((r) => ({ ...r, interval: clampInterval(e.target.value) }))}
+                    aria-label="Interval"
+                    style={{ width: 76 }}
+                  />
+                  <select
+                    value={repeat.unit}
+                    onChange={(e) => setRepeat((r) => ({ ...r, unit: e.target.value as CustomUnit }))}
+                    aria-label="Unit"
+                    style={{ flex: 1 }}
+                  >
+                    <option value="day">{repeat.interval === 1 ? 'day' : 'days'}</option>
+                    <option value="week">{repeat.interval === 1 ? 'week' : 'weeks'}</option>
+                    <option value="month">{repeat.interval === 1 ? 'month' : 'months'}</option>
+                    <option value="year">{repeat.interval === 1 ? 'year' : 'years'}</option>
+                  </select>
                 </div>
-              )}
 
-              {repeat.unit === 'month' && (
-                <div className="seg" style={{ display: 'inline-flex', marginTop: 10 }}>
-                  <button type="button" className={repeat.monthlyMode === 'day' ? 'on' : ''} onClick={() => setRepeat((r) => ({ ...r, monthlyMode: 'day' }))}>
-                    On day {startDate.getDate()}
-                  </button>
-                  <button type="button" className={repeat.monthlyMode === 'weekday' ? 'on' : ''} onClick={() => setRepeat((r) => ({ ...r, monthlyMode: 'weekday' }))}>
-                    On the {ORDINAL_LABEL[nthWeekdayOfMonth(startDate)] ?? `${nthWeekdayOfMonth(startDate)}th`} {FULL_WEEKDAY[startDate.getDay()]}
-                  </button>
-                </div>
-              )}
+                {repeat.unit === 'week' && (
+                  <div style={{ marginTop: 10 }}>
+                    <WeekdayChips value={repeat.byday} weekday={weekday} onChange={(next) => setRepeat((r) => ({ ...r, byday: next }))} />
+                  </div>
+                )}
 
-              <details style={{ marginTop: 10 }}>
-                <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--ink-2)' }}>Advanced (raw RRULE)</summary>
-                <input
-                  style={{ marginTop: 8 }}
-                  value={repeat.custom}
-                  onChange={(e) => setRepeat((r) => ({ ...r, custom: e.target.value }))}
-                  placeholder="FREQ=WEEKLY;INTERVAL=2;BYDAY=TU"
-                  aria-label="Custom RRULE"
-                />
-              </details>
+                {repeat.unit === 'month' && (
+                  <select
+                    value={repeat.monthlyMode}
+                    onChange={(e) => setRepeat((r) => ({ ...r, monthlyMode: e.target.value as MonthlyMode }))}
+                    aria-label="Monthly pattern"
+                    style={{ marginTop: 10, width: '100%' }}
+                  >
+                    <option value="day">On day {startDate.getDate()}</option>
+                    <option value="weekday">On the {ORDINAL_LABEL[nthWeekdayOfMonth(startDate)] ?? `${nthWeekdayOfMonth(startDate)}th`} {FULL_WEEKDAY[startDate.getDay()]}</option>
+                    <option value="lastWeekday">On the last {FULL_WEEKDAY[startDate.getDay()]}</option>
+                  </select>
+                )}
 
-              {/* Summary lives inside the builder card so it reads as part of the
-                  repeat rule, not the Until field below. */}
-              <div className="tiny muted" style={{ marginTop: 12 }}>↻ {ruleSummary}</div>
-            </div>
-          )}
+                <details style={{ marginTop: 10 }}>
+                  <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--ink-2)' }}>Advanced (raw RRULE)</summary>
+                  <input
+                    style={{ marginTop: 8 }}
+                    value={repeat.custom}
+                    onChange={(e) => setRepeat((r) => ({ ...r, custom: e.target.value }))}
+                    placeholder="FREQ=WEEKLY;INTERVAL=2;BYDAY=TU"
+                    aria-label="Custom RRULE"
+                  />
+                </details>
+              </div>
+            )}
 
-          {repeat.freq !== 'none' && (
-            <label className="field">
-              <span>Until (optional)</span>
-              <input type="date" value={until} onChange={(e) => setUntil(e.target.value)} />
-            </label>
-          )}
+            {/* End condition — COUNT rides in the rule, a date in recurrenceEndAt. */}
+            {repeat.freq !== 'none' && (
+              <div className="rep-grp">
+                <span className="rep-sub">Ends</span>
+                <select value={endMode} onChange={(e) => setEndMode(e.target.value as 'never' | 'on' | 'after')} style={{ width: '100%' }}>
+                  <option value="never">Never</option>
+                  <option value="on">On a date</option>
+                  <option value="after">After a number of times</option>
+                </select>
+                {endMode === 'on' && (
+                  <input type="date" value={until} onChange={(e) => setUntil(e.target.value)} style={{ marginTop: 8 }} />
+                )}
+                {endMode === 'after' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                    <input
+                      type="number"
+                      min={1}
+                      max={730}
+                      value={count}
+                      onChange={(e) => setCount(Math.max(1, Math.min(730, Math.round(Number(e.target.value) || 1))))}
+                      aria-label="Number of occurrences"
+                      style={{ width: 76 }}
+                    />
+                    <span className="muted">times</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* One live plain-English summary for the whole rule, at the bottom. */}
+            {repeat.freq !== 'none' && <div className="tiny muted rep-summary">↻ {ruleSummary}</div>}
+          </div>
 
           <div className="field">
             <span>Who</span>

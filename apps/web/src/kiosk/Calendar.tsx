@@ -8,7 +8,7 @@ import { DayView } from './components/DayView'
 import { AgendaView } from './components/AgendaView'
 import { useTopbarRight } from './topbar-slot'
 import { useEventsRange, useHousehold, type AgendaEvent } from '../lib/api'
-import { MONTHS, MONTHS_SHORT, DOW_FULL, ymd, addDays, startOfWeek } from './components/cal-utils'
+import { MONTHS, MONTHS_SHORT, DOW_FULL, ymd, addDays, startOfWeek, eventDetailPath } from './components/cal-utils'
 
 type View = 'month' | 'week' | 'day' | 'agenda'
 
@@ -73,7 +73,7 @@ export function Calendar() {
   function shift(delta: number) {
     setAnchor((a) => (view === 'month' ? addMonths(a, delta) : view === 'day' ? addDays(a, delta) : addDays(a, delta * 7)))
   }
-  const openEvent = (e: AgendaEvent) => navigate(`/calendar/event/${e.id}`)
+  const openEvent = (e: AgendaEvent) => navigate(eventDetailPath(e))
   const jumpToWeek = (d: Date) => {
     setAnchor(d)
     setView('week')

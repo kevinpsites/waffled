@@ -14,6 +14,14 @@ export const MONTHS = [
 ]
 export const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
+// The detail-page path for an event. A recurring occurrence has no `events` row of
+// its own, so it opens its series (master) id with the occurrence's slot in `?on=`
+// — the detail page uses that to show the right date and scope edits to this one.
+export function eventDetailPath(e: Pick<AgendaEvent, 'id' | 'seriesId' | 'occurrenceStart'>): string {
+  const base = `/calendar/event/${e.seriesId ?? e.id}`
+  return e.occurrenceStart ? `${base}?on=${encodeURIComponent(e.occurrenceStart)}` : base
+}
+
 // Local YYYY-MM-DD for a Date (device zone) — for grid keys and "today".
 export function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`

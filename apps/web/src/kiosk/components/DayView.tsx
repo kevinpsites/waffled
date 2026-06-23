@@ -97,7 +97,7 @@ export function DayView({
                   onClick={(ev) => { ev.stopPropagation(); onOpenEvent(e) }}
                 >
                   <div className="dv-ev-t">{fmtTime(e)}</div>
-                  <div className="dv-ev-title">{e.title}</div>
+                  <div className="dv-ev-title">{e.occurrenceStart && <span className="ev-rep" title="Repeats">↻ </span>}{e.title}</div>
                   {e.location && <div className="dv-ev-loc">📍 {e.location}</div>}
                 </div>
               )

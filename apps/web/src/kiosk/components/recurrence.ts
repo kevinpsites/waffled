@@ -10,7 +10,7 @@
 
 export type RepeatFreq = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'custom'
 export type CustomUnit = 'day' | 'week' | 'month' | 'year'
-export type MonthlyMode = 'day' | 'weekday' // by day-of-month vs the Nth weekday
+export type MonthlyMode = 'day' | 'weekday' | 'lastWeekday' // day-of-month / Nth weekday / last weekday
 
 export interface RepeatState {
   freq: RepeatFreq
@@ -72,9 +72,9 @@ export function buildRrule(r: RepeatState, start: Date): string | null {
           return `FREQ=WEEKLY${iv};BYDAY=${days.join(',')}`
         }
         case 'month':
-          return r.monthlyMode === 'weekday'
-            ? `FREQ=MONTHLY${iv};BYDAY=${nthWeekdayOfMonth(start)}${weekday}`
-            : `FREQ=MONTHLY${iv}`
+          if (r.monthlyMode === 'weekday') return `FREQ=MONTHLY${iv};BYDAY=${nthWeekdayOfMonth(start)}${weekday}`
+          if (r.monthlyMode === 'lastWeekday') return `FREQ=MONTHLY${iv};BYDAY=-1${weekday}`
+          return `FREQ=MONTHLY${iv}`
         case 'year':
           return `FREQ=YEARLY${iv}`
       }
@@ -126,7 +126,8 @@ export function parseRepeat(rrule: string | null | undefined): RepeatState {
       return { ...NO_REPEAT, freq: 'custom', unit: 'month', interval, monthlyMode: 'day' }
     }
     if (freq === 'MONTHLY' && /^-?\d+[A-Z]{2}$/.test(parts.BYDAY ?? '')) {
-      return { ...NO_REPEAT, freq: 'custom', unit: 'month', interval, monthlyMode: 'weekday' }
+      const last = (parts.BYDAY ?? '').startsWith('-')
+      return { ...NO_REPEAT, freq: 'custom', unit: 'month', interval, monthlyMode: last ? 'lastWeekday' : 'weekday' }
     }
     if (freq === 'YEARLY') return { ...NO_REPEAT, freq: 'custom', unit: 'year', interval }
   }
