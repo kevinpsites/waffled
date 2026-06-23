@@ -75,6 +75,12 @@ services:
       # to your real host when not on localhost; empty → derived from request headers.
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # --- Media/blob uploads (local disk): api writes blobs, Caddy serves them.
+      # Files land in MEDIA_DIR (the nook_media volume) and are served read-only by
+      # Caddy at MEDIA_BASE_URL, so the api stays out of the read path.
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      MEDIA_DIR: ${MEDIA_DIR:-/data/media}
+      MEDIA_BASE_URL: ${MEDIA_BASE_URL:-/media}
       # Returned by /api/powersync/token so clients know where to connect.
       POWERSYNC_PUBLIC_URL: ${POWERSYNC_PUBLIC_URL:-http://localhost:8090}
       # Stable RS256 signing key for PowerSync tokens (base64 of a PEM, or raw PEM).
@@ -103,6 +109,8 @@ services:
       # --- switch to Auth0 (RS256): set these, then restart the api ---
       # AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       # AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+    volumes:
+      - nook_media:/data/media         # uploaded blobs (read-write); Caddy serves them read-only
     ports:
       - "${API_PORT:-3000}:3000"     # direct dev access; also reachable via Caddy /api/*
     healthcheck:
@@ -164,11 +172,13 @@ services:
       CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-:80}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro   # web build is baked into the image at /srv
+      - nook_media:/data/media:ro                   # serve uploaded blobs directly (read-only)
       - caddy_data:/data
       - caddy_config:/config
     restart: unless-stopped
 
 volumes:
   pgdata:
+  nook_media:        # uploaded media blobs — NEVER WIPE (like pgdata)
   caddy_data:
   caddy_config:
