@@ -64,6 +64,48 @@ describe('parseCapture — events', () => {
   })
 })
 
+describe('parseCapture — recurring events', () => {
+  it('"every Tuesday at 4pm" → weekly on Tue, anchored at the next Tuesday', () => {
+    const e = asEvent(p('soccer every Tuesday at 4pm for Wally'))
+    expect(e.title).toBe('Soccer')
+    expect(e.personName).toBe('Wally')
+    expect(e.rrule).toBe('FREQ=WEEKLY;BYDAY=TU')
+    const d = new Date(e.startsAt)
+    expect(d.getDay()).toBe(2)
+    expect(d.getHours()).toBe(16)
+  })
+
+  it('"every weekday" → Mon–Fri', () => {
+    const e = asEvent(p('standup every weekday at 9am'))
+    expect(e.rrule).toBe('FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR')
+    expect(new Date(e.startsAt).getHours()).toBe(9)
+  })
+
+  it('"every day" → daily', () => {
+    const e = asEvent(p('team huddle every day at 9am'))
+    expect(e.rrule).toBe('FREQ=DAILY')
+  })
+
+  it('"monthly" with no concrete day still becomes a (monthly) event', () => {
+    const e = asEvent(p('book club monthly'))
+    expect(e.title).toBe('Book club')
+    expect(e.rrule).toBe('FREQ=MONTHLY')
+  })
+
+  it('"every other Tuesday" → biweekly', () => {
+    const e = asEvent(p('yoga every other tuesday at 6pm'))
+    expect(e.rrule).toBe('FREQ=WEEKLY;INTERVAL=2;BYDAY=TU')
+  })
+
+  it('a plural weekday ("Tuesdays") implies weekly', () => {
+    expect(asEvent(p('trash pickup tuesdays')).rrule).toBe('FREQ=WEEKLY;BYDAY=TU')
+  })
+
+  it('a bare single weekday is a one-off, not recurring', () => {
+    expect(asEvent(p('Soccer Tue 4pm for Wally')).rrule).toBeNull()
+  })
+})
+
 describe('parseCapture — grocery', () => {
   it('routes a bare noun to grocery', () => {
     expect(p('milk')).toEqual({ kind: 'grocery', name: 'Milk', quantity: null })

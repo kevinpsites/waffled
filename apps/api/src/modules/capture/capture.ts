@@ -71,7 +71,7 @@ const INTENT_SCHEMA = {
     personName: { type: ['string', 'null'], description: 'Exactly one of the family names, or null' },
     startsAt: { type: ['string', 'null'], description: 'Event start, local date-time with no zone' },
     allDay: { type: ['boolean', 'null'] },
-    rrule: { type: ['string', 'null'], description: 'Recurring task, e.g. FREQ=WEEKLY;BYDAY=MO,WE' },
+    rrule: { type: ['string', 'null'], description: 'Recurrence for an EVENT or task (RFC5545 RRULE), e.g. FREQ=WEEKLY;BYDAY=TU or FREQ=DAILY or FREQ=MONTHLY' },
     stars: { type: ['integer', 'null'] },
     date: { type: ['string', 'null'], description: 'Meal date as YYYY-MM-DD: the resolved day the user said (today/tomorrow/Friday/next Thursday); only today if none was said' },
     mealType: { type: ['string', 'null'], enum: ['breakfast', 'lunch', 'dinner', 'snack', null], description: 'Meal slot (default dinner)' },
@@ -93,7 +93,7 @@ function systemPrompt(ctx: CaptureContext): string {
     '- ALWAYS extract a concise "title" (for grocery use "name") — strip command words like "please add", "make a chore to", "to X\'s list".',
     '- If a quoted phrase is present, use it verbatim as the title.',
     '- personName MUST be exactly one of the family members if the note refers to one (case-insensitive, ignore possessives like "Kelly\'s" → "Kelly"); otherwise null.',
-    '- event: compute startsAt as a LOCAL date-time with NO timezone suffix (e.g. 2026-06-16T16:00:00) — the server applies the household timezone. Resolve relative dates (today/tomorrow/"Tue") against the current date above; allDay=true only when no clock time is given.',
+    '- event: compute startsAt as a LOCAL date-time with NO timezone suffix (e.g. 2026-06-16T16:00:00) — the server applies the household timezone. Resolve relative dates (today/tomorrow/"Tue") against the current date above; allDay=true only when no clock time is given. If it REPEATS ("every Tuesday", "weekly", "every day", "monthly"), ALSO set rrule (FREQ=WEEKLY;BYDAY=TU / FREQ=DAILY / FREQ=MONTHLY / FREQ=YEARLY) with startsAt = the FIRST occurrence; otherwise rrule null.',
     '- task: recurring → rrule with two-letter weekday codes (FREQ=WEEKLY;BYDAY=MO,WE,SA) or FREQ=DAILY; one-off → rrule null.',
     '- grocery: ONLY the grocery/shopping list or bare food/household-shopping items. "quantity" is just the amount (e.g. "2 lbs"), or null. Never prefix it with a label.',
     '- list: "add X to (the) <list>" / "put X on my <list>" where <list> is a NAMED non-grocery list → kind "list" with itemName=X and listName=the list. Match listName to one of the Custom lists above when it clearly refers to one (e.g. "the lake packing trip" → "Lake trip packing"); otherwise keep the user\'s name. Optional "quantity".',
@@ -104,6 +104,8 @@ function systemPrompt(ctx: CaptureContext): string {
     '',
     'Examples below ASSUME today is Thursday June 11 2026. Always recompute dates from the ACTUAL current date stated above, not from this example date:',
     '"Soccer Tue 4pm for Wally" -> {"kind":"event","title":"Soccer","personName":"Wally","startsAt":"2026-06-16T16:00:00","allDay":false}',
+    '"soccer every Tuesday at 4pm for Wally" -> {"kind":"event","title":"Soccer","personName":"Wally","startsAt":"2026-06-16T16:00:00","allDay":false,"rrule":"FREQ=WEEKLY;BYDAY=TU"}',
+    '"book club on the first Monday of every month at 7pm" -> {"kind":"event","title":"Book club","startsAt":"2026-07-06T19:00:00","allDay":false,"rrule":"FREQ=MONTHLY;BYDAY=1MO"}',
     '"dentist tomorrow" -> {"kind":"event","title":"Dentist","personName":null,"startsAt":"2026-06-12T00:00:00","allDay":true}',
     '"Please add laundry for Monday and Saturday to Kelly\'s chore list" -> {"kind":"task","title":"Laundry","personName":"Kelly","rrule":"FREQ=WEEKLY;BYDAY=MO,SA","stars":null}',
     '"\\"Take Out the Trash\\" for Lottie on Tuesday and Thursday" -> {"kind":"task","title":"Take Out the Trash","personName":"Lottie","rrule":"FREQ=WEEKLY;BYDAY=TU,TH"}',
@@ -157,12 +159,15 @@ export function finalizeIntent(raw: unknown, ctx: CaptureContext): CaptureIntent
     if (!raw0 || Number.isNaN(Date.parse(zonedToUtc(raw0, ctx.timezone)))) throw new Error('event: bad startsAt')
     const startsAt = zonedToUtc(raw0, ctx.timezone)
     const allDay = r.allDay == null ? true : !!r.allDay
+    const rrule = r.rrule ? String(r.rrule) : null
     return {
       kind,
       title: String(r.title ?? 'Event').trim() || 'Event',
       startsAt,
       allDay,
       personName,
+      rrule,
+      scheduleLabel: scheduleLabel(rrule),
       whenLabel: whenLabel(startsAt, allDay, ctx.timezone),
     }
   }
@@ -320,8 +325,10 @@ function whenLabel(iso: string, allDay: boolean, tz: string): string {
 function scheduleLabel(rrule: string | null): string {
   if (!rrule) return ''
   if (/FREQ=DAILY/i.test(rrule)) return 'Every day'
+  if (/FREQ=MONTHLY/i.test(rrule)) return 'Every month'
+  if (/FREQ=YEARLY/i.test(rrule)) return 'Every year'
   const m = /BYDAY=([A-Z,]+)/i.exec(rrule)
-  if (!m) return ''
+  if (!m) return /FREQ=WEEKLY/i.test(rrule) ? 'Every week' : ''
   return m[1]
     .split(',')
     .map((c) => DAY_SHORT[BYDAY_INDEX[c.toUpperCase()]] ?? '')

@@ -7,8 +7,10 @@
 // otherwise a task signal → task; bare nouns fall back to grocery (the most
 // common quick capture). `now` is injected so the logic is deterministic in tests.
 
+import { describeRrule } from '../../kiosk/components/recurrence'
+
 export type ParsedIntent =
-  | { kind: 'event'; title: string; startsAt: string; allDay: boolean; personName: string | null; whenLabel: string }
+  | { kind: 'event'; title: string; startsAt: string; allDay: boolean; personName: string | null; rrule: string | null; scheduleLabel: string; whenLabel: string }
   | { kind: 'grocery'; name: string; quantity: string | null }
   | { kind: 'task'; title: string; personName: string | null; stars: number | null; rrule: string | null; scheduleLabel: string }
   | { kind: 'meal'; title: string; date: string | null; mealType: string; whenLabel: string }
@@ -125,6 +127,63 @@ function findAllWeekdays(text: string): { codes: string[]; spans: Span[]; labels
     }
   }
   return { codes, spans, labels }
+}
+
+// Recurrence for an EVENT ("soccer every Tuesday", "book club monthly", "standup
+// every weekday"). Returns the rrule + the spans to strip from the title. A bare
+// single weekday ("Tuesday") is a one-off date, NOT recurrence — only an explicit
+// cue ("every", "weekly", a plural "Tuesdays") turns it into a rule. `startWeekday`
+// anchors a generic "every week" to the event's own day.
+function detectEventRecurrence(text: string, startWeekday: number): { rrule: string | null; spans: Span[] } {
+  const spans: Span[] = []
+  const add = (m: RegExpExecArray | null) => { if (m) spans.push({ start: m.index, end: m.index + m[0].length }) }
+
+  // Daily / weekdays
+  let m = /\b(every\s*day|everyday|daily|each\s*day)\b/i.exec(text)
+  if (m) { add(m); return { rrule: 'FREQ=DAILY', spans } }
+  m = /\b(every\s+)?weekdays?\b/i.exec(text)
+  if (m && /\bevery\b/i.test(m[0])) { add(m); return { rrule: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', spans } }
+
+  // Interval cue ("every other"/"biweekly", or "every N weeks/months/years")
+  let interval = 1
+  const other = /\b(every other|bi-?weekly|fortnightly)\b/i.exec(text)
+  if (other) { interval = 2; add(other) }
+  const everyN = /\bevery\s+(\d{1,2})\s+(day|week|month|year)s?\b/i.exec(text)
+  if (everyN) { interval = Math.max(1, parseInt(everyN[1], 10)); add(everyN) }
+  const unit = everyN ? everyN[2].toLowerCase() : null
+  const iv = interval > 1 ? `;INTERVAL=${interval}` : ''
+
+  if (unit === 'year' || /\b(yearly|annually|every year)\b/i.test(text)) {
+    add(/\b(yearly|annually|every year)\b/i.exec(text))
+    return { rrule: `FREQ=YEARLY${iv}`, spans }
+  }
+  if (unit === 'month' || /\b(monthly|every month)\b/i.test(text)) {
+    add(/\b(monthly|every month)\b/i.exec(text))
+    return { rrule: `FREQ=MONTHLY${iv}`, spans }
+  }
+
+  // Weekly with explicit day(s): only in a recurring context — "every tuesday",
+  // "tuesdays" (plural), "weekly on tuesday", "every other monday".
+  const recurringCtx = !!other || !!everyN || /\bevery\b/i.test(text) || /\bweekly\b/i.test(text)
+  const re = /\b(sun|sunday|mon|monday|tues?|tuesday|wed|weds|wednesday|thur?s?|thursday|fri|friday|sat|saturday)(s)?\b/gi
+  const days: string[] = []
+  const seen = new Set<string>()
+  let w: RegExpExecArray | null
+  while ((w = re.exec(text))) {
+    const plural = !!w[2]
+    if (!recurringCtx && !plural) continue // a lone weekday is a date, handled by findDay
+    const code = BYDAY[WEEKDAYS[w[1].toLowerCase()]]
+    spans.push({ start: w.index, end: w.index + w[0].length })
+    if (!seen.has(code)) { seen.add(code); days.push(code) }
+  }
+  if (days.length) return { rrule: `FREQ=WEEKLY${iv};BYDAY=${days.join(',')}`, spans }
+
+  // Generic "every week" / "weekly" → the event's own weekday.
+  if (unit === 'week' || /\b(weekly|every week)\b/i.test(text)) {
+    add(/\b(weekly|every week)\b/i.exec(text))
+    return { rrule: `FREQ=WEEKLY${iv};BYDAY=${BYDAY[startWeekday]}`, spans }
+  }
+  return { rrule: null, spans }
 }
 
 function findTime(text: string): TimeHit | null {
@@ -327,10 +386,25 @@ export function parseCapture(raw: string, persons: string[] = [], now: Date = ne
 
   const day = findDay(text, now)
   const time = findTime(text)
+  const startWeekday = day ? new Date(day.y, day.mo, day.d).getDay() : now.getDay()
+  const rec = detectEventRecurrence(text, startWeekday)
 
-  // EVENT — anything with a concrete day or time.
-  if (day || time) {
-    const target = day ? new Date(day.y, day.mo, day.d) : startOfDay(now)
+  // EVENT — a concrete day/time, or a recurrence cue (which anchors itself).
+  if (day || time || rec.rrule) {
+    let target: Date
+    if (day) target = new Date(day.y, day.mo, day.d)
+    else if (rec.rrule) {
+      // No explicit day: anchor weekly-with-days at the next matching weekday,
+      // everything else at today.
+      const bd = /FREQ=WEEKLY[^]*BYDAY=([A-Z]{2})/.exec(rec.rrule)
+      const base = startOfDay(now)
+      if (bd) {
+        const delta = (BYDAY.indexOf(bd[1]) - base.getDay() + 7) % 7
+        target = new Date(base)
+        target.setDate(base.getDate() + delta)
+      } else target = base
+    } else target = startOfDay(now)
+
     let allDay = true
     if (time) {
       target.setHours(time.h, time.m, 0, 0)
@@ -339,12 +413,14 @@ export function parseCapture(raw: string, persons: string[] = [], now: Date = ne
       target.setHours(18, 0, 0, 0)
       allDay = false
     }
-    const spans = [day?.span, time?.span, person?.span].filter(Boolean) as Span[]
-    const title = titleCase(tidy(cut(text, spans))) || 'Event'
-    const whenLabel = [day?.label ?? 'Today', allDay ? 'All day' : time?.label ?? (day?.eveningHint ? '6:00 PM' : '')]
-      .filter(Boolean)
-      .join(' · ')
-    return { kind: 'event', title, startsAt: target.toISOString(), allDay, personName: person?.name ?? null, whenLabel }
+    const spans = [day?.span, time?.span, person?.span, ...rec.spans].filter(Boolean) as Span[]
+    // A lone "every"/"each"/"and"/"on" can survive next to the stripped weekday.
+    const titleRaw = rec.rrule ? cut(text, spans).replace(/\b(every|each|other|and|on)\b/gi, ' ') : cut(text, spans)
+    const title = titleCase(tidy(titleRaw)) || 'Event'
+    const dayLabel = day?.label ?? target.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    const whenLabel = [dayLabel, allDay ? 'All day' : time?.label ?? (day?.eveningHint ? '6:00 PM' : '')].filter(Boolean).join(' · ')
+    const scheduleLabel = rec.rrule ? describeRrule(rec.rrule, target) : ''
+    return { kind: 'event', title, startsAt: target.toISOString(), allDay, personName: person?.name ?? null, rrule: rec.rrule, scheduleLabel, whenLabel }
   }
 
   // GROCERY — verbs, "to the list", units, or the bare-noun fallback.
@@ -378,7 +454,7 @@ export function looksConfident(intent: ParsedIntent | null, text: string): boole
 export function intentSummary(intent: ParsedIntent): { icon: string; kind: string; primary: string; detail: string } {
   switch (intent.kind) {
     case 'event':
-      return { icon: '📅', kind: 'Event', primary: intent.title, detail: [intent.whenLabel, intent.personName].filter(Boolean).join(' · ') }
+      return { icon: '📅', kind: 'Event', primary: intent.title, detail: [intent.whenLabel, intent.scheduleLabel && `🔁 ${intent.scheduleLabel}`, intent.personName].filter(Boolean).join(' · ') }
     case 'grocery':
       return { icon: '🛒', kind: 'Grocery', primary: [intent.quantity, intent.name].filter(Boolean).join(' '), detail: 'Adds to the grocery list' }
     case 'task':

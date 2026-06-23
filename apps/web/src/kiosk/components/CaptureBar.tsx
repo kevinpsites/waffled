@@ -3,6 +3,11 @@ import { createPortal } from 'react-dom'
 import { Icon } from '../icons'
 import { usePersons, api, localToday, type Person, type ListSummary } from '../../lib/api'
 import { parseCapture, intentSummary, looksConfident, type ParsedIntent } from '../../lib/capture/parse'
+import { describeRrule } from './recurrence'
+
+const BYDAY = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
+const freqOf = (r: string | null): string =>
+  !r ? '' : /FREQ=DAILY/.test(r) ? 'daily' : /FREQ=WEEKLY/.test(r) ? 'weekly' : /FREQ=MONTHLY/.test(r) ? 'monthly' : /FREQ=YEARLY/.test(r) ? 'yearly' : 'custom'
 
 // The "Add anything…" capture bar (roadmap 6.6). A compact trigger in the topbar
 // opens a centered floating composer. It shows an instant on-device parse and
@@ -76,7 +81,7 @@ function rerouteKind(i: ParsedIntent, kind: ParsedIntent['kind'], today: string)
     case 'event': {
       const d = new Date()
       d.setHours(0, 0, 0, 0)
-      return { kind: 'event', title: primary, startsAt: d.toISOString(), allDay: true, personName, whenLabel: eventWhen(localToday(), null, true) }
+      return { kind: 'event', title: primary, startsAt: d.toISOString(), allDay: true, personName, rrule: null, scheduleLabel: '', whenLabel: eventWhen(localToday(), null, true) }
     }
     case 'task':
       return { kind: 'task', title: primary, personName, stars: null, rrule: null, scheduleLabel: '' }
@@ -144,6 +149,17 @@ function DraftFields({ intent, persons, lists, set, today }: { intent: ParsedInt
       const startsAt = new Date(`${d}T${allDay ? '12:00' : t || '12:00'}:00`).toISOString()
       set({ ...intent, startsAt, allDay, whenLabel: eventWhen(d, t, allDay) })
     }
+    const freq = freqOf(intent.rrule)
+    const setFreq = (v: string) => {
+      const start = new Date(intent.startsAt)
+      const rrule =
+        v === 'daily' ? 'FREQ=DAILY'
+        : v === 'weekly' ? `FREQ=WEEKLY;BYDAY=${BYDAY[start.getDay()]}`
+        : v === 'monthly' ? 'FREQ=MONTHLY'
+        : v === 'yearly' ? 'FREQ=YEARLY'
+        : null
+      set({ ...intent, rrule, scheduleLabel: rrule ? describeRrule(rrule, start) : '' })
+    }
     return (
       <>
         <PersonChips persons={persons} value={intent.personName} onChange={(name) => set({ ...intent, personName: name })} noneLabel="Nobody" />
@@ -152,6 +168,16 @@ function DraftFields({ intent, persons, lists, set, today }: { intent: ParsedInt
           {!intent.allDay && <input type="time" className="cap-edit-mini" value={time} onChange={(e) => upd(date, e.target.value, false)} aria-label="Time" />}
           <button type="button" className={`cap-person ${intent.allDay ? 'on' : ''}`} onClick={() => upd(date, time, !intent.allDay)}>All day</button>
         </div>
+        <label className="cap-stars" style={{ gap: 6 }}>Repeats
+          <select value={freq === 'custom' ? 'custom' : freq} onChange={(e) => setFreq(e.target.value)} aria-label="Repeats">
+            <option value="">Does not repeat</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+            <option value="yearly">Yearly</option>
+            {freq === 'custom' && <option value="custom">Custom ({intent.scheduleLabel})</option>}
+          </select>
+        </label>
       </>
     )
   }
@@ -254,8 +280,8 @@ export function CaptureBar() {
 
   async function commit(i: ParsedIntent): Promise<string> {
     if (i.kind === 'event') {
-      await api.createEvent({ title: i.title, startsAt: i.startsAt, allDay: i.allDay, personId: personId(i.personName) })
-      return `Added “${i.title}” to the calendar`
+      await api.createEvent({ title: i.title, startsAt: i.startsAt, allDay: i.allDay, personId: personId(i.personName), rrule: i.rrule ?? undefined })
+      return `Added “${i.title}”${i.rrule ? ' (repeating)' : ''} to the calendar`
     }
     if (i.kind === 'grocery') {
       const label = i.quantity ? `${i.name} (${i.quantity})` : i.name
