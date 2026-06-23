@@ -229,6 +229,10 @@
 .cap-edit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .cap-edit-mini { font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink); border: 1px solid var(--hair);
   border-radius: 8px; background: var(--card-2); padding: 6px 9px; }
+/* Native date/time pickers need room for the value + their built-in icon, or they
+   clip to "mr⊞". Keep them from shrinking inside the flex row (it wraps instead). */
+.cap-edit-mini[type="date"] { min-width: 152px; flex: none; }
+.cap-edit-mini[type="time"] { min-width: 116px; flex: none; }
 .cap-stars { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--ink-3); }
 .cap-stars input { width: 56px; font: inherit; font-size: 14px; font-weight: 700; color: var(--ink);
   border: 1px solid var(--hair); border-radius: 8px; background: var(--card-2); padding: 6px 8px; }
