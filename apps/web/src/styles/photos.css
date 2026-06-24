@@ -48,6 +48,8 @@
    replaces it once a photo is chosen. */
 .ap-stage { flex: 1; overflow: auto; display: flex; flex-direction: column;
   align-items: center; justify-content: center; padding: 24px 30px 40px; }
+/* once photos are staged, pin to the top so the list grows downward (don't center) */
+.ap-stage.staged { justify-content: flex-start; }
 
 /* empty state: big drag-and-drop / click-to-browse zone + a coming-soon note */
 .ap-pick { display: flex; flex-direction: column; align-items: center; gap: 18px; width: 100%; }
@@ -67,15 +69,28 @@
 .ap-drop-meta { margin-top: 14px; }
 .ap-err { color: var(--danger, #c0392b); font-weight: 700; }
 
-/* staged state: a centered card — large preview over caption / album / favorite */
-.ap-card { width: min(560px, 100%); display: flex; flex-direction: column; gap: 20px;
-  background: #fff; border-radius: var(--r-xl, 22px); box-shadow: var(--sh-2); padding: 20px; }
-.ap-card-photo { position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: var(--r-md);
+/* staged state: a "Album for all" bar over a list of per-photo rows */
+.ap-batch { width: min(720px, 100%); display: flex; flex-direction: column; gap: 14px; }
+.ap-batch-bar { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px;
+  flex-wrap: wrap; }
+.ap-batch-album { min-width: 240px; }
+.ap-batch-actions { display: flex; align-items: center; gap: 12px; padding-bottom: 2px; }
+.ap-batch-actions .pill { cursor: pointer; }
+.ap-uploading { font-weight: 700; }
+
+.ap-list { display: flex; flex-direction: column; gap: 12px; }
+.ap-row { display: flex; gap: 14px; align-items: flex-start; background: #fff;
+  border-radius: var(--r-md); box-shadow: var(--sh-1); padding: 12px; }
+.ap-row-thumb { flex: none; width: 104px; height: 104px; border-radius: var(--r-sm, 12px);
   overflow: hidden; background: rgba(0,0,0,.05); }
-.ap-card-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-.ap-card-heart { position: absolute; top: 12px; right: 12px; font-size: 22px;
-  filter: drop-shadow(0 2px 6px rgba(0,0,0,.35)); }
-.ap-card-fields { display: flex; flex-direction: column; gap: 14px; }
+.ap-row-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.ap-row-fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.ap-row-meta { display: flex; gap: 10px; align-items: center; }
+.ap-row-album { flex: 1; min-width: 0; }
+.ap-row-del { flex: none; width: 34px; height: 34px; border-radius: 999px; border: 0;
+  background: rgba(0,0,0,.06); color: var(--ink-3); font-size: 22px; line-height: 1; cursor: pointer; }
+.ap-row-del:hover { background: rgba(192,57,43,.12); color: var(--danger, #c0392b); }
+
 .ap-field-label { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; font-weight: 700;
   color: var(--ink-3); letter-spacing: .02em; }
 .ap-field-label .field { font-weight: 500; color: var(--ink); }

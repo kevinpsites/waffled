@@ -1,14 +1,24 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { api, uploadImage } from '../../lib/api'
 import { AlbumPicker } from './AlbumPicker'
 
-// Add-photos overlay. The hero is a big drag-and-drop / click-to-browse zone — the
-// single way to pick a photo (no separate "Upload" + "Add" buttons). Once a file is
-// chosen it's re-encoded + sent to /api/media; we stage the returned storageKey
-// (resolved to imageUrl server-side) as a centered preview card with caption, album
-// (existing or new) and a favorite toggle, and the topbar's "Add photo" confirms.
-// Nook has no shared-album / phone-library integration yet, so a muted "coming soon"
-// note stands in for the planned second source.
+// Add-photos overlay. The hero is a big drag-and-drop / click-to-browse zone that
+// accepts up to MAX photos at once. Each chosen file is re-encoded + sent to
+// /api/media; we stage the returned storageKey (resolved to imageUrl server-side) as
+// a row in a list, each with its own caption, favorite toggle and album. A "Album for
+// all" picker sets the batch default and propagates to every row that still matches it,
+// so the common case (one event → one album) is one tap, while any single photo can
+// still be pointed at a different album. "Add photo(s)" creates them all.
+
+const MAX = 10
+
+interface StagedPhoto {
+  key: string
+  previewUrl: string
+  caption: string
+  isFavorite: boolean
+  album: string
+}
 
 export function PhotoAdd({
   onClose,
@@ -20,59 +30,76 @@ export function PhotoAdd({
   albums?: string[]
 }) {
   const [saving, setSaving] = useState(false)
-
-  // Uploaded photo: a chosen file is re-encoded + sent to /api/media, and we stage the
-  // returned storageKey (resolved to imageUrl server-side) with an inline preview.
-  const [uploadKey, setUploadKey] = useState<string | null>(null)
-  const [uploadPreview, setUploadPreview] = useState<string | null>(null)
-  const [caption, setCaption] = useState('')
-  const [album, setAlbum] = useState('')
-  const [isFavorite, setIsFavorite] = useState(false)
-  const [uploading, setUploading] = useState(false)
+  const [items, setItems] = useState<StagedPhoto[]>([])
+  const [sharedAlbum, setSharedAlbum] = useState('')
+  const [uploading, setUploading] = useState(0)
   const [uploadErr, setUploadErr] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  async function onPickFile(file: File | undefined) {
-    if (!file) return
-    setUploadErr(null)
-    setUploading(true)
-    try {
-      const { key, url } = await uploadImage(file)
-      setUploadKey(key)
-      setUploadPreview(url)
-    } catch (e) {
-      setUploadErr(e instanceof Error ? e.message : 'Upload failed — please try again.')
-    } finally {
-      setUploading(false)
-    }
+  // Per-row album pickers offer every known album PLUS any freshly-typed batch / row
+  // name, so a brand-new album shows as a selectable option on every row (not a stray
+  // "new album" text box repeated down the list).
+  const allAlbums = useMemo(
+    () => [...new Set([...albums, sharedAlbum, ...items.map((i) => i.album)].filter((a): a is string => !!a))],
+    [albums, sharedAlbum, items]
+  )
+
+  async function onPickFiles(fileList: FileList | File[] | null | undefined) {
+    const files = Array.from(fileList ?? [])
+    if (!files.length) return
+    const room = MAX - items.length
+    const take = files.slice(0, Math.max(0, room))
+    const dropped = files.length - take.length
+    setUploadErr(dropped > 0 ? `You can add up to ${MAX} photos at once — ${dropped} not added.` : null)
+    setUploading((n) => n + take.length)
+    await Promise.all(
+      take.map(async (file) => {
+        try {
+          const { key, url } = await uploadImage(file)
+          setItems((prev) => [...prev, { key, previewUrl: url, caption: '', isFavorite: false, album: sharedAlbum }])
+        } catch (e) {
+          setUploadErr(e instanceof Error ? e.message : 'A photo failed to upload — please try again.')
+        } finally {
+          setUploading((n) => n - 1)
+        }
+      })
+    )
   }
 
   function onDrop(e: React.DragEvent) {
     e.preventDefault()
     setDragOver(false)
-    onPickFile(e.dataTransfer.files?.[0])
+    onPickFiles(e.dataTransfer.files)
   }
 
-  function reset() {
-    setUploadKey(null)
-    setUploadPreview(null)
-    setCaption('')
-    setAlbum('')
-    setIsFavorite(false)
-    setUploadErr(null)
+  // Changing the batch album re-points every row that still matches the OLD batch
+  // value, leaving rows the user individually overrode untouched.
+  function changeSharedAlbum(next: string) {
+    setItems((prev) => prev.map((it) => (it.album === sharedAlbum ? { ...it, album: next } : it)))
+    setSharedAlbum(next)
+  }
+
+  function patchItem(i: number, patch: Partial<StagedPhoto>) {
+    setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)))
+  }
+
+  function removeItem(i: number) {
+    setItems((prev) => prev.filter((_, idx) => idx !== i))
   }
 
   async function add() {
-    if (!uploadKey || saving) return
+    if (!items.length || saving || uploading > 0) return
     setSaving(true)
     try {
-      await api.createPhoto({
-        storageKey: uploadKey,
-        caption: caption.trim() || 'New photo',
-        memory: album.trim() || null,
-        isFavorite,
-      })
+      for (const it of items) {
+        await api.createPhoto({
+          storageKey: it.key,
+          caption: it.caption.trim() || 'New photo',
+          memory: it.album.trim() || null,
+          isFavorite: it.isFavorite,
+        })
+      }
       onAdded()
       onClose()
     } catch {
@@ -80,7 +107,8 @@ export function PhotoAdd({
     }
   }
 
-  const staged = !!uploadPreview && !uploading
+  const staged = items.length > 0
+  const addLabel = saving ? 'Adding…' : items.length > 1 ? `Add ${items.length} photos` : 'Add photo'
 
   return (
     <div className="ph-saver" style={{ position: 'fixed', inset: 0, zIndex: 900, background: 'var(--bg, #efece6)', color: 'var(--ink)', display: 'block', cursor: 'default' }}>
@@ -88,11 +116,11 @@ export function PhotoAdd({
         <div className="kiosk-main" style={{ gridColumn: '1 / -1' }}>
           <div className="topbar">
             <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={onClose}>‹ Photos</button>
-            <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginLeft: 14 }}>Add a photo</div>
+            <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginLeft: 14 }}>Add photos</div>
             <div className="tb-right">
               {staged && (
-                <button type="button" className="btn btn-primary" disabled={saving} onClick={add}>
-                  {saving ? 'Adding…' : 'Add photo'}
+                <button type="button" className="btn btn-primary" disabled={saving || uploading > 0} onClick={add}>
+                  {addLabel}
                 </button>
               )}
             </div>
@@ -101,71 +129,105 @@ export function PhotoAdd({
           <input
             ref={fileRef}
             type="file"
+            multiple
             // Only formats the browser canvas can decode + re-encode. This greys out
             // HEIC (iPhone's default) in the file picker; uploadImage() also guards at
             // runtime for drag-drop / pickers that ignore `accept`.
             accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
             style={{ display: 'none' }}
-            onChange={(e) => { onPickFile(e.target.files?.[0]); e.target.value = '' }}
+            onChange={(e) => { onPickFiles(e.target.files); e.target.value = '' }}
           />
 
-          <div className="ap-stage">
+          <div className={`ap-stage ${staged ? 'staged' : ''}`}>
             {!staged ? (
               <div className="ap-pick">
                 <button
                   type="button"
-                  className={`ap-drop ${dragOver ? 'over' : ''} ${uploading ? 'busy' : ''}`}
-                  onClick={() => !uploading && fileRef.current?.click()}
+                  className={`ap-drop ${dragOver ? 'over' : ''} ${uploading > 0 ? 'busy' : ''}`}
+                  onClick={() => uploading === 0 && fileRef.current?.click()}
                   onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
                   onDragLeave={() => setDragOver(false)}
                   onDrop={onDrop}
-                  disabled={uploading}
+                  disabled={uploading > 0}
                 >
-                  {uploading ? (
+                  {uploading > 0 ? (
                     <>
                       <div className="ap-drop-icon">⏳</div>
-                      <div className="ap-drop-title">Uploading photo…</div>
-                      <div className="ap-drop-sub tiny muted">Resizing and saving your photo</div>
+                      <div className="ap-drop-title">Uploading…</div>
+                      <div className="ap-drop-sub tiny muted">Resizing and saving your photos</div>
                     </>
                   ) : (
                     <>
                       <div className="ap-drop-icon">📷</div>
-                      <div className="ap-drop-title">Drag &amp; drop a photo here</div>
+                      <div className="ap-drop-title">Drag &amp; drop photos here</div>
                       <div className="ap-drop-sub">or <span className="ap-drop-link">click to browse</span></div>
-                      <div className="ap-drop-meta tiny muted">JPG, PNG or WebP · up to 10&nbsp;MB</div>
+                      <div className="ap-drop-meta tiny muted">Up to {MAX} at once · JPG, PNG or WebP · 10&nbsp;MB each</div>
                     </>
                   )}
                 </button>
-
                 {uploadErr && <div className="ap-err tiny">{uploadErr}</div>}
               </div>
             ) : (
-              <div className="ap-card">
-                <div className="ap-card-photo">
-                  <img src={uploadPreview!} alt="Upload preview" />
-                  {isFavorite && <div className="ap-card-heart">❤️</div>}
-                </div>
-                <div className="ap-card-fields">
-                  <label className="ap-field-label">
-                    Caption
-                    <input className="field" placeholder="Add a caption…" value={caption} onChange={(e) => setCaption(e.target.value)} autoFocus />
+              <div className="ap-batch">
+                <div className="ap-batch-bar">
+                  <label className="ap-field-label ap-batch-album">
+                    Album for all
+                    <AlbumPicker id="ap-shared-album" value={sharedAlbum} onChange={changeSharedAlbum} albums={albums} />
                   </label>
-                  <label className="ap-field-label">
-                    Album
-                    <AlbumPicker value={album} onChange={setAlbum} albums={albums} />
-                  </label>
-                  <div className="ap-form-row">
+                  <div className="ap-batch-actions">
+                    <span className="tiny muted">{items.length} / {MAX}</span>
                     <button
                       type="button"
-                      className={`pill ap-fav ${isFavorite ? 'on' : ''}`}
-                      aria-pressed={isFavorite}
-                      onClick={() => setIsFavorite((v) => !v)}
+                      className="pill"
+                      onClick={() => fileRef.current?.click()}
+                      disabled={items.length >= MAX || uploading > 0}
                     >
-                      {isFavorite ? '❤️' : '🤍'} Favorite
+                      ＋ Add more
                     </button>
-                    <button type="button" className="pill" onClick={() => fileRef.current?.click()}>↻ Replace</button>
-                    <button type="button" className="pill" onClick={reset}>Remove</button>
                   </div>
+                </div>
+
+                {uploadErr && <div className="ap-err tiny">{uploadErr}</div>}
+                {uploading > 0 && <div className="tiny muted ap-uploading">Uploading {uploading} more…</div>}
+
+                <div className="ap-list">
+                  {items.map((it, i) => (
+                    <div className="ap-row" key={it.key}>
+                      <div className="ap-row-thumb">
+                        <img src={it.previewUrl} alt="" />
+                      </div>
+                      <div className="ap-row-fields">
+                        <input
+                          className="field"
+                          placeholder="Add a caption…"
+                          value={it.caption}
+                          onChange={(e) => patchItem(i, { caption: e.target.value })}
+                        />
+                        <div className="ap-row-meta">
+                          <button
+                            type="button"
+                            className={`pill ap-fav ${it.isFavorite ? 'on' : ''}`}
+                            aria-pressed={it.isFavorite}
+                            aria-label="Favorite"
+                            onClick={() => patchItem(i, { isFavorite: !it.isFavorite })}
+                          >
+                            {it.isFavorite ? '❤️' : '🤍'}
+                          </button>
+                          <div className="ap-row-album">
+                            <AlbumPicker value={it.album} onChange={(v) => patchItem(i, { album: v })} albums={allAlbums} />
+                          </div>
+                          <button
+                            type="button"
+                            className="ap-row-del"
+                            aria-label="Remove photo"
+                            onClick={() => removeItem(i)}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

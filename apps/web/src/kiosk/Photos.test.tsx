@@ -113,14 +113,14 @@ describe('Photos home (family wall)', () => {
     await waitFor(() => expect(screen.queryByText('Tap anywhere to wake')).not.toBeInTheDocument())
   })
 
-  it('opens the add overlay with the upload source', async () => {
+  it('opens the add overlay with the drag-and-drop upload zone', async () => {
     mockApi({ photos: [beach] })
     renderHome()
 
     fireEvent.click(await screen.findByRole('button', { name: /Add photos/ }))
-    // the add overlay shows the real upload source + the "coming soon" album source
-    expect(await screen.findByRole('button', { name: /Upload photo/ })).toBeInTheDocument()
-    expect(screen.getByText('soon')).toBeInTheDocument()
+    // the add overlay's hero is the drag-and-drop / click-to-browse zone
+    expect(await screen.findByText(/Drag & drop photos here/)).toBeInTheDocument()
+    expect(screen.getByText(/click to browse/)).toBeInTheDocument()
   })
 
   it('filters the wall by album chip', async () => {
