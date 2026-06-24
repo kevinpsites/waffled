@@ -84,8 +84,8 @@ struct PlanWeekSheet: View {
         case .config: configView
         case .loading: loadingView
         case .review: reviewView
-        case .empty: messageView("🎉", "Every night this week is already planned.", "Nothing to suggest — you’re all set.")
-        case .failed: messageView("😕", "Couldn’t plan the week", errorMessage ?? "The AI provider didn’t respond. Try again.")
+        case .empty: PlanMessageView(emoji: "🎉", title: "Every night this week is already planned.", subtitle: "Nothing to suggest — you’re all set.")
+        case .failed: PlanMessageView(emoji: "😕", title: "Couldn’t plan the week", subtitle: errorMessage ?? "The AI provider didn’t respond. Try again.", onRetry: { phase = .config })
         }
     }
 
@@ -102,8 +102,8 @@ struct PlanWeekSheet: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .loading: loadingView
         case .review: reviewView
-        case .empty: messageView("🎉", "Every night this week is already planned.", "Nothing to suggest — you’re all set.")
-        case .failed: messageView("😕", "Couldn’t plan the week", errorMessage ?? "The AI provider didn’t respond. Try again.")
+        case .empty: PlanMessageView(emoji: "🎉", title: "Every night this week is already planned.", subtitle: "Nothing to suggest — you’re all set.")
+        case .failed: PlanMessageView(emoji: "😕", title: "Couldn’t plan the week", subtitle: errorMessage ?? "The AI provider didn’t respond. Try again.", onRetry: { phase = .config })
         }
     }
 
@@ -262,30 +262,8 @@ struct PlanWeekSheet: View {
     // MARK: loading
 
     private var loadingView: some View {
-        VStack(spacing: 16) {
-            ProgressView().controlSize(.large).tint(NK.ai)
-            Text("Drafting your week…").font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
-            Text("Asking the kitchen AI — this can take a moment on a local model.")
-                .font(.system(size: 13)).foregroundStyle(NK.ink3).multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func messageView(_ emoji: String, _ title: String, _ subtitle: String) -> some View {
-        VStack(spacing: 12) {
-            Text(emoji).font(.system(size: 44))
-            Text(title).font(.system(size: 18, weight: .bold)).foregroundStyle(NK.ink)
-            Text(subtitle).font(.system(size: 14)).foregroundStyle(NK.ink3)
-                .multilineTextAlignment(.center).padding(.horizontal, 40)
-            if phase == .failed {
-                Button { phase = .config } label: {
-                    Text("Try again").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ai)
-                }
-                .padding(.top, 4)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        PlanLoadingView(title: "Drafting your week…",
+                        subtitle: "Asking the kitchen AI — this can take a moment on a local model.")
     }
 
     // MARK: review

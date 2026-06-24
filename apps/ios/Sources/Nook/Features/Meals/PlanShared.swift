@@ -34,6 +34,47 @@ struct PlanTag: View {
     }
 }
 
+/// The full-screen loading state shown while the AI drafts a plan.
+struct PlanLoadingView: View {
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        VStack(spacing: 16) {
+            ProgressView().controlSize(.large).tint(NK.ai)
+            Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
+            Text(subtitle)
+                .font(.system(size: 13)).foregroundStyle(NK.ink3).multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// The full-screen empty/error message. Pass `onRetry` to show a "Try again" button.
+struct PlanMessageView: View {
+    let emoji: String
+    let title: String
+    let subtitle: String
+    var onRetry: (() -> Void)? = nil
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text(emoji).font(.system(size: 44))
+            Text(title).font(.system(size: 18, weight: .bold)).foregroundStyle(NK.ink)
+            Text(subtitle).font(.system(size: 14)).foregroundStyle(NK.ink3)
+                .multilineTextAlignment(.center).padding(.horizontal, 40)
+            if let onRetry {
+                Button(action: onRetry) {
+                    Text("Try again").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ai)
+                }
+                .padding(.top, 4)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 /// The compact drag preview shown while dragging a review card onto another night.
 struct PlanCardDragPreview: View {
     let card: NookAPI.PlanCardDTO
