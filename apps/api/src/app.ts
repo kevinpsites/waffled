@@ -23,6 +23,8 @@ import { registerCalendarSyncRoutes } from './modules/calendar/calendar-sync.rou
 import { registerGoalRoutes } from './modules/goals/goals.routes'
 import { registerGoalCalendarRoutes } from './modules/goals/goal-calendar'
 import { registerOverviewRoutes } from './modules/overview/overview'
+import { registerPermissionRoutes } from './modules/permissions/permissions.routes'
+import { resolveCapabilities } from './platform/permissions'
 import { registerAuthRoutes } from './modules/auth/auth'
 import { registerOidcRoutes } from './modules/auth/oidc'
 import { registerKioskRoutes } from './modules/kiosk/kiosk'
@@ -83,10 +85,12 @@ api.get('/api/household', async (req: Request) => {
   const tenant = await findTenantBySub(req.principal!.sub)
   if (!tenant) return { provisioned: false }
   const { household, person } = await getContext(tenant)
+  // Capabilities the client can gate UI on (admin ⇒ all; else per-role matrix).
+  const capabilities = resolveCapabilities(person.member_type, person.is_admin, household.settings)
   return {
     provisioned: true,
     household: presentHousehold(household),
-    person: presentPerson(person),
+    person: { ...presentPerson(person), capabilities },
   }
 })
 
@@ -183,6 +187,9 @@ registerKioskRoutes(api)
 
 // Person + family overviews (/api/persons/:id/overview, /api/family/overview)
 registerOverviewRoutes(api)
+
+// Role capability matrix (/api/permissions) — admin reads/edits chore+reward gates
+registerPermissionRoutes(api)
 
 // Today dashboard card layout (/api/today-layout) — family default + user override
 registerTodayLayoutRoutes(api)

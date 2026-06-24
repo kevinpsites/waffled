@@ -9,6 +9,7 @@ export { localToday, invalidateGetCache, getAccessToken, setSession, clearSessio
 export * from './kiosk'
 export * from './bus'
 export * from './persons'
+export * from './permissions'
 export * from './goals'
 export * from './goal-calendar'
 export * from './overview'

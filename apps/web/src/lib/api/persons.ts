@@ -17,6 +17,9 @@ export interface Person {
   dietaryNotes?: string | null
   rewardStyle?: string
   showOnKiosk?: boolean
+  // Resolved capabilities for the *current* caller (from /api/household). Admins &
+  // default adults get all four; teen/kid get only what the household grants.
+  capabilities?: string[]
 }
 
 export interface SettingsMember extends Person {

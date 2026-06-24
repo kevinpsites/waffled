@@ -11,6 +11,7 @@ export interface Tenant {
   personId: string
   householdId: string
   isAdmin: boolean
+  memberType: string // adult | teen | kid — drives the capability matrix (see platform/permissions)
 }
 
 export interface HouseholdRow extends QueryResultRow {
@@ -64,15 +65,17 @@ export function requireAdmin(tenant: Tenant): void {
 }
 
 export async function findTenantBySub(sub: string): Promise<Tenant | null> {
-  const { rows } = await query<{ person_id: string; household_id: string; is_admin: boolean }>(
-    `select i.person_id, p.household_id, p.is_admin
+  const { rows } = await query<{ person_id: string; household_id: string; is_admin: boolean; member_type: string }>(
+    `select i.person_id, p.household_id, p.is_admin, p.member_type
        from identities i
        join persons p on p.id = i.person_id and p.deleted_at is null
       where i.auth0_user_id = $1 and i.deleted_at is null`,
     [sub]
   )
   const r = rows[0]
-  return r ? { sub, personId: r.person_id, householdId: r.household_id, isAdmin: r.is_admin } : null
+  return r
+    ? { sub, personId: r.person_id, householdId: r.household_id, isAdmin: r.is_admin, memberType: r.member_type }
+    : null
 }
 
 // Invite-gated OIDC: a first-time SSO login only succeeds if its verified email

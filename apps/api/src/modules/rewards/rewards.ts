@@ -5,7 +5,8 @@
 import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
-import { requireTenant, requireAdmin, type Tenant } from '../households/households'
+import { requireTenant, type Tenant } from '../households/households'
+import { requireCapability } from '../../platform/permissions'
 import { listCurrencies, getDefaultCurrencyKey, presentCurrency } from '../currencies/currencies'
 
 type Api = ReturnType<typeof createAPI>
@@ -258,7 +259,7 @@ export function registerRewardRoutes(api: Api): void {
 
   api.post('/api/rewards', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+    await requireCapability(tenant, 'reward.manage')
     const body = (req.body ?? {}) as { title?: string; emoji?: string; cost?: number; currency?: string; requiresApproval?: boolean }
     const title = body.title?.trim()
     if (!title) return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
@@ -278,7 +279,7 @@ export function registerRewardRoutes(api: Api): void {
   // Edit a reward (title / emoji / cost / currency / requiresApproval).
   api.patch('/api/rewards/:id', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+    await requireCapability(tenant, 'reward.manage')
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
     const body = (req.body ?? {}) as { title?: string; emoji?: string | null; cost?: number; currency?: string; requiresApproval?: boolean }
@@ -305,7 +306,7 @@ export function registerRewardRoutes(api: Api): void {
 
   api.delete('/api/rewards/:id', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+    await requireCapability(tenant, 'reward.manage')
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
     const { rowCount } = await query(
@@ -321,7 +322,7 @@ export function registerRewardRoutes(api: Api): void {
   // (which snapshot title/cost) are untouched and a reward can be restored.
   api.get('/api/rewards/archived', async (req: Request) => {
     const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+    await requireCapability(tenant, 'reward.manage')
     const { rows } = await query<RewardRow>(
       `select * from rewards where household_id=$1 and deleted_at is not null order by deleted_at desc`,
       [tenant.householdId]
@@ -332,7 +333,7 @@ export function registerRewardRoutes(api: Api): void {
   // Restore an archived reward to the catalog (admin).
   api.post('/api/rewards/:id/restore', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+    await requireCapability(tenant, 'reward.manage')
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
     const { rows } = await query<RewardRow>(
@@ -387,7 +388,7 @@ export function registerRewardRoutes(api: Api): void {
 
   api.put('/api/rewards/settings', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+    await requireCapability(tenant, 'reward.manage')
     const body = (req.body ?? {}) as { requireApproval?: boolean }
     if (typeof body.requireApproval !== 'boolean') {
       return res.status(400).json({ error: 'BadRequest', message: 'requireApproval must be a boolean' })
@@ -403,13 +404,13 @@ export function registerRewardRoutes(api: Api): void {
 
   api.post('/api/redemptions/:id/approve', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+    await requireCapability(tenant, 'reward.approve')
     return decide(tenant, req, res, true)
   })
 
   api.post('/api/redemptions/:id/deny', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+    await requireCapability(tenant, 'reward.approve')
     return decide(tenant, req, res, false)
   })
 

@@ -4,7 +4,7 @@ import { Icon, Check } from './icons'
 import { ChoreModal, type ChoreDraft } from './components/ChoreModal'
 import { RewardsPanel } from './components/RewardsPanel'
 import { ChoreApprovalsCard, ChoreProofModal } from './components/Approvals'
-import { choresApi, usePersons, useDayInstances, useAwaitingChores, useCurrencies, localToday, uploadImage, type ChoreInstance } from '../lib/api'
+import { choresApi, usePersons, useHousehold, can, useDayInstances, useAwaitingChores, useCurrencies, localToday, uploadImage, type ChoreInstance } from '../lib/api'
 
 // Shift a YYYY-MM-DD by N days (local), and describe a day relative to today.
 function shiftDate(d: string, days: number): string {
@@ -63,6 +63,11 @@ export function Tasks() {
   const [date, setDate] = useState(() => localToday())
   const { instances, loading, error, setDone, assign, refetch } = useDayInstances(date)
   const { persons } = usePersons()
+  const { person } = useHousehold()
+  // Anyone can add a chore for themselves / up-for-grabs; assigning it to someone
+  // else needs chore.manage (carved-out server-side, gated here to avoid the 403).
+  const canAssignOthers = can(person, 'chore.manage')
+  const canApprove = can(person, 'chore.approve')
   const cur = useCurrencies()
   const awaiting = useAwaitingChores()
   const groups = buildColumns(instances, persons)
@@ -216,7 +221,7 @@ export function Tasks() {
         </div>
       )}
 
-      {tab === 'chores' && awaiting.chores.length > 0 && (
+      {tab === 'chores' && canApprove && awaiting.chores.length > 0 && (
         <div style={{ padding: '0 30px 12px' }}>
           <ChoreApprovalsCard chores={awaiting.chores} cur={cur} busy={null} onApprove={approve} onReject={reject} />
         </div>
@@ -294,7 +299,7 @@ export function Tasks() {
                         {isAwaiting && <span className="chore-awaiting-tag">Needs OK</span>}
                       </div>
                     </div>
-                    {isAwaiting && (
+                    {isAwaiting && canApprove && (
                       <div className="chore-approve" onClick={(e) => e.stopPropagation()}>
                         {i.proofUrl ? (
                           // Photo chores review in the modal (where Approve/Reject live)
@@ -373,7 +378,7 @@ export function Tasks() {
       })()}
 
       {modal && (
-        <ChoreModal chore={modal.chore} personId={modal.personId} onClose={() => setModal(null)} onSaved={refetch} />
+        <ChoreModal chore={modal.chore} personId={modal.personId} canAssignOthers={canAssignOthers} selfPersonId={person?.id ?? null} onClose={() => setModal(null)} onSaved={refetch} />
       )}
 
       {drag && (

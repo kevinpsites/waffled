@@ -9,7 +9,10 @@ function mockApi(opts: { created?: unknown[]; patched?: unknown[]; deleted?: str
       return {
         ok: true,
         json: async () => ({
-          persons: [{ id: 'p1', name: 'Wally', avatarEmoji: '🐢', colorHex: '#25A368', memberType: 'kid', isAdmin: false }],
+          persons: [
+            { id: 'p1', name: 'Wally', avatarEmoji: '🐢', colorHex: '#25A368', memberType: 'kid', isAdmin: false },
+            { id: 'p2', name: 'Lottie', avatarEmoji: '🦊', colorHex: '#E0653F', memberType: 'kid', isAdmin: false },
+          ],
         }),
       }
     }
@@ -50,6 +53,22 @@ describe('ChoreModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(patched).toHaveLength(1))
     expect(patched[0]).toMatchObject({ title: 'New chore' })
+  })
+
+  it('canAssignOthers=false restricts the assignee picker to self + up-for-grabs', async () => {
+    mockApi({})
+    render(<ChoreModal canAssignOthers={false} selfPersonId="p1" onClose={vi.fn()} onSaved={vi.fn()} />)
+    // Wait for the person list to load (self appears), then assert Lottie is absent.
+    expect(await screen.findByRole('option', { name: /Wally/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /up for grabs/ })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /Lottie/ })).not.toBeInTheDocument()
+  })
+
+  it('canAssignOthers=true shows the full member list', async () => {
+    mockApi({})
+    render(<ChoreModal canAssignOthers={true} selfPersonId="p1" onClose={vi.fn()} onSaved={vi.fn()} />)
+    expect(await screen.findByRole('option', { name: /Wally/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Lottie/ })).toBeInTheDocument()
   })
 
   it('deletes only after a confirm tap', async () => {

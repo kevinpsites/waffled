@@ -233,7 +233,7 @@ export function registerOidcRoutes(api: Api): void {
           return failSignIn(req, res, st.redirect_to, 403, 'Not invited', `No Nook account uses ${email}. Ask an admin to add you first.`, 'not_invited')
         }
         await linkIdentity({ householdId: match.householdId, personId: match.personId, provider: 'oidc', subject, email, emailVerified })
-        tenant = { sub: subject, personId: match.personId, householdId: match.householdId, isAdmin: false }
+        tenant = { sub: subject, personId: match.personId, householdId: match.householdId, isAdmin: false, memberType: 'adult' }
       }
 
       const handoff = randomUUID()

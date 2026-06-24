@@ -33,12 +33,15 @@ function buildRrule(freq: 'daily' | 'weekly', days: string[]): string {
   return 'FREQ=DAILY'
 }
 
-function initialForm(chore?: ChoreDraft, personId?: string | null) {
+function initialForm(chore?: ChoreDraft, personId?: string | null, canAssignOthers = true, selfPersonId?: string | null) {
   const sched = parseRrule(chore?.rrule)
+  // Restricted users (no chore.manage) can only target themselves or up-for-grabs;
+  // default them to self rather than the full-list default.
+  const prefill = chore?.personId ?? personId ?? (canAssignOthers ? '' : selfPersonId ?? '')
   return {
     title: chore?.title ?? '',
     emoji: chore?.emoji ?? '',
-    personId: chore?.personId ?? personId ?? '',
+    personId: prefill,
     rewardAmount: chore?.rewardAmount ?? 1,
     rewardCurrency: chore?.rewardCurrency ?? '',
     freq: sched.freq,
@@ -52,18 +55,25 @@ function initialForm(chore?: ChoreDraft, personId?: string | null) {
 export function ChoreModal({
   chore,
   personId,
+  canAssignOthers = true,
+  selfPersonId,
   onClose,
   onSaved,
 }: {
   chore?: ChoreDraft
   personId?: string | null
+  // Without chore.manage, restrict the assignee picker to self + up-for-grabs.
+  canAssignOthers?: boolean
+  selfPersonId?: string | null
   onClose: () => void
   onSaved: () => void
 }) {
   const editing = !!chore
   const { persons } = usePersons()
   const { currencies, defaultCurrency } = useCurrencies()
-  const [form, setForm] = useState(() => initialForm(chore, personId))
+  const [form, setForm] = useState(() => initialForm(chore, personId, canAssignOthers, selfPersonId))
+  // Restricted users see only themselves; everyone else sees the full member list.
+  const pickable = canAssignOthers ? persons : persons.filter((p) => p.id === selfPersonId)
   const curKey = form.rewardCurrency || defaultCurrency?.key || 'stars'
   const selectedCur = currencies.find((c) => c.key === curKey)
   const [saving, setSaving] = useState(false)
@@ -159,7 +169,7 @@ export function ChoreModal({
               <span>Who</span>
               <select value={form.personId} onChange={(e) => set('personId', e.target.value)}>
                 <option value="">— up for grabs —</option>
-                {persons.map((p) => (
+                {pickable.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.avatarEmoji ? `${p.avatarEmoji} ` : ''}
                     {p.name}

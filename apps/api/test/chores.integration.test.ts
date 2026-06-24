@@ -13,6 +13,7 @@ let url: string
 let app: any
 let closePool: () => Promise<void>
 let kevinId = ''
+let householdId = ''
 
 function mint(sub: string): string {
   return jwt.sign({}, SECRET, {
@@ -74,7 +75,25 @@ beforeAll(async () => {
     person: { name: 'Kevin' },
   })
   kevinId = JSON.parse(h.body).person.id
+  householdId = JSON.parse(h.body).household.id
 })
+
+// Create a member with a login identity so a minted token resolves to them — the
+// /api/persons route doesn't create logins, so we seed person + identity directly.
+async function addMember(name: string, memberType: string, isAdmin: boolean, sub: string): Promise<string> {
+  return withClient(async (c) => {
+    const p = await c.query<{ id: string }>(
+      `insert into persons (household_id, name, member_type, is_admin) values ($1,$2,$3,$4) returning id`,
+      [householdId, name, memberType, isAdmin]
+    )
+    const pid = p.rows[0].id
+    await c.query(
+      `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1,$2,'password',$3,true)`,
+      [householdId, pid, sub]
+    )
+    return pid
+  })
+}
 
 afterAll(async () => {
   await closePool?.()
@@ -588,5 +607,71 @@ describe('chores look-ahead (date param)', () => {
     const today = todayInTz(TZ)
     expect(JSON.parse((await call('GET', '/api/chore-instances/today?date=2999-01-01', kevin)).body).date).toBe(today)
     expect(JSON.parse((await call('GET', '/api/chore-instances/today?date=garbage', kevin)).body).date).toBe(today)
+  })
+})
+
+describe('chore capability gating (non-admin members)', () => {
+  let adultSub = '', kidSub = '', adultToken = '', kidToken = '', adultId = '', kidId = ''
+
+  beforeAll(async () => {
+    adultId = await addMember('Adult2', 'adult', false, 'dev|adult2')
+    kidId = await addMember('KidJr', 'kid', false, 'dev|kidjr')
+    adultSub = 'dev|adult2'; kidSub = 'dev|kidjr'
+    adultToken = mint(adultSub); kidToken = mint(kidSub)
+  })
+
+  it('a non-admin adult holds the default capabilities; a kid holds none', async () => {
+    const adult = JSON.parse((await call('GET', '/api/household', adultToken)).body).person
+    expect(adult.capabilities.sort()).toEqual(['chore.approve', 'chore.manage', 'reward.approve', 'reward.manage'])
+    const kid = JSON.parse((await call('GET', '/api/household', kidToken)).body).person
+    expect(kid.capabilities).toEqual([])
+  })
+
+  it('a non-admin adult CAN create a chore for someone else and approve one', async () => {
+    // create for the kid (not self) → needs chore.manage, which the adult has
+    const add = await call('POST', '/api/chores', adultToken, { title: 'Adult-set', personId: kidId, rewardAmount: 1, requiresApproval: true })
+    expect(add.statusCode).toBe(201)
+    const list = JSON.parse((await call('GET', '/api/chore-instances/today', adultToken)).body).instances as Array<{ id: string; choreTitle: string }>
+    const inst = list.find((i) => i.choreTitle === 'Adult-set')!
+    await call('POST', `/api/chore-instances/${inst.id}/complete`, kidToken)
+    expect((await call('POST', `/api/chore-instances/${inst.id}/approve`, adultToken)).statusCode).toBe(200)
+  })
+
+  it('a kid CAN create an up-for-grabs chore and one for themselves', async () => {
+    expect((await call('POST', '/api/chores', kidToken, { title: 'Grab-kid', personId: null })).statusCode).toBe(201)
+    expect((await call('POST', '/api/chores', kidToken, { title: 'Self-kid', personId: kidId })).statusCode).toBe(201)
+  })
+
+  it('a kid CANNOT create a chore for someone else (403)', async () => {
+    expect((await call('POST', '/api/chores', kidToken, { title: 'For-adult', personId: adultId })).statusCode).toBe(403)
+  })
+
+  it('a kid CANNOT approve a chore (403)', async () => {
+    await call('POST', '/api/chores', adultToken, { title: 'Approve-me', personId: kidId, rewardAmount: 1, requiresApproval: true })
+    const list = JSON.parse((await call('GET', '/api/chore-instances/today', kidToken)).body).instances as Array<{ id: string; choreTitle: string }>
+    const inst = list.find((i) => i.choreTitle === 'Approve-me')!
+    await call('POST', `/api/chore-instances/${inst.id}/complete`, kidToken)
+    expect((await call('POST', `/api/chore-instances/${inst.id}/approve`, kidToken)).statusCode).toBe(403)
+  })
+
+  it('granting teen/kid chore.approve via /api/permissions lets them approve', async () => {
+    // admin grants the kid role chore.approve
+    const put = await call('PUT', '/api/permissions', kevin, { permissions: { kid: { 'chore.approve': true } } })
+    expect(put.statusCode).toBe(200)
+    expect(JSON.parse(put.body).permissions.kid['chore.approve']).toBe(true)
+
+    await call('POST', '/api/chores', adultToken, { title: 'Now-approvable', personId: kidId, rewardAmount: 1, requiresApproval: true })
+    const list = JSON.parse((await call('GET', '/api/chore-instances/today', kidToken)).body).instances as Array<{ id: string; choreTitle: string }>
+    const inst = list.find((i) => i.choreTitle === 'Now-approvable')!
+    await call('POST', `/api/chore-instances/${inst.id}/complete`, kidToken)
+    expect((await call('POST', `/api/chore-instances/${inst.id}/approve`, kidToken)).statusCode).toBe(200)
+
+    // reset so later assumptions about defaults hold
+    await call('PUT', '/api/permissions', kevin, { permissions: { kid: { 'chore.approve': false } } })
+  })
+
+  it('non-admins cannot read or write the permissions matrix (403)', async () => {
+    expect((await call('GET', '/api/permissions', kidToken)).statusCode).toBe(403)
+    expect((await call('PUT', '/api/permissions', adultToken, { permissions: {} })).statusCode).toBe(403)
   })
 })

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof } from '../lib/api'
+import { personsApi, permissionsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { Screensaver, screensaverPhotos } from './components/Screensaver'
@@ -89,6 +89,74 @@ function SettingRow({ icon, title, sub, children }: { icon: string; title: strin
   )
 }
 
+// Role-based permissions grid (admin-only). Rows = roles (Adult/Teen/Kid),
+// columns = the four capabilities. Saves the whole matrix on each toggle (optimistic,
+// reverts on failure) — matches the auto-save feel of the other settings cards.
+// Admins always have everything, so they're not a row here.
+const PERM_ROLES: Role[] = ['adult', 'teen', 'kid']
+function PermissionsCard() {
+  const [matrix, setMatrix] = useState<PermissionMatrix | null>(null)
+  const [error, setError] = useState(false)
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    let alive = true
+    permissionsApi.getPermissions()
+      .then((d) => alive && setMatrix(d.permissions))
+      .catch(() => alive && setError(true))
+    return () => { alive = false }
+  }, [])
+
+  async function toggle(role: Role, cap: Capability) {
+    if (!matrix || saving) return
+    const prev = matrix
+    const next: PermissionMatrix = { ...matrix, [role]: { ...matrix[role], [cap]: !matrix[role][cap] } }
+    setMatrix(next)
+    setSaving(true)
+    try { setMatrix(await permissionsApi.setPermissions(next)) }
+    catch { setMatrix(prev) }
+    finally { setSaving(false) }
+  }
+
+  if (error) return null // non-admins (403) simply don't see this card
+  return (
+    <div className="set-card" style={{ marginTop: 18, padding: 18 }}>
+      <div className="card-h" style={{ marginBottom: 4 }}>Permissions</div>
+      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
+        Choose what each role can do. Admins can always do everything. Everyone can always complete their own chores and redeem their own rewards.
+      </div>
+      {matrix === null ? (
+        <div className="tiny muted" style={{ fontWeight: 600 }}>Loading…</div>
+      ) : (
+        <div className="perm-grid" role="table" aria-label="Role permissions">
+          <div className="perm-row perm-head" role="row">
+            <span className="perm-role" role="columnheader" />
+            {CAPABILITIES.map((cap) => (
+              <span key={cap} className="perm-cap" role="columnheader">{CAPABILITY_LABELS[cap]}</span>
+            ))}
+          </div>
+          {PERM_ROLES.map((role) => (
+            <div key={role} className="perm-row" role="row">
+              <span className="perm-role" role="rowheader">{ROLE_LABELS[role]}</span>
+              {CAPABILITIES.map((cap) => (
+                <span key={cap} className="perm-cell" role="cell">
+                  <input
+                    type="checkbox"
+                    className="set-check"
+                    checked={matrix[role][cap]}
+                    disabled={saving}
+                    aria-label={`${ROLE_LABELS[role]}: ${CAPABILITY_LABELS[cap]}`}
+                    onChange={() => toggle(role, cap)}
+                  />
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function FamilyPanel() {
   const { household, members, loading, error, refetch } = useHouseholdSettings()
   const [editing, setEditing] = useState<SettingsMember | null>(null)
@@ -171,6 +239,8 @@ function FamilyPanel() {
           )}
         </SettingRow>
       </div>
+
+      <PermissionsCard />
 
       {(editing || adding) && (
         <PersonModal person={editing} onClose={() => { setEditing(null); setAdding(false) }} onSaved={refetch} />

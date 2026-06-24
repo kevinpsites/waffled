@@ -2,6 +2,7 @@
 // in chores.service.ts; types in chores.types.ts.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { requireTenant, requireAdmin } from '../households/households'
+import { requireCapability } from '../../platform/permissions'
 import type { CreateChoreInput } from './chores.types'
 import {
   createChore,
@@ -75,11 +76,14 @@ export function registerChoreRoutes(api: Api): void {
     return { cleared: await clearStoredProofs(tenant.householdId) }
   })
 
-  // Create a chore (admins set up the family's chores).
+  // Create a chore. Carving the family up takes 'chore.manage', but anyone can add
+  // a chore that's up-for-grabs (no assignee) or one for themselves — no gate there.
   api.post('/api/chores', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
-    requireAdmin(tenant)
     const body = (req.body ?? {}) as Partial<CreateChoreInput>
+    if (body.personId != null && body.personId !== tenant.personId) {
+      await requireCapability(tenant, 'chore.manage')
+    }
     if (!body.title || !body.title.trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
     }
@@ -87,10 +91,10 @@ export function registerChoreRoutes(api: Api): void {
     return res.status(201).json({ chore: presentChore(chore) })
   })
 
-  // Edit a chore definition (admins).
+  // Edit a chore definition (chore.manage).
   api.patch('/api/chores/:id', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+    await requireCapability(tenant, 'chore.manage')
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'chore not found' })
     const patch = (req.body ?? {}) as Record<string, unknown>
@@ -105,10 +109,10 @@ export function registerChoreRoutes(api: Api): void {
     return { chore: presentChore(chore) }
   })
 
-  // Delete a chore (admins). Hides it + today's instances from the Tasks view.
+  // Delete a chore (chore.manage). Hides it + today's instances from the Tasks view.
   api.delete('/api/chores/:id', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+    await requireCapability(tenant, 'chore.manage')
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'chore not found' })
     const ok = await softDeleteChore(tenant.householdId, id)
@@ -207,10 +211,10 @@ export function registerChoreRoutes(api: Api): void {
     return { instance: presentInstance(inst) }
   })
 
-  // Parent approves a submitted (awaiting) chore → done + award stars (admins).
+  // Parent approves a submitted (awaiting) chore → done + award stars (chore.approve).
   api.post('/api/chore-instances/:id/approve', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+    await requireCapability(tenant, 'chore.approve')
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
     const inst = await approveInstance(tenant, id)
@@ -218,10 +222,10 @@ export function registerChoreRoutes(api: Api): void {
     return { instance: presentInstance(inst) }
   })
 
-  // Parent rejects a submitted chore → back to pending for a redo (admins).
+  // Parent rejects a submitted chore → back to pending for a redo (chore.approve).
   api.post('/api/chore-instances/:id/reject', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+    await requireCapability(tenant, 'chore.approve')
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
     const inst = await rejectInstance(tenant, id)

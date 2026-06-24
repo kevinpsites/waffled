@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { rewardsApi, useRewardsHub, useHousehold, type Reward, type Currency } from '../../lib/api'
+import { rewardsApi, useRewardsHub, useHousehold, can, type Reward, type Currency } from '../../lib/api'
 
 function Avatar({ emoji, color, name }: { emoji: string | null; color: string | null; name: string | null }) {
   return (
@@ -26,7 +26,10 @@ function Coin({ currency, amount }: { currency: Currency | undefined; amount: nu
 export function RewardsPanel() {
   const { rewards, balances, currencies, pending, loading, error, refetch } = useRewardsHub()
   const { person } = useHousehold()
-  const isAdmin = !!person?.isAdmin
+  // Capability-gated: manage = add/edit/delete + archived; approve = redemption queue.
+  // Members who can't manage still see the catalog and can redeem for themselves.
+  const canManage = can(person, 'reward.manage')
+  const canApprove = can(person, 'reward.approve')
   const navigate = useNavigate()
   const [redeemFor, setRedeemFor] = useState<Reward | null>(null)
   const [adding, setAdding] = useState(false)
@@ -37,9 +40,9 @@ export function RewardsPanel() {
   const [archived, setArchived] = useState<Reward[]>([])
   const [showArchived, setShowArchived] = useState(false)
   const loadArchived = useCallback(() => {
-    if (!isAdmin) return
+    if (!canManage) return
     rewardsApi.archivedRewards().then((d) => setArchived(d.rewards)).catch(() => setArchived([]))
-  }, [isAdmin])
+  }, [canManage])
   useEffect(() => { loadArchived() }, [loadArchived, rewards.length])
   const afterCatalogChange = () => { refetch(); loadArchived() }
   async function restore(id: string) {
@@ -93,8 +96,8 @@ export function RewardsPanel() {
         ))}
       </div>
 
-      {/* approvals */}
-      {pending.length > 0 && (
+      {/* approvals — only for those who can approve redemptions */}
+      {canApprove && pending.length > 0 && (
         <div className="card rw-approvals">
           <div className="card-h" style={{ marginBottom: 10 }}>Needs your OK</div>
           {pending.map((p) => (
@@ -117,28 +120,44 @@ export function RewardsPanel() {
       {/* catalog */}
       <div className="rw-cat-head">
         <div className="card-h">Rewards</div>
-        <button type="button" className="pill" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={() => setAdding(true)}>＋ Add reward</button>
+        {canManage && (
+          <button type="button" className="pill" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={() => setAdding(true)}>＋ Add reward</button>
+        )}
       </div>
       {rewards.length === 0 ? (
         <div className="rw-empty">
           <div className="rw-empty-emo">🎁</div>
           <div className="rw-empty-h">No rewards yet</div>
-          <div className="rw-empty-b">Add something the kids can save up for — movie night, extra screen time, a trip to the park.</div>
-          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} onClick={() => setAdding(true)}>
-            ＋ Add a reward
-          </button>
+          <div className="rw-empty-b">
+            {canManage
+              ? 'Add something the kids can save up for — movie night, extra screen time, a trip to the park.'
+              : 'Once a parent adds rewards, they’ll show up here to save toward.'}
+          </div>
+          {canManage && (
+            <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} onClick={() => setAdding(true)}>
+              ＋ Add a reward
+            </button>
+          )}
         </div>
       ) : (
         <div className="rw-grid">
           {rewards.map((r) => (
             <div key={r.id} className="rw-card">
-              {/* tap the card to edit / remove */}
-              <button type="button" className="rw-card-main" onClick={() => setEditing(r)} title="Edit reward">
-                <div className="rw-card-emo">{r.emoji ?? '🎁'}</div>
-                <div className="rw-card-title">{r.title}</div>
-                <div className="rw-card-cost"><Coin currency={curOf(r.currency)} amount={r.cost} /></div>
-                <div className="rw-card-edit-hint">Edit</div>
-              </button>
+              {/* managers tap the card to edit / remove; everyone else just sees it */}
+              {canManage ? (
+                <button type="button" className="rw-card-main" onClick={() => setEditing(r)} title="Edit reward">
+                  <div className="rw-card-emo">{r.emoji ?? '🎁'}</div>
+                  <div className="rw-card-title">{r.title}</div>
+                  <div className="rw-card-cost"><Coin currency={curOf(r.currency)} amount={r.cost} /></div>
+                  <div className="rw-card-edit-hint">Edit</div>
+                </button>
+              ) : (
+                <div className="rw-card-main">
+                  <div className="rw-card-emo">{r.emoji ?? '🎁'}</div>
+                  <div className="rw-card-title">{r.title}</div>
+                  <div className="rw-card-cost"><Coin currency={curOf(r.currency)} amount={r.cost} /></div>
+                </div>
+              )}
               {redeemFor?.id === r.id ? (
                 <div className="rw-pick">
                   {balances.map((b) => {
@@ -166,8 +185,8 @@ export function RewardsPanel() {
         </div>
       )}
 
-      {/* archived rewards — admin only, collapsed; archiving keeps redemption history */}
-      {isAdmin && archived.length > 0 && (
+      {/* archived rewards — managers only, collapsed; archiving keeps redemption history */}
+      {canManage && archived.length > 0 && (
         <div className="rw-archived">
           <button type="button" className="rw-arch-head" onClick={() => setShowArchived((v) => !v)}>
             <span className={`rw-arch-caret ${showArchived ? 'open' : ''}`}>›</span>

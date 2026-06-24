@@ -17,6 +17,7 @@ import {
   usePendingRedemptions,
   useCurrencies,
   useHousehold,
+  can,
   type ChoreInstance,
   type Redemption,
   type CurrenciesState,
@@ -216,15 +217,19 @@ export function RewardApprovalsCard({
 // state so an action lands even as the queues drain to zero.
 export function ApprovalsBar() {
   const { person } = useHousehold()
-  const isAdmin = !!person?.isAdmin
+  // Capability-gated (not isAdmin): a person sees the chore queue if they can
+  // approve chores, the reward queue if they can approve redemptions.
+  const canApproveChore = can(person, 'chore.approve')
+  const canApproveReward = can(person, 'reward.approve')
   const awaiting = useAwaitingChores()
   const redemptions = usePendingRedemptions()
   const cur = useCurrencies()
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
 
-  const chores = awaiting.chores
-  const pending = redemptions.pending
+  // Only surface queues this person can act on.
+  const chores = canApproveChore ? awaiting.chores : []
+  const pending = canApproveReward ? redemptions.pending : []
   const nChores = chores.length
   const nReds = pending.length
   const total = nChores + nReds
@@ -257,8 +262,9 @@ export function ApprovalsBar() {
     }
   }
 
-  // Kids never see the queue; the backend also enforces admin on every decision.
-  if (!isAdmin) return null
+  // Nothing to approve → nothing to show. The backend also enforces the
+  // capability on every decision.
+  if (!canApproveChore && !canApproveReward) return null
 
   const title =
     nChores && nReds

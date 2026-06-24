@@ -68,6 +68,23 @@ afterAll(async () => {
   await pg?.stop()
 })
 
+// Seed a member with a login identity (the /api/persons route makes no login),
+// so a minted token resolves to them and we can test non-admin capability gating.
+async function addMember(name: string, memberType: string, isAdmin: boolean, sub: string): Promise<string> {
+  return withClient(async (c) => {
+    const p = await c.query<{ id: string }>(
+      `insert into persons (household_id, name, member_type, is_admin) values ($1,$2,$3,$4) returning id`,
+      [householdId, name, memberType, isAdmin]
+    )
+    const pid = p.rows[0].id
+    await c.query(
+      `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1,$2,'password',$3,true)`,
+      [householdId, pid, sub]
+    )
+    return pid
+  })
+}
+
 // Grant stars by writing directly to the append-only ledger (what chore
 // completion does in production).
 async function grantStars(personId: string, amount: number) {
@@ -202,5 +219,44 @@ describe('reward approval — per-reward flag + household default', () => {
     const r = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Flip', cost: 1, requiresApproval: true })).body).reward
     const upd = JSON.parse((await call('PATCH', `/api/rewards/${r.id}`, kevin, { requiresApproval: false })).body).reward
     expect(upd.requiresApproval).toBe(false)
+  })
+})
+
+describe('reward capability gating (non-admin members)', () => {
+  let adultId = '', kidId = '', adultToken = '', kidToken = ''
+
+  beforeAll(async () => {
+    adultId = await addMember('Adult2', 'adult', false, 'dev|r-adult2')
+    kidId = await addMember('KidJr', 'kid', false, 'dev|r-kidjr')
+    adultToken = mint('dev|r-adult2'); kidToken = mint('dev|r-kidjr')
+    await grantStars(kidId, 100)
+  })
+
+  // Set a reward to require approval, redeem it for the kid, return the redemption id.
+  async function pendingRedemption(): Promise<string> {
+    const r = JSON.parse((await call('POST', '/api/rewards', kevin, { title: `Cap-${Math.random()}`, cost: 1, requiresApproval: true })).body).reward
+    const red = await call('POST', `/api/rewards/${r.id}/redeem`, kevin, { personId: kidId })
+    return JSON.parse(red.body).redemption.id
+  }
+
+  it('a non-admin adult CAN approve a redemption; a kid cannot (403)', async () => {
+    const id1 = await pendingRedemption()
+    expect((await call('POST', `/api/redemptions/${id1}/approve`, adultToken)).statusCode).toBe(200)
+
+    const id2 = await pendingRedemption()
+    expect((await call('POST', `/api/redemptions/${id2}/approve`, kidToken)).statusCode).toBe(403)
+    expect((await call('POST', `/api/redemptions/${id2}/deny`, kidToken)).statusCode).toBe(403)
+  })
+
+  it('a kid cannot manage rewards (403); a non-admin adult can', async () => {
+    expect((await call('POST', '/api/rewards', kidToken, { title: 'Kid reward', cost: 1 })).statusCode).toBe(403)
+    expect((await call('POST', '/api/rewards', adultToken, { title: 'Adult reward', cost: 1 })).statusCode).toBe(201)
+  })
+
+  it('exposes capabilities on /api/household', async () => {
+    const kid = JSON.parse((await call('GET', '/api/household', kidToken)).body).person
+    expect(kid.capabilities).toEqual([])
+    const adult = JSON.parse((await call('GET', '/api/household', adultToken)).body).person
+    expect(adult.capabilities).toContain('reward.approve')
   })
 })

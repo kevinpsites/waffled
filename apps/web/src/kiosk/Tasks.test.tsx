@@ -26,11 +26,18 @@ interface Inst {
 
 const ok = (body: unknown) => ({ ok: true, json: async () => body })
 
+// A signed-in admin-equivalent caller: all four capabilities, so approval/manage
+// surfaces render. /api/household feeds useHousehold (and thus the can() gates).
+const ALL_CAPS = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve']
+const householdPerson = (capabilities = ALL_CAPS) =>
+  ok({ provisioned: true, household: { id: 'h', name: 'Home', timezone: 'UTC', weekStart: 'sunday' }, person: { id: 'me', name: 'Me', memberType: 'adult', isAdmin: true, capabilities } })
+
 function mockInstances(initial: Inst[], persons: Array<{ id: string; name: string }> = []) {
   let instances = [...initial]
   globalThis.fetch = vi.fn(async (url: string, opts?: { method?: string }) => {
     const u = String(url)
     const m = opts?.method ?? 'GET'
+    if (u.includes('/api/household') && m === 'GET') return householdPerson()
     if (u.includes('/api/persons') && m === 'GET') return ok({ persons })
     if (u.includes('/api/chore-instances/today') && m === 'GET') return ok({ date: 'x', instances })
     if (u.includes('/complete') && m === 'POST') {
@@ -96,6 +103,7 @@ describe('Tasks screen', () => {
     globalThis.fetch = vi.fn(async (url: string, opts?: { method?: string; body?: string }) => {
       const u = String(url)
       const m = opts?.method ?? 'GET'
+      if (u.includes('/api/household')) return householdPerson()
       if (u.includes('/api/persons')) return ok({ persons: [{ id: 'p1', name: 'Wally' }] })
       if (u.includes('/api/chore-instances/today')) return ok({ date: 'x', instances })
       if (u.includes('/complete') && m === 'POST') {
@@ -132,6 +140,7 @@ describe('Tasks screen', () => {
     globalThis.fetch = vi.fn(async (url: string, opts?: { method?: string }) => {
       const u = String(url)
       const m = opts?.method ?? 'GET'
+      if (u.includes('/api/household')) return householdPerson()
       if (u.includes('/api/persons')) return ok({ persons: [{ id: 'p1', name: 'Wally' }] })
       if (u.includes('/api/chore-instances/awaiting')) return ok({ instances })
       if (u.includes('/api/chore-instances/today')) return ok({ date: 'x', instances })
