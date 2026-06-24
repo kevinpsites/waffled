@@ -1,0 +1,85 @@
+# Roadmap status
+
+A product-level view of what's **done**, **partial**, and **planned**. This is distilled
+from the engineering plan in [`../../ROADMAP.md`](../../ROADMAP.md) — see that file for the
+full, commit-level history and rationale.
+
+Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (superseded)
+
+## The big picture
+
+> **Feature surface complete + self-host packaging shipped.** A fresh `git clone` +
+> `./nook up` comes up with real auth (built-in password / OIDC) and runs with zero
+> external dependencies. Every feature domain (Today, Calendar, Chores, Rewards, Goals,
+> Lists, Meals, Photos, AI capture) is built and usable on the Web/Kiosk.
+
+## Done ✅
+
+- **Self-host packaging** — one-command `./nook up`, in-container migrations, multi-arch
+  GHCR images, build-from-source default.
+- **Identity** — built-in email/password auth (rotating refresh), backend-mediated **OIDC
+  SSO** (invite-gated, admin-configured), member management (grant logins).
+- **Kiosk** — device pairing, profile picker, optional PINs, idle screensaver.
+- **Today** — live cards + customizable per-user / family layouts.
+- **Calendar** — native events, Month/Week/Day/Agenda, create/edit/delete, participants,
+  **two-way Google Calendar sync**, offline calendar (PowerSync), AI heads-up + per-event
+  insight.
+- **Chores & stars** — full loop: CRUD, weekly/custom schedules, up-for-grabs claim,
+  drag-to-reassign, parent approval, streaks, append-only stars ledger.
+- **Rewards & economy** — catalog → redeem → approve → debit, multi-currency, conversions
+  ("Trade"), saving-toward jar/bar.
+- **Goals** — types (count/total/habit/checklist), shared vs each-tracks, create/edit/
+  detail read-model, person + family overview, **calendar → goal** auto-count (single
+  events) with learned suggestions.
+- **Lists & groceries** — multi-lists, auto-built aisle board, quantity merge, pantry
+  staples, live cross-surface refresh.
+- **Meals & recipes** — week/month planners, recipe library, in-app editor, paste-markdown
+  import, overrides, cook mode, substitution-aware grocery build, AI plan-week/month, AI
+  metadata auto-fill.
+- **Photos** — wall (masonry), real blob upload (single + multi), albums, edit, multi-
+  select bulk move/delete, screensaver + per-album screensaver source, crossfade
+  slideshow, recipe hero images.
+- **AI capture** — pluggable provider (Claude / OpenAI-compatible / Ollama), instant
+  heuristic → LLM upgrade, offline fallback.
+- **Weather** — Open-Meteo on the topbar (no key).
+- **iOS** (mobile) — native sign-in (password + OIDC), offline-first calendar over
+  PowerSync, local event notifications (Snooze/View). *Full mobile coverage is tracked by
+  the mobile owner.*
+
+## Partial / in progress 🟡
+
+- **Offline scope (Web/Kiosk)** — PowerSync covers the **calendar** domain; other domains
+  are REST + live-refresh bus.
+- **Kiosk PWA** (7.1) — service worker + cached last-known state, to fully survive backend
+  blips.
+- **Public ingress** (7.3) — configurable (Caddy auto-TLS / Cloudflare Tunnel), operator's
+  choice.
+
+## Planned 🚧
+
+- **Notifications tail** — kiosk "due soon" local banner (table not built yet); remote push
+  (APNs / web-push) is blocked on a self-host key/relay decision.
+- **Recurring events** (calendar Phase 2) and **recurring-event goal counting**.
+- **Chore photo-proof** — now just a consumer of the shipped blob upload.
+- **Conversational recipe AI** — instruction-driven edits + photo → recipe (needs a vision
+  provider).
+- **Shared album import** for Photos (Google Photos / iCloud).
+- **Server-side fuzzy person resolution** for capture (nicknames/aliases).
+- **Milestone reward payouts** — deferred by design (needs idempotency + attribution rules).
+- **Optional S3 backup** (Phase 4) — parked.
+- **Observability + restore drills** (7.4).
+- **App store verification** (7.2) — Apple/Google production review.
+
+## Dropped ⛔ (superseded by the self-host pivot, 2026-06-20)
+
+The original cloud plan (Terraform/AWS, Auth0, GCP project provisioning, a separate
+`worker` service) was abandoned in favor of the self-hosted Docker Compose model:
+
+- Terraform AWS/Auth0/GCP stacks → replaced by Docker Compose + built-in auth + OIDC.
+- Separate `worker` service → calendar sync runs in-process (5-min scheduler) in the api.
+- Auth0 RS256 → HS256 local JWT (`LOCAL_JWT_SECRET`); PowerSync token exchange unchanged.
+
+> The `README.md` "repo layout" and "stack in one breath" sections still mention some of
+> the dropped pieces (terraform, worker, Auth0, Tailscale); the **self-host model in
+> [`quick-start.md`](./quick-start.md)** and the `Self-hosted (Immich-style)` section of
+> `ROADMAP.md` are the current source of truth.
