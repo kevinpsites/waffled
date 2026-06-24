@@ -286,6 +286,7 @@ export function Photos() {
           nextEvent={null}
           timezone={household?.timezone}
           intervalSeconds={displayCfg?.photoInterval}
+          bare
           onWake={() => setSaver(null)}
         />
       )}

@@ -51,6 +51,7 @@ export function Screensaver({
   nextEvent,
   timezone,
   intervalSeconds = 10,
+  bare = false,
   onWake,
 }: {
   content: 'photos' | 'clock'
@@ -59,10 +60,15 @@ export function Screensaver({
   nextEvent: AgendaEvent | null
   timezone?: string
   intervalSeconds?: number
+  // bare = a pure photo slideshow (no clock / weather / next-event / caption
+  // overlays). Used by the manual "Play" from the Photos screen; the idle kiosk
+  // screensaver leaves it false to keep the clock + weather chrome.
+  bare?: boolean
   onWake: () => void
 }) {
   const [now, setNow] = useState(() => new Date())
   const [idx, setIdx] = useState(0)
+  const [prevIdx, setPrevIdx] = useState(0)
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30_000)
     return () => clearInterval(t)
@@ -72,11 +78,20 @@ export function Screensaver({
   useEffect(() => {
     if (!photoMode) return
     const ms = Math.max(3, intervalSeconds) * 1000
-    const t = setInterval(() => setIdx((i) => (i + 1) % photos.length), ms)
+    const t = setInterval(() => {
+      // advance, remembering the photo we're leaving so the top layer can
+      // crossfade over it (no jarring hard cut).
+      setIdx((i) => {
+        setPrevIdx(i)
+        return (i + 1) % photos.length
+      })
+    }, ms)
     return () => clearInterval(t)
   }, [photoMode, photos.length, intervalSeconds])
 
   const photo = photoMode ? photos[idx % photos.length] : null
+  const prevPhoto = photoMode ? photos[prevIdx % photos.length] : null
+  const showChrome = !bare
   const time = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timezone || undefined }).replace(/\s?[AP]M$/i, '')
   const date = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: timezone || undefined })
   const wx = weather?.configured && weather.tempF != null ? `${weather.emoji ?? ''} ${weather.tempF}°${weather.label ? ` · ${weather.label}` : ''}`.trim() : null
@@ -87,19 +102,23 @@ export function Screensaver({
 
   return (
     <div className="ph-saver" style={{ background: bg }} onClick={onWake} role="button" aria-label="Wake screensaver">
-      {photo?.imageUrl && <img className="ph-saver-img" src={photo.imageUrl} alt="" />}
-      <div className="ph-saver-scrim" />
-      <div className="ph-saver-clock">
-        <div className="nk-serif ph-saver-time">{time}</div>
-        <div className="ph-saver-date">{date}{wx ? ` · ${wx}` : ''}</div>
-      </div>
-      {photo && !photo.imageUrl && <div className="ph-saver-hero">{photo.emoji ?? '🖼️'}</div>}
-      {nextEvent && (
+      {/* base layer = the photo we're leaving; top layer fades in over it */}
+      {prevPhoto?.imageUrl && <img className="ph-saver-img" src={prevPhoto.imageUrl} alt="" />}
+      {photo?.imageUrl && <img key={idx} className="ph-saver-img ph-saver-img-top" src={photo.imageUrl} alt="" />}
+      {showChrome && <div className="ph-saver-scrim" />}
+      {showChrome && (
+        <div className="ph-saver-clock">
+          <div className="nk-serif ph-saver-time">{time}</div>
+          <div className="ph-saver-date">{date}{wx ? ` · ${wx}` : ''}</div>
+        </div>
+      )}
+      {photo && !photo.imageUrl && <div key={idx} className="ph-saver-hero ph-saver-img-top">{photo.emoji ?? '🖼️'}</div>}
+      {showChrome && nextEvent && (
         <div className="ph-saver-next">
           Next: {nextEvent.title}{evTime ? ` · ${evTime}` : ''}
         </div>
       )}
-      {photo && (photo.memory || photo.caption) && (
+      {showChrome && photo && (photo.memory || photo.caption) && (
         <div className="ph-saver-meta">
           <div className="nk-serif">{photo.memory ?? photo.caption}</div>
         </div>

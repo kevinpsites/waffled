@@ -141,6 +141,10 @@
 .ph-saver { position: fixed; inset: 0; z-index: 1000; overflow: hidden; cursor: pointer;
   display: grid; place-items: center; color: #fff; }
 .ph-saver-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* the incoming photo fades in over the outgoing one (crossfade, no hard cut) */
+.ph-saver-img-top { animation: ph-saver-fade 1100ms ease both; }
+@keyframes ph-saver-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .ph-saver-img-top { animation-duration: 1ms; } }
 .ph-saver-scrim { position: absolute; inset: 0;
   background: radial-gradient(120% 120% at 70% 20%, rgba(0,0,0,0), rgba(0,0,0,.42)); }
 .ph-saver-clock { position: absolute; top: 46px; left: 54px; text-shadow: 0 2px 16px rgba(0,0,0,.35); }
