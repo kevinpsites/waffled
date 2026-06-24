@@ -727,7 +727,50 @@ button.tick {
   margin-left: 8px; font-size: 11px; font-weight: 800; color: #b07d00;
   background: #fff5e0; padding: 2px 7px; border-radius: 999px;
 }
-.chore-approve { display: flex; gap: 7px; flex: none; }
+.chore-approve { display: flex; gap: 7px; flex: none; align-items: center; }
+/* photo-proof thumbnail (Tasks awaiting row + Approvals card) — a button that
+   opens the review modal */
+.chore-proof-thumb {
+  flex: none; display: block; width: 40px; height: 40px; padding: 0; border-radius: 9px;
+  overflow: hidden; border: 1px solid var(--hair); background: var(--card-2); cursor: pointer;
+}
+.chore-proof-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.chore-proof-thumb:hover { border-color: var(--wally); }
+.rw-appr .chore-proof-thumb { width: 44px; height: 44px; margin-right: 4px; }
+
+/* compact proof affordance on a photo-proof awaiting chore (per-person column) —
+   an icon-only thumbnail that opens the review modal (where Approve/Reject + the
+   big photo live), so the narrow column keeps full width for the chore title
+   instead of squeezing in thumb+Reject+Approve. A 🔍 badge cues "tap to review". */
+.chore-review {
+  flex: none; position: relative; padding: 0; width: 38px; height: 38px;
+  border-radius: 10px; overflow: visible; border: 0; background: none; cursor: pointer;
+}
+.chore-review img {
+  width: 38px; height: 38px; border-radius: 10px; object-fit: cover; display: block;
+  border: 1px solid var(--hair);
+}
+.chore-review:hover img { border-color: var(--wally); }
+.chore-review-badge {
+  position: absolute; right: -5px; bottom: -5px; width: 19px; height: 19px;
+  border-radius: 999px; background: #fff; border: 1px solid var(--hair);
+  display: grid; place-items: center; font-size: 10px; line-height: 1;
+}
+
+/* photo-proof review modal */
+.chore-proof-modal { max-width: 560px; width: 92vw; }
+.cpm-head { display: flex; align-items: center; gap: 11px; margin: 2px 28px 14px 0; }
+.cpm-head-tx { min-width: 0; }
+.cpm-title { font-size: 16px; }
+.cpm-sub { font-size: 13px; color: var(--ink-3); font-weight: 600; margin-top: 2px; }
+.cpm-stage {
+  display: grid; place-items: center; border-radius: var(--r-md); overflow: hidden;
+  background: #1c1a17; min-height: 200px; max-height: 56vh;
+}
+.cpm-stage img { display: block; max-width: 100%; max-height: 56vh; object-fit: contain; }
+.cpm-noimg { color: #cfc9c0; font-size: 14px; padding: 40px; font-weight: 600; }
+.cpm-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 14px; }
+.cpm-actions .pill { cursor: pointer; padding: 9px 20px; font-size: 14.5px; }
 .ca-approve, .ca-reject {
   font: inherit; font-size: 12.5px; font-weight: 700;
   padding: 6px 13px; border-radius: 999px; cursor: pointer;

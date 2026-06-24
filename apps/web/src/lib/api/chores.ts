@@ -30,6 +30,9 @@ export interface ChoreInstance {
   rewardCurrency: string | null
   rrule: string | null
   requiresApproval: boolean
+  requiresPhoto: boolean
+  proofUrl: string | null
+  hadProof: boolean
   streak: number
 }
 
@@ -41,11 +44,13 @@ export const choresApi = {
   // Every chore completion awaiting a parent's OK, across all dates (the approvals
   // queue) — the date-scoped list above misses ones submitted on earlier days.
   awaitingInstances: () => apiGet<{ instances: ChoreInstance[] }>('/api/chore-instances/awaiting'),
-  completeInstance: (id: string) =>
-    apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/complete`).then(tap('chores')).then(tap('rewards')),
+  // Optional photo proof ({ storageKey, contentType } from uploadImage) — required
+  // for chores flagged requiresPhoto, else omitted.
+  completeInstance: (id: string, proof?: { storageKey: string; contentType: string }) =>
+    apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/complete`, proof).then(tap('chores')).then(tap('rewards')),
   uncompleteInstance: (id: string) =>
     apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/uncomplete`).then(tap('chores')).then(tap('rewards')),
-  createChore: (input: { title: string; personId?: string | null; emoji?: string | null; rewardAmount?: number; rewardCurrency?: string; rrule?: string; requiresApproval?: boolean }) =>
+  createChore: (input: { title: string; personId?: string | null; emoji?: string | null; rewardAmount?: number; rewardCurrency?: string; rrule?: string; requiresApproval?: boolean; requiresPhoto?: boolean }) =>
     apiSend<{ chore: { id: string } }>('POST', '/api/chores', input).then(tap('chores')),
   updateChore: (id: string, patch: Record<string, unknown>) =>
     apiSend<{ chore: { id: string } }>('PATCH', `/api/chores/${id}`, patch).then(tap('chores')),
@@ -61,6 +66,25 @@ export const choresApi = {
     apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/approve`).then(tap('chores')).then(tap('rewards')),
   rejectInstance: (id: string) =>
     apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/reject`).then(tap('chores')),
+  // Household chore settings (Settings → Chores & rewards) — photo-proof retention.
+  getSettings: () => apiGet<{ proofTtlDays: number }>('/api/chores/settings'),
+  setProofTtlDays: (proofTtlDays: number) =>
+    apiSend<{ proofTtlDays: number }>('PUT', '/api/chores/settings', { proofTtlDays }).then((r) => r.proofTtlDays),
+  // Stored proof photos — review/manage surface (Settings → Chores & rewards).
+  listProofs: () => apiGet<{ proofs: StoredProof[] }>('/api/chore-proofs'),
+  deleteProof: (id: string) => apiDelete(`/api/chore-proofs/${id}`).then(tap('chores')),
+  clearProofs: () => apiSend<{ cleared: number }>('DELETE', '/api/chore-proofs').then((r) => r.cleared).then(tap('chores')),
+}
+
+export interface StoredProof {
+  instanceId: string
+  choreTitle: string
+  emoji: string | null
+  personName: string | null
+  personAvatar: string | null
+  personColor: string | null
+  proofUrl: string | null
+  completedAt: string | null
 }
 
 export interface ChoresState {

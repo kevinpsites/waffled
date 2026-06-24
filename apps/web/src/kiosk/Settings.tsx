@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, goalCalendarApi, groceryApi, authApi, kioskApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig } from '../lib/api'
+import { personsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { Screensaver, screensaverPhotos } from './components/Screensaver'
@@ -883,6 +883,171 @@ function RewardApprovalCard() {
   )
 }
 
+// Photo-proof retention. Chores can require a photo on completion; those photos are
+// throwaway verification, so a daily sweep deletes them N days after the chore is
+// settled (the record that a photo existed is kept). 0 = keep until deleted by hand.
+const PROOF_TTL_OPTIONS = [
+  { v: 1, label: '1 day' },
+  { v: 3, label: '3 days' },
+  { v: 7, label: '7 days' },
+  { v: 30, label: '30 days' },
+  { v: 0, label: 'Keep until I delete them' },
+]
+function ChoreProofCard() {
+  const [ttl, setTtl] = useState<number | null>(null)
+  const [saving, setSaving] = useState(false)
+  // Loaded for the count on the "View stored photos" button + handed to the drawer
+  // so it doesn't refetch; the drawer updates it back through setProofs on delete.
+  const [proofs, setProofs] = useState<StoredProof[] | null>(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  useEffect(() => {
+    let alive = true
+    choresApi.getSettings().then((s) => alive && setTtl(s.proofTtlDays)).catch(() => alive && setTtl(3))
+    choresApi.listProofs().then((r) => alive && setProofs(r.proofs)).catch(() => alive && setProofs([]))
+    return () => { alive = false }
+  }, [])
+  async function update(next: number) {
+    if (ttl === null || saving) return
+    const prev = ttl
+    setTtl(next)
+    setSaving(true)
+    try { await choresApi.setProofTtlDays(next) }
+    catch { setTtl(prev) }
+    finally { setSaving(false) }
+  }
+  const sub =
+    ttl === 0
+      ? 'Proof photos are kept until you remove them.'
+      : `Proof photos are deleted ${ttl ?? 3} day${(ttl ?? 3) === 1 ? '' : 's'} after a chore is approved.`
+  const count = proofs?.length ?? 0
+  return (
+    <div className="set-card" style={{ padding: 18, marginTop: 14 }}>
+      <div className="card-h" style={{ marginBottom: 4 }}>Photo proof</div>
+      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
+        Some chores require a photo to complete. These are quick proof shots, not memories — Nook deletes them automatically after the chore is settled (a note that a photo was attached stays). Rejected chores’ photos are removed right away.
+      </div>
+      <SettingRow icon="📸" title="Keep proof photos for" sub={sub}>
+        <select className="sel" value={ttl ?? 3} disabled={ttl === null || saving}
+          onChange={(e) => update(Number(e.target.value))}>
+          {PROOF_TTL_OPTIONS.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
+        </select>
+      </SettingRow>
+      {count > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+          <button type="button" className="proof-view-btn" onClick={() => setDrawerOpen(true)}>
+            View stored photos ({count}) ›
+          </button>
+        </div>
+      )}
+      {drawerOpen && (
+        <ChoreProofsDrawer proofs={proofs} onChanged={setProofs} onClose={() => setDrawerOpen(false)} />
+      )}
+    </div>
+  )
+}
+
+function fmtProofDate(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+// Stored proof photos — a slide-over review/delete surface opened from the Photo
+// proof card (so it stays off the main settings page). The home for the "keep
+// until I delete them" option + early cleanup. Tap a thumbnail to enlarge; delete
+// one or clear all. `proofs`/`onChanged` are owned by the parent card.
+function ChoreProofsDrawer({
+  proofs,
+  onChanged,
+  onClose,
+}: {
+  proofs: StoredProof[] | null
+  onChanged: (next: StoredProof[]) => void
+  onClose: () => void
+}) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [enlarge, setEnlarge] = useState<StoredProof | null>(null)
+  const [confirmClear, setConfirmClear] = useState(false)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  const list = proofs ?? []
+  const count = list.length
+  async function del(id: string) {
+    setBusy(id)
+    try { await choresApi.deleteProof(id); onChanged(list.filter((x) => x.instanceId !== id)) }
+    finally { setBusy(null) }
+  }
+  async function clearAll() {
+    setBusy('all')
+    try { await choresApi.clearProofs(); onChanged([]) }
+    finally { setBusy(null); setConfirmClear(false) }
+  }
+  return (
+    <>
+      <div className="proof-drawer-scrim" onClick={onClose}>
+        <div className="proof-drawer" role="dialog" aria-label="Stored proof photos" onClick={(e) => e.stopPropagation()}>
+          <div className="proof-drawer-head">
+            <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={onClose}>‹ Back</button>
+            <div className="nk-serif">Stored proof photos</div>
+          </div>
+          <div className="proof-drawer-body">
+            <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
+              Proof photos still on the server. They’re removed automatically per your retention setting — delete any here to clear them sooner.
+            </div>
+            {proofs === null ? (
+              <div className="muted" style={{ fontWeight: 600 }}>Loading…</div>
+            ) : count === 0 ? (
+              <div className="muted" style={{ fontWeight: 600 }}>No stored proof photos.</div>
+            ) : (
+              <>
+                <div className="proof-grid">
+                  {list.map((p) => (
+                    <div className="proof-cell" key={p.instanceId}>
+                      <button type="button" className="proof-thumb" onClick={() => setEnlarge(p)} title="View larger">
+                        {p.proofUrl && <img src={p.proofUrl} alt={`Proof for ${p.choreTitle}`} />}
+                      </button>
+                      <div className="proof-meta">
+                        <div className="proof-title">{p.emoji ? `${p.emoji} ` : ''}{p.choreTitle}</div>
+                        <div className="tiny muted">{p.personName ?? '—'}{fmtProofDate(p.completedAt) ? ` · ${fmtProofDate(p.completedAt)}` : ''}</div>
+                      </div>
+                      <button type="button" className="proof-del" aria-label={`Delete proof for ${p.choreTitle}`} disabled={busy === p.instanceId} onClick={() => del(p.instanceId)}>🗑</button>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+                  <button type="button" className="pill" disabled={busy === 'all'} onClick={() => setConfirmClear(true)}>Clear all ({count})</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+      {enlarge && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }} onClick={() => setEnlarge(null)}>
+          <div className="modal-card chore-proof-modal" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="modal-close" aria-label="Close" onClick={() => setEnlarge(null)}>×</button>
+            <div className="cpm-head"><div className="cpm-head-tx">
+              <div className="cpm-title">{enlarge.emoji ? `${enlarge.emoji} ` : ''}{enlarge.choreTitle}</div>
+              <div className="cpm-sub">{enlarge.personName ?? '—'}{fmtProofDate(enlarge.completedAt) ? ` · ${fmtProofDate(enlarge.completedAt)}` : ''}</div>
+            </div></div>
+            <div className="cpm-stage">{enlarge.proofUrl && <img src={enlarge.proofUrl} alt={`Proof for ${enlarge.choreTitle}`} />}</div>
+            <div className="cpm-actions">
+              <button type="button" className="pill" disabled={busy === enlarge.instanceId} onClick={() => { del(enlarge.instanceId); setEnlarge(null) }}>🗑 Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {confirmClear && (
+        <ConfirmDialog title="Delete all proof photos?" message={`This removes all ${count} stored proof photos. The record that a photo was attached stays.`} confirmLabel="Delete all" danger onConfirm={clearAll} onClose={() => setConfirmClear(false)} />
+      )}
+    </>
+  )
+}
+
 function RewardsSettingsPanel() {
   const { currencies, loading } = useCurrencies()
   const [newLabel, setNewLabel] = useState('')
@@ -929,6 +1094,10 @@ function RewardsSettingsPanel() {
 
       {/* Redemption policy — its own concern, so it sits apart from the economy. */}
       <RewardApprovalCard />
+
+      {/* Chore photo-proof retention; the stored-photo review/delete gallery opens
+          in a slide-over from inside this card. */}
+      <ChoreProofCard />
     </div>
   )
 }

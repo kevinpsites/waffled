@@ -55,6 +55,64 @@ function dayLabel(d: string | null | undefined): string | null {
   return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
+// ── Chore photo-proof review modal ───────────────────────────────────────────
+// A centered card with the large proof photo, who-finished-what context, and the
+// Approve / Not-yet actions in one place — so a parent can actually look at the
+// proof before deciding, instead of the photo opening raw in a new tab.
+export function ChoreProofModal({
+  instance,
+  cur,
+  busy,
+  onApprove,
+  onReject,
+  onClose,
+}: {
+  instance: ChoreInstance
+  cur: CurrenciesState
+  busy: string | null
+  onApprove: (id: string) => void
+  onReject: (id: string) => void
+  onClose: () => void
+}) {
+  const c = instance
+  const when = dayLabel(c.dueOn)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  const acting = busy === c.id
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card chore-proof-modal" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
+        <div className="cpm-head">
+          <Avatar emoji={c.personAvatar} color={c.personColor} name={c.personName} />
+          <div className="cpm-head-tx">
+            <div className="cpm-title">
+              <span className="rw-appr-name">{c.personName ?? 'Someone'}</span> finished{' '}
+              <span className="rw-appr-reward">{c.emoji ? `${c.emoji} ` : ''}{c.choreTitle}</span>
+            </div>
+            <div className="cpm-sub">
+              {when ? `Completed ${when}` : 'Completed'}
+              <span className="rw-appr-cost">{symbolFor(c.rewardCurrency, cur)} {c.rewardAmount ?? 0}</span>
+            </div>
+          </div>
+        </div>
+        <div className="cpm-stage">
+          {c.proofUrl
+            ? <img src={c.proofUrl} alt={`Photo proof for ${c.choreTitle}`} />
+            : <div className="cpm-noimg">{c.hadProof ? '📷 A photo was attached but is no longer saved.' : 'No photo was attached.'}</div>}
+        </div>
+        <div className="cpm-actions">
+          <button type="button" className="pill" disabled={acting} onClick={() => { onReject(c.id); onClose() }}>Not yet</button>
+          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={acting} onClick={() => { onApprove(c.id); onClose() }}>Approve</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Chores awaiting a parent's OK ────────────────────────────────────────────
 // Renders null when empty so callers can own a combined empty state.
 export function ChoreApprovalsCard({
@@ -72,7 +130,10 @@ export function ChoreApprovalsCard({
   onReject: (id: string) => void
   title?: string
 }) {
+  const [review, setReview] = useState<ChoreInstance | null>(null)
   if (chores.length === 0) return null
+  // Keep the reviewed instance fresh as the queue refetches (else a stale snapshot lingers).
+  const reviewing = review ? chores.find((c) => c.id === review.id) ?? null : null
   return (
     <div className="card rw-approvals">
       <div className="card-h" style={{ marginBottom: 10 }}>{title}</div>
@@ -87,6 +148,11 @@ export function ChoreApprovalsCard({
             {when && <> <span className="rw-appr-when">({when})</span></>}
             <span className="rw-appr-cost">{symbolFor(c.rewardCurrency, cur)} {c.rewardAmount ?? 0}</span>
           </div>
+          {c.proofUrl && (
+            <button type="button" className="chore-proof-thumb" title="Review photo proof" onClick={() => setReview(c)}>
+              <img src={c.proofUrl} alt={`Proof for ${c.choreTitle}`} />
+            </button>
+          )}
           <div className="rw-appr-actions">
             <button type="button" className="pill" disabled={busy === c.id} onClick={() => onReject(c.id)}>Not yet</button>
             <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={busy === c.id} onClick={() => onApprove(c.id)}>Approve</button>
@@ -94,6 +160,16 @@ export function ChoreApprovalsCard({
         </div>
         )
       })}
+      {reviewing && (
+        <ChoreProofModal
+          instance={reviewing}
+          cur={cur}
+          busy={busy}
+          onApprove={onApprove}
+          onReject={onReject}
+          onClose={() => setReview(null)}
+        />
+      )}
     </div>
   )
 }

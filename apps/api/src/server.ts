@@ -6,6 +6,7 @@ import api from './app'
 import { config } from './platform/config'
 import { startSyncScheduler } from './modules/calendar/calendar-sync.service'
 import { startExpansionScheduler } from './modules/calendar/expansion.service'
+import { startProofCleanupScheduler } from './modules/chores/chore-proof-cleanup.service'
 
 interface RunResult {
   statusCode: number
@@ -45,4 +46,6 @@ server.listen(config.port, () => {
   startSyncScheduler()
   // Roll the recurring-event occurrence horizon forward (Google-independent).
   startExpansionScheduler()
+  // Delete chore photo-proof blobs past their per-household retention window.
+  startProofCleanupScheduler()
 })

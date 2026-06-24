@@ -10,6 +10,7 @@ export interface ChoreDraft {
   rewardCurrency?: string | null
   rrule?: string | null
   requiresApproval?: boolean
+  requiresPhoto?: boolean
 }
 
 const DAYS: Array<[string, string]> = [
@@ -43,6 +44,7 @@ function initialForm(chore?: ChoreDraft, personId?: string | null) {
     freq: sched.freq,
     days: sched.days,
     requiresApproval: chore?.requiresApproval ?? false,
+    requiresPhoto: chore?.requiresPhoto ?? false,
   }
 }
 
@@ -80,6 +82,7 @@ export function ChoreModal({
       rewardCurrency: curKey,
       rrule: buildRrule(form.freq, form.days),
       requiresApproval: form.requiresApproval,
+      requiresPhoto: form.requiresPhoto,
     }
     try {
       if (editing) await api.updateChore(chore!.id, payload)
@@ -204,6 +207,18 @@ export function ChoreModal({
             <span>
               <span className="chore-approval-t">Needs a parent’s OK</span>
               <span className="chore-approval-s">Stars are awarded only after a parent approves.</span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className={`chore-approval ${form.requiresPhoto ? 'on' : ''}`}
+            onClick={() => set('requiresPhoto', !form.requiresPhoto)}
+          >
+            <span className="chore-approval-check" aria-hidden>{form.requiresPhoto ? '✓' : ''}</span>
+            <span>
+              <span className="chore-approval-t">Requires a photo</span>
+              <span className="chore-approval-s">A snapshot of the finished job is needed to complete it.</span>
             </span>
           </button>
 

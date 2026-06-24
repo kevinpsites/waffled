@@ -416,3 +416,38 @@ select.sel {
 .sm-chip:hover { border-color: var(--primary); color: var(--ink); }
 .sm-x { font-size: 11px; color: var(--ink-3); }
 .sm-chip:hover .sm-x { color: var(--primary); }
+
+/* stored proof photos: slide-over review/delete drawer (opened from the Photo
+   proof card) + the review grid inside it */
+.proof-drawer-scrim {
+  position: fixed; inset: 0; background: rgba(20, 18, 15, .42); z-index: 1000;
+  display: flex; justify-content: flex-end;
+}
+.proof-drawer {
+  width: min(560px, 94vw); height: 100%; background: var(--bg, #f7f4ef);
+  box-shadow: -8px 0 30px rgba(0, 0, 0, .16); display: flex; flex-direction: column;
+}
+.proof-drawer-head {
+  display: flex; align-items: center; gap: 12px; padding: 15px 18px;
+  border-bottom: 1px solid var(--hair); flex: none;
+}
+.proof-drawer-head .nk-serif { font-size: 18px; font-weight: 600; }
+.proof-drawer-body { padding: 16px 18px; overflow-y: auto; }
+/* "View stored photos ›" — muted bold text action, matching the "Delete goal"
+   look (var(--ink-3), 13px, 700, flat). Only rendered when there are stored proofs. */
+.proof-view-btn {
+  border: 0; background: none; padding: 4px 2px; font: inherit;
+  font-size: 13px; font-weight: 700; color: var(--ink-3); cursor: pointer;
+}
+.proof-view-btn:hover { color: var(--ink-2); }
+.proof-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.proof-cell { display: flex; align-items: center; gap: 11px; padding: 8px;
+  border: 1px solid var(--hair); border-radius: var(--r-md); background: var(--card-2); }
+.proof-thumb { flex: none; width: 52px; height: 52px; padding: 0; border: 0;
+  border-radius: 9px; overflow: hidden; background: #1c1a17; cursor: zoom-in; }
+.proof-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.proof-meta { flex: 1; min-width: 0; }
+.proof-title { font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.proof-del { flex: none; border: 0; background: none; font-size: 16px; cursor: pointer; opacity: .65; padding: 4px; }
+.proof-del:hover { opacity: 1; }
+.proof-del:disabled { opacity: .3; cursor: default; }

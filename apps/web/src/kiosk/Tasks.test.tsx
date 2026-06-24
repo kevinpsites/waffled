@@ -1,7 +1,15 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { ReactElement } from 'react'
 import { Tasks } from './Tasks'
+import { uploadImage } from '../lib/api'
+
+// Photo-proof completion uploads through uploadImage(), which re-encodes via a
+// <canvas> jsdom can't run — so stub it to a fixed { key, url, contentType }.
+vi.mock('../lib/api/media', () => ({
+  uploadImage: vi.fn(async () => ({ key: 'hh/proof.jpg', url: '/media/hh/proof.jpg', contentType: 'image/jpeg' })),
+  MAX_UPLOAD_BYTES: 10 * 1024 * 1024,
+}))
 
 // Tasks reads the active tab from the URL (useSearchParams), so it needs a Router.
 const renderTasks = (ui: ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter>)
@@ -78,5 +86,73 @@ describe('Tasks screen', () => {
       .getAllByText(/Up for grabs|Wally|Lottie|Kevin/, { selector: '.chore-head .nm' })
       .map((e) => (e.textContent || '').replace(/[^A-Za-z ]/g, '').trim())
     expect(heads).toEqual(['Up for grabs', 'Wally', 'Lottie', 'Kevin'])
+  })
+
+  it('photo-proof: completing prompts for a photo, uploads it, then completes with the key', async () => {
+    const completeBodies: Array<Record<string, unknown> | null> = []
+    let instances: Array<Record<string, unknown>> = [
+      { id: '9', choreTitle: 'Tidy room', emoji: '🧹', personId: 'p1', personName: 'Wally', status: 'pending', rewardAmount: 3, requiresPhoto: true, requiresApproval: false, proofUrl: null },
+    ]
+    globalThis.fetch = vi.fn(async (url: string, opts?: { method?: string; body?: string }) => {
+      const u = String(url)
+      const m = opts?.method ?? 'GET'
+      if (u.includes('/api/persons')) return ok({ persons: [{ id: 'p1', name: 'Wally' }] })
+      if (u.includes('/api/chore-instances/today')) return ok({ date: 'x', instances })
+      if (u.includes('/complete') && m === 'POST') {
+        completeBodies.push(opts?.body ? JSON.parse(opts.body) : null)
+        const id = u.split('/').slice(-2)[0]
+        instances = instances.map((i) => (i.id === id ? { ...i, status: 'done' } : i))
+        return ok({ instance: { id, status: 'done' } })
+      }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    const { container } = renderTasks(<Tasks />)
+    expect(await screen.findByText(/Tidy room/)).toBeInTheDocument()
+
+    // Tapping the tick on a photo-proof chore must NOT complete immediately…
+    fireEvent.click(screen.getByRole('button', { name: /Complete Tidy room/ }))
+    expect(completeBodies.length).toBe(0)
+
+    // …it opens the (hidden) file picker. Supplying a photo uploads + completes.
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(['x'], 'proof.jpg', { type: 'image/jpeg' })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    await waitFor(() => expect(completeBodies.length).toBe(1))
+    expect(uploadImage).toHaveBeenCalled()
+    expect(completeBodies[0]).toMatchObject({ storageKey: 'hh/proof.jpg', contentType: 'image/jpeg' })
+  })
+
+  it('photo-proof review: the thumbnail opens a modal with the large photo + Approve', async () => {
+    const approved: string[] = []
+    let instances: Array<Record<string, unknown>> = [
+      { id: '7', choreId: 'c7', choreTitle: 'Wash car', emoji: '🚗', personId: 'p1', personName: 'Wally', status: 'awaiting', rewardAmount: 8, requiresPhoto: true, requiresApproval: true, proofUrl: '/media/h/car.jpg', dueOn: '2026-06-24' },
+    ]
+    globalThis.fetch = vi.fn(async (url: string, opts?: { method?: string }) => {
+      const u = String(url)
+      const m = opts?.method ?? 'GET'
+      if (u.includes('/api/persons')) return ok({ persons: [{ id: 'p1', name: 'Wally' }] })
+      if (u.includes('/api/chore-instances/awaiting')) return ok({ instances })
+      if (u.includes('/api/chore-instances/today')) return ok({ date: 'x', instances })
+      if (u.includes('/approve') && m === 'POST') {
+        const id = u.split('/').slice(-2)[0]
+        approved.push(id)
+        instances = instances.map((i) => (i.id === id ? { ...i, status: 'done' } : i))
+        return ok({ instance: { id, status: 'done' } })
+      }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    renderTasks(<Tasks />)
+    // No raw-image link — the thumbnail is a button that opens an in-app review modal.
+    const thumb = (await screen.findAllByAltText('Proof for Wash car'))[0].closest('button')!
+    fireEvent.click(thumb)
+
+    // The modal shows the large photo (distinct alt) and an Approve action.
+    expect(await screen.findByAltText('Photo proof for Wash car')).toBeInTheDocument()
+    const modal = document.querySelector('.chore-proof-modal') as HTMLElement
+    fireEvent.click(within(modal).getByRole('button', { name: 'Approve' }))
+    await waitFor(() => expect(approved).toEqual(['7']))
   })
 })

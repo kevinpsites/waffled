@@ -22,6 +22,7 @@ export interface CreateChoreInput {
   rrule?: string | null
   dueTime?: string | null
   requiresApproval?: boolean
+  requiresPhoto?: boolean
 }
 
 export interface PersonChoreSummary {
@@ -51,5 +52,8 @@ export interface TodayInstance {
   rewardCurrency: string | null
   rrule: string | null
   requiresApproval: boolean
+  requiresPhoto: boolean
+  proofUrl: string | null
+  hadProof: boolean
   streak: number
 }

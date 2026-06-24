@@ -3,8 +3,8 @@ import { useSearchParams } from 'react-router'
 import { Icon, Check } from './icons'
 import { ChoreModal, type ChoreDraft } from './components/ChoreModal'
 import { RewardsPanel } from './components/RewardsPanel'
-import { ChoreApprovalsCard } from './components/Approvals'
-import { choresApi, usePersons, useDayInstances, useAwaitingChores, useCurrencies, localToday, type ChoreInstance } from '../lib/api'
+import { ChoreApprovalsCard, ChoreProofModal } from './components/Approvals'
+import { choresApi, usePersons, useDayInstances, useAwaitingChores, useCurrencies, localToday, uploadImage, type ChoreInstance } from '../lib/api'
 
 // Shift a YYYY-MM-DD by N days (local), and describe a day relative to today.
 function shiftDate(d: string, days: number): string {
@@ -54,7 +54,7 @@ function buildColumns(instances: ChoreInstance[], persons: PersonLite[]): Column
 }
 
 function draftFrom(i: ChoreInstance): ChoreDraft {
-  return { id: i.choreId, title: i.choreTitle, emoji: i.emoji, personId: i.personId, rewardAmount: i.rewardAmount, rewardCurrency: i.rewardCurrency, rrule: i.rrule, requiresApproval: i.requiresApproval }
+  return { id: i.choreId, title: i.choreTitle, emoji: i.emoji, personId: i.personId, rewardAmount: i.rewardAmount, rewardCurrency: i.rewardCurrency, rrule: i.rrule, requiresApproval: i.requiresApproval, requiresPhoto: i.requiresPhoto }
 }
 
 // The Tasks screen: today's chores per person. Tick to complete/uncomplete;
@@ -70,6 +70,13 @@ export function Tasks() {
   const [searchParams] = useSearchParams()
   const [tab, setTab] = useState<'chores' | 'rewards'>(searchParams.get('tab') === 'rewards' ? 'rewards' : 'chores')
   const [claimId, setClaimId] = useState<string | null>(null)
+  // Photo-proof capture: a hidden file input, the instance (and optional person to
+  // claim first) we're capturing for, and any upload/guard error to surface.
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [proofFor, setProofFor] = useState<{ instanceId: string; personId?: string } | null>(null)
+  const [proofErr, setProofErr] = useState<string | null>(null)
+  // The awaiting chore whose photo proof is open in the review modal.
+  const [review, setReview] = useState<ChoreInstance | null>(null)
   const meta = dayMeta(date)
   const isToday = meta.diff === 0
 
@@ -127,6 +134,38 @@ export function Tasks() {
     await choresApi.completeInstance(instanceId).catch(() => {})
     refetch()
   }
+
+  // Complete an assigned chore: photo-proof chores open the camera/file picker
+  // first (then complete with the uploaded blob); the rest complete straight away.
+  function completeAssigned(i: ChoreInstance) {
+    if (i.requiresPhoto) startProof(i.id)
+    else setDone(i.id, true)
+  }
+  // Open the photo picker for an instance, optionally claiming `personId` once a
+  // photo is chosen (the up-for-grabs path).
+  function startProof(instanceId: string, personId?: string) {
+    setClaimId(null)
+    setProofErr(null)
+    setProofFor({ instanceId, personId })
+    fileRef.current?.click()
+  }
+  // A photo was picked: downscale + upload, claim if needed, then complete with the
+  // proof. Clears the picker's value so re-picking the same file fires onChange again.
+  async function onProofPicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    const target = proofFor
+    setProofFor(null)
+    if (!file || !target) return
+    try {
+      const up = await uploadImage(file)
+      if (target.personId) await choresApi.claimInstance(target.instanceId, target.personId)
+      await choresApi.completeInstance(target.instanceId, { storageKey: up.key, contentType: up.contentType })
+      refetch()
+    } catch (err) {
+      setProofErr(err instanceof Error ? err.message : 'Could not upload that photo — please try again.')
+    }
+  }
   async function approve(instanceId: string) {
     await choresApi.approveInstance(instanceId).catch(() => {})
     refetch()
@@ -165,6 +204,15 @@ export function Tasks() {
           {!isToday && (
             <button type="button" className="dn-today" onClick={() => setDate(localToday())}>Today</button>
           )}
+        </div>
+      )}
+
+      {tab === 'chores' && proofErr && (
+        <div style={{ padding: '0 30px 12px' }}>
+          <div className="card" role="alert" style={{ padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'center', borderColor: 'var(--danger, #d9534f)' }}>
+            <span style={{ flex: 1, fontSize: 14 }}>{proofErr}</span>
+            <button type="button" className="pill" onClick={() => setProofErr(null)}>Dismiss</button>
+          </div>
         </div>
       )}
 
@@ -224,9 +272,13 @@ export function Tasks() {
                       type="button"
                       className={`tick ${isDone ? 'done' : ''} ${isAwaiting ? 'awaiting' : ''}`}
                       aria-label={upForGrabs ? `Claim and complete ${i.choreTitle}` : `${isComplete ? 'Uncomplete' : 'Complete'} ${i.choreTitle}`}
-                      onClick={() => (upForGrabs ? setClaimId(picking ? null : i.id) : setDone(i.id, !isComplete))}
+                      onClick={() => {
+                        if (upForGrabs) setClaimId(picking ? null : i.id)
+                        else if (isComplete) setDone(i.id, false)
+                        else completeAssigned(i)
+                      }}
                     >
-                      {isAwaiting ? '⏳' : ''}
+                      {isAwaiting ? '⏳' : i.requiresPhoto && !isComplete ? '📷' : ''}
                     </button>
                     <div className="body" style={{ cursor: 'pointer' }} onClick={() => setModal({ chore: draftFrom(i) })}>
                       <div
@@ -244,15 +296,26 @@ export function Tasks() {
                     </div>
                     {isAwaiting && (
                       <div className="chore-approve" onClick={(e) => e.stopPropagation()}>
-                        <button type="button" className="ca-reject" onClick={() => reject(i.id)}>Reject</button>
-                        <button type="button" className="ca-approve" onClick={() => approve(i.id)}>Approve</button>
+                        {i.proofUrl ? (
+                          // Photo chores review in the modal (where Approve/Reject live)
+                          // — keeps the narrow column from getting cramped.
+                          <button type="button" className="chore-review" title="Review photo proof" aria-label={`Review photo proof for ${i.choreTitle}`} onClick={() => setReview(i)}>
+                            <img src={i.proofUrl} alt={`Proof for ${i.choreTitle}`} />
+                            <span className="chore-review-badge" aria-hidden>🔍</span>
+                          </button>
+                        ) : (
+                          <>
+                            <button type="button" className="ca-reject" onClick={() => reject(i.id)}>Reject</button>
+                            <button type="button" className="ca-approve" onClick={() => approve(i.id)}>Approve</button>
+                          </>
+                        )}
                       </div>
                     )}
                     {upForGrabs && picking && (
                       <div className="claim-pick" onClick={(e) => e.stopPropagation()}>
                         <span className="claim-pick-q">Who did it?</span>
                         {persons.map((p) => (
-                          <button key={p.id} type="button" className="claim-p" title={`${p.name} did it`} onClick={() => claimAndComplete(i.id, p.id)}>
+                          <button key={p.id} type="button" className="claim-p" title={`${p.name} did it`} onClick={() => (i.requiresPhoto ? startProof(i.id, p.id) : claimAndComplete(i.id, p.id))}>
                             {p.avatarEmoji ?? '🙂'}
                           </button>
                         ))}
@@ -282,6 +345,32 @@ export function Tasks() {
         })}
       </div>
       )}
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        capture="environment"
+        style={{ display: 'none' }}
+        onChange={onProofPicked}
+      />
+
+      {review && (() => {
+        // Stay bound to the live instance so an approve/reject elsewhere closes the
+        // modal once the chore leaves the awaiting queue.
+        const live = instances.find((x) => x.id === review.id && x.status === 'awaiting')
+        if (!live) return null
+        return (
+          <ChoreProofModal
+            instance={live}
+            cur={cur}
+            busy={null}
+            onApprove={approve}
+            onReject={reject}
+            onClose={() => setReview(null)}
+          />
+        )
+      })()}
 
       {modal && (
         <ChoreModal chore={modal.chore} personId={modal.personId} onClose={() => setModal(null)} onSaved={refetch} />

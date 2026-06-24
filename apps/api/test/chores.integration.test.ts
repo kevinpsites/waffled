@@ -393,6 +393,171 @@ describe('parent-approval chores', () => {
   })
 })
 
+describe('photo-proof chores', () => {
+  type Inst = {
+    id: string; choreId: string; choreTitle: string; status: string
+    requiresPhoto: boolean; requiresApproval: boolean; proofUrl: string | null
+  }
+  async function instances(): Promise<Inst[]> {
+    return JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body).instances
+  }
+
+  it('requires a photo to complete: 422 without one, succeeds with a storage key', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Tidy room', personId: kevinId, rewardAmount: 4, requiresPhoto: true })
+    const inst = (await instances()).find((i) => i.choreTitle === 'Tidy room')!
+    expect(inst.requiresPhoto).toBe(true)
+
+    // no photo → 422, still pending
+    expect((await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin)).statusCode).toBe(422)
+    expect((await instances()).find((i) => i.choreTitle === 'Tidy room')!.status).toBe('pending')
+
+    // with a proof key → done, proofUrl resolves to /media/<key>
+    const done = await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, {
+      storageKey: `${kevinId}/abc.jpg`,
+      contentType: 'image/jpeg',
+    })
+    expect(done.statusCode).toBe(200)
+    expect(JSON.parse(done.body).instance.status).toBe('done')
+    const after = (await instances()).find((i) => i.choreTitle === 'Tidy room')!
+    expect(after.proofUrl).toMatch(/\/media\/.*abc\.jpg$/)
+  })
+
+  it('combines with approval: proof shows in the awaiting queue; reject clears it', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Wash car', personId: kevinId, rewardAmount: 8, requiresApproval: true, requiresPhoto: true })
+    const inst = (await instances()).find((i) => i.choreTitle === 'Wash car')!
+    const done = await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, {
+      storageKey: `${kevinId}/car.webp`,
+      contentType: 'image/webp',
+    })
+    expect(JSON.parse(done.body).instance.status).toBe('awaiting')
+
+    const queue = JSON.parse((await call('GET', '/api/chore-instances/awaiting', kevin)).body).instances as Inst[]
+    expect(queue.find((i) => i.choreTitle === 'Wash car')!.proofUrl).toMatch(/car\.webp$/)
+
+    expect((await call('POST', `/api/chore-instances/${inst.id}/reject`, kevin)).statusCode).toBe(200)
+    const back = (await instances()).find((i) => i.choreTitle === 'Wash car')!
+    expect(back.status).toBe('pending')
+    expect(back.proofUrl).toBeNull()
+  })
+
+  it('propagates requiresPhoto via PATCH to today’s pending instance', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Sweep', personId: kevinId, rewardAmount: 1 })
+    const before = (await instances()).find((i) => i.choreTitle === 'Sweep')!
+    expect(before.requiresPhoto).toBe(false)
+
+    expect((await call('PATCH', `/api/chores/${before.choreId}`, kevin, { requiresPhoto: true })).statusCode).toBe(200)
+    const after = (await instances()).find((i) => i.choreTitle === 'Sweep')!
+    expect(after.requiresPhoto).toBe(true)
+    // and completing it now needs a photo
+    expect((await call('POST', `/api/chore-instances/${after.id}/complete`, kevin)).statusCode).toBe(422)
+  })
+})
+
+describe('photo-proof retention', () => {
+  type Inst = { id: string; choreId: string; choreTitle: string; status: string; proofUrl: string | null; hadProof: boolean }
+  async function instances(): Promise<Inst[]> {
+    return JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body).instances
+  }
+  // Complete a fresh requires-photo chore with a proof key; returns the instance id.
+  async function completedWithProof(title: string): Promise<string> {
+    await call('POST', '/api/chores', kevin, { title, personId: kevinId, rewardAmount: 1, requiresPhoto: true })
+    const inst = (await instances()).find((i) => i.choreTitle === title)!
+    await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, { storageKey: `${kevinId}/${title}.jpg`, contentType: 'image/jpeg' })
+    return inst.id
+  }
+
+  it('exposes settings (default 3 days), and admins can change them', async () => {
+    expect(JSON.parse((await call('GET', '/api/chores/settings', kevin)).body).proofTtlDays).toBe(3)
+    expect((await call('PUT', '/api/chores/settings', kevin, { proofTtlDays: -1 })).statusCode).toBe(400)
+    const put = await call('PUT', '/api/chores/settings', kevin, { proofTtlDays: 7 })
+    expect(put.statusCode).toBe(200)
+    expect(JSON.parse(put.body).proofTtlDays).toBe(7)
+    expect(JSON.parse((await call('GET', '/api/chores/settings', kevin)).body).proofTtlDays).toBe(7)
+    // put it back to the default for the sweep test below
+    await call('PUT', '/api/chores/settings', kevin, { proofTtlDays: 3 })
+  })
+
+  it('records hadProof on completion and resolves a proofUrl', async () => {
+    await completedWithProof('Vacuum')
+    const i = (await instances()).find((x) => x.choreTitle === 'Vacuum')!
+    expect(i.status).toBe('done')
+    expect(i.hadProof).toBe(true)
+    expect(i.proofUrl).toMatch(/Vacuum\.jpg$/)
+  })
+
+  it('the sweep deletes aged proofs (keeping hadProof) but spares fresh + awaiting ones', async () => {
+    const agedId = await completedWithProof('Old proof')   // will be backdated past the TTL
+    await completedWithProof('Fresh proof')                // stays (completed just now)
+    // an awaiting (not settled) photo chore must never be swept, however old
+    await call('POST', '/api/chores', kevin, { title: 'Pending proof', personId: kevinId, rewardAmount: 1, requiresPhoto: true, requiresApproval: true })
+    const pend = (await instances()).find((i) => i.choreTitle === 'Pending proof')!
+    await call('POST', `/api/chore-instances/${pend.id}/complete`, kevin, { storageKey: `${kevinId}/pend.jpg`, contentType: 'image/jpeg' })
+
+    // backdate the aged one + the awaiting one well past the 3-day window
+    await withClient((c) =>
+      c.query(`update chore_instances set completed_at = now() - interval '5 days' where id = any($1)`, [[agedId, pend.id]])
+    )
+
+    const { cleanupExpiredProofs } = await import('../src/modules/chores/chore-proof-cleanup.service')
+    const res = await cleanupExpiredProofs()
+    expect(res.deletedBlobs).toBeGreaterThanOrEqual(1)
+
+    const after = await instances()
+    const aged = after.find((i) => i.choreTitle === 'Old proof')!
+    expect(aged.proofUrl).toBeNull()   // blob + key gone
+    expect(aged.hadProof).toBe(true)   // …but we still remember a photo was attached
+    expect(after.find((i) => i.choreTitle === 'Fresh proof')!.proofUrl).toMatch(/Fresh proof\.jpg$/)
+    // awaiting one keeps its proof despite being backdated
+    expect(after.find((i) => i.choreTitle === 'Pending proof')!.proofUrl).toMatch(/pend\.jpg$/)
+  })
+})
+
+describe('stored proof photos (review/manage)', () => {
+  type Inst = { id: string; choreTitle: string; status: string; proofUrl: string | null }
+  type Proof = { instanceId: string; choreTitle: string; personName: string | null; proofUrl: string | null; completedAt: string | null }
+  async function instances(): Promise<Inst[]> {
+    return JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body).instances
+  }
+  async function listProofs(): Promise<Proof[]> {
+    return JSON.parse((await call('GET', '/api/chore-proofs', kevin)).body).proofs
+  }
+  async function completeWithProof(title: string): Promise<string> {
+    await call('POST', '/api/chores', kevin, { title, personId: kevinId, rewardAmount: 1, requiresPhoto: true })
+    const inst = (await instances()).find((i) => i.choreTitle === title)!
+    await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, { storageKey: `${kevinId}/${title}.jpg`, contentType: 'image/jpeg' })
+    return inst.id
+  }
+
+  it('lists settled proofs, deletes one (keeping hadProof), and clears the rest', async () => {
+    const aId = await completeWithProof('Proof A')
+    await completeWithProof('Proof B')
+
+    let proofs = await listProofs()
+    const a = proofs.find((p) => p.choreTitle === 'Proof A')!
+    expect(a.instanceId).toBe(aId)
+    expect(a.proofUrl).toMatch(/Proof A\.jpg$/)
+    expect(proofs.some((p) => p.choreTitle === 'Proof B')).toBe(true)
+
+    // delete one
+    expect((await call('DELETE', `/api/chore-proofs/${aId}`, kevin)).statusCode).toBe(204)
+    proofs = await listProofs()
+    expect(proofs.some((p) => p.instanceId === aId)).toBe(false)
+    // its instance still records that a photo was attached
+    const aInst = JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body).instances.find((i: { id: string; hadProof: boolean }) => i.id === aId)
+    expect(aInst.hadProof).toBe(true)
+    expect(aInst.proofUrl).toBeNull()
+
+    // delete unknown → 404
+    expect((await call('DELETE', '/api/chore-proofs/00000000-0000-0000-0000-000000000000', kevin)).statusCode).toBe(404)
+
+    // clear all → none left
+    const cleared = await call('DELETE', '/api/chore-proofs', kevin)
+    expect(cleared.statusCode).toBe(200)
+    expect(JSON.parse(cleared.body).cleared).toBeGreaterThanOrEqual(1)
+    expect((await listProofs()).length).toBe(0)
+  })
+})
+
 describe('chores look-ahead (date param)', () => {
   // The local date of the next strictly-future weekday with the given JS dow.
   function nextDow(dow: number): string {

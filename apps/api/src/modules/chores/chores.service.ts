@@ -5,6 +5,7 @@ import type { QueryResultRow, PoolClient } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { getDefaultCurrencyKey } from '../currencies/currencies'
+import { getBlobStore, mediaUrl } from '../../platform/storage'
 import type { ChoreRow, CreateChoreInput, PersonChoreSummary, TodayInstance } from './chores.types'
 
 interface ChoreInstanceRow extends QueryResultRow {
@@ -16,6 +17,27 @@ interface ChoreInstanceRow extends QueryResultRow {
   reward_amount: number | null
   awarded: boolean
   requires_approval: boolean
+  requires_photo: boolean
+  proof_storage_key: string | null
+  proof_content_type: string | null
+  had_proof: boolean
+}
+
+// Thrown by completeInstance when a photo-proof chore is completed without a proof
+// image. The route maps it to a 422 so the kiosk can prompt for a photo.
+export class ProofRequiredError extends Error {
+  constructor() {
+    super('a photo is required to complete this chore')
+    this.name = 'ProofRequiredError'
+  }
+}
+
+// A best-effort blob delete that never throws into the caller's transaction path.
+function deleteBlob(key: string | null | undefined): void {
+  if (!key) return
+  getBlobStore()
+    .delete(key)
+    .catch(() => {})
 }
 
 // "Today" as a calendar day. With a timezone it's the household-local day (so
@@ -48,8 +70,8 @@ export async function createChore(tenant: Tenant, input: CreateChoreInput): Prom
   const currency = input.rewardCurrency?.trim() || (await getDefaultCurrencyKey(tenant.householdId))
   const { rows } = await query<ChoreRow>(
     `insert into chores
-       (household_id, title, emoji, person_id, rrule, reward_currency, reward_amount, due_time, requires_approval)
-     values ($1, $2, $3, $4, coalesce($5,'FREQ=DAILY'), $6, coalesce($7,0), $8, $9)
+       (household_id, title, emoji, person_id, rrule, reward_currency, reward_amount, due_time, requires_approval, requires_photo)
+     values ($1, $2, $3, $4, coalesce($5,'FREQ=DAILY'), $6, coalesce($7,0), $8, $9, $10)
      returning *`,
     [
       tenant.householdId,
@@ -61,6 +83,7 @@ export async function createChore(tenant: Tenant, input: CreateChoreInput): Prom
       input.rewardAmount ?? 0,
       input.dueTime ?? null,
       input.requiresApproval ?? false,
+      input.requiresPhoto ?? false,
     ]
   )
   return rows[0]
@@ -75,8 +98,8 @@ export async function ensureTodayInstances(householdId: string, dueOn: string): 
   const dow = WEEKDAY_CODES[new Date(dueOn + 'T00:00:00').getDay()]
   await query(
     `insert into chore_instances
-       (household_id, chore_id, person_id, due_on, reward_currency, reward_amount, requires_approval)
-     select household_id, id, person_id, $2::date, reward_currency, reward_amount, requires_approval
+       (household_id, chore_id, person_id, due_on, reward_currency, reward_amount, requires_approval, requires_photo)
+     select household_id, id, person_id, $2::date, reward_currency, reward_amount, requires_approval, requires_photo
        from chores
       where household_id = $1 and is_active and deleted_at is null and rrule is not null
         and (
@@ -196,7 +219,7 @@ async function streaksByChore(householdId: string, dueOn: string): Promise<Map<s
 export async function listTodayInstances(householdId: string, dueOn: string): Promise<TodayInstance[]> {
   const { rows } = await query<QueryResultRow>(
     `select ci.id, ci.status, ci.reward_amount, ci.reward_currency, ci.person_id, ci.requires_approval,
-            ci.due_on::text as due_on,
+            ci.requires_photo, ci.proof_storage_key, ci.had_proof, ci.due_on::text as due_on,
             c.id as chore_id, c.title as chore_title, c.emoji, c.rrule,
             p.name as person_name, p.avatar_emoji, p.color_hex
        from chore_instances ci
@@ -222,6 +245,9 @@ export async function listTodayInstances(householdId: string, dueOn: string): Pr
     rewardCurrency: r.reward_currency,
     rrule: r.rrule,
     requiresApproval: r.requires_approval,
+    requiresPhoto: r.requires_photo,
+    proofUrl: mediaUrl(r.proof_storage_key),
+    hadProof: r.had_proof,
     streak: streaks.get(r.chore_id) ?? 0,
   }))
 }
@@ -231,7 +257,7 @@ export async function listTodayInstances(householdId: string, dueOn: string): Pr
 export async function listAwaitingInstances(householdId: string): Promise<TodayInstance[]> {
   const { rows } = await query<QueryResultRow>(
     `select ci.id, ci.status, ci.reward_amount, ci.reward_currency, ci.person_id, ci.requires_approval,
-            ci.due_on::text as due_on,
+            ci.requires_photo, ci.proof_storage_key, ci.had_proof, ci.due_on::text as due_on,
             c.id as chore_id, c.title as chore_title, c.emoji, c.rrule,
             p.name as person_name, p.avatar_emoji, p.color_hex
        from chore_instances ci
@@ -256,6 +282,9 @@ export async function listAwaitingInstances(householdId: string): Promise<TodayI
     rewardCurrency: r.reward_currency,
     rrule: r.rrule,
     requiresApproval: r.requires_approval,
+    requiresPhoto: r.requires_photo,
+    proofUrl: mediaUrl(r.proof_storage_key),
+    hadProof: r.had_proof,
     streak: 0,
   }))
 }
@@ -270,6 +299,7 @@ export const UPDATABLE_CHORE: Record<string, string> = {
   isActive: 'is_active',
   rrule: 'rrule',
   requiresApproval: 'requires_approval',
+  requiresPhoto: 'requires_photo',
 }
 
 export async function updateChore(
@@ -326,6 +356,7 @@ export async function updateChore(
     let j = 1
     for (const [field, column] of [
       ['requiresApproval', 'requires_approval'],
+      ['requiresPhoto', 'requires_photo'],
       ['rewardAmount', 'reward_amount'],
       ['rewardCurrency', 'reward_currency'],
     ] as const) {
@@ -369,6 +400,9 @@ export function presentInstance(i: ChoreInstanceRow) {
     completedAt: i.completed_at,
     rewardAmount: i.reward_amount,
     awarded: i.awarded,
+    requiresPhoto: i.requires_photo,
+    proofUrl: mediaUrl(i.proof_storage_key),
+    hadProof: i.had_proof,
   }
 }
 
@@ -385,8 +419,14 @@ async function awardStars(client: PoolClient, tenant: Tenant, inst: ChoreInstanc
 }
 
 // Mark done + award stars. If the chore needs a parent's OK, park it in 'awaiting'
-// (no stars yet — a parent approves later). Idempotent.
-export async function completeInstance(tenant: Tenant, id: string): Promise<ChoreInstanceRow | null> {
+// (no stars yet — a parent approves later). If it needs a photo proof, a blob
+// `key` must be supplied (or already stored) — otherwise ProofRequiredError.
+// Idempotent.
+export async function completeInstance(
+  tenant: Tenant,
+  id: string,
+  proof?: { storageKey?: string | null; contentType?: string | null }
+): Promise<ChoreInstanceRow | null> {
   const client = await getPool().connect()
   try {
     await client.query('begin')
@@ -403,10 +443,20 @@ export async function completeInstance(tenant: Tenant, id: string): Promise<Chor
       await client.query('commit')
       return inst
     }
+    const newKey = proof?.storageKey?.trim() || null
+    if (inst.requires_photo && !newKey && !inst.proof_storage_key) {
+      await client.query('rollback')
+      throw new ProofRequiredError()
+    }
     const nextStatus = inst.requires_approval ? 'awaiting' : 'done'
     const upd = await client.query<ChoreInstanceRow>(
-      `update chore_instances set status=$2, completed_by=$1, completed_at=now() where id=$3 returning *`,
-      [tenant.personId, nextStatus, id]
+      `update chore_instances
+          set status=$2, completed_by=$1, completed_at=now(),
+              proof_storage_key=coalesce($4, proof_storage_key),
+              proof_content_type=coalesce($5, proof_content_type),
+              had_proof=(had_proof or $4 is not null)
+        where id=$3 returning *`,
+      [tenant.personId, nextStatus, id, newKey, proof?.contentType?.trim() || null]
     )
     const updated = upd.rows[0]
     if (nextStatus === 'done' && (await awardStars(client, tenant, updated, id))) updated.awarded = true
@@ -448,14 +498,22 @@ export async function approveInstance(tenant: Tenant, id: string): Promise<Chore
   }
 }
 
-// Parent rejects an 'awaiting' instance → back to 'pending' for a redo.
+// Parent rejects an 'awaiting' instance → back to 'pending' for a redo. The proof
+// photo (if any) is cleared and its blob deleted, so the redo starts fresh.
 export async function rejectInstance(tenant: Tenant, id: string): Promise<ChoreInstanceRow | null> {
+  const prev = await query<{ proof_storage_key: string | null }>(
+    `select proof_storage_key from chore_instances
+       where household_id=$1 and id=$2 and status='awaiting' and deleted_at is null`,
+    [tenant.householdId, id]
+  )
   const { rows } = await query<ChoreInstanceRow>(
-    `update chore_instances set status='pending', completed_by=null, completed_at=null
+    `update chore_instances set status='pending', completed_by=null, completed_at=null,
+         proof_storage_key=null, proof_content_type=null, had_proof=false
        where household_id=$1 and id=$2 and status='awaiting' and deleted_at is null
        returning *`,
     [tenant.householdId, id]
   )
+  if (rows[0]) deleteBlob(prev.rows[0]?.proof_storage_key)
   return rows[0] ?? null
 }
 
@@ -474,10 +532,12 @@ export async function uncompleteInstance(tenant: Tenant, id: string): Promise<Ch
       return null
     }
     const upd = await client.query<ChoreInstanceRow>(
-      `update chore_instances set status='pending', completed_by=null, completed_at=null where id=$1 returning *`,
+      `update chore_instances set status='pending', completed_by=null, completed_at=null,
+           proof_storage_key=null, proof_content_type=null, had_proof=false where id=$1 returning *`,
       [id]
     )
     const updated = upd.rows[0]
+    if (inst.proof_storage_key) deleteBlob(inst.proof_storage_key)
     if (inst.awarded && inst.reward_amount && inst.person_id) {
       await client.query(
         `insert into ledger_entries (household_id, person_id, currency, amount, reason, ref_type, ref_id, created_by)
@@ -516,5 +576,82 @@ export function presentChore(c: ChoreRow) {
     dueTime: c.due_time,
     isActive: c.is_active,
     requiresApproval: (c as { requires_approval?: boolean }).requires_approval ?? false,
+    requiresPhoto: (c as { requires_photo?: boolean }).requires_photo ?? false,
   }
+}
+
+// ── Stored proof photos (Settings → review/manage) ───────────────────────────
+// The currently-kept proof photos, so a parent can look back and delete them by
+// hand (the home for the "keep until I delete them" retention option). Scoped to
+// settled ('done') instances — awaiting proofs are managed via approve/reject.
+export interface StoredProof {
+  instanceId: string
+  choreTitle: string
+  emoji: string | null
+  personName: string | null
+  personAvatar: string | null
+  personColor: string | null
+  proofUrl: string | null
+  completedAt: Date | null
+}
+
+export async function listStoredProofs(householdId: string): Promise<StoredProof[]> {
+  const { rows } = await query<QueryResultRow>(
+    `select ci.id, ci.proof_storage_key, ci.completed_at,
+            c.title as chore_title, c.emoji,
+            p.name as person_name, p.avatar_emoji, p.color_hex
+       from chore_instances ci
+       join chores c on c.id = ci.chore_id
+       left join persons p on p.id = ci.person_id
+      where ci.household_id = $1 and ci.proof_storage_key is not null
+        and ci.status = 'done' and ci.deleted_at is null
+      order by ci.completed_at desc nulls last`,
+    [householdId]
+  )
+  return rows.map((r) => ({
+    instanceId: r.id,
+    choreTitle: r.chore_title,
+    emoji: r.emoji,
+    personName: r.person_name,
+    personAvatar: r.avatar_emoji,
+    personColor: r.color_hex,
+    proofUrl: mediaUrl(r.proof_storage_key),
+    completedAt: r.completed_at,
+  }))
+}
+
+// Delete one stored proof: null the key/content-type (keep had_proof) + drop the
+// blob. Returns false when there's nothing to delete.
+export async function deleteStoredProof(householdId: string, id: string): Promise<boolean> {
+  const prev = await query<{ proof_storage_key: string | null }>(
+    `select proof_storage_key from chore_instances
+       where household_id = $1 and id = $2 and proof_storage_key is not null and deleted_at is null`,
+    [householdId, id]
+  )
+  const { rowCount } = await query(
+    `update chore_instances set proof_storage_key = null, proof_content_type = null
+       where household_id = $1 and id = $2 and proof_storage_key is not null and deleted_at is null`,
+    [householdId, id]
+  )
+  if (rowCount) deleteBlob(prev.rows[0]?.proof_storage_key)
+  return !!rowCount
+}
+
+// Delete every stored (settled) proof for a household. Returns how many.
+export async function clearStoredProofs(householdId: string): Promise<number> {
+  const { rows } = await query<{ proof_storage_key: string }>(
+    `with cleared as (
+       select id, proof_storage_key from chore_instances
+        where household_id = $1 and proof_storage_key is not null
+          and status = 'done' and deleted_at is null
+        for update
+     ), upd as (
+       update chore_instances ci set proof_storage_key = null, proof_content_type = null
+         from cleared e where ci.id = e.id
+     )
+     select proof_storage_key from cleared`,
+    [householdId]
+  )
+  for (const r of rows) deleteBlob(r.proof_storage_key)
+  return rows.length
 }

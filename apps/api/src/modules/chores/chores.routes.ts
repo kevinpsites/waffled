@@ -23,13 +23,58 @@ import {
   presentChore,
   presentInstance,
   UPDATABLE_CHORE,
+  ProofRequiredError,
+  listStoredProofs,
+  deleteStoredProof,
+  clearStoredProofs,
 } from './chores.service'
+import { getProofTtlDays, setProofTtlDays } from './chore-proof-cleanup.service'
 
 type Api = ReturnType<typeof createAPI>
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function registerChoreRoutes(api: Api): void {
+  // Household chore settings — currently just the photo-proof retention window.
+  api.get('/api/chores/settings', async (req: Request) => {
+    const tenant = await requireTenant(req)
+    return { proofTtlDays: await getProofTtlDays(tenant.householdId) }
+  })
+
+  api.put('/api/chores/settings', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const body = (req.body ?? {}) as { proofTtlDays?: unknown }
+    if (typeof body.proofTtlDays !== 'number' || !Number.isFinite(body.proofTtlDays) || body.proofTtlDays < 0) {
+      return res.status(400).json({ error: 'BadRequest', message: 'proofTtlDays must be a non-negative number' })
+    }
+    return { proofTtlDays: await setProofTtlDays(tenant.householdId, body.proofTtlDays) }
+  })
+
+  // Stored proof photos — the review/manage surface (admins). A separate path from
+  // /api/chores/:id so the collection DELETE (clear-all) can't be read as :id.
+  api.get('/api/chore-proofs', async (req: Request) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    return { proofs: await listStoredProofs(tenant.householdId) }
+  })
+
+  api.delete('/api/chore-proofs/:id', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'proof not found' })
+    const ok = await deleteStoredProof(tenant.householdId, id)
+    if (!ok) return res.status(404).json({ error: 'NotFound', message: 'proof not found' })
+    return res.status(204).send('')
+  })
+
+  api.delete('/api/chore-proofs', async (req: Request) => {
+    const tenant = await requireTenant(req)
+    requireAdmin(tenant)
+    return { cleared: await clearStoredProofs(tenant.householdId) }
+  })
+
   // Create a chore (admins set up the family's chores).
   api.post('/api/chores', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
@@ -104,9 +149,21 @@ export function registerChoreRoutes(api: Api): void {
     const tenant = await requireTenant(req)
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
-    const inst = await completeInstance(tenant, id)
-    if (!inst) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
-    return { instance: presentInstance(inst) }
+    const body = (req.body ?? {}) as { storageKey?: unknown; contentType?: unknown }
+    const proof = {
+      storageKey: typeof body.storageKey === 'string' ? body.storageKey : null,
+      contentType: typeof body.contentType === 'string' ? body.contentType : null,
+    }
+    try {
+      const inst = await completeInstance(tenant, id, proof)
+      if (!inst) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
+      return { instance: presentInstance(inst) }
+    } catch (err) {
+      if (err instanceof ProofRequiredError) {
+        return res.status(422).json({ error: 'ProofRequired', message: err.message })
+      }
+      throw err
+    }
   })
 
   api.post('/api/chore-instances/:id/uncomplete', async (req: Request, res: Response) => {
