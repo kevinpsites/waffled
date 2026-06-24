@@ -39,6 +39,10 @@ struct NookAPI: Sendable {
 
     enum APIError: Error { case http(Int, String) }
 
+    /// One shared decoder (default config) — JSONDecoder is reusable and decoding is
+    /// thread-safe, so there's no reason to allocate one per request.
+    static let decoder = JSONDecoder()
+
     // MARK: built-in auth (login / refresh / logout)
     //
     // The contract the web uses, verbatim — token-based JSON, no cookies. These
@@ -62,7 +66,7 @@ struct NookAPI: Sendable {
         let req = URLRequest(url: url("/api/auth/status"))
         let (data, resp) = try await URLSession.shared.data(for: req)
         try check(resp, data)
-        return try JSONDecoder().decode(AuthStatus.self, from: data)
+        return try Self.decoder.decode(AuthStatus.self, from: data)
     }
 
     /// Exchange email + password for an access + refresh pair.
@@ -73,7 +77,7 @@ struct NookAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(["email": email, "password": password])
         let (data, resp) = try await URLSession.shared.data(for: req)
         try check(resp, data)
-        return try JSONDecoder().decode(Session.self, from: data)
+        return try Self.decoder.decode(Session.self, from: data)
     }
 
     /// The deep link the OIDC flow returns to (intercepted by ASWebAuthenticationSession).
@@ -93,7 +97,7 @@ struct NookAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(["code": code])
         let (data, resp) = try await URLSession.shared.data(for: req)
         try check(resp, data)
-        return try JSONDecoder().decode(Session.self, from: data)
+        return try Self.decoder.decode(Session.self, from: data)
     }
 
     /// Best-effort server-side revocation of a refresh token (logout).
@@ -111,7 +115,7 @@ struct NookAPI: Sendable {
         authorize(&req)
         let (data, resp) = try await perform(req)
         try check(resp, data)
-        return try JSONDecoder().decode(TokenResponse.self, from: data)
+        return try Self.decoder.decode(TokenResponse.self, from: data)
     }
 
     struct CaptureResponse: Decodable {
@@ -129,7 +133,7 @@ struct NookAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(["text": text])
         let (data, resp) = try await perform(req)
         try check(resp, data)
-        return try JSONDecoder().decode(CaptureResponse.self, from: data)
+        return try Self.decoder.decode(CaptureResponse.self, from: data)
     }
 
     /// Preload the model (fire-and-forget) so the first parse isn't a cold start.
@@ -228,7 +232,7 @@ struct NookAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await perform(req)
         try check(resp, data)
-        return try JSONDecoder().decode(PlanWeekResult.self, from: data)
+        return try Self.decoder.decode(PlanWeekResult.self, from: data)
     }
 
     /// The result of an AI "plan my month" run: drafted nights (`suggestions`) plus
@@ -269,7 +273,7 @@ struct NookAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await perform(req)
         try check(resp, data)
-        return try JSONDecoder().decode(PlanMonthResult.self, from: data)
+        return try Self.decoder.decode(PlanMonthResult.self, from: data)
     }
 
     struct RecipeRef: Decodable { let id: String; let title: String? }
@@ -1687,7 +1691,7 @@ struct NookAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await perform(req)
         try check(resp, data)
-        return try JSONDecoder().decode(T.self, from: data)
+        return try Self.decoder.decode(T.self, from: data)
     }
 
     /// PATCH an arbitrary Encodable body and decode the JSON response. Optionals in
@@ -1701,7 +1705,7 @@ struct NookAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await perform(req)
         try check(resp, data)
-        return try JSONDecoder().decode(T.self, from: data)
+        return try Self.decoder.decode(T.self, from: data)
     }
 
     /// POST/PATCH (no body) and decode the JSON response, throwing on non-2xx.
@@ -1711,7 +1715,7 @@ struct NookAPI: Sendable {
         authorize(&req)
         let (data, resp) = try await perform(req)
         try check(resp, data)
-        return try JSONDecoder().decode(T.self, from: data)
+        return try Self.decoder.decode(T.self, from: data)
     }
 
     /// GET `path` and decode the JSON body, throwing on non-2xx.
@@ -1720,7 +1724,7 @@ struct NookAPI: Sendable {
         authorize(&req)
         let (data, resp) = try await perform(req)
         try check(resp, data)
-        return try JSONDecoder().decode(T.self, from: data)
+        return try Self.decoder.decode(T.self, from: data)
     }
 
     /// DELETE `path`, throwing on non-2xx (204 is success).

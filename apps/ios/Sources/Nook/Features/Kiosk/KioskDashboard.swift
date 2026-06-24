@@ -52,9 +52,12 @@ struct KioskDashboard: View {
         .background(NK.canvas)
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .task { await sync.loadIdentity() }
-        .task(id: "\(tz.identifier)|\(sync.choresRev)|\(sync.groceryRev)|\(sync.mealsRev)|\(sync.goalsRev)") {
-            await model.load(todayKey: todayKey)
-        }
+        // Per-domain reloads: each fires on appear (initial load) and only when its own
+        // bus bumps — so a grocery toggle no longer reloads chores + meals + weather.
+        .task(id: "\(tz.identifier)|\(sync.choresRev)") { await model.loadChores() }
+        .task(id: "\(tz.identifier)|\(sync.mealsRev)") { await model.loadMeals(todayKey: todayKey) }
+        .task(id: "\(tz.identifier)|\(sync.groceryRev)") { await model.loadGrocery() }
+        .task(id: tz.identifier) { await model.loadWeather() }
         // Pinned-banner queues: approvals refresh on chore/reward actions; the review
         // queue refreshes whenever a review/goal action bumps the goals bus.
         .task(id: "\(sync.choresRev)|\(sync.rewardsRev)") { await approvals.load() }
@@ -603,20 +606,35 @@ final class KioskTodayModel {
     var choreTotal: Int { chores.reduce(0) { $0 + $1.total } }
     var groceryActive: [NookAPI.ListItemDTO] { grocery.filter { !$0.checked || settling.contains($0.id) } }
 
+    /// Full initial load — runs each domain in parallel. Per-domain methods below let
+    /// the view refresh just the domain whose `rev` bumped (e.g. a grocery toggle
+    /// reloads only grocery, not chores + meals + weather).
     func load(todayKey: String) async {
-        async let choresF = (try? await api.choresToday()) ?? []
-        async let mealsF = (try? await api.mealsWeek(start: todayKey)) ?? []
-        async let boardF = try? await api.groceryBoard()
-        async let weatherF = try? await api.weather()
-        let (c, m, b, w) = await (choresF, mealsF, boardF, weatherF)
+        async let a: () = loadChores()
+        async let b: () = loadMeals(todayKey: todayKey)
+        async let c: () = loadGrocery()
+        async let d: () = loadWeather()
+        _ = await (a, b, c, d)
+        loaded = true
+    }
 
-        chores = c.filter { $0.total > 0 }
-        let dinners = m.filter { $0.mealType == "dinner" }
+    func loadChores() async {
+        chores = ((try? await api.choresToday()) ?? []).filter { $0.total > 0 }
+        loaded = true
+    }
+
+    func loadMeals(todayKey: String) async {
+        let dinners = ((try? await api.mealsWeek(start: todayKey)) ?? []).filter { $0.mealType == "dinner" }
         tonight = dinners.first(where: { $0.date == todayKey }).map { TonightMeal($0) }
         weekDinners = dinners.sorted { $0.date < $1.date }
-        grocery = b?.items ?? []
-        weather = w
-        loaded = true
+    }
+
+    func loadGrocery() async {
+        grocery = (try? await api.groceryBoard())?.items ?? []
+    }
+
+    func loadWeather() async {
+        weather = try? await api.weather()
     }
 
     /// Quick-add a grocery item from the Today card, then refresh the list. Uses the
@@ -625,7 +643,7 @@ final class KioskTodayModel {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         try? await api.addListItem(listId: "grocery", name: trimmed, quantity: nil)
-        if let b = try? await api.groceryBoard() { grocery = b.items }
+        await loadGrocery()
     }
 
     /// Optimistically toggle a grocery item, reverting on failure. A check-off stays
