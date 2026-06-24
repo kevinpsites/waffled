@@ -237,8 +237,7 @@ struct DisplayKioskSettingsView: View {
             HStack {
                 Text(title).font(.system(size: 15, weight: .medium)).foregroundStyle(NK.ink)
                 Spacer(minLength: 8)
-                Text(value).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
-                Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                NookSettingsMenuLabel(value: value)
             }
             .padding(.vertical, 15)
         }

@@ -246,6 +246,19 @@ struct NookMenuPill: View {
     }
 }
 
+/// The standard Settings dropdown affordance — a value plus the iOS up/down
+/// "pick from a list" glyph. Used across the Settings screens so every settings
+/// menu reads the same. (Distinct from NookMenuPill, the app-wide compact pill.)
+struct NookSettingsMenuLabel: View {
+    var value: String
+    var body: some View {
+        HStack(spacing: 5) {
+            Text(value).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+            Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+        }
+    }
+}
+
 /// The Deny/Approve button pair on parent approval rows. Shared by the Chores and
 /// Rewards "Needs your OK" cards so both look identical. Kiosk (iPad) gets inline
 /// capsules; phone gets full-width buttons. Stateless — the approve/deny work stays

@@ -113,7 +113,7 @@ struct FamilyPeopleSettingsView: View {
                     Menu {
                         Button("Sunday") { commit(["weekStart": .string("sunday")]) }
                         Button("Monday") { commit(["weekStart": .string("monday")]) }
-                    } label: { menuLabel(h.weekStart.capitalized) }
+                    } label: { NookSettingsMenuLabel(value: h.weekStart.capitalized) }
                 }
                 Divider().background(NK.hair)
                 fieldRow("🌐", "Time zone") {
@@ -121,7 +121,7 @@ struct FamilyPeopleSettingsView: View {
                         ForEach(zoneOptions(h.timezone), id: \.0) { z in
                             Button(z.1) { commit(["timezone": .string(z.0)]) }
                         }
-                    } label: { menuLabel(zoneLabel(h.timezone)) }
+                    } label: { NookSettingsMenuLabel(value: zoneLabel(h.timezone)) }
                 }
                 Divider().background(NK.hair)
                 fieldRow("📍", "Location") {
@@ -145,13 +145,6 @@ struct FamilyPeopleSettingsView: View {
             control()
         }
         .padding(.vertical, 12)
-    }
-
-    private func menuLabel(_ t: String) -> some View {
-        HStack(spacing: 5) {
-            Text(t).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-            Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
-        }
     }
 
     private func zoneOptions(_ current: String) -> [(String, String)] {
