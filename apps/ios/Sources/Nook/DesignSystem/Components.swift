@@ -167,6 +167,7 @@ struct WeekdayToggleChip: View {
     var body: some View {
         Button(action: action) {
             Text(label).font(.system(size: 14, weight: .heavy)).foregroundStyle(isOn ? .white : NK.ink2)
+                .lineLimit(1).minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity).frame(height: 44)
                 .background(isOn ? NK.primary : NK.card)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))

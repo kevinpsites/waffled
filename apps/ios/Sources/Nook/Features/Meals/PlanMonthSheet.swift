@@ -129,7 +129,7 @@ struct PlanMonthSheet: View {
 
                     NookCard(padding: 14) {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("Which weeknights?").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                            Text("Which days?").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
                             HStack(spacing: 6) { ForEach(0..<7, id: \.self) { weekdayChip($0) } }
                         }
                     }

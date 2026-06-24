@@ -232,7 +232,8 @@ struct PlanWeekSheet: View {
 
     private func dayChip(_ d: Date) -> some View {
         let key = ymd(d)
-        return WeekdayToggleChip(label: dowLetter(d), isOn: selectedDays.contains(key)) {
+        // 3-letter weekday (Sun/Mon/…) to match the Plan-my-month selector exactly.
+        return WeekdayToggleChip(label: DateFmt.string(d, "EEE", sync.householdTz), isOn: selectedDays.contains(key)) {
             if selectedDays.contains(key) { selectedDays.remove(key) } else { selectedDays.insert(key) }
         }
     }
@@ -598,7 +599,6 @@ struct PlanWeekSheet: View {
     }
     private func ymd(_ d: Date) -> String { DateFmt.string(d, "yyyy-MM-dd", sync.householdTz) }
     /// Narrow weekday: S M T W T F S
-    private func dowLetter(_ d: Date) -> String { DateFmt.string(d, "EEEEE", sync.householdTz) }
 
     // MARK: helpers
 
