@@ -56,7 +56,8 @@ struct PhotoAddSheet: View {
 
                     if !rows.isEmpty {
                         NookFieldCard(title: "Album for all (optional)") {
-                            TextField("e.g. Summer trip", text: $sharedAlbum).nkField()
+                            TextField("e.g. Summer trip", text: $sharedAlbum)
+                                .padding(.horizontal, 13).padding(.vertical, 11).nkField(fill: NK.panel)
                                 .onChange(of: sharedAlbum) { _, new in
                                     // Seed empty rows with the shared album.
                                     for i in rows.indices where rows[i].album.isEmpty { rows[i].album = new }
@@ -124,9 +125,11 @@ struct PhotoAddSheet: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 8) {
-                    TextField("Caption", text: row.caption).nkField()
+                    TextField("Caption", text: row.caption)
+                        .padding(.horizontal, 13).padding(.vertical, 11).nkField(fill: NK.panel)
                     HStack(spacing: 8) {
-                        TextField("Album", text: row.album).nkField()
+                        TextField("Album", text: row.album)
+                            .padding(.horizontal, 13).padding(.vertical, 11).nkField(fill: NK.panel)
                         Button { row.wrappedValue.isFavorite.toggle() } label: {
                             Text(row.wrappedValue.isFavorite ? "❤️" : "🤍").font(.system(size: 20))
                                 .frame(width: 44, height: 44)

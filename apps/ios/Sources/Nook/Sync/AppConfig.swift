@@ -9,11 +9,17 @@ enum AppConfig {
     private static let urlKey = "nook.apiBaseURL"
     private static let tokenKey = "nook.devToken"
 
-    /// Our API base. The iOS simulator reaches the host Mac on `localhost`.
+    /// Our API base — the single public origin Caddy fronts (it proxies `/api/*` to the
+    /// api container AND serves uploaded media at `/media/*`). It must be the Caddy
+    /// origin, NOT the api's own port: the api alone (`:3000`) doesn't serve `/media`, so
+    /// photo/recipe/proof images would 404 and fall back to a placeholder. The default
+    /// targets the compose stack's Caddy (`:8080` on the host); the simulator reaches the
+    /// host Mac on `localhost`. On a real device, set the Server address to the Mac's LAN
+    /// IP on that same Caddy port. Override via the Settings sheet or `NOOK_API_URL`.
     static var apiBaseURL: String {
         env("NOOK_API_URL")
             ?? UserDefaults.standard.string(forKey: urlKey)
-            ?? "http://localhost:3000"
+            ?? "http://localhost:8080"
     }
 
     /// Local HS256 session token (mint via `just token` / `nook token`). The API's

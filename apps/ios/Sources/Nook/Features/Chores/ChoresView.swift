@@ -96,13 +96,20 @@ final class ChoresModel {
     func approve(_ id: String) async { do { try await api.approveChore(id: id); await load() } catch { self.error = true } }
     func reject(_ id: String) async { do { try await api.rejectChore(id: id); await load() } catch { self.error = true } }
 
-    /// Create (choreId nil) or edit a chore definition, then reload the day.
-    func save(choreId: String?, body: [String: JSONValue]) async {
+    /// Create (choreId nil) or edit a chore definition, then reload the day. Returns nil
+    /// on success, else a user-facing error message (so the editor can show it instead of
+    /// dismissing on a silent failure — e.g. a non-admin hitting the admin-only endpoint).
+    func save(choreId: String?, body: [String: JSONValue]) async -> String? {
         do {
             if let choreId { try await api.updateChore(id: choreId, body) }
             else { try await api.createChore(body) }
             await load()
-        } catch { self.error = true }
+            return nil
+        } catch let NookAPI.APIError.http(code, _) where code == 401 || code == 403 {
+            return "Only a parent can add or edit chores. Switch to a parent to make changes."
+        } catch {
+            return "Couldn’t save this chore — please try again."
+        }
     }
 
     func delete(choreId: String) async {
@@ -203,7 +210,7 @@ struct ChoresView: View {
         .task { await sync.loadCurrencies() }
         .sheet(item: $editor) { target in
             ChoreEditSheet(members: sync.members, target: target,
-                onSave: { choreId, body in Task { await model.save(choreId: choreId, body: body) } },
+                onSave: { choreId, body in await model.save(choreId: choreId, body: body) },
                 onDelete: { choreId in Task { await model.delete(choreId: choreId) } })
         }
         // ── Photo-proof capture ──────────────────────────────────────────────
@@ -780,7 +787,9 @@ struct ChoreEditSheet: View {
     @Environment(SyncManager.self) private var sync
     let members: [SyncedMember]
     let target: ChoresView.ChoreEditorTarget
-    let onSave: (String?, [String: JSONValue]) -> Void
+    /// Persist the chore. Returns nil on success, else a user-facing error message
+    /// (so the sheet stays open and shows why, instead of dismissing on a silent fail).
+    let onSave: (String?, [String: JSONValue]) async -> String?
     let onDelete: (String) -> Void
 
     private static let days: [(code: String, label: String)] = [
@@ -799,10 +808,12 @@ struct ChoreEditSheet: View {
     @State private var requiresApproval: Bool
     @State private var requiresPhoto: Bool
     @State private var confirmDelete = false
+    @State private var saving = false
+    @State private var saveError: String?
     @FocusState private var titleFocused: Bool
 
     init(members: [SyncedMember], target: ChoresView.ChoreEditorTarget,
-         onSave: @escaping (String?, [String: JSONValue]) -> Void, onDelete: @escaping (String) -> Void) {
+         onSave: @escaping (String?, [String: JSONValue]) async -> String?, onDelete: @escaping (String) -> Void) {
         self.members = members; self.target = target; self.onSave = onSave; self.onDelete = onDelete
         switch target {
         case let .new(pid):
@@ -834,6 +845,14 @@ struct ChoreEditSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    if let saveError {
+                        Text(saveError)
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.primaryD)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(NK.primary.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    }
                     HStack(spacing: 12) {
                         labeled("Title") {
                             TextField("Feed the dog", text: $title)
@@ -959,7 +978,7 @@ struct ChoreEditSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(editing ? "Save" : "Add") { submit() }.fontWeight(.semibold).disabled(!canSave)
+                    Button(editing ? "Save" : "Add") { submit() }.fontWeight(.semibold).disabled(!canSave || saving)
                 }
             }
             // New chore: land in the title field.
@@ -1017,8 +1036,12 @@ struct ChoreEditSheet: View {
         if currencies.count > 1, let key = effectiveCurrencyKey {
             body["rewardCurrency"] = .string(key)
         }
-        onSave(editChoreId, body)
-        dismiss()
+        Task {
+            saving = true; saveError = nil
+            let err = await onSave(editChoreId, body)
+            saving = false
+            if let err { saveError = err } else { dismiss() }
+        }
     }
 
     private func buildRrule() -> String {
