@@ -25,6 +25,9 @@ struct KioskDashboard: View {
     @State private var reviewSuggestions: [NookAPI.GoalSuggestionItem] = []
     @State private var showApprovals = false
     @State private var showReview = false
+    /// Quick-add field on the Today grocery card.
+    @State private var groceryDraft = ""
+    @FocusState private var groceryFocused: Bool
     /// The chosen Today layout (persisted) — see `DashLayout`.
     @AppStorage("nook.kioskDashLayout") private var layoutRaw = DashLayout.balanced.rawValue
     private var layout: DashLayout { DashLayout(rawValue: layoutRaw) ?? .balanced }
@@ -160,9 +163,19 @@ struct KioskDashboard: View {
 
     // MARK: columns (preset layouts)
 
+    // Each column scrolls its own overflow within the fixed dashboard height, so a long
+    // grocery/chore stack stays reachable instead of being clipped off the bottom.
     private var agendaCol: some View { agendaColumn }
-    private var mealsCol: some View { VStack(spacing: 22) { tonightCard; weekDinnersCard; Spacer(minLength: 0) } }
-    private var choreGroceryCol: some View { VStack(spacing: 22) { choresCard; groceryCard; Spacer(minLength: 0) } }
+    private var mealsCol: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 22) { tonightCard; weekDinnersCard }.padding(.bottom, 8)
+        }
+    }
+    private var choreGroceryCol: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 22) { choresCard; groceryCard }.padding(.bottom, 8)
+        }
+    }
 
     /// Column specs (relative width weight + content) for the chosen layout — same
     /// cards, re-weighted so each preset gives its focus more room.
@@ -459,8 +472,37 @@ struct KioskDashboard: View {
                         .buttonStyle(.plain).padding(.top, 6)
                     }
                 }
+                groceryAddRow
             }
         }
+    }
+
+    /// Inline "add to grocery" field — type an item and hit return (or Add) without
+    /// leaving Today.
+    private var groceryAddRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "plus.circle.fill").font(.system(size: 22))
+                .foregroundStyle(groceryDraft.isEmpty ? NK.ink3 : NK.primary)
+            TextField("Add an item", text: $groceryDraft)
+                .font(.system(size: 17)).foregroundStyle(NK.ink)
+                .focused($groceryFocused)
+                .submitLabel(.done)
+                .onSubmit(addGroceryItem)
+            if !groceryDraft.isEmpty {
+                Button("Add", action: addGroceryItem)
+                    .font(.system(size: 15, weight: .bold)).foregroundStyle(NK.primary)
+                    .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 11)
+        .overlay(alignment: .top) { Rectangle().fill(NK.hair2).frame(height: 1) }
+    }
+
+    private func addGroceryItem() {
+        let name = groceryDraft
+        groceryDraft = ""
+        groceryFocused = true   // keep the keyboard up for rapid entry
+        Task { await model.addGrocery(name) }
     }
 
     private func groceryRow(_ item: NookAPI.ListItemDTO) -> some View {
@@ -574,6 +616,15 @@ final class KioskTodayModel {
         grocery = b?.items ?? []
         weather = w
         loaded = true
+    }
+
+    /// Quick-add a grocery item from the Today card, then refresh the list. Uses the
+    /// "grocery" list slug (same one `groceryBoard()` resolves).
+    func addGrocery(_ name: String) async {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        try? await api.addListItem(listId: "grocery", name: trimmed, quantity: nil)
+        if let b = try? await api.groceryBoard() { grocery = b.items }
     }
 
     /// Optimistically toggle a grocery item, reverting on failure.

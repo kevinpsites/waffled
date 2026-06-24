@@ -113,7 +113,7 @@ struct CaptureSheet: View {
             Button(action: parse) {
                 HStack {
                     if phase == .parsing { ProgressView().tint(.white) }
-                    Text(phase == .parsing ? "Understanding…" : "Understand")
+                    Text(phase == .parsing ? "Thinking…" : "Tell Nook")
                         .font(.system(size: 16, weight: .semibold))
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 13)

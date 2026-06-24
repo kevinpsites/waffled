@@ -200,20 +200,22 @@ struct MonthPlannerView: View {
         let isToday = ds == ymd(Date())
         let entry = dinnerByDate[ds]
 
-        let content = VStack(spacing: 2) {
+        // The iPad cells are much taller now — scale the text up to use that room.
+        let content = VStack(spacing: isKiosk ? 5 : 2) {
             HStack(spacing: 0) {
                 Text(dayNum(day))
-                    .font(.system(size: 11, weight: isToday ? .heavy : .semibold))
+                    .font(.system(size: isKiosk ? 14 : 11, weight: isToday ? .heavy : .semibold))
                     .foregroundStyle(isToday ? NK.primary : (inMonth ? NK.ink2 : NK.ink3))
                 Spacer(minLength: 0)
             }
             if let e = entry, inMonth {
-                Text(e.recipe?.emoji ?? (isEatingOut(e) ? "🍴" : "🍽️")).font(.system(size: 17))
-                Text(e.displayTitle).font(.system(size: 8.5, weight: .semibold)).foregroundStyle(NK.ink2)
+                if isKiosk { Spacer(minLength: 0) }
+                Text(e.recipe?.emoji ?? (isEatingOut(e) ? "🍴" : "🍽️")).font(.system(size: isKiosk ? 30 : 17))
+                Text(e.displayTitle).font(.system(size: isKiosk ? 13 : 8.5, weight: .semibold)).foregroundStyle(NK.ink2)
                     .lineLimit(2).multilineTextAlignment(.center).minimumScaleFactor(0.85)
             } else if inMonth {
                 Spacer(minLength: 0)
-                Image(systemName: "plus").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3.opacity(0.5))
+                Image(systemName: "plus").font(.system(size: isKiosk ? 16 : 11, weight: .bold)).foregroundStyle(NK.ink3.opacity(0.5))
             }
             Spacer(minLength: 0)
         }
