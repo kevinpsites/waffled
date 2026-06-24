@@ -122,12 +122,18 @@
 .pd-stage-cap .nk-serif { font-size: 30px; font-weight: 600; }
 .pd-stage-sub { font-size: 14px; font-weight: 600; opacity: .92; }
 .pd-side { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
-.pd-edit-pill { font-size: 12.5px; padding: 6px 12px; cursor: pointer; }
 .pd-edit { display: flex; flex-direction: column; gap: 12px; }
 .pd-edit-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
-.pd-ai { flex: 1; display: flex; gap: 12px; align-items: flex-start; padding: 15px 17px;
-  border-radius: var(--r-lg); background: linear-gradient(120deg,#efeafc,#f4eefe); }
-.pd-ai-t { font-size: 13.5px; font-weight: 700; color: var(--ai); }
+/* Album value rendered as a link in the Details card → opens the album view */
+.pd-album-link { margin-left: auto; border: 0; background: none; cursor: pointer;
+  font-size: 13px; font-weight: 700; color: var(--primary); display: inline-flex; align-items: center; gap: 4px; }
+.pd-album-link:hover { text-decoration: underline; }
+/* compact "view the rest of this album" CTA (content-sized, not full width/height) */
+.pd-album-cta { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 16px; border: 0; border-radius: var(--r-md); cursor: pointer;
+  background: var(--panel, rgba(0,0,0,.05)); color: var(--ink); font-size: 13.5px; font-weight: 700; }
+.pd-album-cta:hover { background: rgba(0,0,0,.09); }
+.pd-album-cta span[aria-hidden] { color: var(--ink-3); font-size: 16px; }
 
 /* ---- screensaver (full-screen takeover) ----------------------- */
 .ph-saver { position: fixed; inset: 0; z-index: 1000; overflow: hidden; cursor: pointer;

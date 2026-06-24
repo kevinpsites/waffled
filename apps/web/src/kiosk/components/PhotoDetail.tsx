@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { api, type Photo } from '../../lib/api'
-import { Icon } from '../icons'
 import { AlbumPicker } from './AlbumPicker'
 import { ConfirmDialog } from './ConfirmDialog'
 
@@ -32,6 +31,7 @@ export function PhotoDetail({
   albums = [],
   onClose,
   onSetScreensaver,
+  onOpenAlbum,
   onUpdated,
   onDeleted,
 }: {
@@ -40,6 +40,7 @@ export function PhotoDetail({
   albums?: string[]
   onClose: () => void
   onSetScreensaver: (p: Photo) => void
+  onOpenAlbum?: (album: string) => void
   onUpdated?: () => void
   onDeleted: () => void
 }) {
@@ -113,18 +114,15 @@ export function PhotoDetail({
                 <div className="nk-serif">{photo.caption}</div>
                 <div className="pd-stage-sub">
                   {fmtWeekday(photo.takenAt ?? photo.createdAt)}
-                  {photo.memory ? ` · ${memoryCount} photos in this memory` : ''}
+                  {photo.memory ? ` · ${photo.memory}` : ''}
                 </div>
               </div>
             </div>
 
             <div className="pd-side">
               <div className="card" style={{ padding: '18px 20px' }}>
-                <div className="card-h" style={{ fontSize: 17, marginBottom: 10, display: 'flex', alignItems: 'center' }}>
+                <div className="card-h" style={{ fontSize: 17, marginBottom: 10 }}>
                   Details
-                  {!editing && (
-                    <button type="button" className="pill pd-edit-pill" style={{ marginLeft: 'auto' }} onClick={startEdit}>✏️ Edit</button>
-                  )}
                 </div>
 
                 {editing ? (
@@ -162,7 +160,13 @@ export function PhotoDetail({
                   <>
                     <div className="set-row" style={{ padding: '11px 0' }}>
                       <div className="set-tx"><div className="st1">Album</div></div>
-                      <div className="tiny muted" style={{ fontWeight: 600, marginLeft: 'auto' }}>{photo.memory ?? '—'}</div>
+                      {photo.memory && onOpenAlbum ? (
+                        <button type="button" className="pd-album-link" style={{ marginLeft: 'auto' }} onClick={() => onOpenAlbum(photo.memory!)}>
+                          {photo.memory} <span aria-hidden>›</span>
+                        </button>
+                      ) : (
+                        <div className="tiny muted" style={{ fontWeight: 600, marginLeft: 'auto' }}>{photo.memory ?? '—'}</div>
+                      )}
                     </div>
                     <div className="set-row" style={{ padding: '11px 0' }}>
                       <div className="set-tx"><div className="st1">Added by</div></div>
@@ -180,14 +184,11 @@ export function PhotoDetail({
                 )}
               </div>
 
-              {photo.memory && (
-                <div className="pd-ai">
-                  <div className="ai-spark"><Icon name="spark" /></div>
-                  <div style={{ flex: 1 }}>
-                    <div className="pd-ai-t">Part of “{photo.memory}”</div>
-                    <div className="tiny muted">Nook grouped {memoryCount} photos from this trip. Want a printed photo book of this memory?</div>
-                  </div>
-                </div>
+              {photo.memory && onOpenAlbum && (
+                <button type="button" className="pd-album-cta" onClick={() => onOpenAlbum(photo.memory!)}>
+                  <span>View all {memoryCount} in “{photo.memory}”</span>
+                  <span aria-hidden>›</span>
+                </button>
               )}
             </div>
           </div>

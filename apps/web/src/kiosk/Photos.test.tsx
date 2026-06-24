@@ -108,7 +108,20 @@ describe('Photos home (family wall)', () => {
     // appears as a filter chip on the wall behind the overlay, so allow multiple.
     expect(screen.getAllByText('Lake Day').length).toBeGreaterThan(0)
     expect(screen.getByText('Kelly')).toBeInTheDocument()
-    expect(screen.getByText(/Part of “Lake Day”/)).toBeInTheDocument()
+    // album view CTA replaced the old "Part of …" AI box
+    expect(screen.getByText(/View all .* in “Lake Day”/)).toBeInTheDocument()
+  })
+
+  it('Album row + CTA open the album view (filters the wall)', async () => {
+    mockApi({ photos: [beach, cake, soccer] })
+    renderHome()
+
+    fireEvent.click(await screen.findByText('Beach day'))
+    // the "View all … in Lake Day" CTA closes the detail and filters the wall
+    fireEvent.click(await screen.findByText(/View all .* in “Lake Day”/))
+    await waitFor(() => expect(screen.queryByText('Details')).not.toBeInTheDocument())
+    // soccer (no album) is now hidden; the Lake Day chip is active
+    expect(screen.queryByAltText('Soccer win')).not.toBeInTheDocument()
   })
 
   it('plays the full-screen screensaver and wakes on tap', async () => {

@@ -58,8 +58,8 @@ export function Rail() {
         <RailLink key={s.path} screen={s} />
       ))}
       <div className="rail-spacer" />
-      <RailLink screen={SETTINGS} />
       <RailAccount />
+      <RailLink screen={SETTINGS} />
     </nav>
   )
 }

@@ -180,6 +180,22 @@ export function Photos() {
     refetch()
   }
 
+  // "Set as screensaver" from a photo: persist the household screensaver source to
+  // this photo's album (or all photos if it has none), then start the slideshow.
+  async function setScreensaverToAlbum(p: Photo) {
+    const patch = p.memory
+      ? ({ photoSource: 'album', photoAlbum: p.memory } as const)
+      : ({ photoSource: 'all', photoAlbum: null } as const)
+    try {
+      const next = await kioskApi.setDisplayConfig(patch)
+      setDisplayCfg(next)
+    } catch {
+      /* still play the preview even if persisting fails */
+    }
+    setDetailId(null)
+    setSaver(p)
+  }
+
   if (error) {
     return <div className="ph-empty">Sign this kiosk in to see photos.</div>
   }
@@ -259,9 +275,10 @@ export function Photos() {
           memoryCount={detail.memory ? photos.filter((p) => p.memory === detail.memory).length : 1}
           albums={albums}
           onClose={() => setDetailId(null)}
-          onSetScreensaver={(p) => {
+          onSetScreensaver={setScreensaverToAlbum}
+          onOpenAlbum={(album) => {
             setDetailId(null)
-            setSaver(p)
+            setAlbumFilter(album)
           }}
           onUpdated={refetch}
           onDeleted={refetch}
