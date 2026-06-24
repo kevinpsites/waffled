@@ -82,9 +82,4 @@ describe('PhotoAdd — upload', () => {
     expect(created[0]).toMatchObject({ isFavorite: true })
   })
 
-  it('shows a muted, non-clickable Shared album "soon" source', () => {
-    render(<PhotoAdd onClose={() => {}} onAdded={() => {}} />)
-    expect(screen.getByText(/Shared album/)).toBeInTheDocument()
-    expect(screen.getByText('coming soon')).toBeInTheDocument()
-  })
 })

@@ -138,10 +138,6 @@ export function PhotoAdd({
                 </button>
 
                 {uploadErr && <div className="ap-err tiny">{uploadErr}</div>}
-
-                <div className="ap-soon-note tiny muted">
-                  ☁️ Shared albums (Google&nbsp;Photos / iCloud) <span className="ap-soon-tag">coming soon</span>
-                </div>
               </div>
             ) : (
               <div className="ap-card">

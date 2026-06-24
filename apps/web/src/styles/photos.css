@@ -66,9 +66,6 @@
 .ap-drop-link { color: var(--primary); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .ap-drop-meta { margin-top: 14px; }
 .ap-err { color: var(--danger, #c0392b); font-weight: 700; }
-.ap-soon-note { display: inline-flex; align-items: center; gap: 8px; }
-.ap-soon-tag { font-size: 10.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
-  color: var(--ink-3); background: rgba(0,0,0,.06); border-radius: 999px; padding: 2px 8px; }
 
 /* staged state: a centered card — large preview over caption / album / favorite */
 .ap-card { width: min(560px, 100%); display: flex; flex-direction: column; gap: 20px;
