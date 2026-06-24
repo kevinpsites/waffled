@@ -174,6 +174,116 @@ struct PlanReshuffleButton: View {
     }
 }
 
+/// A single review-night card shared by PlanWeekSheet and PlanMonthSheet. Stateless:
+/// every bit of mutable state (locked/dirty/dragOverDate/redrafting/suggestions) stays
+/// in the parent and is threaded in as plain values + closures. The few wording/layout
+/// differences between week and month are parameterized:
+///   - `metaTags`: the small tags row, built by the parent (week vs month wording).
+///   - `belowTitleNote`: week shows its note as a line below the title; month passes nil
+///     (month folds the note into `metaTags` instead).
+///   - `onSkip`: month passes a closure → shows the trailing ✕; week passes nil.
+///   - `titleMultilineLeading`: week applies `.multilineTextAlignment(.leading)` after
+///     `.lineLimit(2)`; month applies only `.lineLimit(2)`.
+/// The view modifier order (padding → background → clipShape → lock overlay → busy
+/// overlay → animation → drag-target overlay → draggable → dropDestination) matches the
+/// originals 1:1 — order is semantically load-bearing for drag/drop + the lock border.
+struct MealPlanReviewCard: View {
+    let card: NookAPI.PlanCardDTO
+    let dayLabel: String
+    let isLocked: Bool
+    let isBusy: Bool
+    let isDragTarget: Bool
+    let metaTags: [String]
+    let belowTitleNote: String?
+    let titleMultilineLeading: Bool
+    var onSkip: (() -> Void)? = nil
+    let onSwap: () -> Void
+    let onPick: () -> Void
+    let onToggleLock: () -> Void
+    let onDrop: (String) -> Bool
+    let onDragTargetChange: (Bool) -> Void
+    let actionsDisabled: Bool
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                Text(card.emoji ?? "🍽️").font(.system(size: 26))
+                    .frame(width: 46, height: 46).background(RecipeGradient.forCategory(card.mealType))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(dayLabel).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
+                    titleText
+                    HStack(spacing: 8) {
+                        ForEach(metaTags, id: \.self) { PlanTag(text: $0) }
+                    }
+                    if let note = belowTitleNote, !note.isEmpty {
+                        Text(note).font(.system(size: 12)).foregroundStyle(NK.ink3).lineLimit(2)
+                    }
+                }
+                Spacer(minLength: 0)
+                if let onSkip {
+                    Button(action: onSkip) {
+                        Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                            .frame(width: 28, height: 28).background(NK.panel).clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            Divider().background(NK.hair)
+            HStack(spacing: 8) {
+                PlanActionChip(icon: "arrow.triangle.2.circlepath", label: "Swap", action: onSwap)
+                    .disabled(actionsDisabled)
+                PlanActionChip(icon: "book", label: "Pick", action: onPick)
+                    .disabled(actionsDisabled)
+                Spacer()
+                Button(action: onToggleLock) {
+                    HStack(spacing: 5) {
+                        Image(systemName: isLocked ? "lock.fill" : "lock.open")
+                            .font(.system(size: 12, weight: .bold))
+                        Text(isLocked ? "Locked" : "Lock").font(.system(size: 12, weight: .bold)).lineLimit(1).fixedSize()
+                    }
+                    .foregroundStyle(isLocked ? .white : NK.ink2)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(isLocked ? NK.primary : NK.panel).clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(13)
+        .background(NK.card)
+        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
+            .strokeBorder(isLocked ? NK.primary.opacity(0.45) : NK.hair, lineWidth: 1))
+        .overlay {
+            if isBusy {
+                RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).fill(NK.card.opacity(0.7))
+                    .overlay(ProgressView().controlSize(.small).tint(NK.ai))
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: isLocked)
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
+            .strokeBorder(isDragTarget ? NK.ai : .clear, lineWidth: 2))
+        .draggable(card.date) { PlanCardDragPreview(card: card) }
+        .dropDestination(for: String.self) { items, _ in
+            guard let s = items.first else { return false }
+            return onDrop(s)
+        } isTargeted: { onDragTargetChange($0) }
+    }
+
+    /// The title line. Week appends `.multilineTextAlignment(.leading)` after
+    /// `.lineLimit(2)`; month stops at `.lineLimit(2)`. Kept as distinct branches so
+    /// the modifier chain is byte-identical to each original.
+    @ViewBuilder private var titleText: some View {
+        if titleMultilineLeading {
+            Text(card.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                .lineLimit(2).multilineTextAlignment(.leading)
+        } else {
+            Text(card.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                .lineLimit(2)
+        }
+    }
+}
+
 /// The bottom Divider + full-width primary action button shared by both plan sheets.
 /// The parent passes the already-resolved `label` (e.g. "Add 5 & build list" /
 /// "Save month & build list"); when `isBusy` the bar shows a ProgressView.

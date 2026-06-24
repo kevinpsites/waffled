@@ -280,65 +280,27 @@ struct PlanWeekSheet: View {
 
     private func suggestionCard(_ card: NookAPI.PlanCardDTO) -> some View {
         let isLocked = locked.contains(card.date)
-        let busy = draftingDates.contains(card.date)
-        return VStack(spacing: 10) {
-            HStack(spacing: 12) {
-                Text(card.emoji ?? "🍽️").font(.system(size: 26))
-                    .frame(width: 46, height: 46).background(RecipeGradient.forCategory(card.mealType))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(MealPlanText.weekday(card.date, sync.householdTz)).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
-                    Text(card.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                        .lineLimit(2).multilineTextAlignment(.leading)
-                    HStack(spacing: 8) {
-                        if let m = card.minutes { PlanTag(text: "🕐 \(m)m") }
-                        PlanTag(text: card.recipeId != nil ? "📖 From library" : "✨ New dish")
-                    }
-                    if let note = card.note, !note.isEmpty {
-                        Text(note).font(.system(size: 12)).foregroundStyle(NK.ink3).lineLimit(2)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            Divider().background(NK.hair)
-            HStack(spacing: 8) {
-                PlanActionChip(icon: "arrow.triangle.2.circlepath", label: "Swap") { Task { await swap(card) } }
-                    .disabled(redrafting || isLocked)
-                PlanActionChip(icon: "book", label: "Pick") { pickTarget = PickTarget(date: card.date) }
-                    .disabled(redrafting || isLocked)
-                Spacer()
-                Button { toggleLock(card.date) } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: isLocked ? "lock.fill" : "lock.open")
-                            .font(.system(size: 12, weight: .bold))
-                        Text(isLocked ? "Locked" : "Lock").font(.system(size: 12, weight: .bold)).lineLimit(1).fixedSize()
-                    }
-                    .foregroundStyle(isLocked ? .white : NK.ink2)
-                    .padding(.horizontal, 12).padding(.vertical, 7)
-                    .background(isLocked ? NK.primary : NK.panel).clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(13)
-        .background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-            .strokeBorder(isLocked ? NK.primary.opacity(0.45) : NK.hair, lineWidth: 1))
-        .overlay {
-            if busy {
-                RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).fill(NK.card.opacity(0.7))
-                    .overlay(ProgressView().controlSize(.small).tint(NK.ai))
-            }
-        }
-        .animation(.easeInOut(duration: 0.15), value: isLocked)
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-            .strokeBorder(dragOverDate == card.date ? NK.ai : .clear, lineWidth: 2))
-        .draggable(card.date) { PlanCardDragPreview(card: card) }
-        .dropDestination(for: String.self) { items, _ in
-            guard let s = items.first else { return false }
-            swapCards(s, card.date); return true
-        } isTargeted: { over in dragOverDate = over ? card.date : (dragOverDate == card.date ? nil : dragOverDate) }
+        var tags: [String] = []
+        if let m = card.minutes { tags.append("🕐 \(m)m") }
+        tags.append(card.recipeId != nil ? "📖 From library" : "✨ New dish")
+        let note = card.note.flatMap { $0.isEmpty ? nil : $0 }
+        return MealPlanReviewCard(
+            card: card,
+            dayLabel: MealPlanText.weekday(card.date, sync.householdTz),
+            isLocked: isLocked,
+            isBusy: draftingDates.contains(card.date),
+            isDragTarget: dragOverDate == card.date,
+            metaTags: tags,
+            belowTitleNote: note,
+            titleMultilineLeading: true,
+            onSwap: { Task { await swap(card) } },
+            onPick: { pickTarget = PickTarget(date: card.date) },
+            onToggleLock: { toggleLock(card.date) },
+            onDrop: { s in swapCards(s, card.date); return true },
+            onDragTargetChange: { over in
+                dragOverDate = over ? card.date : (dragOverDate == card.date ? nil : dragOverDate)
+            },
+            actionsDisabled: redrafting || isLocked)
     }
 
     /// Swap the meals on two review nights (keeps each card's date).
