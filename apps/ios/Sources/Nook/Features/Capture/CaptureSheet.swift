@@ -188,9 +188,7 @@ struct CaptureSheet: View {
     // The confident summary line — icon, kind, what Nook heard, and who it's for.
     private var glanceCard: some View {
         HStack(spacing: 12) {
-            Text(Self.kinds.first { $0.key == editKind }?.icon ?? "✨").font(.system(size: 22))
-                .frame(width: 42, height: 42).background(NK.panel)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            NookEmojiTile(emoji: Self.kinds.first { $0.key == editKind }?.icon ?? "✨")
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(editKind.uppercased()).font(.system(size: 11, weight: .heavy)).tracking(0.4).foregroundStyle(NK.ai)
@@ -235,9 +233,7 @@ struct CaptureSheet: View {
     private var understoodCard: some View {
         VStack(alignment: .leading, spacing: 11) {
             HStack(alignment: .top, spacing: 12) {
-                Text(Self.kinds.first { $0.key == editKind }?.icon ?? "✨").font(.system(size: 22))
-                    .frame(width: 42, height: 42).background(NK.panel)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                NookEmojiTile(emoji: Self.kinds.first { $0.key == editKind }?.icon ?? "✨")
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 6) {
                         Text(editKind.uppercased()).font(.system(size: 11, weight: .heavy)).tracking(0.4).foregroundStyle(NK.ai)

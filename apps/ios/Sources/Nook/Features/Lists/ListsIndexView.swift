@@ -124,10 +124,7 @@ struct ListsIndexView: View {
     private func row(_ list: NookAPI.ListSummary) -> some View {
         NookCard(padding: 15) {
             HStack(spacing: 13) {
-                Text(list.emoji ?? "📝").font(.system(size: 22))
-                    .frame(width: 42, height: 42)
-                    .background(NK.panel)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                NookEmojiTile(emoji: list.emoji ?? "📝")
                 Text(list.name).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
                 Spacer(minLength: 8)
                 Text("\(list.itemCount)").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)

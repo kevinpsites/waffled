@@ -901,8 +901,7 @@ struct GoalCreateSheet: View {
         let on = goalType == t.key
         return Button { goalType = t.key } label: {
             HStack(spacing: 12) {
-                Text(t.emoji).font(.system(size: 20)).frame(width: 38, height: 38)
-                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                NookEmojiTile(emoji: t.emoji)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(t.title).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
                     Text(t.desc).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)

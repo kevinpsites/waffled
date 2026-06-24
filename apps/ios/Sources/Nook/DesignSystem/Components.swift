@@ -175,6 +175,28 @@ struct NookFieldCard<Content: View>: View {
     }
 }
 
+/// A rounded square holding an emoji — the list-row / picker glyph tile used across
+/// Settings, Rewards, Lists, Goals, Family and the capture sheets. Canonical look is a
+/// 42pt square, 22pt emoji, 12pt corner on `NK.panel`; pass params for the intentional
+/// variants (muted archived rows, tinted person rows). Stateless.
+struct NookEmojiTile: View {
+    var emoji: String
+    var size: CGFloat = 22          // emoji font size
+    var frame: CGFloat = 42         // square side
+    var background: Color = NK.panel
+    var cornerRadius: CGFloat = 12
+    var emojiOpacity: Double = 1
+
+    var body: some View {
+        Text(emoji)
+            .font(.system(size: size))
+            .opacity(emojiOpacity)
+            .frame(width: frame, height: frame)
+            .background(background)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
+}
+
 /// A small `chevron.right` that rotates 90° when its section is open — the shared
 /// disclosure indicator for collapsible headers. Stateless: pass the open flag.
 struct DisclosureChevron: View {

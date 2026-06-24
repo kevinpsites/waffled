@@ -571,8 +571,7 @@ struct SavingTowardPicker: View {
                      tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
             HStack(spacing: 12) {
-                Text(emoji).font(.system(size: 22)).frame(width: 42, height: 42)
-                    .background(tint.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                NookEmojiTile(emoji: emoji, background: tint.opacity(0.14), cornerRadius: 11)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
                     if let sub { Text(sub).font(.system(size: 12)).foregroundStyle(NK.ink3) }

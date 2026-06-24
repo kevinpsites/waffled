@@ -305,9 +305,7 @@ struct RewardsView: View {
     private func catalogRow(_ r: NookAPI.Reward) -> some View {
         Button { editor = .edit(r) } label: {
             HStack(spacing: 12) {
-                Text(r.emoji ?? "🎁").font(.system(size: 22))
-                    .frame(width: 40, height: 40).background(NK.panel)
-                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                NookEmojiTile(emoji: r.emoji ?? "🎁")
                 Text(r.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
                 Spacer(minLength: 8)
                 coin(r.currency, r.cost)
@@ -322,9 +320,7 @@ struct RewardsView: View {
 
     private func archivedRow(_ r: NookAPI.Reward) -> some View {
         HStack(spacing: 12) {
-            Text(r.emoji ?? "🎁").font(.system(size: 18)).opacity(0.6)
-                .frame(width: 34, height: 34).background(NK.panel)
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            NookEmojiTile(emoji: r.emoji ?? "🎁", size: 18, frame: 34, cornerRadius: 9, emojiOpacity: 0.6)
             Text(r.title).font(.system(size: 14, weight: .medium)).foregroundStyle(NK.ink2).lineLimit(1)
             Spacer(minLength: 8)
             Button { Task { _ = await sync.restoreReward(id: r.id); await model.load() } } label: {

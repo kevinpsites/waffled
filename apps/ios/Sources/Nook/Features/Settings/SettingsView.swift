@@ -94,8 +94,7 @@ struct SettingsView: View {
         let enabled = tap != nil
         return Button { tap?() } label: {
             HStack(spacing: 12) {
-                Text(emoji).font(.system(size: 22)).frame(width: 40, height: 40)
-                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                NookEmojiTile(emoji: emoji)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(enabled ? NK.ink : NK.ink2)
                     Text(sub).font(.system(size: 12.5)).foregroundStyle(NK.ink3)
