@@ -63,7 +63,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported/N-A �
 | **Offline** calendar (PowerSync: local reads + queued writes) | ✅ | ⬜ | ✅ Done |
 | AI **"Heads up this week"** digest + **per-event insight** | ✅ | ⬜ | ✅ Done |
 | "Counts toward a goal" tag on an event | ✅ | ⬜ | ✅ Done |
-| **Recurring events** (rrule expansion, per-occurrence) | 🚧 | ⬜ | 🚧 Planned (Phase 2) |
+| **Recurring events** (rrule expansion, per-occurrence) | ✅ | ⬜ | ✅ Done |
 
 ## Tasks & chores
 
@@ -77,7 +77,10 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported/N-A �
 | **Drag-to-reassign** chores between columns | ✅ | ⬜ | ✅ Done |
 | **Parent-approval** step (awaiting → approve/reject) | ✅ | ⬜ | ✅ Done |
 | **Streaks** (🔥N consecutive days) | ✅ | ⬜ | ✅ Done |
-| Photo proof of completion | 🚧 | ⬜ | 🚧 Planned (consumes blob upload) |
+| **Photo proof** of completion — per-chore "Requires a photo" toggle; camera/upload on complete | ✅ | ⬜ | ✅ Done |
+| Photo-proof **review modal** (large photo + Approve/Not-yet in one place) | ✅ | ⬜ | ✅ Done |
+| Proof **retention** — auto-delete after N days (per-household setting, default 3) | ✅ | ⬜ | ✅ Done |
+| Stored-proof **review & delete** gallery (slide-over: view / delete / clear all) | ✅ | ⬜ | ✅ Done |
 
 ## Rewards & economy
 
@@ -106,7 +109,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported/N-A �
 | **Person profile** + **Family overview** | ✅ | ⬜ | ✅ Done |
 | **Calendar → goal** auto-count recap (single events) | ✅ | ⬜ | ✅ Done (Phase 1) |
 | Smart "might count toward a goal" suggestions + learning | ✅ | ⬜ | ✅ Done (Phase B) |
-| Recurring-event goal counting | 🚧 | ⬜ | 🚧 Planned (Phase 2) |
+| Recurring-event goal counting | ✅ | ⬜ | ✅ Done |
 
 ## Lists & groceries
 

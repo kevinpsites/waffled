@@ -22,15 +22,17 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **Kiosk** — device pairing, profile picker, optional PINs, idle screensaver.
 - **Today** — live cards + customizable per-user / family layouts.
 - **Calendar** — native events, Month/Week/Day/Agenda, create/edit/delete, participants,
-  **two-way Google Calendar sync**, offline calendar (PowerSync), AI heads-up + per-event
-  insight.
+  **recurring events** (RRULE picker, per-occurrence/this-and-following/all edits),
+  **two-way Google Calendar sync** (recurrences expanded on inbound), offline calendar
+  (PowerSync), AI heads-up + per-event insight.
 - **Chores & stars** — full loop: CRUD, weekly/custom schedules, up-for-grabs claim,
-  drag-to-reassign, parent approval, streaks, append-only stars ledger.
+  drag-to-reassign, parent approval, **photo-proof on completion**, streaks, append-only
+  stars ledger.
 - **Rewards & economy** — catalog → redeem → approve → debit, multi-currency, conversions
   ("Trade"), saving-toward jar/bar.
 - **Goals** — types (count/total/habit/checklist), shared vs each-tracks, create/edit/
   detail read-model, person + family overview, **calendar → goal** auto-count (single
-  events) with learned suggestions.
+  and recurring events) with learned suggestions.
 - **Lists & groceries** — multi-lists, auto-built aisle board, quantity merge, pantry
   staples, live cross-surface refresh.
 - **Meals & recipes** — week/month planners, recipe library, in-app editor, paste-markdown
@@ -58,9 +60,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 ## Planned 🚧
 
 - **Notifications tail** — kiosk "due soon" local banner (table not built yet); remote push
-  (APNs / web-push) is blocked on a self-host key/relay decision.
-- **Recurring events** (calendar Phase 2) and **recurring-event goal counting**.
-- **Chore photo-proof** — now just a consumer of the shipped blob upload.
+  (APNs / web-push) is blocked on a self-host key/relay decision. Recurring-event reminders
+  on iOS (only single events fire today) ride along here.
 - **Conversational recipe AI** — instruction-driven edits + photo → recipe (needs a vision
   provider).
 - **Shared album import** for Photos (Google Photos / iCloud).
