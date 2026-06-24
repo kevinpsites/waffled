@@ -265,16 +265,10 @@ struct PlanMonthSheet: View {
                             Text(reviewSubtitle).font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
                         }
                         Spacer()
-                        Button { Task { await reshuffle() } } label: {
-                            HStack(spacing: 6) {
-                                if redrafting && draftingDates.count > 1 { ProgressView().controlSize(.small).tint(NK.ai) }
-                                else { Text("✨").font(.system(size: 13)) }
-                                Text(redrafting && draftingDates.count > 1 ? "Reshuffling…" : "Reshuffle")
-                                    .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ai)
-                            }
-                            .padding(.horizontal, 12).padding(.vertical, 8).background(NK.ai.opacity(0.10)).clipShape(Capsule())
+                        PlanReshuffleButton(isBusy: redrafting && draftingDates.count > 1,
+                                            isDisabled: redrafting || unlockedDates.isEmpty) {
+                            Task { await reshuffle() }
                         }
-                        .buttonStyle(.plain).disabled(redrafting || unlockedDates.isEmpty)
                     }
                     if let notice {
                         Text(notice).font(.system(size: 12, weight: .medium)).foregroundStyle(NK.primary)
@@ -420,22 +414,12 @@ struct PlanMonthSheet: View {
     }
 
     private var applyBar: some View {
-        VStack(spacing: 0) {
-            Divider().background(NK.hair)
-            Button { Task { await apply() } } label: {
-                HStack(spacing: 8) {
-                    if applying { ProgressView().controlSize(.small).tint(.white) }
-                    Text(applying ? "Saving…" : "Save month & build list")
-                        .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
-                }
-                .frame(maxWidth: .infinity).padding(.vertical, 14)
-                .background(suggestions.isEmpty ? NK.ink3 : NK.ai)
-                .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            }
-            .buttonStyle(.plain).disabled(suggestions.isEmpty || applying || redrafting)
-            .padding(.horizontal, 16).padding(.vertical, 12)
+        PlanApplyBar(isBusy: applying,
+                     isInactive: suggestions.isEmpty,
+                     isDisabled: suggestions.isEmpty || applying || redrafting,
+                     label: applying ? "Saving…" : "Save month & build list") {
+            Task { await apply() }
         }
-        .background(NK.canvas)
     }
 
     // MARK: actions

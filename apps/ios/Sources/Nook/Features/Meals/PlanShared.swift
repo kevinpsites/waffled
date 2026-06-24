@@ -150,3 +150,61 @@ struct PlanCardDragPreview: View {
         .background(NK.card).clipShape(Capsule()).overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
     }
 }
+
+/// The ✨ Reshuffle / Reshuffling… capsule in a review header. `isBusy` drives the
+/// inline ProgressView + "Reshuffling…" label; the parent owns the disabled rule.
+struct PlanReshuffleButton: View {
+    var isBusy: Bool
+    var isDisabled: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if isBusy {
+                    ProgressView().controlSize(.small).tint(NK.ai)
+                } else { Text("✨").font(.system(size: 13)) }
+                Text(isBusy ? "Reshuffling…" : "Reshuffle")
+                    .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ai)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(NK.ai.opacity(0.10)).clipShape(Capsule())
+        }
+        .buttonStyle(.plain).disabled(isDisabled)
+    }
+}
+
+/// The bottom Divider + full-width primary action button shared by both plan sheets.
+/// The parent passes the already-resolved `label` (e.g. "Add 5 & build list" /
+/// "Save month & build list"); when `isBusy` the bar shows a ProgressView.
+///
+/// `isInactive` drives the gray vs. NK.ai tint (originally `suggestions.isEmpty`),
+/// while `isDisabled` is the broader gate (originally
+/// `suggestions.isEmpty || applying || redrafting`). These differ on purpose: a
+/// busy bar with suggestions still shows the blue tint while disabled.
+struct PlanApplyBar: View {
+    var isBusy: Bool
+    var isInactive: Bool
+    var isDisabled: Bool
+    var label: String
+    var action: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Divider().background(NK.hair)
+            Button(action: action) {
+                HStack(spacing: 8) {
+                    if isBusy { ProgressView().controlSize(.small).tint(.white) }
+                    Text(label)
+                        .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 14)
+                .background(isInactive ? NK.ink3 : NK.ai)
+                .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            }
+            .buttonStyle(.plain).disabled(isDisabled)
+            .padding(.horizontal, 16).padding(.vertical, 12)
+        }
+        .background(NK.canvas)
+    }
+}
