@@ -331,16 +331,11 @@ struct ChoresView: View {
                 Avatar(colorHex: m?.colorHex, emoji: m?.emoji ?? "🙂", size: 34)
                 approvalText(c)
                 Spacer(minLength: 8)
-                Button { decide(c) { await sync.rejectChore(id: c.id) } } label: {
-                    Text("Not yet").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink2)
-                        .padding(.horizontal, 16).padding(.vertical, 8)
-                        .background(NK.panel).clipShape(Capsule())
-                }.buttonStyle(.plain)
-                Button { decide(c) { await sync.approveChore(id: c.id) } } label: {
-                    Text("Approve").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
-                        .padding(.horizontal, 18).padding(.vertical, 8)
-                        .background(NK.primary).clipShape(Capsule())
-                }.buttonStyle(.plain)
+                ApprovalActionPair(
+                    denyLabel: "Not yet", isKiosk: true,
+                    onDeny: { decide(c) { await sync.rejectChore(id: c.id) } },
+                    onApprove: { decide(c) { await sync.approveChore(id: c.id) } }
+                )
             }
         } else {
             VStack(alignment: .leading, spacing: 10) {
@@ -349,18 +344,11 @@ struct ChoresView: View {
                     approvalText(c)
                     Spacer(minLength: 0)
                 }
-                HStack(spacing: 8) {
-                    Button { decide(c) { await sync.rejectChore(id: c.id) } } label: {
-                        Text("Not yet").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
-                            .frame(maxWidth: .infinity).padding(.vertical, 9)
-                            .background(NK.panel).clipShape(Capsule())
-                    }.buttonStyle(.plain)
-                    Button { decide(c) { await sync.approveChore(id: c.id) } } label: {
-                        Text("Approve").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                            .frame(maxWidth: .infinity).padding(.vertical, 9)
-                            .background(NK.primary).clipShape(Capsule())
-                    }.buttonStyle(.plain)
-                }
+                ApprovalActionPair(
+                    denyLabel: "Not yet", isKiosk: false,
+                    onDeny: { decide(c) { await sync.rejectChore(id: c.id) } },
+                    onApprove: { decide(c) { await sync.approveChore(id: c.id) } }
+                )
             }
         }
     }

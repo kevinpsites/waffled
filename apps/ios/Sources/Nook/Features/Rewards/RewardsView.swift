@@ -364,14 +364,11 @@ struct RewardsView: View {
                 Avatar(colorHex: r.personColor, emoji: r.personAvatar ?? "🙂", size: 34)
                 approvalText(r)
                 Spacer(minLength: 8)
-                Button { act { await sync.denyRedemption(id: r.id) } } label: {
-                    Text("Deny").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink2)
-                        .padding(.horizontal, 16).padding(.vertical, 8).background(NK.panel).clipShape(Capsule())
-                }.buttonStyle(.plain)
-                Button { act { await sync.approveRedemption(id: r.id) } } label: {
-                    Text("Approve").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
-                        .padding(.horizontal, 18).padding(.vertical, 8).background(NK.primary).clipShape(Capsule())
-                }.buttonStyle(.plain)
+                ApprovalActionPair(
+                    denyLabel: "Deny", isKiosk: true,
+                    onDeny: { act { await sync.denyRedemption(id: r.id) } },
+                    onApprove: { act { await sync.approveRedemption(id: r.id) } }
+                )
             }
         } else {
             VStack(alignment: .leading, spacing: 10) {
@@ -380,18 +377,11 @@ struct RewardsView: View {
                     approvalText(r)
                     Spacer(minLength: 0)
                 }
-                HStack(spacing: 8) {
-                    Button { act { await sync.denyRedemption(id: r.id) } } label: {
-                        Text("Deny").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
-                            .frame(maxWidth: .infinity).padding(.vertical, 9)
-                            .background(NK.panel).clipShape(Capsule())
-                    }.buttonStyle(.plain)
-                    Button { act { await sync.approveRedemption(id: r.id) } } label: {
-                        Text("Approve").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                            .frame(maxWidth: .infinity).padding(.vertical, 9)
-                            .background(NK.primary).clipShape(Capsule())
-                    }.buttonStyle(.plain)
-                }
+                ApprovalActionPair(
+                    denyLabel: "Deny", isKiosk: false,
+                    onDeny: { act { await sync.denyRedemption(id: r.id) } },
+                    onApprove: { act { await sync.approveRedemption(id: r.id) } }
+                )
             }
         }
     }

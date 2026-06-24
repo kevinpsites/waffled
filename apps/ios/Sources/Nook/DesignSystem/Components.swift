@@ -205,6 +205,45 @@ struct NookMenuPill: View {
     }
 }
 
+/// The Deny/Approve button pair on parent approval rows. Shared by the Chores and
+/// Rewards "Needs your OK" cards so both look identical. Kiosk (iPad) gets inline
+/// capsules; phone gets full-width buttons. Stateless — the approve/deny work stays
+/// at the call site, passed as closures.
+struct ApprovalActionPair: View {
+    var denyLabel: String   // "Not yet" (chores) or "Deny" (rewards)
+    var isKiosk: Bool       // true → inline capsules; false → full-width
+    var onDeny: () -> Void
+    var onApprove: () -> Void
+
+    var body: some View {
+        if isKiosk {
+            HStack(spacing: 8) {
+                Button(action: onDeny) {
+                    Text(denyLabel).font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink2)
+                        .padding(.horizontal, 16).padding(.vertical, 8).background(NK.panel).clipShape(Capsule())
+                }.buttonStyle(.plain)
+                Button(action: onApprove) {
+                    Text("Approve").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 18).padding(.vertical, 8).background(NK.primary).clipShape(Capsule())
+                }.buttonStyle(.plain)
+            }
+        } else {
+            HStack(spacing: 8) {
+                Button(action: onDeny) {
+                    Text(denyLabel).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+                        .frame(maxWidth: .infinity).padding(.vertical, 9)
+                        .background(NK.panel).clipShape(Capsule())
+                }.buttonStyle(.plain)
+                Button(action: onApprove) {
+                    Text("Approve").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 9)
+                        .background(NK.primary).clipShape(Capsule())
+                }.buttonStyle(.plain)
+            }
+        }
+    }
+}
+
 /// A weekday toggle chip — a full-width pill that fills coral when on. Shared by the
 /// Plan-my-week and Plan-my-month sheets so both day selectors look identical.
 struct WeekdayToggleChip: View {
