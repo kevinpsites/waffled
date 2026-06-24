@@ -56,6 +56,11 @@
 .ph-chip { font-size: 14px; padding: 8px 14px; cursor: pointer; }
 .ph-chip.on { background: var(--ink); color: #fff; border-color: var(--ink); }
 
+/* per-album action bar (shown under the chips when an album is selected) */
+.ph-album-actions { display: flex; align-items: center; gap: 12px; padding: 0 30px 14px; }
+.ph-album-actions .pill { font-size: 13.5px; padding: 8px 14px; cursor: pointer; }
+.ph-album-actions .pill.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+
 /* ---- add-photos overlay --------------------------------------- */
 /* The stage centers everything; the dropzone is the hero, the staged card
    replaces it once a photo is chosen. */

@@ -44,11 +44,15 @@ const soccer = {
   colorHex: '#8fd3c4',
 }
 
+const DEFAULT_DISPLAY = { photoSource: 'all', photoAlbum: null, photoInterval: 10, photoShuffle: false }
+
 function mockApi(opts: {
   photos?: unknown[]
   created?: unknown[]
   deleted?: string[]
   patched?: { id: string; body: Record<string, unknown> }[]
+  display?: Record<string, unknown>
+  displayPuts?: Record<string, unknown>[]
 }) {
   globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
     const u = String(url)
@@ -63,6 +67,14 @@ function mockApi(opts: {
     if (init?.method === 'DELETE') {
       opts.deleted?.push(u.split('/').pop()!)
       return { ok: true, status: 204, json: async () => ({}) }
+    }
+    if (/\/api\/kiosk\/display$/.test(u)) {
+      if (init?.method === 'PUT') {
+        const body = JSON.parse(init.body!)
+        opts.displayPuts?.push(body)
+        return { ok: true, json: async () => ({ ...DEFAULT_DISPLAY, ...opts.display, ...body }) }
+      }
+      return { ok: true, json: async () => ({ ...DEFAULT_DISPLAY, ...opts.display }) }
     }
     if (u.includes('/api/photos')) return { ok: true, json: async () => ({ photos: opts.photos ?? [] }) }
     return { ok: false, status: 404, json: async () => ({}) }
@@ -112,6 +124,24 @@ describe('Photos home (family wall)', () => {
     expect(screen.getByText(/View all .* in “Lake Day”/)).toBeInTheDocument()
   })
 
+  it('sets a whole album as the screensaver source from the album action bar', async () => {
+    const displayPuts: Record<string, unknown>[] = []
+    mockApi({ photos: [beach, cake, soccer], displayPuts })
+    renderHome()
+
+    // no album action bar until an album is selected
+    await screen.findByText('Beach day')
+    expect(screen.queryByRole('button', { name: /Set as screensaver/ })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^Lake Day$/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Set as screensaver/ }))
+
+    await waitFor(() => expect(displayPuts).toHaveLength(1))
+    expect(displayPuts[0]).toMatchObject({ photoSource: 'album', photoAlbum: 'Lake Day' })
+    // the button now reflects the active state
+    expect(await screen.findByRole('button', { name: /Screensaver album/ })).toBeInTheDocument()
+  })
+
   it('Album row + CTA open the album view (filters the wall)', async () => {
     mockApi({ photos: [beach, cake, soccer] })
     renderHome()
@@ -128,7 +158,7 @@ describe('Photos home (family wall)', () => {
     mockApi({ photos: [beach, cake] })
     renderHome()
 
-    fireEvent.click(await screen.findByRole('button', { name: /Play screensaver/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /🖼️ Play/ }))
     const saver = await screen.findByRole('button', { name: /Wake screensaver/ })
     expect(within(saver).getByText('Tap anywhere to wake')).toBeInTheDocument()
     fireEvent.click(saver)

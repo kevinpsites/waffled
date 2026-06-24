@@ -30,7 +30,6 @@ export function PhotoDetail({
   memoryCount,
   albums = [],
   onClose,
-  onSetScreensaver,
   onOpenAlbum,
   onUpdated,
   onDeleted,
@@ -39,7 +38,6 @@ export function PhotoDetail({
   memoryCount: number
   albums?: string[]
   onClose: () => void
-  onSetScreensaver: (p: Photo) => void
   onOpenAlbum?: (album: string) => void
   onUpdated?: () => void
   onDeleted: () => void
@@ -97,7 +95,6 @@ export function PhotoDetail({
           <div className="topbar">
             <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={onClose}>‹ Photos</button>
             <div className="tb-right">
-              <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => onSetScreensaver(photo)}>Set as screensaver</button>
               {!editing && (
                 <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={startEdit}>✏️ Edit</button>
               )}

@@ -41,7 +41,6 @@ function renderDetail() {
       memoryCount={2}
       albums={['Lake Day', 'Birthday']}
       onClose={() => {}}
-      onSetScreensaver={() => {}}
       onUpdated={onUpdated}
       onDeleted={() => {}}
     />
@@ -65,8 +64,8 @@ describe('PhotoDetail', () => {
     onUpdated.mockClear()
     renderDetail()
 
-    // enter edit mode (there are two Edit affordances — topbar pill + card header)
-    fireEvent.click(screen.getAllByRole('button', { name: /✏️ Edit/ })[0])
+    // enter edit mode via the topbar Edit pill
+    fireEvent.click(screen.getByRole('button', { name: /✏️ Edit/ }))
 
     const caption = screen.getByPlaceholderText('Caption') as HTMLInputElement
     fireEvent.change(caption, { target: { value: 'Sunset swim' } })
@@ -91,7 +90,7 @@ describe('PhotoDetail', () => {
 
   it('selecting an existing album sends it as memory', async () => {
     renderDetail()
-    fireEvent.click(screen.getAllByRole('button', { name: /✏️ Edit/ })[0])
+    fireEvent.click(screen.getByRole('button', { name: /✏️ Edit/ }))
     const albumSelect = screen.getByRole('combobox') as HTMLSelectElement
     fireEvent.change(albumSelect, { target: { value: 'Birthday' } })
     fireEvent.click(screen.getByRole('button', { name: /^Save$/ }))
@@ -106,12 +105,11 @@ describe('PhotoDetail', () => {
         memoryCount={2}
         albums={['Lake Day', 'Birthday']}
         onClose={() => {}}
-        onSetScreensaver={() => {}}
         onUpdated={onUpdated}
         onDeleted={() => {}}
       />
     )
-    fireEvent.click(screen.getAllByRole('button', { name: /✏️ Edit/ })[0])
+    fireEvent.click(screen.getByRole('button', { name: /✏️ Edit/ }))
     const date = document.querySelector('input[type="date"]') as HTMLInputElement
     expect(date.value).not.toBe('')
   })
@@ -124,7 +122,6 @@ describe('PhotoDetail', () => {
         memoryCount={2}
         albums={[]}
         onClose={() => {}}
-        onSetScreensaver={() => {}}
         onUpdated={() => {}}
         onDeleted={onDeleted}
       />
@@ -141,7 +138,7 @@ describe('PhotoDetail', () => {
 
   it('Cancel exits edit mode without saving', () => {
     renderDetail()
-    fireEvent.click(screen.getAllByRole('button', { name: /✏️ Edit/ })[0])
+    fireEvent.click(screen.getByRole('button', { name: /✏️ Edit/ }))
     fireEvent.click(screen.getByRole('button', { name: /Cancel/ }))
     expect(patched.length).toBe(0)
     expect(screen.queryByPlaceholderText('Caption')).not.toBeInTheDocument()

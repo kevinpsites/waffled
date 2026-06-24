@@ -69,7 +69,8 @@ export function Photos() {
   const { household } = useHousehold()
   const [adding, setAdding] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
-  const [saver, setSaver] = useState<Photo | null>(null)
+  // The manual slideshow plays an album (null = all photos). null saver = closed.
+  const [saver, setSaver] = useState<{ album: string | null } | null>(null)
   const [albumFilter, setAlbumFilter] = useState<string | null>(null)
   const [displayCfg, setDisplayCfg] = useState<DisplayConfig | null>(null)
   // Multi-select: a Set of photo ids + the bulk-action modals (delete / move).
@@ -97,7 +98,7 @@ export function Photos() {
     () => (memory ? photos.filter((p) => p.memory === memory) : []),
     [photos, memory]
   )
-  const saverThumbs = saver?.memory ? photos.filter((p) => p.memory === saver.memory) : photos
+  const saverPhotos = saver ? (saver.album ? photos.filter((p) => p.memory === saver.album) : photos) : []
 
   // Distinct album names (a photo's `memory`), for the filter chips + the add/edit datalists.
   const albums = useMemo(
@@ -150,8 +151,8 @@ export function Photos() {
           <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => setSelectMode(true)} disabled={photos.length === 0}>
             Select
           </button>
-          <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => setSaver(newest)} disabled={!newest}>
-            🖼️ Play screensaver
+          <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => setSaver({ album: albumFilter })} disabled={photos.length === 0}>
+            🖼️ Play{albumFilter ? ` “${albumFilter}”` : ''}
           </button>
           <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => setAdding(true)}>
             <Icon name="plus" />
@@ -159,7 +160,7 @@ export function Photos() {
           </button>
         </div>
       ),
-    [newest, selectMode, selected, photos.length]
+    [newest, selectMode, selected, photos.length, albumFilter]
   )
 
   async function doDelete(ids: string[]) {
@@ -176,20 +177,21 @@ export function Photos() {
     refetch()
   }
 
-  // "Set as screensaver" from a photo: persist the household screensaver source to
-  // this photo's album (or all photos if it has none), then start the slideshow.
-  async function setScreensaverToAlbum(p: Photo) {
-    const patch = p.memory
-      ? ({ photoSource: 'album', photoAlbum: p.memory } as const)
-      : ({ photoSource: 'all', photoAlbum: null } as const)
+  // Whether the chosen album is the household's current idle-screensaver source.
+  const albumIsScreensaver =
+    !!albumFilter && displayCfg?.photoSource === 'album' && displayCfg?.photoAlbum === albumFilter
+
+  // Set (or clear) the idle screensaver source to a whole album. Toggling off
+  // reverts to "all photos".
+  async function toggleAlbumScreensaver(album: string) {
+    const patch = albumIsScreensaver
+      ? ({ photoSource: 'all', photoAlbum: null } as const)
+      : ({ photoSource: 'album', photoAlbum: album } as const)
     try {
-      const next = await kioskApi.setDisplayConfig(patch)
-      setDisplayCfg(next)
+      setDisplayCfg(await kioskApi.setDisplayConfig(patch))
     } catch {
-      /* still play the preview even if persisting fails */
+      /* ignore — leave the prior config in place on failure */
     }
-    setDetailId(null)
-    setSaver(p)
   }
 
   if (error) {
@@ -212,7 +214,7 @@ export function Photos() {
             </div>
             <div className="tiny muted">Tap any photo to view, or play them as a slideshow.</div>
           </div>
-          <button type="button" className="btn btn-ghost btn-play" onClick={() => setSaver(newest)}>▶ Play</button>
+          <button type="button" className="btn btn-ghost btn-play" onClick={() => setSaver({ album: memory })}>▶ Play</button>
         </div>
       )}
 
@@ -235,6 +237,19 @@ export function Photos() {
               {a}
             </button>
           ))}
+        </div>
+      )}
+
+      {albumFilter && !selectMode && (
+        <div className="ph-album-actions">
+          <span className="tiny muted" style={{ fontWeight: 700 }}>“{albumFilter}” · {visiblePhotos.length} photos</span>
+          <button
+            type="button"
+            className={`pill ${albumIsScreensaver ? 'on' : ''}`}
+            onClick={() => toggleAlbumScreensaver(albumFilter)}
+          >
+            {albumIsScreensaver ? '✓ Screensaver album' : '🖼️ Set as screensaver'}
+          </button>
         </div>
       )}
 
@@ -269,7 +284,6 @@ export function Photos() {
           memoryCount={detail.memory ? photos.filter((p) => p.memory === detail.memory).length : 1}
           albums={albums}
           onClose={() => setDetailId(null)}
-          onSetScreensaver={setScreensaverToAlbum}
           onOpenAlbum={(album) => {
             setDetailId(null)
             setAlbumFilter(album)
@@ -281,7 +295,7 @@ export function Photos() {
       {saver && (
         <Screensaver
           content="photos"
-          photos={saverThumbs}
+          photos={saverPhotos}
           weather={wx}
           nextEvent={null}
           timezone={household?.timezone}
