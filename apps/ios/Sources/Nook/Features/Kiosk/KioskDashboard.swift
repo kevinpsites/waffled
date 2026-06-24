@@ -180,31 +180,35 @@ struct KioskDashboard: View {
         VStack(spacing: 22) { choresCard; groceryCard }
     }
 
-    /// Column specs (relative width weight + content) for the chosen layout — same
-    /// cards, re-weighted so each preset gives its focus more room.
-    private var columnSpecs: [(weight: CGFloat, view: AnyView)] {
+    // Concrete columns per layout (no AnyView — type erasure would stop SwiftUI from
+    // diffing the three columns, forcing all of them to rebuild on every render). The
+    // GeometryReader only supplies the width for the proportional `.frame`s.
+    private static let colSpacing: CGFloat = 22
+
+    @ViewBuilder private func dashRow(_ avail: CGFloat) -> some View {
         switch layout {
         case .balanced:
-            return [(1, AnyView(agendaCol)), (1, AnyView(mealsCol)), (1, AnyView(choreGroceryCol))]
+            let u = avail / 3
+            HStack(alignment: .top, spacing: Self.colSpacing) {
+                agendaCol.frame(width: u); mealsCol.frame(width: u); choreGroceryCol.frame(width: u)
+            }
         case .agenda:
-            return [(1.7, AnyView(agendaCol)), (0.95, AnyView(mealsCol)), (0.95, AnyView(choreGroceryCol))]
+            let u = avail / (1.7 + 0.95 + 0.95)
+            HStack(alignment: .top, spacing: Self.colSpacing) {
+                agendaCol.frame(width: u * 1.7); mealsCol.frame(width: u * 0.95); choreGroceryCol.frame(width: u * 0.95)
+            }
         case .meals:
-            return [(1.5, AnyView(mealsCol)), (1, AnyView(agendaCol)), (1, AnyView(choreGroceryCol))]
+            let u = avail / (1.5 + 1 + 1)
+            HStack(alignment: .top, spacing: Self.colSpacing) {
+                mealsCol.frame(width: u * 1.5); agendaCol.frame(width: u); choreGroceryCol.frame(width: u)
+            }
         }
     }
 
     private var dashColumns: some View {
         GeometryReader { geo in
-            let spacing: CGFloat = 22
-            let specs = columnSpecs
-            let avail = max(0, geo.size.width - spacing * CGFloat(specs.count - 1))
-            let sumW = specs.reduce(0) { $0 + $1.weight }
-            HStack(alignment: .top, spacing: spacing) {
-                ForEach(Array(specs.enumerated()), id: \.offset) { _, spec in
-                    spec.view.frame(width: avail * spec.weight / max(0.001, sumW))
-                }
-            }
-            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+            dashRow(max(0, geo.size.width - Self.colSpacing * 2))
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
         }
     }
 
