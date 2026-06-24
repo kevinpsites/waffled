@@ -171,10 +171,10 @@ struct KioskDashboard: View {
             VStack(spacing: 22) { tonightCard; weekDinnersCard }.padding(.bottom, 8)
         }
     }
+    // Chores sized to content; the grocery card fills the rest and scrolls its own
+    // (full) list internally so it stays reachable without an outer page scroll.
     private var choreGroceryCol: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(spacing: 22) { choresCard; groceryCard }.padding(.bottom, 8)
-        }
+        VStack(spacing: 22) { choresCard; groceryCard }
     }
 
     /// Column specs (relative width weight + content) for the chosen layout — same
@@ -455,21 +455,18 @@ struct KioskDashboard: View {
                 if model.groceryActive.isEmpty {
                     Text(model.loaded ? "All bought ✓" : "Loading…")
                         .font(.system(size: 16)).foregroundStyle(NK.ink3).padding(.vertical, 8)
+                    Spacer(minLength: 0)
                 } else {
-                    VStack(spacing: 0) {
-                        ForEach(Array(model.groceryActive.prefix(8).enumerated()), id: \.element.id) { idx, item in
-                            groceryRow(item)
-                            if idx < min(model.groceryActive.count, 8) - 1 {
-                                Rectangle().fill(NK.hair2).frame(height: 1)
+                    // The full list scrolls within the card; the add row below stays pinned.
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 0) {
+                            ForEach(Array(model.groceryActive.enumerated()), id: \.element.id) { idx, item in
+                                groceryRow(item)
+                                if idx < model.groceryActive.count - 1 {
+                                    Rectangle().fill(NK.hair2).frame(height: 1)
+                                }
                             }
                         }
-                    }
-                    if model.groceryActive.count > 8 {
-                        Button { navigate(.lists) } label: {
-                            Text("+ \(model.groceryActive.count - 8) more")
-                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.primary)
-                        }
-                        .buttonStyle(.plain).padding(.top, 6)
                     }
                 }
                 groceryAddRow
@@ -598,9 +595,13 @@ final class KioskTodayModel {
 
     private let api = NookAPI()
 
+    /// Just-checked items linger here ~2s before dropping off, so a tap reads as
+    /// "crossed out, then settles" instead of vanishing instantly (matches the Lists page).
+    private var settling: Set<String> = []
+
     var choreDone: Int { chores.reduce(0) { $0 + $1.done } }
     var choreTotal: Int { chores.reduce(0) { $0 + $1.total } }
-    var groceryActive: [NookAPI.ListItemDTO] { grocery.filter { !$0.checked } }
+    var groceryActive: [NookAPI.ListItemDTO] { grocery.filter { !$0.checked || settling.contains($0.id) } }
 
     func load(todayKey: String) async {
         async let choresF = (try? await api.choresToday()) ?? []
@@ -627,13 +628,29 @@ final class KioskTodayModel {
         if let b = try? await api.groceryBoard() { grocery = b.items }
     }
 
-    /// Optimistically toggle a grocery item, reverting on failure.
+    /// Optimistically toggle a grocery item, reverting on failure. A check-off stays
+    /// visible (crossed out) for ~2s before settling off the list — same as Lists.
     func toggleGrocery(_ id: String) async {
         guard let idx = grocery.firstIndex(where: { $0.id == id }) else { return }
         let target = !grocery[idx].checked
-        grocery[idx].checked = target
+        withAnimation { grocery[idx].checked = target }
+        if target { settling.insert(id); scheduleSettle(id) } else { settling.remove(id) }
         do { try await api.patchListItem(id: id, checked: target) }
-        catch { if let i = grocery.firstIndex(where: { $0.id == id }) { grocery[i].checked = !target } }
+        catch {
+            if let i = grocery.firstIndex(where: { $0.id == id }) { withAnimation { grocery[i].checked = !target } }
+            settling.remove(id)
+        }
+    }
+
+    private func scheduleSettle(_ id: String) {
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard let self else { return }
+            // Only settle if it's still checked (the user may have toggled it back).
+            if self.grocery.first(where: { $0.id == id })?.checked == true {
+                withAnimation { _ = self.settling.remove(id) }
+            }
+        }
     }
 }
 
