@@ -23,6 +23,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported/N-A �
 | Disable password login / force SSO (break-glass guard) | ✅ | ⬜ | ✅ Done |
 | **Member management** — grant a person a login (email ± password) | ✅ | ⬜ | ✅ Done |
 | **Members CRUD** (profiles: name, avatar, color, role) | ✅ | ⬜ | ✅ Done |
+| **Role-based permissions** — per-role capability grid (Settings → Family) | ✅ | ⬜ | ✅ Done |
 | Sign out (revokes refresh) | ✅ | ⬜ | ✅ Done |
 
 ## Kiosk & ambient display
@@ -81,6 +82,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported/N-A �
 | Photo-proof **review modal** (large photo + Approve/Not-yet in one place) | ✅ | ⬜ | ✅ Done |
 | Proof **retention** — auto-delete after N days (per-household setting, default 3) | ✅ | ⬜ | ✅ Done |
 | Stored-proof **review & delete** gallery (slide-over: view / delete / clear all) | ✅ | ⬜ | ✅ Done |
+| **Capability gating** — who can manage/approve chores (`chore.manage`/`chore.approve`); anyone may add a chore for self/up-for-grabs | ✅ | ⬜ | ✅ Done |
 
 ## Rewards & economy
 
@@ -92,6 +94,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported/N-A �
 | **Multi-currency** (custom currencies, symbols, colors) | ✅ | ⬜ | ✅ Done |
 | **Conversions / "Trade"** (e.g. 10 ⭐ → 1 💵) | ✅ | ⬜ | ✅ Done |
 | **Saving-toward** a reward — bar/jar progress + inline redeem | ✅ | ⬜ | ✅ Done |
+| **Capability gating** — who can manage rewards / approve redemptions (`reward.manage`/`reward.approve`); anyone may redeem for self | ✅ | ⬜ | ✅ Done |
 | Milestone reward **payouts** | 🚧 | ⬜ | 🚧 Deferred (design done) |
 
 ## Goals
@@ -184,7 +187,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported/N-A �
 
 | Feature | Web / Kiosk | Mobile | Status |
 | --- | :---: | :---: | --- |
-| **Family & people** (CRUD + grant login) | ✅ | ⬜ | ✅ Done |
+| **Family & people** (CRUD + grant login + **permissions grid**) | ✅ | ⬜ | ✅ Done |
 | **Calendars** (connect Google, write-targets, sync now) | ✅ | ⬜ | ✅ Done |
 | **Chores & rewards** (currencies, conversions) | ✅ | ⬜ | ✅ Done |
 | **AI & capture** (provider/model selection) | ✅ | ⬜ | ✅ Done |

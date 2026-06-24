@@ -18,7 +18,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **Self-host packaging** — one-command `./nook up`, in-container migrations, multi-arch
   GHCR images, build-from-source default.
 - **Identity** — built-in email/password auth (rotating refresh), backend-mediated **OIDC
-  SSO** (invite-gated, admin-configured), member management (grant logins).
+  SSO** (invite-gated, admin-configured), member management (grant logins), **role-based
+  permissions** (per-role capability grid for managing/approving chores & rewards).
 - **Kiosk** — device pairing, profile picker, optional PINs, idle screensaver.
 - **Today** — live cards + customizable per-user / family layouts.
 - **Calendar** — native events, Month/Week/Day/Agenda, create/edit/delete, participants,
