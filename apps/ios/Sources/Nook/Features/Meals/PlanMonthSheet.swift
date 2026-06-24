@@ -345,8 +345,7 @@ struct PlanMonthSheet: View {
             }
         } label: {
             HStack(spacing: 7) {
-                Image(systemName: "chevron.right").font(.system(size: 11, weight: .heavy))
-                    .rotationEffect(.degrees(collapsed ? 0 : 90)).foregroundStyle(NK.ink3)
+                DisclosureChevron(isOpen: !collapsed)
                 Text("Week of \(weekLabel(group.key))").font(.system(size: 12, weight: .heavy)).tracking(0.4).foregroundStyle(NK.ink2)
                 Spacer()
                 Text("\(group.cards.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)

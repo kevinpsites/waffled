@@ -467,8 +467,7 @@ struct ChoresView: View {
                             .font(.system(size: 12)).foregroundStyle(allDone ? FamilyColor.wally.solid : NK.ink3)
                         Text("\(col.done)/\(col.items.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
                     }
-                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .heavy))
-                        .foregroundStyle(NK.ink3).rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                    DisclosureChevron(isOpen: !isCollapsed)
                 }
                 .contentShape(Rectangle())
             }

@@ -510,9 +510,7 @@ struct ListDetailView: View {
 
     /// Disclosure chevron — points right when the section is collapsed, down when open.
     private func chevron(for id: String) -> some View {
-        Image(systemName: "chevron.right")
-            .font(.system(size: 10, weight: .heavy)).foregroundStyle(NK.ink3)
-            .rotationEffect(.degrees(collapsed.contains(id) ? 0 : 90))
+        DisclosureChevron(isOpen: !collapsed.contains(id), size: 10)
     }
 
     /// Grocery-only By aisle / By meal segmented control, pinned below the nav bar.

@@ -157,6 +157,22 @@ struct AICaptureBar: View {
     }
 }
 
+/// A small `chevron.right` that rotates 90° when its section is open — the shared
+/// disclosure indicator for collapsible headers. Stateless: pass the open flag.
+struct DisclosureChevron: View {
+    var isOpen: Bool
+    var size: CGFloat = 11
+    var weight: Font.Weight = .heavy
+    var color: Color = NK.ink3
+
+    var body: some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: size, weight: weight))
+            .foregroundStyle(color)
+            .rotationEffect(.degrees(isOpen ? 90 : 0))
+    }
+}
+
 /// A weekday toggle chip — a full-width pill that fills coral when on. Shared by the
 /// Plan-my-week and Plan-my-month sheets so both day selectors look identical.
 struct WeekdayToggleChip: View {
