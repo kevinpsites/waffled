@@ -194,7 +194,9 @@ private final class Counter { var n = 0 }
     @Test func recipeEntryDrivesTitleAndMeta() {
         let entry = NookAPI.WeekEntryDTO(
             id: "1", date: "2026-06-16", mealType: "dinner", title: nil, recipeId: "r1",
-            recipe: .init(title: "Tacos", emoji: "🌮", cookTimeMinutes: 25, servings: 4)
+            recipe: .init(title: "Tacos", emoji: "🌮", category: nil, prepTimeMinutes: nil,
+                          cookTimeMinutes: 25, servings: 4, imageUrl: nil),
+            cook: nil
         )
         let meal = TonightMeal(entry)
         #expect(meal.title == "Tacos")
@@ -208,7 +210,7 @@ private final class Counter { var n = 0 }
     @Test func eatingOutEntryShowsEatingOut() {
         let entry = NookAPI.WeekEntryDTO(
             id: "2", date: "2026-06-16", mealType: "dinner", title: "Takeout night",
-            recipeId: nil, recipe: nil
+            recipeId: nil, recipe: nil, cook: nil
         )
         let meal = TonightMeal(entry)
         #expect(meal.eatingOut)
