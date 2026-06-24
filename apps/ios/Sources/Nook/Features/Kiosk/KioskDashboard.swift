@@ -272,14 +272,7 @@ struct KioskDashboard: View {
         }
     }
 
-    private var greetingPhrase: String {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
-        switch cal.component(.hour, from: Date()) {
-        case 5..<12: return "Good morning"
-        case 12..<17: return "Good afternoon"
-        default: return "Good evening"
-        }
-    }
+    private var greetingPhrase: String { DateFmt.greeting(tz) }
 
     // MARK: agenda column
 
@@ -292,7 +285,7 @@ struct KioskDashboard: View {
                     Text("Nothing scheduled.").font(.system(size: 18)).foregroundStyle(NK.ink3).padding(.vertical, 20)
                 } else {
                     ScrollView(showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 18) {
+                        LazyVStack(alignment: .leading, spacing: 18) {
                             ForEach(week, id: \.day) { group in
                                 VStack(alignment: .leading, spacing: 10) {
                                     Text(dayLabel(group.day))
@@ -466,7 +459,7 @@ struct KioskDashboard: View {
                 } else {
                     // The full list scrolls within the card; the add row below stays pinned.
                     ScrollView(showsIndicators: false) {
-                        VStack(spacing: 0) {
+                        LazyVStack(spacing: 0) {
                             ForEach(Array(model.groceryActive.enumerated()), id: \.element.id) { idx, item in
                                 groceryRow(item)
                                 if idx < model.groceryActive.count - 1 {

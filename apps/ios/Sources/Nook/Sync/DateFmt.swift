@@ -41,4 +41,15 @@ enum DateFmt {
     static func date(_ string: String, _ pattern: String, _ tz: TimeZone) -> Date? {
         formatter(pattern, tz).date(from: string)
     }
+
+    /// "Good morning/afternoon/evening" for the current hour in `tz`. Shared by the
+    /// phone Today header and the iPad dashboard.
+    static func greeting(_ tz: TimeZone) -> String {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        switch cal.component(.hour, from: Date()) {
+        case 5..<12:  return "Good morning"
+        case 12..<17: return "Good afternoon"
+        default:      return "Good evening"
+        }
+    }
 }
