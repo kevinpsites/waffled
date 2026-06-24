@@ -60,6 +60,8 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
         # Voice dictation in the AI capture bar (Speech framework).
         NSMicrophoneUsageDescription: Nook uses the microphone so you can speak an event into the capture bar.
+        # Camera capture for chore photo-proof (kids snap a photo to prove a chore is done).
+        NSCameraUsageDescription: Nook uses the camera so kids can snap a photo to prove a chore is done.
         NSSpeechRecognitionUsageDescription: Nook transcribes your speech on-device to add events by voice.
         # Dev only: allow plain-HTTP to localhost/the tailnet (no TLS in local stack).
         NSAppTransportSecurity:

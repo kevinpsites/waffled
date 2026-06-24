@@ -1,5 +1,7 @@
 import SwiftUI
 import Observation
+import PhotosUI
+import UIKit
 
 /// Chores — today's chores grouped by person (plus an "Up for grabs" group for
 /// unassigned ones), with a date stepper. Tick to complete/uncomplete; tap an
@@ -11,9 +13,12 @@ final class ChoresModel {
     private(set) var instances: [NookAPI.ChoreInstanceDTO] = []
     private(set) var loading = true
     private(set) var error = false
+    /// A dismissible banner shown when a proof upload/complete failed (incl. the 422
+    /// "a photo is required" guard) — mirrors web's `proofErr`.
+    var proofError: String?
     var date: String
 
-    private let api = NookAPI()
+    let api = NookAPI()
 
     init(date: String) { self.date = date }
 
@@ -67,6 +72,25 @@ final class ChoresModel {
             try await api.completeChore(id: id)
             await load()
         } catch { self.error = true }
+    }
+
+    /// Finish a photo-required chore with a captured/picked image: upload the blob, then
+    /// complete with it (optionally claiming `personId` first for the up-for-grabs path).
+    /// Surfaces upload + 422 errors in `proofError` instead of failing silently.
+    func completeWithProof(id: String, image: UIImage, claimFor personId: String? = nil) async {
+        proofError = nil
+        do {
+            let up = try await api.uploadImage(image)
+            if let personId { try await api.claimChore(id: id, personId: personId) }
+            try await api.completeChore(id: id, storageKey: up.key, contentType: up.contentType)
+            await load()
+        } catch let err as NookAPI.APIError where err.isProofRequired {
+            proofError = "A photo is required to finish this chore."
+        } catch let err as LocalizedError {
+            proofError = err.errorDescription ?? "Couldn’t upload that photo — please try again."
+        } catch {
+            proofError = "Couldn’t upload that photo — please try again."
+        }
     }
 
     func approve(_ id: String) async { do { try await api.approveChore(id: id); await load() } catch { self.error = true } }
@@ -131,6 +155,20 @@ struct ChoresView: View {
     @State private var collapsed: Set<String> = []   // column ids the user has folded
     @State private var dropTarget: String?           // person column id currently under a drag
 
+    // Photo-proof capture: the instance (and optional person to claim first) we're
+    // capturing for, which picker is presented, and a parent's open proof review.
+    @State private var proofTarget: ProofTarget?     // drives the Take Photo / Library dialog
+    @State private var showCamera = false            // camera sheet presented
+    @State private var libraryPick: PhotosPickerItem?// PhotosPicker selection token
+    @State private var reviewing: NookAPI.ChoreInstanceDTO?  // parent's proof review sheet
+
+    /// A chore awaiting a photo, plus the person to claim it for first (up-for-grabs).
+    struct ProofTarget: Identifiable {
+        let inst: NookAPI.ChoreInstanceDTO
+        let claimFor: String?
+        var id: String { inst.id }
+    }
+
     /// What the chore editor sheet is editing/creating.
     enum ChoreEditorTarget: Identifiable {
         case new(personId: String?)
@@ -168,6 +206,78 @@ struct ChoresView: View {
                 onSave: { choreId, body in Task { await model.save(choreId: choreId, body: body) } },
                 onDelete: { choreId in Task { await model.delete(choreId: choreId) } })
         }
+        // ── Photo-proof capture ──────────────────────────────────────────────
+        // Tapping the tick of a photo-required chore opens this Take Photo / Library
+        // choice; Take Photo is hidden when there's no camera (simulator/iPad).
+        .confirmationDialog("Add a photo to finish this chore",
+                            isPresented: proofDialogBinding, titleVisibility: .visible,
+                            presenting: proofTarget) { target in
+            if ProofCapture.cameraAvailable {
+                Button("Take Photo") { proofTarget = target; showCamera = true }
+            }
+            Button("Choose from Library") { proofTarget = target; presentLibrary() }
+            Button("Cancel", role: .cancel) { proofTarget = nil }
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraPicker { image in onProofImage(image) }
+                .ignoresSafeArea()
+        }
+        .photosPicker(isPresented: photosPickerBinding, selection: $libraryPick, matching: .images)
+        .onChange(of: libraryPick) { _, item in Task { await loadLibraryPick(item) } }
+        .sheet(item: $reviewing) { c in
+            let m = c.personId.flatMap { id in sync.members.first { $0.id == id } }
+            ChoreProofReview(
+                chore: c, memberColorHex: m?.colorHex,
+                coin: c.rewardAmount > 0 ? "\(c.rewardAmount)\(sync.currencySymbol(c.rewardCurrency))" : nil,
+                onApprove: { decide(c) { await sync.approveChore(id: c.id) } },
+                onReject: { decide(c) { await sync.rejectChore(id: c.id) } })
+        }
+    }
+
+    // MARK: photo-proof capture plumbing
+
+    /// True while the Take Photo / Library dialog should be up (it's open whenever a
+    /// proof target is set and neither picker has taken over yet).
+    private var proofDialogBinding: Binding<Bool> {
+        Binding(get: { proofTarget != nil && !showCamera && !photosPickerOpen },
+                set: { if !$0 && !showCamera && !photosPickerOpen { proofTarget = nil } })
+    }
+    @State private var photosPickerOpen = false
+    private var photosPickerBinding: Binding<Bool> {
+        Binding(get: { photosPickerOpen }, set: { photosPickerOpen = $0 })
+    }
+
+    /// Begin capture for a chore (called from the tick) — opens the choice dialog.
+    private func startProof(_ inst: NookAPI.ChoreInstanceDTO, claimFor personId: String? = nil) {
+        model.proofError = nil
+        proofTarget = ProofTarget(inst: inst, claimFor: personId)
+    }
+    private func presentLibrary() { photosPickerOpen = true }
+
+    /// A camera image was captured: complete the chore with it.
+    private func onProofImage(_ image: UIImage) {
+        showCamera = false
+        guard let target = proofTarget else { return }
+        proofTarget = nil
+        Task { await model.completeWithProof(id: target.inst.id, image: image, claimFor: target.claimFor) }
+    }
+
+    /// A library item was picked: load it to a UIImage, then complete with it.
+    private func loadLibraryPick(_ item: PhotosPickerItem?) async {
+        photosPickerOpen = false
+        defer { libraryPick = nil }
+        guard let item, let target = proofTarget else { proofTarget = nil; return }
+        proofTarget = nil
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data) else {
+                model.proofError = "Couldn’t read that photo — please try another."
+                return
+            }
+            await model.completeWithProof(id: target.inst.id, image: image, claimFor: target.claimFor)
+        } catch {
+            model.proofError = "Couldn’t read that photo — please try another."
+        }
     }
 
     // MARK: iPhone — vertical stack of columns
@@ -175,6 +285,7 @@ struct ChoresView: View {
     private var phoneContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                proofErrorBanner
                 approvalsCard
                 dateNav
                 if model.loading && model.instances.isEmpty {
@@ -203,6 +314,7 @@ struct ChoresView: View {
             KioskPageHeader("Chores", "Tick one off — or drag a chore to whoever did it.") {
                 KioskHeaderButton(icon: "plus", label: "New chore") { editor = .new(personId: nil) }
             }
+            proofErrorBanner.frame(maxWidth: 760)
             if sync.isParent && !approvals.chores.isEmpty { approvalsCard.frame(maxWidth: 760) }
             dateNav.frame(maxWidth: 440)
             if model.loading && model.instances.isEmpty {
@@ -296,6 +408,27 @@ struct ChoresView: View {
         }
     }
 
+    /// A dismissible inline error for a failed photo upload / the 422 "needs a photo"
+    /// guard — mirrors web's `proofErr` banner.
+    @ViewBuilder
+    private var proofErrorBanner: some View {
+        if let msg = model.proofError {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 15)).foregroundStyle(NK.primary)
+                Text(msg).font(.system(size: 13.5, weight: .semibold)).foregroundStyle(NK.ink)
+                Spacer(minLength: 6)
+                Button { withAnimation { model.proofError = nil } } label: {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 16)).foregroundStyle(NK.ink3)
+                }.buttonStyle(.plain)
+            }
+            .padding(12)
+            .background(NK.primary.opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.primary.opacity(0.3), lineWidth: 1))
+        }
+    }
+
     // MARK: inline approvals ("Needs your OK")
 
     /// Chore check-offs waiting on a parent, surfaced inline at the top so you can
@@ -331,6 +464,7 @@ struct ChoresView: View {
                 Avatar(colorHex: m?.colorHex, emoji: m?.emoji ?? "🙂", size: 34)
                 approvalText(c)
                 Spacer(minLength: 8)
+                ChoreProofThumb(chore: c) { reviewing = c }
                 ApprovalActionPair(
                     denyLabel: "Not yet", isKiosk: true,
                     onDeny: { decide(c) { await sync.rejectChore(id: c.id) } },
@@ -343,6 +477,7 @@ struct ChoresView: View {
                     Avatar(colorHex: m?.colorHex, emoji: m?.emoji ?? "🙂", size: 36)
                     approvalText(c)
                     Spacer(minLength: 0)
+                    ChoreProofThumb(chore: c) { reviewing = c }
                 }
                 ApprovalActionPair(
                     denyLabel: "Not yet", isKiosk: false,
@@ -540,8 +675,12 @@ struct ChoresView: View {
             HStack(spacing: 11) {
                 Button {
                     if isGrabs { withAnimation { claiming = claiming == inst.id ? nil : inst.id } }
+                    // A photo-required chore that isn't yet complete must capture a photo
+                    // before it can finish — open the picker instead of toggling.
+                    else if inst.requiresPhoto && !isDone && !isAwaiting { startProof(inst) }
                     else { Task { await model.toggle(inst) } }
-                } label: { tick(isDone: isDone, isAwaiting: isAwaiting, isGrabs: isGrabs) }
+                } label: { tick(isDone: isDone, isAwaiting: isAwaiting, isGrabs: isGrabs,
+                                 needsPhoto: inst.requiresPhoto && !isDone && !isAwaiting) }
                 .buttonStyle(.plain)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -591,12 +730,16 @@ struct ChoresView: View {
         }
     }
 
-    private func tick(isDone: Bool, isAwaiting: Bool, isGrabs: Bool) -> some View {
+    private func tick(isDone: Bool, isAwaiting: Bool, isGrabs: Bool, needsPhoto: Bool = false) -> some View {
         Group {
             if isAwaiting {
                 Text("⏳").font(.system(size: 16)).frame(width: 26, height: 26)
             } else if isDone {
                 Image(systemName: "checkmark.circle.fill").font(.system(size: 22)).foregroundStyle(FamilyColor.wally.solid)
+            } else if needsPhoto && !isGrabs {
+                // 📷 affordance, matching web: a photo-required chore shows the camera
+                // on its incomplete tick so it's clear a snapshot is needed to finish.
+                Image(systemName: "camera.circle").font(.system(size: 22)).foregroundStyle(NK.primary)
             } else {
                 Image(systemName: isGrabs ? "hand.raised.circle" : "circle").font(.system(size: 22))
                     .foregroundStyle(isGrabs ? NK.gold : NK.ink3)
@@ -611,7 +754,10 @@ struct ChoresView: View {
             ForEach(sync.members) { m in
                 Button {
                     claiming = nil
-                    Task { await model.claimComplete(id: inst.id, personId: m.id) }
+                    // Photo-required up-for-grabs: capture the proof first, then claim +
+                    // complete with it; otherwise claim + complete straight away.
+                    if inst.requiresPhoto { startProof(inst, claimFor: m.id) }
+                    else { Task { await model.claimComplete(id: inst.id, personId: m.id) } }
                 } label: {
                     Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 30)
                 }
@@ -651,6 +797,7 @@ struct ChoreEditSheet: View {
     @State private var freq: String        // "daily" | "weekly"
     @State private var days: Set<String>
     @State private var requiresApproval: Bool
+    @State private var requiresPhoto: Bool
     @State private var confirmDelete = false
     @FocusState private var titleFocused: Bool
 
@@ -665,6 +812,7 @@ struct ChoreEditSheet: View {
             _currencyKey = State(initialValue: nil)
             _freq = State(initialValue: "daily"); _days = State(initialValue: [])
             _requiresApproval = State(initialValue: false)
+            _requiresPhoto = State(initialValue: false)
         case let .edit(i):
             editChoreId = i.choreId
             _title = State(initialValue: i.choreTitle); _emoji = State(initialValue: i.emoji ?? "")
@@ -673,6 +821,7 @@ struct ChoreEditSheet: View {
             let parsed = ChoreEditSheet.parseRrule(i.rrule)
             _freq = State(initialValue: parsed.freq); _days = State(initialValue: Set(parsed.days))
             _requiresApproval = State(initialValue: i.requiresApproval)
+            _requiresPhoto = State(initialValue: i.requiresPhoto)
         }
     }
 
@@ -781,6 +930,16 @@ struct ChoreEditSheet: View {
                     .tint(FamilyColor.wally.solid)
                     .padding(13).cardField()
 
+                    Toggle(isOn: $requiresPhoto) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Needs a photo").font(.system(size: 14.5, weight: .bold)).foregroundStyle(NK.ink)
+                            Text("A snapshot of the finished job is needed to complete it.")
+                                .font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                        }
+                    }
+                    .tint(FamilyColor.wally.solid)
+                    .padding(13).cardField()
+
                     if editing {
                         Button {
                             if confirmDelete { onDelete(editChoreId!); dismiss() }
@@ -851,6 +1010,7 @@ struct ChoreEditSheet: View {
             "rewardAmount": .int(stars),
             "rrule": .string(buildRrule()),
             "requiresApproval": .bool(requiresApproval),
+            "requiresPhoto": .bool(requiresPhoto),
         ]
         // Pass the chosen currency when the household has more than one (else the
         // backend uses its default).

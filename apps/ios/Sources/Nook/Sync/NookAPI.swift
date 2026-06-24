@@ -37,7 +37,15 @@ struct NookAPI: Sendable {
         let powerSyncUrl: String?
     }
 
-    enum APIError: Error { case http(Int, String) }
+    enum APIError: Error {
+        case http(Int, String)
+        /// True for the 422 a photo-required chore returns when completed without proof
+        /// (`{ error: "ProofRequired" }`) — lets the capture flow prompt for a photo.
+        var isProofRequired: Bool {
+            if case let .http(code, _) = self { return code == 422 }
+            return false
+        }
+    }
 
     /// One shared decoder (default config) — JSONDecoder is reusable and decoding is
     /// thread-safe, so there's no reason to allocate one per request.
@@ -629,6 +637,39 @@ struct NookAPI: Sendable {
         let rrule: String?
         let requiresApproval: Bool
         let streak: Int
+        /// Photo-proof: the chore needs a snapshot to complete; the (resolved, maybe
+        /// relative) proof URL once one is attached; and whether a proof was ever
+        /// attached (it auto-expires server-side, leaving this flag so the UI can say
+        /// the photo's gone). Decoded defensively so an older payload missing these
+        /// fields still loads the rest of the row.
+        let requiresPhoto: Bool
+        let proofUrl: String?
+        let hadProof: Bool
+
+        private enum CodingKeys: String, CodingKey {
+            case id, choreId, choreTitle, emoji, personId, personName, status
+            case rewardAmount, rewardCurrency, rrule, requiresApproval, streak
+            case requiresPhoto, proofUrl, hadProof
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            choreId = try c.decode(String.self, forKey: .choreId)
+            choreTitle = try c.decode(String.self, forKey: .choreTitle)
+            emoji = try c.decodeIfPresent(String.self, forKey: .emoji)
+            personId = try c.decodeIfPresent(String.self, forKey: .personId)
+            personName = try c.decodeIfPresent(String.self, forKey: .personName)
+            status = try c.decode(String.self, forKey: .status)
+            rewardAmount = (try? c.decode(Int.self, forKey: .rewardAmount)) ?? 0
+            rewardCurrency = try c.decodeIfPresent(String.self, forKey: .rewardCurrency)
+            rrule = try c.decodeIfPresent(String.self, forKey: .rrule)
+            requiresApproval = (try? c.decode(Bool.self, forKey: .requiresApproval)) ?? false
+            streak = (try? c.decode(Int.self, forKey: .streak)) ?? 0
+            requiresPhoto = (try? c.decode(Bool.self, forKey: .requiresPhoto)) ?? false
+            proofUrl = try? c.decodeIfPresent(String.self, forKey: .proofUrl)
+            hadProof = (try? c.decode(Bool.self, forKey: .hadProof)) ?? false
+        }
     }
 
     /// A household reward currency (stars, sticks, …) — symbol/label/color for display.
@@ -1022,7 +1063,15 @@ struct NookAPI: Sendable {
     /// Delete a chore definition + today's instances (admins).
     func deleteChore(id: String) async throws { try await delete("/api/chores/\(id)") }
 
-    func completeChore(id: String) async throws { try await send("POST", "/api/chore-instances/\(id)/complete", body: [:]) }
+    /// Mark an instance done. Pass an uploaded proof blob (`storageKey`/`contentType`)
+    /// for a photo-required chore; without it the server returns 422 `ProofRequired`,
+    /// which `APIError.isProofRequired` detects so the caller can prompt for a photo.
+    func completeChore(id: String, storageKey: String? = nil, contentType: String? = nil) async throws {
+        var body: [String: JSONValue] = [:]
+        if let storageKey { body["storageKey"] = .string(storageKey) }
+        if let contentType { body["contentType"] = .string(contentType) }
+        try await send("POST", "/api/chore-instances/\(id)/complete", body: body)
+    }
     func uncompleteChore(id: String) async throws { try await send("POST", "/api/chore-instances/\(id)/uncomplete", body: [:]) }
     func approveChore(id: String) async throws { try await send("POST", "/api/chore-instances/\(id)/approve", body: [:]) }
     func rejectChore(id: String) async throws { try await send("POST", "/api/chore-instances/\(id)/reject", body: [:]) }
