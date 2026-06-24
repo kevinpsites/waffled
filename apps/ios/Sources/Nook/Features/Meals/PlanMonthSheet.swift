@@ -418,10 +418,10 @@ struct PlanMonthSheet: View {
                     Text(weekday(card.date)).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
                     Text(card.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(2)
                     HStack(spacing: 8) {
-                        if let m = card.minutes { tag("🕐 \(m)m") }
-                        tag(card.recipeId != nil ? "📖 Library" : "✨ Special")
-                        if plannedDates.contains(card.date) && !dirty.contains(card.date) { tag("Was planned") }
-                        else if let note = card.note, !note.isEmpty { tag(note) }
+                        if let m = card.minutes { PlanTag(text: "🕐 \(m)m") }
+                        PlanTag(text: card.recipeId != nil ? "📖 Library" : "✨ Special")
+                        if plannedDates.contains(card.date) && !dirty.contains(card.date) { PlanTag(text: "Was planned") }
+                        else if let note = card.note, !note.isEmpty { PlanTag(text: note) }
                     }
                 }
                 Spacer(minLength: 0)
@@ -433,8 +433,8 @@ struct PlanMonthSheet: View {
             }
             Divider().background(NK.hair)
             HStack(spacing: 8) {
-                actionButton("arrow.triangle.2.circlepath", "Swap") { Task { await swap(card) } }.disabled(redrafting || isLocked)
-                actionButton("book", "Pick") { pickTarget = PickTarget(date: card.date) }.disabled(redrafting || isLocked)
+                PlanActionChip(icon: "arrow.triangle.2.circlepath", label: "Swap") { Task { await swap(card) } }.disabled(redrafting || isLocked)
+                PlanActionChip(icon: "book", label: "Pick") { pickTarget = PickTarget(date: card.date) }.disabled(redrafting || isLocked)
                 Spacer()
                 Button { toggleLock(card.date) } label: {
                     HStack(spacing: 5) {
@@ -454,20 +454,11 @@ struct PlanMonthSheet: View {
         .animation(.easeInOut(duration: 0.15), value: isLocked)
         .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
             .strokeBorder(dragOverDate == card.date ? NK.ai : .clear, lineWidth: 2))
-        .draggable(card.date) { cardDragPreview(card) }
+        .draggable(card.date) { PlanCardDragPreview(card: card) }
         .dropDestination(for: String.self) { items, _ in
             guard let s = items.first else { return false }
             swapCards(s, card.date); return true
         } isTargeted: { over in dragOverDate = over ? card.date : (dragOverDate == card.date ? nil : dragOverDate) }
-    }
-
-    private func cardDragPreview(_ card: NookAPI.PlanCardDTO) -> some View {
-        HStack(spacing: 5) {
-            Text(card.emoji ?? "🍽️").font(.system(size: 14))
-            Text(card.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
-        }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(NK.card).clipShape(Capsule()).overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
     }
 
     /// Swap the meals on two review nights (keeps each card's date).
@@ -482,22 +473,6 @@ struct PlanMonthSheet: View {
         suggestions[j] = NookAPI.PlanCardDTO(date: b.date, mealType: b.mealType, title: a.title, recipeId: a.recipeId,
                                              emoji: a.emoji, minutes: a.minutes, servings: a.servings, note: a.note)
         dirty.insert(a.date); dirty.insert(b.date)
-    }
-
-    private func actionButton(_ icon: String, _ label: String, _ tap: @escaping () -> Void) -> some View {
-        Button(action: tap) {
-            HStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 12, weight: .bold))
-                Text(label).font(.system(size: 12, weight: .bold))
-            }
-            .foregroundStyle(NK.ink2).padding(.horizontal, 12).padding(.vertical, 7).background(NK.panel).clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func tag(_ t: String) -> some View {
-        Text(t).font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink2)
-            .padding(.horizontal, 7).padding(.vertical, 2).background(NK.panel).clipShape(Capsule()).lineLimit(1)
     }
 
     private var applyBar: some View {
