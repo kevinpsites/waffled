@@ -1,5 +1,25 @@
 import SwiftUI
 
+/// Pure text helpers shared by the plan sheets. `friendly`/`viaLabel` are timezone-
+/// free; `weekday` needs the household timezone, so call sites pass `sync.householdTz`.
+enum MealPlanText {
+    static func friendly(_ err: String) -> String {
+        err == "AIUnavailable" || err == "No AI provider configured"
+            ? "No AI provider is set up. Choose one in Settings → AI & capture."
+            : err
+    }
+
+    static func viaLabel(_ v: String) -> String {
+        switch v { case "anthropic": return "Claude"; case "openai": return "OpenAI"
+        case "ollama", "local": return "local AI"; default: return v }
+    }
+
+    static func weekday(_ ymd: String, _ tz: TimeZone) -> String {
+        guard let d = DateFmt.date(ymd, "yyyy-MM-dd", tz) else { return ymd }
+        return DateFmt.string(d, "EEE MMM d", tz).uppercased()
+    }
+}
+
 // Stateless leaf views shared by PlanWeekSheet and PlanMonthSheet. These are pure
 // view-layer reuse — no parent state lives here. Keep rendered output pixel-identical
 // to the originals (NK.* tokens, font sizes, spacing must match exactly).

@@ -323,7 +323,7 @@ struct PlanMonthSheet: View {
 
     private var reviewSubtitle: String {
         var parts: [String] = []
-        if let via { parts.append("Drafted via \(viaLabel(via))") }
+        if let via { parts.append("Drafted via \(MealPlanText.viaLabel(via))") }
         if !plannedDates.isEmpty { parts.append("\(plannedDates.count) already planned") }
         return parts.joined(separator: " · ")
     }
@@ -377,7 +377,7 @@ struct PlanMonthSheet: View {
                     .frame(width: 46, height: 46).background(RecipeGradient.forCategory(card.mealType))
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(weekday(card.date)).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
+                    Text(MealPlanText.weekday(card.date, sync.householdTz)).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
                     Text(card.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(2)
                     HStack(spacing: 8) {
                         if let m = card.minutes { PlanTag(text: "🕐 \(m)m") }
@@ -481,7 +481,7 @@ struct PlanMonthSheet: View {
                 allowRepeats: allowRepeats, repeatGapDays: repeatGapDays,
                 weekdayThemes: themesDict, weeknightMaxMin: quickWeeknights ? weeknightMax : nil, leftovers: leftovers)
             via = result.via
-            if let err = result.error, result.suggestions.isEmpty { errorMessage = friendly(err); if full { phase = .failed }; return }
+            if let err = result.error, result.suggestions.isEmpty { errorMessage = MealPlanText.friendly(err); if full { phase = .failed }; return }
             if full {
                 // Show the WHOLE month: freshly-drafted empty nights + the nights
                 // that were already planned (editable, badged "Was planned").
@@ -550,18 +550,4 @@ struct PlanMonthSheet: View {
         dismiss()
     }
 
-    // MARK: helpers
-
-    private func friendly(_ err: String) -> String {
-        err == "AIUnavailable" || err == "No AI provider configured"
-            ? "No AI provider is set up. Choose one in Settings → AI & capture." : err
-    }
-    private func viaLabel(_ v: String) -> String {
-        switch v { case "anthropic": return "Claude"; case "openai": return "OpenAI"
-        case "ollama", "local": return "local AI"; default: return v }
-    }
-    private func weekday(_ ymd: String) -> String {
-        guard let d = DateFmt.date(ymd, "yyyy-MM-dd", sync.householdTz) else { return ymd }
-        return DateFmt.string(d, "EEE MMM d", sync.householdTz).uppercased()
-    }
 }
