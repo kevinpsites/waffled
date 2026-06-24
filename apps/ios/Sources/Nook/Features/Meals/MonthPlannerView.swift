@@ -44,8 +44,9 @@ struct MonthPlannerView: View {
                         }
                         .buttonStyle(.plain)
                         weekdayRow
+                        let byDate = dinnerByDate
                         LazyVGrid(columns: columns, spacing: 5) {
-                            ForEach(gridDays, id: \.self) { day in cell(day) }
+                            ForEach(gridDays, id: \.self) { day in cell(day, entry: byDate[ymd(day)]) }
                         }
                     }
                     .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 110)
@@ -114,14 +115,15 @@ struct MonthPlannerView: View {
     /// iPad month — fills the available height (taller cells) and mirrors the week view's
     /// padded, non-scrolling layout so the action row lands in the same place on switch.
     private var kioskMonth: some View {
-        VStack(spacing: 12) {
+        let byDate = dinnerByDate   // build the lookup once, not once per cell
+        return VStack(spacing: 12) {
             kioskMonthHeader
             VStack(spacing: 5) {
                 weekdayRow
                 ForEach(weekRows, id: \.self) { week in
                     HStack(spacing: 5) {
                         ForEach(week, id: \.self) { day in
-                            cell(day).frame(maxWidth: .infinity, maxHeight: .infinity)
+                            cell(day, entry: byDate[ymd(day)]).frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -202,11 +204,10 @@ struct MonthPlannerView: View {
 
     // MARK: a day cell
 
-    @ViewBuilder private func cell(_ day: Date) -> some View {
+    @ViewBuilder private func cell(_ day: Date, entry: NookAPI.WeekEntryDTO?) -> some View {
         let ds = ymd(day)
         let inMonth = cal.isDate(day, equalTo: monthStart, toGranularity: .month)
         let isToday = ds == ymd(Date())
-        let entry = dinnerByDate[ds]
 
         // The iPad cells are much taller now — scale the text up to use that room.
         let content = VStack(spacing: isKiosk ? 5 : 2) {

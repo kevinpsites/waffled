@@ -187,6 +187,10 @@ struct KioskCalendarView: View {
 
     private var monthGrid: some View {
         let cells = monthCells(monthAnchor)
+        // Group events by day ONCE per render, not once per cell — otherwise each of the
+        // 42 cells re-filters the full event list (O(events × 42)).
+        let byDay = eventsByDay
+        let today = Agenda.todayKey(tz)
         return VStack(spacing: 6) {
             HStack(spacing: 6) {
                 ForEach(Array(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].enumerated()), id: \.offset) { _, d in
@@ -197,7 +201,9 @@ struct KioskCalendarView: View {
                 HStack(spacing: 6) {
                     ForEach(0..<7, id: \.self) { col in
                         let idx = row * 7 + col
-                        if idx < cells.count { monthCell(cells[idx]) } else { Color.clear }
+                        if idx < cells.count {
+                            monthCell(cells[idx], items: byDay[cells[idx].key] ?? [], today: today)
+                        } else { Color.clear }
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -206,10 +212,16 @@ struct KioskCalendarView: View {
         .frame(maxHeight: .infinity)
     }
 
-    private func monthCell(_ cell: CalendarView.MonthCell) -> some View {
+    /// `filtered` grouped by day key and ordered — built once per render and shared by
+    /// the month grid and the mini-calendar so neither re-scans per cell.
+    private var eventsByDay: [String: [SyncedEvent]] {
+        Dictionary(grouping: filtered, by: { Agenda.dayKey($0, tz) })
+            .mapValues { $0.sorted(by: Agenda.before) }
+    }
+
+    private func monthCell(_ cell: CalendarView.MonthCell, items: [SyncedEvent], today: String) -> some View {
         let isSelected = cell.key == selectedDay
-        let isToday = cell.key == Agenda.todayKey(tz)
-        let items = Agenda.forDay(filtered, day: cell.key, tz: tz)
+        let isToday = cell.key == today
         return Button { withAnimation { selectedDay = cell.key } } label: {
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
@@ -330,6 +342,8 @@ struct KioskCalendarView: View {
 
     private var miniMonth: some View {
         let cells = monthCells(miniAnchor)
+        let byDay = eventsByDay
+        let today = Agenda.todayKey(tz)
         return VStack(spacing: 8) {
             HStack {
                 Text(DateFmt.string(miniAnchor, "MMMM", tz)).font(NK.serif(20)).foregroundStyle(NK.ink)
@@ -343,7 +357,9 @@ struct KioskCalendarView: View {
                 }
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7), spacing: 4) {
-                ForEach(cells, id: \.key) { cell in miniCell(cell) }
+                ForEach(cells, id: \.key) { cell in
+                    miniCell(cell, events: byDay[cell.key] ?? [], today: today)
+                }
             }
         }
         .padding(16)
@@ -351,9 +367,9 @@ struct KioskCalendarView: View {
         .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
     }
 
-    private func miniCell(_ cell: CalendarView.MonthCell) -> some View {
-        let isToday = cell.key == Agenda.todayKey(tz)
-        let colors = dotColors(cell.key)
+    private func miniCell(_ cell: CalendarView.MonthCell, events: [SyncedEvent], today: String) -> some View {
+        let isToday = cell.key == today
+        let colors = dotColors(events)
         return Button { withAnimation { selectedDay = cell.key; mode = .day } } label: {
             VStack(spacing: 2) {
                 Text("\(cell.day)")
@@ -440,9 +456,9 @@ struct KioskCalendarView: View {
             .sorted { $0.count > $1.count }
     }
 
-    private func dotColors(_ key: String) -> [String] {
+    private func dotColors(_ events: [SyncedEvent]) -> [String] {
         var seen = Set<String>(); var colors: [String] = []
-        for e in filtered where Agenda.dayKey(e, tz) == key {
+        for e in events {
             let hex = e.colorHex ?? "#A6A29B"
             if seen.insert(hex).inserted { colors.append(hex) }
         }
