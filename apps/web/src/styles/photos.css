@@ -32,11 +32,22 @@
 .ph-tile.no-img { aspect-ratio: 4 / 3; display: grid; place-items: center; font-size: 56px; }
 .ph-tile.clickable:hover { box-shadow: var(--sh-2); }
 
-/* tile delete affordance on the wall */
-.ph-del { position: absolute; top: 9px; left: 10px; width: 26px; height: 26px; border: 0;
-  border-radius: 999px; background: rgba(0,0,0,.32); color: #fff; font-size: 15px; line-height: 1;
-  display: none; place-items: center; cursor: pointer; backdrop-filter: blur(4px); }
-.ph-tile:hover .ph-del { display: grid; }
+/* tile delete affordance on the wall — always visible so it works on touch
+   (was hover-only); a tap opens a confirm dialog rather than deleting outright. */
+.ph-del { position: absolute; top: 9px; left: 10px; width: 30px; height: 30px; border: 0;
+  border-radius: 999px; background: rgba(0,0,0,.42); color: #fff; font-size: 18px; line-height: 1;
+  display: grid; place-items: center; cursor: pointer; backdrop-filter: blur(4px);
+  opacity: .85; transition: opacity .12s, background .12s; }
+.ph-tile:hover .ph-del { opacity: 1; }
+.ph-del:hover { background: rgba(192,57,43,.92); }
+
+/* multi-select on the wall: a check badge per tile + a ring on selected tiles */
+.ph-tile.selecting { cursor: pointer; }
+.ph-tile.selected { box-shadow: 0 0 0 3px var(--primary); }
+.ph-check { position: absolute; top: 9px; left: 10px; width: 28px; height: 28px; border-radius: 999px;
+  border: 2px solid #fff; background: rgba(0,0,0,.35); color: #fff; display: grid; place-items: center;
+  font-size: 16px; font-weight: 800; line-height: 1; box-shadow: 0 1px 5px rgba(0,0,0,.35); }
+.ph-tile.selected .ph-check { background: var(--primary); }
 
 /* ---- album filter chips (above the wall) ---------------------- */
 .ph-filter { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 30px 14px; }

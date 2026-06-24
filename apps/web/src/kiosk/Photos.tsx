@@ -5,6 +5,8 @@ import { useTopbarRight } from './topbar-slot'
 import { PhotoAdd } from './components/PhotoAdd'
 import { PhotoDetail } from './components/PhotoDetail'
 import { Screensaver } from './components/Screensaver'
+import { ConfirmDialog } from './components/ConfirmDialog'
+import { MovePhotosModal } from './components/MovePhotosModal'
 import '../styles/photos.css'
 
 // Photos home — the family wall (matches photos.png): a "NEW MEMORY" banner over
@@ -22,21 +24,43 @@ function tileBg(photo: Photo): string {
   return `linear-gradient(135deg, ${c}, ${shade(c)})`
 }
 
-function PhotoTile({ photo, onOpen, onDelete }: { photo: Photo; onOpen: () => void; onDelete: () => void }) {
+function PhotoTile({
+  photo,
+  selectMode,
+  selected,
+  onOpen,
+  onToggle,
+  onRequestDelete,
+}: {
+  photo: Photo
+  selectMode: boolean
+  selected: boolean
+  onOpen: () => void
+  onToggle: () => void
+  onRequestDelete: () => void
+}) {
   return (
-    <div className={`ph-tile clickable ${photo.imageUrl ? '' : 'no-img'}`} style={{ background: tileBg(photo) }} onClick={onOpen}>
+    <div
+      className={`ph-tile clickable ${photo.imageUrl ? '' : 'no-img'} ${selectMode ? 'selecting' : ''} ${selected ? 'selected' : ''}`}
+      style={{ background: tileBg(photo) }}
+      onClick={selectMode ? onToggle : onOpen}
+    >
       {photo.imageUrl ? <img src={photo.imageUrl} alt={photo.caption} /> : photo.emoji ?? '🖼️'}
-      <button
-        type="button"
-        className="ph-del"
-        aria-label={`Delete ${photo.caption}`}
-        onClick={(e) => {
-          e.stopPropagation()
-          onDelete()
-        }}
-      >
-        ×
-      </button>
+      {selectMode ? (
+        <div className="ph-check" aria-hidden>{selected ? '✓' : ''}</div>
+      ) : (
+        <button
+          type="button"
+          className="ph-del"
+          aria-label={`Delete ${photo.caption}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onRequestDelete()
+          }}
+        >
+          ×
+        </button>
+      )}
       <div className="heart">{photo.isFavorite ? '❤️' : ''}</div>
       <div className="ph-cap">{photo.caption}</div>
     </div>
@@ -52,6 +76,11 @@ export function Photos() {
   const [saver, setSaver] = useState<Photo | null>(null)
   const [albumFilter, setAlbumFilter] = useState<string | null>(null)
   const [displayCfg, setDisplayCfg] = useState<DisplayConfig | null>(null)
+  // Multi-select: a Set of photo ids + the bulk-action modals (delete / move).
+  const [selectMode, setSelectMode] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [confirmIds, setConfirmIds] = useState<string[] | null>(null)
+  const [moveOpen, setMoveOpen] = useState(false)
 
   // Pull the household display config once so manual playback uses the same
   // transition speed as the idle screensaver (tolerate failure → default 10s).
@@ -85,23 +114,69 @@ export function Photos() {
     [photos, albumFilter]
   )
 
+  function exitSelect() {
+    setSelectMode(false)
+    setSelected(new Set())
+  }
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   useTopbarRight(
-    () => (
-      <div className="tb-right">
-        <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => setSaver(newest)} disabled={!newest}>
-          🖼️ Play screensaver
-        </button>
-        <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => setAdding(true)}>
-          <Icon name="plus" />
-          <span>Add photos</span>
-        </button>
-      </div>
-    ),
-    [newest]
+    () =>
+      selectMode ? (
+        <div className="tb-right">
+          <span className="tiny muted" style={{ fontWeight: 700, marginRight: 4 }}>{selected.size} selected</span>
+          <button type="button" className="pill" disabled={selected.size === 0} onClick={() => setMoveOpen(true)}>
+            Move to album
+          </button>
+          <button
+            type="button"
+            className="pill"
+            style={{ color: 'var(--danger, #c0392b)', cursor: 'pointer' }}
+            disabled={selected.size === 0}
+            onClick={() => setConfirmIds([...selected])}
+          >
+            Delete
+          </button>
+          <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={exitSelect}>
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <div className="tb-right">
+          <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => setSelectMode(true)} disabled={photos.length === 0}>
+            Select
+          </button>
+          <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => setSaver(newest)} disabled={!newest}>
+            🖼️ Play screensaver
+          </button>
+          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => setAdding(true)}>
+            <Icon name="plus" />
+            <span>Add photos</span>
+          </button>
+        </div>
+      ),
+    [newest, selectMode, selected, photos.length]
   )
 
-  async function del(p: Photo) {
-    await api.deletePhoto(p.id)
+  async function doDelete(ids: string[]) {
+    await Promise.all(ids.map((id) => api.deletePhoto(id)))
+    setConfirmIds(null)
+    exitSelect()
+    refetch()
+  }
+
+  async function doMove(album: string) {
+    await Promise.all([...selected].map((id) => api.updatePhoto(id, { memory: album || null })))
+    setMoveOpen(false)
+    exitSelect()
     refetch()
   }
 
@@ -157,7 +232,15 @@ export function Photos() {
         {visiblePhotos.length > 0 ? (
           <div className="ph-wall">
             {visiblePhotos.map((p) => (
-              <PhotoTile key={p.id} photo={p} onOpen={() => setDetailId(p.id)} onDelete={() => del(p)} />
+              <PhotoTile
+                key={p.id}
+                photo={p}
+                selectMode={selectMode}
+                selected={selected.has(p.id)}
+                onOpen={() => setDetailId(p.id)}
+                onToggle={() => toggleSelect(p.id)}
+                onRequestDelete={() => setConfirmIds([p.id])}
+              />
             ))}
           </div>
         ) : (
@@ -193,6 +276,24 @@ export function Photos() {
           timezone={household?.timezone}
           intervalSeconds={displayCfg?.photoInterval}
           onWake={() => setSaver(null)}
+        />
+      )}
+      {confirmIds && (
+        <ConfirmDialog
+          title={confirmIds.length > 1 ? `Delete ${confirmIds.length} photos?` : 'Delete photo?'}
+          message="This can’t be undone."
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => doDelete(confirmIds)}
+          onClose={() => setConfirmIds(null)}
+        />
+      )}
+      {moveOpen && (
+        <MovePhotosModal
+          count={selected.size}
+          albums={albums}
+          onMove={doMove}
+          onClose={() => setMoveOpen(false)}
         />
       )}
     </div>

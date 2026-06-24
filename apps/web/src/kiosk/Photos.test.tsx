@@ -44,12 +44,21 @@ const soccer = {
   colorHex: '#8fd3c4',
 }
 
-function mockApi(opts: { photos?: unknown[]; created?: unknown[]; deleted?: string[] }) {
+function mockApi(opts: {
+  photos?: unknown[]
+  created?: unknown[]
+  deleted?: string[]
+  patched?: { id: string; body: Record<string, unknown> }[]
+}) {
   globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
     const u = String(url)
     if (init?.method === 'POST' && /\/api\/photos$/.test(u)) {
       opts.created?.push(JSON.parse(init.body!))
       return { ok: true, status: 201, json: async () => ({ photo: { id: `new-${opts.created?.length}` } }) }
+    }
+    if (init?.method === 'PATCH' && /\/api\/photos\//.test(u)) {
+      opts.patched?.push({ id: u.split('/').pop()!, body: JSON.parse(init.body!) })
+      return { ok: true, json: async () => ({ photo: {} }) }
     }
     if (init?.method === 'DELETE') {
       opts.deleted?.push(u.split('/').pop()!)
@@ -137,12 +146,68 @@ describe('Photos home (family wall)', () => {
     expect(screen.getByAltText('Soccer win')).toBeInTheDocument()
   })
 
-  it('deletes a photo from the wall', async () => {
+  it('confirms before deleting a single photo from the wall', async () => {
+    const deleted: string[] = []
+    mockApi({ photos: [beach, cake], deleted })
+    renderHome()
+
+    // tapping the tile's × opens a confirm dialog — it does NOT delete outright
+    fireEvent.click(await screen.findByRole('button', { name: /Delete Beach day/ }))
+    expect(await screen.findByText('Delete photo?')).toBeInTheDocument()
+    expect(deleted).toHaveLength(0)
+
+    // confirming deletes
+    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }))
+    await waitFor(() => expect(deleted).toContain('ph1'))
+  })
+
+  it('cancels a delete without removing the photo', async () => {
     const deleted: string[] = []
     mockApi({ photos: [beach, cake], deleted })
     renderHome()
 
     fireEvent.click(await screen.findByRole('button', { name: /Delete Beach day/ }))
-    await waitFor(() => expect(deleted).toContain('ph1'))
+    fireEvent.click(await screen.findByRole('button', { name: /^Cancel$/ }))
+    await waitFor(() => expect(screen.queryByText('Delete photo?')).not.toBeInTheDocument())
+    expect(deleted).toHaveLength(0)
+  })
+
+  it('bulk-deletes selected photos after confirmation', async () => {
+    const deleted: string[] = []
+    mockApi({ photos: [beach, cake], deleted })
+    renderHome()
+
+    // enter select mode, pick both tiles
+    fireEvent.click(await screen.findByRole('button', { name: /^Select$/ }))
+    fireEvent.click(screen.getByText('Beach day'))
+    fireEvent.click(screen.getByText('Dad’s birthday'))
+    expect(screen.getByText('2 selected')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }))
+    expect(await screen.findByText('Delete 2 photos?')).toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: /^Delete$/ }).pop()!)
+
+    await waitFor(() => expect(deleted.sort()).toEqual(['ph1', 'ph2']))
+  })
+
+  it('moves selected photos to a chosen album', async () => {
+    const patched: { id: string; body: Record<string, unknown> }[] = []
+    mockApi({ photos: [beach, cake], patched })
+    renderHome()
+
+    fireEvent.click(await screen.findByRole('button', { name: /^Select$/ }))
+    fireEvent.click(screen.getByText('Beach day'))
+    fireEvent.click(screen.getByText('Dad’s birthday'))
+    fireEvent.click(screen.getByRole('button', { name: /Move to album/ }))
+
+    // pick a new album in the move modal, then Move
+    const select = await screen.findByRole('combobox')
+    fireEvent.change(select, { target: { value: '__new__' } })
+    fireEvent.change(screen.getByPlaceholderText('New album name'), { target: { value: 'Summer 2026' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Move$/ }))
+
+    await waitFor(() => expect(patched).toHaveLength(2))
+    expect(patched.every((p) => p.body.memory === 'Summer 2026')).toBe(true)
+    expect(patched.map((p) => p.id).sort()).toEqual(['ph1', 'ph2'])
   })
 })
