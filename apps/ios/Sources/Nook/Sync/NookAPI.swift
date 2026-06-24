@@ -1140,7 +1140,6 @@ struct NookAPI: Sendable {
     // MARK: Family hub tile counts (non-synced domains, fetched over REST)
 
     struct GoalDTO: Decodable { let id: String; let isFeatured: Bool }
-    struct PhotoDTO: Decodable { let id: String; let memory: String? }
     struct ListRefDTO: Decodable { let id: String }
     struct FamilyStarsDTO: Decodable, Sendable { let name: String?; let stars: Int }
 
@@ -1150,11 +1149,39 @@ struct NookAPI: Sendable {
         return try await getJSON("/api/goals", as: Resp.self).goals
     }
 
-    /// All photos (for the Photos tile count + latest memory).
-    func photos() async throws -> [PhotoDTO] {
-        struct Resp: Decodable { let photos: [PhotoDTO] }
-        return try await getJSON("/api/photos", as: Resp.self).photos
+    /// All photos (for the Photos tile count + latest memory, and the Photos wall),
+    /// newest first. Optional `memory` filters to one album.
+    func photos(memory: String? = nil) async throws -> [Photo] {
+        struct Resp: Decodable { let photos: [Photo] }
+        let path = memory.flatMap { m in
+            m.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+        }.map { "/api/photos?memory=\($0)" } ?? "/api/photos"
+        return try await getJSON(path, as: Resp.self).photos
     }
+
+    /// One photo's full detail.
+    func photo(id: String) async throws -> Photo {
+        struct Resp: Decodable { let photo: Photo }
+        return try await getJSON("/api/photos/\(id)", as: Resp.self).photo
+    }
+
+    /// Create a photo (typically `{ storageKey, caption, memory, isFavorite }` for an
+    /// uploaded blob). Returns the new photo's id.
+    @discardableResult
+    func createPhoto(_ body: [String: JSONValue]) async throws -> String {
+        struct Resp: Decodable { let photo: NewPhoto; struct NewPhoto: Decodable { let id: String } }
+        return try await sendReturning("POST", "/api/photos", body: body, as: Resp.self).photo.id
+    }
+
+    /// Patch a photo (caption / memory / isFavorite / takenAt). Returns the updated photo.
+    @discardableResult
+    func updatePhoto(id: String, _ body: [String: JSONValue]) async throws -> Photo {
+        struct Resp: Decodable { let photo: Photo }
+        return try await sendReturning("PATCH", "/api/photos/\(id)", body: body, as: Resp.self).photo
+    }
+
+    /// Soft-delete a photo.
+    func deletePhoto(id: String) async throws { try await delete("/api/photos/\(id)") }
 
     /// The household's lists (for the Lists tile count).
     func lists() async throws -> [ListRefDTO] {
@@ -1666,6 +1693,32 @@ struct NookAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(["ops": ops])
         let (data, resp) = try await perform(req)
         try check(resp, data)
+    }
+
+    // MARK: Photos (the family photo wall)
+
+    /// Who uploaded a photo (display info for the "added by" row).
+    struct PhotoPerson: Decodable, Sendable {
+        let personId: String
+        let name: String?
+        let avatarEmoji: String?
+        let colorHex: String?
+    }
+
+    /// One photo on the family wall. `imageUrl` is a stored-blob URL (resolve through
+    /// `MediaURL.resolve`) or nil for an emoji-on-gradient tile (`emoji` + `colorHex`).
+    struct Photo: Decodable, Identifiable, Sendable {
+        let id: String
+        let imageUrl: String?
+        let caption: String
+        let emoji: String?
+        let colorHex: String?
+        let memory: String?
+        let takenAt: String?
+        let isFavorite: Bool
+        let reactions: [String: Int]
+        let uploadedBy: PhotoPerson?
+        let createdAt: String
     }
 
     // MARK: media upload (blob store)

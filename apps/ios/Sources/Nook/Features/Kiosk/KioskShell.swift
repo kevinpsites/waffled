@@ -143,7 +143,7 @@ struct KioskShell: View {
             })
         case .photos:
             NavigationStack {
-                HubPlaceholder(emoji: "📷", title: "Photos", summary: "Family photos")
+                PhotosView()
             }
         case .settings:
             NavigationStack(path: $settingsPath) {

@@ -44,7 +44,7 @@ struct HubDestination: View {
         case let .person(id):   PersonView(personId: id, path: $path)
         case .rewards:          RewardsView(path: $path)
         case let .rewardShop(id): RewardShopView(personId: id, path: $path)
-        case .photos:           HubPlaceholder(emoji: "📷", title: "Photos", summary: hub?.photosSubtitle ?? "Family photos")
+        case .photos:           PhotosView()
         case .settings:         SettingsView(path: $path)
         case .settingsAccount:  AccountSettingsView()
         case .settingsFamily:   FamilyPeopleSettingsView()
