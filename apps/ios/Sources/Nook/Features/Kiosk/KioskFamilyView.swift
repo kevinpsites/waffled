@@ -17,11 +17,7 @@ struct KioskFamilyView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Family").font(NK.serif(34)).foregroundStyle(NK.ink)
-                    Text("Tap a person to see just their day, chores & goals.")
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
-                }
+                KioskPageHeader("Family", "Tap a person to see just their day, chores & goals.")
                 LazyVGrid(columns: cols, alignment: .leading, spacing: 16) {
                     ForEach(sync.members) { m in personCard(m) }
                 }

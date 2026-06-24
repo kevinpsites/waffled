@@ -34,7 +34,7 @@ struct FamilyPeopleSettingsView: View {
                 if let s = settings {
                     ForEach(s.members) { m in memberRow(m) }
                 } else if loading {
-                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 30)
+                    NookLoading(top: 30).padding(.bottom, 30)
                 }
                 Button { editor = .new } label: {
                     HStack(spacing: 7) {
