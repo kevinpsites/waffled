@@ -45,7 +45,7 @@ struct SettingsView: View {
                 row("📋", "Lists", "Grocery & lists")
                 row("🖥️", "Display & Kiosk", "Screensaver & idle") { path.append(.settingsDisplay) }
                 row("🔔", "Notifications", "Event reminders") { path.append(.settingsNotifications) }
-                row("ℹ️", "About", "Version & info")
+                row("ℹ️", "About", "Version & server") { path.append(.settingsAbout) }
                 signOutFooter
             }
             .padding(16).padding(.bottom, 110)

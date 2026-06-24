@@ -9,6 +9,15 @@ enum AppConfig {
     private static let urlKey = "nook.apiBaseURL"
     private static let tokenKey = "nook.devToken"
 
+    /// The built-in fallback server address — the compose stack's Caddy origin (serves
+    /// /api + /media). Exposed so the About screen can show/reset to it.
+    static let defaultBaseURL = "http://localhost:8080"
+
+    /// The address explicitly saved in Settings (nil if unset — i.e. using the default).
+    static var storedApiBaseURL: String? { UserDefaults.standard.string(forKey: urlKey) }
+    /// The dev token explicitly saved in Settings (ignores the env override).
+    static var storedDevToken: String { UserDefaults.standard.string(forKey: tokenKey) ?? "" }
+
     /// Our API base — the single public origin Caddy fronts (it proxies `/api/*` to the
     /// api container AND serves uploaded media at `/media/*`). It must be the Caddy
     /// origin, NOT the api's own port: the api alone (`:3000`) doesn't serve `/media`, so
@@ -19,7 +28,7 @@ enum AppConfig {
     static var apiBaseURL: String {
         env("NOOK_API_URL")
             ?? UserDefaults.standard.string(forKey: urlKey)
-            ?? "http://localhost:8080"
+            ?? defaultBaseURL
     }
 
     /// Local HS256 session token (mint via `just token` / `nook token`). The API's
@@ -51,12 +60,18 @@ enum AppConfig {
         return !devToken.isEmpty
     }
 
+    /// Save the server address, or clear it (fall back to `defaultBaseURL`) when blank.
     static func setApiBaseURL(_ value: String) {
-        UserDefaults.standard.set(value, forKey: urlKey)
+        let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if v.isEmpty { UserDefaults.standard.removeObject(forKey: urlKey) }
+        else { UserDefaults.standard.set(v, forKey: urlKey) }
     }
 
+    /// Save the dev token, or clear it when blank.
     static func setDevToken(_ value: String) {
-        UserDefaults.standard.set(value, forKey: tokenKey)
+        let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if v.isEmpty { UserDefaults.standard.removeObject(forKey: tokenKey) }
+        else { UserDefaults.standard.set(v, forKey: tokenKey) }
     }
 
     private static let signedOutKey = "nook.signedOut"
