@@ -34,7 +34,7 @@ describe('PhotoAdd — upload', () => {
     pickFile()
 
     // preview + caption appear once upload resolves
-    await screen.findByPlaceholderText('Caption')
+    await screen.findByPlaceholderText('Add a caption…')
     expect(uploadImage).toHaveBeenCalledTimes(1)
 
     const addBtn = screen.getByRole('button', { name: /Add photo/i })
@@ -50,7 +50,7 @@ describe('PhotoAdd — upload', () => {
     render(<PhotoAdd onClose={() => {}} onAdded={onAdded} albums={['Lake Day']} />)
 
     pickFile()
-    const caption = (await screen.findByPlaceholderText('Caption')) as HTMLInputElement
+    const caption = (await screen.findByPlaceholderText('Add a caption…')) as HTMLInputElement
     fireEvent.change(caption, { target: { value: 'Sandcastle' } })
     // Album is now an AlbumPicker: choose "＋ New album…", then type a new name.
     const albumSelect = screen.getByRole('combobox') as HTMLSelectElement
@@ -74,7 +74,7 @@ describe('PhotoAdd — upload', () => {
     render(<PhotoAdd onClose={() => {}} onAdded={() => {}} />)
 
     pickFile()
-    await screen.findByPlaceholderText('Caption')
+    await screen.findByPlaceholderText('Add a caption…')
     fireEvent.click(screen.getByRole('button', { name: /Favorite/i }))
     fireEvent.click(screen.getByRole('button', { name: /Add photo/i }))
 
@@ -85,6 +85,6 @@ describe('PhotoAdd — upload', () => {
   it('shows a muted, non-clickable Shared album "soon" source', () => {
     render(<PhotoAdd onClose={() => {}} onAdded={() => {}} />)
     expect(screen.getByText(/Shared album/)).toBeInTheDocument()
-    expect(screen.getByText('soon')).toBeInTheDocument()
+    expect(screen.getByText('coming soon')).toBeInTheDocument()
   })
 })

@@ -44,28 +44,48 @@
 .ph-chip.on { background: var(--ink); color: #fff; border-color: var(--ink); }
 
 /* ---- add-photos overlay --------------------------------------- */
-.ap-body { flex: 1; overflow: auto; padding: 0 30px 24px; }
-.ap-toolbar { padding: 0 30px 16px; display: flex; gap: 12px; flex-wrap: wrap; }
-.ap-toolbar .pill { font-size: 14px; padding: 11px 16px; }
-.ap-src { cursor: pointer; }
-/* muted "coming soon" source — looks like a pill but isn't interactive */
-.ap-soon { cursor: not-allowed; opacity: .55; display: inline-flex; align-items: center; gap: 8px; }
+/* The stage centers everything; the dropzone is the hero, the staged card
+   replaces it once a photo is chosen. */
+.ap-stage { flex: 1; overflow: auto; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; padding: 24px 30px 40px; }
+
+/* empty state: big drag-and-drop / click-to-browse zone + a coming-soon note */
+.ap-pick { display: flex; flex-direction: column; align-items: center; gap: 18px; width: 100%; }
+.ap-drop { width: min(640px, 100%); min-height: 340px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px; text-align: center;
+  background: rgba(255,255,255,.5); border: 2px dashed var(--line, rgba(0,0,0,.18));
+  border-radius: var(--r-xl, 22px); padding: 40px; cursor: pointer; color: var(--ink);
+  transition: border-color .15s, background .15s, transform .15s; }
+.ap-drop:hover { border-color: var(--primary); background: rgba(255,255,255,.72); }
+.ap-drop.over { border-color: var(--primary); border-style: solid; background: rgba(208,107,79,.08);
+  transform: scale(1.01); }
+.ap-drop.busy { cursor: default; }
+.ap-drop-icon { font-size: 56px; line-height: 1; margin-bottom: 10px; }
+.ap-drop-title { font-size: 21px; font-weight: 700; }
+.ap-drop-sub { font-size: 15px; color: var(--ink-3); }
+.ap-drop-link { color: var(--primary); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.ap-drop-meta { margin-top: 14px; }
+.ap-err { color: var(--danger, #c0392b); font-weight: 700; }
+.ap-soon-note { display: inline-flex; align-items: center; gap: 8px; }
 .ap-soon-tag { font-size: 10.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
   color: var(--ink-3); background: rgba(0,0,0,.06); border-radius: 999px; padding: 2px 8px; }
-.ap-hint { padding: 8px 2px; }
 
-/* the post-upload form: preview + caption / album / favorite */
-.ap-form { display: flex; gap: 18px; align-items: flex-start; padding: 4px 2px; }
-.ap-form-preview { width: 150px; height: 150px; object-fit: contain; background: rgba(0,0,0,.04);
-  border-radius: var(--r-md); box-shadow: var(--sh-1); flex: none; }
-.ap-form-fields { display: flex; flex-direction: column; gap: 12px; max-width: 360px; flex: 1; }
+/* staged state: a centered card — large preview over caption / album / favorite */
+.ap-card { width: min(560px, 100%); display: flex; flex-direction: column; gap: 20px;
+  background: #fff; border-radius: var(--r-xl, 22px); box-shadow: var(--sh-2); padding: 20px; }
+.ap-card-photo { position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: var(--r-md);
+  overflow: hidden; background: rgba(0,0,0,.05); }
+.ap-card-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.ap-card-heart { position: absolute; top: 12px; right: 12px; font-size: 22px;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,.35)); }
+.ap-card-fields { display: flex; flex-direction: column; gap: 14px; }
 .ap-field-label { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; font-weight: 700;
   color: var(--ink-3); letter-spacing: .02em; }
 .ap-field-label .field { font-weight: 500; color: var(--ink); }
 /* album dropdown + "new album" text input (PhotoAdd / PhotoDetail edit) */
 .album-picker { display: flex; flex-direction: column; gap: 8px; }
 .album-picker .field { font-weight: 500; color: var(--ink); }
-.ap-form-row { display: flex; gap: 10px; align-items: center; }
+.ap-form-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .ap-fav { cursor: pointer; }
 .ap-fav.on { box-shadow: 0 0 0 2px var(--primary); }
 

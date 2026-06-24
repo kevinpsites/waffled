@@ -2,12 +2,13 @@ import { useRef, useState } from 'react'
 import { api, uploadImage } from '../../lib/api'
 import { AlbumPicker } from './AlbumPicker'
 
-// Add-photos overlay — a back-pill topbar and a single real source: 📷 Upload
-// photo. Nook has no shared-album / phone-library integration yet, so a muted
-// "☁️ Shared album — soon" pill stands in for the planned source. Once a file is
+// Add-photos overlay. The hero is a big drag-and-drop / click-to-browse zone — the
+// single way to pick a photo (no separate "Upload" + "Add" buttons). Once a file is
 // chosen it's re-encoded + sent to /api/media; we stage the returned storageKey
-// (resolved to imageUrl server-side) with a preview, then a small form collects a
-// caption, an album (existing or new, via a datalist), and a favorite toggle.
+// (resolved to imageUrl server-side) as a centered preview card with caption, album
+// (existing or new) and a favorite toggle, and the topbar's "Add photo" confirms.
+// Nook has no shared-album / phone-library integration yet, so a muted "coming soon"
+// note stands in for the planned second source.
 
 export function PhotoAdd({
   onClose,
@@ -29,6 +30,7 @@ export function PhotoAdd({
   const [isFavorite, setIsFavorite] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadErr, setUploadErr] = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   async function onPickFile(file: File | undefined) {
@@ -46,12 +48,19 @@ export function PhotoAdd({
     }
   }
 
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragOver(false)
+    onPickFile(e.dataTransfer.files?.[0])
+  }
+
   function reset() {
     setUploadKey(null)
     setUploadPreview(null)
     setCaption('')
     setAlbum('')
     setIsFavorite(false)
+    setUploadErr(null)
   }
 
   async function add() {
@@ -71,50 +80,79 @@ export function PhotoAdd({
     }
   }
 
+  const staged = !!uploadPreview && !uploading
+
   return (
     <div className="ph-saver" style={{ position: 'fixed', inset: 0, zIndex: 900, background: 'var(--bg, #efece6)', color: 'var(--ink)', display: 'block', cursor: 'default' }}>
       <div className="nk-kiosk nk" style={{ position: 'absolute', inset: 0, background: '#efece6' }}>
         <div className="kiosk-main" style={{ gridColumn: '1 / -1' }}>
           <div className="topbar">
             <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={onClose}>‹ Photos</button>
-            <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginLeft: 14 }}>Add photos</div>
+            <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginLeft: 14 }}>Add a photo</div>
             <div className="tb-right">
-              <button type="button" className="btn btn-primary" disabled={!uploadKey || saving} onClick={add}>
-                {saving ? 'Adding…' : 'Add photo'}
-              </button>
+              {staged && (
+                <button type="button" className="btn btn-primary" disabled={saving} onClick={add}>
+                  {saving ? 'Adding…' : 'Add photo'}
+                </button>
+              )}
             </div>
           </div>
 
-          <div className="ap-toolbar">
-            <button type="button" className="pill ap-src" onClick={() => fileRef.current?.click()}>
-              📷 Upload photo
-            </button>
-            <div className="pill ap-src ap-soon" aria-disabled="true">
-              ☁️ Shared album <span className="ap-soon-tag">soon</span>
-            </div>
-            <input
-              ref={fileRef}
-              type="file"
-              // Only formats the browser canvas can decode + re-encode. This greys out
-              // HEIC (iPhone's default) in the file picker; uploadImage() also guards at
-              // runtime for drag-drop / pickers that ignore `accept`.
-              accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
-              style={{ display: 'none' }}
-              onChange={(e) => { onPickFile(e.target.files?.[0]); e.target.value = '' }}
-            />
-          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            // Only formats the browser canvas can decode + re-encode. This greys out
+            // HEIC (iPhone's default) in the file picker; uploadImage() also guards at
+            // runtime for drag-drop / pickers that ignore `accept`.
+            accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+            style={{ display: 'none' }}
+            onChange={(e) => { onPickFile(e.target.files?.[0]); e.target.value = '' }}
+          />
 
-          <div className="ap-body">
-            {uploading && <div className="tiny muted" style={{ fontWeight: 700, padding: '8px 2px' }}>Uploading photo…</div>}
-            {uploadErr && <div className="tiny" style={{ color: 'var(--danger,#c0392b)', fontWeight: 700, padding: '8px 2px' }}>{uploadErr}</div>}
+          <div className="ap-stage">
+            {!staged ? (
+              <div className="ap-pick">
+                <button
+                  type="button"
+                  className={`ap-drop ${dragOver ? 'over' : ''} ${uploading ? 'busy' : ''}`}
+                  onClick={() => !uploading && fileRef.current?.click()}
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={onDrop}
+                  disabled={uploading}
+                >
+                  {uploading ? (
+                    <>
+                      <div className="ap-drop-icon">⏳</div>
+                      <div className="ap-drop-title">Uploading photo…</div>
+                      <div className="ap-drop-sub tiny muted">Resizing and saving your photo</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="ap-drop-icon">📷</div>
+                      <div className="ap-drop-title">Drag &amp; drop a photo here</div>
+                      <div className="ap-drop-sub">or <span className="ap-drop-link">click to browse</span></div>
+                      <div className="ap-drop-meta tiny muted">JPG, PNG or WebP · up to 10&nbsp;MB</div>
+                    </>
+                  )}
+                </button>
 
-            {uploadPreview && !uploading && (
-              <div className="ap-form">
-                <img className="ap-form-preview" src={uploadPreview} alt="Upload preview" />
-                <div className="ap-form-fields">
+                {uploadErr && <div className="ap-err tiny">{uploadErr}</div>}
+
+                <div className="ap-soon-note tiny muted">
+                  ☁️ Shared albums (Google&nbsp;Photos / iCloud) <span className="ap-soon-tag">coming soon</span>
+                </div>
+              </div>
+            ) : (
+              <div className="ap-card">
+                <div className="ap-card-photo">
+                  <img src={uploadPreview!} alt="Upload preview" />
+                  {isFavorite && <div className="ap-card-heart">❤️</div>}
+                </div>
+                <div className="ap-card-fields">
                   <label className="ap-field-label">
                     Caption
-                    <input className="field" placeholder="Caption" value={caption} onChange={(e) => setCaption(e.target.value)} autoFocus />
+                    <input className="field" placeholder="Add a caption…" value={caption} onChange={(e) => setCaption(e.target.value)} autoFocus />
                   </label>
                   <label className="ap-field-label">
                     Album
@@ -129,14 +167,11 @@ export function PhotoAdd({
                     >
                       {isFavorite ? '❤️' : '🤍'} Favorite
                     </button>
+                    <button type="button" className="pill" onClick={() => fileRef.current?.click()}>↻ Replace</button>
                     <button type="button" className="pill" onClick={reset}>Remove</button>
                   </div>
                 </div>
               </div>
-            )}
-
-            {!uploadPreview && !uploading && (
-              <div className="ap-hint tiny muted">Tap “Upload photo” to add a photo from this device.</div>
             )}
           </div>
         </div>
