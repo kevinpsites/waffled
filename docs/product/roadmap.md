@@ -79,7 +79,8 @@ The original cloud plan (Terraform/AWS, Auth0, GCP project provisioning, a separ
 - Separate `worker` service → calendar sync runs in-process (5-min scheduler) in the api.
 - Auth0 RS256 → HS256 local JWT (`LOCAL_JWT_SECRET`); PowerSync token exchange unchanged.
 
-> The `README.md` "repo layout" and "stack in one breath" sections still mention some of
-> the dropped pieces (terraform, worker, Auth0, Tailscale); the **self-host model in
-> [`quick-start.md`](./quick-start.md)** and the `Self-hosted (Immich-style)` section of
-> `ROADMAP.md` are the current source of truth.
+> `README.md` has been updated to the self-host model (repo layout, "stack in one breath",
+> and SSO panel label). `BOOTSTRAP.md` still carries the old Auth0/AWS/Terraform framing
+> around its Google Cloud OAuth steps — kept for the OAuth-client walkthrough, but ignore
+> the cloud scaffolding. The **self-host model in [`quick-start.md`](./quick-start.md)** and
+> the `Self-hosted (Immich-style)` section of `ROADMAP.md` are the current source of truth.

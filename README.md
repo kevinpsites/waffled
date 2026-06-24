@@ -4,7 +4,7 @@ A shared family operating system rendered across three surfaces:
 
 - **Counter Kiosk** — always-on tablet (1280×800), full read/write, ambient display. Runs as the web app in fullscreen/PWA mode.
 - **iOS app** — native Swift/SwiftUI capture companion. Offline-first (read + write).
-- **Web app** — full management/setup dashboard. Static SPA on S3 + CloudFront.
+- **Web app** — full management/setup dashboard. Static SPA served by Caddy (same build as the kiosk).
 
 One household, one source of truth: calendar (2-way Google sync), chores & stars,
 goals & rewards, meals & recipes, lists, photos, and an AI "Add anything" capture bar.
@@ -13,16 +13,12 @@ goals & rewards, meals & recipes, lists, photos, and an AI "Add anything" captur
 
 ```
 infra/
-  terraform/   AWS + Auth0 as code
-  compose/     self-hosted runtime (Postgres, PowerSync, api, worker, Caddy, backup)
+  compose/     self-hosted runtime (Postgres, PowerSync, api, Caddy)
 apps/
-  api/         backend (lambda-api), shares image with worker
-  worker/      calendar sync, cron, recurring chores, recap, APNs
-  web/         React SPA (also the kiosk layout)
-  kiosk/        kiosk PWA shell (thin wrapper over web)
-ios/           native Swift app
-packages/      shared types + design tokens
-docs/          ARCHITECTURE.md (decision record)
+  api/         backend (lambda-api); calendar sync runs in-process (5-min scheduler)
+  web/         React SPA — also the kiosk layout (same build, fullscreen/PWA mode)
+  ios/         native Swift app
+docs/          ARCHITECTURE.md, DATA_MODEL.md, TESTING.md, product/ (user docs)
 ```
 
 ## Self-hosting (quickstart)
@@ -98,7 +94,7 @@ password). Email-only members can sign in via SSO once OIDC is configured.
 Nook supports backend-mediated OIDC (auth-code + PKCE) against any OpenID-Connect
 provider (Authentik, Keycloak, Google, …). It's **invite-gated**: a person can only
 sign in via SSO if the provider's *verified email* already matches a family member's
-login email. Configure it in **Settings → Accounts & security** (admin only):
+login email. Configure it in **Settings → Login & security** (admin only):
 
 1. Ensure `TOKEN_ENCRYPTION_KEY` is set (the client secret is encrypted at rest).
 2. **Issuer URL** — your provider's discovery base, e.g.
@@ -135,14 +131,20 @@ OIDC is ready. Two things to get right:
 
 ## Start here
 
-1. Read `docs/ARCHITECTURE.md` — the decisions and why.
-2. Work `BOOTSTRAP.md` — one-time console setup (Google, Apple, Auth0, AWS) that produces the secrets IaC consumes.
-3. Follow `ROADMAP.md` — bite-sized, committable chunks, in order.
+1. Run it — the [Self-hosting quickstart](#self-hosting-quickstart) above (`./nook up`).
+2. Read `docs/ARCHITECTURE.md` — the decisions and why.
+3. Browse `docs/product/` — the user-facing docs and the [feature support matrix](docs/product/features.md).
+4. Follow `ROADMAP.md` — bite-sized, committable chunks, in order.
+
+> Only setting up Google Calendar sync or OIDC? `BOOTSTRAP.md` has the Google Cloud
+> OAuth-client walkthrough (skip its Auth0/AWS/Terraform framing — those were dropped
+> with the self-host pivot).
 
 ## The stack in one breath
 
-Self-hosted Docker Compose now (portable to managed later via env swap) · Postgres
-system-of-record · PowerSync for iOS offline · Auth0 for identity (Google + Apple) ·
-Google Calendar authoritative for Google-origin events, Nook authoritative for native
-fields · 2–5 min calendar polling · Tailscale ingress now, public ingress when we
-onboard non-household users · Terraform + Compose, everything in this repo.
+Self-hosted Docker Compose · Postgres system-of-record · PowerSync for iOS (and the
+kiosk's calendar) offline · **built-in email/password auth + optional OIDC SSO** (no
+Auth0) · Google Calendar authoritative for Google-origin events, Nook authoritative for
+native fields · ~5-min in-process calendar sync (no separate worker) · Caddy serves the
+SPA + `/media` and can do public ingress (auto-TLS or a Cloudflare Tunnel) · everything
+in this one repo.
