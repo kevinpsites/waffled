@@ -127,11 +127,8 @@ struct PlanMonthSheet: View {
                     Text("Nook drafts a dinner rotation for the month from your recipe library, then you tweak it.")
                         .font(.system(size: 14)).foregroundStyle(NK.ink3).fixedSize(horizontal: false, vertical: true)
 
-                    NookCard(padding: 14) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Which days?").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
-                            HStack(spacing: 6) { ForEach(0..<7, id: \.self) { weekdayChip($0) } }
-                        }
+                    NookFieldCard(title: "Which days?") {
+                        HStack(spacing: 6) { ForEach(0..<7, id: \.self) { weekdayChip($0) } }
                     }
 
                     NookCard(padding: 14) {
@@ -184,14 +181,11 @@ struct PlanMonthSheet: View {
 
                     if !weekdays.isEmpty {
                         let sortedDays = weekdays.sorted()
-                        NookCard(padding: 14) {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Theme nights · optional").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
-                                VStack(spacing: 0) {
-                                    ForEach(Array(sortedDays.enumerated()), id: \.element) { idx, dow in
-                                        themeRow(dow)
-                                        if idx < sortedDays.count - 1 { Divider().background(NK.hair) }
-                                    }
+                        NookFieldCard(title: "Theme nights · optional") {
+                            VStack(spacing: 0) {
+                                ForEach(Array(sortedDays.enumerated()), id: \.element) { idx, dow in
+                                    themeRow(dow)
+                                    if idx < sortedDays.count - 1 { Divider().background(NK.hair) }
                                 }
                             }
                         }
@@ -199,14 +193,11 @@ struct PlanMonthSheet: View {
 
                     UseUpCard(items: $useUp, input: $useUpInput)
 
-                    NookCard(padding: 14) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Keep in mind").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
-                            TextField("e.g. school nights are hectic · no pork", text: $keepInMind, axis: .vertical)
-                                .font(.system(size: 14)).lineLimit(2...4)
-                                .padding(.horizontal, 12).padding(.vertical, 10)
-                                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
-                        }
+                    NookFieldCard(title: "Keep in mind") {
+                        TextField("e.g. school nights are hectic · no pork", text: $keepInMind, axis: .vertical)
+                            .font(.system(size: 14)).lineLimit(2...4)
+                            .padding(.horizontal, 12).padding(.vertical, 10)
+                            .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
                     }
                 }
                 .padding(20)

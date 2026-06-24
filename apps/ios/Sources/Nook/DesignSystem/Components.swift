@@ -157,6 +157,24 @@ struct AICaptureBar: View {
     }
 }
 
+/// A `NookCard` whose first child is a bold section title, followed by caller content —
+/// the "titled field card" used throughout the Plan sheets. Stateless wrapper.
+struct NookFieldCard<Content: View>: View {
+    var title: String
+    var padding: CGFloat = 14
+    var spacing: CGFloat = 10
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        NookCard(padding: padding) {
+            VStack(alignment: .leading, spacing: spacing) {
+                Text(title).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                content()
+            }
+        }
+    }
+}
+
 /// A small `chevron.right` that rotates 90° when its section is open — the shared
 /// disclosure indicator for collapsible headers. Stateless: pass the open flag.
 struct DisclosureChevron: View {

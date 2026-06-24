@@ -126,37 +126,31 @@ struct PlanWeekSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     // Plan which meal?
-                    NookCard(padding: 14) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Plan which meal?").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
-                            HStack(spacing: 0) {
-                                ForEach(mealTypes, id: \.self) { m in
-                                    Button { mealType = m } label: {
-                                        Text(m.capitalized)
-                                            .font(.system(size: 14, weight: mealType == m ? .bold : .medium))
-                                            .foregroundStyle(mealType == m ? NK.ink : NK.ink3)
-                                            .frame(maxWidth: .infinity).padding(.vertical, 9)
-                                            .background(
-                                                mealType == m
-                                                    ? AnyView(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).fill(NK.card)
-                                                        .shadow(color: .black.opacity(0.06), radius: 3, y: 1))
-                                                    : AnyView(Color.clear))
-                                    }
-                                    .buttonStyle(.plain)
+                    NookFieldCard(title: "Plan which meal?") {
+                        HStack(spacing: 0) {
+                            ForEach(mealTypes, id: \.self) { m in
+                                Button { mealType = m } label: {
+                                    Text(m.capitalized)
+                                        .font(.system(size: 14, weight: mealType == m ? .bold : .medium))
+                                        .foregroundStyle(mealType == m ? NK.ink : NK.ink3)
+                                        .frame(maxWidth: .infinity).padding(.vertical, 9)
+                                        .background(
+                                            mealType == m
+                                                ? AnyView(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).fill(NK.card)
+                                                    .shadow(color: .black.opacity(0.06), radius: 3, y: 1))
+                                                : AnyView(Color.clear))
                                 }
+                                .buttonStyle(.plain)
                             }
-                            .padding(3).background(NK.panel)
-                            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
                         }
+                        .padding(3).background(NK.panel)
+                        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
                     }
 
                     // Which days?
-                    NookCard(padding: 14) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Which days?").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
-                            HStack(spacing: 6) {
-                                ForEach(weekDays, id: \.self) { d in dayChip(d) }
-                            }
+                    NookFieldCard(title: "Which days?") {
+                        HStack(spacing: 6) {
+                            ForEach(weekDays, id: \.self) { d in dayChip(d) }
                         }
                     }
 
@@ -180,15 +174,12 @@ struct PlanWeekSheet: View {
                     UseUpCard(items: $useUp, input: $useUpInput)
 
                     // Keep in mind
-                    NookCard(padding: 14) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Keep in mind").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
-                            TextField("e.g. Lottie skips spicy · Tue & Thu are busy — keep under 30 min",
-                                      text: $keepInMind, axis: .vertical)
-                                .font(.system(size: 14)).lineLimit(2...4)
-                                .padding(.horizontal, 12).padding(.vertical, 10)
-                                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
-                        }
+                    NookFieldCard(title: "Keep in mind") {
+                        TextField("e.g. Lottie skips spicy · Tue & Thu are busy — keep under 30 min",
+                                  text: $keepInMind, axis: .vertical)
+                            .font(.system(size: 14)).lineLimit(2...4)
+                            .padding(.horizontal, 12).padding(.vertical, 10)
+                            .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
                     }
                 }
                 .padding(20)
