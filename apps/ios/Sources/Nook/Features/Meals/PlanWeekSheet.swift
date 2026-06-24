@@ -171,12 +171,7 @@ struct PlanWeekSheet: View {
                                     Button { cookingFor = n } label: { Text("\(n)") }
                                 }
                             } label: {
-                                HStack(spacing: 6) {
-                                    Text(cookingForLabel).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
-                                    Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
-                                }
-                                .padding(.horizontal, 14).padding(.vertical, 9)
-                                .background(NK.panel).clipShape(Capsule())
+                                NookMenuPill(text: cookingForLabel)
                             }
                         }
                     }

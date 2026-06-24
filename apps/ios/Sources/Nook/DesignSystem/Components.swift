@@ -173,6 +173,20 @@ struct DisclosureChevron: View {
     }
 }
 
+/// The little capsule used as a `Menu` label — bold text plus a down chevron. Shared by
+/// the Plan sheets so every "tap to change" menu trigger looks identical.
+struct NookMenuPill: View {
+    var text: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(text).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+            Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 9).background(NK.panel).clipShape(Capsule())
+    }
+}
+
 /// A weekday toggle chip — a full-width pill that fills coral when on. Shared by the
 /// Plan-my-week and Plan-my-month sheets so both day selectors look identical.
 struct WeekdayToggleChip: View {

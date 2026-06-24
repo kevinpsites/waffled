@@ -141,7 +141,7 @@ struct PlanMonthSheet: View {
                             Menu {
                                 Button { cookingFor = 0 } label: { Text("\(familySize) · whole family") }
                                 ForEach(1...8, id: \.self) { n in Button { cookingFor = n } label: { Text("\(n)") } }
-                            } label: { pill(cookingFor == 0 ? "\(familySize) · whole family" : "\(cookingFor)") }
+                            } label: { NookMenuPill(text: cookingFor == 0 ? "\(familySize) · whole family" : "\(cookingFor)") }
                         }
                     }
 
@@ -156,7 +156,7 @@ struct PlanMonthSheet: View {
                                     Spacer()
                                     Menu {
                                         ForEach([3, 5, 7, 10, 14], id: \.self) { d in Button { repeatGapDays = d } label: { Text("\(d) days") } }
-                                    } label: { pill("\(repeatGapDays) days") }
+                                    } label: { NookMenuPill(text: "\(repeatGapDays) days") }
                                 }
                             }
                         }
@@ -173,7 +173,7 @@ struct PlanMonthSheet: View {
                                     Spacer()
                                     Menu {
                                         ForEach([20, 30, 45], id: \.self) { m in Button { weeknightMax = m } label: { Text("\(m) min") } }
-                                    } label: { pill("\(weeknightMax) min") }
+                                    } label: { NookMenuPill(text: "\(weeknightMax) min") }
                                 }
                             }
                             Toggle(isOn: $leftovers) {
@@ -226,14 +226,6 @@ struct PlanMonthSheet: View {
         }
     }
 
-    private func pill(_ text: String) -> some View {
-        HStack(spacing: 6) {
-            Text(text).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
-            Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
-        }
-        .padding(.horizontal, 14).padding(.vertical, 9).background(NK.panel).clipShape(Capsule())
-    }
-
     private func weekdayChip(_ dow: Int) -> some View {
         WeekdayToggleChip(label: Self.dayNames[dow], isOn: weekdays.contains(dow)) {
             if weekdays.contains(dow) { weekdays.remove(dow); themes[dow] = nil } else { weekdays.insert(dow) }
@@ -249,7 +241,7 @@ struct PlanMonthSheet: View {
                 Button { themes[dow] = nil } label: { Text("No theme") }
                 ForEach(Self.themeOptions, id: \.key) { t in Button { themes[dow] = t.key } label: { Text(t.label) } }
             } label: {
-                pill(themes[dow].flatMap { k in Self.themeOptions.first { $0.key == k }?.label } ?? "No theme")
+                NookMenuPill(text: themes[dow].flatMap { k in Self.themeOptions.first { $0.key == k }?.label } ?? "No theme")
             }
         }
         .padding(.vertical, 9)
