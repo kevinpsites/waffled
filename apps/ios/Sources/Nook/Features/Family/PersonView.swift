@@ -162,8 +162,7 @@ struct PersonView: View {
             HStack {
                 SectionLabel(text: title)
                 Spacer()
-                Image(systemName: "chevron.down").font(.system(size: 13, weight: .heavy)).foregroundStyle(NK.ink3)
-                    .rotationEffect(.degrees(open.wrappedValue ? 0 : -90))
+                DisclosureChevron(isOpen: open.wrappedValue, size: 13)
             }
             .contentShape(Rectangle())
         }
