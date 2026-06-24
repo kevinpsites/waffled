@@ -88,10 +88,12 @@ struct WeekPlannerView: View {
                             .foregroundStyle(NK.ink2).frame(width: rowLabelWidth, alignment: .leading)
                         ForEach(days, id: \.self) { day in kioskSlotCell(day: day, slot: slot) }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // Cap each meal row so a single-row "Dinners" view doesn't balloon to
+                    // the full page height; multiple rows still share the space evenly.
+                    .frame(maxWidth: .infinity, maxHeight: 220)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

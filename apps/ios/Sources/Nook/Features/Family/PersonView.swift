@@ -58,6 +58,10 @@ struct PersonView: View {
     @State private var editingEvent: SyncedEvent?
     @State private var showSavingPicker = false
     @State private var showTrade = false
+    // Collapse state for the iPad spotlight's grouped sections.
+    @State private var dayOpen = true
+    @State private var goalsOpen = true
+    @State private var rewardsOpen = true
 
     init(personId: String, path: Binding<[HubRoute]>) {
         self.personId = personId
@@ -92,12 +96,16 @@ struct PersonView: View {
                 statCards
                 if isKiosk {
                     // Grouped into logical sections (Today · Goals & balance · Rewards),
-                    // each balanced on its own — not one heavy column beside a light one.
-                    daySection
-                    addButton
+                    // each balanced on its own — and each collapsible.
+                    collapsibleSection("\(firstName.uppercased())’S DAY", $dayOpen) {
+                        dayContent
+                        addButton
+                    }
                     if let ov = model.overview {
-                        goalsSection(ov)
-                        rewardsSection(ov)
+                        if goalsHasContent(ov) {
+                            collapsibleSection("Goals & balance", $goalsOpen) { goalsContent(ov) }
+                        }
+                        collapsibleSection("Rewards & currencies", $rewardsOpen) { rewardsContent(ov) }
                     }
                 } else {
                     if let ov = model.overview {
@@ -146,30 +154,49 @@ struct PersonView: View {
     /// the right); iPhone is a single column.
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
 
-    /// "Goals & balance" — the whole-person balance beside the goals list (or one of
+    /// A tappable section header (label + rotating chevron) that shows/hides its content
+    /// — used by the iPad spotlight so each group can be collapsed.
+    @ViewBuilder private func collapsibleSection<Content: View>(
+        _ title: String, _ open: Binding<Bool>, @ViewBuilder content: () -> Content) -> some View {
+        Button { withAnimation(.easeInOut(duration: 0.2)) { open.wrappedValue.toggle() } } label: {
+            HStack {
+                SectionLabel(text: title)
+                Spacer()
+                Image(systemName: "chevron.down").font(.system(size: 13, weight: .heavy)).foregroundStyle(NK.ink3)
+                    .rotationEffect(.degrees(open.wrappedValue ? 0 : -90))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 4)
+        if open.wrappedValue { content() }
+    }
+
+    /// Whether the "Goals & balance" section has anything to show.
+    private func goalsHasContent(_ ov: NookAPI.PersonOverview) -> Bool {
+        ov.categoryBalance.contains(where: { $0.goalCount > 0 }) || !ov.goals.isEmpty
+    }
+
+    /// "Goals & balance" body — the whole-person balance beside the goals list (or one of
     /// them full-width when the other is absent).
-    @ViewBuilder private func goalsSection(_ ov: NookAPI.PersonOverview) -> some View {
+    @ViewBuilder private func goalsContent(_ ov: NookAPI.PersonOverview) -> some View {
         let hasBalance = ov.categoryBalance.contains(where: { $0.goalCount > 0 })
         let hasGoals = !ov.goals.isEmpty
-        if hasBalance || hasGoals {
-            SectionLabel(text: "Goals & balance").padding(.top, 4)
-            if hasBalance && hasGoals {
-                HStack(alignment: .top, spacing: 16) {
-                    balanceCard(ov).frame(maxWidth: .infinity, alignment: .top)
-                    goalsCard(ov).frame(maxWidth: .infinity, alignment: .top)
-                }
-            } else if hasBalance {
-                balanceCard(ov)
-            } else {
-                goalsCard(ov)
+        if hasBalance && hasGoals {
+            HStack(alignment: .top, spacing: 16) {
+                balanceCard(ov).frame(maxWidth: .infinity, alignment: .top)
+                goalsCard(ov).frame(maxWidth: .infinity, alignment: .top)
             }
+        } else if hasBalance {
+            balanceCard(ov)
+        } else {
+            goalsCard(ov)
         }
     }
 
-    /// "Rewards & currencies" — saving-toward + redemptions on the left, the currency /
+    /// "Rewards & currencies" body — saving-toward + redemptions on the left, the currency /
     /// chores balances on the right.
-    @ViewBuilder private func rewardsSection(_ ov: NookAPI.PersonOverview) -> some View {
-        SectionLabel(text: "Rewards & currencies").padding(.top, 4)
+    @ViewBuilder private func rewardsContent(_ ov: NookAPI.PersonOverview) -> some View {
         HStack(alignment: .top, spacing: 16) {
             VStack(spacing: 16) {
                 let cur = ov.currencies.first { $0.key == ov.savingToward?.currency }
@@ -266,8 +293,12 @@ struct PersonView: View {
     }
 
     @ViewBuilder private var daySection: some View {
-        let events = personEvents
         SectionLabel(text: "\(firstName.uppercased())’S DAY")
+        dayContent
+    }
+
+    @ViewBuilder private var dayContent: some View {
+        let events = personEvents
         if events.isEmpty && model.chores.isEmpty {
             Text(model.loading ? "Loading…" : "Nothing scheduled today.")
                 .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3).padding(.vertical, 12)

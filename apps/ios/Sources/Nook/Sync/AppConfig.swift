@@ -89,6 +89,8 @@ enum DemoHooks {
     static var mealsSection: String? { AppConfig.env("NOOK_MEALS_SECTION") }
     /// Auto-open the "Plan my week" sheet (verification).
     static var planWeek: Bool { AppConfig.env("NOOK_PLAN_WEEK") == "1" }
+    /// Auto-open the "Plan my month" sheet (verification).
+    static var planMonth: Bool { AppConfig.env("NOOK_PLAN_MONTH") == "1" }
     /// Auto-open the featured goal's detail on the iPad Goals page (verification).
     static var openGoal: Bool { AppConfig.env("NOOK_OPEN_GOAL") == "1" }
     /// Auto-open the first member's spotlight on the iPad Family page (verification).

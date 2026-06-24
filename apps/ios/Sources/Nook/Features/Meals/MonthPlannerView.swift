@@ -53,7 +53,7 @@ struct MonthPlannerView: View {
             }
         }
         .background(NK.canvas)
-        .task { await load() }
+        .task { await load(); autoPlanOnceIfNeeded() }
         .refreshable { await load() }
         .onChange(of: anchor) { _, _ in Task { await load() } }
         .onChange(of: sync.mealsRev) { _, _ in Task { await load() } }
@@ -96,6 +96,14 @@ struct MonthPlannerView: View {
     // MARK: header
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
+    /// Headless verification: NOOK_PLAN_MONTH=1 auto-opens the Plan-my-month sheet once.
+    private static var didAutoPlan = false
+    private func autoPlanOnceIfNeeded() {
+        guard DemoHooks.planMonth, !Self.didAutoPlan else { return }
+        Self.didAutoPlan = true
+        planningMonth = true
+    }
 
     /// `gridDays` chunked into calendar weeks of 7, so the iPad grid can lay equal-height
     /// rows that stretch to fill the page instead of cramming at the top.

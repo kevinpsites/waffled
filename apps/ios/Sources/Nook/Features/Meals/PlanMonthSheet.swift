@@ -127,9 +127,11 @@ struct PlanMonthSheet: View {
                     Text("Nook drafts a dinner rotation for the month from your recipe library, then you tweak it.")
                         .font(.system(size: 14)).foregroundStyle(NK.ink3).fixedSize(horizontal: false, vertical: true)
 
-                    VStack(alignment: .leading, spacing: 9) {
-                        SectionLabel(text: "Which weeknights?")
-                        HStack(spacing: 6) { ForEach(0..<7, id: \.self) { weekdayChip($0) } }
+                    NookCard(padding: 14) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Which weeknights?").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                            HStack(spacing: 6) { ForEach(0..<7, id: \.self) { weekdayChip($0) } }
+                        }
                     }
 
                     NookCard(padding: 14) {
@@ -181,9 +183,17 @@ struct PlanMonthSheet: View {
                     }
 
                     if !weekdays.isEmpty {
-                        VStack(alignment: .leading, spacing: 9) {
-                            SectionLabel(text: "Theme nights · optional")
-                            VStack(spacing: 8) { ForEach(weekdays.sorted(), id: \.self) { themeRow($0) } }
+                        let sortedDays = weekdays.sorted()
+                        NookCard(padding: 14) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Theme nights · optional").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                                VStack(spacing: 0) {
+                                    ForEach(Array(sortedDays.enumerated()), id: \.element) { idx, dow in
+                                        themeRow(dow)
+                                        if idx < sortedDays.count - 1 { Divider().background(NK.hair) }
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -250,19 +260,19 @@ struct PlanMonthSheet: View {
         .buttonStyle(.plain)
     }
 
+    /// One weekday's theme picker — a plain row (the parent groups them in a single card).
     private func themeRow(_ dow: Int) -> some View {
-        NookCard(padding: 12) {
-            HStack {
-                Text(Self.dayNames[dow]).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink).frame(width: 44, alignment: .leading)
-                Spacer()
-                Menu {
-                    Button { themes[dow] = nil } label: { Text("No theme") }
-                    ForEach(Self.themeOptions, id: \.key) { t in Button { themes[dow] = t.key } label: { Text(t.label) } }
-                } label: {
-                    pill(themes[dow].flatMap { k in Self.themeOptions.first { $0.key == k }?.label } ?? "No theme")
-                }
+        HStack {
+            Text(Self.dayNames[dow]).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink).frame(width: 44, alignment: .leading)
+            Spacer()
+            Menu {
+                Button { themes[dow] = nil } label: { Text("No theme") }
+                ForEach(Self.themeOptions, id: \.key) { t in Button { themes[dow] = t.key } label: { Text(t.label) } }
+            } label: {
+                pill(themes[dow].flatMap { k in Self.themeOptions.first { $0.key == k }?.label } ?? "No theme")
             }
         }
+        .padding(.vertical, 9)
     }
 
     private func useUpChip(_ u: String) -> some View {

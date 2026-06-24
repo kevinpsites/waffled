@@ -497,6 +497,10 @@ struct GoalLogSheet: View {
     private static let hourUnits: Set<String> = ["hour", "hours", "hr", "hrs"]
     private static let activityChips = ["Bike ride", "Park", "Sports", "Outside play", "Reading", "Art"]
 
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+    /// A log must be credited to someone: when the goal has participants, at least one
+    /// must be picked (single-participant goals pre-select that person).
+    private var whoMissing: Bool { !goal.participants.isEmpty && who.isEmpty }
     private var isHours: Bool { goal.unit.map { Self.hourUnits.contains($0.lowercased()) } ?? false }
     private var chips: [(label: String, value: Double)] {
         if isHours {
@@ -543,7 +547,13 @@ struct GoalLogSheet: View {
 
                     if !goal.participants.isEmpty {
                         VStack(alignment: .leading, spacing: 9) {
-                            SectionLabel(text: "Who?")
+                            HStack(spacing: 6) {
+                                SectionLabel(text: "Who?")
+                                if whoMissing {
+                                    Text("pick at least one")
+                                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.primary)
+                                }
+                            }
                             whoRow
                         }
                     }
@@ -582,11 +592,11 @@ struct GoalLogSheet: View {
                         dismiss()
                     }
                     .fontWeight(.semibold)
-                    .disabled(amount == 0)
+                    .disabled(amount == 0 || whoMissing)
                 }
             }
         }
-        .presentationDetents([.large])
+        .modifier(KioskSheetPresentation(kiosk: isKiosk))
     }
 
     private var chipRow: some View {
@@ -678,6 +688,8 @@ struct GoalCreateSheet: View {
     /// A local copy of the lists so a just-created group shows up immediately.
     @State private var localLists: [NookAPI.GoalList] = []
     @State private var creatingList = false
+
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
 
     private struct TypeOpt { let key, emoji, title, desc: String }
     private static let types = [
@@ -871,7 +883,7 @@ struct GoalCreateSheet: View {
                 }
             }
         }
-        .presentationDetents([.large])
+        .modifier(KioskSheetPresentation(kiosk: isKiosk))
     }
 
     // MARK: pieces
@@ -1216,7 +1228,7 @@ struct GoalDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 hero
-                if autoFromCalendar { planButton }
+                actionRow
                 if isKiosk {
                     HStack(alignment: .top, spacing: 16) {
                         VStack(spacing: 16) {
@@ -1271,6 +1283,35 @@ struct GoalDetailView: View {
 
     /// Whether this goal opted into calendar counting (drives "Plan time").
     private var autoFromCalendar: Bool { model.detail?.autoFromCalendar ?? goal.autoFromCalendar }
+
+    /// The primary actions under the hero. A prominent green **Log progress** button
+    /// (so logging is discoverable without hunting the top-right toolbar), beside the
+    /// purple Schedule CTA on iPad, stacked on iPhone.
+    @ViewBuilder private var actionRow: some View {
+        if isKiosk {
+            HStack(spacing: 12) {
+                logActionButton
+                if autoFromCalendar { planButton }
+            }
+        } else {
+            logActionButton
+            if autoFromCalendar { planButton }
+        }
+    }
+
+    private var logActionButton: some View {
+        Button { logging = true } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "plus.circle.fill").font(.system(size: 15, weight: .bold))
+                Text("Log progress").font(.system(size: 14.5, weight: .bold))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity).padding(.vertical, 13)
+            .background(Self.heroGreen)
+            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
 
     /// "Plan time" (hour goals) / "Schedule" — opens the event editor pre-linked to
     /// this goal, so the new event later shows up on Today to confirm.
