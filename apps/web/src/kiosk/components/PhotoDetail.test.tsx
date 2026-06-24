@@ -116,6 +116,29 @@ describe('PhotoDetail', () => {
     expect(date.value).not.toBe('')
   })
 
+  it('confirms before deleting and only deletes on confirm', async () => {
+    const onDeleted = vi.fn()
+    render(
+      <PhotoDetail
+        photo={photo}
+        memoryCount={2}
+        albums={[]}
+        onClose={() => {}}
+        onSetScreensaver={() => {}}
+        onUpdated={() => {}}
+        onDeleted={onDeleted}
+      />
+    )
+
+    // tapping the trash opens a confirm dialog — it does NOT delete outright
+    fireEvent.click(screen.getByRole('button', { name: /Delete photo/ }))
+    expect(await screen.findByText('Delete photo?')).toBeInTheDocument()
+    expect(onDeleted).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }))
+    await waitFor(() => expect(onDeleted).toHaveBeenCalled())
+  })
+
   it('Cancel exits edit mode without saving', () => {
     renderDetail()
     fireEvent.click(screen.getAllByRole('button', { name: /✏️ Edit/ })[0])

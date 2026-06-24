@@ -204,7 +204,8 @@
   cursor: text;
 }
 
-/* Rail "switch profile" control (kiosk mode only). */
+/* Rail account chip: "Switch profile" in kiosk mode, the signed-in person's name
+   (linking to Settings) otherwise. */
 .rail-switch {
   display: flex;
   flex-direction: column;
@@ -218,6 +219,7 @@
   color: var(--ink-2);
   font-size: 11px;
   font-weight: 700;
+  text-decoration: none;
 }
 .rail-switch:hover {
   color: var(--ink);
@@ -232,4 +234,8 @@
 }
 .rail-switch-label {
   letter-spacing: 0.02em;
+  max-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api, type Photo } from '../../lib/api'
 import { Icon } from '../icons'
 import { AlbumPicker } from './AlbumPicker'
+import { ConfirmDialog } from './ConfirmDialog'
 
 // Photo detail overlay — a back-pill topbar with "Set as screensaver / ✏️ Edit /
 // 🗑", the big photo stage on the left, and the Details / "Part of memory" AI
@@ -83,10 +84,6 @@ export function PhotoDetail({
   }
 
   async function del() {
-    if (!confirmDel) {
-      setConfirmDel(true)
-      return
-    }
     await api.deletePhoto(photo.id)
     onDeleted()
     onClose()
@@ -103,7 +100,7 @@ export function PhotoDetail({
               {!editing && (
                 <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={startEdit}>✏️ Edit</button>
               )}
-              <button type="button" className="icon-btn" style={{ cursor: 'pointer', color: confirmDel ? 'var(--primary)' : undefined }} aria-label="Delete photo" onClick={del}>
+              <button type="button" className="icon-btn" style={{ cursor: 'pointer' }} aria-label="Delete photo" onClick={() => setConfirmDel(true)}>
                 🗑
               </button>
             </div>
@@ -196,6 +193,17 @@ export function PhotoDetail({
           </div>
         </div>
       </div>
+
+      {confirmDel && (
+        <ConfirmDialog
+          title="Delete photo?"
+          message="This can’t be undone."
+          confirmLabel="Delete"
+          danger
+          onConfirm={del}
+          onClose={() => setConfirmDel(false)}
+        />
+      )}
     </div>
   )
 }

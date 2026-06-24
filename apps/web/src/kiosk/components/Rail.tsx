@@ -7,20 +7,36 @@ function railClass({ isActive }: { isActive: boolean }) {
   return `rail-item ${isActive ? 'on' : ''}`
 }
 
-// In kiosk mode: show who's acting + a one-tap return to the profile picker.
-function KioskSwitch() {
+// Bottom-of-rail account chip: always shows who's signed in. In kiosk mode it's a
+// one-tap return to the profile picker ("Switch"); otherwise it shows the person's
+// name and links to Settings (account).
+function RailAccount() {
   const { person } = useHousehold()
-  if (!isKioskMode()) return null
+  const avatar = (
+    <span
+      className="rail-switch-av"
+      style={{ background: person?.colorHex ? `${person.colorHex}22` : 'var(--panel)' }}
+    >
+      {person?.avatarEmoji ?? '🙂'}
+    </span>
+  )
+
+  if (isKioskMode()) {
+    return (
+      <button className="rail-switch" onClick={() => void authApi.logout()} title="Switch profile">
+        {avatar}
+        <span className="rail-switch-label">Switch</span>
+      </button>
+    )
+  }
+
+  if (!person) return null
+  const firstName = person.name?.split(' ')[0] || person.name
   return (
-    <button className="rail-switch" onClick={() => void authApi.logout()} title="Switch profile">
-      <span
-        className="rail-switch-av"
-        style={{ background: person?.colorHex ? `${person.colorHex}22` : 'var(--panel)' }}
-      >
-        {person?.avatarEmoji ?? '🙂'}
-      </span>
-      <span className="rail-switch-label">Switch</span>
-    </button>
+    <Link to="/settings" className="rail-switch" title={`Signed in as ${person.name}`}>
+      {avatar}
+      <span className="rail-switch-label">{firstName}</span>
+    </Link>
   )
 }
 
@@ -43,7 +59,7 @@ export function Rail() {
       ))}
       <div className="rail-spacer" />
       <RailLink screen={SETTINGS} />
-      <KioskSwitch />
+      <RailAccount />
     </nav>
   )
 }
