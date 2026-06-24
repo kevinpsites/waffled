@@ -156,3 +156,23 @@ struct AICaptureBar: View {
         .onTapGesture(perform: onTap)
     }
 }
+
+/// A weekday toggle chip — a full-width pill that fills coral when on. Shared by the
+/// Plan-my-week and Plan-my-month sheets so both day selectors look identical.
+struct WeekdayToggleChip: View {
+    let label: String
+    let isOn: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label).font(.system(size: 14, weight: .heavy)).foregroundStyle(isOn ? .white : NK.ink2)
+                .frame(maxWidth: .infinity).frame(height: 44)
+                .background(isOn ? NK.primary : NK.card)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(isOn ? .clear : NK.hair, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+}

@@ -82,6 +82,9 @@ struct WeekPlannerView: View {
                     Color.clear.frame(width: rowLabelWidth)
                     ForEach(days, id: \.self) { day in kioskDayHeader(day).frame(maxWidth: .infinity) }
                 }
+                // Fixed height — Color.clear is otherwise height-greedy and balloons the
+                // header row (very visible in the single-row "Dinners" view).
+                .frame(height: 56)
                 ForEach(visibleSlots, id: \.self) { slot in
                     HStack(alignment: .top, spacing: 8) {
                         Text(slotLabel(slot)).font(.system(size: 13, weight: .heavy))

@@ -126,33 +126,37 @@ struct PlanWeekSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     // Plan which meal?
-                    VStack(alignment: .leading, spacing: 9) {
-                        SectionLabel(text: "Plan which meal?")
-                        HStack(spacing: 0) {
-                            ForEach(mealTypes, id: \.self) { m in
-                                Button { mealType = m } label: {
-                                    Text(m.capitalized)
-                                        .font(.system(size: 14, weight: mealType == m ? .bold : .medium))
-                                        .foregroundStyle(mealType == m ? NK.ink : NK.ink3)
-                                        .frame(maxWidth: .infinity).padding(.vertical, 9)
-                                        .background(
-                                            mealType == m
-                                                ? AnyView(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).fill(NK.card)
-                                                    .shadow(color: .black.opacity(0.06), radius: 3, y: 1))
-                                                : AnyView(Color.clear))
+                    NookCard(padding: 14) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Plan which meal?").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                            HStack(spacing: 0) {
+                                ForEach(mealTypes, id: \.self) { m in
+                                    Button { mealType = m } label: {
+                                        Text(m.capitalized)
+                                            .font(.system(size: 14, weight: mealType == m ? .bold : .medium))
+                                            .foregroundStyle(mealType == m ? NK.ink : NK.ink3)
+                                            .frame(maxWidth: .infinity).padding(.vertical, 9)
+                                            .background(
+                                                mealType == m
+                                                    ? AnyView(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).fill(NK.card)
+                                                        .shadow(color: .black.opacity(0.06), radius: 3, y: 1))
+                                                    : AnyView(Color.clear))
+                                    }
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
                             }
+                            .padding(3).background(NK.panel)
+                            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
                         }
-                        .padding(3).background(NK.panel)
-                        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
                     }
 
                     // Which days?
-                    VStack(alignment: .leading, spacing: 9) {
-                        SectionLabel(text: "Which days?")
-                        HStack(spacing: 6) {
-                            ForEach(weekDays, id: \.self) { d in dayChip(d) }
+                    NookCard(padding: 14) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Which days?").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                            HStack(spacing: 6) {
+                                ForEach(weekDays, id: \.self) { d in dayChip(d) }
+                            }
                         }
                     }
 
@@ -228,19 +232,9 @@ struct PlanWeekSheet: View {
 
     private func dayChip(_ d: Date) -> some View {
         let key = ymd(d)
-        let on = selectedDays.contains(key)
-        return Button {
-            if on { selectedDays.remove(key) } else { selectedDays.insert(key) }
-        } label: {
-            VStack(spacing: 2) {
-                Text(dowLetter(d)).font(.system(size: 15, weight: .heavy)).foregroundStyle(on ? .white : NK.ink2)
-            }
-            .frame(maxWidth: .infinity).frame(height: 46)
-            .background(on ? NK.primary : NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(on ? .clear : NK.hair, lineWidth: 1))
+        return WeekdayToggleChip(label: dowLetter(d), isOn: selectedDays.contains(key)) {
+            if selectedDays.contains(key) { selectedDays.remove(key) } else { selectedDays.insert(key) }
         }
-        .buttonStyle(.plain)
     }
 
     private func useUpChip(_ u: String) -> some View {

@@ -48,7 +48,7 @@ struct KioskShell: View {
 
     private var rail: some View {
         VStack(spacing: 6) {
-            logo.padding(.top, 16).padding(.bottom, 12)
+            Color.clear.frame(height: 12)   // top breathing room (logo removed)
             ForEach(KioskNav.primary) { railItem($0) }
             Spacer(minLength: 8)
             captureRailButton
@@ -91,14 +91,6 @@ struct KioskShell: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
-    }
-
-    private var logo: some View {
-        Text("N")
-            .font(NK.serif(26)).foregroundStyle(.white)
-            .frame(width: 46, height: 46)
-            .background(NK.ink)
-            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
     private func railItem(_ item: KioskNav) -> some View {

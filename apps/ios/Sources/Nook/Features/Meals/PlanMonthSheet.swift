@@ -247,17 +247,9 @@ struct PlanMonthSheet: View {
     }
 
     private func weekdayChip(_ dow: Int) -> some View {
-        let on = weekdays.contains(dow)
-        return Button {
-            if on { weekdays.remove(dow); themes[dow] = nil } else { weekdays.insert(dow) }
-        } label: {
-            Text(Self.dayNames[dow]).font(.system(size: 13, weight: .heavy)).foregroundStyle(on ? .white : NK.ink2)
-                .frame(maxWidth: .infinity).frame(height: 44)
-                .background(on ? NK.primary : NK.card)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(on ? .clear : NK.hair, lineWidth: 1))
+        WeekdayToggleChip(label: Self.dayNames[dow], isOn: weekdays.contains(dow)) {
+            if weekdays.contains(dow) { weekdays.remove(dow); themes[dow] = nil } else { weekdays.insert(dow) }
         }
-        .buttonStyle(.plain)
     }
 
     /// One weekday's theme picker — a plain row (the parent groups them in a single card).
