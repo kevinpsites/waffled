@@ -665,6 +665,7 @@ struct ChoreEditSheet: View {
     @State private var days: Set<String>
     @State private var requiresApproval: Bool
     @State private var confirmDelete = false
+    @FocusState private var titleFocused: Bool
 
     init(members: [SyncedMember], target: ChoresView.ChoreEditorTarget,
          onSave: @escaping (String?, [String: JSONValue]) -> Void, onDelete: @escaping (String) -> Void) {
@@ -701,6 +702,7 @@ struct ChoreEditSheet: View {
                         labeled("Title") {
                             TextField("Feed the dog", text: $title)
                                 .font(.system(size: 16, weight: .semibold)).textInputAutocapitalization(.sentences)
+                                .focused($titleFocused)
                                 .padding(.horizontal, 13).padding(.vertical, 12).cardField()
                         }
                         labeled("Emoji", width: 64) {
@@ -814,6 +816,8 @@ struct ChoreEditSheet: View {
                     Button(editing ? "Save" : "Add") { submit() }.fontWeight(.semibold).disabled(!canSave)
                 }
             }
+            // New chore: land in the title field.
+            .task { if !editing { try? await Task.sleep(for: .milliseconds(300)); titleFocused = true } }
         }
         .presentationDetents([.large])
     }

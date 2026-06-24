@@ -156,6 +156,7 @@ struct NewListSheet: View {
     let onCreate: (String, String) -> Void
     @State private var name = ""
     @State private var emoji = ""
+    @FocusState private var nameFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -165,6 +166,7 @@ struct NewListSheet: View {
                         SectionLabel(text: "List name")
                         TextField("Camping gear", text: $name)
                             .font(.system(size: 16, weight: .semibold)).textInputAutocapitalization(.words)
+                            .focused($nameFocused)
                             .padding(.horizontal, 13).padding(.vertical, 12)
                             .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
@@ -193,5 +195,7 @@ struct NewListSheet: View {
             }
         }
         .presentationDetents([.height(200), .medium])
+        // Land in the name field so you can just start typing.
+        .task { try? await Task.sleep(for: .milliseconds(300)); nameFocused = true }
     }
 }

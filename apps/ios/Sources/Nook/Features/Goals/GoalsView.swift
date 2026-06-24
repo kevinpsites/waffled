@@ -227,6 +227,7 @@ struct GoalsView: View {
             if DemoHooks.openGoal, !Self.didOpenGoal, let f = model.featured {
                 Self.didOpenGoal = true; path.append(.goal(f))
             }
+            if DemoHooks.newGoal, !Self.didOpenGoal { Self.didOpenGoal = true; creating = true }
         }
         .refreshable { await model.loadLists() }
         .sheet(item: $logging) { g in
@@ -690,6 +691,7 @@ struct GoalCreateSheet: View {
     @State private var creatingList = false
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+    @FocusState private var titleFocused: Bool
 
     private struct TypeOpt { let key, emoji, title, desc: String }
     private static let types = [
@@ -773,6 +775,7 @@ struct GoalCreateSheet: View {
                     section("What’s the goal?") {
                         TextField("1,000 Hours Outside", text: $title)
                             .font(NK.serif(20)).textInputAutocapitalization(.words)
+                            .focused($titleFocused)
                             .padding(.horizontal, 15).padding(.vertical, 13)
                             .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
@@ -871,6 +874,8 @@ struct GoalCreateSheet: View {
                 }
             }
             .onAppear(perform: prefill)
+            // New goal: land in the name field. (Edits keep the keyboard down.)
+            .task { if editGoal == nil { try? await Task.sleep(for: .milliseconds(300)); titleFocused = true } }
             // Switching type swaps in that type's starter milestones (thresholds mean
             // different things per type). Only in create — edits keep the goal's own.
             .onChange(of: goalType) { _, t in
@@ -1521,6 +1526,7 @@ struct GoalListCreateSheet: View {
     @State private var memberIds: Set<String> = []
     @State private var isPrivate = false
     @State private var saving = false
+    @FocusState private var nameFocused: Bool
     private let api = NookAPI()
 
     private var canSave: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty && !saving }
@@ -1534,6 +1540,7 @@ struct GoalListCreateSheet: View {
                             SectionLabel(text: "List name")
                             TextField("Mom & Dad", text: $name)
                                 .font(.system(size: 16, weight: .semibold)).textInputAutocapitalization(.words)
+                                .focused($nameFocused)
                                 .padding(.horizontal, 13).padding(.vertical, 12)
                                 .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
                                 .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
@@ -1595,6 +1602,7 @@ struct GoalListCreateSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .task { try? await Task.sleep(for: .milliseconds(300)); nameFocused = true }
     }
 
     private func submit() {

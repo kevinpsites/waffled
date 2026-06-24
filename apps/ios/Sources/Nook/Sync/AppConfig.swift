@@ -93,6 +93,8 @@ enum DemoHooks {
     static var planMonth: Bool { AppConfig.env("NOOK_PLAN_MONTH") == "1" }
     /// Auto-open the featured goal's detail on the iPad Goals page (verification).
     static var openGoal: Bool { AppConfig.env("NOOK_OPEN_GOAL") == "1" }
+    /// Auto-open the "New goal" create sheet on the Goals page (verification).
+    static var newGoal: Bool { AppConfig.env("NOOK_NEW_GOAL") == "1" }
     /// Auto-open the first member's spotlight on the iPad Family page (verification).
     static var openPerson: Bool { AppConfig.env("NOOK_OPEN_PERSON") == "1" }
     /// Auto-present the Sync panel on the Family screen.
