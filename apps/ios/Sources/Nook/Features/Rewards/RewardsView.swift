@@ -338,9 +338,7 @@ struct RewardsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 6) {
                     Text("Needs your OK").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
-                    Text("\(model.pending.count)").font(.system(size: 12, weight: .heavy)).foregroundStyle(NK.primary)
-                        .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(NK.primary.opacity(0.12)).clipShape(Capsule())
+                    NookStatusBadge(text: "\(model.pending.count)", color: NK.primary, size: 12, weight: .heavy)
                 }
                 ForEach(Array(model.pending.enumerated()), id: \.element.id) { idx, r in
                     if idx > 0 { Divider().background(NK.hair) }

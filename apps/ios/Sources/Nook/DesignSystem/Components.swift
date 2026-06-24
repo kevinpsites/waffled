@@ -197,6 +197,25 @@ struct NookEmojiTile: View {
     }
 }
 
+/// A tinted status / count capsule — colored text on a `color.opacity(0.12)` fill.
+/// The shared shape behind the "Spendable" / "Owner" / "key detected" / pending-count
+/// badges. Pass `weight: .heavy` for the louder count badges. Stateless.
+struct NookStatusBadge: View {
+    var text: String
+    var color: Color                 // tint; bg = color.opacity(0.12), text = color
+    var size: CGFloat = 11
+    var weight: Font.Weight = .bold
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: size, weight: weight))
+            .foregroundStyle(color)
+            .padding(.horizontal, 7).padding(.vertical, 2)
+            .background(color.opacity(0.12))
+            .clipShape(Capsule())
+    }
+}
+
 /// A small `chevron.right` that rotates 90° when its section is open — the shared
 /// disclosure indicator for collapsible headers. Stateless: pass the open flag.
 struct DisclosureChevron: View {

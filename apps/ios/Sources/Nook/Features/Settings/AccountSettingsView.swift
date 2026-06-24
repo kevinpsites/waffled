@@ -129,8 +129,7 @@ struct AccountSettingsView: View {
     }
 
     private func tag(_ t: String, _ color: Color) -> some View {
-        Text(t).font(.system(size: 11, weight: .bold)).foregroundStyle(color)
-            .padding(.horizontal, 7).padding(.vertical, 2).background(color.opacity(0.12)).clipShape(Capsule())
+        NookStatusBadge(text: t, color: color)
     }
 
     private func load() async {
