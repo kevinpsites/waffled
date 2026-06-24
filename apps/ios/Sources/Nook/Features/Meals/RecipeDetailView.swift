@@ -80,7 +80,7 @@ struct RecipeDetailView: View {
             if !steps.isEmpty { cookButton }
             cookedRow
             if loading && ingredients.isEmpty && steps.isEmpty {
-                ProgressView().tint(NK.ink3).frame(maxWidth: .infinity).padding(.vertical, 30)
+                NookLoading(top: 30)
             } else if error {
                 Text("Couldn’t load this recipe.").font(.system(size: 14)).foregroundStyle(NK.ink3)
                     .frame(maxWidth: .infinity).padding(.vertical, 20)

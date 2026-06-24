@@ -69,7 +69,7 @@ struct CalendarsSettingsView: View {
                         connectMore
                     }
                 } else if loading {
-                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 40)
+                    NookLoading(top: 40)
                 }
             }
             .padding(16).padding(.bottom, 110)

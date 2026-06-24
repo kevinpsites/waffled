@@ -36,7 +36,7 @@ struct MealsSettingsView: View {
                 } else if failed {
                     Text("Couldn’t load meal settings.").font(.system(size: 14)).foregroundStyle(NK.ink3).padding(.vertical, 30)
                 } else {
-                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 40)
+                    NookLoading(top: 40)
                 }
             }
             .padding(16).padding(.bottom, 110)

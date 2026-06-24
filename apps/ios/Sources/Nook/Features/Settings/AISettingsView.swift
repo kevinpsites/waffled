@@ -63,7 +63,7 @@ struct AISettingsView: View {
                 } else if failed {
                     Text("Couldn’t load AI settings.").font(.system(size: 14)).foregroundStyle(NK.ink3).padding(.vertical, 30)
                 } else if loading {
-                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 40)
+                    NookLoading(top: 40)
                 }
             }
             .padding(16).padding(.bottom, 110)
