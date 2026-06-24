@@ -110,18 +110,13 @@ struct CaptureSheet: View {
             }
             .onChange(of: dictation.transcript) { _, t in if !t.isEmpty { text = t } }
 
-            Button(action: parse) {
-                HStack {
-                    if phase == .parsing { ProgressView().tint(.white) }
-                    Text(phase == .parsing ? "Thinking…" : "Tell Nook")
-                        .font(.system(size: 16, weight: .semibold))
-                }
-                .frame(maxWidth: .infinity).padding(.vertical, 13)
-                .background(canParse ? NK.ai : NK.ink3).foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .disabled(!canParse || phase == .parsing)
+            NookPrimaryCTA(
+                label: phase == .parsing ? "Thinking…" : "Tell Nook",
+                tint: NK.ai,
+                isBusy: phase == .parsing,
+                isDisabled: !canParse,
+                action: parse
+            )
         }
     }
 
@@ -172,17 +167,13 @@ struct CaptureSheet: View {
     }
 
     private var commitButton: some View {
-        Button(action: commit) {
-            HStack {
-                if phase == .committing { ProgressView().tint(.white) }
-                Text(addLabel).font(.system(size: 15, weight: .semibold))
-            }
-            .frame(maxWidth: .infinity).padding(.vertical, 13)
-            .background(canCommit ? NK.primary : NK.ink3).foregroundStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .disabled(phase == .committing || !canCommit)
+        NookPrimaryCTA(
+            label: addLabel,
+            tint: NK.primary,
+            isBusy: phase == .committing,
+            isDisabled: !canCommit,
+            action: commit
+        )
     }
 
     // The confident summary line — icon, kind, what Nook heard, and who it's for.

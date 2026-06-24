@@ -44,6 +44,34 @@ struct Pill: View {
     }
 }
 
+/// The canonical full-width primary call-to-action — modeled on `PlanApplyBar`'s
+/// button (size-16 bold white label, `.vertical` 14 padding, `NK.rMD` corners).
+///
+/// `tint` is SEMANTIC: pass `NK.ai` for AI actions, `NK.primary` for normal ones.
+/// `isBusy` shows a small white spinner before the label; `isDisabled` greys the
+/// fill to `NK.ink3`. Both busy and disabled block the tap.
+struct NookPrimaryCTA: View {
+    var label: String
+    var tint: Color = NK.primary
+    var isBusy: Bool = false
+    var isDisabled: Bool = false
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                if isBusy { ProgressView().controlSize(.small).tint(.white) }
+                Text(label)
+                    .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 14)
+            .background(isDisabled ? NK.ink3 : tint)
+            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        }
+        .buttonStyle(.plain).disabled(isDisabled || isBusy)
+    }
+}
+
 /// A person avatar (`.av`) — emoji on a soft tint. Works from either a design
 /// `FamilyColor` (static screens) or a real `color_hex` string (synced data).
 struct Avatar: View {

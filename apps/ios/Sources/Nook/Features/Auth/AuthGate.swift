@@ -106,14 +106,12 @@ struct LoginView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Button { Task { await submit() } } label: {
-                Text(busy ? "Signing in…" : "Sign in")
-                    .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
-                    .frame(maxWidth: .infinity).padding(.vertical, 15)
-                    .background(canSubmit ? NK.primary : NK.ink3)
-                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            }
-            .buttonStyle(.plain).disabled(!canSubmit)
+            NookPrimaryCTA(
+                label: busy ? "Signing in…" : "Sign in",
+                tint: NK.primary,
+                isDisabled: !canSubmit,
+                action: { Task { await submit() } }
+            )
             .padding(.top, 4)
 
             if let label = session.status?.oidc?.buttonLabel {
