@@ -43,13 +43,10 @@ enum EventTime {
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 
-    /// A short clock label ("8:30 AM") for a timed event, in `tz`.
+    /// A short clock label ("8:30 AM") for a timed event, in `tz`. Routes through
+    /// `DateFmt` so it reuses the cached formatter (POSIX renders "h:mm a" identically).
     static func timeLabel(_ date: Date, _ tz: TimeZone) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US")
-        f.timeZone = tz
-        f.dateFormat = "h:mm a"
-        return f.string(from: date)
+        DateFmt.string(date, "h:mm a", tz)
     }
 
     // Ordered most-specific-first; each carries its own offset so the parsed Date
