@@ -1668,6 +1668,20 @@ struct NookAPI: Sendable {
         try check(resp, data)
     }
 
+    // MARK: media upload (blob store)
+
+    /// The result of a media upload: the opaque storage key (persist as an entity's
+    /// `storageKey`), its resolved (relative) URL, and the stored content type.
+    struct UploadedMedia: Decodable, Sendable { let key: String; let url: String; let contentType: String }
+
+    /// Upload image bytes (base64) to the blob store. Returns the opaque storage key
+    /// (persist as an entity's storageKey) + its resolved (relative) URL.
+    func uploadMedia(base64Data: String, contentType: String) async throws -> UploadedMedia {
+        try await sendReturning("POST", "/api/media",
+            body: ["data": .string(base64Data), "contentType": .string(contentType)],
+            as: UploadedMedia.self)
+    }
+
     // MARK: helpers
 
     /// POST/PATCH a JSON body to `path`, throwing on non-2xx. The response body is
