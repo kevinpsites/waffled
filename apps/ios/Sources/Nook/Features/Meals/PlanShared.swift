@@ -34,6 +34,48 @@ struct PlanTag: View {
     }
 }
 
+/// The "Use up first" card — a chip flow of ingredients to prioritize, plus an
+/// inline add field. The parent owns `items` and `input`; this view is otherwise
+/// self-contained (same 12-item cap and chip styling as both plan sheets).
+struct UseUpCard: View {
+    @Binding var items: [String]
+    @Binding var input: String
+
+    var body: some View {
+        NookCard(padding: 14) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Use up first").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                ChipFlow(spacing: 8, lineSpacing: 8) {
+                    ForEach(items, id: \.self) { u in chip(u) }
+                    TextField("+ Add", text: $input)
+                        .font(.system(size: 14)).textInputAutocapitalization(.never)
+                        .submitLabel(.done).onSubmit { add() }
+                        .frame(minWidth: 80)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(NK.panel).clipShape(Capsule())
+                }
+            }
+        }
+    }
+
+    private func chip(_ u: String) -> some View {
+        HStack(spacing: 5) {
+            Text(u).font(.system(size: 14, weight: .medium)).foregroundStyle(NK.ink)
+            Button { items.removeAll { $0 == u } } label: {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(NK.ink3)
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .background(NK.panel).clipShape(Capsule())
+    }
+
+    private func add() {
+        let v = input.trimmingCharacters(in: .whitespaces)
+        guard !v.isEmpty, !items.contains(v), items.count < 12 else { input = ""; return }
+        items.append(v); input = ""
+    }
+}
+
 /// The full-screen loading state shown while the AI drafts a plan.
 struct PlanLoadingView: View {
     let title: String

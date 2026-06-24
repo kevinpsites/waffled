@@ -182,20 +182,7 @@ struct PlanWeekSheet: View {
                     }
 
                     // Use up first
-                    NookCard(padding: 14) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Use up first").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
-                            ChipFlow(spacing: 8, lineSpacing: 8) {
-                                ForEach(useUp, id: \.self) { u in useUpChip(u) }
-                                TextField("+ Add", text: $useUpInput)
-                                    .font(.system(size: 14)).textInputAutocapitalization(.never)
-                                    .submitLabel(.done).onSubmit { addUseUp() }
-                                    .frame(minWidth: 80)
-                                    .padding(.horizontal, 12).padding(.vertical, 7)
-                                    .background(NK.panel).clipShape(Capsule())
-                            }
-                        }
-                    }
+                    UseUpCard(items: $useUp, input: $useUpInput)
 
                     // Keep in mind
                     NookCard(padding: 14) {
@@ -238,17 +225,8 @@ struct PlanWeekSheet: View {
         }
     }
 
-    private func useUpChip(_ u: String) -> some View {
-        HStack(spacing: 5) {
-            Text(u).font(.system(size: 14, weight: .medium)).foregroundStyle(NK.ink)
-            Button { useUp.removeAll { $0 == u } } label: {
-                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(NK.ink3)
-            }
-        }
-        .padding(.horizontal, 12).padding(.vertical, 7)
-        .background(NK.panel).clipShape(Capsule())
-    }
-
+    /// Fold a half-typed use-up entry into the chips (used before drafting). Mirrors
+    /// `UseUpCard`'s own add logic so a pending input isn't lost on Plan.
     private func addUseUp() {
         let v = useUpInput.trimmingCharacters(in: .whitespaces)
         guard !v.isEmpty, !useUp.contains(v), useUp.count < 12 else { useUpInput = ""; return }
