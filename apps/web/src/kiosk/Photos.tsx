@@ -15,10 +15,6 @@ import '../styles/photos.css'
 // renders colored emoji tiles). Tapping a tile opens the detail; the topbar adds
 // "Play screensaver" + "Add photos"; the screensaver is a full-screen takeover.
 
-function weekdayOf(photo: Photo): string {
-  return new Date(photo.takenAt ?? photo.createdAt).toLocaleDateString('en-US', { weekday: 'long' })
-}
-
 function tileBg(photo: Photo): string {
   const c = photo.colorHex ?? '#7fc1e8'
   return `linear-gradient(135deg, ${c}, ${shade(c)})`
@@ -62,7 +58,7 @@ function PhotoTile({
         </button>
       )}
       <div className="heart">{photo.isFavorite ? '❤️' : ''}</div>
-      <div className="ph-cap">{photo.caption}</div>
+      {photo.caption && <div className="ph-cap">{photo.caption}</div>}
     </div>
   )
 }
@@ -208,15 +204,13 @@ export function Photos() {
             {newest.imageUrl ? <img src={newest.imageUrl} alt="" /> : newest.emoji ?? '🏖️'}
           </div>
           <div style={{ flex: 1 }}>
-            <div className="ai-tag" style={{ marginBottom: 4 }}>
-              <Icon name="spark" />New memory
-            </div>
+            <div className="ph-banner-tag" style={{ marginBottom: 4 }}>Recently added</div>
             <div className="ph-banner-title">
               {memory
-                ? `“${memory}” — ${memoryPhotos.length} photos from ${weekdayOf(newest)}`
-                : `${photos.length} photos`}
+                ? `“${memory}” — ${memoryPhotos.length} ${memoryPhotos.length === 1 ? 'photo' : 'photos'}`
+                : `${photos.length} ${photos.length === 1 ? 'photo' : 'photos'}`}
             </div>
-            <div className="tiny muted">Nook grouped them and set a few as the kitchen screensaver. Tap any photo to view.</div>
+            <div className="tiny muted">Tap any photo to view, or play them as a slideshow.</div>
           </div>
           <button type="button" className="btn btn-ghost btn-play" onClick={() => setSaver(newest)}>▶ Play</button>
         </div>

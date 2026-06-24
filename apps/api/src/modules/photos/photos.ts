@@ -87,7 +87,7 @@ export async function getPhoto(householdId: string, id: string) {
 }
 
 export interface CreatePhotoInput {
-  caption: string
+  caption?: string
   imageUrl?: string | null
   storageKey?: string | null
   contentType?: string | null
@@ -110,7 +110,7 @@ export async function createPhoto(tenant: Tenant, input: CreatePhotoInput): Prom
       input.imageUrl ?? null,
       input.storageKey ?? null,
       input.contentType ?? null,
-      input.caption,
+      (input.caption ?? '').trim(),
       input.emoji ?? null,
       input.colorHex ?? null,
       input.memory ?? null,
@@ -143,7 +143,8 @@ export async function updatePhoto(
   const vals: unknown[] = []
   const set = (col: string, val: unknown) => { cols.push(`${col} = $${cols.length + 1}`); vals.push(val) }
 
-  if (typeof patch.caption === 'string' && patch.caption.trim()) set('caption', patch.caption.trim())
+  // caption is optional: a string (even blank) sets it; blank clears the label.
+  if (typeof patch.caption === 'string') set('caption', patch.caption.trim())
   // empty / whitespace memory un-albums the photo (NULL).
   if (patch.memory !== undefined) set('memory', (patch.memory ?? '').trim() || null)
   if (typeof patch.isFavorite === 'boolean') set('is_favorite', patch.isFavorite)
@@ -197,13 +198,11 @@ export function registerPhotoRoutes(api: Api): void {
   api.post('/api/photos', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
     const body = (req.body ?? {}) as Partial<CreatePhotoInput>
-    if (!body.caption || !body.caption.trim()) {
-      return res.status(400).json({ error: 'BadRequest', message: 'caption is required' })
-    }
+    // caption is optional (blank by default); a tile still needs an image or emoji.
     if (!body.imageUrl && !body.storageKey && !body.emoji) {
       return res.status(400).json({ error: 'BadRequest', message: 'an image url, an uploaded image, or an emoji is required' })
     }
-    const photo = await createPhoto(tenant, { ...body, caption: body.caption.trim() } as CreatePhotoInput)
+    const photo = await createPhoto(tenant, body as CreatePhotoInput)
     return res.status(201).json({ photo })
   })
 
@@ -212,9 +211,6 @@ export function registerPhotoRoutes(api: Api): void {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'photo not found' })
     const body = (req.body ?? {}) as Partial<UpdatePhotoInput>
-    if (body.caption !== undefined && !String(body.caption).trim()) {
-      return res.status(400).json({ error: 'BadRequest', message: 'caption cannot be empty' })
-    }
     const patch: UpdatePhotoInput = {}
     if (body.caption !== undefined) patch.caption = body.caption
     if (body.memory !== undefined) patch.memory = body.memory

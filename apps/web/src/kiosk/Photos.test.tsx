@@ -87,7 +87,7 @@ describe('Photos home (family wall)', () => {
 
     // banner: memory name + count of photos in that memory (beach + cake = 2)
     expect(await screen.findByText(/“Lake Day” — 2 photos/)).toBeInTheDocument()
-    expect(screen.getByText(/New memory/i)).toBeInTheDocument()
+    expect(screen.getByText(/Recently added/i)).toBeInTheDocument()
 
     // wall tiles + captions
     expect(screen.getByText('Beach day')).toBeInTheDocument()

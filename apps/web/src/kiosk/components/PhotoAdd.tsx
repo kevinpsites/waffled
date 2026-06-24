@@ -95,7 +95,7 @@ export function PhotoAdd({
       for (const it of items) {
         await api.createPhoto({
           storageKey: it.key,
-          caption: it.caption.trim() || 'New photo',
+          caption: it.caption.trim(),
           memory: it.album.trim() || null,
           isFavorite: it.isFavorite,
         })

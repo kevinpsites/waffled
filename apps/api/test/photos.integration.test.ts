@@ -124,6 +124,14 @@ describe('photos api', () => {
     expect((await call('POST', '/api/photos', kevin, { caption: 'No tile' })).statusCode).toBe(400)
   })
 
+  it('creates with a blank/omitted caption (caption is optional)', async () => {
+    const res = await call('POST', '/api/photos', kevin, { emoji: '🌅', colorHex: '#f6c24f' })
+    expect(res.statusCode).toBe(201)
+    const id = JSON.parse(res.body).photo.id
+    const got = JSON.parse((await call('GET', `/api/photos/${id}`, kevin)).body).photo
+    expect(got.caption).toBe('')
+  })
+
   it('creates an emoji-tile photo and an image photo, lists newest-first', async () => {
     const tile = await call('POST', '/api/photos', kevin, {
       caption: 'Beach day',
@@ -208,10 +216,12 @@ describe('photos api', () => {
     expect(JSON.parse(fav.body).photo.isFavorite).toBe(true)
   })
 
-  it('rejects a blank caption patch (400)', async () => {
-    const add = await call('POST', '/api/photos', kevin, { caption: 'Keep me', emoji: '🐶', colorHex: '#cccccc' })
+  it('clears the caption on a blank patch (caption is optional)', async () => {
+    const add = await call('POST', '/api/photos', kevin, { caption: 'Clear me', emoji: '🐶', colorHex: '#cccccc' })
     const id = JSON.parse(add.body).photo.id
-    expect((await call('PATCH', `/api/photos/${id}`, kevin, { caption: '   ' })).statusCode).toBe(400)
+    const res = await call('PATCH', `/api/photos/${id}`, kevin, { caption: '   ' })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).photo.caption).toBe('')
   })
 
   it('404s patching unknown / bad ids', async () => {

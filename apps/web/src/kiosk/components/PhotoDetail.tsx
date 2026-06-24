@@ -70,7 +70,7 @@ export function PhotoDetail({
       // on the chosen day regardless of timezone.
       const takenAt = takenDate ? new Date(`${takenDate}T12:00:00`).toISOString() : null
       await api.updatePhoto(photo.id, {
-        caption: caption.trim() || photo.caption,
+        caption: caption.trim(),
         memory: album.trim() || null,
         isFavorite,
         takenAt,
@@ -111,7 +111,7 @@ export function PhotoDetail({
             <div className="pd-stage" style={{ background: bg }}>
               {photo.imageUrl ? <img src={photo.imageUrl} alt={photo.caption} /> : photo.emoji ?? '🏖️'}
               <div className="pd-stage-cap">
-                <div className="nk-serif">{photo.caption}</div>
+                {photo.caption && <div className="nk-serif">{photo.caption}</div>}
                 <div className="pd-stage-sub">
                   {fmtWeekday(photo.takenAt ?? photo.createdAt)}
                   {photo.memory ? ` · ${photo.memory}` : ''}
