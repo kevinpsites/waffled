@@ -66,7 +66,12 @@ async function checkMigrations(): Promise<{ status: Status } & Record<string, un
 function checkSchedulers(): { status: Status } & Record<string, unknown> {
   const jobs = jobSnapshots()
   const anyError = jobs.some((j) => j.lastError)
-  return { status: anyError ? 'degraded' : 'ok', jobs }
+  const out: { status: Status } & Record<string, unknown> = { status: anyError ? 'degraded' : 'ok', jobs }
+  // Job state is in-memory per process. `./nook doctor` runs a separate process so
+  // it sees none; the live server (this same report via GET /api/health, shown in
+  // Settings → System Health) has the real run history.
+  if (jobs.length === 0) out.note = 'no run history in this process (see Settings → System Health for live jobs)'
+  return out
 }
 
 // Google calendar push backlog — a stuck push (push_failed) is worth surfacing.

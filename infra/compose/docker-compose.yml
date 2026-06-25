@@ -54,6 +54,11 @@ services:
     image: ${NOOK_API_IMAGE:-nook-api:local}
     build:
       context: ../../apps/api
+      args:
+        # Build provenance, surfaced on /healthz + /api/health. ./nook passes the
+        # real values; a bare `docker compose build` falls back to dev/empty.
+        GIT_SHA: ${GIT_SHA:-dev}
+        BUILD_TIME: ${BUILD_TIME:-}
     container_name: nook-api
     depends_on:
       postgres:
@@ -106,6 +111,16 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_CALENDAR_REDIRECT_URI: ${GOOGLE_CALENDAR_REDIRECT_URI:-}
       GOOGLE_CALENDAR_SCOPES: ${GOOGLE_CALENDAR_SCOPES:-}
+      # --- OpenTelemetry (optional, OFF by default). Set OTEL_EXPORTER_OTLP_ENDPOINT
+      # to export traces+metrics to any OTLP backend. `./nook observability up` runs a
+      # local Grafana stack (the `observability` profile below) and sets this for you.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-nook-api}
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-}
+      # Structured logs: LOG_FORMAT=json (default) | pretty; LOG_LEVEL=info default.
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       # --- switch to Auth0 (RS256): set these, then restart the api ---
       # AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       # AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
@@ -177,8 +192,25 @@ services:
       - caddy_config:/config
     restart: unless-stopped
 
+  # Optional all-in-one local OpenTelemetry backend — Grafana + Prometheus/Mimir +
+  # Tempo + Loki in one container. Started only with the `observability` profile
+  # (`./nook observability up`); receives OTLP from the api and gives you Grafana
+  # dashboards entirely on your machine. Nothing leaves the host.
+  lgtm:
+    image: grafana/otel-lgtm:latest
+    container_name: nook-lgtm
+    profiles: ["observability"]
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"   # Grafana UI (api already owns :3000)
+      - "${OTLP_GRPC_PORT:-4317}:4317" # OTLP gRPC
+      - "${OTLP_HTTP_PORT:-4318}:4318" # OTLP HTTP/protobuf
+    volumes:
+      - lgtm_data:/data
+    restart: unless-stopped
+
 volumes:
   pgdata:
   nook_media:        # uploaded media blobs — NEVER WIPE (like pgdata)
   caddy_data:
   caddy_config:
+  lgtm_data:         # Grafana/Prometheus/Tempo/Loki state (observability profile)
