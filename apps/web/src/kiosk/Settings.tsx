@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { personsApi, permissionsApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability } from '../lib/api'
+import { personsApi, permissionsApi, healthApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus } from '../lib/api'
 import { PersonModal } from './components/PersonModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { Screensaver, screensaverPhotos } from './components/Screensaver'
@@ -18,6 +18,7 @@ const NAV = [
   { key: 'lists', icon: '📝', label: 'Lists', admin: true },
   { key: 'display', icon: '🖥️', label: 'Display & Kiosk', admin: true },
   { key: 'notifications', icon: '🔔', label: 'Notifications', admin: true },
+  { key: 'health', icon: '🩺', label: 'System Health', admin: true },
   { key: 'about', icon: 'ℹ️', label: 'About' },
 ]
 
@@ -152,6 +153,98 @@ function PermissionsCard() {
             </div>
           ))}
         </div>
+      )}
+    </div>
+  )
+}
+
+const HEALTH_ICON: Record<HealthStatus, string> = { ok: '✓', degraded: '⚠', down: '✗' }
+const HEALTH_TITLE: Record<string, string> = {
+  db: 'Database',
+  migrations: 'Migrations',
+  schedulers: 'Background jobs',
+  calendar: 'Calendar sync',
+  storage: 'Media storage',
+}
+
+// One health check rendered as a card: status badge + its non-status fields as
+// key=value chips (jobs get a friendlier per-job line).
+type JobSnapshot = { name: string; lastRunAt: string | null; lastError: string | null; runCount: number }
+
+function HealthCheckCard({ name, check }: { name: string; check: { status: HealthStatus } & Record<string, unknown> }) {
+  const jobs = check.jobs as JobSnapshot[] | undefined
+  const note = check.note as string | undefined
+  const fields = Object.entries(check).filter(([k]) => k !== 'status')
+  return (
+    <div className="set-card health-card" style={{ padding: 16 }}>
+      <div className="health-card-h">
+        <span className={`health-badge health-${check.status}`}>{HEALTH_ICON[check.status]}</span>
+        <span className="card-h" style={{ margin: 0 }}>{HEALTH_TITLE[name] ?? name}</span>
+      </div>
+      {name === 'schedulers' && Array.isArray(jobs) ? (
+        <div className="health-fields">
+          {jobs.length === 0 ? (
+            <span className="tiny muted">{note ?? 'no run history yet'}</span>
+          ) : (
+            jobs.map((j) => (
+              <div key={j.name} className="tiny" style={{ fontWeight: 600 }}>
+                {j.lastError ? '⚠' : '✓'} {j.name} · {j.runCount} runs{j.lastRunAt ? ` · last ${new Date(j.lastRunAt).toLocaleTimeString()}` : ''}{j.lastError ? ` · ${j.lastError}` : ''}
+              </div>
+            ))
+          )}
+        </div>
+      ) : (
+        <div className="health-fields">
+          {fields.map(([k, v]) => (
+            <span key={k} className="health-chip">{k}: {typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Admin-only system health. Polls /api/health every 10s; a non-admin gets a 403 →
+// we render nothing (the tab is admin-gated anyway, matching PermissionsCard).
+function SystemHealthPanel() {
+  const [report, setReport] = useState<HealthReport | null>(null)
+  const [error, setError] = useState(false)
+  useEffect(() => {
+    let alive = true
+    const load = () =>
+      healthApi.get().then((d) => alive && setReport(d)).catch(() => alive && setError(true))
+    load()
+    const t = setInterval(load, 10000)
+    return () => { alive = false; clearInterval(t) }
+  }, [])
+
+  if (error) return null
+  return (
+    <div className="set-panel">
+      <div className="set-head">
+        <div className="nk-serif set-head-t">System Health</div>
+        {report && (
+          <span className={`health-badge health-${report.status} health-badge-lg`} title={`Overall: ${report.status}`}>
+            {HEALTH_ICON[report.status]} {report.status.toUpperCase()}
+          </span>
+        )}
+      </div>
+      <div className="tiny muted" style={{ fontWeight: 600, margin: '-6px 2px 14px' }}>
+        Live status of the self-hosted stack. Same data as <code>./nook doctor</code> in a terminal.
+      </div>
+      {!report ? (
+        <div className="tiny muted" style={{ fontWeight: 600, padding: 8 }}>Loading…</div>
+      ) : (
+        <>
+          <div className="health-grid">
+            {Object.entries(report.checks).map(([name, check]) => (
+              <HealthCheckCard key={name} name={name} check={check} />
+            ))}
+          </div>
+          <div className="tiny muted" style={{ fontWeight: 600, marginTop: 12 }}>
+            Build {report.version.sha}{report.version.buildTime ? ` · ${new Date(report.version.buildTime).toLocaleString()}` : ''} · refreshed {new Date(report.generatedAt).toLocaleTimeString()}
+          </div>
+        </>
       )}
     </div>
   )
@@ -1815,7 +1908,7 @@ export function Settings() {
         </div>
       </div>
       <div className="set-content">
-        {activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <CalendarsPanel /> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
+        {activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <CalendarsPanel /> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
       </div>
     </div>
   )

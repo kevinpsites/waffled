@@ -147,6 +147,38 @@ describe('Settings screen', () => {
     await waitFor(() => expect(puts.some((m) => m.teen['goal.manage'] === true)).toBe(true))
   })
 
+  it('shows the System Health panel with component cards (admin)', async () => {
+    const report = {
+      status: 'degraded',
+      version: { pkg: '0.0.0', sha: 'abc123', buildTime: null },
+      generatedAt: '2026-06-25T20:00:00Z',
+      checks: {
+        db: { status: 'ok', total: 3, idle: 1, waiting: 0 },
+        migrations: { status: 'ok', applied: 47, available: 47 },
+        schedulers: { status: 'ok', jobs: [], note: 'no run history in this process' },
+        calendar: { status: 'degraded', pendingPush: 0, failedPush: 2, staleCalendars: 1 },
+        storage: { status: 'ok', dir: '/data/media', writable: true },
+      },
+    }
+    globalThis.fetch = vi.fn(async (url: string) => {
+      const u = String(url)
+      if (u.includes('/api/health')) return { ok: true, json: async () => report }
+      if (u.includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
+      if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household, person: members[0] }) }
+      if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('System Health'))
+
+    expect(await screen.findByText('Database')).toBeInTheDocument()
+    expect(screen.getByText('Calendar sync')).toBeInTheDocument()
+    expect(screen.getByText(/Build abc123/)).toBeInTheDocument()
+    expect(screen.getByText(/DEGRADED/)).toBeInTheDocument()
+  })
+
   it('hides admin-only tabs from non-admins (only About + Sign out)', async () => {
     // Same data, but the signed-in person is not an admin.
     globalThis.fetch = vi.fn(async (url: string) => {

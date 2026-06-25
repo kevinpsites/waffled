@@ -464,3 +464,16 @@ select.sel {
 .proof-del { flex: none; border: 0; background: none; font-size: 16px; cursor: pointer; opacity: .65; padding: 4px; }
 .proof-del:hover { opacity: 1; }
 .proof-del:disabled { opacity: .3; cursor: default; }
+
+/* ── System Health panel ─────────────────────────────────────────────────── */
+.health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.health-card-h { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.health-fields { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+.health-chip { font-size: 12px; font-weight: 600; color: var(--ink-2); background: var(--card-2);
+  border: 1px solid var(--hair); border-radius: 7px; padding: 3px 8px; }
+.health-badge { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 999px;
+  font-size: 14px; font-weight: 700; color: #fff; flex: none; }
+.health-badge-lg { width: auto; height: auto; padding: 4px 12px; border-radius: 999px; font-size: 12.5px; gap: 4px; }
+.health-ok { background: #2E9E5B; }
+.health-degraded { background: #D9882B; }
+.health-down { background: var(--danger, #c0392b); }
