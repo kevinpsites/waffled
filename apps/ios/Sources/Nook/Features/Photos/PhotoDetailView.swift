@@ -84,19 +84,6 @@ struct PhotoDetailView: View {
             } message: {
                 Text("This can’t be undone.")
             }
-            .task {
-                // Verification hook: drive the real edit→save path headlessly.
-                if let ymd = DemoHooks.photoAutoDate {
-                    let f = DateFormatter()
-                    f.locale = Locale(identifier: "en_US_POSIX")
-                    f.dateFormat = "yyyy-MM-dd"
-                    if let d = f.date(from: ymd) {
-                        startEdit()
-                        takenAt = d
-                        await save()
-                    }
-                }
-            }
         }
         .modifier(KioskSheetPresentation(kiosk: isKiosk))
     }

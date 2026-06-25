@@ -35,6 +35,7 @@ struct CaptureSheet: View {
     @State private var lists: [NookAPI.ListSummary] = []   // for the list picker
     @State private var editing = false                     // glance → full field editor
     @FocusState private var focused: Bool
+    @State private var detent: PresentationDetent = .large   // open tall (roomy input), draggable to medium
 
     private static let kinds: [(key: String, icon: String, label: String)] = [
         ("event", "📅", "Event"), ("list", "📝", "List"), ("grocery", "🛒", "Grocery"),
@@ -57,12 +58,13 @@ struct CaptureSheet: View {
         }
         .padding(20)
         .background(NK.canvas)
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.medium, .large], selection: $detent)
         .presentationDragIndicator(.visible)
         .task {
-            await sync.warmCapture()
-            await sync.loadCurrencies()
-            lists = (try? await NookAPI().listSummaries()) ?? []
+            // Focus the field (or start dictation / demo) FIRST so the keyboard comes
+            // up instantly. The LLM warm-up + ancillary loads used to be awaited here,
+            // which froze the sheet for ~10s before the keyboard appeared — they now
+            // run off the critical path below.
             if let demo = DemoHooks.captureText {   // headless demo driver (no-op unless set)
                 text = demo
                 parse()
@@ -71,6 +73,14 @@ struct CaptureSheet: View {
             } else {
                 focused = true
             }
+            // Pre-warm the model + load list/currency pickers in the background. None of
+            // these are needed until after the user types and parses, so they never need
+            // to block focus.
+            async let warm: Void = sync.warmCapture()
+            async let currencies: Void = sync.loadCurrencies()
+            let fetchedLists = (try? await NookAPI().listSummaries()) ?? []
+            _ = await (warm, currencies)
+            lists = fetchedLists
         }
         .onDisappear { dictation.stop() }
     }

@@ -132,10 +132,6 @@ enum DemoHooks {
     static var openHub: String? { AppConfig.env("NOOK_OPEN_HUB") }
     /// With openHub=lists, also open a specific list by type or name (e.g. "grocery").
     static var openList: String? { AppConfig.env("NOOK_OPEN_LIST") }
-    /// With openHub=photos, enter multi-select mode with the first photos picked (verification).
-    static var photosSelect: Bool { AppConfig.env("NOOK_PHOTOS_SELECT") == "1" }
-    /// With openHub=photos, open the first photo and save this date (YYYY-MM-DD) to it (verification).
-    static var photoAutoDate: String? { AppConfig.env("NOOK_PHOTO_AUTODATE") }
     /// With openList set, auto-present the first item's Details editor (verification).
     static var openDetails: Bool { AppConfig.env("NOOK_OPEN_DETAILS") == "1" }
     /// Initial grocery board mode for verification: "meal" switches to By meal.

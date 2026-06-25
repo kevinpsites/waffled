@@ -67,6 +67,10 @@ struct CalendarView: View {
                     try? await Task.sleep(for: .milliseconds(60))
                     withAnimation { proxy.scrollTo(dayScrollHour(), anchor: .top) }
                 }
+                // Swipe left/right on the month or day grid to step to the next/previous
+                // month or day. Simultaneous (not exclusive) so vertical scrolling still
+                // works; we only act on a clearly-horizontal flick.
+                .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded(handleCalendarSwipe))
             }
         }
         .background(NK.canvas)
@@ -393,6 +397,19 @@ struct CalendarView: View {
     private func stepMonth(_ n: Int) {
         var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
         if let d = cal.date(byAdding: .month, value: n, to: monthAnchor) { withAnimation { monthAnchor = d } }
+    }
+
+    /// Horizontal flick on the grid → step month (month view) or day (day view). Ignored
+    /// in agenda mode (a continuous list) and for predominantly-vertical drags.
+    private func handleCalendarSwipe(_ value: DragGesture.Value) {
+        let dx = value.translation.width, dy = value.translation.height
+        guard abs(dx) > 50, abs(dx) > abs(dy) * 1.5 else { return }
+        let forward = dx < 0   // swipe left = go forward (next)
+        switch mode {
+        case .month: stepMonth(forward ? 1 : -1)
+        case .day:   stepDay(forward ? 1 : -1)
+        case .agenda: break
+        }
     }
 
     private func dayKeyToDate(_ key: String) -> Date? {

@@ -32,6 +32,24 @@ struct KioskDashboard: View {
     @AppStorage("nook.kioskDashLayout") private var layoutRaw = DashLayout.balanced.rawValue
     private var layout: DashLayout { DashLayout(rawValue: layoutRaw) ?? .balanced }
 
+    /// Goal-focused preset: which goal is pinned to the wall (persisted). Empty = auto
+    /// (featured → whole-family → first). A picker on the card lets the family switch it.
+    @AppStorage("nook.kioskGoalId") private var kioskGoalId = ""
+    @State private var logGoal: NookAPI.Goal?
+
+    /// The goal the Goal-focused layout features: the pinned one if it still exists, else
+    /// the featured goal, else a whole-family goal, else the first goal.
+    private var kioskGoal: NookAPI.Goal? {
+        if !kioskGoalId.isEmpty, let g = model.goals.first(where: { $0.id == kioskGoalId }) { return g }
+        if let f = model.goals.first(where: { $0.isFeatured }) { return f }
+        let everyone = Set(sync.members.map(\.id))
+        if everyone.count > 1,
+           let fam = model.goals.first(where: { everyone.isSubset(of: Set($0.participants.map(\.personId))) }) {
+            return fam
+        }
+        return model.goals.first
+    }
+
     private var tz: TimeZone { sync.householdTz }
     private var todayKey: String { Agenda.todayKey(tz) }
 
@@ -58,6 +76,7 @@ struct KioskDashboard: View {
         .task(id: "\(tz.identifier)|\(sync.mealsRev)") { await model.loadMeals(todayKey: todayKey) }
         .task(id: "\(tz.identifier)|\(sync.groceryRev)") { await model.loadGrocery() }
         .task(id: tz.identifier) { await model.loadWeather() }
+        .task(id: sync.goalsRev) { await model.loadGoals() }
         // Pinned-banner queues: approvals refresh on chore/reward actions; the review
         // queue refreshes whenever a review/goal action bumps the goals bus.
         .task(id: "\(sync.choresRev)|\(sync.rewardsRev)") { await approvals.load() }
@@ -69,6 +88,15 @@ struct KioskDashboard: View {
             reviewSuggestions = await s ?? []
         }
         .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
+        .sheet(item: $logGoal) { g in
+            GoalLogSheet(goal: g) { amount, ids, note, loggedOn in
+                Task {
+                    try? await NookAPI().logGoalProgress(goalId: g.id, amount: amount, personIds: ids, note: note, loggedOn: loggedOn)
+                    await model.loadGoals()
+                    sync.touchGoals()
+                }
+            }
+        }
         // The full recipe page, not a cramped iPad page-sheet — open it full-screen with
         // a Close button (matches the phone, which pushes the same view).
         .fullScreenCover(item: $recipeTarget) { t in
@@ -213,6 +241,115 @@ struct KioskDashboard: View {
             HStack(alignment: .top, spacing: Self.colSpacing) {
                 mealsCol.frame(width: u * 1.5); agendaCol.frame(width: u); choreGroceryCol.frame(width: u)
             }
+        case .goal:
+            let u = avail / (1.5 + 1 + 1)
+            HStack(alignment: .top, spacing: Self.colSpacing) {
+                goalCol.frame(width: u * 1.5); agendaCol.frame(width: u); choreGroceryCol.frame(width: u)
+            }
+        }
+    }
+
+    // MARK: goal column (Goal-focused layout)
+
+    private var goalCol: some View {
+        ScrollView(showsIndicators: false) { goalCard.padding(.bottom, 8) }
+    }
+
+    @ViewBuilder private var goalCard: some View {
+        KioskCard {
+            VStack(alignment: .leading, spacing: 18) {
+                cardHeader("Family Goal", chevron: true) { navigate(.goals) }
+                if let g = kioskGoal {
+                    goalFocusBody(g)
+                } else {
+                    Text(model.loaded ? "No goals yet — add one on the Goals page."
+                                      : "Loading…")
+                        .font(.system(size: 17)).foregroundStyle(NK.ink3).padding(.vertical, 12)
+                }
+            }
+        }
+    }
+
+    /// The featured goal, big: emoji + title, a progress ring, each participant's bar, a
+    /// prominent "Log progress" button, and (when there's more than one goal) a switcher.
+    @ViewBuilder private func goalFocusBody(_ g: NookAPI.Goal) -> some View {
+        let frac = g.target.map { $0 > 0 ? min(g.totalProgress / $0, 1) : 0 } ?? 0
+        let maxProg = max(1, g.participants.map(\.progress).max() ?? 1)
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .center, spacing: 18) {
+                GoalRing(value: frac, size: 110, lineWidth: 11, stroke: NK.primary, track: NK.primary.opacity(0.16)) {
+                    VStack(spacing: 0) {
+                        Text(goalFmt(g.totalProgress)).font(.system(size: 30, weight: .heavy)).foregroundStyle(NK.ink)
+                        if g.target != nil {
+                            Text("of \(goalFmt(g.target))\(g.unit.map { " \($0)" } ?? "")")
+                                .font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                                .lineLimit(1).minimumScaleFactor(0.7)
+                        }
+                    }
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("\(g.emoji ?? "🎯") \(g.title)")
+                        .font(NK.serif(28)).foregroundStyle(NK.ink).lineLimit(3).minimumScaleFactor(0.7)
+                    if g.streakDays > 0 {
+                        Text("🔥 \(g.streakDays)-day streak")
+                            .font(.system(size: 15, weight: .bold)).foregroundStyle(NK.gold)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            if !g.participants.isEmpty {
+                VStack(spacing: 10) {
+                    ForEach(g.participants, id: \.personId) { goalContribRow($0, max: maxProg, unit: g.unit) }
+                }
+            }
+            Button { logGoal = g } label: {
+                Label("Log progress", systemImage: "plus.circle.fill")
+                    .font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                    .frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .background(NK.primary).clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            if model.goals.count > 1 { goalSwitcher(current: g) }
+        }
+    }
+
+    /// One participant's progress bar inside the goal card.
+    private func goalContribRow(_ p: NookAPI.Goal.Participant, max: Double, unit: String?) -> some View {
+        let tint = Color(hexString: p.colorHex) ?? NK.primary
+        return HStack(spacing: 12) {
+            Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 32)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text(p.name).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                    Spacer()
+                    Text("\(goalFmt(p.progress))\(p.target.map { " / \(goalFmt($0))" } ?? "")\(unit.map { " \($0)" } ?? "")")
+                        .font(.system(size: 14, weight: .heavy)).foregroundStyle(NK.ink2)
+                }
+                ProgressBar(value: max > 0 ? min(p.progress / max, 1) : 0, tint: tint, track: tint.opacity(0.16))
+            }
+        }
+    }
+
+    /// A compact switcher so the family can pin a different goal to the wall.
+    private func goalSwitcher(current: NookAPI.Goal) -> some View {
+        Menu {
+            Button { kioskGoalId = "" } label: {
+                Label("Auto (featured)", systemImage: kioskGoalId.isEmpty ? "checkmark" : "sparkles")
+            }
+            ForEach(model.goals) { g in
+                Button { kioskGoalId = g.id } label: {
+                    Label("\(g.emoji ?? "🎯") \(g.title)", systemImage: kioskGoalId == g.id ? "checkmark" : "")
+                }
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 13, weight: .semibold))
+                Text("Show a different goal").font(.system(size: 14, weight: .bold))
+            }
+            .foregroundStyle(NK.ink2)
+            .frame(maxWidth: .infinity).padding(.vertical, 11)
+            .background(NK.card).clipShape(Capsule())
+            .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
         }
     }
 
@@ -430,7 +567,12 @@ struct KioskDashboard: View {
                         .font(.system(size: 16)).foregroundStyle(NK.ink3).padding(.vertical, 8)
                 } else {
                     VStack(spacing: 16) {
-                        ForEach(model.chores) { p in personChoreRow(p) }
+                        // Each person row opens the Chores page too, not just the header —
+                        // tapping anyone in the card is a natural "show me chores" gesture.
+                        ForEach(model.chores) { p in
+                            Button { navigate(.tasks) } label: { personChoreRow(p) }
+                                .buttonStyle(.plain)
+                        }
                     }
                 }
             }
@@ -455,6 +597,7 @@ struct KioskDashboard: View {
             Spacer(minLength: 6)
             Text("★ \(p.stars)").font(.system(size: 17, weight: .heavy)).foregroundStyle(NK.gold)
         }
+        .contentShape(Rectangle())   // the whole row (incl. the spacer gap) is tappable
     }
 
     // MARK: grocery (named list + checkboxes)
@@ -602,6 +745,7 @@ final class KioskTodayModel {
     var weekDinners: [NookAPI.WeekEntryDTO] = []
     var grocery: [NookAPI.ListItemDTO] = []
     var weather: NookAPI.Weather?
+    var goals: [NookAPI.Goal] = []
     var loaded = false
 
     private let api = NookAPI()
@@ -622,8 +766,13 @@ final class KioskTodayModel {
         async let b: () = loadMeals(todayKey: todayKey)
         async let c: () = loadGrocery()
         async let d: () = loadWeather()
-        _ = await (a, b, c, d)
+        async let e: () = loadGoals()
+        _ = await (a, b, c, d, e)
         loaded = true
+    }
+
+    func loadGoals() async {
+        goals = (try? await api.goalsIn(listId: nil)) ?? []
     }
 
     func loadChores() async {
@@ -683,12 +832,13 @@ final class KioskTodayModel {
 /// The iPad Today preset layouts — same cards, re-weighted columns so each gives its
 /// focus more space (the user picks one in the dashboard header switcher).
 enum DashLayout: String, CaseIterable {
-    case balanced, agenda, meals
+    case balanced, agenda, meals, goal
     var label: String {
         switch self {
         case .balanced: return "Balanced"
         case .agenda: return "Agenda-focused"
         case .meals: return "Meals-focused"
+        case .goal: return "Goal-focused"
         }
     }
     var icon: String {
@@ -696,6 +846,7 @@ enum DashLayout: String, CaseIterable {
         case .balanced: return "rectangle.split.3x1"
         case .agenda: return "list.bullet.rectangle"
         case .meals: return "fork.knife"
+        case .goal: return "target"
         }
     }
 }

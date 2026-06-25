@@ -88,16 +88,7 @@ struct PhotosView: View {
             Button("Delete", role: .destructive) { runDelete() }
             Button("Cancel", role: .cancel) {}
         } message: { Text("This removes them from your family wall.") }
-        .task {
-            if model.photos.isEmpty { await model.load() }
-            if DemoHooks.photosSelect, !model.photos.isEmpty {
-                selecting = true
-                selection = Set(model.photos.prefix(2).map(\.id))
-            }
-            if DemoHooks.photoAutoDate != nil, !model.photos.isEmpty {
-                detail = model.photos.first
-            }
-        }
+        .task { if model.photos.isEmpty { await model.load() } }
         // The manual slideshow — a bare, chrome-free play-through of what's on the wall.
         .fullScreenCover(isPresented: $playing) {
             ScreensaverView(content: "photos", photos: shownPhotos, weather: nil, nextEvent: nil,

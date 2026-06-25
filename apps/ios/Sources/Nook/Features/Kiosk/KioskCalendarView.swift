@@ -33,6 +33,9 @@ struct KioskCalendarView: View {
         VStack(spacing: 0) {
             header.padding(.horizontal, 28).padding(.top, 18).padding(.bottom, 12)
             content.padding(.horizontal, 28).padding(.bottom, 24)
+                // Swipe left/right to step month / week / day (same as the chevrons).
+                // Simultaneous so the week/day time grids still scroll vertically.
+                .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded(handleSwipe))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(NK.canvas)
@@ -141,6 +144,15 @@ struct KioskCalendarView: View {
         if let d = dayKeyToDate(selectedDay), let nd = cal.date(byAdding: .day, value: n, to: d) {
             withAnimation { selectedDay = EventTime.dayKey(nd, tz) }
         }
+    }
+
+    /// Horizontal flick → step month / week / day (mirrors the header chevrons). Ignores
+    /// agenda mode and predominantly-vertical drags so the time grids still scroll.
+    private func handleSwipe(_ value: DragGesture.Value) {
+        guard mode != .agenda else { return }
+        let dx = value.translation.width, dy = value.translation.height
+        guard abs(dx) > 50, abs(dx) > abs(dy) * 1.5 else { return }
+        step(dx < 0 ? 1 : -1)   // swipe left = next
     }
 
     private func chevron(_ s: String) -> some View {

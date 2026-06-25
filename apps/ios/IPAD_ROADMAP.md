@@ -216,6 +216,16 @@ ephemeral session, auto-logs-out on idle. The **web kiosk already does this** �
 - [x] **Photos:** multi-select bulk move-to-album / delete (Select mode → tap tiles →
       Move / Delete bar; loops the per-photo REST endpoints). Editing a photo's **date**
       PATCHes `taken_at` and the edit sheet now returns to read mode showing the change.
+- [x] **Goal-focused Today preset** (iPad) — a fourth dashboard layout beside Balanced /
+      Agenda / Meals that features a goal big (progress ring · per-person bars · one-tap
+      **Log progress** via the shared `GoalLogSheet`), with a picker to pin any goal.
+- [x] **Calendar swipe** — swipe left/right on the grid to step month / week / day on
+      both iPhone and iPad (simultaneous gesture; vertical time-grid scroll still works).
+- [x] **Chore photo proof confirm** — a freshly-taken/picked proof shows a "Use this
+      photo / Retake" preview before it uploads, so an accidental library tap can't submit.
+- [x] **Capture sheet** opens tall and focuses the field instantly — the LLM warm-up +
+      list/currency loads moved off the critical path (they used to freeze it ~10s).
+- [x] **Family Chores** card person rows (iPad) open the Chores page too, not just the header.
 - [ ] **Chore reminders** (local notifications) — blocked on chores landing in PowerSync
       (the scheduler reads off the synced mirror; chores are REST-only today).
 - [ ] **Recurring-event reminders** — `NotificationManager` doesn't expand recurrences yet.
