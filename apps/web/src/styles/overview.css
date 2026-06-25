@@ -55,6 +55,9 @@
   font: inherit; font-size: 13px; font-weight: 700; color: var(--ai);
   background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline;
 }
+/* Same idea, but for viewers who can't create a goal for this person: the
+   suggestion stays a gentle nudge, just not a clickable shortcut. */
+.pp-suggest-text { font: inherit; font-size: 13px; font-weight: 700; color: var(--ai); }
 
 /* goal rows */
 .pp-goal { display: flex; align-items: center; gap: 13px; padding: 11px 6px; border-bottom: 1px solid var(--hair-2);

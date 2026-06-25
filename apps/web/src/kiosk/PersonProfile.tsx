@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
-import { usePersonOverview, useConversions, usePersons, personsApi, rewardsApi, type OverviewGoal, type CategoryBalance, type ShopReward, type SavingToward, type OverviewCurrency, type StreakSummary } from '../lib/api'
+import { usePersonOverview, useConversions, usePersons, useHousehold, useGoalLists, can, personsApi, rewardsApi, type OverviewGoal, type CategoryBalance, type ShopReward, type SavingToward, type OverviewCurrency, type StreakSummary } from '../lib/api'
 import { TradeModal } from './components/TradeModal'
 import './../styles/overview.css'
 
@@ -177,7 +177,19 @@ export function PersonProfile() {
   const { data, loading, error } = usePersonOverview(id ?? null)
   const { conversions } = useConversions()
   const { persons } = usePersons()
+  const { person: me } = useHousehold()
+  const { lists: goalLists } = useGoalLists()
   const [trading, setTrading] = useState(false)
+
+  // "New goal for {name}" must keep its promise: it pre-selects this person by
+  // targeting their individual goal list. You can only create a goal for someone
+  // else with goal.manage — so for a kid on a sibling's page (where it would
+  // resolve to nobody they can target) we hide the button entirely rather than
+  // show one that can't deliver what it says.
+  const isSelf = !!me && me.id === id
+  const canCreateForThisPerson = isSelf || can(me, 'goal.manage')
+  const targetList = goalLists.find((l) => l.members.length === 1 && l.members[0]?.personId === id) ?? null
+  const newGoalHref = `/goals/new${targetList ? `?list=${targetList.id}` : ''}`
 
   // Segment switcher: jump straight between family members (and back to the
   // Family grid via "Everyone") without bouncing through a Back button.
@@ -198,12 +210,14 @@ export function PersonProfile() {
             </button>
           ))}
         </div>
-        <button className="pill btn-primary" style={{ color: '#fff', border: 0, marginLeft: 'auto', flex: 'none', cursor: 'pointer' }} onClick={() => navigate('/goals/new')}>
-          ＋ New goal{data?.person.name ? ` for ${data.person.name}` : ''}
-        </button>
+        {canCreateForThisPerson && (
+          <button className="pill btn-primary" style={{ color: '#fff', border: 0, marginLeft: 'auto', flex: 'none', cursor: 'pointer' }} onClick={() => navigate(newGoalHref)}>
+            ＋ New goal{data?.person.name ? ` for ${data.person.name}` : ''}
+          </button>
+        )}
       </div>
     ),
-    [navigate, data?.person.name, persons, id]
+    [navigate, data?.person.name, persons, id, canCreateForThisPerson, newGoalHref]
   )
 
   if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
@@ -243,7 +257,17 @@ export function PersonProfile() {
                 <div className="pp-insight-s">
                   A gentle idea:{' '}
                   {insight.suggestions.map((s, i) => (
-                    <span key={s}>{i > 0 ? ' or ' : ''}<button className="pp-suggest" onClick={() => navigate(`/goals/new?title=${encodeURIComponent(s)}`)}>“{s}”</button></span>
+                    <span key={s}>
+                      {i > 0 ? ' or ' : ''}
+                      {/* Same rule as the header button: a suggestion is a shortcut to
+                          create a goal for this person, so only offer it as an action to
+                          someone who can. Otherwise it's just a gentle nudge in text. */}
+                      {canCreateForThisPerson ? (
+                        <button className="pp-suggest" onClick={() => navigate(`${newGoalHref}${newGoalHref.includes('?') ? '&' : '?'}title=${encodeURIComponent(s)}`)}>“{s}”</button>
+                      ) : (
+                        <span className="pp-suggest-text">“{s}”</span>
+                      )}
+                    </span>
                   ))}
                 </div>
               )}
