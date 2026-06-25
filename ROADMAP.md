@@ -181,6 +181,9 @@ confirmation prompts / `--yes`, `admin-cli.integration.test.ts`):
 - **prune-sessions** `[--email]` — revoke refresh tokens (one member, or all).
 - **regenerate-powersync-key** — prints a fresh `POWERSYNC_JWT_PRIVATE_KEY` (RSA-2048) to paste
   into `.env` + `./nook restart api powersync`.
+- **list-households** / **delete-household** `--id [--force]` — list households (member/login counts)
+  and permanently delete one + all its scoped rows (dynamic per-`household_id` sweep under
+  `session_replication_role=replica`; refuses households with logins unless `--force`). Clears test debris.
 Documented in `README.md` → "Operator commands (`./nook admin`)". **force-password** stays an
 env break-glass (`AUTH_FORCE_PASSWORD=1`) and **OAuth login on/off** lives in the Settings UI —
 the two of the ~10 candidates intentionally left as env/UI rather than CLI. Auth writes go

@@ -17,9 +17,11 @@
 //   clear-calendar-error  (--email <e> | --all) [--yes]
 //   prune-sessions   [--email <e>] [--yes]
 //   regenerate-powersync-key
+//   list-households
+//   delete-household --id <uuid> [--force] [--yes]
 import { createInterface } from 'node:readline'
 import { generateKeyPairSync, randomBytes } from 'node:crypto'
-import { query, closePool } from '../src/platform/db'
+import { query, getPool, closePool } from '../src/platform/db'
 import { hashPassword, setPersonLogin, sha256 } from '../src/modules/auth/auth'
 
 // ── tiny arg parser ───────────────────────────────────────────────────────────
@@ -223,6 +225,81 @@ function regeneratePowerSyncKey(): void {
   console.log(c.dim + '\nApply with:  ./nook restart api powersync' + c.reset)
 }
 
+async function listHouseholds(): Promise<void> {
+  const { rows } = await query<{ id: string; name: string; created_at: string; members: number; logins: number }>(
+    `select h.id, h.name, h.created_at,
+            (select count(*)::int from persons p where p.household_id = h.id and p.deleted_at is null) as members,
+            (select count(*)::int from credentials c join persons p on p.id = c.person_id
+              where p.household_id = h.id and c.deleted_at is null) as logins
+       from households h
+      order by h.created_at`
+  )
+  if (!rows.length) { console.log(c.dim + 'No households yet — this instance has not been set up.' + c.reset); return }
+  for (const r of rows) {
+    const created = new Date(r.created_at).toISOString().slice(0, 10)
+    const logins = r.logins > 0 ? ok(`${r.logins} login${r.logins === 1 ? '' : 's'}`) : c.dim + 'no logins' + c.reset
+    console.log(`  ${r.name.padEnd(18)} ${String(r.members).padStart(2)} member${r.members === 1 ? ' ' : 's'}  ${logins}  ${c.dim}${created}  ${r.id}${c.reset}`)
+  }
+  console.log()
+}
+
+async function deleteHousehold(): Promise<void> {
+  const id = flag('id')
+  if (!id) die('delete-household requires --id <uuid> (see `list-households`).')
+  const hh = await query<{ name: string; members: number; logins: number }>(
+    `select h.name,
+            (select count(*)::int from persons p where p.household_id = h.id and p.deleted_at is null) as members,
+            (select count(*)::int from credentials c join persons p on p.id = c.person_id
+              where p.household_id = h.id and c.deleted_at is null) as logins
+       from households h where h.id = $1`,
+    [id]
+  )
+  const row = hh.rows[0]
+  if (!row) die(`No household found with id "${id}".`)
+  // A household with real logins is almost certainly not test debris — make the
+  // operator say so explicitly with --force on top of the normal confirmation.
+  if (row.logins > 0 && !has('force')) {
+    die(`"${row.name}" has ${row.logins} login(s) — this looks like a real household.\n  Re-run with --force if you really mean to permanently delete it and everyone in it.`)
+  }
+  console.log(warn(`This permanently deletes "${row.name}" and ALL of its data`) + ` (${row.members} member(s), ${row.logins} login(s)).`)
+  if (!(await confirm('This cannot be undone. Proceed?'))) die('Aborted.', 0)
+
+  const client = await getPool().connect()
+  let total = 0
+  try {
+    await client.query('begin')
+    // Disable FK triggers for this transaction so we can delete in any order
+    // (most household FKs are NO ACTION). Requires a superuser connection — the
+    // compose Postgres role is one. `set local` auto-restores at commit.
+    await client.query(`set local session_replication_role = replica`)
+    // refresh_tokens is keyed by person, not household — clear it first.
+    const rt = await client.query(`delete from refresh_tokens where person_id in (select id from persons where household_id = $1)`, [id])
+    total += rt.rowCount ?? 0
+    // Every table that carries a household_id, discovered dynamically so this keeps
+    // working as the schema grows.
+    const tables = await client.query<{ table_name: string }>(
+      `select c.table_name from information_schema.columns c
+         join information_schema.tables t
+           on t.table_schema = c.table_schema and t.table_name = c.table_name
+        where c.table_schema = 'public' and c.column_name = 'household_id'
+          and t.table_type = 'BASE TABLE'`
+    )
+    for (const t of tables.rows) {
+      const del = await client.query(`delete from "${t.table_name}" where household_id = $1`, [id])
+      total += del.rowCount ?? 0
+    }
+    const h = await client.query(`delete from households where id = $1`, [id])
+    total += h.rowCount ?? 0
+    await client.query('commit')
+  } catch (e) {
+    await client.query('rollback').catch(() => {})
+    throw e
+  } finally {
+    client.release()
+  }
+  console.log(ok(`✓ Deleted "${row.name}" and ${total} row(s) across the schema.`))
+}
+
 function help(): void {
   console.log(`${c.bold}Nook admin — operator / break-glass commands${c.reset}
 ${c.dim}Run as: ./nook admin <command> [flags]${c.reset}
@@ -237,12 +314,15 @@ ${c.dim}Run as: ./nook admin <command> [flags]${c.reset}
                                      clear a stuck Google account's sync-error flag
   ${c.bold}prune-sessions${c.reset} [--email <e>] [--yes]  revoke refresh tokens (one member, or all)
   ${c.bold}regenerate-powersync-key${c.reset}            print a fresh POWERSYNC_JWT_PRIVATE_KEY
+  ${c.bold}list-households${c.reset}                     households with member + login counts
+  ${c.bold}delete-household${c.reset} --id <uuid> [--force] [--yes]
+                                     permanently delete a household + ALL its data
 
 ${c.dim}Destructive commands prompt for confirmation (or pass --yes).
 Break-glass: set AUTH_FORCE_PASSWORD=1 in the api env + restart to force password login.${c.reset}`)
 }
 
-export const _cmds = { listMembers, resetPassword, makeAdmin, passwordLogin, clearCalendarError, pruneSessions, regeneratePowerSyncKey }
+export const _cmds = { listMembers, resetPassword, makeAdmin, passwordLogin, clearCalendarError, pruneSessions, regeneratePowerSyncKey, listHouseholds, deleteHousehold }
 
 async function main(): Promise<void> {
   const command = args()[0] ?? 'help'
@@ -255,6 +335,8 @@ async function main(): Promise<void> {
     case 'clear-calendar-error': await clearCalendarError(); break
     case 'prune-sessions': await pruneSessions(); break
     case 'regenerate-powersync-key': regeneratePowerSyncKey(); break
+    case 'list-households': await listHouseholds(); break
+    case 'delete-household': await deleteHousehold(); break
     case 'help': case '-h': case '--help': help(); break
     default: process.stderr.write(err(`Unknown command: ${command}`) + '\n\n'); help(); process.exitCode = 1
   }

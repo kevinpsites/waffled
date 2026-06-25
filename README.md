@@ -153,9 +153,12 @@ and credential→identity wiring the API uses, so there's one source of truth.
 | `clear-calendar-error (--email <e> \| --all)` | Clear a stuck Google account's "sync failing" flag. (The token itself is fixed by **Reconnect** in Settings → Calendars — a browser OAuth step the CLI can't do.) |
 | `prune-sessions [--email <e>]` | Revoke refresh tokens for one member, or everyone — forces re-login. |
 | `regenerate-powersync-key` | Print a fresh `POWERSYNC_JWT_PRIVATE_KEY` (RSA-2048) to paste into `.env`, then `./nook restart api powersync`. |
+| `list-households` | List every household with its member + login counts, created date, and id. |
+| `delete-household --id <uuid> [--force]` | Permanently delete a household and **all** of its data (handy for clearing test debris). Refuses a household that has logins unless you add `--force`. |
 
-Destructive commands (`reset-password`, `clear-calendar-error`, `prune-sessions`) prompt
-for a `y` confirmation; pass `--yes` to run them non-interactively (e.g. over plain SSH).
+Destructive commands (`reset-password`, `clear-calendar-error`, `prune-sessions`,
+`delete-household`) prompt for a `y` confirmation; pass `--yes` to run them
+non-interactively (e.g. over plain SSH).
 
 > **Hard lockout, no admin at all?** If password login is off and SSO is broken, set
 > `AUTH_FORCE_PASSWORD=1` in the api env and restart — that forces the password form

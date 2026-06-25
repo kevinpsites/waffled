@@ -52,6 +52,8 @@ async function run(...cliArgs: string[]): Promise<void> {
     if (name === 'clear-calendar-error') return await cmds.clearCalendarError()
     if (name === 'prune-sessions') return await cmds.pruneSessions()
     if (name === 'regenerate-powersync-key') return cmds.regeneratePowerSyncKey()
+    if (name === 'list-households') return await cmds.listHouseholds()
+    if (name === 'delete-household') return await cmds.deleteHousehold()
     throw new Error(`unknown test command ${name}`)
   } finally {
     process.argv = saved
@@ -163,6 +165,33 @@ describe('admin CLI', () => {
     log.mockRestore()
     const live = await query(`select count(*)::int as n from refresh_tokens where person_id = $1 and revoked_at is null`, [memberId])
     expect(live.rows[0].n).toBe(0)
+  })
+
+  it('list-households shows households with counts', async () => {
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await run('list-households')
+    const out = spy.mock.calls.map((c) => c.join(' ')).join('\n')
+    spy.mockRestore()
+    expect(out).toMatch(/Sites/)
+    expect(out).toMatch(/member/)
+  })
+
+  it('delete-household removes a household and all its scoped rows', async () => {
+    // A throwaway household with a person + a list (carries household_id) and no logins.
+    const hh = (await query(`insert into households (name, timezone) values ('Junk', 'America/Chicago') returning id`)).rows[0].id
+    const pid = (await query(`insert into persons (household_id, name, member_type) values ($1, 'Temp', 'adult') returning id`, [hh])).rows[0].id
+    await query(`insert into lists (household_id, name, list_type) values ($1, 'Scratch', 'custom')`, [hh])
+    expect((await query(`select 1 from households where id = $1`, [hh])).rowCount).toBe(1)
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await run('delete-household', '--id', hh, '--yes')
+    log.mockRestore()
+
+    expect((await query(`select 1 from households where id = $1`, [hh])).rowCount).toBe(0)
+    expect((await query(`select 1 from persons where id = $1`, [pid])).rowCount).toBe(0)
+    expect((await query(`select 1 from lists where household_id = $1`, [hh])).rowCount).toBe(0)
+    // The real household is untouched.
+    expect((await query(`select 1 from persons where id = $1`, [memberId])).rowCount).toBe(1)
   })
 
   it('regenerate-powersync-key prints a base64 PEM env line', async () => {
