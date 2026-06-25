@@ -61,6 +61,10 @@ struct AboutSettingsView: View {
                     .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
                     .fixedSize(horizontal: false, vertical: true)
 
+                Label("Your sign-in is tied to one server. Pointing at a different Nook won’t carry your account over — even if someone else hosts Nook, you’ll need an account there, and may see nothing until you sign in again.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.gold)
+                    .fixedSize(horizontal: false, vertical: true)
+
                 TextField(AppConfig.defaultBaseURL, text: $serverAddress)
                     .font(.system(size: 15, weight: .semibold))
                     .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
