@@ -147,7 +147,7 @@ export function Calendar() {
         />
       )}
       {view === 'agenda' && (
-        <AgendaView events={events} tz={tz} onOpenEvent={openEvent} onPickDate={jumpToWeek} />
+        <AgendaView events={events} tz={tz} onOpenEvent={openEvent} onPickDate={jumpToWeek} onCreate={(date) => setModal({ date })} />
       )}
 
       {modal && (

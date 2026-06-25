@@ -149,11 +149,13 @@ export function AgendaView({
   tz,
   onOpenEvent,
   onPickDate,
+  onCreate,
 }: {
   events: AgendaEvent[]
   tz: string
   onOpenEvent: (e: AgendaEvent) => void
   onPickDate: (d: Date) => void
+  onCreate: (date: string) => void
 }) {
   const { persons = [] } = usePersons()
   const today = new Date()
@@ -203,12 +205,19 @@ export function AgendaView({
     <div className="ag-screen">
       <div className="ag-list">
         <div className="nk-serif ag-h">What's coming up</div>
+        {/* Quick-add, matching the Day/Week bar — defaults to today. */}
+        <button type="button" className="wk-add ag-add" onClick={() => onCreate(todayKey)}>
+          <span className="wk-add-plus">＋</span>
+          <span className="wk-add-ph">Add an event…</span>
+        </button>
         {groups.length === 0 && <div className="muted" style={{ padding: '14px 4px' }}>Nothing upcoming.</div>}
         {groups.map((g) => (
           <div key={g.key} className="ag-group">
             <div className="ag-group-h">
               <span className="nk-serif">{dayLabel(g.date, todayMid)}</span>
               <span className="muted">{g.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+              {/* Add on this specific day — parity with tapping a day elsewhere. */}
+              <button type="button" className="ag-group-add" title={`Add an event on ${g.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`} aria-label="Add an event on this day" onClick={() => onCreate(g.key)}>＋</button>
             </div>
             {g.events.map((e) => (
               <AgendaRow key={e.id} event={e} past={isPastEvent(e, today)} onClick={() => onOpenEvent(e)} />

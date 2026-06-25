@@ -27,7 +27,7 @@ describe('AgendaView past-event fading', () => {
   it('fades a today event that has already ended, not an upcoming one', async () => {
     render(
       <MemoryRouter>
-        <AgendaView events={events} tz={TZ} onOpenEvent={() => {}} onPickDate={() => {}} />
+        <AgendaView events={events} tz={TZ} onOpenEvent={() => {}} onPickDate={() => {}} onCreate={() => {}} />
       </MemoryRouter>
     )
     const pastRow = (await screen.findByText('Morning standup')).closest('.ag-row')

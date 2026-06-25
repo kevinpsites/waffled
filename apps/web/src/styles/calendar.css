@@ -36,7 +36,7 @@
   border-radius: var(--r-lg); box-shadow: var(--sh-2); overflow: hidden; --wk-cols: 64px repeat(7, 1fr); }
 .wk-head { display: grid; grid-template-columns: var(--wk-cols); border-bottom: 1px solid var(--hair); }
 .wk-rail-sp { border-right: 1px solid var(--hair); }
-.wk-day-h { text-align: center; padding: 12px 4px 10px; border-right: 1px solid var(--hair); }
+.wk-day-h { text-align: center; padding: 12px 4px 10px; border-right: 1px solid var(--hair); min-width: 0; }
 .wk-day-h:last-child { border-right: 0; }
 .wk-day-h.tappable { cursor: pointer; transition: background .12s; }
 .wk-day-h.tappable:hover { background: var(--panel); }
@@ -48,9 +48,12 @@
 .wk-allday { display: grid; grid-template-columns: var(--wk-cols); border-bottom: 1px solid var(--hair); min-height: 34px; }
 .wk-rail-lbl { font-size: 10px; font-weight: 700; color: var(--ink-3); letter-spacing: .06em;
   text-align: right; padding: 8px 8px 0 0; border-right: 1px solid var(--hair); }
-.wk-allday-cell { border-right: 1px solid var(--hair); padding: 5px; display: flex; flex-direction: column; gap: 4px; }
+.wk-allday-cell { border-right: 1px solid var(--hair); padding: 5px; display: flex; flex-direction: column; gap: 4px;
+  /* min-width:0 stops a long title from expanding its 1fr grid track (which
+     misaligns the all-day row from the headers/body); overflow clips to the cell. */
+  min-width: 0; overflow: hidden; }
 .wk-allday-cell:last-child { border-right: 0; }
-.wk-allday-ev { font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 7px;
+.wk-allday-ev { font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 7px; max-width: 100%;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 
 /* padding-top keeps the first hour label (positioned at top:-8px) from being
@@ -60,7 +63,7 @@
 .wk-rail { position: relative; }
 .wk-hr { position: relative; border-right: 1px solid var(--hair); }
 .wk-hr span { position: absolute; top: -8px; right: 8px; font-size: 11px; font-weight: 600; color: var(--ink-3); }
-.wk-col { position: relative; border-right: 1px solid var(--hair);
+.wk-col { position: relative; border-right: 1px solid var(--hair); min-width: 0;
   background-image: linear-gradient(to bottom, var(--hair-2) 1px, transparent 1px); cursor: pointer; }
 .wk-col:last-child { border-right: 0; }
 /* left + width are set inline (lane packing); keep a min-width so a 3-way overlap
@@ -119,6 +122,13 @@
 .ag-group-h { display: flex; align-items: baseline; gap: 10px; margin: 10px 2px 8px; }
 .ag-group-h .nk-serif { font-size: 21px; font-weight: 600; }
 .ag-group-h .muted { font-size: 14px; font-weight: 600; }
+.ag-add { width: 100%; margin-bottom: 18px; }
+.ag-group-add { margin-left: auto; align-self: center; width: 26px; height: 26px; border-radius: 999px;
+  flex: none; border: 1px solid var(--hair); background: var(--card); color: var(--ink-3);
+  font-size: 16px; line-height: 1; cursor: pointer; display: grid; place-items: center;
+  opacity: 0; transition: opacity .12s, background .12s, color .12s; }
+.ag-group:hover .ag-group-add { opacity: 1; }
+.ag-group-add:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
 .ag-row { display: flex; align-items: center; gap: 14px; background: var(--card); border-radius: var(--r-md);
   box-shadow: var(--sh-1); padding: 14px 16px; margin-bottom: 8px; cursor: pointer; }
 .ag-row:hover { box-shadow: var(--sh-2); }
