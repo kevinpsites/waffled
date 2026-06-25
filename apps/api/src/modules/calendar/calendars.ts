@@ -41,6 +41,8 @@ interface AccountRow extends QueryResultRow {
   scope: string | null
   created_at: Date
   updated_at: Date
+  last_sync_error: string | null
+  last_sync_error_at: Date | null
 }
 
 interface CalendarRow extends QueryResultRow {
@@ -88,6 +90,8 @@ async function storeConnection(opts: {
          scope = excluded.scope,
          refresh_token_encrypted = excluded.refresh_token_encrypted,
          person_id = coalesce(calendar_accounts.person_id, excluded.person_id),
+         last_sync_error = null,
+         last_sync_error_at = null,
          deleted_at = null
        returning id`,
       [householdId, personId, info.sub, info.email, tokens.scope, encryptSecret(tokens.refreshToken)]
@@ -133,7 +137,7 @@ async function storeConnection(opts: {
 
 async function listAccounts(householdId: string): Promise<AccountRow[]> {
   const { rows } = await query<AccountRow>(
-    `select id, email, google_sub, scope, created_at, updated_at
+    `select id, email, google_sub, scope, created_at, updated_at, last_sync_error, last_sync_error_at
        from calendar_accounts
       where household_id = $1 and deleted_at is null
       order by created_at`,
@@ -159,7 +163,15 @@ async function listHouseholdCalendars(householdId: string): Promise<CalendarRow[
 // ── Presenters ───────────────────────────────────────────────────────────────
 
 function presentAccount(a: AccountRow) {
-  return { id: a.id, email: a.email, googleSub: a.google_sub, scope: a.scope, connectedAt: a.created_at }
+  return {
+    id: a.id,
+    email: a.email,
+    googleSub: a.google_sub,
+    scope: a.scope,
+    connectedAt: a.created_at,
+    lastSyncError: a.last_sync_error ?? null,
+    lastSyncErrorAt: a.last_sync_error_at ?? null,
+  }
 }
 
 function presentCalendar(c: CalendarRow) {

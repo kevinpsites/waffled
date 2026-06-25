@@ -256,6 +256,23 @@ async function syncCalendar(
 // Sync every selected calendar in the household (or one, if calendarId given).
 // Calendars sharing an account share a single refreshed access token. A failure
 // on one calendar/account is captured per-row and doesn't abort the others.
+// Record (or clear) the last sync error on an account, so the Settings → Calendars
+// row can surface "Problem syncing · Reconnect" only when that account is failing.
+async function setAccountSyncError(accountId: string, error: string | null): Promise<void> {
+  if (error) {
+    await query(
+      `update calendar_accounts set last_sync_error = $2, last_sync_error_at = now() where id = $1`,
+      [accountId, error.slice(0, 500)]
+    )
+  } else {
+    await query(
+      `update calendar_accounts set last_sync_error = null, last_sync_error_at = null
+        where id = $1 and last_sync_error is not null`,
+      [accountId]
+    )
+  }
+}
+
 export async function syncHousehold(
   householdId: string,
   opts: { calendarId?: string; now?: number } = {}
@@ -300,6 +317,13 @@ export async function syncHousehold(
     } catch (err) {
       results.push({ ...base, error: err instanceof Error ? err.message : 'sync failed' })
     }
+  }
+
+  // Attribute the outcome to each account so the UI can show a per-account
+  // "Problem syncing · Reconnect" badge. A token-refresh failure (invalid_grant —
+  // expired/revoked Google sign-in) is the common case; success clears it.
+  for (const [accountId, entry] of tokenByAccount) {
+    await setAccountSyncError(accountId, entry.error ?? null)
   }
 
   return {

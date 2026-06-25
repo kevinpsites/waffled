@@ -925,11 +925,24 @@ function CalendarsPanel() {
                       {syncingCount} of {all.length} syncing · connected {fmtWhen(acct.connectedAt)}
                     </span>
                   </span>
+                  {/* A dead Google sign-in (expired/revoked refresh token) surfaces here
+                      with a one-tap Reconnect that re-auths IN PLACE — keeps every
+                      calendar→person mapping + ★ write-target (unlike Disconnect). */}
+                  {acct.lastSyncError && (
+                    <button type="button" className="btn btn-primary cal-reconnect" disabled={connecting} onClick={(e) => { e.stopPropagation(); connect() }}>
+                      Reconnect
+                    </button>
+                  )}
                   <button type="button" className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); disconnect(acct.id) }}>
                     Disconnect
                   </button>
                   <span className={`cal-chev ${open ? 'open' : ''}`}>›</span>
                 </div>
+                {acct.lastSyncError && (
+                  <div className="cal-acct-error">
+                    ⚠ Problem syncing — Google sign-in expired or was revoked. Click <b>Reconnect</b> to fix (your calendar assignments are kept).
+                  </div>
+                )}
 
                 {open && (
                   <div className="cal-acct-body">

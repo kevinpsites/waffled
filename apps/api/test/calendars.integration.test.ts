@@ -197,6 +197,26 @@ describe('calendar mapping + reconnect', () => {
     expect(fam).toMatchObject({ personName: 'Kelly', selected: false })
   })
 
+  it('surfaces a per-account sync error and clears it on reconnect', async () => {
+    const accountId = JSON.parse((await call('GET', '/api/calendar/google/status', kevin)).body).accounts[0].id
+    // Simulate what syncHousehold stamps on an invalid_grant token failure.
+    const client = new Client({ connectionString: dbUrl })
+    await client.connect()
+    await client.query(
+      `update calendar_accounts set last_sync_error = $2, last_sync_error_at = now() where id = $1`,
+      [accountId, 'invalid_grant: Token has been expired or revoked.']
+    )
+    await client.end()
+    // The status endpoint attributes it to the account row…
+    const errored = JSON.parse((await call('GET', '/api/calendar/google/status', kevin)).body)
+    expect(errored.accounts[0].lastSyncError).toMatch(/invalid_grant/)
+    // …and reconnecting the same account clears it (token refreshed in place).
+    const state = stateFrom(JSON.parse((await call('POST', '/api/calendar/google/connect', kevin, {})).body).url)
+    expect((await call('GET', `/auth/google/calendar/callback?code=auth-code-3&state=${state}`)).statusCode).toBe(200)
+    const cleared = JSON.parse((await call('GET', '/api/calendar/google/status', kevin)).body)
+    expect(cleared.accounts[0].lastSyncError).toBeNull()
+  })
+
   it('disconnects an account and clears its calendars', async () => {
     const status = JSON.parse((await call('GET', '/api/calendar/google/status', kevin)).body)
     const accountId = status.accounts[0].id

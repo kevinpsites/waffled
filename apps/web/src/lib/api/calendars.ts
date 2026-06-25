@@ -8,6 +8,8 @@ export interface CalendarAccount {
   googleSub: string
   scope: string | null
   connectedAt: string
+  lastSyncError: string | null
+  lastSyncErrorAt: string | null
 }
 
 export interface CalendarLink {

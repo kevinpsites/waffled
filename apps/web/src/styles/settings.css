@@ -479,3 +479,7 @@ select.sel {
 .health-down { background: var(--danger, #c0392b); }
 .health-hint { margin-top: 10px; font-size: 12px; font-weight: 600; line-height: 1.45; color: var(--ink-2);
   background: var(--card-2); border-left: 3px solid #D9882B; border-radius: 6px; padding: 7px 10px; }
+.cal-reconnect { flex: none; color: #fff; border: 0; }
+.cal-acct-error { margin: 0 14px 12px; padding: 9px 12px; border-radius: 8px; font-size: 12.5px;
+  font-weight: 600; line-height: 1.45; color: var(--ink-2); background: #fbe7d8;
+  border-left: 3px solid #D9882B; }
