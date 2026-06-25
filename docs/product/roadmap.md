@@ -19,7 +19,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   GHCR images, build-from-source default.
 - **Identity** — built-in email/password auth (rotating refresh), backend-mediated **OIDC
   SSO** (invite-gated, admin-configured), member management (grant logins), **role-based
-  permissions** (per-role capability grid for managing/approving chores & rewards).
+  permissions** (per-role capability grid for managing/approving chores, rewards & goals —
+  see the [permission model](./permissions.md): *gate what touches currency or someone
+  else's record; attribute collaborative actions; leave the rest open*).
 - **Kiosk** — device pairing, profile picker, optional PINs, idle screensaver.
 - **Today** — live cards + customizable per-user / family layouts.
 - **Calendar** — native events, Month/Week/Day/Agenda, create/edit/delete, participants,
@@ -35,7 +37,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   detail read-model, person + family overview, **calendar → goal** auto-count (single
   and recurring events) with learned suggestions.
 - **Lists & groceries** — multi-lists, auto-built aisle board, quantity merge, pantry
-  staples, live cross-surface refresh.
+  staples, live cross-surface refresh, **item attribution** ("added by …" / "from meal plan").
 - **Meals & recipes** — week/month planners, recipe library, in-app editor, paste-markdown
   import, overrides, cook mode, substitution-aware grocery build, AI plan-week/month, AI
   metadata auto-fill.
@@ -68,6 +70,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **Shared album import** for Photos (Google Photos / iCloud).
 - **Server-side fuzzy person resolution** for capture (nicknames/aliases).
 - **Milestone reward payouts** — deferred by design (needs idempotency + attribution rules).
+- **Soft "kids' list additions need an OK" toggle** — floated, *not committed*. Attribution
+  already covers the real need; a per-role lists matrix is more machinery than a family hub
+  wants. Recorded so the rationale isn't lost (see [permission model](./permissions.md)).
 - **Optional S3 backup** (Phase 4) — parked.
 - **Observability + restore drills** (7.4).
 - **App store verification** (7.2) — Apple/Google production review.

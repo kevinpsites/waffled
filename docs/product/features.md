@@ -23,7 +23,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported/N-A �
 | Disable password login / force SSO (break-glass guard) | ✅ | ⬜ | ✅ Done |
 | **Member management** — grant a person a login (email ± password) | ✅ | ⬜ | ✅ Done |
 | **Members CRUD** (profiles: name, avatar, color, role) | ✅ | ⬜ | ✅ Done |
-| **Role-based permissions** — per-role capability grid (Settings → Family) | ✅ | ⬜ | ✅ Done |
+| **Role-based permissions** — per-role capability grid (Settings → Family); [model & rationale](./permissions.md) | ✅ | ⬜ | ✅ Done |
 | Sign out (revokes refresh) | ✅ | ⬜ | ✅ Done |
 
 ## Kiosk & ambient display
@@ -113,6 +113,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported/N-A �
 | **Calendar → goal** auto-count recap (single events) | ✅ | ⬜ | ✅ Done (Phase 1) |
 | Smart "might count toward a goal" suggestions + learning | ✅ | ⬜ | ✅ Done (Phase B) |
 | Recurring-event goal counting | ✅ | ⬜ | ✅ Done |
+| **Capability gating** — logging for others / editing shared goals needs `goal.manage`; logging your own progress & personal goals stay open | ✅ | ⬜ | ✅ Done |
 
 ## Lists & groceries
 
@@ -124,6 +125,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported/N-A �
 | **Aisle grouping** + **quantity merge** (By aisle / By meal) | ✅ | ⬜ | ✅ Done |
 | **Pantry staples** (kept off the list; Pantry check) | ✅ | ⬜ | ✅ Done |
 | Check off / add / delete (persists) | ✅ | ⬜ | ✅ Done |
+| **Item attribution** — "added by {name}" on manual items; "🍽 from meal plan" on auto-built | ✅ | ⬜ | ✅ Done |
 | **Cross-surface live refresh** (Today ↔ Lists ↔ Rewards) | ✅ | ⬜ | ✅ Done |
 
 ## Meals & recipes
