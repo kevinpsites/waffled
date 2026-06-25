@@ -1,7 +1,12 @@
 // The shared lambda-api app: one routes file, two entrypoints (server.ts, lambda.ts).
+import { randomUUID } from 'node:crypto'
 import createAPI, { type Request, type Response, type NextFunction } from 'lambda-api'
 import { config } from './platform/config'
 import { requireAuth } from './platform/auth'
+import { query } from './platform/db'
+import { log } from './platform/logger'
+import { version } from './platform/version'
+import { registerHealthRoutes } from './modules/health/health'
 import {
   findTenantBySub,
   getContext,
@@ -39,6 +44,17 @@ import { registerPowerSyncCrudRoutes } from './modules/powersync/powersync-crud'
 
 const api = createAPI()
 
+// Request context: tag every request with an id + start time, before the auth gate
+// so even rejected (401/403) requests are logged. The matching `request` log line
+// is emitted in api.finally() after the response is sent (lambda-api's next() isn't
+// awaitable, so timing/status are captured there).
+api.use((req: Request, _res: Response, next: NextFunction) => {
+  const requestId = (req.headers['x-request-id'] as string) || randomUUID()
+  ;(req as Request & { requestId?: string; startTime?: number }).requestId = requestId
+  ;(req as Request & { startTime?: number }).startTime = Date.now()
+  next()
+})
+
 // Routes that skip auth. /api/auth/keys is the JWKS PowerSync fetches; the Google
 // calendar callback is hit by Google's browser redirect (no Authorization header)
 // and authenticates via its one-time OAuth state instead.
@@ -70,12 +86,19 @@ api.use(async (req: Request, res: Response, next: NextFunction) => {
 
 // --- routes ---
 
-// Liveness. Also reports which auth strategy is active, handy during the swap.
-api.get('/healthz', async () => ({
-  ok: true,
-  service: 'nook-api',
-  authMode: config.auth.mode,
-}))
+// Liveness + a fast DB readiness ping + build info. Stays shallow (it backs the
+// compose healthcheck, which only checks for HTTP 200 — so a DB blip surfaces in
+// the body's `db` field without flapping the container). The deep per-component
+// report is GET /api/health (admin).
+api.get('/healthz', async () => {
+  let db: 'up' | 'down' = 'up'
+  try {
+    await query('select 1')
+  } catch {
+    db = 'down'
+  }
+  return { ok: true, service: 'nook-api', authMode: config.auth.mode, version, db }
+})
 
 // Who the token says you are (no DB).
 api.get('/api/me', async (req: Request) => ({ sub: req.principal?.sub }))
@@ -214,11 +237,31 @@ registerPowerSyncRoutes(api)
 // PowerSync offline-write upload sink (/api/powersync/crud)
 registerPowerSyncCrudRoutes(api)
 
+// Deep health report (/api/health, admin) + the System Health panel's data source.
+registerHealthRoutes(api)
+
+// One structured access-log line per request, after the response is sent. status &
+// duration are read here because lambda-api's next() doesn't return a promise.
+api.finally((req: Request, res: Response) => {
+  const r = req as Request & { requestId?: string; startTime?: number; tenantHouseholdId?: string }
+  const status = (res as Response & { _statusCode?: number })._statusCode
+  log.info('request', {
+    requestId: r.requestId,
+    method: req.method,
+    path: req.path,
+    status,
+    durationMs: r.startTime ? Date.now() - r.startTime : undefined,
+    householdId: r.tenantHouseholdId,
+  })
+})
+
 // Error handler — lambda-api treats a 4-arg middleware as the error sink.
 api.use(
   (err: Error & { statusCode?: number }, req: Request, res: Response, _next: NextFunction) => {
     const status = err.statusCode ?? 500
-    if (status >= 500) console.error(err)
+    if (status >= 500) {
+      log.error('unhandled', { err, requestId: (req as Request & { requestId?: string }).requestId })
+    }
     res.status(status).json({ error: err.name || 'Error', message: err.message })
   }
 )

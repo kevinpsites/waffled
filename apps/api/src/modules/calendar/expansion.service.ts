@@ -8,6 +8,8 @@
 // Google-sourced recurrences are NOT handled here — Google sync expands them itself
 // into individual events rows. We only touch masters where events.rrule is not null.
 import { getPool, query } from '../../platform/db'
+import { log } from '../../platform/logger'
+import { runJob, registerJob } from '../../platform/jobs'
 import { expand, localDayKey, type MasterEvent, type OverrideRow } from './recurrence'
 
 const PAST_MONTHS = 3
@@ -189,18 +191,10 @@ export function startExpansionScheduler(): void {
   if (expansionTimer) return
   const intervalMs = parseInt(process.env.EXPANSION_INTERVAL_MS ?? '21600000', 10)
   if (!Number.isFinite(intervalMs) || intervalMs <= 0) return
-  let running = false
-  expansionTimer = setInterval(async () => {
-    if (running) return
-    running = true
-    try {
-      await materializeAll()
-    } catch (err) {
-      console.error('recurrence expansion tick error', err)
-    } finally {
-      running = false
-    }
+  registerJob('recurrence-expansion')
+  expansionTimer = setInterval(() => {
+    runJob('recurrence-expansion', () => materializeAll()).catch((err) => log.error('recurrence expansion tick failed', { err }))
   }, intervalMs)
   expansionTimer.unref?.()
-  console.log(`recurrence expansion scheduler started (every ${Math.round(intervalMs / 1000)}s)`)
+  log.info('recurrence expansion scheduler started', { intervalSec: Math.round(intervalMs / 1000) })
 }

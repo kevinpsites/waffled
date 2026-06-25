@@ -39,10 +39,15 @@ function mint(household: string, sub = 'dev|kevin'): string {
 }
 
 describe('api image — real container over HTTP', () => {
-  it('serves /healthz', async () => {
+  it('serves /healthz with build + db info', async () => {
     const res = await fetch(`${baseUrl}/healthz`)
     expect(res.status).toBe(200)
-    expect(await res.json()).toMatchObject({ ok: true, service: 'nook-api', authMode: 'local' })
+    const body = (await res.json()) as { ok: boolean; version?: { sha?: string }; db?: string }
+    expect(body).toMatchObject({ ok: true, service: 'nook-api', authMode: 'local' })
+    expect(body.version?.sha).toBeTruthy()
+    // No DATABASE_URL in this container → the readiness ping reports db down,
+    // but liveness (HTTP 200) is unaffected.
+    expect(['up', 'down']).toContain(body.db)
   })
 
   it('401s without a token', async () => {

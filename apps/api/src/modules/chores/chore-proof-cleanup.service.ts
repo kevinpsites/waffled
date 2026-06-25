@@ -9,6 +9,8 @@
 // able to review them, however old).
 import { query } from '../../platform/db'
 import { getBlobStore } from '../../platform/storage'
+import { log } from '../../platform/logger'
+import { runJob, registerJob } from '../../platform/jobs'
 
 export const DEFAULT_PROOF_TTL_DAYS = 3
 
@@ -85,18 +87,10 @@ export function startProofCleanupScheduler(): void {
   if (cleanupTimer) return
   const intervalMs = parseInt(process.env.CHORE_PROOF_CLEANUP_INTERVAL_MS ?? '86400000', 10)
   if (!Number.isFinite(intervalMs) || intervalMs <= 0) return
-  let running = false
-  cleanupTimer = setInterval(async () => {
-    if (running) return
-    running = true
-    try {
-      await cleanupExpiredProofs()
-    } catch (err) {
-      console.error('chore proof cleanup tick error', err)
-    } finally {
-      running = false
-    }
+  registerJob('chore-proof-cleanup')
+  cleanupTimer = setInterval(() => {
+    runJob('chore-proof-cleanup', cleanupExpiredProofs).catch((err) => log.error('chore proof cleanup tick failed', { err }))
   }, intervalMs)
   cleanupTimer.unref?.()
-  console.log(`chore proof cleanup scheduler started (every ${Math.round(intervalMs / 1000)}s)`)
+  log.info('chore proof cleanup scheduler started', { intervalSec: Math.round(intervalMs / 1000) })
 }

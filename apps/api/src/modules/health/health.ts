@@ -1,0 +1,132 @@
+// Deep health report for self-host operators. `GET /api/health` (admin) returns a
+// per-component status the in-app System Health panel and `./nook doctor` render;
+// buildHealthReport() is exported so the doctor CLI can call it directly in-process
+// (no HTTP/token). Every check is independent and best-effort — a failing check is
+// captured, never thrown, so the report always renders.
+import createAPI from 'lambda-api'
+import { readdirSync } from 'node:fs'
+import { writeFileSync, unlinkSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { getPool, query } from '../../platform/db'
+import { jobSnapshots } from '../../platform/jobs'
+import { version } from '../../platform/version'
+import { adminRoute } from '../../platform/route-guards'
+
+type Api = ReturnType<typeof createAPI>
+
+export type Status = 'ok' | 'degraded' | 'down'
+export interface HealthReport {
+  status: Status
+  version: typeof version
+  generatedAt: string
+  checks: Record<string, { status: Status } & Record<string, unknown>>
+}
+
+function mediaDir(): string {
+  return process.env.MEDIA_DIR || '/data/media'
+}
+
+// Count available .sql migrations from whichever dir exists (container cwd is /app;
+// tests run from apps/api). Returns null if none found (don't false-alarm).
+function availableMigrations(): number | null {
+  for (const dir of [resolve(process.cwd(), 'migrations'), '/app/migrations']) {
+    try {
+      return readdirSync(dir).filter((f) => f.endsWith('.sql')).length
+    } catch {
+      /* try next */
+    }
+  }
+  return null
+}
+
+async function checkDb(): Promise<{ status: Status } & Record<string, unknown>> {
+  try {
+    await query('select 1')
+    const pool = getPool()
+    return { status: 'ok', total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount }
+  } catch (err) {
+    return { status: 'down', error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+async function checkMigrations(): Promise<{ status: Status } & Record<string, unknown>> {
+  try {
+    const { rows } = await query<{ count: string }>('select count(*)::int as count from pgmigrations')
+    const applied = Number(rows[0]?.count ?? 0)
+    const available = availableMigrations()
+    const status: Status = available != null && applied < available ? 'degraded' : 'ok'
+    return { status, applied, available }
+  } catch (err) {
+    return { status: 'down', error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+// Degraded if any scheduler's last run errored. (A never-run job is fine — the
+// interval may simply not have elapsed, or the feature isn't configured.)
+function checkSchedulers(): { status: Status } & Record<string, unknown> {
+  const jobs = jobSnapshots()
+  const anyError = jobs.some((j) => j.lastError)
+  return { status: anyError ? 'degraded' : 'ok', jobs }
+}
+
+// Google calendar push backlog — a stuck push (push_failed) is worth surfacing.
+async function checkCalendar(): Promise<{ status: Status } & Record<string, unknown>> {
+  try {
+    const { rows } = await query<{ sync_state: string; count: string }>(
+      `select sync_state, count(*)::int as count from events
+        where sync_state in ('pending_push','push_failed') group by sync_state`
+    )
+    const pending = Number(rows.find((r) => r.sync_state === 'pending_push')?.count ?? 0)
+    const failed = Number(rows.find((r) => r.sync_state === 'push_failed')?.count ?? 0)
+    const { rows: stale } = await query<{ count: string }>(
+      `select count(*)::int as count from calendars
+        where sync_token is not null and last_synced_at < now() - interval '1 hour'`
+    )
+    const staleCalendars = Number(stale[0]?.count ?? 0)
+    const status: Status = failed > 0 ? 'degraded' : 'ok'
+    return { status, pendingPush: pending, failedPush: failed, staleCalendars }
+  } catch (err) {
+    // Calendar tables always exist post-migrate; a query error is a real problem.
+    return { status: 'down', error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+// Writability of the media volume — uploads (photos, recipe images, chore proofs)
+// all depend on it. Probe with a temp write+unlink.
+function checkStorage(): { status: Status } & Record<string, unknown> {
+  const dir = mediaDir()
+  const probe = join(dir, `.health-${process.pid}`)
+  try {
+    writeFileSync(probe, 'ok')
+    unlinkSync(probe)
+    return { status: 'ok', dir, writable: true }
+  } catch (err) {
+    // Degraded (not down): a dev box without the volume mounted still "works".
+    return { status: 'degraded', dir, writable: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+function aggregate(checks: HealthReport['checks']): Status {
+  const states = Object.values(checks).map((c) => c.status)
+  if (states.includes('down')) return 'down'
+  if (states.includes('degraded')) return 'degraded'
+  return 'ok'
+}
+
+export async function buildHealthReport(): Promise<HealthReport> {
+  const [db, migrations, calendar] = await Promise.all([checkDb(), checkMigrations(), checkCalendar()])
+  const checks: HealthReport['checks'] = {
+    db,
+    migrations,
+    schedulers: checkSchedulers(),
+    calendar,
+    storage: checkStorage(),
+  }
+  return { status: aggregate(checks), version, generatedAt: new Date().toISOString(), checks }
+}
+
+export function registerHealthRoutes(api: Api): void {
+  // Admin-gated: the report carries operational counts, not for non-admins. Always
+  // HTTP 200 — the status lives in the body so the panel renders even when degraded.
+  api.get('/api/health', adminRoute(async () => buildHealthReport()))
+}

@@ -13,6 +13,8 @@
 // sync_state tracks it: pending_push → synced, or push_failed (retried next sync).
 import type { PoolClient, QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
+import { log } from '../../platform/logger'
+import { runJob, registerJob } from '../../platform/jobs'
 import { decryptSecret, encryptionAvailable } from '../../platform/crypto'
 import {
   googleConfigured,
@@ -519,22 +521,15 @@ export function startSyncScheduler(): void {
   const intervalMs = parseInt(process.env.CALENDAR_SYNC_INTERVAL_MS ?? '300000', 10)
   if (!Number.isFinite(intervalMs) || intervalMs <= 0) return
   if (!googleConfigured() || !encryptionAvailable()) {
-    console.log('calendar sync scheduler not started (Google/encryption not configured)')
+    log.info('calendar sync scheduler not started (Google/encryption not configured)')
     return
   }
-  let running = false
-  schedulerTimer = setInterval(async () => {
-    if (running) return
-    running = true
-    try {
-      await syncAllHouseholds()
-    } catch (err) {
-      console.error('scheduled calendar sync error', err)
-    } finally {
-      running = false
-    }
+  registerJob('calendar-sync')
+  schedulerTimer = setInterval(() => {
+    // runJob records timing/result/error + skips overlapping runs.
+    runJob('calendar-sync', syncAllHouseholds).catch((err) => log.error('calendar sync tick failed', { err }))
   }, intervalMs)
   // Don't keep the process alive for the timer alone.
   schedulerTimer.unref?.()
-  console.log(`calendar sync scheduler started (every ${Math.round(intervalMs / 1000)}s)`)
+  log.info('calendar sync scheduler started', { intervalSec: Math.round(intervalMs / 1000) })
 }

@@ -4,6 +4,8 @@
 import http from 'node:http'
 import api from './app'
 import { config } from './platform/config'
+import { log } from './platform/logger'
+import { version } from './platform/version'
 import { startSyncScheduler } from './modules/calendar/calendar-sync.service'
 import { startExpansionScheduler } from './modules/calendar/expansion.service'
 import { startProofCleanupScheduler } from './modules/chores/chore-proof-cleanup.service'
@@ -32,7 +34,7 @@ const server = http.createServer((req, res) => {
       res.writeHead(result.statusCode, result.headers ?? {})
       res.end(result.body)
     } catch (err) {
-      console.error(err)
+      log.error('server adapter error', { err })
       res.writeHead(500, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ error: 'Internal', message: (err as Error).message }))
     }
@@ -40,7 +42,7 @@ const server = http.createServer((req, res) => {
 })
 
 server.listen(config.port, () => {
-  console.log(`nook-api listening on :${config.port} (auth mode: ${config.auth.mode})`)
+  log.info('nook-api listening', { port: config.port, authMode: config.auth.mode, sha: version.sha })
   // Background poll: pull Google calendar changes into Nook on an interval so
   // edits/deletes made on the Google side appear without a manual sync.
   startSyncScheduler()
