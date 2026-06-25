@@ -69,8 +69,19 @@ struct KioskDashboard: View {
             reviewSuggestions = await s ?? []
         }
         .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
-        .sheet(item: $recipeTarget) { t in
-            NavigationStack { RecipeDetailView(summary: t.summary, model: recipes, autoCook: t.cook) }
+        // The full recipe page, not a cramped iPad page-sheet — open it full-screen with
+        // a Close button (matches the phone, which pushes the same view).
+        .fullScreenCover(item: $recipeTarget) { t in
+            NavigationStack {
+                RecipeDetailView(summary: t.summary, model: recipes, autoCook: t.cook)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button { recipeTarget = nil } label: {
+                                Image(systemName: "xmark").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink2)
+                            }
+                        }
+                    }
+            }
         }
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)

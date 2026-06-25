@@ -18,39 +18,51 @@ struct CookModeView: View {
     private var step: NookAPI.RecipeStepDTO? { steps.indices.contains(index) ? steps[index] : nil }
     private var isLast: Bool { index >= steps.count - 1 }
     private var progress: Double { steps.isEmpty ? 0 : Double(index + 1) / Double(steps.count) }
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+    /// Big across-the-kitchen type — larger on the iPad wall display than the phone.
+    private var instructionSize: CGFloat { isKiosk ? 56 : 38 }
 
     var body: some View {
         VStack(spacing: 0) {
             topBar
             ProgressView(value: progress).tint(NK.primary).padding(.horizontal, 20)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text("STEP \(step?.stepNumber ?? index + 1) OF \(steps.count)")
-                        .font(.system(size: 13, weight: .heavy)).tracking(1.2)
-                        .foregroundStyle(Color(hex: 0x167A4A))
-                    Text(step?.instruction ?? "")
-                        .font(NK.serif(30, .semibold)).foregroundStyle(NK.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let igs = step?.ingredients, !igs.isEmpty {
-                        ChipFlow(spacing: 8, lineSpacing: 8) {
-                            ForEach(igs, id: \.self) { ig in
-                                Text(ig).font(.system(size: 15, weight: .medium))
-                                    .foregroundStyle(Color(hex: 0x167A4A))
-                                    .padding(.horizontal, 12).padding(.vertical, 7)
-                                    .background(Color(hex: 0x167A4A).opacity(0.12))
-                                    .clipShape(Capsule())
+            // The current step, centered in the available space — but scrollable so a
+            // long step is never clipped (short steps sit dead-center; long ones scroll).
+            GeometryReader { geo in
+                ScrollView {
+                    VStack(alignment: .center, spacing: 24) {
+                        Text("STEP \(step?.stepNumber ?? index + 1) OF \(steps.count)")
+                            .font(.system(size: 14, weight: .heavy)).tracking(1.4)
+                            .foregroundStyle(Color(hex: 0x167A4A))
+                        Text(step?.instruction ?? "")
+                            .font(NK.serif(instructionSize, .semibold)).foregroundStyle(NK.ink)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let igs = step?.ingredients, !igs.isEmpty {
+                            ChipFlow(spacing: 8, lineSpacing: 8, alignment: .center) {
+                                ForEach(igs, id: \.self) { ig in
+                                    Text(ig).font(.system(size: isKiosk ? 18 : 15, weight: .medium))
+                                        .foregroundStyle(Color(hex: 0x167A4A))
+                                        .padding(.horizontal, 12).padding(.vertical, 7)
+                                        .background(Color(hex: 0x167A4A).opacity(0.12))
+                                        .clipShape(Capsule())
+                                }
                             }
                         }
+                        if let note = step?.note {
+                            Text("📝 \(note)").font(.system(size: isKiosk ? 19 : 16)).foregroundStyle(NK.ink2)
+                                .multilineTextAlignment(.center)
+                                .padding(14).frame(maxWidth: .infinity)
+                                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                        }
                     }
-                    if let note = step?.note {
-                        Text("📝 \(note)").font(.system(size: 16)).foregroundStyle(NK.ink2)
-                            .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                    }
+                    .frame(maxWidth: 720)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 28).padding(.vertical, 24)
+                    // Center vertically when the step is short; grow (and scroll) when long.
+                    .frame(minHeight: geo.size.height, alignment: .center)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(24)
             }
 
             navBar

@@ -12,6 +12,7 @@ struct CalendarView: View {
     @State private var detailEvent: SyncedEvent?
     /// Remembered across tab switches + launches, so your preferred view sticks.
     @AppStorage("nook.calendarMode") private var mode: CalMode = .agenda
+    @State private var appliedDemoMode = false
     @State private var filterPerson: String?       // nil = Everyone
     @State private var monthAnchor = Date()         // the month the grid shows
     @State private var selectedDay = Agenda.todayKey(TimeZone.current)
@@ -79,6 +80,13 @@ struct CalendarView: View {
         .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
+        }
+        // Dev/demo: a launch env can force the initial calendar mode (parity with the
+        // iPad kiosk). One-shot; a no-op in production where the env is unset.
+        .task {
+            guard !appliedDemoMode else { return }
+            appliedDemoMode = true
+            if let raw = DemoHooks.kioskCalMode, let m = CalMode(rawValue: raw) { mode = m }
         }
         // Open the event a tapped reminder routed us to (once it's in the mirror).
         .task { openReminderEvent(openEventId.wrappedValue) }
