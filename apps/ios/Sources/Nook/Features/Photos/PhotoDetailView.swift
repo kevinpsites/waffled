@@ -16,6 +16,7 @@ struct PhotoDetailView: View {
     @State private var editing = false
     @State private var caption: String
     @State private var album: String
+    @State private var takenAt: Date
     @State private var saving = false
     @State private var busy = false
     @State private var confirmDelete = false
@@ -32,6 +33,7 @@ struct PhotoDetailView: View {
         _isFavorite = State(initialValue: photo.isFavorite)
         _caption = State(initialValue: photo.caption)
         _album = State(initialValue: photo.memory ?? "")
+        _takenAt = State(initialValue: EventTime.parse(photo.takenAt ?? photo.createdAt) ?? Date())
     }
 
     var body: some View {
@@ -219,6 +221,13 @@ struct PhotoDetailView: View {
                         }
                     }
                 }
+                field(label: "DATE") {
+                    DatePicker("", selection: $takenAt, displayedComponents: .date)
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 13).padding(.vertical, 8)
+                        .nkField(fill: NK.panel)
+                }
                 // Save sits right under the fields (in addition to the toolbar), so the
                 // primary action is obvious without hunting for the top-right button.
                 HStack(spacing: 10) {
@@ -253,6 +262,7 @@ struct PhotoDetailView: View {
     private func startEdit() {
         caption = photo.caption
         album = photo.memory ?? ""
+        takenAt = EventTime.parse(photo.takenAt ?? photo.createdAt) ?? Date()
         errorText = nil
         editing = true
     }
@@ -260,8 +270,15 @@ struct PhotoDetailView: View {
     private func cancelEdit() {
         caption = photo.caption
         album = photo.memory ?? ""
+        takenAt = EventTime.parse(photo.takenAt ?? photo.createdAt) ?? Date()
         errorText = nil
         editing = false
+    }
+
+    /// Format a chosen day as an ISO timestamp at noon (device tz) for `taken_at`.
+    private static func isoDay(_ d: Date) -> String {
+        let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: d) ?? d
+        return ISO8601DateFormatter().string(from: noon)
     }
 
     private func toggleFavorite() async {
@@ -285,6 +302,9 @@ struct PhotoDetailView: View {
             // Empty album clears it — send null (an empty string isn't the same thing).
             "memory": trimmedAlbum.isEmpty ? .null : .string(trimmedAlbum),
             "isFavorite": .bool(isFavorite),
+            // The photo's date (taken_at) — noon in the device tz so the day never
+            // shifts when it round-trips through the display formatter.
+            "takenAt": .string(Self.isoDay(takenAt)),
         ]
         do {
             _ = try await api.updatePhoto(id: photo.id, body)

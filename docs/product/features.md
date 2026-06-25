@@ -184,7 +184,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Multi-upload** with per-photo caption/album/favorite | ✅ | ✅ | ✅ | ✅ Done |
 | Drag-and-drop upload zone | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web); mobile uses the native picker |
 | **Albums** (filter chips; derived from a photo's album field) | ✅ | ✅ | ✅ | ✅ Done |
-| **Edit** a photo (caption, album, favorite) | ✅ | ✅ | ✅ | ✅ Done |
+| **Edit** a photo (caption, album, **date**, favorite) | ✅ | ✅ | ✅ | ✅ Done (date edit PATCHes `takenAt`) |
 | Edit a photo's **date** | ✅ | 🚧 | 🚧 | 🚧 Planned (mobile) |
 | **Multi-select** → bulk move-to-album / delete | ✅ | 🚧 | 🚧 | 🚧 Planned (mobile; per-tile delete works) |
 | Per-tile delete with confirmation (touch-friendly) | ✅ | ✅ | ✅ | ✅ Done |
@@ -262,7 +262,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 
 Tracked in [`apps/ios/IPAD_ROADMAP.md`](../../apps/ios/IPAD_ROADMAP.md). Highlights:
 
-- **Photos** — multi-select bulk move/delete, and editing a photo's date.
+- **Photos** — multi-select bulk move/delete (per-tile delete + photo-date edit already ship).
 - **Chore reminders** on iOS — blocked on chores landing in PowerSync.
 - **Recurring-event reminders** — the local scheduler doesn't expand recurrences yet.
 - **Recipe import** (paste-markdown) and **AI metadata auto-fill** on iOS.

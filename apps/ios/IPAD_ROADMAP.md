@@ -212,7 +212,8 @@ ephemeral session, auto-logs-out on idle. The **web kiosk already does this** �
       iPhone Day); month cells show event titles (not times); iPhone agenda dims past events.
 - [x] **Recipe from Today** opens full-screen (not a cramped iPad page-sheet); Cook Mode
       uses large centered type that scrolls long steps.
-- [ ] **Photos:** multi-select bulk move-to-album / delete; editing a photo's date.
+- [ ] **Photos:** multi-select bulk move-to-album / delete. (Editing a photo's **date** ships —
+      the edit sheet PATCHes `taken_at`.)
 - [ ] **Chore reminders** (local notifications) — blocked on chores landing in PowerSync
       (the scheduler reads off the synced mirror; chores are REST-only today).
 - [ ] **Recurring-event reminders** — `NotificationManager` doesn't expand recurrences yet.
