@@ -84,6 +84,19 @@ struct PhotoDetailView: View {
             } message: {
                 Text("This can’t be undone.")
             }
+            .task {
+                // Verification hook: drive the real edit→save path headlessly.
+                if let ymd = DemoHooks.photoAutoDate {
+                    let f = DateFormatter()
+                    f.locale = Locale(identifier: "en_US_POSIX")
+                    f.dateFormat = "yyyy-MM-dd"
+                    if let d = f.date(from: ymd) {
+                        startEdit()
+                        takenAt = d
+                        await save()
+                    }
+                }
+            }
         }
         .modifier(KioskSheetPresentation(kiosk: isKiosk))
     }
@@ -122,22 +135,25 @@ struct PhotoDetailView: View {
     // MARK: details (read mode)
 
     private var detailsCard: some View {
-        NookCard {
+        // Read-mode reflects the locally-saved values (caption / album / date) so a
+        // just-saved edit is visible immediately — not the stale `photo` we opened with.
+        let trimmedAlbum = album.trimmingCharacters(in: .whitespacesAndNewlines)
+        return NookCard {
             VStack(alignment: .leading, spacing: 0) {
-                if !photo.caption.isEmpty {
-                    Text(photo.caption).font(NK.serif(22)).foregroundStyle(NK.ink)
+                if !caption.isEmpty {
+                    Text(caption).font(NK.serif(22)).foregroundStyle(NK.ink)
                         .padding(.bottom, 12)
                 }
                 favoriteRow
                 Divider().overlay(NK.hair)
-                infoRow("Album", value: photo.memory ?? "—")
+                infoRow("Album", value: trimmedAlbum.isEmpty ? "—" : trimmedAlbum)
                 Divider().overlay(NK.hair)
                 addedByRow
                 Divider().overlay(NK.hair)
                 infoRow("Date", value: dateLabel)
-                if let m = photo.memory, !m.isEmpty, memoryCount > 1 {
+                if !trimmedAlbum.isEmpty, memoryCount > 1 {
                     Divider().overlay(NK.hair)
-                    Text("\(memoryCount) photos in “\(m)”")
+                    Text("\(memoryCount) photos in “\(trimmedAlbum)”")
                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
                         .padding(.top, 11)
                 }
@@ -251,10 +267,10 @@ struct PhotoDetailView: View {
 
     // MARK: date
 
+    /// The currently-chosen date (seeded from the photo's taken_at, falling back to its
+    /// upload date), formatted for the read-mode "Date" row.
     private var dateLabel: String {
-        let raw = photo.takenAt ?? photo.createdAt
-        guard let date = EventTime.parse(raw) else { return "—" }
-        return DateFmt.string(date, "EEE, MMM d, yyyy", .current)
+        DateFmt.string(takenAt, "EEE, MMM d, yyyy", .current)
     }
 
     // MARK: actions
@@ -309,8 +325,9 @@ struct PhotoDetailView: View {
         do {
             _ = try await api.updatePhoto(id: photo.id, body)
             onChanged()
+            // Return to read mode (don't dismiss) so the updated caption / album / date
+            // is visible right here — otherwise the sheet closes and the change looks lost.
             editing = false
-            dismiss()
         } catch let NookAPI.APIError.http(code, msg) {
             // Surface the real reason instead of a generic message — a 403 means the
             // server didn't allow it, a 4xx usually carries a specific cause.

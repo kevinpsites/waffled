@@ -184,9 +184,8 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Multi-upload** with per-photo caption/album/favorite | ✅ | ✅ | ✅ | ✅ Done |
 | Drag-and-drop upload zone | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web); mobile uses the native picker |
 | **Albums** (filter chips; derived from a photo's album field) | ✅ | ✅ | ✅ | ✅ Done |
-| **Edit** a photo (caption, album, **date**, favorite) | ✅ | ✅ | ✅ | ✅ Done (date edit PATCHes `takenAt`) |
-| Edit a photo's **date** | ✅ | 🚧 | 🚧 | 🚧 Planned (mobile) |
-| **Multi-select** → bulk move-to-album / delete | ✅ | 🚧 | 🚧 | 🚧 Planned (mobile; per-tile delete works) |
+| **Edit** a photo (caption, album, **date**, favorite) | ✅ | ✅ | ✅ | ✅ Done (date edit PATCHes `takenAt`; save stays in read mode showing the change) |
+| **Multi-select** → bulk move-to-album / delete | ✅ | ✅ | ✅ | ✅ Done (Select mode → tap tiles → Move / Delete bar) |
 | Per-tile delete with confirmation (touch-friendly) | ✅ | ✅ | ✅ | ✅ Done |
 | **Set an album as the screensaver** source | ✅ | ✅ | ✅ | ✅ Done |
 | Photo-only **"Play"** slideshow (no clock/weather chrome) | ✅ | ✅ | ✅ | ✅ Done |
@@ -262,13 +261,13 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 
 Tracked in [`apps/ios/IPAD_ROADMAP.md`](../../apps/ios/IPAD_ROADMAP.md). Highlights:
 
-- **Photos** — multi-select bulk move/delete (per-tile delete + photo-date edit already ship).
 - **Chore reminders** on iOS — blocked on chores landing in PowerSync.
 - **Recurring-event reminders** — the local scheduler doesn't expand recurrences yet.
 - **Recipe import** (paste-markdown) and **AI metadata auto-fill** on iOS.
 - **Multi-profile kiosk** (profile picker + per-person PIN) on iPad — deliberately deferred;
   layers on top of single-login without rework (needs a server device→person binding).
-- **iPad Today per-card customize** (drag/hide) to match the iPhone + web.
+- ~~iPad Today per-card customize (drag/hide)~~ — intentionally not planned; the fixed
+  three-group dashboard (recap banners · Today · goals) is the right shape for the wall display.
 - **Household-wide** screensaver motion (currently a per-device toggle; would need the
   server display config + web to carry a `photoMotion` field).
 - **Remote push** (APNs) for reminders when the app is closed.

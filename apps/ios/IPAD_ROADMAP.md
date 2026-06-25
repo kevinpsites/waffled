@@ -146,8 +146,9 @@ Make the iPad a *real app you navigate*, like the web. This is the main re-scope
   - [x] **Family** — `KioskFamilyView`: per-person overview grid (role, stars, chores
         progress, today's events) → person spotlight. Drops the rail-redundant hub tiles.
   - [x] **Photos** — `PhotosView` adaptive grid (2-col iPhone / wider iPad), album filter
-        chips, upload (`PHPicker`), photo detail + edit, per-tile delete, and the manual
-        **"Play"** slideshow. (Backlog: multi-select bulk ops, photo-date edit.)
+        chips, upload (`PHPicker`), photo detail + edit (caption / album / **date** / favorite),
+        per-tile delete, **multi-select** bulk move-to-album / delete, and the manual
+        **"Play"** slideshow.
   - [x] **Settings** — every panel built and reachable (Family & people incl. the
         permissions grid, Calendars, Chores & Rewards incl. proof retention, Meals, AI,
         Display & Kiosk, Notifications, About). Only the **Lists** row is still "Soon".
@@ -212,8 +213,9 @@ ephemeral session, auto-logs-out on idle. The **web kiosk already does this** �
       iPhone Day); month cells show event titles (not times); iPhone agenda dims past events.
 - [x] **Recipe from Today** opens full-screen (not a cramped iPad page-sheet); Cook Mode
       uses large centered type that scrolls long steps.
-- [ ] **Photos:** multi-select bulk move-to-album / delete. (Editing a photo's **date** ships —
-      the edit sheet PATCHes `taken_at`.)
+- [x] **Photos:** multi-select bulk move-to-album / delete (Select mode → tap tiles →
+      Move / Delete bar; loops the per-photo REST endpoints). Editing a photo's **date**
+      PATCHes `taken_at` and the edit sheet now returns to read mode showing the change.
 - [ ] **Chore reminders** (local notifications) — blocked on chores landing in PowerSync
       (the scheduler reads off the synced mirror; chores are REST-only today).
 - [ ] **Recurring-event reminders** — `NotificationManager` doesn't expand recurrences yet.

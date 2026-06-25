@@ -37,4 +37,31 @@ final class PhotosModel {
     func count(inMemory memory: String) -> Int {
         photos.filter { $0.memory == memory }.count
     }
+
+    // MARK: Bulk actions (multi-select)
+
+    /// Move the given photos into `album` (nil/empty removes them from any album).
+    /// Patches each over the existing per-photo endpoint, then reloads. Returns false
+    /// if any one failed (the wall still reloads to reflect whatever did land).
+    func move(_ ids: Set<String>, toAlbum album: String?) async -> Bool {
+        let value: JSONValue = (album?.trimmingCharacters(in: .whitespaces).isEmpty == false)
+            ? .string(album!) : .null
+        var ok = true
+        for id in ids {
+            do { _ = try await api.updatePhoto(id: id, ["memory": value]) }
+            catch { ok = false }
+        }
+        await load()
+        return ok
+    }
+
+    /// Soft-delete the given photos, then reload. Returns false if any one failed.
+    func delete(_ ids: Set<String>) async -> Bool {
+        var ok = true
+        for id in ids {
+            do { try await api.deletePhoto(id: id) } catch { ok = false }
+        }
+        await load()
+        return ok
+    }
 }
