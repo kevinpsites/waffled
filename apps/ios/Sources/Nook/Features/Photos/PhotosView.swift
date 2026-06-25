@@ -8,8 +8,17 @@ struct PhotosView: View {
     @State private var model = PhotosModel()
     @State private var detail: NookAPI.Photo?
     @State private var showAdd = false
+    @State private var selectedAlbum: String?     // nil = all photos
+    @State private var playing = false            // the manual slideshow is up
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
+    /// The photos currently on the wall — all, or just the chosen album. Drives both
+    /// the grid and what "Play" runs through.
+    private var shownPhotos: [NookAPI.Photo] {
+        guard let a = selectedAlbum else { return model.photos }
+        return model.photos.filter { $0.memory == a }
+    }
 
     var body: some View {
         Group {
@@ -25,8 +34,19 @@ struct PhotosView: View {
                     Label("Add", systemImage: "plus").labelStyle(.titleAndIcon).fontWeight(.semibold)
                 }
             }
+            ToolbarItem(placement: .topBarLeading) {
+                Button { playing = true } label: {
+                    Label("Play", systemImage: "play.fill").labelStyle(.titleAndIcon).fontWeight(.semibold)
+                }
+                .disabled(shownPhotos.isEmpty)
+            }
         }
         .task { if model.photos.isEmpty { await model.load() } }
+        // The manual slideshow — a bare, chrome-free play-through of what's on the wall.
+        .fullScreenCover(isPresented: $playing) {
+            ScreensaverView(content: "photos", photos: shownPhotos, weather: nil, nextEvent: nil,
+                            timezone: .current, dimmed: false, bare: true, onWake: { playing = false })
+        }
         .sheet(item: $detail) { photo in
             PhotoDetailView(photo: photo, memoryCount: photo.memory.map { model.count(inMemory: $0) } ?? 0,
                             albums: model.albums,
@@ -41,9 +61,13 @@ struct PhotosView: View {
 
     private var phoneContent: some View {
         ScrollView {
-            grid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
-                 tileHeight: 150)
-                .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 110)
+            VStack(alignment: .leading, spacing: 12) {
+                albumFilter
+                grid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
+                     tileHeight: 150)
+                    .padding(.horizontal, 16)
+            }
+            .padding(.top, 12).padding(.bottom, 110)
         }
         .scrollBounceBehavior(.always)
         .refreshable { await model.load() }
@@ -54,8 +78,13 @@ struct PhotosView: View {
     private var kioskContent: some View {
         VStack(spacing: 14) {
             KioskPageHeader("Photos", "Your family's moments, all in one place.") {
-                KioskHeaderButton(icon: "plus", label: "Add photos") { showAdd = true }
+                HStack(spacing: 10) {
+                    KioskHeaderButton(icon: "play.fill", label: "Play") { playing = true }
+                        .opacity(shownPhotos.isEmpty ? 0.5 : 1).disabled(shownPhotos.isEmpty)
+                    KioskHeaderButton(icon: "plus", label: "Add photos") { showAdd = true }
+                }
             }
+            albumFilter
             ScrollView(showsIndicators: false) {
                 grid(columns: [GridItem(.adaptive(minimum: 220, maximum: 300), spacing: 14)],
                      tileHeight: 220)
@@ -82,7 +111,7 @@ struct PhotosView: View {
                 top: 56)
         } else {
             LazyVGrid(columns: columns, spacing: tileHeight > 180 ? 14 : 12) {
-                ForEach(model.photos) { photo in
+                ForEach(shownPhotos) { photo in
                     Button { detail = photo } label: {
                         PhotoTile(photo: photo, height: tileHeight)
                     }
@@ -90,6 +119,32 @@ struct PhotosView: View {
                 }
             }
         }
+    }
+
+    /// Album chips — All + each album — so the wall (and "Play") can scope to one album.
+    /// Hidden until there's more than one album to choose between.
+    @ViewBuilder
+    private var albumFilter: some View {
+        if !model.albums.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    albumChip("All photos", value: nil)
+                    ForEach(model.albums, id: \.self) { albumChip($0, value: $0) }
+                }
+                .padding(.horizontal, isKiosk ? 0 : 16)
+            }
+        }
+    }
+
+    private func albumChip(_ label: String, value: String?) -> some View {
+        let on = selectedAlbum == value
+        return Button { selectedAlbum = value } label: {
+            Text(label).font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(on ? NK.ink : NK.ink2)
+                .padding(.horizontal, 13).padding(.vertical, 7)
+                .nkChip(selected: on)
+        }
+        .buttonStyle(.plain)
     }
 }
 

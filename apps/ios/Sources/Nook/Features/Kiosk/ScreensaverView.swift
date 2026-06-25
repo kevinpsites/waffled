@@ -12,6 +12,9 @@ struct ScreensaverView: View {
     let nextEvent: SyncedEvent?
     let timezone: TimeZone
     let dimmed: Bool                    // night-dim window → darken everything
+    /// A pure photo slideshow with no clock / weather / next-event / album overlays —
+    /// the manual "Play" from the Photos tab. The idle kiosk saver leaves this false.
+    var bare: Bool = false
     let onWake: () -> Void
 
     @State private var idx = 0
@@ -30,11 +33,17 @@ struct ScreensaverView: View {
     var body: some View {
         ZStack {
             background
-            // Scrim for legibility — darker at the corners where the text sits.
-            LinearGradient(colors: [.black.opacity(0.45), .clear, .clear, .black.opacity(0.5)],
-                           startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea()
-            chrome
+            if !bare {
+                // Scrim for legibility — darker at the corners where the text sits.
+                LinearGradient(colors: [.black.opacity(0.45), .clear, .clear, .black.opacity(0.5)],
+                               startPoint: .top, endPoint: .bottom)
+                    .ignoresSafeArea()
+                chrome
+            } else {
+                // Even a bare slideshow needs a way out — keep just the wake hint.
+                VStack { Spacer(); HStack { Spacer(); wakeHint } }
+                    .padding(.horizontal, 54).padding(.bottom, 40)
+            }
             if dimmed { Color.black.opacity(0.62).ignoresSafeArea() }
         }
         .ignoresSafeArea()
@@ -111,16 +120,20 @@ struct ScreensaverView: View {
                         Text(ev).font(.system(size: 19, weight: .heavy)).foregroundStyle(.white)
                             .shadow(color: .black.opacity(0.45), radius: 12, y: 1).lineLimit(1)
                     }
-                    Text("Tap anywhere to wake")
-                        .font(.system(size: 14, weight: .bold)).foregroundStyle(.white.opacity(0.85))
-                        .padding(.horizontal, 12).padding(.vertical, 7)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .environment(\.colorScheme, .dark)
+                    wakeHint
                 }
             }
         }
         .padding(.horizontal, 54).padding(.top, 46).padding(.bottom, 40)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var wakeHint: some View {
+        Text("Tap anywhere to wake")
+            .font(.system(size: 14, weight: .bold)).foregroundStyle(.white.opacity(0.85))
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .background(.ultraThinMaterial, in: Capsule())
+            .environment(\.colorScheme, .dark)
     }
 
     // MARK: slideshow timing

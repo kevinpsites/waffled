@@ -12,8 +12,20 @@ struct DisplayKioskSettingsView: View {
     @State private var dirty = false
     @State private var savedFlash = false
     @State private var saveFailed = false
+    // For the live "Preview" of the screensaver.
+    @State private var previewPhotos: [NookAPI.Photo] = []
+    @State private var previewWeather: NookAPI.Weather?
+    @State private var showPreview = false
 
     private let api = NookAPI()
+
+    /// The soonest upcoming event, for the preview's "Next:" line.
+    private var nextEvent: SyncedEvent? {
+        let now = Date()
+        return sync.events
+            .filter { ($0.startsAt ?? .distantPast) >= now }
+            .min { ($0.startsAt ?? .distantFuture) < ($1.startsAt ?? .distantFuture) }
+    }
 
     // Preset choices (the web uses free-entry number fields; menus read cleaner on a
     // phone and the server clamps anything out of range regardless).
@@ -49,6 +61,13 @@ struct DisplayKioskSettingsView: View {
             }
         }
         .task { await load() }
+        .fullScreenCover(isPresented: $showPreview) {
+            ScreensaverView(
+                content: cfg?.content == "photos" ? "photos" : "clock",
+                photos: previewPhotos, weather: previewWeather,
+                nextEvent: nextEvent, timezone: sync.householdTz,
+                dimmed: false, bare: false, onWake: { showPreview = false })
+        }
         // Debounced auto-save — echoing the server's normalized cfg back into state
         // must not retrigger a save, hence the `dirty` guard.
         .task(id: cfg) {
@@ -113,6 +132,17 @@ struct DisplayKioskSettingsView: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
+                    // See it right now — full-screen, tap to dismiss.
+                    Button { showPreview = true } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "play.fill").font(.system(size: 12, weight: .bold))
+                            Text("Preview").font(.system(size: 14, weight: .bold))
+                        }
+                        .foregroundStyle(NK.primary)
+                        .frame(maxWidth: .infinity).padding(.vertical, 10)
+                        .background(NK.primary.opacity(0.1)).clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain).disabled(cfg?.content == "off")
                 }
                 .padding(.vertical, 14)
                 divider
@@ -184,6 +214,9 @@ struct DisplayKioskSettingsView: View {
         loadFailed = false
         do { cfg = try await api.displayConfig(); dirty = false }
         catch { loadFailed = true }
+        // Background data for the live preview (best-effort).
+        previewWeather = try? await api.weather()
+        previewPhotos = (try? await api.photos()) ?? []
     }
 
     private func save(_ snapshot: NookAPI.DisplayConfig) async {
