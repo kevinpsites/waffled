@@ -10,7 +10,8 @@
 // and the scheduler retries), so a write succeeds even when Google is unreachable.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
-import { requireTenant, type Tenant } from '../households/households'
+import { type Tenant } from '../households/households'
+import { tenantRoute } from '../../platform/route-guards'
 import { resolveWriteTarget, resolveWriteTargetById, pushEventNow } from '../calendar/calendar-sync.service'
 import { recordMatch, WEIGHT } from '../goals/goal-match-memory'
 import { updateEvent, softDeleteEvent } from '../events/events'
@@ -110,8 +111,7 @@ async function applyParticipantPut(tenant: Tenant, id: string, data: Record<stri
 
 export function registerPowerSyncCrudRoutes(api: Api): void {
   // PowerSync's connector uploads queued row ops here (see web NookConnector).
-  api.post('/api/powersync/crud', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/powersync/crud', tenantRoute(async (tenant, req: Request, res: Response) => {
     const ops = (req.body as { ops?: CrudOp[] } | undefined)?.ops
     if (!Array.isArray(ops)) {
       return res.status(400).json({ error: 'BadRequest', message: 'ops[] required' })
@@ -132,5 +132,5 @@ export function registerPowerSyncCrudRoutes(api: Api): void {
       // Unknown tables are ignored — the sync rules never sync them anyway.
     }
     return { applied: ops.length }
-  })
+  }))
 }

@@ -5,7 +5,7 @@
 // overridable for tests. Fahrenheit for now (US household); easy to make a setting.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../platform/db'
-import { requireTenant } from '../modules/households/households'
+import { tenantRoute } from '../platform/route-guards'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -67,8 +67,7 @@ async function geocode(location: string): Promise<Geo | null> {
 export function registerWeatherRoutes(api: Api): void {
   // Current conditions for the household's location. { configured: false } when no
   // location is set or it can't be geocoded — the topbar just hides the widget.
-  api.get('/api/weather', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/weather', tenantRoute(async (tenant, req: Request, res: Response) => {
     const { rows } = await query<{ location: string | null }>(
       `select location from households where id = $1`,
       [tenant.householdId]
@@ -113,5 +112,5 @@ export function registerWeatherRoutes(api: Api): void {
       if (hit) return hit.data // serve stale on a transient error
       return res.status(200).json({ configured: false })
     }
-  })
+  }))
 }

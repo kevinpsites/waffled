@@ -7,7 +7,7 @@
 // heuristic parser — so the bar always works, even offline.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
-import { requireTenant, requireAdmin } from '../households/households'
+import { tenantRoute, adminRoute } from '../../platform/route-guards'
 import config from '../../platform/config'
 import {
   completeJson,
@@ -404,16 +404,14 @@ export async function warmProvider(householdId: string): Promise<void> {
 export function registerCaptureRoutes(api: Api): void {
   // Warm the model (fire-and-forget) — the kiosk calls this when the capture bar
   // gains focus so the model is loaded by the time you press ↵.
-  api.post('/api/capture/warm', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/capture/warm', tenantRoute(async (tenant) => {
     void warmProvider(tenant.householdId)
     return { warming: true }
-  })
+  }))
 
   // Parse free text → intent. On any failure, tell the client to fall back to
   // its on-device heuristic (200 with fallback:true, not an error).
-  api.post('/api/capture', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/capture', tenantRoute(async (tenant, req: Request) => {
     const text = String((req.body as { text?: unknown })?.text ?? '').trim()
     if (!text) return { intent: null, via: 'heuristic', fallback: true }
     try {
@@ -422,12 +420,11 @@ export function registerCaptureRoutes(api: Api): void {
     } catch (err) {
       return { intent: null, via: 'heuristic', fallback: true, error: (err as Error).message }
     }
-  })
+  }))
 
   // Current selection + which providers the environment makes available + the
   // default model for each. Never returns secrets.
-  api.get('/api/capture/config', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/capture/config', adminRoute(async (tenant) => {
     const { provider, model } = await getAiConfig(tenant.householdId)
     return {
       provider,
@@ -439,12 +436,10 @@ export function registerCaptureRoutes(api: Api): void {
         ollama: config.ai.ollama.defaultModel,
       },
     }
-  })
+  }))
 
   // Flip the active provider/model (admins only).
-  api.put('/api/capture/config', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+  api.put('/api/capture/config', adminRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as { provider?: string; model?: string | null }
     const provider = body.provider as Provider
     if (!(PROVIDERS as string[]).includes(provider)) {
@@ -456,5 +451,5 @@ export function registerCaptureRoutes(api: Api): void {
     const model = body.model != null ? String(body.model).trim() || null : defaultModel(provider)
     await setAiConfig(tenant.householdId, provider, model)
     return { provider, model }
-  })
+  }))
 }

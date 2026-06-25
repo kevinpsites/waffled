@@ -10,8 +10,8 @@ import {
   type KeyObject,
 } from 'node:crypto'
 import jwt from 'jsonwebtoken'
-import createAPI, { type Request, type Response } from 'lambda-api'
-import { requireTenant } from '../households/households'
+import createAPI, { type Response } from 'lambda-api'
+import { tenantRoute } from '../../platform/route-guards'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -71,13 +71,12 @@ export function registerPowerSyncRoutes(api: Api): void {
   api.get('/api/auth/keys', async () => getJwks())
 
   // Authed: a provisioned member exchanges their session for a PowerSync token.
-  api.get('/api/powersync/token', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/powersync/token', tenantRoute(async (tenant, _req, res: Response) => {
     const token = mintPowerSyncToken(tenant.sub, tenant.householdId)
     return res.status(200).json({
       token,
       powerSyncUrl: process.env.POWERSYNC_PUBLIC_URL ?? null,
       expiresIn: TOKEN_TTL_SECONDS,
     })
-  })
+  }))
 }

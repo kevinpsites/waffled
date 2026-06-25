@@ -2,7 +2,7 @@
 // meals.service.ts; types in meals.types.ts.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
-import { requireTenant, requireAdmin } from '../households/households'
+import { tenantRoute, adminRoute } from '../../platform/route-guards'
 import {
   syncMealEventForEntry,
   removeMealEventForEntry,
@@ -42,8 +42,7 @@ type Api = ReturnType<typeof createAPI>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function registerMealRoutes(api: Api): void {
-  api.post('/api/recipes', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/recipes', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as Partial<CreateRecipeInput>
     if (!body.title || !body.title.trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
@@ -53,16 +52,14 @@ export function registerMealRoutes(api: Api): void {
     }
     const recipe = await createRecipe(tenant, { ...body, title: body.title.trim() } as CreateRecipeInput)
     return res.status(201).json({ recipe: presentRecipe(recipe) })
-  })
+  }))
 
-  api.get('/api/recipes', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/recipes', tenantRoute(async (tenant) => {
     const recipes = await listRecipes(tenant.householdId)
     return { recipes: recipes.map(presentRecipe) }
-  })
+  }))
 
-  api.get('/api/recipes/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/recipes/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     const recipe = await getRecipe(tenant.householdId, id)
@@ -79,13 +76,12 @@ export function registerMealRoutes(api: Api): void {
       note: stepNotes[String(s.stepNumber)] ?? null,
     }))
     return { recipe: presentRecipe(recipe), ingredients, steps }
-  })
+  }))
 
   // Update a recipe — favorite/rename/rating/notes/overrides (non-destructive) and
   // full scalar/metadata edits. Passing `ingredients` or `steps` replaces them
   // wholesale and detaches an imported recipe from its markdown source.
-  api.patch('/api/recipes/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.patch('/api/recipes/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     const body = (req.body ?? {}) as UpdateRecipeInput
@@ -100,22 +96,20 @@ export function registerMealRoutes(api: Api): void {
     }
     if (!recipe) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     return { recipe: presentRecipe(recipe) }
-  })
+  }))
 
   // Soft-delete a recipe (and its ingredients/steps).
-  api.delete('/api/recipes/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.delete('/api/recipes/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     const deleted = await softDeleteRecipe(tenant, id)
     if (!deleted) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     return res.status(204).send('')
-  })
+  }))
 
   // Parse a pasted Markdown recipe (the blessed format) into the structured shape the
   // editor prefills from. Does NOT save — the user reviews, then POSTs.
-  api.post('/api/recipes/parse-markdown', async (req: Request, res: Response) => {
-    await requireTenant(req)
+  api.post('/api/recipes/parse-markdown', tenantRoute(async (_tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as { markdown?: string }
     if (!body.markdown || !body.markdown.trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'markdown is required' })
@@ -148,12 +142,11 @@ export function registerMealRoutes(api: Api): void {
       })),
       steps: r.steps.map((s) => ({ instruction: s.text, ingredients: s.ingredients })),
     }
-  })
+  }))
 
   // AI auto-fill: infer recipe metadata (cuisine/base/method/vegetables/…) from the
   // title + ingredients + steps. 501 when no LLM provider is configured.
-  api.post('/api/recipes/suggest-metadata', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/recipes/suggest-metadata', tenantRoute(async (tenant, req: Request, res: Response) => {
     const b = (req.body ?? {}) as { title?: string; ingredients?: unknown; steps?: unknown }
     if (!b.title || !b.title.trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
@@ -169,12 +162,11 @@ export function registerMealRoutes(api: Api): void {
       }
       return res.status(200).json({ suggestion: null, via: 'none', error: message })
     }
-  })
+  }))
 
   // Mark a recipe cooked — bumps cooked_count + last_cooked_at (powers "recently
   // cooked" sort + the "cooked N×" badge).
-  api.post('/api/recipes/:id/cooked', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/recipes/:id/cooked', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     const { rows } = await query<RecipeRow>(
@@ -184,11 +176,10 @@ export function registerMealRoutes(api: Api): void {
     )
     if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     return { recipe: presentRecipe(rows[0]) }
-  })
+  }))
 
   // Add ingredients to a recipe (bulk).
-  api.post('/api/recipes/:id/ingredients', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/recipes/:id/ingredients', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     const recipe = await getRecipe(tenant.householdId, id)
@@ -203,12 +194,11 @@ export function registerMealRoutes(api: Api): void {
     }
     const added = await addIngredients(tenant, id, body.ingredients)
     return res.status(201).json({ ingredients: added.map(presentIngredient) })
-  })
+  }))
 
   // Plan (or re-plan) a meal slot. Assigns a recipe or free-text title (and
   // optionally who's cooking). Powers the Meals-screen "+" picker.
-  api.post('/api/meals/plan', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/meals/plan', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as {
       date?: string
       mealType?: string
@@ -248,11 +238,10 @@ export function registerMealRoutes(api: Api): void {
     // plan write if the calendar sync hiccups.
     await syncMealEventForEntry(tenant, entry.id).catch((err) => console.error('meal event sync failed', err))
     return res.status(200).json({ entry: presentEntry(entry) })
-  })
+  }))
 
   // Clear a planned slot (date + mealType). Idempotent: 404 if nothing planned.
-  api.delete('/api/meals/plan', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.delete('/api/meals/plan', tenantRoute(async (tenant, req: Request, res: Response) => {
     const date = typeof req.query?.date === 'string' ? req.query.date : ''
     const mealType = typeof req.query?.mealType === 'string' ? req.query.mealType : ''
     if (!DATE_RE.test(date) || !MEAL_TYPES.has(mealType)) {
@@ -269,19 +258,16 @@ export function registerMealRoutes(api: Api): void {
     const cleared = await clearEntry(tenant, date, mealType)
     if (!cleared) return res.status(404).json({ error: 'NotFound', message: 'nothing planned in that slot' })
     return res.status(204).send('')
-  })
+  }))
 
   // Meals → calendar settings (per household): whether meals appear on the
   // calendar, whether they push to Google, whose calendar, who's invited, and the
   // time each meal type lands at.
-  api.get('/api/meals/calendar-settings', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/meals/calendar-settings', tenantRoute(async (tenant) => {
     return { settings: await getMealSettings(tenant.householdId) }
-  })
+  }))
 
-  api.put('/api/meals/calendar-settings', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+  api.put('/api/meals/calendar-settings', adminRoute(async (tenant, req: Request, res: Response) => {
     const b = (req.body ?? {}) as Record<string, unknown>
     const patch: Record<string, unknown> = {}
     if (typeof b.addToCalendar === 'boolean') patch.addToCalendar = b.addToCalendar
@@ -300,12 +286,11 @@ export function registerMealRoutes(api: Api): void {
     // Apply the new settings to meals already on the plan.
     await resyncMealEvents(tenant).catch((err) => console.error('meal event resync failed', err))
     return res.status(200).json({ settings })
-  })
+  }))
 
   // Resolve a planned-meal entry to its recipe — the calendar uses this to open
   // the linked recipe when a meal event is tapped.
-  api.get('/api/meals/entry/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/meals/entry/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'entry not found' })
     const { rows } = await query<{ recipe_id: string | null; title: string | null }>(
@@ -314,23 +299,21 @@ export function registerMealRoutes(api: Api): void {
     )
     if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'entry not found' })
     return { recipeId: rows[0].recipe_id, title: rows[0].title }
-  })
+  }))
 
   // The planned week (entries joined to recipes) — powers the kiosk meal card.
-  api.get('/api/meals/week', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/meals/week', tenantRoute(async (tenant, req: Request) => {
     const startParam = typeof req.query?.start === 'string' ? req.query.start : ''
     const start = DATE_RE.test(startParam) ? startParam : todayDate()
     const daysParam = Number(req.query?.days)
     const days = Number.isFinite(daysParam) && daysParam > 0 ? daysParam : 7
     const entries = await weekEntries(tenant.householdId, start, days)
     return { start, entries }
-  })
+  }))
 
   // AI "Plan my week": suggest dinners for the empty slots (review, then apply via
   // POST /api/meals/plan). 501 when no LLM provider is selected/configured.
-  api.post('/api/meals/plan-week', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/meals/plan-week', tenantRoute(async (tenant, req: Request, res: Response) => {
     const b = (req.body ?? {}) as {
       start?: string
       mealType?: string
@@ -365,12 +348,11 @@ export function registerMealRoutes(api: Api): void {
       const mealType = typeof b.mealType === 'string' ? b.mealType : 'dinner'
       return { start, mealType, suggestions: [], via: 'none', error: message }
     }
-  })
+  }))
 
   // AI "Plan my month": draft a rotation pool and lay it across the month's chosen
   // dinners with the month guardrails. Applied via POST /api/meals/plan like the week.
-  api.post('/api/meals/plan-month', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/meals/plan-month', tenantRoute(async (tenant, req: Request, res: Response) => {
     const b = (req.body ?? {}) as {
       start?: string
       weekdays?: unknown
@@ -419,5 +401,5 @@ export function registerMealRoutes(api: Api): void {
       }
       return { start, mealType: 'dinner', suggestions: [], via: 'none', error: message }
     }
-  })
+  }))
 }

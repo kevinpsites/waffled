@@ -1,7 +1,8 @@
 // Members (persons) CRUD, always scoped to the caller's household.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
-import { requireTenant, requireAdmin, presentPerson, presentHousehold, type PersonRow, type HouseholdRow } from '../households/households'
+import { presentPerson, presentHousehold, type PersonRow, type HouseholdRow } from '../households/households'
+import { tenantRoute, adminRoute } from '../../platform/route-guards'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -196,15 +197,10 @@ export async function updateHousehold(householdId: string, patch: Record<string,
 
 export function registerPersonRoutes(api: Api): void {
   // Household settings: the household + its members (with login/owner flags).
-  api.get('/api/household/settings', async (req: Request) => {
-    const tenant = await requireTenant(req)
-    return householdSettings(tenant.householdId)
-  })
+  api.get('/api/household/settings', tenantRoute((tenant) => householdSettings(tenant.householdId)))
 
   // Edit household basics (admins only): name / timezone / week start.
-  api.patch('/api/household', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+  api.patch('/api/household', adminRoute(async (tenant, req: Request, res: Response) => {
     const patch = (req.body ?? {}) as Record<string, unknown>
     if (patch.weekStart !== undefined && !WEEK_STARTS.has(String(patch.weekStart))) {
       return res.status(400).json({ error: 'BadRequest', message: 'weekStart must be sunday|monday' })
@@ -215,19 +211,16 @@ export function registerPersonRoutes(api: Api): void {
     const h = await updateHousehold(tenant.householdId, patch)
     if (!h) return res.status(404).json({ error: 'NotFound', message: 'household not found' })
     return { household: presentHousehold(h) }
-  })
+  }))
 
   // List everyone in the household (any member may read).
-  api.get('/api/persons', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/persons', tenantRoute(async (tenant) => {
     const persons = await listPersons(tenant.householdId)
     return { persons: persons.map(presentPerson) }
-  })
+  }))
 
   // Add a member (admins only).
-  api.post('/api/persons', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+  api.post('/api/persons', adminRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as Partial<CreatePersonInput>
     if (!body.name || !body.memberType || !MEMBER_TYPES.has(body.memberType)) {
       return res.status(400).json({
@@ -237,22 +230,19 @@ export function registerPersonRoutes(api: Api): void {
     }
     const person = await createPerson(tenant.householdId, body as CreatePersonInput)
     return res.status(201).json({ person: presentPerson(person) })
-  })
+  }))
 
   // Read one member by id (any member may read; 404 if not in this household).
-  api.get('/api/persons/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/persons/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
     const person = await getPerson(tenant.householdId, id)
     if (!person) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
     return { person: presentPerson(person) }
-  })
+  }))
 
   // Update a member (admins only).
-  api.patch('/api/persons/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+  api.patch('/api/persons/:id', adminRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
 
@@ -267,12 +257,11 @@ export function registerPersonRoutes(api: Api): void {
     const person = await updatePerson(tenant.householdId, id, patch)
     if (!person) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
     return { person: presentPerson(person) }
-  })
+  }))
 
   // Pin what a person is "saving toward" (any household member — kids set their
   // own). Body: { rewardId: string | null }. null clears it.
-  api.post('/api/persons/:id/saving-toward', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/persons/:id/saving-toward', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
     const rewardId = (req.body as { rewardId?: unknown })?.rewardId ?? null
@@ -282,12 +271,10 @@ export function registerPersonRoutes(api: Api): void {
     const person = await setSavingToward(tenant.householdId, id, rewardId as string | null)
     if (!person) return res.status(404).json({ error: 'NotFound', message: 'person or reward not found' })
     return { person: presentPerson(person) }
-  })
+  }))
 
   // Soft-delete a member (admins only; the owner is protected).
-  api.delete('/api/persons/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+  api.delete('/api/persons/:id', adminRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
 
@@ -299,5 +286,5 @@ export function registerPersonRoutes(api: Api): void {
       return res.status(404).json({ error: 'NotFound', message: 'person not found' })
     }
     return res.status(204).send('')
-  })
+  }))
 }

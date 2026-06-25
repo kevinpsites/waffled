@@ -9,7 +9,8 @@
 import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow } from 'pg'
 import { query } from '../../platform/db'
-import { requireTenant, type Tenant } from '../households/households'
+import { type Tenant } from '../households/households'
+import { tenantRoute } from '../../platform/route-guards'
 import { getBlobStore, mediaUrl } from '../../platform/storage'
 
 type Api = ReturnType<typeof createAPI>
@@ -180,23 +181,20 @@ export async function softDeletePhoto(
 // ---- routes -----------------------------------------------------------------
 
 export function registerPhotoRoutes(api: Api): void {
-  api.get('/api/photos', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/photos', tenantRoute(async (tenant, req: Request) => {
     const memory = (req.query?.memory as string | undefined) || null
     return { photos: await listPhotos(tenant.householdId, memory) }
-  })
+  }))
 
-  api.get('/api/photos/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/photos/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'photo not found' })
     const photo = await getPhoto(tenant.householdId, id)
     if (!photo) return res.status(404).json({ error: 'NotFound', message: 'photo not found' })
     return { photo }
-  })
+  }))
 
-  api.post('/api/photos', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/photos', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as Partial<CreatePhotoInput>
     // caption is optional (blank by default); a tile still needs an image or emoji.
     if (!body.imageUrl && !body.storageKey && !body.emoji) {
@@ -204,10 +202,9 @@ export function registerPhotoRoutes(api: Api): void {
     }
     const photo = await createPhoto(tenant, body as CreatePhotoInput)
     return res.status(201).json({ photo })
-  })
+  }))
 
-  api.patch('/api/photos/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.patch('/api/photos/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'photo not found' })
     const body = (req.body ?? {}) as Partial<UpdatePhotoInput>
@@ -219,10 +216,9 @@ export function registerPhotoRoutes(api: Api): void {
     const photo = await updatePhoto(tenant.householdId, id, patch)
     if (!photo) return res.status(404).json({ error: 'NotFound', message: 'photo not found' })
     return { photo }
-  })
+  }))
 
-  api.delete('/api/photos/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.delete('/api/photos/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'photo not found' })
     const deleted = await softDeletePhoto(tenant.householdId, id)
@@ -236,5 +232,5 @@ export function registerPhotoRoutes(api: Api): void {
       }
     }
     return res.status(204).send('')
-  })
+  }))
 }

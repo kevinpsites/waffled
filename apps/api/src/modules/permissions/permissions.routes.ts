@@ -4,7 +4,7 @@
 // always have every capability).
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
-import { requireTenant, requireAdmin } from '../households/households'
+import { adminRoute } from '../../platform/route-guards'
 import {
   getPermissions,
   CAPABILITIES,
@@ -21,19 +21,15 @@ async function householdSettings(householdId: string): Promise<unknown> {
 }
 
 export function registerPermissionRoutes(api: Api): void {
-  api.get('/api/permissions', async (req: Request) => {
-    const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+  api.get('/api/permissions', adminRoute(async (tenant) => {
     return {
       permissions: getPermissions(await householdSettings(tenant.householdId)),
       capabilities: CAPABILITIES,
       roles: ROLES,
     }
-  })
+  }))
 
-  api.put('/api/permissions', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+  api.put('/api/permissions', adminRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as { permissions?: unknown }
     if (typeof body.permissions !== 'object' || body.permissions === null) {
       return res.status(400).json({ error: 'BadRequest', message: 'permissions object is required' })
@@ -57,5 +53,5 @@ export function registerPermissionRoutes(api: Api): void {
       [tenant.householdId, JSON.stringify(clean)]
     )
     return { permissions: getPermissions(await householdSettings(tenant.householdId)) }
-  })
+  }))
 }

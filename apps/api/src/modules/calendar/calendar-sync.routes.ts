@@ -1,7 +1,7 @@
 // Calendar — Google sync routes (/api/calendar/sync). Sync engines live in
 // calendar-sync.service.ts; types in calendar-sync.types.ts.
 import createAPI, { type Request, type Response } from 'lambda-api'
-import { requireTenant } from '../households/households'
+import { tenantRoute } from '../../platform/route-guards'
 import { encryptionAvailable } from '../../platform/crypto'
 import { googleConfigured } from '../../integrations/google'
 import { pushPending, syncHousehold } from './calendar-sync.service'
@@ -13,8 +13,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export function registerCalendarSyncRoutes(api: Api): void {
   // Pull connected calendars now. Any household member can refresh; the work is
   // read-from-Google + mirror, gated only on the connection being configured.
-  api.post('/api/calendar/sync', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/calendar/sync', tenantRoute(async (tenant, req: Request, res: Response) => {
     if (!googleConfigured() || !encryptionAvailable()) {
       return res.status(501).json({
         error: 'NotConfigured',
@@ -33,5 +32,5 @@ export function registerCalendarSyncRoutes(api: Api): void {
     const pushed = await pushPending(tenant.householdId)
     const result = await syncHousehold(tenant.householdId, { calendarId })
     return { ...result, pushed }
-  })
+  }))
 }

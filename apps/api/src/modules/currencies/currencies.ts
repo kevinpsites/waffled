@@ -6,6 +6,7 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { requireTenant, requireAdmin, type Tenant } from '../households/households'
+import { tenantRoute, adminRoute } from '../../platform/route-guards'
 
 type Api = ReturnType<typeof createAPI>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -282,40 +283,33 @@ export async function applyConversion(
 }
 
 export function registerCurrencyRoutes(api: Api): void {
-  api.get('/api/currencies', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/currencies', tenantRoute(async (tenant) => {
     return { currencies: (await listCurrencies(tenant.householdId)).map(presentCurrency) }
-  })
+  }))
 
-  api.post('/api/currencies', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+  api.post('/api/currencies', adminRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as Partial<CreateCurrencyInput>
     if (!body.label || !body.label.trim()) return res.status(400).json({ error: 'BadRequest', message: 'label is required' })
     const currency = await createCurrency(tenant, { ...body, label: body.label.trim() } as CreateCurrencyInput)
     return res.status(201).json({ currency: presentCurrency(currency) })
-  })
+  }))
 
-  api.patch('/api/currencies/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+  api.patch('/api/currencies/:id', adminRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'currency not found' })
     const currency = await updateCurrency(tenant.householdId, id, (req.body ?? {}) as Record<string, unknown>)
     if (!currency) return res.status(404).json({ error: 'NotFound', message: 'currency not found' })
     return { currency: presentCurrency(currency) }
-  })
+  }))
 
-  api.delete('/api/currencies/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+  api.delete('/api/currencies/:id', adminRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'currency not found' })
     const result = await deleteCurrency(tenant.householdId, id)
     if (!result.ok && !result.error) return res.status(404).json({ error: 'NotFound', message: 'currency not found' })
     if (!result.ok) return res.status(409).json({ error: 'Conflict', message: result.error })
     return res.status(204).send('')
-  })
+  }))
 
   // ── Conversions / tiers ─────────────────────────────────────────────────────
   api.get('/api/conversions', async (req: Request) => {

@@ -6,7 +6,8 @@
 import createAPI, { type Request, type Response } from 'lambda-api'
 import type { PoolClient, QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
-import { requireTenant, type Tenant } from '../households/households'
+import { type Tenant } from '../households/households'
+import { tenantRoute } from '../../platform/route-guards'
 import { resolveWriteTarget, resolveWriteTargetById, pushEventNow } from '../calendar/calendar-sync.service'
 import { materializeMaster } from '../calendar/expansion.service'
 import { isValidRrule } from '../calendar/recurrence'
@@ -552,8 +553,7 @@ function localToday(): string {
 }
 
 export function registerEventRoutes(api: Api): void {
-  api.post('/api/events', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/events', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as Partial<CreateEventInput>
     if (!body.title || !body.title.trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
@@ -566,20 +566,18 @@ export function registerEventRoutes(api: Api): void {
     }
     const event = await createEvent(tenant, { ...body, title: body.title.trim() } as CreateEventInput)
     return res.status(201).json({ event: presentEvent(event) })
-  })
+  }))
 
   // Today's agenda (bucketed by household timezone).
-  api.get('/api/events/today', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/events/today', tenantRoute(async (tenant, req: Request) => {
     const dateParam = typeof req.query?.date === 'string' ? req.query.date : ''
     const date = DATE_RE.test(dateParam) ? dateParam : localToday()
     const events = await todayEvents(tenant.householdId, date)
     return { date, events: events.map(presentEvent) }
-  })
+  }))
 
   // Events in a date range (Calendar screen).
-  api.get('/api/events', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/events', tenantRoute(async (tenant, req: Request, res: Response) => {
     const from = typeof req.query?.from === 'string' ? req.query.from : ''
     const to = typeof req.query?.to === 'string' ? req.query.to : ''
     if (!DATE_RE.test(from) || !DATE_RE.test(to)) {
@@ -587,20 +585,18 @@ export function registerEventRoutes(api: Api): void {
     }
     const events = await rangeEvents(tenant.householdId, from, to)
     return { from, to, events: events.map(presentEvent) }
-  })
+  }))
 
   // A single event with its full detail (rrule, calendar) — the detail screen.
-  api.get('/api/events/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/events/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
     const event = await getEventById(tenant.householdId, id)
     if (!event) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
     return { event: presentEvent(event) }
-  })
+  }))
 
-  api.patch('/api/events/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.patch('/api/events/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
     const patch = (req.body ?? {}) as Record<string, unknown>
@@ -636,10 +632,9 @@ export function registerEventRoutes(api: Api): void {
     const event = await updateEvent(tenant.householdId, id, patch)
     if (!event) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
     return { event: presentEvent(event) }
-  })
+  }))
 
-  api.delete('/api/events/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.delete('/api/events/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
     // Recurrence delete scope via query params (DELETE carries no body).
@@ -661,5 +656,5 @@ export function registerEventRoutes(api: Api): void {
     // Tombstone any occurrences (no-op for a single event).
     await materializeMaster(id)
     return res.status(204).send('')
-  })
+  }))
 }

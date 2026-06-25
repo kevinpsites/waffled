@@ -16,7 +16,7 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import { randomBytes } from 'node:crypto'
 import type { QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
-import { requireTenant, requireAdmin } from '../households/households'
+import { adminRoute } from '../../platform/route-guards'
 import { encryptSecret, encryptionAvailable } from '../../platform/crypto'
 import {
   googleConfigured,
@@ -195,8 +195,7 @@ h1{margin:0 0 .5rem;font-size:1.25rem}p{margin:0;color:#666}</style></head>
 
 export function registerCalendarRoutes(api: Api): void {
   // Start the connect flow → returns the Google consent URL for the client to open.
-  api.post('/api/calendar/google/connect', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/calendar/google/connect', adminRoute(async (tenant, req: Request, res: Response) => {
     if (!googleConfigured()) {
       return res.status(501).json({
         error: 'NotConfigured',
@@ -221,7 +220,7 @@ export function registerCalendarRoutes(api: Api): void {
       [state, tenant.householdId, tenant.personId, redirectTo]
     )
     return { url: buildAuthUrl(state) }
-  })
+  }))
 
   // PUBLIC — Google redirects the browser here after consent. No auth header; the
   // one-time state resolves the household. Renders an HTML result (or redirects).
@@ -274,8 +273,7 @@ export function registerCalendarRoutes(api: Api): void {
   })
 
   // What's connected: accounts + their calendars (with person mapping).
-  api.get('/api/calendar/google/status', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/calendar/google/status', adminRoute(async (tenant) => {
     const [accounts, calendars] = await Promise.all([
       listAccounts(tenant.householdId),
       listHouseholdCalendars(tenant.householdId),
@@ -286,12 +284,10 @@ export function registerCalendarRoutes(api: Api): void {
       accounts: accounts.map(presentAccount),
       calendars: calendars.map(presentCalendar),
     }
-  })
+  }))
 
   // Map a calendar to a person / toggle whether Nook syncs it (admins).
-  api.patch('/api/calendar/google/calendars/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+  api.patch('/api/calendar/google/calendars/:id', adminRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'calendar not found' })
     const body = (req.body ?? {}) as { personId?: string | null; selected?: boolean; isWriteTarget?: boolean }
@@ -334,12 +330,10 @@ export function registerCalendarRoutes(api: Api): void {
     const calendars = await listHouseholdCalendars(tenant.householdId)
     const updated = calendars.find((c) => c.id === id)
     return { calendar: updated ? presentCalendar(updated) : null }
-  })
+  }))
 
   // Disconnect an account: soft-delete it and its calendars (events are kept).
-  api.delete('/api/calendar/google/accounts/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+  api.delete('/api/calendar/google/accounts/:id', adminRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'account not found' })
     const { rowCount } = await query(
@@ -354,5 +348,5 @@ export function registerCalendarRoutes(api: Api): void {
       [id, tenant.householdId]
     )
     return res.status(204).send('')
-  })
+  }))
 }

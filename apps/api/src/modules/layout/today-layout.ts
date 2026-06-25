@@ -5,7 +5,8 @@
 // keys are dropped (a card is never lost or duplicated).
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
-import { requireTenant, requireAdmin } from '../households/households'
+import { requireAdmin } from '../households/households'
+import { tenantRoute } from '../../platform/route-guards'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -58,8 +59,7 @@ function isLayoutShape(raw: unknown): raw is string[][] {
 export function registerTodayLayoutRoutes(api: Api): void {
   // The resolved layout the kiosk renders, plus both raw tiers so the Customize
   // UI can show which is in effect and offer "reset".
-  api.get('/api/today-layout', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/today-layout', tenantRoute(async (tenant) => {
     const { rows } = await query<{ family: unknown; user: unknown }>(
       `select h.today_layout as family, p.today_layout as user
          from persons p join households h on h.id = p.household_id
@@ -72,12 +72,11 @@ export function registerTodayLayoutRoutes(api: Api): void {
     const resolved = reconcileLayout(user ?? family ?? DEFAULT_LAYOUT)
     // Only admins can change what the shared kiosk shows (the family tier).
     return { resolved, family: family ?? null, user: user ?? null, source, cards: TODAY_CARDS, canEditFamily: tenant.isAdmin }
-  })
+  }))
 
   // Save the layout to one tier. scope 'family' is admin-only (it's what the
   // shared kiosk shows); scope 'user' writes the caller's own override.
-  api.put('/api/today-layout', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.put('/api/today-layout', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as { scope?: unknown; layout?: unknown }
     const scope = body.scope === 'family' ? 'family' : body.scope === 'user' ? 'user' : null
     if (!scope) return res.status(400).json({ error: 'BadRequest', message: 'scope must be "user" or "family"' })
@@ -92,11 +91,10 @@ export function registerTodayLayoutRoutes(api: Api): void {
       await query(`update persons set today_layout = $1 where id = $2`, [JSON.stringify(layout), tenant.personId])
     }
     return { ok: true, layout }
-  })
+  }))
 
   // Reset a tier back to inheriting (user → family, family → built-in default).
-  api.delete('/api/today-layout', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.delete('/api/today-layout', tenantRoute(async (tenant, req: Request, res: Response) => {
     const scope = (req.query.scope as string) === 'family' ? 'family' : 'user'
     if (scope === 'family') {
       requireAdmin(tenant)
@@ -105,5 +103,5 @@ export function registerTodayLayoutRoutes(api: Api): void {
       await query(`update persons set today_layout = null where id = $1`, [tenant.personId])
     }
     return res.status(204).send('')
-  })
+  }))
 }

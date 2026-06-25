@@ -6,7 +6,7 @@
 // useful card instead of a blank one — the AI just rephrases the facts warmly.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
-import { requireTenant } from '../households/households'
+import { tenantRoute } from '../../platform/route-guards'
 import { completeJson } from '../../platform/llm'
 import { rangeEvents, getEventById, type EventRow } from '../events/events'
 
@@ -232,8 +232,7 @@ export async function eventInsight(
 
 export function registerCalendarAiRoutes(api: Api): void {
   // "Heads up this week" digest. Defaults to today..+6 in the household tz.
-  api.get('/api/calendar/heads-up', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/calendar/heads-up', tenantRoute(async (tenant, req: Request, res: Response) => {
     const tz = await householdTz(tenant.householdId)
     const todayLocal = partsInTz(new Date(), tz).date
     let from = typeof req.query?.from === 'string' && DATE_RE.test(req.query.from) ? req.query.from : todayLocal
@@ -245,15 +244,14 @@ export function registerCalendarAiRoutes(api: Api): void {
     }
     if (from > to) [from, to] = [to, from]
     return weekHeadsUp(tenant.householdId, from, to)
-  })
+  }))
 
   // Per-event insight for the detail screen's AI card + "Remind me".
-  api.get('/api/events/:id/insight', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/events/:id/insight', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
     const insight = await eventInsight(tenant.householdId, id)
     if (!insight) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
     return insight
-  })
+  }))
 }

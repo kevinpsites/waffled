@@ -4,7 +4,7 @@
 // to the blob store, and return the opaque key + its resolved URL. Callers (photos /
 // recipes) then persist that key as their image's storage_key.
 import createAPI, { type Request, type Response } from 'lambda-api'
-import { requireTenant } from '../households/households'
+import { tenantRoute } from '../../platform/route-guards'
 import { getBlobStore, mediaKey, mediaUrl } from '../../platform/storage'
 
 type Api = ReturnType<typeof createAPI>
@@ -13,8 +13,7 @@ const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const MAX_BYTES = 10 * 1024 * 1024 // 10 MB decoded
 
 export function registerMediaRoutes(api: Api): void {
-  api.post('/api/media', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/media', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as { data?: unknown; contentType?: unknown }
 
     const contentType = typeof body.contentType === 'string' ? body.contentType : ''
@@ -38,5 +37,5 @@ export function registerMediaRoutes(api: Api): void {
     const key = mediaKey(tenant.householdId, contentType)
     await getBlobStore().put(key, buf, contentType)
     return res.status(201).json({ key, url: mediaUrl(key), contentType })
-  })
+  }))
 }

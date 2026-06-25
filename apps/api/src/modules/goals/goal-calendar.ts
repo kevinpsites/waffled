@@ -8,7 +8,8 @@
 // double-confirm never double-counts. See ROADMAP "auto-from-calendar bridge".
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { getPool, query } from '../../platform/db'
-import { requireTenant, type Tenant } from '../households/households'
+import { type Tenant } from '../households/households'
+import { tenantRoute } from '../../platform/route-guards'
 import { logProgress } from './goals.service'
 import { updateEvent } from '../events/events'
 import { keywordMatch, type MatchGoal } from './goal-match'
@@ -570,14 +571,12 @@ export async function dismissSuggestion(tenant: Tenant, eventId: string): Promis
 export function registerGoalCalendarRoutes(api: Api): void {
   // The "did these happen?" queue (Today + goal detail). Optional ?goalId scopes
   // it to one goal.
-  api.get('/api/goal-calendar/recap', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/goal-calendar/recap', tenantRoute(async (tenant, req: Request) => {
     const goalId = typeof req.query?.goalId === 'string' && UUID_RE.test(req.query.goalId) ? req.query.goalId : null
     return { items: await recapQueue(tenant.householdId, goalId) }
-  })
+  }))
 
-  api.post('/api/goal-calendar/recap/confirm', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/goal-calendar/recap/confirm', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as {
       eventId?: string
       occurrenceDate?: string
@@ -599,10 +598,9 @@ export function registerGoalCalendarRoutes(api: Api): void {
     const result = await confirmRecap(tenant, body.eventId, body.occurrenceDate, amount, personIds, body.note ?? null)
     if (result === null) return res.status(404).json({ error: 'NotFound', message: 'event or goal link not found' })
     return res.status(201).json({ status: result })
-  })
+  }))
 
-  api.post('/api/goal-calendar/recap/skip', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/goal-calendar/recap/skip', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as { eventId?: string; occurrenceDate?: string }
     if (!body.eventId || !UUID_RE.test(body.eventId)) {
       return res.status(400).json({ error: 'BadRequest', message: 'eventId is required' })
@@ -613,16 +611,14 @@ export function registerGoalCalendarRoutes(api: Api): void {
     const ok = await skipRecap(tenant, body.eventId, body.occurrenceDate)
     if (!ok) return res.status(404).json({ error: 'NotFound', message: 'event or goal link not found' })
     return res.status(200).json({ ok: true })
-  })
+  }))
 
   // Smart suggestions: untagged events that might count toward a goal.
-  api.get('/api/goal-calendar/suggestions', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/goal-calendar/suggestions', tenantRoute(async (tenant) => {
     return { items: await suggestionQueue(tenant.householdId) }
-  })
+  }))
 
-  api.post('/api/goal-calendar/suggestions/link', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/goal-calendar/suggestions/link', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as { eventId?: string; goalId?: string }
     if (!body.eventId || !UUID_RE.test(body.eventId)) {
       return res.status(400).json({ error: 'BadRequest', message: 'eventId is required' })
@@ -633,42 +629,37 @@ export function registerGoalCalendarRoutes(api: Api): void {
     const result = await linkSuggestion(tenant, body.eventId, body.goalId)
     if (result === 'invalid') return res.status(404).json({ error: 'NotFound', message: 'event or goal not linkable' })
     return res.status(200).json({ ok: true })
-  })
+  }))
 
   // Live single-event preview for the create/edit modal (memory → keyword → LLM).
-  api.post('/api/goal-calendar/suggest-one', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/goal-calendar/suggest-one', tenantRoute(async (tenant, req: Request) => {
     const body = (req.body ?? {}) as { title?: string; participantIds?: string[] }
     const title = typeof body.title === 'string' ? body.title : ''
     const personIds = Array.isArray(body.participantIds) ? body.participantIds.filter((p) => typeof p === 'string' && UUID_RE.test(p)) : []
     if (!title.trim()) return { suggestion: null }
     return { suggestion: await suggestOne(tenant.householdId, title, personIds) }
-  })
+  }))
 
   // Settings → Smart matching: view + forget the household's learned matches.
-  api.get('/api/goal-calendar/memory', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/goal-calendar/memory', tenantRoute(async (tenant) => {
     return { groups: await loadMemoryGrouped(tenant.householdId) }
-  })
+  }))
 
-  api.post('/api/goal-calendar/memory/forget', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/goal-calendar/memory/forget', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as { goalId?: string; token?: string | null }
     if (!body.goalId || !UUID_RE.test(body.goalId)) {
       return res.status(400).json({ error: 'BadRequest', message: 'goalId is required' })
     }
     await forgetMemory(tenant.householdId, body.goalId, body.token ?? null)
     return res.status(200).json({ ok: true })
-  })
+  }))
 
-  api.delete('/api/goal-calendar/memory', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.delete('/api/goal-calendar/memory', tenantRoute(async (tenant) => {
     await clearMemory(tenant.householdId)
     return { ok: true }
-  })
+  }))
 
-  api.post('/api/goal-calendar/suggestions/dismiss', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/goal-calendar/suggestions/dismiss', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as { eventId?: string }
     if (!body.eventId || !UUID_RE.test(body.eventId)) {
       return res.status(400).json({ error: 'BadRequest', message: 'eventId is required' })
@@ -676,5 +667,5 @@ export function registerGoalCalendarRoutes(api: Api): void {
     const ok = await dismissSuggestion(tenant, body.eventId)
     if (!ok) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
     return res.status(200).json({ ok: true })
-  })
+  }))
 }

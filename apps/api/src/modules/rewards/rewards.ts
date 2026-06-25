@@ -5,8 +5,8 @@
 import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
-import { requireTenant, type Tenant } from '../households/households'
-import { requireCapability } from '../../platform/permissions'
+import { type Tenant } from '../households/households'
+import { tenantRoute, capRoute } from '../../platform/route-guards'
 import { listCurrencies, getDefaultCurrencyKey, presentCurrency } from '../currencies/currencies'
 
 type Api = ReturnType<typeof createAPI>
@@ -252,14 +252,11 @@ export async function decideRedemption(tenant: Tenant, id: string, approve: bool
 
 export function registerRewardRoutes(api: Api): void {
   // Catalog
-  api.get('/api/rewards', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/rewards', tenantRoute(async (tenant) => {
     return { rewards: (await listRewards(tenant.householdId)).map(presentReward) }
-  })
+  }))
 
-  api.post('/api/rewards', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    await requireCapability(tenant, 'reward.manage')
+  api.post('/api/rewards', capRoute('reward.manage', async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as { title?: string; emoji?: string; cost?: number; currency?: string; requiresApproval?: boolean }
     const title = body.title?.trim()
     if (!title) return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
@@ -274,12 +271,10 @@ export function registerRewardRoutes(api: Api): void {
       [tenant.householdId, title, body.emoji ?? null, Math.max(0, Math.round(body.cost ?? 0)), currency, requiresApproval]
     )
     return res.status(201).json({ reward: presentReward(rows[0]) })
-  })
+  }))
 
   // Edit a reward (title / emoji / cost / currency / requiresApproval).
-  api.patch('/api/rewards/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    await requireCapability(tenant, 'reward.manage')
+  api.patch('/api/rewards/:id', capRoute('reward.manage', async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
     const body = (req.body ?? {}) as { title?: string; emoji?: string | null; cost?: number; currency?: string; requiresApproval?: boolean }
@@ -302,11 +297,9 @@ export function registerRewardRoutes(api: Api): void {
     )
     if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
     return { reward: presentReward(rows[0]) }
-  })
+  }))
 
-  api.delete('/api/rewards/:id', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    await requireCapability(tenant, 'reward.manage')
+  api.delete('/api/rewards/:id', capRoute('reward.manage', async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
     const { rowCount } = await query(
@@ -315,25 +308,21 @@ export function registerRewardRoutes(api: Api): void {
     )
     if (!rowCount) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
     return res.status(204).send('')
-  })
+  }))
 
   // Archived (soft-deleted) rewards — admin only; powers the collapsed "Archived"
   // section. Deleting is a soft archive, so redemption history + ledger entries
   // (which snapshot title/cost) are untouched and a reward can be restored.
-  api.get('/api/rewards/archived', async (req: Request) => {
-    const tenant = await requireTenant(req)
-    await requireCapability(tenant, 'reward.manage')
+  api.get('/api/rewards/archived', capRoute('reward.manage', async (tenant) => {
     const { rows } = await query<RewardRow>(
       `select * from rewards where household_id=$1 and deleted_at is not null order by deleted_at desc`,
       [tenant.householdId]
     )
     return { rewards: rows.map(presentReward) }
-  })
+  }))
 
   // Restore an archived reward to the catalog (admin).
-  api.post('/api/rewards/:id/restore', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    await requireCapability(tenant, 'reward.manage')
+  api.post('/api/rewards/:id/restore', capRoute('reward.manage', async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
     const { rows } = await query<RewardRow>(
@@ -342,17 +331,15 @@ export function registerRewardRoutes(api: Api): void {
     )
     if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
     return { reward: presentReward(rows[0]) }
-  })
+  }))
 
   // Balances + history
-  api.get('/api/balances', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/balances', tenantRoute(async (tenant) => {
     return balancesSummary(tenant.householdId)
-  })
+  }))
 
   // Redemptions
-  api.get('/api/redemptions', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/redemptions', tenantRoute(async (tenant, req: Request) => {
     const status = (req.query?.status as string | undefined)?.trim()
     const params: unknown[] = [tenant.householdId]
     let where = `r.household_id=$1 and r.deleted_at is null`
@@ -364,10 +351,9 @@ export function registerRewardRoutes(api: Api): void {
       params
     )
     return { redemptions: rows.map(presentRedemption) }
-  })
+  }))
 
-  api.post('/api/rewards/:id/redeem', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.post('/api/rewards/:id/redeem', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
     const body = (req.body ?? {}) as { personId?: string }
@@ -377,18 +363,15 @@ export function registerRewardRoutes(api: Api): void {
     if (red === null) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
     if ('error' in red) return res.status(409).json({ error: 'Conflict', message: red.error })
     return res.status(201).json({ redemption: presentRedemption(red) })
-  })
+  }))
 
   // Reward-approval policy (households.settings.rewards.requireApproval). GET for any
   // member (so the redeem UI can phrase itself); PUT is admin-only.
-  api.get('/api/rewards/settings', async (req: Request) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/rewards/settings', tenantRoute(async (tenant) => {
     return { requireApproval: await getRewardsRequireApproval(tenant.householdId) }
-  })
+  }))
 
-  api.put('/api/rewards/settings', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    await requireCapability(tenant, 'reward.manage')
+  api.put('/api/rewards/settings', capRoute('reward.manage', async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as { requireApproval?: boolean }
     if (typeof body.requireApproval !== 'boolean') {
       return res.status(400).json({ error: 'BadRequest', message: 'requireApproval must be a boolean' })
@@ -400,19 +383,15 @@ export function registerRewardRoutes(api: Api): void {
       [tenant.householdId, body.requireApproval]
     )
     return { requireApproval: body.requireApproval }
-  })
+  }))
 
-  api.post('/api/redemptions/:id/approve', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    await requireCapability(tenant, 'reward.approve')
+  api.post('/api/redemptions/:id/approve', capRoute('reward.approve', async (tenant, req: Request, res: Response) => {
     return decide(tenant, req, res, true)
-  })
+  }))
 
-  api.post('/api/redemptions/:id/deny', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
-    await requireCapability(tenant, 'reward.approve')
+  api.post('/api/redemptions/:id/deny', capRoute('reward.approve', async (tenant, req: Request, res: Response) => {
     return decide(tenant, req, res, false)
-  })
+  }))
 
   async function decide(tenant: Tenant, req: Request, res: Response, approve: boolean) {
     const id = req.params.id ?? ''

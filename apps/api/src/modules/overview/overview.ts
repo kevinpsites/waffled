@@ -3,7 +3,7 @@
 // aggregation over goals + the stars ledger + reward redemptions; no new tables.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
-import { requireTenant } from '../households/households'
+import { tenantRoute } from '../../platform/route-guards'
 import { listGoals } from '../goals/goals.service'
 import { listCurrencies, getDefaultCurrencyKey, presentCurrency } from '../currencies/currencies'
 
@@ -280,17 +280,13 @@ export async function familyOverview(householdId: string) {
 }
 
 export function registerOverviewRoutes(api: Api): void {
-  api.get('/api/family/overview', async (req: Request) => {
-    const tenant = await requireTenant(req)
-    return familyOverview(tenant.householdId)
-  })
+  api.get('/api/family/overview', tenantRoute(async (tenant) => familyOverview(tenant.householdId)))
 
-  api.get('/api/persons/:id/overview', async (req: Request, res: Response) => {
-    const tenant = await requireTenant(req)
+  api.get('/api/persons/:id/overview', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
     const overview = await personOverview(tenant.householdId, id)
     if (!overview) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
     return overview
-  })
+  }))
 }
