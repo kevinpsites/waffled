@@ -442,6 +442,9 @@ struct ChoresRewardsSettingsView: View {
     }
 
     private func load() async {
+        // Make sure we know who's signed in before gating the admin-only proof section,
+        // otherwise a slow identity fetch leaves `isAdmin` false and the card never shows.
+        await sync.loadIdentity()
         async let cur = api.currencies()
         async let conv = api.conversions()
         async let approval = api.rewardSettings()

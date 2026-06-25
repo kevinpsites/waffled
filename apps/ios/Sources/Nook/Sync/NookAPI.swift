@@ -751,6 +751,29 @@ struct NookAPI: Sendable {
         return try await sendReturning("DELETE", "/api/chore-proofs", body: [:], as: Resp.self).cleared
     }
 
+    // MARK: - Permissions matrix (role × capability)
+
+    /// The household's role→capability grid, e.g. `["adult": ["chore.manage": true, …]]`.
+    /// Admins always hold every capability regardless of the matrix (server-enforced).
+    struct PermissionsResponse: Decodable, Sendable {
+        let permissions: [String: [String: Bool]]
+        let capabilities: [String]
+        let roles: [String]
+    }
+    /// Read the per-role capability matrix (admin-only server-side; 403 for everyone else).
+    func permissionsMatrix() async throws -> PermissionsResponse {
+        try await getJSON("/api/permissions", as: PermissionsResponse.self)
+    }
+    /// Save the whole matrix (admin-only). Returns the sanitized matrix the server stored.
+    @discardableResult
+    func setPermissionsMatrix(_ matrix: [String: [String: Bool]]) async throws -> [String: [String: Bool]] {
+        struct Resp: Decodable { let permissions: [String: [String: Bool]] }
+        let body: [String: JSONValue] = [
+            "permissions": .object(matrix.mapValues { row in .object(row.mapValues { .bool($0) }) }),
+        ]
+        return try await sendReturning("PUT", "/api/permissions", body: body, as: Resp.self).permissions
+    }
+
     /// A trade rate between two currencies (e.g. 10 ⭐ → 1 🥢).
     struct Conversion: Decodable, Identifiable, Hashable, Sendable {
         let id: String
