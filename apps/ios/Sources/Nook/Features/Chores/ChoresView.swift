@@ -164,7 +164,8 @@ struct ChoresView: View {
 
     // Photo-proof capture: the instance (and optional person to claim first) we're
     // capturing for, which picker is presented, and a parent's open proof review.
-    @State private var proofTarget: ProofTarget?     // drives the Take Photo / Library dialog
+    @State private var proofTarget: ProofTarget?     // which chore we're capturing proof for
+    @State private var showProofChoice = false       // the Take Photo / Library dialog is up
     @State private var showCamera = false            // camera sheet presented
     @State private var libraryPick: PhotosPickerItem?// PhotosPicker selection token
     @State private var reviewing: NookAPI.ChoreInstanceDTO?  // parent's proof review sheet
@@ -217,13 +218,17 @@ struct ChoresView: View {
         // Tapping the tick of a photo-required chore opens this Take Photo / Library
         // choice; Take Photo is hidden when there's no camera (simulator/iPad).
         .confirmationDialog("Add a photo to finish this chore",
-                            isPresented: proofDialogBinding, titleVisibility: .visible,
-                            presenting: proofTarget) { target in
+                            isPresented: $showProofChoice, titleVisibility: .visible,
+                            presenting: proofTarget) { _ in
+            // Picking an option closes the dialog explicitly and hands off to a picker;
+            // proofTarget stays set so the picker callback knows which chore it's for.
+            // (Driving this off an explicit flag — not "is a picker open?" — avoids the
+            // dialog re-triggering when the photo picker dismisses itself.)
             if ProofCapture.cameraAvailable {
-                Button("Take Photo") { proofTarget = target; showCamera = true }
+                Button("Take Photo") { showProofChoice = false; showCamera = true }
             }
-            Button("Choose from Library") { proofTarget = target; presentLibrary() }
-            Button("Cancel", role: .cancel) { proofTarget = nil }
+            Button("Choose from Library") { showProofChoice = false; presentLibrary() }
+            Button("Cancel", role: .cancel) { showProofChoice = false; proofTarget = nil }
         }
         .fullScreenCover(isPresented: $showCamera) {
             CameraPicker { image in onProofImage(image) }
@@ -243,12 +248,6 @@ struct ChoresView: View {
 
     // MARK: photo-proof capture plumbing
 
-    /// True while the Take Photo / Library dialog should be up (it's open whenever a
-    /// proof target is set and neither picker has taken over yet).
-    private var proofDialogBinding: Binding<Bool> {
-        Binding(get: { proofTarget != nil && !showCamera && !photosPickerOpen },
-                set: { if !$0 && !showCamera && !photosPickerOpen { proofTarget = nil } })
-    }
     @State private var photosPickerOpen = false
     private var photosPickerBinding: Binding<Bool> {
         Binding(get: { photosPickerOpen }, set: { photosPickerOpen = $0 })
@@ -258,6 +257,7 @@ struct ChoresView: View {
     private func startProof(_ inst: NookAPI.ChoreInstanceDTO, claimFor personId: String? = nil) {
         model.proofError = nil
         proofTarget = ProofTarget(inst: inst, claimFor: personId)
+        showProofChoice = true
     }
     private func presentLibrary() { photosPickerOpen = true }
 
