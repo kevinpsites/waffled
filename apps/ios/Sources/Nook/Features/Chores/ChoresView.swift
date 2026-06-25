@@ -241,6 +241,7 @@ struct ChoresView: View {
             ChoreProofReview(
                 chore: c, memberColorHex: m?.colorHex,
                 coin: c.rewardAmount > 0 ? "\(c.rewardAmount)\(sync.currencySymbol(c.rewardCurrency))" : nil,
+                canDecide: sync.can("chore.approve") && c.status == "awaiting",
                 onApprove: { decide(c) { await sync.approveChore(id: c.id) } },
                 onReject: { decide(c) { await sync.rejectChore(id: c.id) } })
         }
@@ -720,6 +721,12 @@ struct ChoresView: View {
                     }
                 }
                 Spacer(minLength: 6)
+                // The submitted photo (if any), on awaiting AND done chores — so the kid
+                // sees their proof is attached and anyone (esp. a parent) can tap to view
+                // it big, even when the chore didn't need a separate approval step.
+                if isAwaiting || isDone {
+                    ChoreProofThumb(chore: inst) { reviewing = inst }
+                }
                 if isAwaiting && sync.can("chore.approve") {
                     HStack(spacing: 6) {
                         Button { Task { await model.reject(inst.id) } } label: {
@@ -974,6 +981,17 @@ struct ChoreEditSheet: View {
                     }
                     .tint(FamilyColor.wally.solid)
                     .padding(13).cardField()
+
+                    // A photo on its own attaches to the finished chore but doesn't pause
+                    // for review. Nudge toward pairing it with approval so the photo lands
+                    // in your "Needs your OK" queue before the reward counts.
+                    if requiresPhoto && !requiresApproval {
+                        Label("Turn on “Needs a parent’s OK” too if you want to see the photo in your approvals before it counts.",
+                              systemImage: "info.circle.fill")
+                            .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NK.ink3)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 4)
+                    }
 
                     if editing {
                         Button {

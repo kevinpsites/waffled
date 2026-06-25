@@ -57,6 +57,9 @@ struct ChoreProofReview: View {
     let chore: NookAPI.ChoreInstanceDTO
     let memberColorHex: String?
     let coin: String?
+    /// Whether to show the Approve / Not-yet actions. False for someone who can't
+    /// approve (e.g. the kid viewing their own submitted photo) — then it's read-only.
+    var canDecide: Bool = true
     let onApprove: () -> Void
     let onReject: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -85,10 +88,16 @@ struct ChoreProofReview: View {
 
                     proofStage
 
-                    ApprovalActionPair(
-                        denyLabel: "Not yet", isKiosk: false,
-                        onDeny: { onReject(); dismiss() },
-                        onApprove: { onApprove(); dismiss() })
+                    if canDecide {
+                        ApprovalActionPair(
+                            denyLabel: "Not yet", isKiosk: false,
+                            onDeny: { onReject(); dismiss() },
+                            onApprove: { onApprove(); dismiss() })
+                    } else if chore.status == "awaiting" {
+                        Text("Waiting for a grown-up to OK this.")
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }
                 }
                 .padding(20)
             }
