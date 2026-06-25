@@ -38,10 +38,18 @@ struct PhotoDetailView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    stage
-                    if editing { editCard } else { detailsCard }
+                    // In edit mode the fields lead and the photo shrinks to a preview, so
+                    // it's obvious what you're editing without scrolling past a full image.
+                    if editing {
+                        editCard
+                        stage.frame(maxHeight: 220)
+                    } else {
+                        stage
+                        detailsCard
+                    }
                     if let errorText {
-                        Text(errorText).font(.system(size: 13)).foregroundStyle(NK.primaryD)
+                        Text(errorText).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.primaryD)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .padding(isKiosk ? 24 : 16)
@@ -176,28 +184,58 @@ struct PhotoDetailView: View {
 
     // MARK: edit mode
 
+    /// A labeled field group: the small caps label sitting just above its content, so
+    /// each label reads as belonging to the field beneath it (not floating between two).
+    @ViewBuilder
+    private func field<V: View>(label: String, @ViewBuilder _ content: () -> V) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(label).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
+            content()
+        }
+    }
+
     private var editCard: some View {
         NookFieldCard(title: "Edit photo") {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("CAPTION").font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
-                TextField("Caption", text: $caption).nkField()
-                Text("ALBUM").font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
-                TextField("Album (optional)", text: $album).nkField()
-                if !albums.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(albums, id: \.self) { a in
-                                Button { album = a } label: { Pill(text: a) }.buttonStyle(.plain)
+            VStack(alignment: .leading, spacing: 14) {
+                field(label: "CAPTION") {
+                    TextField("Add a caption", text: $caption)
+                        .font(.system(size: 16))
+                        .textInputAutocapitalization(.sentences)
+                        .padding(.horizontal, 13).padding(.vertical, 12)
+                        .nkField(fill: NK.panel)
+                }
+                field(label: "ALBUM") {
+                    TextField("Album (optional)", text: $album)
+                        .font(.system(size: 16))
+                        .padding(.horizontal, 13).padding(.vertical, 12)
+                        .nkField(fill: NK.panel)
+                    if !albums.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(albums, id: \.self) { a in
+                                    Button { album = a } label: { Pill(text: a) }.buttonStyle(.plain)
+                                }
                             }
                         }
                     }
                 }
-                Button { editing = false } label: {
-                    Text("Cancel").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
-                        .frame(maxWidth: .infinity).padding(.vertical, 9)
-                        .background(NK.panel).clipShape(Capsule())
+                // Save sits right under the fields (in addition to the toolbar), so the
+                // primary action is obvious without hunting for the top-right button.
+                HStack(spacing: 10) {
+                    Button { cancelEdit() } label: {
+                        Text("Cancel").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+                            .frame(maxWidth: .infinity).padding(.vertical, 11)
+                            .background(NK.panel).clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain).disabled(saving)
+                    Button { Task { await save() } } label: {
+                        Text(saving ? "Saving…" : "Save changes").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                            .frame(maxWidth: .infinity).padding(.vertical, 11)
+                            .background(NK.primary).clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain).disabled(saving)
                 }
-                .buttonStyle(.plain)
+                .padding(.top, 2)
             }
         }
     }
@@ -215,7 +253,15 @@ struct PhotoDetailView: View {
     private func startEdit() {
         caption = photo.caption
         album = photo.memory ?? ""
+        errorText = nil
         editing = true
+    }
+
+    private func cancelEdit() {
+        caption = photo.caption
+        album = photo.memory ?? ""
+        errorText = nil
+        editing = false
     }
 
     private func toggleFavorite() async {
@@ -236,7 +282,8 @@ struct PhotoDetailView: View {
         let trimmedAlbum = album.trimmingCharacters(in: .whitespacesAndNewlines)
         let body: [String: JSONValue] = [
             "caption": .string(caption.trimmingCharacters(in: .whitespacesAndNewlines)),
-            "memory": trimmedAlbum.isEmpty ? .string("") : .string(trimmedAlbum),
+            // Empty album clears it — send null (an empty string isn't the same thing).
+            "memory": trimmedAlbum.isEmpty ? .null : .string(trimmedAlbum),
             "isFavorite": .bool(isFavorite),
         ]
         do {
@@ -244,9 +291,22 @@ struct PhotoDetailView: View {
             onChanged()
             editing = false
             dismiss()
+        } catch let NookAPI.APIError.http(code, msg) {
+            // Surface the real reason instead of a generic message — a 403 means the
+            // server didn't allow it, a 4xx usually carries a specific cause.
+            let reason = Self.serverReason(msg)
+            errorText = "Couldn’t save (error \(code))." + (reason.isEmpty ? "" : " \(reason)")
         } catch {
-            errorText = "Couldn’t save changes."
+            errorText = "Couldn’t reach the server — check your connection and try again."
         }
+    }
+
+    /// Pull a human message out of an error JSON body (`{ "message": "…" }`), if any.
+    private static func serverReason(_ body: String) -> String {
+        guard let data = body.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let msg = obj["message"] as? String else { return "" }
+        return msg
     }
 
     private func delete() async {
