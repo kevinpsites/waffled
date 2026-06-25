@@ -89,9 +89,9 @@ struct KioskDashboard: View {
     /// phone/web pin atop Today. Each renders only when it has work and opens its
     /// focused queue as a page sheet. Hidden entirely (no gap) when both are empty.
     @ViewBuilder private var banners: some View {
-        if (sync.isParent && !approvals.isEmpty) || !reviewRecap.isEmpty || !reviewSuggestions.isEmpty {
+        if (sync.canApprove && !approvals.isEmpty) || !reviewRecap.isEmpty || !reviewSuggestions.isEmpty {
             VStack(spacing: 12) {
-                if sync.isParent && !approvals.isEmpty {
+                if sync.canApprove && !approvals.isEmpty {
                     Button { showApprovals = true } label: { approvalsBanner }.buttonStyle(.plain)
                 }
                 if !reviewRecap.isEmpty || !reviewSuggestions.isEmpty {

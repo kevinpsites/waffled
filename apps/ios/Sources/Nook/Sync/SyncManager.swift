@@ -43,13 +43,30 @@ final class SyncManager {
     /// Nudge the goals refresh bus (call after logging/review changes goal progress).
     func touchGoals() { goalsRev += 1 }
 
-    /// The logged-in person's id, resolved from the token (so "my" goals etc. respect
-    /// whoever the device is signed in as). Loaded once.
-    private(set) var currentPersonId: String?
+    /// The logged-in person — id plus household role & capabilities (so "my" goals
+    /// respect who's signed in, and management/approval controls only show when the
+    /// server would allow the action). Loaded once.
+    private(set) var currentPerson: NookAPI.CurrentPerson?
+    /// The logged-in person's id (convenience; nil until identity loads).
+    var currentPersonId: String? { currentPerson?.id }
     func loadIdentity() async {
-        guard currentPersonId == nil else { return }
-        currentPersonId = try? await api.currentPersonId()
+        guard currentPerson == nil else { return }
+        currentPerson = try? await api.currentPerson()
     }
+
+    /// Whether the signed-in person holds a capability — mirrors the web `can()`:
+    /// admins implicitly have everything; otherwise it must be in their granted set.
+    /// Capabilities: "chore.manage", "chore.approve", "reward.manage", "reward.approve".
+    func can(_ capability: String) -> Bool {
+        guard let p = currentPerson else { return false }
+        return p.isAdmin || p.capabilities.contains(capability)
+    }
+
+    /// Whether the signed-in person can act on *any* approval queue (chores or
+    /// rewards) — gates the approval badge/banner/queue surfaces. Per-item Approve/
+    /// Deny buttons are still gated by the specific capability, so a mixed grant
+    /// (e.g. chores only) shows the queue but only its actionable buttons.
+    var canApprove: Bool { can("chore.approve") || can("reward.approve") }
 
     /// The household's reward currencies, loaded once (for chore/goal reward symbols).
     private(set) var currencies: [NookAPI.Currency] = []
@@ -140,7 +157,7 @@ final class SyncManager {
         members = []; events = []
         personCount = 0; eventCount = 0; pendingUploads = 0
         lastSyncedAt = nil; lastError = nil
-        currentPersonId = nil; currencies = []
+        currentPerson = nil; currencies = []
         status = .idle
         started = false
     }

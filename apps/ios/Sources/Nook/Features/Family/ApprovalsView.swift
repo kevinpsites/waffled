@@ -36,7 +36,7 @@ struct ApprovalsBanner: View {
     @Environment(SyncManager.self) private var sync
 
     var body: some View {
-        if sync.isParent && !model.isEmpty {
+        if sync.canApprove && !model.isEmpty {
             NavigationLink(value: HubRoute.approvals) { card }.buttonStyle(.plain)
         }
     }
@@ -80,18 +80,22 @@ struct ApprovalsView: View {
         GeometryReader { geo in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
+                    // Only surface a queue the signed-in person can actually action — a
+                    // chore-only approver never sees reward purchases here, and vice versa.
+                    let showRedemptions = sync.can("reward.approve") && !model.redemptions.isEmpty
+                    let showChores = sync.can("chore.approve") && !model.chores.isEmpty
                     if model.loading && model.isEmpty {
                         NookLoading()
-                    } else if model.isEmpty {
+                    } else if !showRedemptions && !showChores {
                         NookEmptyState(emoji: "🎉", title: "All caught up",
                                        message: "No reward purchases or chores waiting on you.")
                     } else {
-                        if !model.redemptions.isEmpty {
+                        if showRedemptions {
                             SectionLabel(text: "Reward purchases")
                             ForEach(model.redemptions) { redemptionRow($0) }
                         }
-                        if !model.chores.isEmpty {
-                            SectionLabel(text: "Chore check-offs").padding(.top, model.redemptions.isEmpty ? 0 : 8)
+                        if showChores {
+                            SectionLabel(text: "Chore check-offs").padding(.top, showRedemptions ? 8 : 0)
                             ForEach(model.chores) { choreRow($0) }
                         }
                     }

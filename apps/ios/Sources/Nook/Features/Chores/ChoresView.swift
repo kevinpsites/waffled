@@ -322,7 +322,7 @@ struct ChoresView: View {
                 KioskHeaderButton(icon: "plus", label: "New chore") { editor = .new(personId: nil) }
             }
             proofErrorBanner.frame(maxWidth: 760)
-            if sync.isParent && !approvals.chores.isEmpty { approvalsCard.frame(maxWidth: 760) }
+            if sync.can("chore.approve") && !approvals.chores.isEmpty { approvalsCard.frame(maxWidth: 760) }
             dateNav.frame(maxWidth: 440)
             if model.loading && model.instances.isEmpty {
                 NookLoading(top: 32); Spacer()
@@ -381,14 +381,18 @@ struct ChoresView: View {
                             .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 10)
                     }
-                    Button { editor = .new(personId: col.isGrabs ? nil : col.id) } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
-                            Text("Add chore").font(.system(size: 13, weight: .semibold))
+                    // Assigning a chore to someone else is manage-only; anyone can still
+                    // add one to "Up for grabs" (the self-serve carve-out, like the web).
+                    if col.isGrabs || sync.can("chore.manage") {
+                        Button { editor = .new(personId: col.isGrabs ? nil : col.id) } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
+                                Text("Add chore").font(.system(size: 13, weight: .semibold))
+                            }
+                            .foregroundStyle(NK.ink3).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
                         }
-                        .foregroundStyle(NK.ink3).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
                 .padding(.top, 4)
             }
@@ -444,7 +448,7 @@ struct ChoresView: View {
     /// instances across dates, so it's independent of the day you're viewing.
     @ViewBuilder
     private var approvalsCard: some View {
-        if sync.isParent && !approvals.chores.isEmpty {
+        if sync.can("chore.approve") && !approvals.chores.isEmpty {
             NookCard(padding: 14) {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 6) {
@@ -621,14 +625,16 @@ struct ChoresView: View {
                                      : "Nothing for \(col.name) \(ChoreDates.meta(model.date).isToday ? "today" : "this day").")
                         .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3).padding(.vertical, 6)
                 }
-                Button { editor = .new(personId: col.isGrabs ? nil : col.id) } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
-                        Text("Add chore").font(.system(size: 13, weight: .semibold))
+                if col.isGrabs || sync.can("chore.manage") {
+                    Button { editor = .new(personId: col.isGrabs ? nil : col.id) } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
+                            Text("Add chore").font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundStyle(NK.ink3).padding(.top, 8)
                     }
-                    .foregroundStyle(NK.ink3).padding(.top, 8)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(14)
@@ -657,7 +663,9 @@ struct ChoresView: View {
     /// or back to up-for-grabs. Only still-pending chores are draggable (a done or
     /// awaiting one keeps its awarded stars where they are).
     @ViewBuilder private func draggableRow(_ row: some View, inst: NookAPI.ChoreInstanceDTO) -> some View {
-        if inst.status == "pending" {
+        // Dragging reassigns a chore to another column — a manage-only action, so only
+        // make rows draggable when the signed-in person can manage chores.
+        if inst.status == "pending" && sync.can("chore.manage") {
             // contentShape makes the *whole* row (incl. the trailing empty space)
             // the drag handle, not just the title text.
             row.contentShape(Rectangle()).draggable(inst.id) {
@@ -712,7 +720,7 @@ struct ChoresView: View {
                     }
                 }
                 Spacer(minLength: 6)
-                if isAwaiting {
+                if isAwaiting && sync.can("chore.approve") {
                     HStack(spacing: 6) {
                         Button { Task { await model.reject(inst.id) } } label: {
                             Text("Reject").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
@@ -729,9 +737,10 @@ struct ChoresView: View {
             }
             .padding(.vertical, 9)
             // Tap anywhere on the row to edit — the tick and approve/reject Buttons
-            // intercept their own taps, so they're unaffected.
+            // intercept their own taps, so they're unaffected. Editing a chore's
+            // definition is manage-only; without it, tapping is a no-op (no dead-end).
             .contentShape(Rectangle())
-            .onTapGesture { editor = .edit(inst) }
+            .onTapGesture { if sync.can("chore.manage") { editor = .edit(inst) } }
 
             if isGrabs && claiming == inst.id { claimPicker(inst) }
         }
@@ -837,6 +846,13 @@ struct ChoreEditSheet: View {
     }
 
     private var editing: Bool { editChoreId != nil }
+    /// Who this person may assign a chore to. Managers can pick anyone; everyone else
+    /// may only create one for themselves (or leave it up for grabs) — matching the
+    /// web's `canAssignOthers` carve-out. "Up for grabs" is always offered separately.
+    private var assignableMembers: [SyncedMember] {
+        if sync.can("chore.manage") { return members }
+        return members.filter { $0.id == sync.currentPersonId }
+    }
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty && (freq != "weekly" || !days.isEmpty)
     }
@@ -895,7 +911,7 @@ struct ChoreEditSheet: View {
                         SectionLabel(text: "Who")
                         ChipFlow(spacing: 8, lineSpacing: 8) {
                             personChip(nil, label: "🙌 Up for grabs")
-                            ForEach(members) { m in personChip(m.id, label: "\(m.emoji ?? "🙂") \(goalFirstName(m.name))") }
+                            ForEach(assignableMembers) { m in personChip(m.id, label: "\(m.emoji ?? "🙂") \(goalFirstName(m.name))") }
                         }
                     }
 

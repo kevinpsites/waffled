@@ -30,8 +30,12 @@ struct AppRoot: View {
     /// parent sees there's something to OK without opening the app.
     @State private var approvals = ApprovalsModel()
 
-    /// Only adults owe approvals (and only they should see the badge).
-    private var approvalCount: Int { sync.isParent ? approvals.total : 0 }
+    /// Only those who can approve owe approvals — and the badge counts just the items
+    /// they can actually action (chore check-offs and/or reward purchases).
+    private var approvalCount: Int {
+        (sync.can("chore.approve") ? approvals.chores.count : 0)
+        + (sync.can("reward.approve") ? approvals.redemptions.count : 0)
+    }
 
     private static var initialTab: Tab {
         switch DemoHooks.startTab {

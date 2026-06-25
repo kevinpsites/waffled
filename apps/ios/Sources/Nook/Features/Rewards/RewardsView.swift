@@ -224,10 +224,12 @@ struct RewardsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 if isKiosk {
                     KioskPageHeader("Rewards", "Spend stars on what your family loves.") {
-                        KioskHeaderButton(icon: "plus", label: "New reward") { editor = .new }
+                        if sync.can("reward.manage") {
+                            KioskHeaderButton(icon: "plus", label: "New reward") { editor = .new }
+                        }
                     }
                 }
-                if !model.pending.isEmpty {
+                if sync.can("reward.approve") && !model.pending.isEmpty {
                     // Cap + center the approval card on iPad so it reads identically to the
                     // Chores tab's card (same component) instead of stretching full-bleed and
                     // throwing the Deny/Approve buttons out to the screen edge.
@@ -268,14 +270,18 @@ struct RewardsView: View {
             HStack {
                 SectionLabel(text: "Rewards")
                 Spacer()
-                Button { editor = .new } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus").font(.system(size: 12, weight: .bold))
-                        Text("Add").font(.system(size: 13, weight: .semibold))
+                // Creating/editing rewards is manage-only; everyone can still see the
+                // catalog (so they know what to save toward) and redeem from it.
+                if sync.can("reward.manage") {
+                    Button { editor = .new } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus").font(.system(size: 12, weight: .bold))
+                            Text("Add").font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundStyle(NK.primary)
                     }
-                    .foregroundStyle(NK.primary)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .padding(.top, 4)
 
@@ -287,7 +293,7 @@ struct RewardsView: View {
                 ForEach(model.rewards) { r in catalogRow(r) }
             }
 
-            if !model.archived.isEmpty {
+            if !model.archived.isEmpty && sync.can("reward.manage") {
                 Button { withAnimation { showArchived.toggle() } } label: {
                     HStack(spacing: 5) {
                         Image(systemName: showArchived ? "chevron.down" : "chevron.right")
@@ -303,19 +309,24 @@ struct RewardsView: View {
     }
 
     private func catalogRow(_ r: NookAPI.Reward) -> some View {
-        Button { editor = .edit(r) } label: {
+        // Only managers can open the editor — others see the same row without the
+        // pencil affordance, and tapping does nothing (no dead-end into a 403).
+        let canManage = sync.can("reward.manage")
+        return Button { if canManage { editor = .edit(r) } } label: {
             HStack(spacing: 12) {
                 NookEmojiTile(emoji: r.emoji ?? "🎁")
                 Text(r.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
                 Spacer(minLength: 8)
                 coin(r.currency, r.cost)
-                Image(systemName: "pencil").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                if canManage {
+                    Image(systemName: "pencil").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                }
             }
             .padding(12)
             .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plain).disabled(!canManage)
     }
 
     private func archivedRow(_ r: NookAPI.Reward) -> some View {

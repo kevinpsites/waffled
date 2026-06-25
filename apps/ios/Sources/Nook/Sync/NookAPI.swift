@@ -810,8 +810,36 @@ struct NookAPI: Sendable {
     /// The logged-in person, resolved server-side from the token's `sub` via the
     /// identities table. nil if the account hasn't been provisioned yet.
     func currentPersonId() async throws -> String? {
-        struct Resp: Decodable { let person: Person?; struct Person: Decodable { let id: String } }
-        return try await getJSON("/api/household", as: Resp.self).person?.id
+        try await currentPerson()?.id
+    }
+
+    /// The logged-in person plus the household role & capabilities the UI uses to
+    /// gate management/approval controls — mirrors the web `can(person, cap)` helper.
+    /// Capabilities are server-resolved (admins implicitly get all four). nil if the
+    /// account hasn't been provisioned yet.
+    struct CurrentPerson: Decodable, Sendable, Equatable {
+        let id: String
+        let memberType: String       // "adult" | "teen" | "kid"
+        let isAdmin: Bool
+        let capabilities: [String]   // e.g. "chore.manage", "chore.approve", "reward.manage", "reward.approve"
+    }
+    func currentPerson() async throws -> CurrentPerson? {
+        struct Resp: Decodable {
+            let person: P?
+            struct P: Decodable {
+                let id: String
+                let memberType: String?
+                let isAdmin: Bool?
+                let capabilities: [String]?
+            }
+        }
+        guard let p = try await getJSON("/api/household", as: Resp.self).person else { return nil }
+        // Default conservatively: an absent role/flag/array grants nothing (least
+        // privilege) — the server is the real gate, this only hides UI we'd be told no on.
+        return CurrentPerson(id: p.id,
+                             memberType: p.memberType ?? "",
+                             isAdmin: p.isAdmin ?? false,
+                             capabilities: p.capabilities ?? [])
     }
 
     // MARK: mobile Today layout (per-user override + family default)
