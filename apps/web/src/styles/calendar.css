@@ -38,6 +38,8 @@
 .wk-rail-sp { border-right: 1px solid var(--hair); }
 .wk-day-h { text-align: center; padding: 12px 4px 10px; border-right: 1px solid var(--hair); }
 .wk-day-h:last-child { border-right: 0; }
+.wk-day-h.tappable { cursor: pointer; transition: background .12s; }
+.wk-day-h.tappable:hover { background: var(--panel); }
 .wk-dow { font-family: var(--serif); font-size: 13px; color: var(--ink-2); text-transform: uppercase; letter-spacing: .04em; }
 .wk-dn { font-size: 22px; font-weight: 600; margin-top: 2px; }
 .wk-day-h.today .wk-dn { color: #fff; background: var(--primary); width: 34px; height: 34px;
@@ -51,7 +53,9 @@
 .wk-allday-ev { font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 7px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 
-.wk-body { flex: 1; overflow-y: auto; }
+/* padding-top keeps the first hour label (positioned at top:-8px) from being
+   clipped by the scroll container's top edge. */
+.wk-body { flex: 1; overflow-y: auto; padding-top: 10px; }
 .wk-grid { display: grid; grid-template-columns: var(--wk-cols); position: relative; }
 .wk-rail { position: relative; }
 .wk-hr { position: relative; border-right: 1px solid var(--hair); }
@@ -91,7 +95,7 @@
   display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; border-right: 1px solid var(--hair); }
 .dv-allday-cell { padding: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
 .dv-allday-ev { font-size: 12.5px; font-weight: 600; padding: 4px 10px; border-radius: 8px; cursor: pointer; }
-.dv-body { flex: 1; overflow-y: auto; }
+.dv-body { flex: 1; overflow-y: auto; padding-top: 10px; }
 .dv-grid { display: grid; grid-template-columns: var(--dv-rail) 1fr; position: relative; }
 .dv-rail { position: relative; }
 .dv-hr { position: relative; border-right: 1px solid var(--hair); }
@@ -118,6 +122,9 @@
 .ag-row { display: flex; align-items: center; gap: 14px; background: var(--card); border-radius: var(--r-md);
   box-shadow: var(--sh-1); padding: 14px 16px; margin-bottom: 8px; cursor: pointer; }
 .ag-row:hover { box-shadow: var(--sh-2); }
+/* Today's already-ended events: subtly faded so it reads as "should be done". */
+.ag-row.past { opacity: .5; }
+.ag-row.past:hover { opacity: .75; }
 .ag-time { width: 74px; font-size: 14px; font-weight: 700; color: var(--ink-2); flex: none; }
 .ag-bar { width: 4px; height: 34px; border-radius: 99px; flex: none; }
 .ag-main { flex: 1; min-width: 0; }

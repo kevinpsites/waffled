@@ -1,9 +1,9 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { type AgendaEvent } from '../../lib/api'
 import { DOW_FULL, MONTHS, ymd, localDate, fmtHour, fmtTime, minutesOfDay, durationMin, packLanes } from './cal-utils'
 
-const DAY_START = 6 // 6 AM — top of the grid
-const DAY_END = 22 // 10 PM — bottom
+const DAY_START = 0 // midnight — top of the grid (full day so early events are reachable)
+const DAY_END = 23 // 11 PM — bottom
 const HOUR_PX = 64 // a touch taller than the week grid — one day has room to breathe
 
 // A single day as a full-width time grid: an all-day strip, an hour rail, timed
@@ -33,7 +33,17 @@ export function DayView({
   const isToday = ymd(now) === key
   const nowMin = now.getHours() * 60 + now.getMinutes()
   const nowTop = ((nowMin - DAY_START * 60) / 60) * HOUR_PX
-  const showNow = isToday && nowMin >= DAY_START * 60 && nowMin <= DAY_END * 60
+  const showNow = isToday // full-day grid always contains "now"
+
+  // The grid spans the whole day, so open it scrolled to the morning (or an hour
+  // before "now" when looking at today) rather than stranded at midnight.
+  const bodyRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    const focusHour = isToday ? Math.max(0, now.getHours() - 1) : 7
+    el.scrollTop = focusHour * HOUR_PX
+  }, [key, isToday])
 
   return (
     <div className="dv-screen">
@@ -64,7 +74,7 @@ export function DayView({
         </div>
       )}
 
-      <div className="dv-body">
+      <div className="dv-body" ref={bodyRef}>
         <div className="dv-grid" style={{ height: hours.length * HOUR_PX }}>
           <div className="dv-rail">
             {hours.map((h) => (

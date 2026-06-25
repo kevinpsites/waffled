@@ -134,6 +134,7 @@ export function Calendar() {
           tz={tz}
           onOpenEvent={openEvent}
           onCreate={(date, time) => setModal({ date, time })}
+          onPickDay={(d) => jumpToDay(d)}
         />
       )}
       {view === 'day' && (

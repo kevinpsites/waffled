@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePersons, type AgendaEvent } from '../../lib/api'
 import { DOW, ymd, addDays, localDate, fmtHour, fmtTime, minutesOfDay, durationMin, eventPeople, packLanes } from './cal-utils'
 
-const DAY_START = 6 // 6 AM — top of the grid
-const DAY_END = 22 // 10 PM — bottom
+const DAY_START = 0 // midnight — top of the grid (full day so early events are reachable)
+const DAY_END = 23 // 11 PM — bottom
 const HOUR_PX = 52
 
 // One week (Sun–Sat) as a time grid: an all-day strip on top, then an hour grid
@@ -15,12 +15,14 @@ export function WeekView({
   tz,
   onOpenEvent,
   onCreate,
+  onPickDay,
 }: {
   weekStart: Date
   events: AgendaEvent[]
   tz: string
   onOpenEvent: (e: AgendaEvent) => void
   onCreate: (date: string, time?: string) => void
+  onPickDay?: (d: Date) => void
 }) {
   const { persons = [] } = usePersons()
   // Empty selection = everyone (no filter); toggling a chip narrows to those people.
@@ -29,6 +31,18 @@ export function WeekView({
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
   const hours = useMemo(() => Array.from({ length: DAY_END - DAY_START + 1 }, (_, i) => DAY_START + i), [])
   const today = ymd(new Date())
+
+  // The grid spans the whole day, so open it scrolled to where the action is:
+  // an hour before "now" when this week includes today, otherwise the morning.
+  const bodyRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    const now = new Date()
+    const inWeek = days.some((d) => ymd(d) === ymd(now))
+    const focusHour = inWeek ? Math.max(0, now.getHours() - 1) : 7
+    el.scrollTop = focusHour * HOUR_PX
+  }, [days])
 
   const visible = useMemo(() => {
     if (selected.size === 0) return events
@@ -85,8 +99,16 @@ export function WeekView({
           <div className="wk-rail-sp" />
           {days.map((d) => {
             const key = ymd(d)
+            // Tapping a day header jumps to that day in Day view.
             return (
-              <div key={key} className={`wk-day-h ${key === today ? 'today' : ''}`}>
+              <div
+                key={key}
+                className={`wk-day-h ${key === today ? 'today' : ''} ${onPickDay ? 'tappable' : ''}`}
+                role={onPickDay ? 'button' : undefined}
+                tabIndex={onPickDay ? 0 : undefined}
+                title={onPickDay ? 'Open this day' : undefined}
+                onClick={onPickDay ? () => onPickDay(d) : undefined}
+              >
                 <div className="wk-dow">{DOW[d.getDay()]}</div>
                 <div className="wk-dn">{d.getDate()}</div>
               </div>
@@ -119,7 +141,7 @@ export function WeekView({
           })}
         </div>
 
-        <div className="wk-body">
+        <div className="wk-body" ref={bodyRef}>
           <div className="wk-grid" style={{ height: hours.length * HOUR_PX }}>
             <div className="wk-rail">
               {hours.map((h) => (

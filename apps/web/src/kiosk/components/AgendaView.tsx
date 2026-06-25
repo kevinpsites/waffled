@@ -13,12 +13,21 @@ function dayLabel(d: Date, today: Date): string {
   return d.toLocaleDateString('en-US', { weekday: 'long' })
 }
 
-function AgendaRow({ event, onClick }: { event: AgendaEvent; onClick: () => void }) {
+// An event is "past" once its end time (or start + 1h when open-ended) is behind
+// now — used to subtly fade events that should already be done. All-day events
+// aren't time-bound, so they're never faded.
+function isPastEvent(e: AgendaEvent, now: Date): boolean {
+  if (e.allDay) return false
+  const end = e.endsAt ? new Date(e.endsAt) : new Date(new Date(e.startsAt).getTime() + 60 * 60000)
+  return end.getTime() < now.getTime()
+}
+
+function AgendaRow({ event, past = false, onClick }: { event: AgendaEvent; past?: boolean; onClick: () => void }) {
   const color = event.personColor ?? '#A6A29B'
   const people = eventPeople(event)
   const lead = people[0]
   return (
-    <div className="ag-row" onClick={onClick} role="button" tabIndex={0}>
+    <div className={`ag-row ${past ? 'past' : ''}`} onClick={onClick} role="button" tabIndex={0}>
       <div className="ag-time">{event.allDay ? 'all day' : fmtTime(event)}</div>
       <div className="ag-bar" style={{ background: color }} />
       <div className="ag-main">
@@ -202,7 +211,7 @@ export function AgendaView({
               <span className="muted">{g.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
             </div>
             {g.events.map((e) => (
-              <AgendaRow key={e.id} event={e} onClick={() => onOpenEvent(e)} />
+              <AgendaRow key={e.id} event={e} past={isPastEvent(e, today)} onClick={() => onOpenEvent(e)} />
             ))}
           </div>
         ))}
