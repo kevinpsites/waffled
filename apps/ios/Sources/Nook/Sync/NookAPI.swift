@@ -1781,7 +1781,8 @@ struct NookAPI: Sendable {
     /// Returns the new event id; PowerSync down-syncs it for display.
     func createEvent(title: String, startsAtISO: String, endsAtISO: String?, allDay: Bool,
                      location: String?, personIds: [String], goalId: String?, goalStepId: String?,
-                     calendarId: String?, timezone: String?, rrule: String? = nil) async throws -> String {
+                     calendarId: String?, timezone: String?, rrule: String? = nil,
+                     recurrenceEndAt: String? = nil) async throws -> String {
         var body: [String: JSONValue] = [
             "title": .string(title),
             "startsAt": .string(startsAtISO),
@@ -1796,6 +1797,7 @@ struct NookAPI: Sendable {
         if let c = calendarId { body["calendarId"] = .string(c) }
         if let tz = timezone { body["timezone"] = .string(tz) }
         if let rr = rrule, !rr.isEmpty { body["rrule"] = .string(rr) }
+        if let end = recurrenceEndAt { body["recurrenceEndAt"] = .string(end) }
         struct Resp: Decodable { let event: Ev; struct Ev: Decodable { let id: String } }
         return try await sendReturning("POST", "/api/events", body: body, as: Resp.self).event.id
     }
@@ -1809,7 +1811,7 @@ struct NookAPI: Sendable {
     func updateEvent(id: String, title: String, startsAtISO: String, endsAtISO: String?,
                      allDay: Bool, location: String?, personIds: [String],
                      goalId: String?, goalStepId: String?,
-                     rrule: String? = nil, clearRrule: Bool = false,
+                     rrule: String? = nil, clearRrule: Bool = false, recurrenceEndAt: String? = nil,
                      scope: String? = nil, occurrenceStart: String? = nil) async throws {
         var body: [String: JSONValue] = [
             "title": .string(title),
@@ -1828,6 +1830,7 @@ struct NookAPI: Sendable {
         // occurrences); omitting it leaves an existing rule untouched.
         if let rr = rrule { body["rrule"] = .string(rr) }
         else if clearRrule { body["rrule"] = .null }
+        if let end = recurrenceEndAt { body["recurrenceEndAt"] = .string(end) }
         try await send("PATCH", "/api/events/\(id)", body: body)
     }
 

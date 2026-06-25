@@ -509,6 +509,12 @@ struct EventEditSheet: View {
     /// rule when editing an existing recurring event.
     @State private var repeatState = RepeatState.none
     @State private var loadedRepeat = false
+    /// The recurrence end condition (web parity). `never` repeats forever; `on` passes a
+    /// hard end date (`recurrenceEndAt`); `after` rides a `COUNT=N` inside the rule.
+    @State private var endMode: RepeatEnd = .never
+    @State private var untilDate = Date().addingTimeInterval(60 * 60 * 24 * 90) // ~3 months out
+    @State private var occurrenceCount = 10
+    enum RepeatEnd { case never, on, after }
     /// When editing/deleting an already-recurring event, ask which occurrences to touch.
     @State private var scopePrompt: ScopePrompt?
     enum ScopePrompt { case save, delete }
@@ -935,10 +941,22 @@ struct EventEditSheet: View {
         // "Repeats" picker reflects the current cadence when editing a recurring event.
         if wasRecurring, !loadedRepeat, let ev = event {
             loadedRepeat = true
-            if let detail = try? await NookAPI().eventDetail(id: ev.seriesId ?? ev.id) {
-                repeatState = Recurrence.parseRepeat(detail.rrule)
+            if let detail = try? await NookAPI().eventDetail(id: ev.seriesId ?? ev.id), let rule = detail.rrule {
+                // COUNT rides in the rule; strip it before parsing the cadence, then
+                // restore it as the "after N times" end condition (mirrors the web).
+                if let n = Self.extractCount(rule) { endMode = .after; occurrenceCount = n }
+                repeatState = Recurrence.parseRepeat(Self.stripCount(rule))
             }
         }
+    }
+
+    /// Pull the `COUNT=N` out of a stored rule (the end-condition picker owns it).
+    private static func extractCount(_ rule: String) -> Int? {
+        guard let r = rule.range(of: "COUNT=\\d+", options: .regularExpression) else { return nil }
+        return Int(rule[r].dropFirst("COUNT=".count))
+    }
+    private static func stripCount(_ rule: String) -> String {
+        rule.replacingOccurrences(of: ";?COUNT=\\d+", with: "", options: .regularExpression)
     }
 
     /// Default to the owner's ★ calendar (then any of theirs), until manually picked.
@@ -971,9 +989,15 @@ struct EventEditSheet: View {
         }
     }
 
-    /// A live plain-English summary of the rule the picker currently builds.
+    /// A live plain-English summary of the rule the picker currently builds, including
+    /// the end condition (COUNT renders via `describeRrule`; an end date is appended).
     private var repeatSummary: String {
-        Recurrence.describeRrule(Recurrence.buildRrule(repeatState, start: resolvedStart), start: resolvedStart)
+        let d = buildDraft()
+        let base = Recurrence.describeRrule(d.rrule, start: resolvedStart)
+        if endMode == .on, d.rrule != nil {
+            return "\(base), until \(DateFmt.string(untilDate, "MMM d, yyyy", sync.householdTz))"
+        }
+        return base
     }
 
     @ViewBuilder private var repeatSection: some View {
@@ -994,10 +1018,50 @@ struct EventEditSheet: View {
                 if repeatState.freq == .weekly { weekdayChips }
                 if repeatState.freq == .custom { customBuilder }
                 if repeatState.freq != .none {
+                    endsRow
                     Text(repeatSummary).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
                 }
             }
         }
+    }
+
+    /// The end condition — Never · On a date · After N times. Mirrors the web's picker.
+    private var endsRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Text("Ends").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink2)
+                Menu {
+                    Button("Never") { endMode = .never }
+                    Button("On a date") { endMode = .on }
+                    Button("After…") { endMode = .after }
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(endModeLabel).font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
+                        Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 9).innerField()
+                }
+                Spacer(minLength: 0)
+            }
+            if endMode == .on {
+                DatePicker("", selection: $untilDate, in: day..., displayedComponents: .date)
+                    .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if endMode == .after {
+                HStack(spacing: 10) {
+                    Stepper(value: $occurrenceCount, in: 1...365) {
+                        Text("\(occurrenceCount)").font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
+                    }
+                    .fixedSize()
+                    Text(occurrenceCount == 1 ? "occurrence" : "occurrences")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink2)
+                }
+            }
+        }
+    }
+
+    private var endModeLabel: String {
+        switch endMode { case .never: return "Never"; case .on: return "On a date"; case .after: return "After N times" }
     }
 
     private func setFreq(_ f: RepeatFreq) {
@@ -1070,27 +1134,28 @@ struct EventEditSheet: View {
         }
     }
 
+    /// Ordinals offered for "the Nth <weekday> of the month": 1…5 and -1 (last).
+    private static let monthlyOrdinals = [1, 2, 3, 4, 5, -1]
+    private static let ordinalWord = ["", "first", "second", "third", "fourth", "fifth"]
+
+    private func ordinalWord(_ n: Int) -> String {
+        n == -1 ? "last" : (Self.ordinalWord.indices.contains(n) ? Self.ordinalWord[n] : "\(n)th")
+    }
+
     private var monthlyModeMenu: some View {
-        let cal = Calendar.current
-        let dom = cal.component(.day, from: resolvedStart)
-        let nth = Recurrence.nthWeekdayOfMonth(resolvedStart)
-        let ord = ["", "first", "second", "third", "fourth", "fifth"]
-        let ordWord = ord.indices.contains(nth) ? ord[nth] : "\(nth)th"
+        let dom = Calendar.current.component(.day, from: resolvedStart)
         let weekdayName = DateFmt.string(resolvedStart, "EEEE", sync.householdTz)
-        func label(_ m: MonthlyMode) -> String {
-            switch m {
-            case .day: return "On day \(dom)"
-            case .weekday: return "On the \(ordWord) \(weekdayName)"
-            case .lastWeekday: return "On the last \(weekdayName)"
-            }
-        }
+        let dayLabel = "On day \(dom)"
+        func nthLabel(_ ord: Int) -> String { "On the \(ordinalWord(ord)) \(weekdayName)" }
+        let current = repeatState.monthlyMode == .dayOfMonth ? dayLabel : nthLabel(repeatState.monthlyOrdinal)
         return Menu {
-            Button(label(.day)) { repeatState.monthlyMode = .day }
-            Button(label(.weekday)) { repeatState.monthlyMode = .weekday }
-            Button(label(.lastWeekday)) { repeatState.monthlyMode = .lastWeekday }
+            Button(dayLabel) { repeatState.monthlyMode = .dayOfMonth }
+            ForEach(Self.monthlyOrdinals, id: \.self) { ord in
+                Button(nthLabel(ord)) { repeatState.monthlyMode = .nthWeekday; repeatState.monthlyOrdinal = ord }
+            }
         } label: {
             HStack {
-                Text(label(repeatState.monthlyMode)).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                Text(current).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
                 Spacer()
                 Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
             }
@@ -1102,7 +1167,7 @@ struct EventEditSheet: View {
     /// direct save and the scope-chooser path build the same payload.
     private struct Draft {
         let startISO: String, endISO: String?, name: String, loc: String?
-        let ids: [String], chosenCal: String?, rrule: String?
+        let ids: [String], chosenCal: String?, rrule: String?, recurrenceEndAt: String?
     }
 
     private func buildDraft() -> Draft {
@@ -1111,12 +1176,25 @@ struct EventEditSheet: View {
         let endISO = allDay ? nil : Self.iso.string(from: startDate.addingTimeInterval(Double(durationMin) * 60))
         let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedLoc = location.trimmingCharacters(in: .whitespaces)
+        // The cadence rule; the end condition is layered on (COUNT in the rule, an end
+        // date passed separately) the same way the web composes it.
+        let base = Recurrence.buildRrule(repeatState, start: startDate)
+        var rrule = base
+        var recurrenceEndAt: String?
+        if let base {
+            if endMode == .after, occurrenceCount > 0 { rrule = "\(base);COUNT=\(occurrenceCount)" }
+            else if endMode == .on {
+                let cal = Calendar.current
+                let endOfDay = cal.date(bySettingHour: 23, minute: 59, second: 0, of: untilDate) ?? untilDate
+                recurrenceEndAt = Self.iso.string(from: endOfDay)
+            }
+        }
         return Draft(
             startISO: startISO, endISO: endISO, name: name,
             loc: trimmedLoc.isEmpty ? nil : trimmedLoc,
             ids: Array(participants),
             chosenCal: showCalendarPicker ? calendarId : nil,
-            rrule: Recurrence.buildRrule(repeatState, start: startDate))
+            rrule: rrule, recurrenceEndAt: recurrenceEndAt)
     }
 
     private func save() {
@@ -1149,6 +1227,7 @@ struct EventEditSheet: View {
                         allDay: allDay, location: d.loc, personIds: d.ids,
                         goalId: goalId, goalStepId: goalStepId,
                         rrule: isAll ? d.rrule : nil, clearRrule: isAll && d.rrule == nil,
+                        recurrenceEndAt: isAll ? d.recurrenceEndAt : nil,
                         scope: scope, occurrenceStart: event?.occurrenceStart)
                     sync.touchGoals()
                 } else if let rrule = d.rrule {
@@ -1157,7 +1236,8 @@ struct EventEditSheet: View {
                     try? await NookAPI().updateEvent(
                         id: editId, title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
                         allDay: allDay, location: d.loc, personIds: d.ids,
-                        goalId: goalId, goalStepId: goalStepId, rrule: rrule)
+                        goalId: goalId, goalStepId: goalStepId, rrule: rrule,
+                        recurrenceEndAt: d.recurrenceEndAt)
                     sync.touchGoals()
                 } else if goalId != nil || prefillGoalId != nil {
                     // A goal link was set, changed, or removed → PATCH the rich REST
@@ -1177,7 +1257,7 @@ struct EventEditSheet: View {
                 _ = try? await NookAPI().createEvent(
                     title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO, allDay: allDay,
                     location: d.loc, personIds: d.ids, goalId: goalId, goalStepId: goalStepId,
-                    calendarId: d.chosenCal, timezone: tz, rrule: d.rrule)
+                    calendarId: d.chosenCal, timezone: tz, rrule: d.rrule, recurrenceEndAt: d.recurrenceEndAt)
                 if goalId != nil { sync.touchGoals() }
             } else {
                 _ = await sync.createCalendarEvent(title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,

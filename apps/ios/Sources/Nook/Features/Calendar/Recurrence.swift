@@ -15,7 +15,11 @@ enum RepeatFreq: String, CaseIterable, Hashable {
     case none, daily, weekdays, weekly, monthly, custom
 }
 enum CustomUnit: String, CaseIterable, Hashable { case day, week, month, year }
-enum MonthlyMode: String, Hashable { case day, weekday, lastWeekday } // day-of-month / Nth weekday / last weekday
+/// Custom-monthly shape: repeat on the start's day-of-month, or on a chosen *ordinal*
+/// of the start's weekday (`monthlyOrdinal`: 1…5, or -1 = last). This goes one beyond
+/// the web (which only distinguishes the start's own nth vs. last) by letting the user
+/// pick any ordinal — e.g. "the first Thursday".
+enum MonthlyMode: String, Hashable { case dayOfMonth, nthWeekday }
 
 /// The picker state. `custom` (an advanced raw RRULE) overrides the builder when set.
 struct RepeatState: Equatable {
@@ -23,7 +27,8 @@ struct RepeatState: Equatable {
     var byday: [String] = []        // weekly + custom-weekly days, e.g. ["MO","WE"]
     var interval: Int = 1           // custom: "every N" (>= 1)
     var unit: CustomUnit = .week    // custom: the unit N counts
-    var monthlyMode: MonthlyMode = .day
+    var monthlyMode: MonthlyMode = .dayOfMonth
+    var monthlyOrdinal: Int = 1     // custom-monthly nth-weekday: 1…5, or -1 = last
     var custom: String = ""         // advanced raw RRULE — overrides the builder
 
     static let none = RepeatState()
@@ -77,8 +82,10 @@ enum Recurrence {
                 let days = r.byday.isEmpty ? [weekday] : r.byday
                 return "FREQ=WEEKLY\(iv);BYDAY=\(days.joined(separator: ","))"
             case .month:
-                if r.monthlyMode == .weekday { return "FREQ=MONTHLY\(iv);BYDAY=\(nthWeekdayOfMonth(start, cal))\(weekday)" }
-                if r.monthlyMode == .lastWeekday { return "FREQ=MONTHLY\(iv);BYDAY=-1\(weekday)" }
+                if r.monthlyMode == .nthWeekday {
+                    let ord = r.monthlyOrdinal == 0 ? nthWeekdayOfMonth(start, cal) : r.monthlyOrdinal
+                    return "FREQ=MONTHLY\(iv);BYDAY=\(ord)\(weekday)"
+                }
                 return "FREQ=MONTHLY\(iv)"
             case .year:
                 return "FREQ=YEARLY\(iv)"
@@ -118,10 +125,10 @@ enum Recurrence {
                 return RepeatState(freq: .custom, byday: plainByday, interval: interval, unit: .week)
             }
             if freq == "MONTHLY" && parts["BYDAY"] == nil && parts["BYMONTHDAY"] == nil {
-                return RepeatState(freq: .custom, interval: interval, unit: .month, monthlyMode: .day)
+                return RepeatState(freq: .custom, interval: interval, unit: .month, monthlyMode: .dayOfMonth)
             }
-            if freq == "MONTHLY", let bd = parts["BYDAY"], bd.range(of: "^-?\\d+[A-Z]{2}$", options: .regularExpression) != nil {
-                return RepeatState(freq: .custom, interval: interval, unit: .month, monthlyMode: bd.hasPrefix("-") ? .lastWeekday : .weekday)
+            if freq == "MONTHLY", let bd = parts["BYDAY"], let ord = nthWeekdayOrdinal(bd) {
+                return RepeatState(freq: .custom, interval: interval, unit: .month, monthlyMode: .nthWeekday, monthlyOrdinal: ord)
             }
             if freq == "YEARLY" { return RepeatState(freq: .custom, interval: interval, unit: .year) }
         }
@@ -193,5 +200,13 @@ enum Recurrence {
 
     private static func dayList(_ codes: [String]) -> String {
         codes.map { dayName[$0] ?? $0 }.joined(separator: ", ")
+    }
+
+    /// The ordinal in a single `<n><WD>` BYDAY token ("2TU" → 2, "-1FR" → -1), or nil if
+    /// it isn't a single nth-weekday token.
+    static func nthWeekdayOrdinal(_ byday: String) -> Int? {
+        let tok = byday.uppercased()
+        guard tok.range(of: "^-?\\d+[A-Z]{2}$", options: .regularExpression) != nil else { return nil }
+        return Int(tok.dropLast(2))
     }
 }
