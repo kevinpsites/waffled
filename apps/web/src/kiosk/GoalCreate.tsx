@@ -129,6 +129,28 @@ export function GoalCreate() {
     }
   }, [editing, editGoal])
 
+  // Editing is gated exactly like GoalDetail: only goal.manage holders, or the
+  // owner of a goal that's solely theirs, may edit. GoalDetail hides its "Edit
+  // goal" button, but /goals/:id/edit is a deep-linkable route — without this a
+  // kid could reach an enabled "Save changes" that 403s. Bounce them back.
+  const editBlocked =
+    editing && !!editGoal && !canAssignOthers &&
+    !(editGoal.participants.length === 1 && editGoal.participants[0].personId === person?.id)
+  useEffect(() => {
+    if (editBlocked) navigate(`/goals/${id}`, { replace: true })
+  }, [editBlocked, id, navigate])
+
+  // Creating: without goal.manage you can only target a self-only list. Neutralize
+  // a prefilled ?list=<group> (e.g. arriving from a shared group's "New goal"), or
+  // a multi-member group just made via the modal, so Create never enables on a
+  // target that would 403 — render-if-capable, not show-then-403.
+  useEffect(() => {
+    if (editing || canAssignOthers || !form.goalListId || lists.length === 0) return
+    const l = lists.find((x) => x.id === form.goalListId)
+    const selfOnly = !!l && l.members.length === 1 && l.members[0].personId === person?.id
+    if (!selfOnly) setForm((f) => ({ ...f, goalListId: '' }))
+  }, [editing, canAssignOthers, form.goalListId, lists, person?.id])
+
   const selectedList = useMemo(() => lists.find((l) => l.id === form.goalListId) ?? null, [lists, form.goalListId])
 
   // A goal needs a name, at least one person, and the measurement filled in for
@@ -139,7 +161,7 @@ export function GoalCreate() {
     form.goalType === 'checklist' ? stepCount >= 1
       : form.goalType === 'habit' ? form.habitPerPeriod > 0
         : Number(form.target) > 0 && form.unit.trim().length > 0 // total | count
-  const canSave = form.title.trim().length > 0 && participantCount >= 1 && typeValid && !saving
+  const canSave = form.title.trim().length > 0 && participantCount >= 1 && typeValid && !saving && !editBlocked
 
   // Return to the list you came from (cancel/back). After CREATE we return to the
   // goal's final list instead (see submit) — so changing it to Wally lands on Wally.

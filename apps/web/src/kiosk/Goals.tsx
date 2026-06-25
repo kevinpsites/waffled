@@ -317,7 +317,20 @@ export function Goals() {
                 ✎ Edit group
               </button>
             )}
-            <button type="button" className="pill btn-primary" onClick={() => navigate(`/goals/new${selected ? `?list=${selected.id}` : ''}`)}>
+            {/* Carry the list prefill only when the user can actually target it —
+                goal.manage holders for any list, otherwise just their own self-only
+                list. A kid viewing a shared group lands on a clean (self-pickable)
+                create form instead of one that would 403 on submit. */}
+            <button
+              type="button"
+              className="pill btn-primary"
+              onClick={() => {
+                const canTarget =
+                  !!selected &&
+                  (canManageGoals || (selected.members.length === 1 && selected.members[0].personId === person?.id))
+                navigate(`/goals/new${canTarget ? `?list=${selected!.id}` : ''}`)
+              }}
+            >
               <Icon name="plus" />
               <span>New goal</span>
             </button>
