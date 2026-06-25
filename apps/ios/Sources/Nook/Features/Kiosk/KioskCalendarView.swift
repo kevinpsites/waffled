@@ -259,11 +259,10 @@ struct KioskCalendarView: View {
         .background(color.opacity(0.12)).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 
-    private func chipLabel(_ ev: SyncedEvent) -> String {
-        if ev.allDay { return ev.title }
-        if let d = ev.startsAt { return "\(EventTime.timeLabel(d, tz))  \(ev.title)" }
-        return ev.title
-    }
+    /// Month-cell chips show the title only — in a narrow cell a leading time pushes the
+    /// title out of view, which is the useful part. Tap the day (panel + Day view) for
+    /// the times.
+    private func chipLabel(_ ev: SyncedEvent) -> String { ev.title }
 
     // MARK: day panel (month mode)
 
@@ -575,6 +574,9 @@ struct CalTimeGrid: View {
                             }
                         }
                         .frame(height: 24 * hourHeight, alignment: .topLeading)
+                        // The "now" line — a red rule across the grid at the current time,
+                        // shown only when the visible range includes today.
+                        if days.contains(Agenda.todayKey(tz)) { nowLine }
                     }
                     .frame(height: 24 * hourHeight)
                 }
@@ -632,6 +634,28 @@ struct CalTimeGrid: View {
             .padding(.horizontal, 6).padding(.vertical, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(color.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+
+    /// Live red current-time indicator: a dot at the gutter edge + a rule across the
+    /// day columns, repositioned every minute.
+    private var nowLine: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { ctx in
+            ZStack(alignment: .leading) {
+                Rectangle().fill(Self.nowRed).frame(height: 2).padding(.leading, gutter)
+                Circle().fill(Self.nowRed).frame(width: 9, height: 9).offset(x: gutter - 4)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .offset(y: nowY(ctx.date) - 1)
+            .allowsHitTesting(false)
+        }
+    }
+
+    static let nowRed = Color(red: 0.89, green: 0.22, blue: 0.20)
+
+    private func nowY(_ date: Date) -> CGFloat {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let c = cal.dateComponents([.hour, .minute], from: date)
+        return (CGFloat(c.hour ?? 0) + CGFloat(c.minute ?? 0) / 60) * hourHeight
     }
 
     private func hourRow(_ h: Int) -> some View {

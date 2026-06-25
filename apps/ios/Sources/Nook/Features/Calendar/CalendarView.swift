@@ -299,9 +299,29 @@ struct CalendarView: View {
                 }
             }
             ForEach(timed) { ev in dayBlock(ev) }
+            // The "now" line, only on today.
+            if selectedDay == Agenda.todayKey(tz) { nowLine }
         }
         .padding(.top, 2)
     }
+
+    /// Live red current-time indicator (dot in the hour gutter + a rule across the day),
+    /// repositioned every minute. Only shown when the day view is on today.
+    private var nowLine: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { ctx in
+            let comps = hourMinute(ctx.date)
+            let y = (CGFloat(comps.h) + CGFloat(comps.m) / 60) * Self.hourHeight
+            ZStack(alignment: .leading) {
+                Rectangle().fill(Self.nowRed).frame(height: 2).padding(.leading, 56)
+                Circle().fill(Self.nowRed).frame(width: 8, height: 8).offset(x: 52)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .offset(y: y - 1)
+            .allowsHitTesting(false)
+        }
+    }
+
+    private static let nowRed = Color(red: 0.89, green: 0.22, blue: 0.20)
 
     @ViewBuilder private func dayBlock(_ ev: SyncedEvent) -> some View {
         if let start = ev.startsAt {
@@ -445,6 +465,9 @@ struct EventCard: View {
             .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
             .nkShadow1()
             .contentShape(Rectangle())
+            // Subtly fade events that have already finished, so the eye lands on what's
+            // still ahead.
+            .opacity(isPast ? 0.5 : 1)
         }
         .buttonStyle(.plain)
     }
@@ -453,6 +476,16 @@ struct EventCard: View {
         if event.allDay { return "All day" }
         if let d = event.startsAt { return EventTime.timeLabel(d, tz) }
         return ""
+    }
+
+    /// Has this event already ended? All-day events are "past" once their day is before
+    /// today; timed events once their end (or start, if open-ended) is before now.
+    private var isPast: Bool {
+        if event.allDay {
+            let key = Agenda.dayKey(event, tz)
+            return !key.isEmpty && key < Agenda.todayKey(tz)
+        }
+        return (event.endsAt ?? event.startsAt ?? .distantFuture) < Date()
     }
 }
 
