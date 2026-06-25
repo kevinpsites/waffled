@@ -47,9 +47,14 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **AI capture** — pluggable provider (Claude / OpenAI-compatible / Ollama), instant
   heuristic → LLM upgrade, offline fallback.
 - **Weather** — Open-Meteo on the topbar (no key).
-- **iOS** (mobile) — native sign-in (password + OIDC), offline-first calendar over
-  PowerSync, local event notifications (Snooze/View). *Full mobile coverage is tracked by
-  the mobile owner.*
+- **iOS** (mobile) — a **universal app**: the iPhone *personal planner* and the iPad
+  *family hub* (nav rail + every page) in one binary. Near-complete feature parity with the
+  Web/Kiosk — Today, Calendar, Chores (incl. **photo-proof**), Rewards, Goals, Lists, Meals,
+  Photos, AI capture, **role-based permission gating** + the permissions matrix editor,
+  native sign-in (password + OIDC), offline-first calendar over PowerSync, and local event
+  notifications (Snooze/View). The iPad also has the **family-display screensaver** (idle
+  photo slideshow · clock · weather · next event · night-dim). Per-surface (iPhone / iPad)
+  status — and the remaining mobile gaps — live in the [feature matrix](./features.md).
 
 ## Partial / in progress 🟡
 
