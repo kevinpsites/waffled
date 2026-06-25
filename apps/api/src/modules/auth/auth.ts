@@ -216,7 +216,7 @@ export function registerAuthRoutes(api: Api): void {
 // matching identity (provider=password, subject=credential id) exists so password
 // login resolves through sub→identity→person; an email-only invite needs no
 // identity (the OIDC flow creates one on first sign-in, matched via the email).
-async function setPersonLogin(householdId: string, personId: string, email: string, password: string | null): Promise<void> {
+export async function setPersonLogin(householdId: string, personId: string, email: string, password: string | null): Promise<void> {
   const client = await getPool().connect()
   try {
     await client.query('begin')

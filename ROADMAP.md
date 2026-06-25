@@ -164,23 +164,27 @@ provisioning). `requireTenant`/`requireAdmin`/`requireCapability` remain the und
 The guards also stash `householdId` on the request for the observability access log.
 `route-guards.unit.test.ts` + the per-module integration suites cover it. *(raised 2026-06-22)*
 
-### Server admin CLI commands (not yet built)
+### Server admin CLI commands — SHIPPED 2026-06-25
 Immich-style operator commands for break-glass / recovery without the UI
-(see https://docs.immich.app/administration/server-commands). Run in-container and reuse
-the existing service layer — e.g. `./nook admin <cmd>` → `docker exec nook-api node dist/admin.js <cmd>`.
-Candidates, highest-value first:
-- **reset-password** — set a member's password by email (the headline use case: locked-out admin
-  with no SSO). Reuses the auth/credentials layer; works even when the web UI is unreachable.
-- **list-members** / **make-admin** — show people + login status; grant/revoke admin.
-- **disable/enable password login**, **force-password (break-glass)** — already env-toggleable
-  (`AUTH_FORCE_PASSWORD`), but a command is friendlier.
-- **reconnect/clear a stuck Google calendar account** — pairs with the health "Google sync
-  failing (invalid_grant)" hint: clear the dead refresh token / mark for reconnect.
-- **prune sessions** (revoke all refresh tokens), **regenerate PowerSync key**.
-Design: a new `scripts/admin.ts` → bundled `dist/admin.js` (like `health-cli.ts`/`migrate.js`),
-a `./nook admin` dispatcher, confirmation prompts for destructive ops, and integration tests.
-Auth data writes go through the same hashing/validation as the API (one source of truth).
-*(raised 2026-06-25)*
+(see https://docs.immich.app/administration/server-commands). Run in-container via
+`./nook admin <cmd>` → `docker exec nook-api node dist/admin.js <cmd>`, so they reach the
+DB + encryption key directly (no login/admin token — host access is the authorization).
+Built (`scripts/admin.ts` → bundled `dist/admin.js`, `./nook admin` dispatcher, TTY-aware
+confirmation prompts / `--yes`, `admin-cli.integration.test.ts`):
+- **reset-password** `--email <e> [--password <pw>]` — set a member's password (random + printed
+  if omitted); revokes their sessions. Reuses the API's `setPersonLogin` (scrypt + identity wiring).
+- **list-members** — people + login email, admin/owner, password/SSO presence.
+- **make-admin** / **revoke-admin** `(--email | --person)` — grant/revoke admin (owner protected).
+- **password-login `<on|off>`** — flips `auth_config.password_login_enabled` (the Settings toggle).
+- **clear-calendar-error** `(--email | --all)` — clears a stuck Google account's `last_sync_error`
+  flag (the actual token fix is the per-account **Reconnect** in Settings → Calendars).
+- **prune-sessions** `[--email]` — revoke refresh tokens (one member, or all).
+- **regenerate-powersync-key** — prints a fresh `POWERSYNC_JWT_PRIVATE_KEY` (RSA-2048) to paste
+  into `.env` + `./nook restart api powersync`.
+Documented in `README.md` → "Operator commands (`./nook admin`)". **force-password** stays an
+env break-glass (`AUTH_FORCE_PASSWORD=1`) and **OAuth login on/off** lives in the Settings UI —
+the two of the ~10 candidates intentionally left as env/UI rather than CLI. Auth writes go
+through the same hashing/validation as the API (one source of truth). *(raised + shipped 2026-06-25)*
 
 ### Calendar → goal auto-counting (the "auto-from-calendar" bridge) — PHASE 1 SHIPPED 2026-06-18
 The bidirectional Google Calendar **sync already exists and works** (inbound pull +

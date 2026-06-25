@@ -129,6 +129,38 @@ OIDC is ready. Two things to get right:
 - Point the app at the right server on the login screen's **Server address** field if it
   isn't the default.
 
+### Operator commands (`./nook admin`)
+
+Break-glass / recovery commands for when the web UI can't help — e.g. the only admin
+is locked out, SSO is misconfigured, or a Google token died. They run **inside the api
+container** (`docker exec nook-api node dist/admin.js …`), so they reach the database
+and the encryption key directly with **no login or admin token required** — physical/SSH
+access to the host *is* the authorization. Auth writes go through the same scrypt hashing
+and credential→identity wiring the API uses, so there's one source of truth.
+
+```bash
+./nook admin help                      # list every command
+./nook admin list-members              # people, login email, admin/owner, password/SSO
+```
+
+| Command | What it does |
+| --- | --- |
+| `list-members` | List everyone with their login email, admin/owner status, and whether they have a password and/or SSO identity. |
+| `reset-password --email <e> [--password <pw>]` | Set a member's password by login email (the headline use case: locked-out admin, no SSO). Generates a strong one and prints it if `--password` is omitted, and revokes that member's active sessions. |
+| `make-admin (--email <e> \| --person <uuid>)` | Grant admin. |
+| `revoke-admin (--email <e> \| --person <uuid>)` | Revoke admin (the household owner can't be demoted). |
+| `password-login <on\|off>` | Enable/disable email+password login (the DB toggle mirrored in Settings → Login & security). |
+| `clear-calendar-error (--email <e> \| --all)` | Clear a stuck Google account's "sync failing" flag. (The token itself is fixed by **Reconnect** in Settings → Calendars — a browser OAuth step the CLI can't do.) |
+| `prune-sessions [--email <e>]` | Revoke refresh tokens for one member, or everyone — forces re-login. |
+| `regenerate-powersync-key` | Print a fresh `POWERSYNC_JWT_PRIVATE_KEY` (RSA-2048) to paste into `.env`, then `./nook restart api powersync`. |
+
+Destructive commands (`reset-password`, `clear-calendar-error`, `prune-sessions`) prompt
+for a `y` confirmation; pass `--yes` to run them non-interactively (e.g. over plain SSH).
+
+> **Hard lockout, no admin at all?** If password login is off and SSO is broken, set
+> `AUTH_FORCE_PASSWORD=1` in the api env and restart — that forces the password form
+> back on regardless of the DB toggle — then `./nook admin reset-password …` to get in.
+
 ## Start here
 
 1. Run it — the [Self-hosting quickstart](#self-hosting-quickstart) above (`./nook up`).

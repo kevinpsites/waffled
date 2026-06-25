@@ -21,6 +21,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   Health** panel, **`./nook doctor`**, baked build provenance, and **OpenTelemetry**
   (off by default) with an all-local **`./nook observability up`** Grafana stack. Restore
   drills still to come (7.4).
+- **Operator CLI** — Immich-style **`./nook admin`** break-glass commands (reset a member's
+  password, list members, grant/revoke admin, toggle password login, clear a stuck calendar,
+  prune sessions, regenerate the PowerSync key) that run in-container with no login required.
 - **Identity** — built-in email/password auth (rotating refresh), backend-mediated **OIDC
   SSO** (invite-gated, admin-configured), member management (grant logins), **role-based
   permissions** (per-role capability grid for managing/approving chores, rewards & goals —
@@ -79,8 +82,6 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   wants. Recorded so the rationale isn't lost (see [permission model](./permissions.md)).
 - **Optional S3 backup** (Phase 4) — parked.
 - **Restore drills** (7.4) — pairs with the parked S3 backup.
-- **Server admin CLI** — Immich-style `./nook admin` commands (reset a member's password,
-  grant/revoke admin, reconnect a stuck calendar) for break-glass recovery without the UI.
 - **App store verification** (7.2) — Apple/Google production review.
 
 ## Dropped ⛔ (superseded by the self-host pivot, 2026-06-20)

@@ -10,6 +10,7 @@ await build({
     migrate: 'scripts/migrate-cli.ts', // in-container migration runner (compose one-shot)
     otel: 'src/otel.ts', // OTEL preload (NODE_OPTIONS=--require) — see Dockerfile
     'health-cli': 'scripts/health-cli.ts', // `./nook doctor` runs this in-container
+    admin: 'scripts/admin.ts', // `./nook admin <cmd>` operator/break-glass CLI
   },
   outdir: 'dist',
   bundle: true,
