@@ -1781,7 +1781,7 @@ struct NookAPI: Sendable {
     /// Returns the new event id; PowerSync down-syncs it for display.
     func createEvent(title: String, startsAtISO: String, endsAtISO: String?, allDay: Bool,
                      location: String?, personIds: [String], goalId: String?, goalStepId: String?,
-                     calendarId: String?, timezone: String?) async throws -> String {
+                     calendarId: String?, timezone: String?, rrule: String? = nil) async throws -> String {
         var body: [String: JSONValue] = [
             "title": .string(title),
             "startsAt": .string(startsAtISO),
@@ -1795,16 +1795,23 @@ struct NookAPI: Sendable {
         if let s = goalStepId { body["goalStepId"] = .string(s) }
         if let c = calendarId { body["calendarId"] = .string(c) }
         if let tz = timezone { body["timezone"] = .string(tz) }
+        if let rr = rrule, !rr.isEmpty { body["rrule"] = .string(rr) }
         struct Resp: Decodable { let event: Ev; struct Ev: Decodable { let id: String } }
         return try await sendReturning("POST", "/api/events", body: body, as: Resp.self).event.id
     }
 
-    /// Update an event via REST (PATCH /api/events/:id) — used when a goal link is
-    /// involved, since the local mirror's events table has no goal_id columns.
+    /// Update an event via REST (PATCH /api/events/:id) — used when a goal link or a
+    /// recurrence is involved, since the local mirror's events table has no goal_id
+    /// columns and can't expand a rule. For a recurring occurrence, `scope`
+    /// ('this' | 'following' | 'all') + `occurrenceStart` pick which occurrences change;
+    /// the master `rrule` should only be sent with scope 'all' (or when promoting a
+    /// single event to recurring).
     func updateEvent(id: String, title: String, startsAtISO: String, endsAtISO: String?,
                      allDay: Bool, location: String?, personIds: [String],
-                     goalId: String?, goalStepId: String?) async throws {
-        let body: [String: JSONValue] = [
+                     goalId: String?, goalStepId: String?,
+                     rrule: String? = nil, clearRrule: Bool = false,
+                     scope: String? = nil, occurrenceStart: String? = nil) async throws {
+        var body: [String: JSONValue] = [
             "title": .string(title),
             "startsAt": .string(startsAtISO),
             "endsAt": endsAtISO.map(JSONValue.string) ?? .null,
@@ -1815,7 +1822,27 @@ struct NookAPI: Sendable {
             "goalId": goalId.map(JSONValue.string) ?? .null,
             "goalStepId": goalStepId.map(JSONValue.string) ?? .null,
         ]
+        if let scope { body["scope"] = .string(scope) }
+        if let occ = occurrenceStart { body["occurrenceStart"] = .string(occ) }
+        // Send the rule only when set (or explicitly cleared → `null` tombstones the
+        // occurrences); omitting it leaves an existing rule untouched.
+        if let rr = rrule { body["rrule"] = .string(rr) }
+        else if clearRrule { body["rrule"] = .null }
         try await send("PATCH", "/api/events/\(id)", body: body)
+    }
+
+    /// Delete an event via REST (DELETE /api/events/:id). For a recurring occurrence,
+    /// `scope` 'this' cancels the one occurrence and 'following' caps the series before
+    /// it; both require `occurrenceStart` (carried as query params — DELETE has no body).
+    /// `scope` 'all' (the default) drops the whole series.
+    func deleteEvent(id: String, scope: String? = nil, occurrenceStart: String? = nil) async throws {
+        var path = "/api/events/\(id)"
+        if let scope, scope != "all", let occ = occurrenceStart {
+            var comps = URLComponents()
+            comps.queryItems = [.init(name: "scope", value: scope), .init(name: "occurrenceStart", value: occ)]
+            path += "?\(comps.percentEncodedQuery ?? "")"
+        }
+        try await delete(path)
     }
 
     // MARK: event detail (the rich detail screen)
