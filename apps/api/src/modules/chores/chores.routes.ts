@@ -206,6 +206,12 @@ export function registerChoreRoutes(api: Api): void {
       personId = String(raw).trim()
       if (!UUID_RE.test(personId)) return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
     }
+    // Assigning a chore to ANOTHER person needs chore.manage. Releasing it to
+    // up-for-grabs (null) or taking it yourself stays open — that's just
+    // claiming, which any member may do.
+    if (personId !== null && personId !== tenant.personId) {
+      await requireCapability(tenant, 'chore.manage')
+    }
     const inst = await setInstanceAssignee(tenant, id, personId)
     if (!inst) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
     return { instance: presentInstance(inst) }

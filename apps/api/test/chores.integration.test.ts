@@ -364,6 +364,34 @@ describe('weekly schedules + up-for-grabs claim', () => {
   })
 })
 
+describe('assign capability gating', () => {
+  let wally = ''
+  let wallyTok = ''
+  beforeAll(async () => {
+    wally = await addMember('Wally', 'kid', false, 'dev|wally-assign')
+    wallyTok = mint('dev|wally-assign')
+  })
+  async function instances() {
+    return JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body).instances as Array<{
+      id: string; choreTitle: string; personId: string | null
+    }>
+  }
+
+  it('a kid may release/self-claim via assign but not assign to another person', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Assignable', personId: null, rrule: 'FREQ=DAILY' })
+    const inst = (await instances()).find((i) => i.choreTitle === 'Assignable')!
+
+    // → another person: needs chore.manage, which a kid lacks → 403
+    expect((await call('POST', `/api/chore-instances/${inst.id}/assign`, wallyTok, { personId: kevinId })).statusCode).toBe(403)
+    // → self (just claiming) is allowed
+    expect((await call('POST', `/api/chore-instances/${inst.id}/assign`, wallyTok, { personId: wally })).statusCode).toBe(200)
+    // → up-for-grabs (releasing) is allowed
+    expect((await call('POST', `/api/chore-instances/${inst.id}/assign`, wallyTok, { personId: null })).statusCode).toBe(200)
+    // an admin/manager can assign to another person
+    expect((await call('POST', `/api/chore-instances/${inst.id}/assign`, kevin, { personId: kevinId })).statusCode).toBe(200)
+  })
+})
+
 describe('parent-approval chores', () => {
   async function instances() {
     return JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body).instances as Array<{

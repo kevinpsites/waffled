@@ -285,7 +285,9 @@ export function Tasks() {
                     >
                       {isAwaiting ? '⏳' : i.requiresPhoto && !isComplete ? '📷' : ''}
                     </button>
-                    <div className="body" style={{ cursor: 'pointer' }} onClick={() => setModal({ chore: draftFrom(i) })}>
+                    {/* Editing a chore needs chore.manage — non-managers can still
+                        complete (tick) and claim (below), just not open the editor. */}
+                    <div className="body" style={{ cursor: canAssignOthers ? 'pointer' : 'default' }} onClick={canAssignOthers ? () => setModal({ chore: draftFrom(i) }) : undefined}>
                       <div
                         className="t"
                         style={{ textDecoration: isDone ? 'line-through' : 'none', color: isDone ? 'var(--ink-3)' : undefined }}
@@ -327,16 +329,20 @@ export function Tasks() {
                         <button type="button" className="claim-x" onClick={() => setClaimId(null)}>×</button>
                       </div>
                     )}
-                    <button
-                      type="button"
-                      className="chore-grip"
-                      aria-label={`Move ${i.choreTitle} to another person`}
-                      title="Drag to assign"
-                      onPointerDown={(e) => startDrag(e, i)}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      ⠿
-                    </button>
+                    {/* Drag-to-reassign assigns the chore to someone else, which
+                        needs chore.manage — hide the grip otherwise. */}
+                    {canAssignOthers && (
+                      <button
+                        type="button"
+                        className="chore-grip"
+                        aria-label={`Move ${i.choreTitle} to another person`}
+                        title="Drag to assign"
+                        onPointerDown={(e) => startDrag(e, i)}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        ⠿
+                      </button>
+                    )}
                   </div>
                 )
               })}
