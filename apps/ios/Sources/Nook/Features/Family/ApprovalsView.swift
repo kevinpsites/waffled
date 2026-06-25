@@ -36,7 +36,7 @@ struct ApprovalsBanner: View {
     @Environment(SyncManager.self) private var sync
 
     var body: some View {
-        if sync.isParent && !model.isEmpty {
+        if sync.canApprove && !model.isEmpty {
             NavigationLink(value: HubRoute.approvals) { card }.buttonStyle(.plain)
         }
     }
@@ -74,23 +74,28 @@ struct ApprovalsBanner: View {
 struct ApprovalsView: View {
     @Environment(SyncManager.self) private var sync
     @State private var model = ApprovalsModel()
+    @State private var reviewing: NookAPI.ChoreInstanceDTO?   // open proof review sheet
 
     var body: some View {
         GeometryReader { geo in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
+                    // Only surface a queue the signed-in person can actually action — a
+                    // chore-only approver never sees reward purchases here, and vice versa.
+                    let showRedemptions = sync.can("reward.approve") && !model.redemptions.isEmpty
+                    let showChores = sync.can("chore.approve") && !model.chores.isEmpty
                     if model.loading && model.isEmpty {
                         NookLoading()
-                    } else if model.isEmpty {
+                    } else if !showRedemptions && !showChores {
                         NookEmptyState(emoji: "🎉", title: "All caught up",
                                        message: "No reward purchases or chores waiting on you.")
                     } else {
-                        if !model.redemptions.isEmpty {
+                        if showRedemptions {
                             SectionLabel(text: "Reward purchases")
                             ForEach(model.redemptions) { redemptionRow($0) }
                         }
-                        if !model.chores.isEmpty {
-                            SectionLabel(text: "Chore check-offs").padding(.top, model.redemptions.isEmpty ? 0 : 8)
+                        if showChores {
+                            SectionLabel(text: "Chore check-offs").padding(.top, showRedemptions ? 8 : 0)
                             ForEach(model.chores) { choreRow($0) }
                         }
                     }
@@ -106,6 +111,13 @@ struct ApprovalsView: View {
         .background(NK.canvas)
         .navigationTitle("Needs your OK").navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }
+        .sheet(item: $reviewing) { c in
+            ChoreProofReview(
+                chore: c, memberColorHex: nil,
+                coin: c.rewardAmount > 0 ? "\(c.rewardAmount)\(sync.currencySymbol(c.rewardCurrency))" : nil,
+                onApprove: { decide({ model.drop(chore: c.id) }) { await sync.approveChore(id: c.id) } },
+                onReject: { decide({ model.drop(chore: c.id) }) { await sync.rejectChore(id: c.id) } })
+        }
     }
 
     // MARK: rows
@@ -124,10 +136,15 @@ struct ApprovalsView: View {
 
     private func choreRow(_ c: NookAPI.ChoreInstanceDTO) -> some View {
         rowCard {
-            header(emoji: c.emoji, color: nil,
-                   who: c.personName, wants: "\(c.emoji ?? "🧹") \(c.choreTitle)",
-                   coin: c.rewardAmount > 0 ? "\(c.rewardAmount)\(sync.currencySymbol(c.rewardCurrency))" : nil,
-                   verb: "finished")
+            HStack(spacing: 10) {
+                header(emoji: c.emoji, color: nil,
+                       who: c.personName, wants: "\(c.emoji ?? "🧹") \(c.choreTitle)",
+                       coin: c.rewardAmount > 0 ? "\(c.rewardAmount)\(sync.currencySymbol(c.rewardCurrency))" : nil,
+                       verb: "finished")
+                // Photo-proof chores get a tappable thumbnail (opens the big review);
+                // an expired proof shows "📷 gone"; non-photo chores show nothing here.
+                ChoreProofThumb(chore: c) { reviewing = c }
+            }
             actions(
                 denyLabel: "Not yet",
                 deny: { decide({ model.drop(chore: c.id) }) { await sync.rejectChore(id: c.id) } },

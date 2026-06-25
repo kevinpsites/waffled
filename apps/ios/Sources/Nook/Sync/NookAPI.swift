@@ -37,7 +37,19 @@ struct NookAPI: Sendable {
         let powerSyncUrl: String?
     }
 
-    enum APIError: Error { case http(Int, String) }
+    enum APIError: Error {
+        case http(Int, String)
+        /// True for the 422 a photo-required chore returns when completed without proof
+        /// (`{ error: "ProofRequired" }`) — lets the capture flow prompt for a photo.
+        var isProofRequired: Bool {
+            if case let .http(code, _) = self { return code == 422 }
+            return false
+        }
+    }
+
+    /// One shared decoder (default config) — JSONDecoder is reusable and decoding is
+    /// thread-safe, so there's no reason to allocate one per request.
+    static let decoder = JSONDecoder()
 
     // MARK: built-in auth (login / refresh / logout)
     //
@@ -62,7 +74,7 @@ struct NookAPI: Sendable {
         let req = URLRequest(url: url("/api/auth/status"))
         let (data, resp) = try await URLSession.shared.data(for: req)
         try check(resp, data)
-        return try JSONDecoder().decode(AuthStatus.self, from: data)
+        return try Self.decoder.decode(AuthStatus.self, from: data)
     }
 
     /// Exchange email + password for an access + refresh pair.
@@ -73,7 +85,7 @@ struct NookAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(["email": email, "password": password])
         let (data, resp) = try await URLSession.shared.data(for: req)
         try check(resp, data)
-        return try JSONDecoder().decode(Session.self, from: data)
+        return try Self.decoder.decode(Session.self, from: data)
     }
 
     /// The deep link the OIDC flow returns to (intercepted by ASWebAuthenticationSession).
@@ -93,7 +105,7 @@ struct NookAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(["code": code])
         let (data, resp) = try await URLSession.shared.data(for: req)
         try check(resp, data)
-        return try JSONDecoder().decode(Session.self, from: data)
+        return try Self.decoder.decode(Session.self, from: data)
     }
 
     /// Best-effort server-side revocation of a refresh token (logout).
@@ -111,7 +123,7 @@ struct NookAPI: Sendable {
         authorize(&req)
         let (data, resp) = try await perform(req)
         try check(resp, data)
-        return try JSONDecoder().decode(TokenResponse.self, from: data)
+        return try Self.decoder.decode(TokenResponse.self, from: data)
     }
 
     struct CaptureResponse: Decodable {
@@ -129,7 +141,7 @@ struct NookAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(["text": text])
         let (data, resp) = try await perform(req)
         try check(resp, data)
-        return try JSONDecoder().decode(CaptureResponse.self, from: data)
+        return try Self.decoder.decode(CaptureResponse.self, from: data)
     }
 
     /// Preload the model (fire-and-forget) so the first parse isn't a cold start.
@@ -228,7 +240,7 @@ struct NookAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await perform(req)
         try check(resp, data)
-        return try JSONDecoder().decode(PlanWeekResult.self, from: data)
+        return try Self.decoder.decode(PlanWeekResult.self, from: data)
     }
 
     /// The result of an AI "plan my month" run: drafted nights (`suggestions`) plus
@@ -269,7 +281,7 @@ struct NookAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await perform(req)
         try check(resp, data)
-        return try JSONDecoder().decode(PlanMonthResult.self, from: data)
+        return try Self.decoder.decode(PlanMonthResult.self, from: data)
     }
 
     struct RecipeRef: Decodable { let id: String; let title: String? }
@@ -466,6 +478,12 @@ struct NookAPI: Sendable {
         return try await getJSON("/api/lists/grocery", as: Resp.self).items
     }
 
+    /// The week's "heads up" digest (busiest day / conflicts) for the agenda view.
+    struct HeadsUp: Decodable, Sendable { let headline: String; let body: String }
+    func headsUp(from: String, to: String) async throws -> HeadsUp {
+        try await getJSON("/api/calendar/heads-up?from=\(from)&to=\(to)", as: HeadsUp.self)
+    }
+
     // MARK: Google Calendar links (for the event editor's calendar picker)
 
     /// One linked Google calendar. `accessRole` owner/writer = writable; the ★
@@ -619,6 +637,39 @@ struct NookAPI: Sendable {
         let rrule: String?
         let requiresApproval: Bool
         let streak: Int
+        /// Photo-proof: the chore needs a snapshot to complete; the (resolved, maybe
+        /// relative) proof URL once one is attached; and whether a proof was ever
+        /// attached (it auto-expires server-side, leaving this flag so the UI can say
+        /// the photo's gone). Decoded defensively so an older payload missing these
+        /// fields still loads the rest of the row.
+        let requiresPhoto: Bool
+        let proofUrl: String?
+        let hadProof: Bool
+
+        private enum CodingKeys: String, CodingKey {
+            case id, choreId, choreTitle, emoji, personId, personName, status
+            case rewardAmount, rewardCurrency, rrule, requiresApproval, streak
+            case requiresPhoto, proofUrl, hadProof
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            choreId = try c.decode(String.self, forKey: .choreId)
+            choreTitle = try c.decode(String.self, forKey: .choreTitle)
+            emoji = try c.decodeIfPresent(String.self, forKey: .emoji)
+            personId = try c.decodeIfPresent(String.self, forKey: .personId)
+            personName = try c.decodeIfPresent(String.self, forKey: .personName)
+            status = try c.decode(String.self, forKey: .status)
+            rewardAmount = (try? c.decode(Int.self, forKey: .rewardAmount)) ?? 0
+            rewardCurrency = try c.decodeIfPresent(String.self, forKey: .rewardCurrency)
+            rrule = try c.decodeIfPresent(String.self, forKey: .rrule)
+            requiresApproval = (try? c.decode(Bool.self, forKey: .requiresApproval)) ?? false
+            streak = (try? c.decode(Int.self, forKey: .streak)) ?? 0
+            requiresPhoto = (try? c.decode(Bool.self, forKey: .requiresPhoto)) ?? false
+            proofUrl = try? c.decodeIfPresent(String.self, forKey: .proofUrl)
+            hadProof = (try? c.decode(Bool.self, forKey: .hadProof)) ?? false
+        }
     }
 
     /// A household reward currency (stars, sticks, …) — symbol/label/color for display.
@@ -656,6 +707,71 @@ struct NookAPI: Sendable {
     /// Flip the gate (admin-only server-side).
     func setRewardApproval(_ requireApproval: Bool) async throws {
         try await send("PUT", "/api/rewards/settings", body: ["requireApproval": .bool(requireApproval)])
+    }
+
+    // MARK: - Settings: chore photo-proof retention
+
+    struct ChoresSettings: Decodable, Sendable { let proofTtlDays: Int }
+    /// How long completed-chore proof photos are kept, in days (0 = keep until deleted).
+    func choresSettings() async throws -> ChoresSettings {
+        try await getJSON("/api/chores/settings", as: ChoresSettings.self)
+    }
+    /// Set the proof-retention window (admin-only server-side). Returns the saved value
+    /// (the server clamps to 0…365).
+    @discardableResult
+    func setProofTtlDays(_ days: Int) async throws -> Int {
+        struct Resp: Decodable { let proofTtlDays: Int }
+        return try await sendReturning("PUT", "/api/chores/settings",
+                                       body: ["proofTtlDays": .int(days)], as: Resp.self).proofTtlDays
+    }
+
+    /// A retained chore-proof photo, for the "stored photos" manager in settings.
+    struct StoredProof: Decodable, Identifiable, Sendable {
+        let instanceId: String
+        let choreTitle: String
+        let emoji: String?
+        let personName: String?
+        let personAvatar: String?
+        let personColor: String?
+        let proofUrl: String?
+        let completedAt: String?
+        var id: String { instanceId }
+    }
+    /// Every currently-retained proof photo (settled chores whose blob hasn't expired).
+    func storedProofs() async throws -> [StoredProof] {
+        struct Resp: Decodable { let proofs: [StoredProof] }
+        return try await getJSON("/api/chore-proofs", as: Resp.self).proofs
+    }
+    /// Delete one stored proof (drops the blob, keeps the chore's `hadProof` flag).
+    func deleteProof(instanceId: String) async throws { try await delete("/api/chore-proofs/\(instanceId)") }
+    /// Delete every stored proof at once. Returns how many were cleared.
+    @discardableResult
+    func clearProofs() async throws -> Int {
+        struct Resp: Decodable { let cleared: Int }
+        return try await sendReturning("DELETE", "/api/chore-proofs", body: [:], as: Resp.self).cleared
+    }
+
+    // MARK: - Permissions matrix (role × capability)
+
+    /// The household's role→capability grid, e.g. `["adult": ["chore.manage": true, …]]`.
+    /// Admins always hold every capability regardless of the matrix (server-enforced).
+    struct PermissionsResponse: Decodable, Sendable {
+        let permissions: [String: [String: Bool]]
+        let capabilities: [String]
+        let roles: [String]
+    }
+    /// Read the per-role capability matrix (admin-only server-side; 403 for everyone else).
+    func permissionsMatrix() async throws -> PermissionsResponse {
+        try await getJSON("/api/permissions", as: PermissionsResponse.self)
+    }
+    /// Save the whole matrix (admin-only). Returns the sanitized matrix the server stored.
+    @discardableResult
+    func setPermissionsMatrix(_ matrix: [String: [String: Bool]]) async throws -> [String: [String: Bool]] {
+        struct Resp: Decodable { let permissions: [String: [String: Bool]] }
+        let body: [String: JSONValue] = [
+            "permissions": .object(matrix.mapValues { row in .object(row.mapValues { .bool($0) }) }),
+        ]
+        return try await sendReturning("PUT", "/api/permissions", body: body, as: Resp.self).permissions
     }
 
     /// A trade rate between two currencies (e.g. 10 ⭐ → 1 🥢).
@@ -698,11 +814,46 @@ struct NookAPI: Sendable {
         var returnToPicker: Bool
         var resetHomeMinutes: Int      // 0 = never reset to Today
         var nightDim: NightDim
+        // Photo-slideshow options (a server may omit these → sensible defaults).
+        var photoSource: String        // "all" | "favorites" | "album"
+        var photoAlbum: String?        // album name when photoSource == "album"
+        var photoInterval: Int         // seconds each photo stays on screen
+        var photoShuffle: Bool
         struct NightDim: Codable, Sendable, Equatable, Hashable {
             var enabled: Bool
             var start: String          // "HH:mm"
             var end: String            // "HH:mm"
         }
+
+        enum CodingKeys: String, CodingKey {
+            case screensaverMinutes, content, returnToPicker, resetHomeMinutes, nightDim
+            case photoSource, photoAlbum, photoInterval, photoShuffle
+        }
+        init(from d: Decoder) throws {
+            let c = try d.container(keyedBy: CodingKeys.self)
+            screensaverMinutes = try c.decode(Int.self, forKey: .screensaverMinutes)
+            content = try c.decode(String.self, forKey: .content)
+            returnToPicker = try c.decode(Bool.self, forKey: .returnToPicker)
+            resetHomeMinutes = try c.decode(Int.self, forKey: .resetHomeMinutes)
+            nightDim = try c.decode(NightDim.self, forKey: .nightDim)
+            photoSource = try c.decodeIfPresent(String.self, forKey: .photoSource) ?? "all"
+            photoAlbum = try c.decodeIfPresent(String.self, forKey: .photoAlbum)
+            photoInterval = try c.decodeIfPresent(Int.self, forKey: .photoInterval) ?? 8
+            photoShuffle = try c.decodeIfPresent(Bool.self, forKey: .photoShuffle) ?? true
+        }
+    }
+
+    /// Pick + order the photos the screensaver should play for a given config (all,
+    /// favorites, or a single album) and shuffle if asked. Mirrors web `screensaverPhotos`.
+    static func screensaverPhotos(_ photos: [Photo], _ cfg: DisplayConfig) -> [Photo] {
+        var out: [Photo]
+        switch cfg.photoSource {
+        case "favorites": out = photos.filter { $0.isFavorite }
+        case "album": out = cfg.photoAlbum.map { a in photos.filter { $0.memory == a } } ?? photos
+        default: out = photos
+        }
+        if cfg.photoShuffle { out.shuffle() }
+        return out
     }
 
     func displayConfig() async throws -> DisplayConfig {
@@ -723,6 +874,10 @@ struct NookAPI: Sendable {
                 "start": .string(cfg.nightDim.start),
                 "end": .string(cfg.nightDim.end),
             ]),
+            "photoSource": .string(cfg.photoSource),
+            "photoAlbum": cfg.photoAlbum.map(JSONValue.string) ?? .null,
+            "photoInterval": .int(cfg.photoInterval),
+            "photoShuffle": .bool(cfg.photoShuffle),
         ]
         return try await sendReturning("PUT", "/api/kiosk/display", body: body, as: DisplayConfig.self)
     }
@@ -759,8 +914,36 @@ struct NookAPI: Sendable {
     /// The logged-in person, resolved server-side from the token's `sub` via the
     /// identities table. nil if the account hasn't been provisioned yet.
     func currentPersonId() async throws -> String? {
-        struct Resp: Decodable { let person: Person?; struct Person: Decodable { let id: String } }
-        return try await getJSON("/api/household", as: Resp.self).person?.id
+        try await currentPerson()?.id
+    }
+
+    /// The logged-in person plus the household role & capabilities the UI uses to
+    /// gate management/approval controls — mirrors the web `can(person, cap)` helper.
+    /// Capabilities are server-resolved (admins implicitly get all four). nil if the
+    /// account hasn't been provisioned yet.
+    struct CurrentPerson: Decodable, Sendable, Equatable {
+        let id: String
+        let memberType: String       // "adult" | "teen" | "kid"
+        let isAdmin: Bool
+        let capabilities: [String]   // e.g. "chore.manage", "chore.approve", "reward.manage", "reward.approve"
+    }
+    func currentPerson() async throws -> CurrentPerson? {
+        struct Resp: Decodable {
+            let person: P?
+            struct P: Decodable {
+                let id: String
+                let memberType: String?
+                let isAdmin: Bool?
+                let capabilities: [String]?
+            }
+        }
+        guard let p = try await getJSON("/api/household", as: Resp.self).person else { return nil }
+        // Default conservatively: an absent role/flag/array grants nothing (least
+        // privilege) — the server is the real gate, this only hides UI we'd be told no on.
+        return CurrentPerson(id: p.id,
+                             memberType: p.memberType ?? "",
+                             isAdmin: p.isAdmin ?? false,
+                             capabilities: p.capabilities ?? [])
     }
 
     // MARK: mobile Today layout (per-user override + family default)
@@ -1012,7 +1195,15 @@ struct NookAPI: Sendable {
     /// Delete a chore definition + today's instances (admins).
     func deleteChore(id: String) async throws { try await delete("/api/chores/\(id)") }
 
-    func completeChore(id: String) async throws { try await send("POST", "/api/chore-instances/\(id)/complete", body: [:]) }
+    /// Mark an instance done. Pass an uploaded proof blob (`storageKey`/`contentType`)
+    /// for a photo-required chore; without it the server returns 422 `ProofRequired`,
+    /// which `APIError.isProofRequired` detects so the caller can prompt for a photo.
+    func completeChore(id: String, storageKey: String? = nil, contentType: String? = nil) async throws {
+        var body: [String: JSONValue] = [:]
+        if let storageKey { body["storageKey"] = .string(storageKey) }
+        if let contentType { body["contentType"] = .string(contentType) }
+        try await send("POST", "/api/chore-instances/\(id)/complete", body: body)
+    }
     func uncompleteChore(id: String) async throws { try await send("POST", "/api/chore-instances/\(id)/uncomplete", body: [:]) }
     func approveChore(id: String) async throws { try await send("POST", "/api/chore-instances/\(id)/approve", body: [:]) }
     func rejectChore(id: String) async throws { try await send("POST", "/api/chore-instances/\(id)/reject", body: [:]) }
@@ -1130,7 +1321,6 @@ struct NookAPI: Sendable {
     // MARK: Family hub tile counts (non-synced domains, fetched over REST)
 
     struct GoalDTO: Decodable { let id: String; let isFeatured: Bool }
-    struct PhotoDTO: Decodable { let id: String; let memory: String? }
     struct ListRefDTO: Decodable { let id: String }
     struct FamilyStarsDTO: Decodable, Sendable { let name: String?; let stars: Int }
 
@@ -1140,11 +1330,39 @@ struct NookAPI: Sendable {
         return try await getJSON("/api/goals", as: Resp.self).goals
     }
 
-    /// All photos (for the Photos tile count + latest memory).
-    func photos() async throws -> [PhotoDTO] {
-        struct Resp: Decodable { let photos: [PhotoDTO] }
-        return try await getJSON("/api/photos", as: Resp.self).photos
+    /// All photos (for the Photos tile count + latest memory, and the Photos wall),
+    /// newest first. Optional `memory` filters to one album.
+    func photos(memory: String? = nil) async throws -> [Photo] {
+        struct Resp: Decodable { let photos: [Photo] }
+        let path = memory.flatMap { m in
+            m.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+        }.map { "/api/photos?memory=\($0)" } ?? "/api/photos"
+        return try await getJSON(path, as: Resp.self).photos
     }
+
+    /// One photo's full detail.
+    func photo(id: String) async throws -> Photo {
+        struct Resp: Decodable { let photo: Photo }
+        return try await getJSON("/api/photos/\(id)", as: Resp.self).photo
+    }
+
+    /// Create a photo (typically `{ storageKey, caption, memory, isFavorite }` for an
+    /// uploaded blob). Returns the new photo's id.
+    @discardableResult
+    func createPhoto(_ body: [String: JSONValue]) async throws -> String {
+        struct Resp: Decodable { let photo: NewPhoto; struct NewPhoto: Decodable { let id: String } }
+        return try await sendReturning("POST", "/api/photos", body: body, as: Resp.self).photo.id
+    }
+
+    /// Patch a photo (caption / memory / isFavorite / takenAt). Returns the updated photo.
+    @discardableResult
+    func updatePhoto(id: String, _ body: [String: JSONValue]) async throws -> Photo {
+        struct Resp: Decodable { let photo: Photo }
+        return try await sendReturning("PATCH", "/api/photos/\(id)", body: body, as: Resp.self).photo
+    }
+
+    /// Soft-delete a photo.
+    func deletePhoto(id: String) async throws { try await delete("/api/photos/\(id)") }
 
     /// The household's lists (for the Lists tile count).
     func lists() async throws -> [ListRefDTO] {
@@ -1658,6 +1876,46 @@ struct NookAPI: Sendable {
         try check(resp, data)
     }
 
+    // MARK: Photos (the family photo wall)
+
+    /// Who uploaded a photo (display info for the "added by" row).
+    struct PhotoPerson: Decodable, Sendable {
+        let personId: String
+        let name: String?
+        let avatarEmoji: String?
+        let colorHex: String?
+    }
+
+    /// One photo on the family wall. `imageUrl` is a stored-blob URL (resolve through
+    /// `MediaURL.resolve`) or nil for an emoji-on-gradient tile (`emoji` + `colorHex`).
+    struct Photo: Decodable, Identifiable, Sendable {
+        let id: String
+        let imageUrl: String?
+        let caption: String
+        let emoji: String?
+        let colorHex: String?
+        let memory: String?
+        let takenAt: String?
+        let isFavorite: Bool
+        let reactions: [String: Int]
+        let uploadedBy: PhotoPerson?
+        let createdAt: String
+    }
+
+    // MARK: media upload (blob store)
+
+    /// The result of a media upload: the opaque storage key (persist as an entity's
+    /// `storageKey`), its resolved (relative) URL, and the stored content type.
+    struct UploadedMedia: Decodable, Sendable { let key: String; let url: String; let contentType: String }
+
+    /// Upload image bytes (base64) to the blob store. Returns the opaque storage key
+    /// (persist as an entity's storageKey) + its resolved (relative) URL.
+    func uploadMedia(base64Data: String, contentType: String) async throws -> UploadedMedia {
+        try await sendReturning("POST", "/api/media",
+            body: ["data": .string(base64Data), "contentType": .string(contentType)],
+            as: UploadedMedia.self)
+    }
+
     // MARK: helpers
 
     /// POST/PATCH a JSON body to `path`, throwing on non-2xx. The response body is
@@ -1681,7 +1939,7 @@ struct NookAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await perform(req)
         try check(resp, data)
-        return try JSONDecoder().decode(T.self, from: data)
+        return try Self.decoder.decode(T.self, from: data)
     }
 
     /// PATCH an arbitrary Encodable body and decode the JSON response. Optionals in
@@ -1695,7 +1953,7 @@ struct NookAPI: Sendable {
         req.httpBody = try JSONEncoder().encode(body)
         let (data, resp) = try await perform(req)
         try check(resp, data)
-        return try JSONDecoder().decode(T.self, from: data)
+        return try Self.decoder.decode(T.self, from: data)
     }
 
     /// POST/PATCH (no body) and decode the JSON response, throwing on non-2xx.
@@ -1705,7 +1963,7 @@ struct NookAPI: Sendable {
         authorize(&req)
         let (data, resp) = try await perform(req)
         try check(resp, data)
-        return try JSONDecoder().decode(T.self, from: data)
+        return try Self.decoder.decode(T.self, from: data)
     }
 
     /// GET `path` and decode the JSON body, throwing on non-2xx.
@@ -1714,7 +1972,7 @@ struct NookAPI: Sendable {
         authorize(&req)
         let (data, resp) = try await perform(req)
         try check(resp, data)
-        return try JSONDecoder().decode(T.self, from: data)
+        return try Self.decoder.decode(T.self, from: data)
     }
 
     /// DELETE `path`, throwing on non-2xx (204 is success).

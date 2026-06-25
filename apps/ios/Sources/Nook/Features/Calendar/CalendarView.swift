@@ -682,7 +682,7 @@ struct EventEditSheet: View {
             .onChange(of: participants) { _, _ in recomputeDefaultCalendar(); clearOrphanGoal(); scheduleSuggest() }
             .onChange(of: title) { _, _ in scheduleSuggest() }
         }
-        .presentationDetents([.large])
+        .modifier(KioskSheetPresentation(kiosk: DeviceExperience.current == .kiosk))
     }
 
     private var bottomBar: some View {
@@ -697,14 +697,12 @@ struct EventEditSheet: View {
                 }
                 .buttonStyle(.plain)
             }
-            Button { save() } label: {
-                Text(editing ? "Save" : "Add event")
-                    .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
-                    .frame(maxWidth: .infinity).padding(.vertical, 14)
-                    .background(canSave ? NK.primary : NK.primary.opacity(0.4))
-                    .clipShape(Capsule())
-            }
-            .buttonStyle(.plain).disabled(!canSave)
+            NookPrimaryCTA(
+                label: editing ? "Save" : "Add event",
+                tint: NK.primary,
+                isDisabled: !canSave,
+                action: { save() }
+            )
         }
     }
 

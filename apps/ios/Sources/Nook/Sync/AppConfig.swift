@@ -9,11 +9,26 @@ enum AppConfig {
     private static let urlKey = "nook.apiBaseURL"
     private static let tokenKey = "nook.devToken"
 
-    /// Our API base. The iOS simulator reaches the host Mac on `localhost`.
+    /// The built-in fallback server address — the compose stack's Caddy origin (serves
+    /// /api + /media). Exposed so the About screen can show/reset to it.
+    static let defaultBaseURL = "http://localhost:8080"
+
+    /// The address explicitly saved in Settings (nil if unset — i.e. using the default).
+    static var storedApiBaseURL: String? { UserDefaults.standard.string(forKey: urlKey) }
+    /// The dev token explicitly saved in Settings (ignores the env override).
+    static var storedDevToken: String { UserDefaults.standard.string(forKey: tokenKey) ?? "" }
+
+    /// Our API base — the single public origin Caddy fronts (it proxies `/api/*` to the
+    /// api container AND serves uploaded media at `/media/*`). It must be the Caddy
+    /// origin, NOT the api's own port: the api alone (`:3000`) doesn't serve `/media`, so
+    /// photo/recipe/proof images would 404 and fall back to a placeholder. The default
+    /// targets the compose stack's Caddy (`:8080` on the host); the simulator reaches the
+    /// host Mac on `localhost`. On a real device, set the Server address to the Mac's LAN
+    /// IP on that same Caddy port. Override via the Settings sheet or `NOOK_API_URL`.
     static var apiBaseURL: String {
         env("NOOK_API_URL")
             ?? UserDefaults.standard.string(forKey: urlKey)
-            ?? "http://localhost:3000"
+            ?? defaultBaseURL
     }
 
     /// Local HS256 session token (mint via `just token` / `nook token`). The API's
@@ -45,12 +60,18 @@ enum AppConfig {
         return !devToken.isEmpty
     }
 
+    /// Save the server address, or clear it (fall back to `defaultBaseURL`) when blank.
     static func setApiBaseURL(_ value: String) {
-        UserDefaults.standard.set(value, forKey: urlKey)
+        let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if v.isEmpty { UserDefaults.standard.removeObject(forKey: urlKey) }
+        else { UserDefaults.standard.set(v, forKey: urlKey) }
     }
 
+    /// Save the dev token, or clear it when blank.
     static func setDevToken(_ value: String) {
-        UserDefaults.standard.set(value, forKey: tokenKey)
+        let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if v.isEmpty { UserDefaults.standard.removeObject(forKey: tokenKey) }
+        else { UserDefaults.standard.set(v, forKey: tokenKey) }
     }
 
     private static let signedOutKey = "nook.signedOut"
@@ -76,6 +97,27 @@ enum AppConfig {
 enum DemoHooks {
     /// Initial tab: today | calendar | meals | family.
     static var startTab: String? { AppConfig.env("NOOK_START_TAB") }
+    /// Initial iPad kiosk page (rail selection): today | calendar | tasks | goals |
+    /// family | meals | lists | photos | settings. No effect on iPhone.
+    static var kioskPage: String? { AppConfig.env("NOOK_KIOSK_PAGE") }
+    /// Initial iPad calendar mode for verification: month | week | day.
+    static var kioskCalMode: String? { AppConfig.env("NOOK_CAL_MODE") }
+    /// Auto-open the first event's detail on the iPad calendar (verification).
+    static var kioskOpenEvent: Bool { AppConfig.env("NOOK_KIOSK_OPEN_EVENT") == "1" }
+    /// Auto-open the first event's editor on the iPad calendar (verification).
+    static var kioskOpenEdit: Bool { AppConfig.env("NOOK_KIOSK_OPEN_EDIT") == "1" }
+    /// Initial Meals section for verification: week | month | recipes.
+    static var mealsSection: String? { AppConfig.env("NOOK_MEALS_SECTION") }
+    /// Auto-open the "Plan my week" sheet (verification).
+    static var planWeek: Bool { AppConfig.env("NOOK_PLAN_WEEK") == "1" }
+    /// Auto-open the "Plan my month" sheet (verification).
+    static var planMonth: Bool { AppConfig.env("NOOK_PLAN_MONTH") == "1" }
+    /// Auto-open the featured goal's detail on the iPad Goals page (verification).
+    static var openGoal: Bool { AppConfig.env("NOOK_OPEN_GOAL") == "1" }
+    /// Auto-open the "New goal" create sheet on the Goals page (verification).
+    static var newGoal: Bool { AppConfig.env("NOOK_NEW_GOAL") == "1" }
+    /// Auto-open the first member's spotlight on the iPad Family page (verification).
+    static var openPerson: Bool { AppConfig.env("NOOK_OPEN_PERSON") == "1" }
     /// Auto-present the Sync panel on the Family screen.
     static var openSync: Bool { AppConfig.env("NOOK_OPEN_SYNC") == "1" }
     /// Insert one offline test event once members have synced.

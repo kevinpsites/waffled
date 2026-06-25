@@ -47,26 +47,63 @@ struct PlanWeekSheet: View {
 
     struct PickTarget: Identifiable { let date: String; var id: String { date } }
 
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
     var body: some View {
         NavigationStack {
-            Group {
-                switch phase {
-                case .config: configView
-                case .loading: loadingView
-                case .review: reviewView
-                case .empty: messageView("🎉", "Every night this week is already planned.", "Nothing to suggest — you’re all set.")
-                case .failed: messageView("😕", "Couldn’t plan the week", errorMessage ?? "The AI provider didn’t respond. Try again.")
+            content
+                .background(NK.canvas)
+                .navigationTitle("Plan my week").navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 }
-            }
-            .background(NK.canvas)
-            .navigationTitle("Plan my week").navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-            }
         }
+        .modifier(KioskSheetPresentation(kiosk: isKiosk))
         .task { seedDaysIfNeeded() }
         .sheet(item: $pickTarget) { target in
             RecipePickerSheet(model: recipes) { recipe in pickRecipe(date: target.date, recipe) }
+        }
+    }
+
+    /// iPad: a wide two-column sheet — requirements on the left, the AI-drafted meals
+    /// on the right (web-style). iPhone: the sequential config → result phases.
+    @ViewBuilder private var content: some View {
+        if isKiosk {
+            HStack(spacing: 0) {
+                configView.frame(width: 300)
+                Divider()
+                kioskResultPane.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        } else {
+            phaseView
+        }
+    }
+
+    @ViewBuilder private var phaseView: some View {
+        switch phase {
+        case .config: configView
+        case .loading: loadingView
+        case .review: reviewView
+        case .empty: PlanMessageView(emoji: "🎉", title: "Every night this week is already planned.", subtitle: "Nothing to suggest — you’re all set.")
+        case .failed: PlanMessageView(emoji: "😕", title: "Couldn’t plan the week", subtitle: errorMessage ?? "The AI provider didn’t respond. Try again.", onRetry: { phase = .config })
+        }
+    }
+
+    @ViewBuilder private var kioskResultPane: some View {
+        switch phase {
+        case .config:
+            VStack(spacing: 12) {
+                Text("✨").font(.system(size: 40))
+                Text("Draft your week").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
+                Text("Set the meal, days, and any notes on the left, then tap Plan my week.")
+                    .font(.system(size: 13)).foregroundStyle(NK.ink3)
+                    .multilineTextAlignment(.center).padding(.horizontal, 40)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .loading: loadingView
+        case .review: reviewView
+        case .empty: PlanMessageView(emoji: "🎉", title: "Every night this week is already planned.", subtitle: "Nothing to suggest — you’re all set.")
+        case .failed: PlanMessageView(emoji: "😕", title: "Couldn’t plan the week", subtitle: errorMessage ?? "The AI provider didn’t respond. Try again.", onRetry: { phase = .config })
         }
     }
 
@@ -89,8 +126,7 @@ struct PlanWeekSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     // Plan which meal?
-                    VStack(alignment: .leading, spacing: 9) {
-                        SectionLabel(text: "Plan which meal?")
+                    NookFieldCard(title: "Plan which meal?") {
                         HStack(spacing: 0) {
                             ForEach(mealTypes, id: \.self) { m in
                                 Button { mealType = m } label: {
@@ -112,8 +148,7 @@ struct PlanWeekSheet: View {
                     }
 
                     // Which days?
-                    VStack(alignment: .leading, spacing: 9) {
-                        SectionLabel(text: "Which days?")
+                    NookFieldCard(title: "Which days?") {
                         HStack(spacing: 6) {
                             ForEach(weekDays, id: \.self) { d in dayChip(d) }
                         }
@@ -130,42 +165,21 @@ struct PlanWeekSheet: View {
                                     Button { cookingFor = n } label: { Text("\(n)") }
                                 }
                             } label: {
-                                HStack(spacing: 6) {
-                                    Text(cookingForLabel).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
-                                    Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
-                                }
-                                .padding(.horizontal, 14).padding(.vertical, 9)
-                                .background(NK.panel).clipShape(Capsule())
+                                NookMenuPill(text: cookingForLabel)
                             }
                         }
                     }
 
                     // Use up first
-                    NookCard(padding: 14) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Use up first").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
-                            ChipFlow(spacing: 8, lineSpacing: 8) {
-                                ForEach(useUp, id: \.self) { u in useUpChip(u) }
-                                TextField("+ Add", text: $useUpInput)
-                                    .font(.system(size: 14)).textInputAutocapitalization(.never)
-                                    .submitLabel(.done).onSubmit { addUseUp() }
-                                    .frame(minWidth: 80)
-                                    .padding(.horizontal, 12).padding(.vertical, 7)
-                                    .background(NK.panel).clipShape(Capsule())
-                            }
-                        }
-                    }
+                    UseUpCard(items: $useUp, input: $useUpInput)
 
                     // Keep in mind
-                    NookCard(padding: 14) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Keep in mind").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
-                            TextField("e.g. Lottie skips spicy · Tue & Thu are busy — keep under 30 min",
-                                      text: $keepInMind, axis: .vertical)
-                                .font(.system(size: 14)).lineLimit(2...4)
-                                .padding(.horizontal, 12).padding(.vertical, 10)
-                                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
-                        }
+                    NookFieldCard(title: "Keep in mind") {
+                        TextField("e.g. Lottie skips spicy · Tue & Thu are busy — keep under 30 min",
+                                  text: $keepInMind, axis: .vertical)
+                            .font(.system(size: 14)).lineLimit(2...4)
+                            .padding(.horizontal, 12).padding(.vertical, 10)
+                            .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
                     }
                 }
                 .padding(20)
@@ -191,32 +205,14 @@ struct PlanWeekSheet: View {
 
     private func dayChip(_ d: Date) -> some View {
         let key = ymd(d)
-        let on = selectedDays.contains(key)
-        return Button {
-            if on { selectedDays.remove(key) } else { selectedDays.insert(key) }
-        } label: {
-            VStack(spacing: 2) {
-                Text(dowLetter(d)).font(.system(size: 15, weight: .heavy)).foregroundStyle(on ? .white : NK.ink2)
-            }
-            .frame(maxWidth: .infinity).frame(height: 46)
-            .background(on ? NK.primary : NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(on ? .clear : NK.hair, lineWidth: 1))
+        // 3-letter weekday (Sun/Mon/…) to match the Plan-my-month selector exactly.
+        return WeekdayToggleChip(label: DateFmt.string(d, "EEE", sync.householdTz), isOn: selectedDays.contains(key)) {
+            if selectedDays.contains(key) { selectedDays.remove(key) } else { selectedDays.insert(key) }
         }
-        .buttonStyle(.plain)
     }
 
-    private func useUpChip(_ u: String) -> some View {
-        HStack(spacing: 5) {
-            Text(u).font(.system(size: 14, weight: .medium)).foregroundStyle(NK.ink)
-            Button { useUp.removeAll { $0 == u } } label: {
-                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(NK.ink3)
-            }
-        }
-        .padding(.horizontal, 12).padding(.vertical, 7)
-        .background(NK.panel).clipShape(Capsule())
-    }
-
+    /// Fold a half-typed use-up entry into the chips (used before drafting). Mirrors
+    /// `UseUpCard`'s own add logic so a pending input isn't lost on Plan.
     private func addUseUp() {
         let v = useUpInput.trimmingCharacters(in: .whitespaces)
         guard !v.isEmpty, !useUp.contains(v), useUp.count < 12 else { useUpInput = ""; return }
@@ -230,30 +226,8 @@ struct PlanWeekSheet: View {
     // MARK: loading
 
     private var loadingView: some View {
-        VStack(spacing: 16) {
-            ProgressView().controlSize(.large).tint(NK.ai)
-            Text("Drafting your week…").font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
-            Text("Asking the kitchen AI — this can take a moment on a local model.")
-                .font(.system(size: 13)).foregroundStyle(NK.ink3).multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func messageView(_ emoji: String, _ title: String, _ subtitle: String) -> some View {
-        VStack(spacing: 12) {
-            Text(emoji).font(.system(size: 44))
-            Text(title).font(.system(size: 18, weight: .bold)).foregroundStyle(NK.ink)
-            Text(subtitle).font(.system(size: 14)).foregroundStyle(NK.ink3)
-                .multilineTextAlignment(.center).padding(.horizontal, 40)
-            if phase == .failed {
-                Button { phase = .config } label: {
-                    Text("Try again").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ai)
-                }
-                .padding(.top, 4)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        PlanLoadingView(title: "Drafting your week…",
+                        subtitle: "Asking the kitchen AI — this can take a moment on a local model.")
     }
 
     // MARK: review
@@ -265,22 +239,14 @@ struct PlanWeekSheet: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 1) {
                             Text("Here’s your week").font(NK.serif(17, .bold)).foregroundStyle(NK.ink)
-                            if let via { Text("Drafted via \(viaLabel(via))")
+                            if let via { Text("Drafted via \(MealPlanText.viaLabel(via))")
                                 .font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3) }
                         }
                         Spacer()
-                        Button { Task { await reshuffle() } } label: {
-                            HStack(spacing: 6) {
-                                if redrafting && draftingDates.count > 1 {
-                                    ProgressView().controlSize(.small).tint(NK.ai)
-                                } else { Text("✨").font(.system(size: 13)) }
-                                Text(redrafting && draftingDates.count > 1 ? "Reshuffling…" : "Reshuffle")
-                                    .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ai)
-                            }
-                            .padding(.horizontal, 12).padding(.vertical, 8)
-                            .background(NK.ai.opacity(0.10)).clipShape(Capsule())
+                        PlanReshuffleButton(isBusy: redrafting && draftingDates.count > 1,
+                                            isDisabled: redrafting || unlockedDates.isEmpty) {
+                            Task { await reshuffle() }
                         }
-                        .buttonStyle(.plain).disabled(redrafting || unlockedDates.isEmpty)
                     }
                     if let notice {
                         HStack(spacing: 7) {
@@ -292,7 +258,14 @@ struct PlanWeekSheet: View {
                         .padding(.horizontal, 12).padding(.vertical, 9)
                         .background(NK.primary.opacity(0.10)).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
                     }
-                    ForEach(suggestions) { card in suggestionCard(card) }
+                    if isKiosk {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 300, maximum: 460), spacing: 12, alignment: .top)],
+                                  alignment: .leading, spacing: 12) {
+                            ForEach(suggestions) { card in suggestionCard(card) }
+                        }
+                    } else {
+                        ForEach(suggestions) { card in suggestionCard(card) }
+                    }
                     Text("Lock the nights you love, swap or pick the rest.")
                         .font(.system(size: 12)).foregroundStyle(NK.ink3)
                         .frame(maxWidth: .infinity, alignment: .center).padding(.top, 2)
@@ -307,79 +280,33 @@ struct PlanWeekSheet: View {
 
     private func suggestionCard(_ card: NookAPI.PlanCardDTO) -> some View {
         let isLocked = locked.contains(card.date)
-        let busy = draftingDates.contains(card.date)
-        return VStack(spacing: 10) {
-            HStack(spacing: 12) {
-                Text(card.emoji ?? "🍽️").font(.system(size: 26))
-                    .frame(width: 46, height: 46).background(RecipeGradient.forCategory(card.mealType))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(weekday(card.date)).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
-                    Text(card.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                        .lineLimit(2).multilineTextAlignment(.leading)
-                    HStack(spacing: 8) {
-                        if let m = card.minutes { tag("🕐 \(m)m") }
-                        tag(card.recipeId != nil ? "📖 From library" : "✨ New dish")
-                    }
-                    if let note = card.note, !note.isEmpty {
-                        Text(note).font(.system(size: 12)).foregroundStyle(NK.ink3).lineLimit(2)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            Divider().background(NK.hair)
-            HStack(spacing: 8) {
-                actionButton("arrow.triangle.2.circlepath", "Swap") { Task { await swap(card) } }
-                    .disabled(redrafting)
-                actionButton("book", "Pick") { pickTarget = PickTarget(date: card.date) }
-                    .disabled(redrafting)
-                Spacer()
-                Button { toggleLock(card.date) } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: isLocked ? "lock.fill" : "lock.open")
-                            .font(.system(size: 12, weight: .bold))
-                        Text(isLocked ? "Locked" : "Lock").font(.system(size: 12, weight: .bold))
-                    }
-                    .foregroundStyle(isLocked ? .white : NK.ink2)
-                    .padding(.horizontal, 12).padding(.vertical, 7)
-                    .background(isLocked ? NK.primary : NK.panel).clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(13)
-        .background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-            .strokeBorder(isLocked ? NK.primary.opacity(0.45) : NK.hair, lineWidth: 1))
-        .overlay {
-            if busy {
-                RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).fill(NK.card.opacity(0.7))
-                    .overlay(ProgressView().controlSize(.small).tint(NK.ai))
-            }
-        }
-        .animation(.easeInOut(duration: 0.15), value: isLocked)
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-            .strokeBorder(dragOverDate == card.date ? NK.ai : .clear, lineWidth: 2))
-        .draggable(card.date) { cardDragPreview(card) }
-        .dropDestination(for: String.self) { items, _ in
-            guard let s = items.first else { return false }
-            swapCards(s, card.date); return true
-        } isTargeted: { over in dragOverDate = over ? card.date : (dragOverDate == card.date ? nil : dragOverDate) }
-    }
-
-    private func cardDragPreview(_ card: NookAPI.PlanCardDTO) -> some View {
-        HStack(spacing: 5) {
-            Text(card.emoji ?? "🍽️").font(.system(size: 14))
-            Text(card.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
-        }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(NK.card).clipShape(Capsule()).overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+        var tags: [String] = []
+        if let m = card.minutes { tags.append("🕐 \(m)m") }
+        tags.append(card.recipeId != nil ? "📖 From library" : "✨ New dish")
+        let note = card.note.flatMap { $0.isEmpty ? nil : $0 }
+        return MealPlanReviewCard(
+            card: card,
+            dayLabel: MealPlanText.weekday(card.date, sync.householdTz),
+            isLocked: isLocked,
+            isBusy: draftingDates.contains(card.date),
+            isDragTarget: dragOverDate == card.date,
+            metaTags: tags,
+            belowTitleNote: note,
+            titleMultilineLeading: true,
+            onSwap: { Task { await swap(card) } },
+            onPick: { pickTarget = PickTarget(date: card.date) },
+            onToggleLock: { toggleLock(card.date) },
+            onDrop: { s in swapCards(s, card.date); return true },
+            onDragTargetChange: { over in
+                dragOverDate = over ? card.date : (dragOverDate == card.date ? nil : dragOverDate)
+            },
+            actionsDisabled: redrafting || isLocked)
     }
 
     /// Swap the meals on two review nights (keeps each card's date).
     private func swapCards(_ srcDate: String, _ tgtDate: String) {
         guard srcDate != tgtDate,
+              !locked.contains(srcDate), !locked.contains(tgtDate),   // locked nights don't move
               let i = suggestions.firstIndex(where: { $0.date == srcDate }),
               let j = suggestions.firstIndex(where: { $0.date == tgtDate }) else { return }
         let a = suggestions[i], b = suggestions[j]
@@ -389,41 +316,13 @@ struct PlanWeekSheet: View {
                                              emoji: a.emoji, minutes: a.minutes, servings: a.servings, note: a.note)
     }
 
-    private func actionButton(_ icon: String, _ label: String, _ tap: @escaping () -> Void) -> some View {
-        Button(action: tap) {
-            HStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 12, weight: .bold))
-                Text(label).font(.system(size: 12, weight: .bold))
-            }
-            .foregroundStyle(NK.ink2)
-            .padding(.horizontal, 12).padding(.vertical, 7)
-            .background(NK.panel).clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func tag(_ t: String) -> some View {
-        Text(t).font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink2)
-            .padding(.horizontal, 7).padding(.vertical, 2).background(NK.panel).clipShape(Capsule())
-    }
-
     private var applyBar: some View {
-        VStack(spacing: 0) {
-            Divider().background(NK.hair)
-            Button { Task { await apply() } } label: {
-                HStack(spacing: 8) {
-                    if applying { ProgressView().controlSize(.small).tint(.white) }
-                    Text(applying ? "Adding…" : "Add \(suggestions.count) & build list")
-                        .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
-                }
-                .frame(maxWidth: .infinity).padding(.vertical, 14)
-                .background(suggestions.isEmpty ? NK.ink3 : NK.ai)
-                .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            }
-            .buttonStyle(.plain).disabled(suggestions.isEmpty || applying || redrafting)
-            .padding(.horizontal, 16).padding(.vertical, 12)
+        PlanApplyBar(isBusy: applying,
+                     isInactive: suggestions.isEmpty,
+                     isDisabled: suggestions.isEmpty || applying || redrafting,
+                     label: applying ? "Adding…" : "Add \(suggestions.count) & build list") {
+            Task { await apply() }
         }
-        .background(NK.canvas)
     }
 
     // MARK: actions
@@ -453,7 +352,7 @@ struct PlanWeekSheet: View {
                 keepInMind: keepInMind, useUp: Array(useUp.prefix(12)), avoidTitles: avoid)
             via = result.via
             if let err = result.error, result.suggestions.isEmpty {
-                errorMessage = friendly(err); if full { phase = .failed }
+                errorMessage = MealPlanText.friendly(err); if full { phase = .failed }
                 return
             }
 
@@ -559,21 +458,4 @@ struct PlanWeekSheet: View {
     }
     private func ymd(_ d: Date) -> String { DateFmt.string(d, "yyyy-MM-dd", sync.householdTz) }
     /// Narrow weekday: S M T W T F S
-    private func dowLetter(_ d: Date) -> String { DateFmt.string(d, "EEEEE", sync.householdTz) }
-
-    // MARK: helpers
-
-    private func friendly(_ err: String) -> String {
-        err == "AIUnavailable" || err == "No AI provider configured"
-            ? "No AI provider is set up. Choose one in Settings → AI & capture."
-            : err
-    }
-    private func viaLabel(_ v: String) -> String {
-        switch v { case "anthropic": return "Claude"; case "openai": return "OpenAI"
-        case "ollama", "local": return "local AI"; default: return v }
-    }
-    private func weekday(_ ymd: String) -> String {
-        guard let d = DateFmt.date(ymd, "yyyy-MM-dd", sync.householdTz) else { return ymd }
-        return DateFmt.string(d, "EEE MMM d", sync.householdTz).uppercased()
-    }
 }

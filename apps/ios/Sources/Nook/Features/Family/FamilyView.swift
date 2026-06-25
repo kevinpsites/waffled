@@ -15,9 +15,9 @@ struct FamilyView: View {
     @State private var ranDemo = false
     private let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
-    /// Per-tile approval counts (parents only) — chore check-offs vs reward purchases.
-    private var choreApprovals: Int { sync.isParent ? approvals.chores.count : 0 }
-    private var rewardApprovals: Int { sync.isParent ? approvals.redemptions.count : 0 }
+    /// Per-tile approval counts — only shown to those who can action that queue.
+    private var choreApprovals: Int { sync.can("chore.approve") ? approvals.chores.count : 0 }
+    private var rewardApprovals: Int { sync.can("reward.approve") ? approvals.redemptions.count : 0 }
 
     var body: some View {
         NavigationStack(path: $path) {

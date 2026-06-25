@@ -50,14 +50,7 @@ struct TodayView: View {
 
     private var greetingDate: String { DateFmt.string(Date(), "EEEE, MMM d", sync.householdTz) }
 
-    private var greetingPhrase: String {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = sync.householdTz
-        switch cal.component(.hour, from: Date()) {
-        case 5..<12:  return "Good morning"
-        case 12..<17: return "Good afternoon"
-        default:      return "Good evening"
-        }
-    }
+    private var greetingPhrase: String { DateFmt.greeting(sync.householdTz) }
 
     var body: some View {
         NavigationStack(path: $path) {

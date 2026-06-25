@@ -45,7 +45,7 @@ struct SettingsView: View {
                 row("📋", "Lists", "Grocery & lists")
                 row("🖥️", "Display & Kiosk", "Screensaver & idle") { path.append(.settingsDisplay) }
                 row("🔔", "Notifications", "Event reminders") { path.append(.settingsNotifications) }
-                row("ℹ️", "About", "Version & info")
+                row("ℹ️", "About", "Version & server") { path.append(.settingsAbout) }
                 signOutFooter
             }
             .padding(16).padding(.bottom, 110)
@@ -94,8 +94,7 @@ struct SettingsView: View {
         let enabled = tap != nil
         return Button { tap?() } label: {
             HStack(spacing: 12) {
-                Text(emoji).font(.system(size: 22)).frame(width: 40, height: 40)
-                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                NookEmojiTile(emoji: emoji)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(enabled ? NK.ink : NK.ink2)
                     Text(sub).font(.system(size: 12.5)).foregroundStyle(NK.ink3)
@@ -132,8 +131,22 @@ struct ChoresRewardsSettingsView: View {
     @State private var toAmt = 1
     @State private var requireApproval: Bool?   // nil until loaded
     @State private var savingApproval = false
+    // Chore photo-proof retention (admin-only) + the "stored photos" manager.
+    @State private var proofTtlDays: Int?       // nil until loaded
+    @State private var savingTtl = false
+    @State private var storedProofs: [NookAPI.StoredProof] = []
+    @State private var showStoredProofs = false
 
     private let api = NookAPI()
+
+    private var isAdmin: Bool { sync.currentPerson?.isAdmin == true }
+    private static let ttlOptions: [(days: Int, label: String)] = [
+        (1, "1 day"), (3, "3 days"), (7, "1 week"), (30, "30 days"), (0, "Keep until I delete"),
+    ]
+    private var ttlLabel: String {
+        guard let d = proofTtlDays else { return "…" }
+        return Self.ttlOptions.first { $0.days == d }?.label ?? "\(d) days"
+    }
 
     private enum CurrencyEditor: Identifiable {
         case new
@@ -153,6 +166,9 @@ struct ChoresRewardsSettingsView: View {
                 }
                 // …and the separate redemption policy.
                 groupTray { approvalsSection }
+                // Chore photo-proof retention is an admin setting (the server gates the
+                // write), so only surface it to admins — no dead-end for everyone else.
+                if isAdmin { groupTray { proofSection } }
             }
             .padding(16).padding(.bottom, 110)
         }
@@ -162,6 +178,9 @@ struct ChoresRewardsSettingsView: View {
         .onChange(of: sync.rewardsRev) { _, _ in Task { await load() } }
         .sheet(item: $editor) { e in
             CurrencyEditorSheet(editing: e.currency, canDelete: currencies.count > 1) { await load() }
+        }
+        .sheet(isPresented: $showStoredProofs) {
+            StoredProofsSheet(proofs: storedProofs) { await loadProofs() }
         }
     }
 
@@ -230,6 +249,72 @@ struct ChoresRewardsSettingsView: View {
         }
     }
 
+    /// How long completed-chore photos are kept, plus a way to browse/clear the ones
+    /// currently held. The retention write is admin-only (server-gated); the card only
+    /// renders for admins. Optimistic select, reverts on failure.
+    private var proofSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(text: "Chore photo proof")
+            Text("When a chore needs a photo, the snapshot is kept this long after it’s done, then deleted automatically. Awaiting check-offs are always kept until you review them.")
+                .font(.system(size: 13)).foregroundStyle(NK.ink2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 12) {
+                Text("📸").font(.system(size: 20)).frame(width: 40, height: 40)
+                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                Text("Keep proof photos for")
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                Spacer(minLength: 8)
+                Menu {
+                    ForEach(Self.ttlOptions, id: \.days) { o in
+                        Button(o.label) { setProofTtl(o.days) }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(ttlLabel).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                        Image(systemName: "chevron.up.chevron.down").font(.system(size: 10, weight: .bold)).foregroundStyle(NK.ink3)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 9)
+                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                }
+                .disabled(proofTtlDays == nil || savingTtl)
+            }
+            .padding(12).background(NK.card)
+            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+
+            if !storedProofs.isEmpty {
+                Button { showStoredProofs = true } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "photo.stack").font(.system(size: 14, weight: .semibold))
+                        Text("View stored photos (\(storedProofs.count))").font(.system(size: 14, weight: .semibold))
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                    }
+                    .foregroundStyle(NK.ink2).padding(12)
+                    .background(NK.card2).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func setProofTtl(_ days: Int) {
+        let previous = proofTtlDays
+        proofTtlDays = days
+        savingTtl = true
+        Task {
+            do { proofTtlDays = try await api.setProofTtlDays(days) }
+            catch { proofTtlDays = previous }   // revert on failure
+            savingTtl = false
+        }
+    }
+
+    private func loadProofs() async {
+        storedProofs = (try? await api.storedProofs()) ?? []
+    }
+
     private func setApproval(_ on: Bool) {
         let previous = requireApproval
         requireApproval = on
@@ -265,8 +350,7 @@ struct ChoresRewardsSettingsView: View {
     }
 
     private func tag(_ t: String, _ color: Color) -> some View {
-        Text(t).font(.system(size: 11, weight: .bold)).foregroundStyle(color)
-            .padding(.horizontal, 7).padding(.vertical, 2).background(color.opacity(0.12)).clipShape(Capsule())
+        NookStatusBadge(text: t, color: color)
     }
 
     // MARK: conversions
@@ -358,12 +442,20 @@ struct ChoresRewardsSettingsView: View {
     }
 
     private func load() async {
+        // Make sure we know who's signed in before gating the admin-only proof section,
+        // otherwise a slow identity fetch leaves `isAdmin` false and the card never shows.
+        await sync.loadIdentity()
         async let cur = api.currencies()
         async let conv = api.conversions()
         async let approval = api.rewardSettings()
         currencies = (try? await cur) ?? []
         conversions = (try? await conv) ?? []
         requireApproval = (try? await approval)?.requireApproval ?? true
+        // Photo-proof retention + held photos are an admin-only surface.
+        if isAdmin {
+            proofTtlDays = (try? await api.choresSettings())?.proofTtlDays ?? 3
+            await loadProofs()
+        }
         // seed the new-conversion currency pickers
         if fromKey.isEmpty || !currencies.contains(where: { $0.key == fromKey }) { fromKey = currencies.first?.key ?? "" }
         if toKey.isEmpty || !currencies.contains(where: { $0.key == toKey }) {

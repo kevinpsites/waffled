@@ -34,7 +34,7 @@ struct FamilyPeopleSettingsView: View {
                 if let s = settings {
                     ForEach(s.members) { m in memberRow(m) }
                 } else if loading {
-                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 30)
+                    NookLoading(top: 30).padding(.bottom, 30)
                 }
                 Button { editor = .new } label: {
                     HStack(spacing: 7) {
@@ -50,6 +50,10 @@ struct FamilyPeopleSettingsView: View {
                 .buttonStyle(.plain).padding(.top, 2)
 
                 if let s = settings { householdCard(s.household) }
+
+                // Role → capability grid. Admin-only: it loads /api/permissions and
+                // hides itself on the 403 a non-admin gets, so it self-gates.
+                PermissionsCard()
             }
             .padding(16).padding(.bottom, 110)
         }
@@ -113,7 +117,7 @@ struct FamilyPeopleSettingsView: View {
                     Menu {
                         Button("Sunday") { commit(["weekStart": .string("sunday")]) }
                         Button("Monday") { commit(["weekStart": .string("monday")]) }
-                    } label: { menuLabel(h.weekStart.capitalized) }
+                    } label: { NookSettingsMenuLabel(value: h.weekStart.capitalized) }
                 }
                 Divider().background(NK.hair)
                 fieldRow("🌐", "Time zone") {
@@ -121,7 +125,7 @@ struct FamilyPeopleSettingsView: View {
                         ForEach(zoneOptions(h.timezone), id: \.0) { z in
                             Button(z.1) { commit(["timezone": .string(z.0)]) }
                         }
-                    } label: { menuLabel(zoneLabel(h.timezone)) }
+                    } label: { NookSettingsMenuLabel(value: zoneLabel(h.timezone)) }
                 }
                 Divider().background(NK.hair)
                 fieldRow("📍", "Location") {
@@ -147,13 +151,6 @@ struct FamilyPeopleSettingsView: View {
         .padding(.vertical, 12)
     }
 
-    private func menuLabel(_ t: String) -> some View {
-        HStack(spacing: 5) {
-            Text(t).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-            Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
-        }
-    }
-
     private func zoneOptions(_ current: String) -> [(String, String)] {
         Self.zones.contains { $0.0 == current } ? Self.zones : Self.zones + [(current, current)]
     }
@@ -169,6 +166,100 @@ struct FamilyPeopleSettingsView: View {
 
     private func commit(_ body: [String: JSONValue]) {
         Task { _ = await sync.updateHousehold(body); await load() }
+    }
+}
+
+/// Role-based permissions grid (admin-only). One card per role (Adults / Teens / Kids)
+/// with a toggle for each of the four capabilities — admins always have everything, so
+/// they aren't listed. Saves the whole matrix on each toggle (optimistic, reverts on
+/// failure), mirroring the web's `PermissionsCard`. Non-admins get a 403 on load and the
+/// card simply removes itself, so it needs no separate admin check.
+struct PermissionsCard: View {
+    @State private var matrix: [String: [String: Bool]]?
+    @State private var hidden = false
+    @State private var saving = false
+
+    private let api = NookAPI()
+
+    private static let roles = ["adult", "teen", "kid"]
+    private static let caps = ["chore.manage", "chore.approve", "reward.manage", "reward.approve"]
+    private static let roleLabel: [String: String] = ["adult": "Adults", "teen": "Teens", "kid": "Kids"]
+    private static let capLabel: [String: String] = [
+        "chore.manage": "Manage chores", "chore.approve": "Approve chores",
+        "reward.manage": "Manage rewards", "reward.approve": "Approve redemptions",
+    ]
+    private static let capSub: [String: String] = [
+        "chore.manage": "Create & edit chores for everyone",
+        "chore.approve": "OK or send back finished chores",
+        "reward.manage": "Add & edit rewards and currencies",
+        "reward.approve": "OK or deny reward redemptions",
+    ]
+
+    var body: some View {
+        if hidden { EmptyView() } else { content }
+    }
+
+    @ViewBuilder private var content: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionLabel(text: "Permissions").padding(.top, 14)
+            Text("Choose what each role can do. Admins can always do everything, and everyone can always finish their own chores and redeem their own rewards.")
+                .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                .fixedSize(horizontal: false, vertical: true)
+            if let matrix {
+                ForEach(Self.roles, id: \.self) { role in roleCard(role, matrix[role] ?? [:]) }
+            } else {
+                NookLoading(top: 12).padding(.bottom, 12)
+            }
+        }
+        .task { await load() }
+    }
+
+    private func roleCard(_ role: String, _ row: [String: Bool]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(Self.roleLabel[role] ?? role.capitalized)
+                .font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 12).padding(.bottom, 4)
+            ForEach(Array(Self.caps.enumerated()), id: \.element) { i, cap in
+                if i > 0 { Divider().background(NK.hair) }
+                Toggle(isOn: Binding(
+                    get: { row[cap] ?? false },
+                    set: { _ in toggle(role, cap) })) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(Self.capLabel[cap] ?? cap)
+                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink)
+                        Text(Self.capSub[cap] ?? "")
+                            .font(.system(size: 11.5)).foregroundStyle(NK.ink3)
+                    }
+                }
+                .tint(NK.primary).disabled(saving).padding(.vertical, 9)
+            }
+        }
+        .padding(.horizontal, 14).padding(.bottom, 6)
+        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    /// Flip one cell optimistically and save the whole matrix; revert on failure.
+    private func toggle(_ role: String, _ cap: String) {
+        guard var m = matrix, !saving else { return }
+        let prev = m
+        var row = m[role] ?? [:]
+        row[cap] = !(row[cap] ?? false)
+        m[role] = row
+        matrix = m
+        saving = true
+        Task {
+            do { matrix = try await api.setPermissionsMatrix(m) }
+            catch { matrix = prev }   // revert on failure
+            saving = false
+        }
+    }
+
+    private func load() async {
+        guard matrix == nil, !hidden else { return }
+        do { matrix = try await api.permissionsMatrix().permissions }
+        catch { hidden = true }   // non-admin (403) → hide the whole card, like web
     }
 }
 

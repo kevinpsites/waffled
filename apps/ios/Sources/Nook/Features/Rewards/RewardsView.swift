@@ -222,7 +222,21 @@ struct RewardsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                if !model.pending.isEmpty { approvalsCard }
+                if isKiosk {
+                    KioskPageHeader("Rewards", "Spend stars on what your family loves.") {
+                        if sync.can("reward.manage") {
+                            KioskHeaderButton(icon: "plus", label: "New reward") { editor = .new }
+                        }
+                    }
+                }
+                if sync.can("reward.approve") && !model.pending.isEmpty {
+                    // Cap + center the approval card on iPad so it reads identically to the
+                    // Chores tab's card (same component) instead of stretching full-bleed and
+                    // throwing the Deny/Approve buttons out to the screen edge.
+                    approvalsCard
+                        .frame(maxWidth: isKiosk ? 760 : .infinity)
+                        .frame(maxWidth: .infinity, alignment: isKiosk ? .center : .leading)
+                }
 
                 SectionLabel(text: "Family balances")
                 if model.people.isEmpty && model.loading {
@@ -238,6 +252,7 @@ struct RewardsView: View {
         .scrollBounceBehavior(.always)
         .background(NK.canvas)
         .navigationTitle("Rewards").navigationBarTitleDisplayMode(.inline)
+        .toolbar(isKiosk ? .hidden : .visible, for: .navigationBar)
         .task { await model.load() }
         .refreshable { await model.load() }
         .onChange(of: sync.rewardsRev) { _, _ in Task { await model.load() } }
@@ -255,14 +270,18 @@ struct RewardsView: View {
             HStack {
                 SectionLabel(text: "Rewards")
                 Spacer()
-                Button { editor = .new } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus").font(.system(size: 12, weight: .bold))
-                        Text("Add").font(.system(size: 13, weight: .semibold))
+                // Creating/editing rewards is manage-only; everyone can still see the
+                // catalog (so they know what to save toward) and redeem from it.
+                if sync.can("reward.manage") {
+                    Button { editor = .new } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus").font(.system(size: 12, weight: .bold))
+                            Text("Add").font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundStyle(NK.primary)
                     }
-                    .foregroundStyle(NK.primary)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .padding(.top, 4)
 
@@ -274,7 +293,7 @@ struct RewardsView: View {
                 ForEach(model.rewards) { r in catalogRow(r) }
             }
 
-            if !model.archived.isEmpty {
+            if !model.archived.isEmpty && sync.can("reward.manage") {
                 Button { withAnimation { showArchived.toggle() } } label: {
                     HStack(spacing: 5) {
                         Image(systemName: showArchived ? "chevron.down" : "chevron.right")
@@ -290,28 +309,29 @@ struct RewardsView: View {
     }
 
     private func catalogRow(_ r: NookAPI.Reward) -> some View {
-        Button { editor = .edit(r) } label: {
+        // Only managers can open the editor — others see the same row without the
+        // pencil affordance, and tapping does nothing (no dead-end into a 403).
+        let canManage = sync.can("reward.manage")
+        return Button { if canManage { editor = .edit(r) } } label: {
             HStack(spacing: 12) {
-                Text(r.emoji ?? "🎁").font(.system(size: 22))
-                    .frame(width: 40, height: 40).background(NK.panel)
-                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                NookEmojiTile(emoji: r.emoji ?? "🎁")
                 Text(r.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
                 Spacer(minLength: 8)
                 coin(r.currency, r.cost)
-                Image(systemName: "pencil").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                if canManage {
+                    Image(systemName: "pencil").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                }
             }
             .padding(12)
             .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plain).disabled(!canManage)
     }
 
     private func archivedRow(_ r: NookAPI.Reward) -> some View {
         HStack(spacing: 12) {
-            Text(r.emoji ?? "🎁").font(.system(size: 18)).opacity(0.6)
-                .frame(width: 34, height: 34).background(NK.panel)
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            NookEmojiTile(emoji: r.emoji ?? "🎁", size: 18, frame: 34, cornerRadius: 9, emojiOpacity: 0.6)
             Text(r.title).font(.system(size: 14, weight: .medium)).foregroundStyle(NK.ink2).lineLimit(1)
             Spacer(minLength: 8)
             Button { Task { _ = await sync.restoreReward(id: r.id); await model.load() } } label: {
@@ -329,9 +349,7 @@ struct RewardsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 6) {
                     Text("Needs your OK").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
-                    Text("\(model.pending.count)").font(.system(size: 12, weight: .heavy)).foregroundStyle(NK.primary)
-                        .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(NK.primary.opacity(0.12)).clipShape(Capsule())
+                    NookStatusBadge(text: "\(model.pending.count)", color: NK.primary, size: 12, weight: .heavy)
                 }
                 ForEach(Array(model.pending.enumerated()), id: \.element.id) { idx, r in
                     if idx > 0 { Divider().background(NK.hair) }
@@ -341,32 +359,46 @@ struct RewardsView: View {
         }
     }
 
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
+    @ViewBuilder
     private func approvalRow(_ r: NookAPI.RewardRedemption) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Avatar(colorHex: r.personColor, emoji: r.personAvatar ?? "🙂", size: 36)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(r.personName ?? "Someone") wants")
-                        .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
-                    HStack(spacing: 6) {
-                        Text("\(r.emoji ?? "🎁") \(r.title)")
-                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
-                        coin(r.currency, r.cost)
-                    }
-                }
-                Spacer(minLength: 0)
+        if isKiosk {
+            // Compact single line on iPad — full-width buttons read as excessive there.
+            HStack(spacing: 12) {
+                Avatar(colorHex: r.personColor, emoji: r.personAvatar ?? "🙂", size: 34)
+                approvalText(r)
+                Spacer(minLength: 8)
+                ApprovalActionPair(
+                    denyLabel: "Deny", isKiosk: true,
+                    onDeny: { act { await sync.denyRedemption(id: r.id) } },
+                    onApprove: { act { await sync.approveRedemption(id: r.id) } }
+                )
             }
-            HStack(spacing: 8) {
-                Button { act { await sync.denyRedemption(id: r.id) } } label: {
-                    Text("Deny").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
-                        .frame(maxWidth: .infinity).padding(.vertical, 9)
-                        .background(NK.panel).clipShape(Capsule())
-                }.buttonStyle(.plain)
-                Button { act { await sync.approveRedemption(id: r.id) } } label: {
-                    Text("Approve").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                        .frame(maxWidth: .infinity).padding(.vertical, 9)
-                        .background(NK.primary).clipShape(Capsule())
-                }.buttonStyle(.plain)
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Avatar(colorHex: r.personColor, emoji: r.personAvatar ?? "🙂", size: 36)
+                    approvalText(r)
+                    Spacer(minLength: 0)
+                }
+                ApprovalActionPair(
+                    denyLabel: "Deny", isKiosk: false,
+                    onDeny: { act { await sync.denyRedemption(id: r.id) } },
+                    onApprove: { act { await sync.approveRedemption(id: r.id) } }
+                )
+            }
+        }
+    }
+
+    private func approvalText(_ r: NookAPI.RewardRedemption) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(r.personName ?? "Someone") wants")
+                .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+            HStack(spacing: 6) {
+                Text("\(r.emoji ?? "🎁") \(r.title)")
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                coin(r.currency, r.cost)
             }
         }
     }

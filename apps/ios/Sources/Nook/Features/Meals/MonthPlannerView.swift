@@ -24,30 +24,37 @@ struct MonthPlannerView: View {
     private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 5), count: 7) }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                monthHeader
-                Text("Dinners for the month · tap to add or open · drag a night onto another to swap")
-                    .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Button { planningMonth = true } label: {
-                    HStack(spacing: 7) {
-                        Text("✨").font(.system(size: 15))
-                        Text("Plan my month").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+        Group {
+            if isKiosk {
+                kioskMonth
+            } else {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        monthHeader
+                        Text("Dinners for the month · tap to add or open · drag a night onto another to swap")
+                            .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button { planningMonth = true } label: {
+                            HStack(spacing: 7) {
+                                Text("✨").font(.system(size: 15))
+                                Text("Plan my month").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                            }
+                            .frame(maxWidth: .infinity).padding(.vertical, 12)
+                            .background(NK.ai).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        weekdayRow
+                        let byDate = dinnerByDate
+                        LazyVGrid(columns: columns, spacing: 5) {
+                            ForEach(gridDays, id: \.self) { day in cell(day, entry: byDate[ymd(day)]) }
+                        }
                     }
-                    .frame(maxWidth: .infinity).padding(.vertical, 12)
-                    .background(NK.ai).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                weekdayRow
-                LazyVGrid(columns: columns, spacing: 5) {
-                    ForEach(gridDays, id: \.self) { day in cell(day) }
+                    .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 110)
                 }
             }
-            .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 110)
         }
         .background(NK.canvas)
-        .task { await load() }
+        .task { await load(); autoPlanOnceIfNeeded() }
         .refreshable { await load() }
         .onChange(of: anchor) { _, _ in Task { await load() } }
         .onChange(of: sync.mealsRev) { _, _ in Task { await load() } }
@@ -89,6 +96,78 @@ struct MonthPlannerView: View {
 
     // MARK: header
 
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
+    /// Headless verification: NOOK_PLAN_MONTH=1 auto-opens the Plan-my-month sheet once.
+    private static var didAutoPlan = false
+    private func autoPlanOnceIfNeeded() {
+        guard DemoHooks.planMonth, !Self.didAutoPlan else { return }
+        Self.didAutoPlan = true
+        planningMonth = true
+    }
+
+    /// `gridDays` chunked into calendar weeks of 7, so the iPad grid can lay equal-height
+    /// rows that stretch to fill the page instead of cramming at the top.
+    private var weekRows: [[Date]] {
+        stride(from: 0, to: gridDays.count, by: 7).map { Array(gridDays[$0 ..< min($0 + 7, gridDays.count)]) }
+    }
+
+    /// iPad month — fills the available height (taller cells) and mirrors the week view's
+    /// padded, non-scrolling layout so the action row lands in the same place on switch.
+    private var kioskMonth: some View {
+        let byDate = dinnerByDate   // build the lookup once, not once per cell
+        return VStack(spacing: 12) {
+            kioskMonthHeader
+            VStack(spacing: 5) {
+                weekdayRow
+                ForEach(weekRows, id: \.self) { week in
+                    HStack(spacing: 5) {
+                        ForEach(week, id: \.self) { day in
+                            cell(day, entry: byDate[ymd(day)]).frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    /// iPad: month nav + "Plan my month" on one row (matches the week view), instead of
+    /// the stacked header + full-width button.
+    private var kioskMonthHeader: some View {
+        HStack(spacing: 12) {
+            Button { planningMonth = true } label: {
+                HStack(spacing: 6) {
+                    Text("✨").font(.system(size: 14))
+                    Text("Plan my month").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 9)
+                .background(NK.ai).clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            Button { step(-1) } label: { monthChevron("chevron.left") }
+            VStack(spacing: 1) {
+                Text(fmt(anchor, "MMMM yyyy")).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                if !isCurrentMonth {
+                    Button("Jump to this month") { withAnimation { anchor = Date() } }
+                        .font(.system(size: 11, weight: .semibold)).tint(NK.primary)
+                }
+            }
+            .frame(minWidth: 140)
+            Button { step(1) } label: { monthChevron("chevron.right") }
+        }
+    }
+
+    private func monthChevron(_ s: String) -> some View {
+        Image(systemName: s).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+            .frame(width: 34, height: 34).background(NK.card).clipShape(Circle())
+            .overlay(Circle().strokeBorder(NK.hair, lineWidth: 1))
+    }
+
     private var monthHeader: some View {
         HStack {
             Button { step(-1) } label: {
@@ -125,33 +204,35 @@ struct MonthPlannerView: View {
 
     // MARK: a day cell
 
-    @ViewBuilder private func cell(_ day: Date) -> some View {
+    @ViewBuilder private func cell(_ day: Date, entry: NookAPI.WeekEntryDTO?) -> some View {
         let ds = ymd(day)
         let inMonth = cal.isDate(day, equalTo: monthStart, toGranularity: .month)
         let isToday = ds == ymd(Date())
-        let entry = dinnerByDate[ds]
 
-        let content = VStack(spacing: 2) {
+        // The iPad cells are much taller now — scale the text up to use that room.
+        let content = VStack(spacing: isKiosk ? 5 : 2) {
             HStack(spacing: 0) {
                 Text(dayNum(day))
-                    .font(.system(size: 11, weight: isToday ? .heavy : .semibold))
+                    .font(.system(size: isKiosk ? 14 : 11, weight: isToday ? .heavy : .semibold))
                     .foregroundStyle(isToday ? NK.primary : (inMonth ? NK.ink2 : NK.ink3))
                 Spacer(minLength: 0)
             }
             if let e = entry, inMonth {
-                Text(e.recipe?.emoji ?? (isEatingOut(e) ? "🍴" : "🍽️")).font(.system(size: 17))
-                Text(e.displayTitle).font(.system(size: 8.5, weight: .semibold)).foregroundStyle(NK.ink2)
+                if isKiosk { Spacer(minLength: 0) }
+                Text(e.recipe?.emoji ?? (isEatingOut(e) ? "🍴" : "🍽️")).font(.system(size: isKiosk ? 30 : 17))
+                Text(e.displayTitle).font(.system(size: isKiosk ? 13 : 8.5, weight: .semibold)).foregroundStyle(NK.ink2)
                     .lineLimit(2).multilineTextAlignment(.center).minimumScaleFactor(0.85)
             } else if inMonth {
                 Spacer(minLength: 0)
-                Image(systemName: "plus").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3.opacity(0.5))
+                Image(systemName: "plus").font(.system(size: isKiosk ? 16 : 11, weight: .bold)).foregroundStyle(NK.ink3.opacity(0.5))
             }
             Spacer(minLength: 0)
         }
         let highlighted = dropTarget == ds
         let visual = content
             .padding(.horizontal, 4).padding(.vertical, 5)
-            .frame(maxWidth: .infinity, minHeight: 66, alignment: .top)
+            .frame(maxWidth: .infinity, minHeight: isKiosk ? nil : 66,
+                   maxHeight: isKiosk ? .infinity : nil, alignment: .top)
             .background(highlighted ? NK.primary.opacity(0.1) : (inMonth ? NK.card : Color.clear))
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(highlighted || isToday ? NK.primary : NK.hair, lineWidth: highlighted || isToday ? 2 : 1))

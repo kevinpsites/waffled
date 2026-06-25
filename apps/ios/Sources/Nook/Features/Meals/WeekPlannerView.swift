@@ -16,6 +16,13 @@ struct WeekPlannerView: View {
     @State private var planningWeek = false
     /// The day card currently under a drag (highlighted as the drop target).
     @State private var dropTargetDay: String?
+    /// iPad grid: which "date|mealType" cell is under a drag, and whether all meal
+    /// rows show (vs. dinner only) — mirrors the web "All meals / Dinners" toggle.
+    @State private var dropTargetSlot: String?
+    @State private var showAllMeals = true
+
+    private let mealSlots = ["breakfast", "lunch", "dinner", "snack"]
+    private var visibleSlots: [String] { showAllMeals ? mealSlots : ["dinner"] }
 
     private let api = NookAPI()
 
@@ -24,18 +31,15 @@ struct WeekPlannerView: View {
         days.contains { day in !entries.contains { $0.date == ymd(day) && $0.mealType == "dinner" } }
     }
 
+    /// iPad lays the week as a 7-day grid of columns; iPhone keeps the vertical list.
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
     var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                weekHeader
-                if hasEmptyNight { planWeekButton }
-                ForEach(days, id: \.self) { day in dayCard(day) }
-            }
-            .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 110)
+        Group {
+            if isKiosk { kioskWeek } else { phoneWeek }
         }
         .background(NK.canvas)
-        .task { await load() }
-        .refreshable { await load() }
+        .task { await load(); autoPlanOnceIfNeeded() }
         .onChange(of: weekOffset) { _, _ in Task { await load() } }
         .onChange(of: sync.mealsRev) { _, _ in Task { await load() } }
         .sheet(item: $picking) { target in
@@ -54,6 +58,167 @@ struct WeekPlannerView: View {
                 Task { await load() }
             }
         }
+    }
+
+    private var phoneWeek: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                weekHeader
+                if hasEmptyNight { planWeekButton }
+                ForEach(days, id: \.self) { day in dayCard(day) }
+            }
+            .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 110)
+        }
+        .refreshable { await load() }
+    }
+
+    // MARK: iPad — meal-type × day grid (web-like)
+
+    private var kioskWeek: some View {
+        VStack(spacing: 12) {
+            kioskWeekHeader
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    Color.clear.frame(width: rowLabelWidth)
+                    ForEach(days, id: \.self) { day in kioskDayHeader(day).frame(maxWidth: .infinity) }
+                }
+                // Fixed height — Color.clear is otherwise height-greedy and balloons the
+                // header row (very visible in the single-row "Dinners" view).
+                .frame(height: 56)
+                ForEach(visibleSlots, id: \.self) { slot in
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(slotLabel(slot)).font(.system(size: 13, weight: .heavy))
+                            .foregroundStyle(NK.ink2).frame(width: rowLabelWidth, alignment: .leading)
+                        ForEach(days, id: \.self) { day in kioskSlotCell(day: day, slot: slot) }
+                    }
+                    // Cap each meal row so a single-row "Dinners" view doesn't balloon to
+                    // the full page height; multiple rows still share the space evenly.
+                    .frame(maxWidth: .infinity, maxHeight: 220)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var rowLabelWidth: CGFloat { 76 }
+
+    private var kioskWeekHeader: some View {
+        HStack(spacing: 12) {
+            // Plan CTA leads, matching the Month view's header so the button doesn't
+            // jump position when switching Week ⇄ Month.
+            if hasEmptyNight {
+                Button { planningWeek = true } label: {
+                    HStack(spacing: 6) {
+                        Text("✨").font(.system(size: 14))
+                        Text("Plan my week").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 9)
+                    .background(NK.ai).clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            Picker("", selection: $showAllMeals.animation()) {
+                Text("All meals").tag(true)
+                Text("Dinners").tag(false)
+            }
+            .pickerStyle(.segmented).frame(width: 220)
+            Spacer()
+            Button { withAnimation { weekOffset -= 1 } } label: { weekChevron("chevron.left") }
+            VStack(spacing: 1) {
+                Text(weekTitle).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                if weekOffset != 0 {
+                    Button("Jump to this week") { withAnimation { weekOffset = 0 } }
+                        .font(.system(size: 11, weight: .semibold)).tint(NK.primary)
+                }
+            }
+            .frame(minWidth: 130)
+            Button { withAnimation { weekOffset += 1 } } label: { weekChevron("chevron.right") }
+        }
+    }
+
+    private func weekChevron(_ s: String) -> some View {
+        Image(systemName: s).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+            .frame(width: 34, height: 34).background(NK.card).clipShape(Circle())
+            .overlay(Circle().strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    private func kioskDayHeader(_ day: Date) -> some View {
+        let isToday = ymd(day) == ymd(Date())
+        return VStack(spacing: 1) {
+            Text(weekday(day)).font(.system(size: 12, weight: .heavy)).foregroundStyle(isToday ? NK.primary : NK.ink2)
+            Text(fmt(day, "d")).font(.system(size: 13, weight: .bold))
+                .foregroundStyle(isToday ? .white : NK.ink)
+                .frame(width: 26, height: 26)
+                .background(isToday ? NK.primary : Color.clear).clipShape(Circle())
+        }
+    }
+
+    private func kioskSlotCell(day: Date, slot: String) -> some View {
+        let ds = ymd(day)
+        let cellId = "\(ds)|\(slot)"
+        let entry = entries.first { $0.date == ds && $0.mealType == slot }
+        return Group {
+            if let e = entry { kioskMealCard(e) } else { kioskEmptyCell(date: ds, slot: slot) }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
+            .strokeBorder(dropTargetSlot == cellId ? NK.primary : .clear, lineWidth: 2))
+        .dropDestination(for: String.self) { items, _ in
+            guard let p = items.first else { return false }
+            let parts = p.split(separator: "|")
+            guard parts.count == 2, !(String(parts[0]) == ds && String(parts[1]) == slot) else { return false }
+            Task { await swapSlots(srcDate: String(parts[0]), srcSlot: String(parts[1]), dstDate: ds, dstSlot: slot) }
+            return true
+        } isTargeted: { over in
+            dropTargetSlot = over ? cellId : (dropTargetSlot == cellId ? nil : dropTargetSlot)
+        }
+    }
+
+    private func kioskMealCard(_ e: NookAPI.WeekEntryDTO) -> some View {
+        VStack(spacing: 4) {
+            if let emoji = e.recipe?.emoji { Text(emoji).font(.system(size: 22)) }
+            Text(e.displayTitle).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink)
+                .multilineTextAlignment(.center).lineLimit(3)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(8)
+        .background(NK.ai.opacity(0.09))
+        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(alignment: .topLeading) {
+            Button {
+                Task { _ = await sync.clearMealPlan(date: e.date, mealType: e.mealType); await load() }
+            } label: {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(NK.ink3)
+                    .frame(width: 20, height: 20).background(NK.card).clipShape(Circle())
+            }
+            .buttonStyle(.plain).padding(5)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { open(e) }
+        .draggable("\(e.date)|\(e.mealType)") { entryDragPreview(e) }
+    }
+
+    private func kioskEmptyCell(date: String, slot: String) -> some View {
+        Button { picking = PlanTarget(date: date, mealType: slot) } label: {
+            Image(systemName: "plus").font(.system(size: 17)).foregroundStyle(NK.ink3)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(NK.card.opacity(0.35))
+                .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundStyle(NK.hair))
+                .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Swap two slots — works across days *and* meal types (grid drag).
+    private func swapSlots(srcDate: String, srcSlot: String, dstDate: String, dstSlot: String) async {
+        let a = entries.first { $0.date == srcDate && $0.mealType == srcSlot }
+        let b = entries.first { $0.date == dstDate && $0.mealType == dstSlot }
+        await placeMeal(b, on: srcDate, mealType: srcSlot)
+        await placeMeal(a, on: dstDate, mealType: dstSlot)
+        await load()
     }
 
     private var planWeekButton: some View {
@@ -245,6 +410,15 @@ struct WeekPlannerView: View {
         loading = true
         entries = (try? await api.mealsWeek(start: ymd(weekStart))) ?? []
         loading = false
+    }
+
+    /// Verification-only: open the plan sheet once when NOOK_PLAN_WEEK=1. One-shot so
+    /// it never re-opens on tab re-entry; no-op on a real device (env unset).
+    private static var didAutoPlan = false
+    private func autoPlanOnceIfNeeded() {
+        guard DemoHooks.planWeek, !Self.didAutoPlan else { return }
+        Self.didAutoPlan = true
+        planningWeek = true
     }
 
     // MARK: date helpers

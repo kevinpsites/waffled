@@ -60,8 +60,14 @@ struct RecipesLibraryView: View {
     @State private var selCuisine: Set<String> = []
     @State private var selProtein: Set<String> = []
     @State private var selDietary: Set<String> = []
+    @FocusState private var searchFocused: Bool
 
-    private let cols = [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
+    // iPhone: 2 fixed columns. iPad: adaptive — as many ~240pt cards as fit the width.
+    private var cols: [GridItem] {
+        DeviceExperience.current == .kiosk
+            ? [GridItem(.adaptive(minimum: 220, maximum: 320), spacing: 14)]
+            : [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
+    }
 
     var body: some View {
         ScrollView {
@@ -73,6 +79,10 @@ struct RecipesLibraryView: View {
         .background(NK.canvas)
         .refreshable { await model.load() }
         .onChange(of: sync.mealsRev) { _, _ in Task { await model.load() } }
+        // In pick mode (the planner's "Choose a recipe" sheet), focus search on open.
+        .task {
+            if onPick != nil { try? await Task.sleep(for: .milliseconds(350)); searchFocused = true }
+        }
     }
 
     /// Inline search field — kept in the content (not `.searchable`), since the Meals
@@ -83,6 +93,7 @@ struct RecipesLibraryView: View {
             TextField("Search recipes, cuisine, a veggie…", text: $query)
                 .font(.system(size: 15)).textInputAutocapitalization(.never).autocorrectionDisabled()
                 .submitLabel(.search)
+                .focused($searchFocused)
             if !query.isEmpty {
                 Button { query = "" } label: {
                     Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(NK.ink3)
@@ -276,14 +287,16 @@ struct RecipeCard: View {
                 }
             }
             VStack(alignment: .leading, spacing: 5) {
+                // Fixed 2-line title + an always-present meta + collection line, so every
+                // card is the same height regardless of how many tags a recipe has.
                 Text(recipe.title).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
-                    .lineLimit(2).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(2).multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40, alignment: .topLeading)
                 metaLine
-                if let c = recipe.collection {
-                    Text("📁 \(c)").font(.system(size: 11, weight: .medium)).foregroundStyle(NK.ink3).lineLimit(1)
-                }
+                Text(recipe.collection.map { "📁 \($0)" } ?? " ")
+                    .font(.system(size: 11, weight: .medium)).foregroundStyle(NK.ink3).lineLimit(1)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
             .padding(.horizontal, 11).padding(.top, 9).padding(.bottom, 12)
         }
         .nkField()

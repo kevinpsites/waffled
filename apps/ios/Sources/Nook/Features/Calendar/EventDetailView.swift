@@ -35,24 +35,7 @@ struct EventDetailView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    hero
-                    if let gid = detail?.goalId, !gid.isEmpty { goalChip }
-                    detailsCard
-                    if let note = detail?.description, !note.isEmpty { notesCard(note) }
-                    aiCard
-                    timelineCard
-                    Button {
-                        if confirmDelete { Task { _ = await sync.deleteEvent(id: seriesId); dismiss() } }
-                        else { withAnimation { confirmDelete = true } }
-                    } label: {
-                        Text(confirmDelete ? "Tap again to delete this event" : "Delete event")
-                            .font(.system(size: 15, weight: .bold)).foregroundStyle(NK.primary)
-                            .frame(maxWidth: .infinity).padding(.vertical, 12)
-                    }
-                    .buttonStyle(.plain).padding(.top, 4)
-                }
-                .padding(18).padding(.bottom, 40)
+                detailBody.padding(isKiosk ? 24 : 18).padding(.bottom, 40)
             }
             .background(NK.canvas)
             .navigationTitle("Event").navigationBarTitleDisplayMode(.inline)
@@ -66,7 +49,56 @@ struct EventDetailView: View {
                                prefillGoalId: detail?.goalId, prefillGoalStepId: detail?.goalStepId)
             }
         }
-        .presentationDetents([.large])
+        .modifier(KioskSheetPresentation(kiosk: isKiosk))
+    }
+
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
+    /// Single column on iPhone; a wider two-column layout on the iPad (hero on top,
+    /// then details/notes alongside insight/timeline) so the larger modal reads like
+    /// the web event screen.
+    @ViewBuilder private var detailBody: some View {
+        if isKiosk {
+            VStack(alignment: .leading, spacing: 16) {
+                hero
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(spacing: 14) {
+                        if let gid = detail?.goalId, !gid.isEmpty { goalChip }
+                        detailsCard
+                        if let note = detail?.description, !note.isEmpty { notesCard(note) }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .top)
+                    VStack(spacing: 14) {
+                        aiCard
+                        timelineCard
+                    }
+                    .frame(maxWidth: .infinity, alignment: .top)
+                }
+                deleteButton
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 14) {
+                hero
+                if let gid = detail?.goalId, !gid.isEmpty { goalChip }
+                detailsCard
+                if let note = detail?.description, !note.isEmpty { notesCard(note) }
+                aiCard
+                timelineCard
+                deleteButton
+            }
+        }
+    }
+
+    private var deleteButton: some View {
+        Button {
+            if confirmDelete { Task { _ = await sync.deleteEvent(id: seriesId); dismiss() } }
+            else { withAnimation { confirmDelete = true } }
+        } label: {
+            Text(confirmDelete ? "Tap again to delete this event" : "Delete event")
+                .font(.system(size: 15, weight: .bold)).foregroundStyle(NK.primary)
+                .frame(maxWidth: .infinity).padding(.vertical, 12)
+        }
+        .buttonStyle(.plain).padding(.top, 4)
     }
 
     // MARK: hero
@@ -337,5 +369,19 @@ struct EventDetailView: View {
         if let d = f.date(from: s) { return d }
         f.formatOptions = [.withInternetDateTime]
         return f.date(from: s)
+    }
+}
+
+/// Presentation sizing for calendar sheets (event detail + editor): a large
+/// `.page`-sized modal on the iPad (bigger, web-like — but not full screen), the
+/// standard large sheet on iPhone. Shared by `EventDetailView` and `EventEditSheet`.
+struct KioskSheetPresentation: ViewModifier {
+    let kiosk: Bool
+    func body(content: Content) -> some View {
+        if kiosk {
+            content.presentationSizing(.page)
+        } else {
+            content.presentationDetents([.large])
+        }
     }
 }

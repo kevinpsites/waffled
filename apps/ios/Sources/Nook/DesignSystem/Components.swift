@@ -44,6 +44,34 @@ struct Pill: View {
     }
 }
 
+/// The canonical full-width primary call-to-action — modeled on `PlanApplyBar`'s
+/// button (size-16 bold white label, `.vertical` 14 padding, `NK.rMD` corners).
+///
+/// `tint` is SEMANTIC: pass `NK.ai` for AI actions, `NK.primary` for normal ones.
+/// `isBusy` shows a small white spinner before the label; `isDisabled` greys the
+/// fill to `NK.ink3`. Both busy and disabled block the tap.
+struct NookPrimaryCTA: View {
+    var label: String
+    var tint: Color = NK.primary
+    var isBusy: Bool = false
+    var isDisabled: Bool = false
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                if isBusy { ProgressView().controlSize(.small).tint(.white) }
+                Text(label)
+                    .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 14)
+            .background(isDisabled ? NK.ink3 : tint)
+            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        }
+        .buttonStyle(.plain).disabled(isDisabled || isBusy)
+    }
+}
+
 /// A person avatar (`.av`) — emoji on a soft tint. Works from either a design
 /// `FamilyColor` (static screens) or a real `color_hex` string (synced data).
 struct Avatar: View {
@@ -154,5 +182,167 @@ struct AICaptureBar: View {
         .nkShadow1()
         .contentShape(Capsule())
         .onTapGesture(perform: onTap)
+    }
+}
+
+/// A `NookCard` whose first child is a bold section title, followed by caller content —
+/// the "titled field card" used throughout the Plan sheets. Stateless wrapper.
+struct NookFieldCard<Content: View>: View {
+    var title: String
+    var padding: CGFloat = 14
+    var spacing: CGFloat = 10
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        NookCard(padding: padding) {
+            VStack(alignment: .leading, spacing: spacing) {
+                Text(title).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                content()
+            }
+        }
+    }
+}
+
+/// A rounded square holding an emoji — the list-row / picker glyph tile used across
+/// Settings, Rewards, Lists, Goals, Family and the capture sheets. Canonical look is a
+/// 42pt square, 22pt emoji, 12pt corner on `NK.panel`; pass params for the intentional
+/// variants (muted archived rows, tinted person rows). Stateless.
+struct NookEmojiTile: View {
+    var emoji: String
+    var size: CGFloat = 22          // emoji font size
+    var frame: CGFloat = 42         // square side
+    var background: Color = NK.panel
+    var cornerRadius: CGFloat = 12
+    var emojiOpacity: Double = 1
+
+    var body: some View {
+        Text(emoji)
+            .font(.system(size: size))
+            .opacity(emojiOpacity)
+            .frame(width: frame, height: frame)
+            .background(background)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
+}
+
+/// A tinted status / count capsule — colored text on a `color.opacity(0.12)` fill.
+/// The shared shape behind the "Spendable" / "Owner" / "key detected" / pending-count
+/// badges. Pass `weight: .heavy` for the louder count badges. Stateless.
+struct NookStatusBadge: View {
+    var text: String
+    var color: Color                 // tint; bg = color.opacity(0.12), text = color
+    var size: CGFloat = 11
+    var weight: Font.Weight = .bold
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: size, weight: weight))
+            .foregroundStyle(color)
+            .padding(.horizontal, 7).padding(.vertical, 2)
+            .background(color.opacity(0.12))
+            .clipShape(Capsule())
+    }
+}
+
+/// A small `chevron.right` that rotates 90° when its section is open — the shared
+/// disclosure indicator for collapsible headers. Stateless: pass the open flag.
+struct DisclosureChevron: View {
+    var isOpen: Bool
+    var size: CGFloat = 11
+    var weight: Font.Weight = .heavy
+    var color: Color = NK.ink3
+
+    var body: some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: size, weight: weight))
+            .foregroundStyle(color)
+            .rotationEffect(.degrees(isOpen ? 90 : 0))
+    }
+}
+
+/// The little capsule used as a `Menu` label — bold text plus a down chevron. Shared by
+/// the Plan sheets so every "tap to change" menu trigger looks identical.
+struct NookMenuPill: View {
+    var text: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(text).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+            Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 9).background(NK.panel).clipShape(Capsule())
+    }
+}
+
+/// The standard Settings dropdown affordance — a value plus the iOS up/down
+/// "pick from a list" glyph. Used across the Settings screens so every settings
+/// menu reads the same. (Distinct from NookMenuPill, the app-wide compact pill.)
+struct NookSettingsMenuLabel: View {
+    var value: String
+    var body: some View {
+        HStack(spacing: 5) {
+            Text(value).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+            Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+        }
+    }
+}
+
+/// The Deny/Approve button pair on parent approval rows. Shared by the Chores and
+/// Rewards "Needs your OK" cards so both look identical. Kiosk (iPad) gets inline
+/// capsules; phone gets full-width buttons. Stateless — the approve/deny work stays
+/// at the call site, passed as closures.
+struct ApprovalActionPair: View {
+    var denyLabel: String   // "Not yet" (chores) or "Deny" (rewards)
+    var isKiosk: Bool       // true → inline capsules; false → full-width
+    var onDeny: () -> Void
+    var onApprove: () -> Void
+
+    var body: some View {
+        if isKiosk {
+            HStack(spacing: 8) {
+                Button(action: onDeny) {
+                    Text(denyLabel).font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink2)
+                        .padding(.horizontal, 16).padding(.vertical, 8).background(NK.panel).clipShape(Capsule())
+                }.buttonStyle(.plain)
+                Button(action: onApprove) {
+                    Text("Approve").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 18).padding(.vertical, 8).background(NK.primary).clipShape(Capsule())
+                }.buttonStyle(.plain)
+            }
+        } else {
+            HStack(spacing: 8) {
+                Button(action: onDeny) {
+                    Text(denyLabel).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+                        .frame(maxWidth: .infinity).padding(.vertical, 9)
+                        .background(NK.panel).clipShape(Capsule())
+                }.buttonStyle(.plain)
+                Button(action: onApprove) {
+                    Text("Approve").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 9)
+                        .background(NK.primary).clipShape(Capsule())
+                }.buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+/// A weekday toggle chip — a full-width pill that fills coral when on. Shared by the
+/// Plan-my-week and Plan-my-month sheets so both day selectors look identical.
+struct WeekdayToggleChip: View {
+    let label: String
+    let isOn: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label).font(.system(size: 14, weight: .heavy)).foregroundStyle(isOn ? .white : NK.ink2)
+                .lineLimit(1).minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity).frame(height: 44)
+                .background(isOn ? NK.primary : NK.card)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(isOn ? .clear : NK.hair, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 }

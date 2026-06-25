@@ -63,7 +63,7 @@ struct AISettingsView: View {
                 } else if failed {
                     Text("Couldn’t load AI settings.").font(.system(size: 14)).foregroundStyle(NK.ink3).padding(.vertical, 30)
                 } else if loading {
-                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 40)
+                    NookLoading(top: 40)
                 }
             }
             .padding(16).padding(.bottom, 110)
@@ -88,11 +88,10 @@ struct AISettingsView: View {
                 }
                 Spacer(minLength: 6)
                 if p != "heuristic" {
-                    Text(enabled ? "key detected" : "not configured")
-                        .font(.system(size: 10.5, weight: .bold))
-                        .foregroundStyle(enabled ? Color(hex: 0x167A4A) : NK.ink3)
-                        .padding(.horizontal, 7).padding(.vertical, 3)
-                        .background((enabled ? Color(hex: 0x167A4A) : NK.ink3).opacity(0.12)).clipShape(Capsule())
+                    NookStatusBadge(
+                        text: enabled ? "key detected" : "not configured",
+                        color: enabled ? Color(hex: 0x167A4A) : NK.ink3,
+                        size: 10.5)
                 }
             }
             .padding(13)

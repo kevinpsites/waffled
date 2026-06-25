@@ -12,8 +12,20 @@ struct DisplayKioskSettingsView: View {
     @State private var dirty = false
     @State private var savedFlash = false
     @State private var saveFailed = false
+    // For the live "Preview" of the screensaver.
+    @State private var previewPhotos: [NookAPI.Photo] = []
+    @State private var previewWeather: NookAPI.Weather?
+    @State private var showPreview = false
 
     private let api = NookAPI()
+
+    /// The soonest upcoming event, for the preview's "Next:" line.
+    private var nextEvent: SyncedEvent? {
+        let now = Date()
+        return sync.events
+            .filter { ($0.startsAt ?? .distantPast) >= now }
+            .min { ($0.startsAt ?? .distantFuture) < ($1.startsAt ?? .distantFuture) }
+    }
 
     // Preset choices (the web uses free-entry number fields; menus read cleaner on a
     // phone and the server clamps anything out of range regardless).
@@ -49,6 +61,14 @@ struct DisplayKioskSettingsView: View {
             }
         }
         .task { await load() }
+        .fullScreenCover(isPresented: $showPreview) {
+            ScreensaverView(
+                content: cfg?.content == "photos" ? "photos" : "clock",
+                photos: cfg.map { NookAPI.screensaverPhotos(previewPhotos, $0) } ?? previewPhotos,
+                weather: previewWeather, nextEvent: nextEvent, timezone: sync.householdTz,
+                dimmed: false, interval: cfg?.photoInterval ?? 8, bare: false,
+                onWake: { showPreview = false })
+        }
         // Debounced auto-save — echoing the server's normalized cfg back into state
         // must not retrigger a save, hence the `dirty` guard.
         .task(id: cfg) {
@@ -113,6 +133,17 @@ struct DisplayKioskSettingsView: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
+                    // See it right now — full-screen, tap to dismiss.
+                    Button { showPreview = true } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "play.fill").font(.system(size: 12, weight: .bold))
+                            Text("Preview").font(.system(size: 14, weight: .bold))
+                        }
+                        .foregroundStyle(NK.primary)
+                        .frame(maxWidth: .infinity).padding(.vertical, 10)
+                        .background(NK.primary.opacity(0.1)).clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain).disabled(cfg?.content == "off")
                 }
                 .padding(.vertical, 14)
                 divider
@@ -120,8 +151,58 @@ struct DisplayKioskSettingsView: View {
                     rowLabel("Return to profile picker afterward", "When a paired kiosk wakes, drop to the profile picker.")
                 }
                 .tint(NK.primary).padding(.vertical, 14)
+
+                // Photo-slideshow options — only relevant when the saver shows photos.
+                if cfg?.content == "photos" {
+                    divider
+                    VStack(alignment: .leading, spacing: 10) {
+                        rowLabel("Photo source", "Which photos the slideshow plays.")
+                        Picker("", selection: bindPhotoSource) {
+                            Text("All").tag("all")
+                            Text("Favorites").tag("favorites")
+                            Text("Album").tag("album")
+                        }
+                        .pickerStyle(.segmented).labelsHidden()
+                    }
+                    .padding(.vertical, 14)
+                    if cfg?.photoSource == "album" {
+                        divider
+                        menuRow("Album", value: cfg?.photoAlbum ?? "Choose…") {
+                            if albumChoices.isEmpty {
+                                Text("No albums yet — tag photos with an album first.")
+                            } else {
+                                ForEach(albumChoices, id: \.self) { a in
+                                    Button(a) { cfg?.photoAlbum = a; dirty = true }
+                                }
+                            }
+                        }
+                    }
+                    divider
+                    menuRow("Transition speed", value: secondsLabel(cfg?.photoInterval ?? 8)) {
+                        ForEach(intervalChoices, id: \.self) { s in
+                            Button(secondsLabel(s)) { cfg?.photoInterval = s; dirty = true }
+                        }
+                    }
+                    divider
+                    Toggle(isOn: bindBool(\.photoShuffle)) {
+                        rowLabel("Shuffle photos", "Play them in a random order.")
+                    }
+                    .tint(NK.primary).padding(.vertical, 14)
+                }
             }
         }
+    }
+
+    /// Album names seen across the household's photos (for the "Specific album" picker).
+    private var albumChoices: [String] {
+        Array(Set(previewPhotos.compactMap { $0.memory }.filter { !$0.isEmpty })).sorted()
+    }
+    private let intervalChoices = [3, 5, 8, 10, 15, 20, 30]
+    private func secondsLabel(_ s: Int) -> String { s == 1 ? "1 second" : "\(s) seconds" }
+
+    private var bindPhotoSource: Binding<String> {
+        Binding(get: { cfg?.photoSource ?? "all" },
+                set: { cfg?.photoSource = $0; dirty = true })
     }
 
     private var idleCard: some View {
@@ -182,8 +263,15 @@ struct DisplayKioskSettingsView: View {
 
     private func load() async {
         loadFailed = false
-        do { cfg = try await api.displayConfig(); dirty = false }
+        // Fetch config + the preview's photos/weather concurrently, so a tapped Preview
+        // has real photos to show instead of a blank slideshow.
+        async let cfgF = api.displayConfig()
+        async let wxF = api.weather()
+        async let photosF = api.photos()
+        do { cfg = try await cfgF; dirty = false }
         catch { loadFailed = true }
+        previewWeather = try? await wxF
+        previewPhotos = (try? await photosF) ?? []
     }
 
     private func save(_ snapshot: NookAPI.DisplayConfig) async {
@@ -237,8 +325,7 @@ struct DisplayKioskSettingsView: View {
             HStack {
                 Text(title).font(.system(size: 15, weight: .medium)).foregroundStyle(NK.ink)
                 Spacer(minLength: 8)
-                Text(value).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
-                Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                NookSettingsMenuLabel(value: value)
             }
             .padding(.vertical, 15)
         }

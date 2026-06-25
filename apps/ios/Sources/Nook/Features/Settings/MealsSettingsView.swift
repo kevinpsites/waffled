@@ -36,7 +36,7 @@ struct MealsSettingsView: View {
                 } else if failed {
                     Text("Couldn’t load meal settings.").font(.system(size: 14)).foregroundStyle(NK.ink3).padding(.vertical, 30)
                 } else {
-                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 40)
+                    NookLoading(top: 40)
                 }
             }
             .padding(16).padding(.bottom, 110)
@@ -64,7 +64,7 @@ struct MealsSettingsView: View {
                     Menu {
                         Button("Unassigned") { calendarPersonId = nil; mark() }
                         ForEach(members) { m in Button(m.name) { calendarPersonId = m.id; mark() } }
-                    } label: { menuLabel(personName(calendarPersonId) ?? "Unassigned") }
+                    } label: { NookSettingsMenuLabel(value: personName(calendarPersonId) ?? "Unassigned") }
                     .disabled(!addToCalendar)
                 }
             }
@@ -162,13 +162,6 @@ struct MealsSettingsView: View {
                 .background(on ? NK.primary : NK.panel).clipShape(Capsule())
         }
         .buttonStyle(.plain)
-    }
-
-    private func menuLabel(_ t: String) -> some View {
-        HStack(spacing: 5) {
-            Text(t).font(.system(size: 15, weight: .semibold)).foregroundStyle(addToCalendar ? NK.ink : NK.ink3)
-            Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
-        }
     }
 
     // MARK: logic

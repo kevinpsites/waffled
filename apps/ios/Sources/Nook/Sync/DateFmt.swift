@@ -9,12 +9,26 @@ enum DateFmt {
     /// shift with the viewer's timezone (goal deadlines, meal-plan day keys, …).
     static let utc = TimeZone(identifier: "UTC")!
 
+    // DateFormatter is one of the most expensive Foundation objects to build, and these
+    // are called from view bodies that re-render constantly (calendar/meal grids). Cache
+    // one per (pattern, tz); a configured formatter is safe to reuse for formatting as
+    // long as we never mutate it again. The lock guards only the cache dictionary.
+    private static var cache: [String: DateFormatter] = [:]
+    private static let lock = NSLock()
+
     private static func formatter(_ pattern: String, _ tz: TimeZone) -> DateFormatter {
+        let key = pattern + "\u{1}" + tz.identifier
+        lock.lock()
+        if let cached = cache[key] { lock.unlock(); return cached }
+        lock.unlock()
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
         f.timeZone = tz
         f.dateFormat = pattern
+        lock.lock()
+        cache[key] = f
+        lock.unlock()
         return f
     }
 
@@ -26,5 +40,16 @@ enum DateFmt {
     /// Parse a string with `pattern` in `tz` back to a Date (nil if it doesn't match).
     static func date(_ string: String, _ pattern: String, _ tz: TimeZone) -> Date? {
         formatter(pattern, tz).date(from: string)
+    }
+
+    /// "Good morning/afternoon/evening" for the current hour in `tz`. Shared by the
+    /// phone Today header and the iPad dashboard.
+    static func greeting(_ tz: TimeZone) -> String {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        switch cal.component(.hour, from: Date()) {
+        case 5..<12:  return "Good morning"
+        case 12..<17: return "Good afternoon"
+        default:      return "Good evening"
+        }
     }
 }

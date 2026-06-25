@@ -58,6 +58,10 @@ struct PersonView: View {
     @State private var editingEvent: SyncedEvent?
     @State private var showSavingPicker = false
     @State private var showTrade = false
+    // Collapse state for the iPad spotlight's grouped sections.
+    @State private var dayOpen = true
+    @State private var goalsOpen = true
+    @State private var rewardsOpen = true
 
     init(personId: String, path: Binding<[HubRoute]>) {
         self.personId = personId
@@ -90,21 +94,36 @@ struct PersonView: View {
             VStack(alignment: .leading, spacing: 16) {
                 header
                 statCards
-                if let ov = model.overview {
-                    let cur = ov.currencies.first { $0.key == ov.savingToward?.currency }
-                    SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, symbol: cur?.symbol,
-                                     canPick: !ov.rewardShop.isEmpty,
-                                     onChange: { showSavingPicker = true },
-                                     onRedeem: redeemSaving)
+                if isKiosk {
+                    // Grouped into logical sections (Today · Goals & balance · Rewards),
+                    // each balanced on its own — and each collapsible.
+                    collapsibleSection("\(firstName.uppercased())’S DAY", $dayOpen) {
+                        dayContent
+                        addButton
+                    }
+                    if let ov = model.overview {
+                        if goalsHasContent(ov) {
+                            collapsibleSection("Goals & balance", $goalsOpen) { goalsContent(ov) }
+                        }
+                        collapsibleSection("Rewards & currencies", $rewardsOpen) { rewardsContent(ov) }
+                    }
+                } else {
+                    if let ov = model.overview {
+                        let cur = ov.currencies.first { $0.key == ov.savingToward?.currency }
+                        SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, symbol: cur?.symbol,
+                                         canPick: !ov.rewardShop.isEmpty,
+                                         onChange: { showSavingPicker = true },
+                                         onRedeem: redeemSaving)
+                    }
+                    daySection
+                    if let ov = model.overview {
+                        if ov.categoryBalance.contains(where: { $0.goalCount > 0 }) { balanceCard(ov) }
+                        if !ov.goals.isEmpty { goalsCard(ov) }
+                        starsCard(ov)
+                        if !ov.redemptions.isEmpty { redemptionsCard(ov) }
+                    }
+                    addButton
                 }
-                daySection
-                if let ov = model.overview {
-                    if ov.categoryBalance.contains(where: { $0.goalCount > 0 }) { balanceCard(ov) }
-                    if !ov.goals.isEmpty { goalsCard(ov) }
-                    starsCard(ov)
-                    if !ov.redemptions.isEmpty { redemptionsCard(ov) }
-                }
-                addButton
             }
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 110)
         }
@@ -128,6 +147,67 @@ struct PersonView: View {
                        currencies: model.overview?.currencies ?? [],
                        balances: model.overview?.balances ?? [],
                        conversions: model.conversions) { await model.load() }
+        }
+    }
+
+    /// iPad lays the spotlight out two-column (day on the left, rewards/goals/stars on
+    /// the right); iPhone is a single column.
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
+    /// A tappable section header (label + rotating chevron) that shows/hides its content
+    /// — used by the iPad spotlight so each group can be collapsed.
+    @ViewBuilder private func collapsibleSection<Content: View>(
+        _ title: String, _ open: Binding<Bool>, @ViewBuilder content: () -> Content) -> some View {
+        Button { withAnimation(.easeInOut(duration: 0.2)) { open.wrappedValue.toggle() } } label: {
+            HStack {
+                SectionLabel(text: title)
+                Spacer()
+                DisclosureChevron(isOpen: open.wrappedValue, size: 13)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 4)
+        if open.wrappedValue { content() }
+    }
+
+    /// Whether the "Goals & balance" section has anything to show.
+    private func goalsHasContent(_ ov: NookAPI.PersonOverview) -> Bool {
+        ov.categoryBalance.contains(where: { $0.goalCount > 0 }) || !ov.goals.isEmpty
+    }
+
+    /// "Goals & balance" body — the whole-person balance beside the goals list (or one of
+    /// them full-width when the other is absent).
+    @ViewBuilder private func goalsContent(_ ov: NookAPI.PersonOverview) -> some View {
+        let hasBalance = ov.categoryBalance.contains(where: { $0.goalCount > 0 })
+        let hasGoals = !ov.goals.isEmpty
+        if hasBalance && hasGoals {
+            HStack(alignment: .top, spacing: 16) {
+                balanceCard(ov).frame(maxWidth: .infinity, alignment: .top)
+                goalsCard(ov).frame(maxWidth: .infinity, alignment: .top)
+            }
+        } else if hasBalance {
+            balanceCard(ov)
+        } else {
+            goalsCard(ov)
+        }
+    }
+
+    /// "Rewards & currencies" body — saving-toward + redemptions on the left, the currency /
+    /// chores balances on the right.
+    @ViewBuilder private func rewardsContent(_ ov: NookAPI.PersonOverview) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(spacing: 16) {
+                let cur = ov.currencies.first { $0.key == ov.savingToward?.currency }
+                SavingTowardCard(saving: ov.savingToward, colorHex: cur?.color, symbol: cur?.symbol,
+                                 canPick: !ov.rewardShop.isEmpty,
+                                 onChange: { showSavingPicker = true },
+                                 onRedeem: redeemSaving)
+                if !ov.redemptions.isEmpty { redemptionsCard(ov) }
+            }
+            .frame(maxWidth: .infinity, alignment: .top)
+            VStack(spacing: 16) { starsCard(ov) }
+                .frame(maxWidth: .infinity, alignment: .top)
         }
     }
 
@@ -212,8 +292,12 @@ struct PersonView: View {
     }
 
     @ViewBuilder private var daySection: some View {
-        let events = personEvents
         SectionLabel(text: "\(firstName.uppercased())’S DAY")
+        dayContent
+    }
+
+    @ViewBuilder private var dayContent: some View {
+        let events = personEvents
         if events.isEmpty && model.chores.isEmpty {
             Text(model.loading ? "Loading…" : "Nothing scheduled today.")
                 .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3).padding(.vertical, 12)
@@ -487,8 +571,7 @@ struct SavingTowardPicker: View {
                      tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
             HStack(spacing: 12) {
-                Text(emoji).font(.system(size: 22)).frame(width: 42, height: 42)
-                    .background(tint.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                NookEmojiTile(emoji: emoji, background: tint.opacity(0.14), cornerRadius: 11)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
                     if let sub { Text(sub).font(.system(size: 12)).foregroundStyle(NK.ink3) }

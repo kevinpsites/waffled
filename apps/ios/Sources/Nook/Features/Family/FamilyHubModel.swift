@@ -76,5 +76,5 @@ final class FamilyHubModel {
     private func fetchGoals() async -> [NookAPI.GoalDTO] { (try? await api.goals()) ?? [] }
     private func fetchStars() async -> [NookAPI.FamilyStarsDTO] { (try? await api.familyStars()) ?? [] }
     private func fetchLists() async -> [NookAPI.ListRefDTO] { (try? await api.lists()) ?? [] }
-    private func fetchPhotos() async -> [NookAPI.PhotoDTO] { (try? await api.photos()) ?? [] }
+    private func fetchPhotos() async -> [NookAPI.Photo] { (try? await api.photos()) ?? [] }
 }

@@ -48,10 +48,10 @@ the Calendar API enabled.
 
 **Prereq:** Apple Developer Program membership ($99/yr). All in <https://developer.apple.com/account> → Certificates, Identifiers & Profiles.
 
-1. **App ID** — Identifiers → + → App IDs → App → bundle id e.g. `ai.lorebooks.nook`.
+1. **App ID** — Identifiers → + → App IDs → App → bundle id e.g. `com.kevinsites.nook`.
    Enable capabilities **Sign in with Apple** and **Push Notifications**. Register.
 2. **Services ID** (this is the OAuth `client_id` Auth0 uses) — Identifiers → + → Services IDs
-   → identifier e.g. `ai.lorebooks.nook.signin`, description "Nook Web". Register, then edit it:
+   → identifier e.g. `com.kevinsites.nook.signin`, description "Nook Web". Register, then edit it:
    - Enable **Sign in with Apple** → Configure:
      - Primary App ID: the App ID from step 1.
      - **Domains:** `<AUTH0_DOMAIN>`.

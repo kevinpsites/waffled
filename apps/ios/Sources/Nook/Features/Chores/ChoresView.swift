@@ -1,5 +1,7 @@
 import SwiftUI
 import Observation
+import PhotosUI
+import UIKit
 
 /// Chores — today's chores grouped by person (plus an "Up for grabs" group for
 /// unassigned ones), with a date stepper. Tick to complete/uncomplete; tap an
@@ -11,9 +13,12 @@ final class ChoresModel {
     private(set) var instances: [NookAPI.ChoreInstanceDTO] = []
     private(set) var loading = true
     private(set) var error = false
+    /// A dismissible banner shown when a proof upload/complete failed (incl. the 422
+    /// "a photo is required" guard) — mirrors web's `proofErr`.
+    var proofError: String?
     var date: String
 
-    private let api = NookAPI()
+    let api = NookAPI()
 
     init(date: String) { self.date = date }
 
@@ -69,16 +74,42 @@ final class ChoresModel {
         } catch { self.error = true }
     }
 
+    /// Finish a photo-required chore with a captured/picked image: upload the blob, then
+    /// complete with it (optionally claiming `personId` first for the up-for-grabs path).
+    /// Surfaces upload + 422 errors in `proofError` instead of failing silently.
+    func completeWithProof(id: String, image: UIImage, claimFor personId: String? = nil) async {
+        proofError = nil
+        do {
+            let up = try await api.uploadImage(image)
+            if let personId { try await api.claimChore(id: id, personId: personId) }
+            try await api.completeChore(id: id, storageKey: up.key, contentType: up.contentType)
+            await load()
+        } catch let err as NookAPI.APIError where err.isProofRequired {
+            proofError = "A photo is required to finish this chore."
+        } catch let err as LocalizedError {
+            proofError = err.errorDescription ?? "Couldn’t upload that photo — please try again."
+        } catch {
+            proofError = "Couldn’t upload that photo — please try again."
+        }
+    }
+
     func approve(_ id: String) async { do { try await api.approveChore(id: id); await load() } catch { self.error = true } }
     func reject(_ id: String) async { do { try await api.rejectChore(id: id); await load() } catch { self.error = true } }
 
-    /// Create (choreId nil) or edit a chore definition, then reload the day.
-    func save(choreId: String?, body: [String: JSONValue]) async {
+    /// Create (choreId nil) or edit a chore definition, then reload the day. Returns nil
+    /// on success, else a user-facing error message (so the editor can show it instead of
+    /// dismissing on a silent failure — e.g. a non-admin hitting the admin-only endpoint).
+    func save(choreId: String?, body: [String: JSONValue]) async -> String? {
         do {
             if let choreId { try await api.updateChore(id: choreId, body) }
             else { try await api.createChore(body) }
             await load()
-        } catch { self.error = true }
+            return nil
+        } catch let NookAPI.APIError.http(code, _) where code == 401 || code == 403 {
+            return "Only a parent can add or edit chores. Switch to a parent to make changes."
+        } catch {
+            return "Couldn’t save this chore — please try again."
+        }
     }
 
     func delete(choreId: String) async {
@@ -131,6 +162,21 @@ struct ChoresView: View {
     @State private var collapsed: Set<String> = []   // column ids the user has folded
     @State private var dropTarget: String?           // person column id currently under a drag
 
+    // Photo-proof capture: the instance (and optional person to claim first) we're
+    // capturing for, which picker is presented, and a parent's open proof review.
+    @State private var proofTarget: ProofTarget?     // which chore we're capturing proof for
+    @State private var showProofChoice = false       // the Take Photo / Library dialog is up
+    @State private var showCamera = false            // camera sheet presented
+    @State private var libraryPick: PhotosPickerItem?// PhotosPicker selection token
+    @State private var reviewing: NookAPI.ChoreInstanceDTO?  // parent's proof review sheet
+
+    /// A chore awaiting a photo, plus the person to claim it for first (up-for-grabs).
+    struct ProofTarget: Identifiable {
+        let inst: NookAPI.ChoreInstanceDTO
+        let claimFor: String?
+        var id: String { inst.id }
+    }
+
     /// What the chore editor sheet is editing/creating.
     enum ChoreEditorTarget: Identifiable {
         case new(personId: String?)
@@ -143,9 +189,112 @@ struct ChoresView: View {
         }
     }
 
+    /// iPad lays the person columns side-by-side (web-like Kanban); iPhone stacks them.
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
     var body: some View {
+        Group {
+            if isKiosk { kioskContent } else { phoneContent }
+        }
+        .background(NK.canvas)
+        .navigationTitle("Chores")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(isKiosk ? .hidden : .visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { editor = .new(personId: nil) } label: {
+                    Label("New chore", systemImage: "plus").labelStyle(.titleAndIcon).fontWeight(.semibold)
+                }
+            }
+        }
+        .task(id: sync.choresRev) { await model.load(); await approvals.load() }
+        .task { await sync.loadCurrencies() }
+        .sheet(item: $editor) { target in
+            ChoreEditSheet(members: sync.members, target: target,
+                onSave: { choreId, body in await model.save(choreId: choreId, body: body) },
+                onDelete: { choreId in Task { await model.delete(choreId: choreId) } })
+        }
+        // ── Photo-proof capture ──────────────────────────────────────────────
+        // Tapping the tick of a photo-required chore opens this Take Photo / Library
+        // choice; Take Photo is hidden when there's no camera (simulator/iPad).
+        .confirmationDialog("Add a photo to finish this chore",
+                            isPresented: $showProofChoice, titleVisibility: .visible,
+                            presenting: proofTarget) { _ in
+            // Picking an option closes the dialog explicitly and hands off to a picker;
+            // proofTarget stays set so the picker callback knows which chore it's for.
+            // (Driving this off an explicit flag — not "is a picker open?" — avoids the
+            // dialog re-triggering when the photo picker dismisses itself.)
+            if ProofCapture.cameraAvailable {
+                Button("Take Photo") { showProofChoice = false; showCamera = true }
+            }
+            Button("Choose from Library") { showProofChoice = false; presentLibrary() }
+            Button("Cancel", role: .cancel) { showProofChoice = false; proofTarget = nil }
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraPicker { image in onProofImage(image) }
+                .ignoresSafeArea()
+        }
+        .photosPicker(isPresented: photosPickerBinding, selection: $libraryPick, matching: .images)
+        .onChange(of: libraryPick) { _, item in Task { await loadLibraryPick(item) } }
+        .sheet(item: $reviewing) { c in
+            let m = c.personId.flatMap { id in sync.members.first { $0.id == id } }
+            ChoreProofReview(
+                chore: c, memberColorHex: m?.colorHex,
+                coin: c.rewardAmount > 0 ? "\(c.rewardAmount)\(sync.currencySymbol(c.rewardCurrency))" : nil,
+                canDecide: sync.can("chore.approve") && c.status == "awaiting",
+                onApprove: { decide(c) { await sync.approveChore(id: c.id) } },
+                onReject: { decide(c) { await sync.rejectChore(id: c.id) } })
+        }
+    }
+
+    // MARK: photo-proof capture plumbing
+
+    @State private var photosPickerOpen = false
+    private var photosPickerBinding: Binding<Bool> {
+        Binding(get: { photosPickerOpen }, set: { photosPickerOpen = $0 })
+    }
+
+    /// Begin capture for a chore (called from the tick) — opens the choice dialog.
+    private func startProof(_ inst: NookAPI.ChoreInstanceDTO, claimFor personId: String? = nil) {
+        model.proofError = nil
+        proofTarget = ProofTarget(inst: inst, claimFor: personId)
+        showProofChoice = true
+    }
+    private func presentLibrary() { photosPickerOpen = true }
+
+    /// A camera image was captured: complete the chore with it.
+    private func onProofImage(_ image: UIImage) {
+        showCamera = false
+        guard let target = proofTarget else { return }
+        proofTarget = nil
+        Task { await model.completeWithProof(id: target.inst.id, image: image, claimFor: target.claimFor); sync.bumpChores() }
+    }
+
+    /// A library item was picked: load it to a UIImage, then complete with it.
+    private func loadLibraryPick(_ item: PhotosPickerItem?) async {
+        photosPickerOpen = false
+        defer { libraryPick = nil }
+        guard let item, let target = proofTarget else { proofTarget = nil; return }
+        proofTarget = nil
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data) else {
+                model.proofError = "Couldn’t read that photo — please try another."
+                return
+            }
+            await model.completeWithProof(id: target.inst.id, image: image, claimFor: target.claimFor)
+            sync.bumpChores()
+        } catch {
+            model.proofError = "Couldn’t read that photo — please try another."
+        }
+    }
+
+    // MARK: iPhone — vertical stack of columns
+
+    private var phoneContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                proofErrorBanner
                 approvalsCard
                 dateNav
                 if model.loading && model.instances.isEmpty {
@@ -164,23 +313,132 @@ struct ChoresView: View {
         }
         // Bounce even when nothing's scheduled, so pull-to-refresh still triggers.
         .scrollBounceBehavior(.always)
-        .background(NK.canvas)
-        .navigationTitle("Chores")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button { editor = .new(personId: nil) } label: {
-                    Label("New chore", systemImage: "plus").labelStyle(.titleAndIcon).fontWeight(.semibold)
+        .refreshable { await model.load(); await approvals.load() }
+    }
+
+    // MARK: iPad — side-by-side Kanban columns
+
+    private var kioskContent: some View {
+        VStack(spacing: 14) {
+            KioskPageHeader("Chores", "Tick one off — or drag a chore to whoever did it.") {
+                KioskHeaderButton(icon: "plus", label: "New chore") { editor = .new(personId: nil) }
+            }
+            proofErrorBanner.frame(maxWidth: 760)
+            if sync.can("chore.approve") && !approvals.chores.isEmpty { approvalsCard.frame(maxWidth: 760) }
+            dateNav.frame(maxWidth: 440)
+            if model.loading && model.instances.isEmpty {
+                NookLoading(top: 32); Spacer()
+            } else {
+                // Columns keep a minimum width and wrap onto new rows; the board scrolls.
+                ScrollView(showsIndicators: false) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 240, maximum: 380), spacing: 14, alignment: .top)],
+                              alignment: .leading, spacing: 14) {
+                        ForEach(columns) { col in kioskColumn(col) }
+                    }
+                    .padding(.bottom, 20)
                 }
             }
         }
-        .task(id: sync.choresRev) { await model.load(); await approvals.load() }
-        .task { await sync.loadCurrencies() }
-        .refreshable { await model.load(); await approvals.load() }
-        .sheet(item: $editor) { target in
-            ChoreEditSheet(members: sync.members, target: target,
-                onSave: { choreId, body in Task { await model.save(choreId: choreId, body: body) } },
-                onDelete: { choreId in Task { await model.delete(choreId: choreId) } })
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    /// One always-open column (content-sized; the board wraps + scrolls). Reuses the
+    /// shared row/drag/claim logic + drop target.
+    private func kioskColumn(_ col: ChoreColumn) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 9) {
+                if col.isGrabs {
+                    Text("🙌").font(.system(size: 16)).frame(width: 32, height: 32)
+                        .background(NK.gold.opacity(0.15)).clipShape(Circle())
+                } else {
+                    Avatar(colorHex: col.colorHex, emoji: col.emoji ?? "🙂", size: 32)
+                }
+                Text(col.name).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink).lineLimit(1)
+                Spacer(minLength: 4)
+                let allDone = !col.items.isEmpty && col.done == col.items.count
+                HStack(spacing: 3) {
+                    Image(systemName: allDone ? "checkmark.circle.fill" : "checkmark.circle")
+                        .font(.system(size: 12)).foregroundStyle(allDone ? FamilyColor.wally.solid : NK.ink3)
+                    Text("\(col.done)/\(col.items.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
+                }
+            }
+            .padding(.bottom, 10)
+            Rectangle().fill(NK.hair).frame(height: 1)
+            // Capped height + internal scroll, so a long list stays put instead of
+            // pushing the columns below it down the page.
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    if col.isGrabs && !col.items.isEmpty {
+                        Text("Tap to claim it, or drag it into someone’s column.")
+                            .font(.system(size: 11.5, weight: .medium)).foregroundStyle(NK.ink3)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8).padding(.bottom, 2)
+                    }
+                    ForEach(Array(col.items.enumerated()), id: \.element.id) { i, inst in
+                        draggableRow(choreRow(inst, isGrabs: col.isGrabs), inst: inst)
+                        if i < col.items.count - 1 { Divider().background(NK.hair) }
+                    }
+                    if col.items.isEmpty {
+                        Text(col.isGrabs ? "Nothing up for grabs." : "Nothing for \(col.name).")
+                            .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 10)
+                    }
+                    // Assigning a chore to someone else is manage-only; anyone can still
+                    // add one to "Up for grabs" (the self-serve carve-out, like the web).
+                    if col.isGrabs || sync.can("chore.manage") {
+                        Button { editor = .new(personId: col.isGrabs ? nil : col.id) } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
+                                Text("Add chore").font(.system(size: 13, weight: .semibold))
+                            }
+                            .foregroundStyle(NK.ink3).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity)
+        .frame(height: 460)
+        .background(NK.card)
+        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
+            .strokeBorder(dropTarget == col.id ? NK.primary
+                          : (col.isGrabs ? NK.gold.opacity(0.4) : NK.hair),
+                          lineWidth: dropTarget == col.id ? 2 : 1))
+        .dropDestination(for: String.self) { ids, _ in
+            guard let id = ids.first else { return false }
+            dropTarget = nil
+            if col.isGrabs { Task { await model.unassign(id: id) } }
+            else { Task { await model.assign(id: id, to: col.id) } }
+            return true
+        } isTargeted: { hovering in
+            withAnimation(.easeInOut(duration: 0.12)) {
+                dropTarget = hovering ? col.id : (dropTarget == col.id ? nil : dropTarget)
+            }
+        }
+    }
+
+    /// A dismissible inline error for a failed photo upload / the 422 "needs a photo"
+    /// guard — mirrors web's `proofErr` banner.
+    @ViewBuilder
+    private var proofErrorBanner: some View {
+        if let msg = model.proofError {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 15)).foregroundStyle(NK.primary)
+                Text(msg).font(.system(size: 13.5, weight: .semibold)).foregroundStyle(NK.ink)
+                Spacer(minLength: 6)
+                Button { withAnimation { model.proofError = nil } } label: {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 16)).foregroundStyle(NK.ink3)
+                }.buttonStyle(.plain)
+            }
+            .padding(12)
+            .background(NK.primary.opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.primary.opacity(0.3), lineWidth: 1))
         }
     }
 
@@ -192,7 +450,7 @@ struct ChoresView: View {
     /// instances across dates, so it's independent of the day you're viewing.
     @ViewBuilder
     private var approvalsCard: some View {
-        if sync.isParent && !approvals.chores.isEmpty {
+        if sync.can("chore.approve") && !approvals.chores.isEmpty {
             NookCard(padding: 14) {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 6) {
@@ -210,38 +468,52 @@ struct ChoresView: View {
         }
     }
 
+    @ViewBuilder
     private func approvalRow(_ c: NookAPI.ChoreInstanceDTO) -> some View {
         let m = c.personId.flatMap { id in sync.members.first { $0.id == id } }
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Avatar(colorHex: m?.colorHex, emoji: m?.emoji ?? "🙂", size: 36)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(c.personName ?? "Someone") finished")
-                        .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
-                    HStack(spacing: 6) {
-                        Text("\(c.emoji ?? "🧹") \(c.choreTitle)")
-                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
-                        if c.rewardAmount > 0 {
-                            Text("\(c.rewardAmount)\(sync.currencySymbol(c.rewardCurrency))")
-                                .font(.system(size: 12.5, weight: .heavy)).foregroundStyle(NK.gold)
-                                .padding(.horizontal, 7).padding(.vertical, 2)
-                                .background(NK.gold.opacity(0.14)).clipShape(Capsule())
-                        }
-                    }
-                }
-                Spacer(minLength: 0)
+        if isKiosk {
+            // Compact single line on iPad — full-width buttons read as excessive there.
+            HStack(spacing: 12) {
+                Avatar(colorHex: m?.colorHex, emoji: m?.emoji ?? "🙂", size: 34)
+                approvalText(c)
+                Spacer(minLength: 8)
+                ChoreProofThumb(chore: c) { reviewing = c }
+                ApprovalActionPair(
+                    denyLabel: "Not yet", isKiosk: true,
+                    onDeny: { decide(c) { await sync.rejectChore(id: c.id) } },
+                    onApprove: { decide(c) { await sync.approveChore(id: c.id) } }
+                )
             }
-            HStack(spacing: 8) {
-                Button { decide(c) { await sync.rejectChore(id: c.id) } } label: {
-                    Text("Not yet").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
-                        .frame(maxWidth: .infinity).padding(.vertical, 9)
-                        .background(NK.panel).clipShape(Capsule())
-                }.buttonStyle(.plain)
-                Button { decide(c) { await sync.approveChore(id: c.id) } } label: {
-                    Text("Approve").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                        .frame(maxWidth: .infinity).padding(.vertical, 9)
-                        .background(NK.primary).clipShape(Capsule())
-                }.buttonStyle(.plain)
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Avatar(colorHex: m?.colorHex, emoji: m?.emoji ?? "🙂", size: 36)
+                    approvalText(c)
+                    Spacer(minLength: 0)
+                    ChoreProofThumb(chore: c) { reviewing = c }
+                }
+                ApprovalActionPair(
+                    denyLabel: "Not yet", isKiosk: false,
+                    onDeny: { decide(c) { await sync.rejectChore(id: c.id) } },
+                    onApprove: { decide(c) { await sync.approveChore(id: c.id) } }
+                )
+            }
+        }
+    }
+
+    private func approvalText(_ c: NookAPI.ChoreInstanceDTO) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(c.personName ?? "Someone") finished")
+                .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+            HStack(spacing: 6) {
+                Text("\(c.emoji ?? "🧹") \(c.choreTitle)")
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                if c.rewardAmount > 0 {
+                    Text("\(c.rewardAmount)\(sync.currencySymbol(c.rewardCurrency))")
+                        .font(.system(size: 12.5, weight: .heavy)).foregroundStyle(NK.gold)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(NK.gold.opacity(0.14)).clipShape(Capsule())
+                }
             }
         }
     }
@@ -331,8 +603,7 @@ struct ChoresView: View {
                             .font(.system(size: 12)).foregroundStyle(allDone ? FamilyColor.wally.solid : NK.ink3)
                         Text("\(col.done)/\(col.items.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
                     }
-                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .heavy))
-                        .foregroundStyle(NK.ink3).rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                    DisclosureChevron(isOpen: !isCollapsed)
                 }
                 .contentShape(Rectangle())
             }
@@ -356,14 +627,16 @@ struct ChoresView: View {
                                      : "Nothing for \(col.name) \(ChoreDates.meta(model.date).isToday ? "today" : "this day").")
                         .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3).padding(.vertical, 6)
                 }
-                Button { editor = .new(personId: col.isGrabs ? nil : col.id) } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
-                        Text("Add chore").font(.system(size: 13, weight: .semibold))
+                if col.isGrabs || sync.can("chore.manage") {
+                    Button { editor = .new(personId: col.isGrabs ? nil : col.id) } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
+                            Text("Add chore").font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundStyle(NK.ink3).padding(.top, 8)
                     }
-                    .foregroundStyle(NK.ink3).padding(.top, 8)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(14)
@@ -392,7 +665,9 @@ struct ChoresView: View {
     /// or back to up-for-grabs. Only still-pending chores are draggable (a done or
     /// awaiting one keeps its awarded stars where they are).
     @ViewBuilder private func draggableRow(_ row: some View, inst: NookAPI.ChoreInstanceDTO) -> some View {
-        if inst.status == "pending" {
+        // Dragging reassigns a chore to another column — a manage-only action, so only
+        // make rows draggable when the signed-in person can manage chores.
+        if inst.status == "pending" && sync.can("chore.manage") {
             // contentShape makes the *whole* row (incl. the trailing empty space)
             // the drag handle, not just the title text.
             row.contentShape(Rectangle()).draggable(inst.id) {
@@ -417,8 +692,15 @@ struct ChoresView: View {
             HStack(spacing: 11) {
                 Button {
                     if isGrabs { withAnimation { claiming = claiming == inst.id ? nil : inst.id } }
-                    else { Task { await model.toggle(inst) } }
-                } label: { tick(isDone: isDone, isAwaiting: isAwaiting, isGrabs: isGrabs) }
+                    // A photo-required chore that isn't yet complete must capture a photo
+                    // before it can finish — open the picker instead of toggling.
+                    else if inst.requiresPhoto && !isDone && !isAwaiting { startProof(inst) }
+                    // Completing an approval-required chore creates an awaiting item.
+                    // Bump choresRev so this tab's "Needs your OK" card (a separate model)
+                    // and the Today tab / badge all reload — not just the day's columns.
+                    else { Task { await model.toggle(inst); sync.bumpChores() } }
+                } label: { tick(isDone: isDone, isAwaiting: isAwaiting, isGrabs: isGrabs,
+                                 needsPhoto: inst.requiresPhoto && !isDone && !isAwaiting) }
                 .buttonStyle(.plain)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -443,37 +725,62 @@ struct ChoresView: View {
                     }
                 }
                 Spacer(minLength: 6)
-                if isAwaiting {
-                    HStack(spacing: 6) {
-                        Button { Task { await model.reject(inst.id) } } label: {
-                            Text("Reject").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
-                                .padding(.horizontal, 10).padding(.vertical, 6)
-                                .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
-                        }.buttonStyle(.plain)
-                        Button { Task { await model.approve(inst.id) } } label: {
-                            Text("Approve").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
-                                .padding(.horizontal, 10).padding(.vertical, 6)
-                                .background(FamilyColor.wally.solid).clipShape(Capsule())
-                        }.buttonStyle(.plain)
-                    }
+                // The submitted photo (if any), on awaiting AND done chores — so the kid
+                // sees their proof is attached and anyone (esp. a parent) can tap to view
+                // it big, even when the chore didn't need a separate approval step.
+                if isAwaiting || isDone {
+                    ChoreProofThumb(chore: inst) { reviewing = inst }
                 }
             }
-            .padding(.vertical, 9)
+            .padding(.top, 9)
+            .padding(.bottom, isAwaiting && sync.can("chore.approve") ? 4 : 9)
             // Tap anywhere on the row to edit — the tick and approve/reject Buttons
-            // intercept their own taps, so they're unaffected.
+            // intercept their own taps, so they're unaffected. Editing a chore's
+            // definition is manage-only; without it, tapping is a no-op (no dead-end).
             .contentShape(Rectangle())
-            .onTapGesture { editor = .edit(inst) }
+            .onTapGesture { if sync.can("chore.manage") { editor = .edit(inst) } }
+
+            // Approve/Reject go on their own line beneath the row (both phone and iPad),
+            // so the top row stays icon · title · photo instead of cramming everything in
+            // until the button labels wrap.
+            if isAwaiting && sync.can("chore.approve") {
+                approvalButtons(inst)
+                    .padding(.bottom, 9)
+            }
 
             if isGrabs && claiming == inst.id { claimPicker(inst) }
         }
     }
 
-    private func tick(isDone: Bool, isAwaiting: Bool, isGrabs: Bool) -> some View {
+    /// The Reject / Approve pair for an awaiting chore, shown on its own line beneath the
+    /// row (both phone and iPad). Bumps choresRev so the Today tab + badge reflect it too.
+    private func approvalButtons(_ inst: NookAPI.ChoreInstanceDTO) -> some View {
+        // Each button fills half the row — bigger, easier tap targets that read as the
+        // row's primary action rather than two small trailing pills.
+        HStack(spacing: 10) {
+            Button { Task { await model.reject(inst.id); sync.bumpChores() } } label: {
+                Text("Reject").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+                    .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1.5))
+            }.buttonStyle(.plain)
+            Button { Task { await model.approve(inst.id); sync.bumpChores() } } label: {
+                Text("Approve").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+                    .background(FamilyColor.wally.solid).clipShape(Capsule())
+            }.buttonStyle(.plain)
+        }
+    }
+
+    private func tick(isDone: Bool, isAwaiting: Bool, isGrabs: Bool, needsPhoto: Bool = false) -> some View {
         Group {
             if isAwaiting {
                 Text("⏳").font(.system(size: 16)).frame(width: 26, height: 26)
             } else if isDone {
                 Image(systemName: "checkmark.circle.fill").font(.system(size: 22)).foregroundStyle(FamilyColor.wally.solid)
+            } else if needsPhoto && !isGrabs {
+                // 📷 affordance, matching web: a photo-required chore shows the camera
+                // on its incomplete tick so it's clear a snapshot is needed to finish.
+                Image(systemName: "camera.circle").font(.system(size: 22)).foregroundStyle(NK.primary)
             } else {
                 Image(systemName: isGrabs ? "hand.raised.circle" : "circle").font(.system(size: 22))
                     .foregroundStyle(isGrabs ? NK.gold : NK.ink3)
@@ -488,7 +795,10 @@ struct ChoresView: View {
             ForEach(sync.members) { m in
                 Button {
                     claiming = nil
-                    Task { await model.claimComplete(id: inst.id, personId: m.id) }
+                    // Photo-required up-for-grabs: capture the proof first, then claim +
+                    // complete with it; otherwise claim + complete straight away.
+                    if inst.requiresPhoto { startProof(inst, claimFor: m.id) }
+                    else { Task { await model.claimComplete(id: inst.id, personId: m.id); sync.bumpChores() } }
                 } label: {
                     Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 30)
                 }
@@ -511,7 +821,9 @@ struct ChoreEditSheet: View {
     @Environment(SyncManager.self) private var sync
     let members: [SyncedMember]
     let target: ChoresView.ChoreEditorTarget
-    let onSave: (String?, [String: JSONValue]) -> Void
+    /// Persist the chore. Returns nil on success, else a user-facing error message
+    /// (so the sheet stays open and shows why, instead of dismissing on a silent fail).
+    let onSave: (String?, [String: JSONValue]) async -> String?
     let onDelete: (String) -> Void
 
     private static let days: [(code: String, label: String)] = [
@@ -528,10 +840,14 @@ struct ChoreEditSheet: View {
     @State private var freq: String        // "daily" | "weekly"
     @State private var days: Set<String>
     @State private var requiresApproval: Bool
+    @State private var requiresPhoto: Bool
     @State private var confirmDelete = false
+    @State private var saving = false
+    @State private var saveError: String?
+    @FocusState private var titleFocused: Bool
 
     init(members: [SyncedMember], target: ChoresView.ChoreEditorTarget,
-         onSave: @escaping (String?, [String: JSONValue]) -> Void, onDelete: @escaping (String) -> Void) {
+         onSave: @escaping (String?, [String: JSONValue]) async -> String?, onDelete: @escaping (String) -> Void) {
         self.members = members; self.target = target; self.onSave = onSave; self.onDelete = onDelete
         switch target {
         case let .new(pid):
@@ -541,6 +857,7 @@ struct ChoreEditSheet: View {
             _currencyKey = State(initialValue: nil)
             _freq = State(initialValue: "daily"); _days = State(initialValue: [])
             _requiresApproval = State(initialValue: false)
+            _requiresPhoto = State(initialValue: false)
         case let .edit(i):
             editChoreId = i.choreId
             _title = State(initialValue: i.choreTitle); _emoji = State(initialValue: i.emoji ?? "")
@@ -549,10 +866,18 @@ struct ChoreEditSheet: View {
             let parsed = ChoreEditSheet.parseRrule(i.rrule)
             _freq = State(initialValue: parsed.freq); _days = State(initialValue: Set(parsed.days))
             _requiresApproval = State(initialValue: i.requiresApproval)
+            _requiresPhoto = State(initialValue: i.requiresPhoto)
         }
     }
 
     private var editing: Bool { editChoreId != nil }
+    /// Who this person may assign a chore to. Managers can pick anyone; everyone else
+    /// may only create one for themselves (or leave it up for grabs) — matching the
+    /// web's `canAssignOthers` carve-out. "Up for grabs" is always offered separately.
+    private var assignableMembers: [SyncedMember] {
+        if sync.can("chore.manage") { return members }
+        return members.filter { $0.id == sync.currentPersonId }
+    }
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty && (freq != "weekly" || !days.isEmpty)
     }
@@ -561,10 +886,19 @@ struct ChoreEditSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    if let saveError {
+                        Text(saveError)
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.primaryD)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(NK.primary.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    }
                     HStack(spacing: 12) {
                         labeled("Title") {
                             TextField("Feed the dog", text: $title)
                                 .font(.system(size: 16, weight: .semibold)).textInputAutocapitalization(.sentences)
+                                .focused($titleFocused)
                                 .padding(.horizontal, 13).padding(.vertical, 12).cardField()
                         }
                         labeled("Emoji", width: 64) {
@@ -602,7 +936,7 @@ struct ChoreEditSheet: View {
                         SectionLabel(text: "Who")
                         ChipFlow(spacing: 8, lineSpacing: 8) {
                             personChip(nil, label: "🙌 Up for grabs")
-                            ForEach(members) { m in personChip(m.id, label: "\(m.emoji ?? "🙂") \(goalFirstName(m.name))") }
+                            ForEach(assignableMembers) { m in personChip(m.id, label: "\(m.emoji ?? "🙂") \(goalFirstName(m.name))") }
                         }
                     }
 
@@ -656,6 +990,27 @@ struct ChoreEditSheet: View {
                     .tint(FamilyColor.wally.solid)
                     .padding(13).cardField()
 
+                    Toggle(isOn: $requiresPhoto) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Needs a photo").font(.system(size: 14.5, weight: .bold)).foregroundStyle(NK.ink)
+                            Text("A snapshot of the finished job is needed to complete it.")
+                                .font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                        }
+                    }
+                    .tint(FamilyColor.wally.solid)
+                    .padding(13).cardField()
+
+                    // A photo on its own attaches to the finished chore but doesn't pause
+                    // for review. Nudge toward pairing it with approval so the photo lands
+                    // in your "Needs your OK" queue before the reward counts.
+                    if requiresPhoto && !requiresApproval {
+                        Label("Turn on “Needs a parent’s OK” too if you want to see the photo in your approvals before it counts.",
+                              systemImage: "info.circle.fill")
+                            .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NK.ink3)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 4)
+                    }
+
                     if editing {
                         Button {
                             if confirmDelete { onDelete(editChoreId!); dismiss() }
@@ -675,9 +1030,11 @@ struct ChoreEditSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(editing ? "Save" : "Add") { submit() }.fontWeight(.semibold).disabled(!canSave)
+                    Button(editing ? "Save" : "Add") { submit() }.fontWeight(.semibold).disabled(!canSave || saving)
                 }
             }
+            // New chore: land in the title field.
+            .task { if !editing { try? await Task.sleep(for: .milliseconds(300)); titleFocused = true } }
         }
         .presentationDetents([.large])
     }
@@ -724,14 +1081,19 @@ struct ChoreEditSheet: View {
             "rewardAmount": .int(stars),
             "rrule": .string(buildRrule()),
             "requiresApproval": .bool(requiresApproval),
+            "requiresPhoto": .bool(requiresPhoto),
         ]
         // Pass the chosen currency when the household has more than one (else the
         // backend uses its default).
         if currencies.count > 1, let key = effectiveCurrencyKey {
             body["rewardCurrency"] = .string(key)
         }
-        onSave(editChoreId, body)
-        dismiss()
+        Task {
+            saving = true; saveError = nil
+            let err = await onSave(editChoreId, body)
+            saving = false
+            if let err { saveError = err } else { dismiss() }
+        }
     }
 
     private func buildRrule() -> String {

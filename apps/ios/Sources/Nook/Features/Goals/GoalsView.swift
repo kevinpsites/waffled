@@ -171,9 +171,19 @@ struct GoalsView: View {
     private static let heroOrange = LinearGradient(colors: [Color(hex: 0xF3A93B), Color(hex: 0xE08A1C)],
                                                    startPoint: .topLeading, endPoint: .bottomTrailing)
 
+    /// iPad lays the "More goals" out as a multi-column grid (vs. the phone's column).
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+    /// Verification one-shot (NOOK_OPEN_GOAL): open the featured goal once.
+    private static var didOpenGoal = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                if isKiosk {
+                    KioskPageHeader("Goals", "Log progress and keep your streaks going.") {
+                        KioskHeaderButton(icon: "plus", label: "New goal") { creating = true }
+                    }
+                }
                 listPicker
                 if let list = model.selectedList { listHead(list) }
                 if !model.isIndividual, model.selectedList != nil { filterSeg }
@@ -181,7 +191,14 @@ struct GoalsView: View {
                 if !model.more.isEmpty {
                     SectionLabel(text: "More \(model.selectedList?.name ?? "") goals")
                         .padding(.top, 2)
-                    ForEach(model.more) { moreCard($0) }
+                    if isKiosk {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 300, maximum: 460), spacing: 14, alignment: .top)],
+                                  alignment: .leading, spacing: 14) {
+                            ForEach(model.more) { moreCard($0) }
+                        }
+                    } else {
+                        ForEach(model.more) { moreCard($0) }
+                    }
                 }
                 if model.loading && model.visibleGoals.isEmpty {
                     NookLoading()
@@ -199,12 +216,19 @@ struct GoalsView: View {
         .background(NK.canvas)
         .navigationTitle("Goals")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(isKiosk ? .hidden : .visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { creating = true } label: { Image(systemName: "plus") }
             }
         }
-        .task { if model.lists.isEmpty { await model.loadLists() } }
+        .task {
+            if model.lists.isEmpty { await model.loadLists() }
+            if DemoHooks.openGoal, !Self.didOpenGoal, let f = model.featured {
+                Self.didOpenGoal = true; path.append(.goal(f))
+            }
+            if DemoHooks.newGoal, !Self.didOpenGoal { Self.didOpenGoal = true; creating = true }
+        }
         .refreshable { await model.loadLists() }
         .sheet(item: $logging) { g in
             GoalLogSheet(goal: g) { amount, ids, note, loggedOn in
@@ -474,6 +498,10 @@ struct GoalLogSheet: View {
     private static let hourUnits: Set<String> = ["hour", "hours", "hr", "hrs"]
     private static let activityChips = ["Bike ride", "Park", "Sports", "Outside play", "Reading", "Art"]
 
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+    /// A log must be credited to someone: when the goal has participants, at least one
+    /// must be picked (single-participant goals pre-select that person).
+    private var whoMissing: Bool { !goal.participants.isEmpty && who.isEmpty }
     private var isHours: Bool { goal.unit.map { Self.hourUnits.contains($0.lowercased()) } ?? false }
     private var chips: [(label: String, value: Double)] {
         if isHours {
@@ -520,7 +548,13 @@ struct GoalLogSheet: View {
 
                     if !goal.participants.isEmpty {
                         VStack(alignment: .leading, spacing: 9) {
-                            SectionLabel(text: "Who?")
+                            HStack(spacing: 6) {
+                                SectionLabel(text: "Who?")
+                                if whoMissing {
+                                    Text("pick at least one")
+                                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.primary)
+                                }
+                            }
                             whoRow
                         }
                     }
@@ -559,11 +593,11 @@ struct GoalLogSheet: View {
                         dismiss()
                     }
                     .fontWeight(.semibold)
-                    .disabled(amount == 0)
+                    .disabled(amount == 0 || whoMissing)
                 }
             }
         }
-        .presentationDetents([.large])
+        .modifier(KioskSheetPresentation(kiosk: isKiosk))
     }
 
     private var chipRow: some View {
@@ -656,6 +690,9 @@ struct GoalCreateSheet: View {
     @State private var localLists: [NookAPI.GoalList] = []
     @State private var creatingList = false
 
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+    @FocusState private var titleFocused: Bool
+
     private struct TypeOpt { let key, emoji, title, desc: String }
     private static let types = [
         TypeOpt(key: "total", emoji: "⏱️", title: "Total amount", desc: "Adds up — can split (hours, miles)"),
@@ -738,6 +775,7 @@ struct GoalCreateSheet: View {
                     section("What’s the goal?") {
                         TextField("1,000 Hours Outside", text: $title)
                             .font(NK.serif(20)).textInputAutocapitalization(.words)
+                            .focused($titleFocused)
                             .padding(.horizontal, 15).padding(.vertical, 13)
                             .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
@@ -836,6 +874,8 @@ struct GoalCreateSheet: View {
                 }
             }
             .onAppear(perform: prefill)
+            // New goal: land in the name field. (Edits keep the keyboard down.)
+            .task { if editGoal == nil { try? await Task.sleep(for: .milliseconds(300)); titleFocused = true } }
             // Switching type swaps in that type's starter milestones (thresholds mean
             // different things per type). Only in create — edits keep the goal's own.
             .onChange(of: goalType) { _, t in
@@ -848,7 +888,7 @@ struct GoalCreateSheet: View {
                 }
             }
         }
-        .presentationDetents([.large])
+        .modifier(KioskSheetPresentation(kiosk: isKiosk))
     }
 
     // MARK: pieces
@@ -861,8 +901,7 @@ struct GoalCreateSheet: View {
         let on = goalType == t.key
         return Button { goalType = t.key } label: {
             HStack(spacing: 12) {
-                Text(t.emoji).font(.system(size: 20)).frame(width: 38, height: 38)
-                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                NookEmojiTile(emoji: t.emoji)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(t.title).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
                     Text(t.desc).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
@@ -1187,15 +1226,30 @@ struct GoalDetailView: View {
                      autoFromCalendar: goal.autoFromCalendar, participants: participants)
     }
 
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 hero
-                if autoFromCalendar { planButton }
-                if let ms = model.detail?.milestones, !ms.isEmpty { milestoneCard(ms) }
-                if !participants.isEmpty { byPersonCard }
-                recentCard
-                deleteButton
+                actionRow
+                if isKiosk {
+                    HStack(alignment: .top, spacing: 16) {
+                        VStack(spacing: 16) {
+                            if !participants.isEmpty { byPersonCard }
+                            if let ms = model.detail?.milestones, !ms.isEmpty { milestoneCard(ms) }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .top)
+                        VStack(spacing: 16) { recentCard }
+                            .frame(maxWidth: .infinity, alignment: .top)
+                    }
+                    deleteButton
+                } else {
+                    if let ms = model.detail?.milestones, !ms.isEmpty { milestoneCard(ms) }
+                    if !participants.isEmpty { byPersonCard }
+                    recentCard
+                    deleteButton
+                }
             }
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 110)
         }
@@ -1233,6 +1287,35 @@ struct GoalDetailView: View {
 
     /// Whether this goal opted into calendar counting (drives "Plan time").
     private var autoFromCalendar: Bool { model.detail?.autoFromCalendar ?? goal.autoFromCalendar }
+
+    /// The primary actions under the hero. A prominent green **Log progress** button
+    /// (so logging is discoverable without hunting the top-right toolbar), beside the
+    /// purple Schedule CTA on iPad, stacked on iPhone.
+    @ViewBuilder private var actionRow: some View {
+        if isKiosk {
+            HStack(spacing: 12) {
+                logActionButton
+                if autoFromCalendar { planButton }
+            }
+        } else {
+            logActionButton
+            if autoFromCalendar { planButton }
+        }
+    }
+
+    private var logActionButton: some View {
+        Button { logging = true } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "plus.circle.fill").font(.system(size: 15, weight: .bold))
+                Text("Log progress").font(.system(size: 14.5, weight: .bold))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity).padding(.vertical, 13)
+            .background(Self.heroGreen)
+            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
 
     /// "Plan time" (hour goals) / "Schedule" — opens the event editor pre-linked to
     /// this goal, so the new event later shows up on Today to confirm.
@@ -1442,6 +1525,7 @@ struct GoalListCreateSheet: View {
     @State private var memberIds: Set<String> = []
     @State private var isPrivate = false
     @State private var saving = false
+    @FocusState private var nameFocused: Bool
     private let api = NookAPI()
 
     private var canSave: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty && !saving }
@@ -1455,6 +1539,7 @@ struct GoalListCreateSheet: View {
                             SectionLabel(text: "List name")
                             TextField("Mom & Dad", text: $name)
                                 .font(.system(size: 16, weight: .semibold)).textInputAutocapitalization(.words)
+                                .focused($nameFocused)
                                 .padding(.horizontal, 13).padding(.vertical, 12)
                                 .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
                                 .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
@@ -1516,6 +1601,7 @@ struct GoalListCreateSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .task { try? await Task.sleep(for: .milliseconds(300)); nameFocused = true }
     }
 
     private func submit() {

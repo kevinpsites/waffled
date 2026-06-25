@@ -5,7 +5,7 @@
 name: Nook
 
 options:
-  bundleIdPrefix: ai.lorebooks
+  bundleIdPrefix: com.kevinsites
   deploymentTarget:
     iOS: "18.0"          # SwiftData needs 17+; we run on the iPhone 17 Pro / iOS 26.1 sim
   developmentLanguage: en
@@ -45,22 +45,31 @@ targets:
         UILaunchScreen: {}
         # Custom scheme for the Google-calendar OAuth callback (ASWebAuthenticationSession).
         CFBundleURLTypes:
-          - CFBundleURLName: ai.lorebooks.nook.oauth
+          - CFBundleURLName: com.kevinsites.nook.oauth
             CFBundleURLSchemes:
               - nook
         UIApplicationSupportsIndirectInputEvents: true
+        # Phone stays portrait-only (personal planner). The iPad family display is
+        # wall/counter-mounted, so it allows landscape (natural) + portrait.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
         # Voice dictation in the AI capture bar (Speech framework).
         NSMicrophoneUsageDescription: Nook uses the microphone so you can speak an event into the capture bar.
+        # Camera capture for chore photo-proof (kids snap a photo to prove a chore is done).
+        NSCameraUsageDescription: Nook uses the camera so kids can snap a photo to prove a chore is done.
         NSSpeechRecognitionUsageDescription: Nook transcribes your speech on-device to add events by voice.
         # Dev only: allow plain-HTTP to localhost/the tailnet (no TLS in local stack).
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.lorebooks.nook
-        TARGETED_DEVICE_FAMILY: "1"          # iPhone only — this is the phone companion
+        PRODUCT_BUNDLE_IDENTIFIER: com.kevinsites.nook
+        TARGETED_DEVICE_FAMILY: "1,2"        # 1=iPhone (planner) + 2=iPad (family-display kiosk)
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_TESTABILITY: YES              # @testable import Nook from the tests
@@ -78,7 +87,7 @@ targets:
       - target: Nook
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.lorebooks.nook.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.kevinsites.nook.tests
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Nook.app/Nook"
         BUNDLE_LOADER: "$(TEST_HOST)"

@@ -124,10 +124,7 @@ struct ListsIndexView: View {
     private func row(_ list: NookAPI.ListSummary) -> some View {
         NookCard(padding: 15) {
             HStack(spacing: 13) {
-                Text(list.emoji ?? "📝").font(.system(size: 22))
-                    .frame(width: 42, height: 42)
-                    .background(NK.panel)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                NookEmojiTile(emoji: list.emoji ?? "📝")
                 Text(list.name).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
                 Spacer(minLength: 8)
                 Text("\(list.itemCount)").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
@@ -156,6 +153,7 @@ struct NewListSheet: View {
     let onCreate: (String, String) -> Void
     @State private var name = ""
     @State private var emoji = ""
+    @FocusState private var nameFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -165,6 +163,7 @@ struct NewListSheet: View {
                         SectionLabel(text: "List name")
                         TextField("Camping gear", text: $name)
                             .font(.system(size: 16, weight: .semibold)).textInputAutocapitalization(.words)
+                            .focused($nameFocused)
                             .padding(.horizontal, 13).padding(.vertical, 12)
                             .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
@@ -193,5 +192,7 @@ struct NewListSheet: View {
             }
         }
         .presentationDetents([.height(200), .medium])
+        // Land in the name field so you can just start typing.
+        .task { try? await Task.sleep(for: .milliseconds(300)); nameFocused = true }
     }
 }

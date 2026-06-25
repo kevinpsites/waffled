@@ -18,6 +18,7 @@ enum HubRoute: Hashable {
     case settingsMeals               // Settings → Meals (calendar)
     case settingsDisplay             // Settings → Display & Kiosk (family-display screensaver)
     case settingsNotifications       // Settings → Notifications (local event reminders)
+    case settingsAbout               // Settings → About (version + server address)
     case reviewEvents                // Today → review calendar events that tie to goals
     case approvals                   // Today → pending reward purchases + chore check-offs
 }
@@ -44,7 +45,7 @@ struct HubDestination: View {
         case let .person(id):   PersonView(personId: id, path: $path)
         case .rewards:          RewardsView(path: $path)
         case let .rewardShop(id): RewardShopView(personId: id, path: $path)
-        case .photos:           HubPlaceholder(emoji: "📷", title: "Photos", summary: hub?.photosSubtitle ?? "Family photos")
+        case .photos:           PhotosView()
         case .settings:         SettingsView(path: $path)
         case .settingsAccount:  AccountSettingsView()
         case .settingsFamily:   FamilyPeopleSettingsView()
@@ -54,6 +55,7 @@ struct HubDestination: View {
         case .settingsMeals: MealsSettingsView()
         case .settingsDisplay: DisplayKioskSettingsView()
         case .settingsNotifications: NotificationsSettingsView()
+        case .settingsAbout: AboutSettingsView()
         case .reviewEvents: ReviewEventsView(path: $path)
         case .approvals: ApprovalsView()
         }
