@@ -709,6 +709,48 @@ struct NookAPI: Sendable {
         try await send("PUT", "/api/rewards/settings", body: ["requireApproval": .bool(requireApproval)])
     }
 
+    // MARK: - Settings: chore photo-proof retention
+
+    struct ChoresSettings: Decodable, Sendable { let proofTtlDays: Int }
+    /// How long completed-chore proof photos are kept, in days (0 = keep until deleted).
+    func choresSettings() async throws -> ChoresSettings {
+        try await getJSON("/api/chores/settings", as: ChoresSettings.self)
+    }
+    /// Set the proof-retention window (admin-only server-side). Returns the saved value
+    /// (the server clamps to 0…365).
+    @discardableResult
+    func setProofTtlDays(_ days: Int) async throws -> Int {
+        struct Resp: Decodable { let proofTtlDays: Int }
+        return try await sendReturning("PUT", "/api/chores/settings",
+                                       body: ["proofTtlDays": .int(days)], as: Resp.self).proofTtlDays
+    }
+
+    /// A retained chore-proof photo, for the "stored photos" manager in settings.
+    struct StoredProof: Decodable, Identifiable, Sendable {
+        let instanceId: String
+        let choreTitle: String
+        let emoji: String?
+        let personName: String?
+        let personAvatar: String?
+        let personColor: String?
+        let proofUrl: String?
+        let completedAt: String?
+        var id: String { instanceId }
+    }
+    /// Every currently-retained proof photo (settled chores whose blob hasn't expired).
+    func storedProofs() async throws -> [StoredProof] {
+        struct Resp: Decodable { let proofs: [StoredProof] }
+        return try await getJSON("/api/chore-proofs", as: Resp.self).proofs
+    }
+    /// Delete one stored proof (drops the blob, keeps the chore's `hadProof` flag).
+    func deleteProof(instanceId: String) async throws { try await delete("/api/chore-proofs/\(instanceId)") }
+    /// Delete every stored proof at once. Returns how many were cleared.
+    @discardableResult
+    func clearProofs() async throws -> Int {
+        struct Resp: Decodable { let cleared: Int }
+        return try await sendReturning("DELETE", "/api/chore-proofs", body: [:], as: Resp.self).cleared
+    }
+
     /// A trade rate between two currencies (e.g. 10 ⭐ → 1 🥢).
     struct Conversion: Decodable, Identifiable, Hashable, Sendable {
         let id: String
