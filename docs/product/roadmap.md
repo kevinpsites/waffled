@@ -49,10 +49,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **Weather** — Open-Meteo on the topbar (no key).
 - **iOS** (mobile) — a **universal app**: the iPhone *personal planner* and the iPad
   *family hub* (nav rail + every page) in one binary. Near-complete feature parity with the
-  Web/Kiosk — Today, Calendar, Chores (incl. **photo-proof**), Rewards, Goals, Lists, Meals,
-  Photos, AI capture, **role-based permission gating** + the permissions matrix editor,
-  native sign-in (password + OIDC), offline-first calendar over PowerSync, and local event
-  notifications (Snooze/View). The iPad also has the **family-display screensaver** (idle
+  Web/Kiosk — Today, Calendar (incl. **recurring events** — create, per-occurrence edit/
+  delete scope, end condition, and a live "now" line on the time grids), Chores (incl.
+  **photo-proof**), Rewards, Goals, Lists, Meals, Photos, AI capture, **role-based permission
+  gating** + the permissions matrix editor, native sign-in (password + OIDC), offline-first
+  calendar over PowerSync, and local event notifications (Snooze/View). The iPad also has the
+  **family-display screensaver** (idle
   photo slideshow · clock · weather · next event · night-dim). Per-surface (iPhone / iPad)
   status — and the remaining mobile gaps — live in the [feature matrix](./features.md).
 

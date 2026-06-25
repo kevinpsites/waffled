@@ -76,6 +76,9 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Native events (create / edit / delete) | ✅ | ✅ | ✅ | ✅ Done |
 | **Multiple participants** per event (stacked avatars, per-person color) | ✅ | ✅ | ✅ | ✅ Done |
 | Views: **Month / Week / Day / Agenda** | ✅ | ✅ | ✅ | ✅ Done (iPad = `KioskCalendarView` grids) |
+| **Current-time "now" line** on the time grid (Week/Day) | ✅ | ✅ | ✅ | ✅ Done (live red rule; iPhone Day + iPad Week/Day) |
+| Month cells show **event titles** (tap a day for times) | ✅ | ✅ | ✅ | ✅ Done |
+| Agenda **dims past events** | ✅ | ✅ | — | ✅ Done (iPhone agenda) |
 | Full-screen **event detail** (location/Directions, repeats, notes, timeline) | ✅ | ✅ | ✅ | ✅ Done (iPad detail is two-column) |
 | Per-person filter | ✅ | ✅ | ✅ | ✅ Done |
 | **Two-way Google Calendar sync** (inbound poll + outbound push) | ✅ | ✅ | ✅ | ✅ Done (sync runs server-side; connect in Settings → Calendars) |
@@ -84,8 +87,10 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | AI **"Heads up this week"** digest + **per-event insight** | ✅ | ✅ | ✅ | ✅ Done |
 | "Counts toward a goal" tag on an event | ✅ | ✅ | ✅ | ✅ Done |
 | **Recurring events** — rrule **expansion / read** | ✅ | ✅ | ✅ | ✅ Done |
-| **Recurring events** — **creation** | ✅ | 🚧 | 🚧 | 🟡 Read-only on mobile (no repeat picker yet) |
-| **Recurring events** — per-occurrence **edit scope** (this / following / all) | ✅ | 🚧 | 🚧 | 🟡 Mobile edits/deletes hit whole series |
+| **Recurring events** — **creation** (Daily/Weekdays/Weekly+days/Monthly/Custom) | ✅ | ✅ | ✅ | ✅ Done (repeat picker in the editor) |
+| **Recurring events** — per-occurrence **edit scope** (this / following / all) | ✅ | ✅ | ✅ | ✅ Done (scope chooser on edit + delete) |
+| **Recurring events** — **end condition** (never / on a date / after N) | ✅ | ✅ | ✅ | ✅ Done (UNTIL date + COUNT) |
+| **Recurring events** — monthly **nth-weekday ordinal** (first…fifth / last) | ✅ | ✅ | ✅ | ✅ Done (mobile offers any ordinal) |
 
 ## Tasks & chores
 
@@ -161,7 +166,8 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Create / **edit** / delete recipes in-app (ingredients + steps) | ✅ | ✅ | ✅ | ✅ Done (lighter metadata editor on mobile) |
 | **Paste-markdown** recipe import (template/example) | ✅ | ❌ | ❌ | 🟡 Web-only |
 | Per-recipe **overrides** (substitutions, notes) | ✅ | 🟡 | 🟡 | ✅ Done (notes; full overrides on web) |
-| **Cook mode** (step-by-step, wake-lock, finish → mark cooked) | ✅ | ✅ | ✅ | ✅ Done |
+| **Cook mode** (step-by-step, wake-lock, finish → mark cooked) | ✅ | ✅ | ✅ | ✅ Done (centered, large type; scrolls long steps) |
+| Open recipe **full-screen** from Today | ✅ | ✅ | ✅ | ✅ Done (iPad opens full-screen, not a page-sheet) |
 | **Grocery auto-build** honoring substitutions | ✅ | ✅ | ✅ | ✅ Done |
 | AI **Plan my week / month** (library-only, themes, gaps) | ✅ | ✅ | ✅ | ✅ Done |
 | AI **metadata auto-fill** (cuisine, protein, vegetables, tags) | ✅ | ❌ | ❌ | 🟡 Web-only (manual metadata editor on mobile) |
@@ -253,10 +259,6 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 
 Tracked in [`apps/ios/IPAD_ROADMAP.md`](../../apps/ios/IPAD_ROADMAP.md). Highlights:
 
-- **Recurring-event creation + edit scope** on iOS — the editor has no repeat picker, so
-  creation is web-only; edits/deletes always hit the whole series (no this / this-and-following
-  scope chooser). The server already accepts `rrule` on create and `scope`+`occurrenceStart`
-  on PATCH/DELETE — this is a pure client build.
 - **Photos** — multi-select bulk move/delete, and editing a photo's date.
 - **Chore reminders** on iOS — blocked on chores landing in PowerSync.
 - **Recurring-event reminders** — the local scheduler doesn't expand recurrences yet.
