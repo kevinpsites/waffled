@@ -2,6 +2,7 @@
 // so DB-free routes (/healthz, /api/me) and the e2e container (no DATABASE_URL)
 // never touch Postgres.
 import { Pool, type QueryResult, type QueryResultRow } from 'pg'
+import { traceDb } from './telemetry'
 
 let pool: Pool | null = null
 
@@ -18,7 +19,9 @@ export function query<T extends QueryResultRow>(
   text: string,
   params?: unknown[]
 ): Promise<QueryResult<T>> {
-  return getPool().query<T>(text, params as unknown[])
+  // traceDb wraps the query in an OTEL span when tracing is active; otherwise it
+  // just runs the thunk (negligible overhead).
+  return traceDb(text, () => getPool().query<T>(text, params as unknown[]))
 }
 
 export async function closePool(): Promise<void> {

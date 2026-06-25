@@ -4,6 +4,7 @@
 // jobs running, and did the last run fail?" State is process-local (reset on
 // restart) — that's fine; health is about "right now". `runJob` also subsumes the
 // per-scheduler `running` overlap guard.
+import { recordJobRun } from './telemetry'
 
 export interface JobRecord {
   name: string
@@ -52,6 +53,7 @@ export async function runJob<T>(name: string, fn: () => Promise<T>): Promise<T |
     rec.lastRunAt = new Date().toISOString()
     rec.runCount += 1
     rec.running = false
+    recordJobRun(rec) // OTEL metrics (no-op unless OTEL is active)
   }
 }
 

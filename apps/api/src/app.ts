@@ -6,6 +6,7 @@ import { requireAuth } from './platform/auth'
 import { query } from './platform/db'
 import { log } from './platform/logger'
 import { version } from './platform/version'
+import { recordHttpRequest } from './platform/telemetry'
 import { registerHealthRoutes } from './modules/health/health'
 import {
   findTenantBySub,
@@ -253,6 +254,7 @@ api.finally((req: Request, res: Response) => {
     durationMs: r.startTime ? Date.now() - r.startTime : undefined,
     householdId: r.tenantHouseholdId,
   })
+  recordHttpRequest({ method: req.method, status }) // OTEL counter (no-op when off)
 })
 
 // Error handler — lambda-api treats a 4-arg middleware as the error sink.
