@@ -69,6 +69,11 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Planned 🚧
 
+- **Multi-household identity** — one email/account that belongs to many households (separate
+  profile + role per household, switch after login). Design spike written:
+  [`docs/design/multi-household-identity.md`](../design/multi-household-identity.md) — adds a
+  global `accounts` table over the existing per-household `persons`, concentrated in one
+  tenant resolver. Not started; needs the product decisions in §9 of the spike.
 - **Notifications tail** — kiosk "due soon" local banner (table not built yet); remote push
   (APNs / web-push) is blocked on a self-host key/relay decision. Recurring-event reminders
   on iOS (only single events fire today) ride along here.
