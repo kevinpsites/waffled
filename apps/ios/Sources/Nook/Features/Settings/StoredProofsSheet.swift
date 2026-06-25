@@ -56,11 +56,17 @@ struct StoredProofsSheet: View {
     private func cell(_ p: NookAPI.StoredProof) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Button { enlarged = p } label: {
-                AsyncImage(url: MediaURL.resolve(p.proofUrl)) { phase in
-                    if let img = phase.image { img.resizable().scaledToFill() }
-                    else { ZStack { NK.panel; ProgressView() } }
-                }
-                .frame(height: 128).frame(maxWidth: .infinity).clipped()
+                // Image in an overlay over a sized spacer so scaledToFill can't inflate
+                // the cell's layout width (which otherwise pushes cells past the sheet).
+                Color.clear
+                    .frame(height: 128).frame(maxWidth: .infinity)
+                    .overlay {
+                        AsyncImage(url: MediaURL.resolve(p.proofUrl)) { phase in
+                            if let img = phase.image { img.resizable().scaledToFill() }
+                            else { ZStack { NK.panel; ProgressView() } }
+                        }
+                    }
+                    .clipped()
             }
             .buttonStyle(.plain)
             HStack(spacing: 8) {
