@@ -12,6 +12,8 @@ struct ScreensaverView: View {
     let nextEvent: SyncedEvent?
     let timezone: TimeZone
     let dimmed: Bool                    // night-dim window → darken everything
+    /// Seconds each photo stays on screen (from the display config; clamped to ≥3).
+    var interval: Int = 8
     /// A pure photo slideshow with no clock / weather / next-event / album overlays —
     /// the manual "Play" from the Photos tab. The idle kiosk saver leaves this false.
     var bare: Bool = false
@@ -21,12 +23,12 @@ struct ScreensaverView: View {
     @State private var prevIdx = 0
     @State private var zoom = 1.0
     @State private var now = Date()
+    @State private var elapsed = 0
 
-    // ~9s per photo; the clock re-renders every 30s. Fixed cadence — the iOS display
-    // config doesn't carry a per-photo interval (the web's does).
-    private let perPhoto: TimeInterval = 9
-    private let clockTick = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
-    private let slideTick = Timer.publish(every: 9, on: .main, in: .common).autoconnect()
+    // One 1-second heartbeat drives both the clock and the slideshow cadence, so the
+    // per-photo interval is just a number (no need to re-arm a publisher).
+    private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private var perPhoto: TimeInterval { Double(max(3, interval)) }
 
     private var photoMode: Bool { content == "photos" && !photos.isEmpty }
 
@@ -49,8 +51,11 @@ struct ScreensaverView: View {
         .ignoresSafeArea()
         .contentShape(Rectangle())
         .onTapGesture { onWake() }
-        .onReceive(clockTick) { now = $0 }
-        .onReceive(slideTick) { _ in advance() }
+        .onReceive(tick) { t in
+            now = t
+            elapsed += 1
+            if elapsed >= Int(perPhoto) { elapsed = 0; advance() }
+        }
         .onAppear { startKenBurns() }
     }
 

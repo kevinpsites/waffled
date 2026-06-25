@@ -814,11 +814,46 @@ struct NookAPI: Sendable {
         var returnToPicker: Bool
         var resetHomeMinutes: Int      // 0 = never reset to Today
         var nightDim: NightDim
+        // Photo-slideshow options (a server may omit these → sensible defaults).
+        var photoSource: String        // "all" | "favorites" | "album"
+        var photoAlbum: String?        // album name when photoSource == "album"
+        var photoInterval: Int         // seconds each photo stays on screen
+        var photoShuffle: Bool
         struct NightDim: Codable, Sendable, Equatable, Hashable {
             var enabled: Bool
             var start: String          // "HH:mm"
             var end: String            // "HH:mm"
         }
+
+        enum CodingKeys: String, CodingKey {
+            case screensaverMinutes, content, returnToPicker, resetHomeMinutes, nightDim
+            case photoSource, photoAlbum, photoInterval, photoShuffle
+        }
+        init(from d: Decoder) throws {
+            let c = try d.container(keyedBy: CodingKeys.self)
+            screensaverMinutes = try c.decode(Int.self, forKey: .screensaverMinutes)
+            content = try c.decode(String.self, forKey: .content)
+            returnToPicker = try c.decode(Bool.self, forKey: .returnToPicker)
+            resetHomeMinutes = try c.decode(Int.self, forKey: .resetHomeMinutes)
+            nightDim = try c.decode(NightDim.self, forKey: .nightDim)
+            photoSource = try c.decodeIfPresent(String.self, forKey: .photoSource) ?? "all"
+            photoAlbum = try c.decodeIfPresent(String.self, forKey: .photoAlbum)
+            photoInterval = try c.decodeIfPresent(Int.self, forKey: .photoInterval) ?? 8
+            photoShuffle = try c.decodeIfPresent(Bool.self, forKey: .photoShuffle) ?? true
+        }
+    }
+
+    /// Pick + order the photos the screensaver should play for a given config (all,
+    /// favorites, or a single album) and shuffle if asked. Mirrors web `screensaverPhotos`.
+    static func screensaverPhotos(_ photos: [Photo], _ cfg: DisplayConfig) -> [Photo] {
+        var out: [Photo]
+        switch cfg.photoSource {
+        case "favorites": out = photos.filter { $0.isFavorite }
+        case "album": out = cfg.photoAlbum.map { a in photos.filter { $0.memory == a } } ?? photos
+        default: out = photos
+        }
+        if cfg.photoShuffle { out.shuffle() }
+        return out
     }
 
     func displayConfig() async throws -> DisplayConfig {
@@ -839,6 +874,10 @@ struct NookAPI: Sendable {
                 "start": .string(cfg.nightDim.start),
                 "end": .string(cfg.nightDim.end),
             ]),
+            "photoSource": .string(cfg.photoSource),
+            "photoAlbum": cfg.photoAlbum.map(JSONValue.string) ?? .null,
+            "photoInterval": .int(cfg.photoInterval),
+            "photoShuffle": .bool(cfg.photoShuffle),
         ]
         return try await sendReturning("PUT", "/api/kiosk/display", body: body, as: DisplayConfig.self)
     }

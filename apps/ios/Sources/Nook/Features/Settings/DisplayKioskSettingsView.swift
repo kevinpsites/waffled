@@ -64,9 +64,10 @@ struct DisplayKioskSettingsView: View {
         .fullScreenCover(isPresented: $showPreview) {
             ScreensaverView(
                 content: cfg?.content == "photos" ? "photos" : "clock",
-                photos: previewPhotos, weather: previewWeather,
-                nextEvent: nextEvent, timezone: sync.householdTz,
-                dimmed: false, bare: false, onWake: { showPreview = false })
+                photos: cfg.map { NookAPI.screensaverPhotos(previewPhotos, $0) } ?? previewPhotos,
+                weather: previewWeather, nextEvent: nextEvent, timezone: sync.householdTz,
+                dimmed: false, interval: cfg?.photoInterval ?? 8, bare: false,
+                onWake: { showPreview = false })
         }
         // Debounced auto-save — echoing the server's normalized cfg back into state
         // must not retrigger a save, hence the `dirty` guard.
@@ -150,8 +151,58 @@ struct DisplayKioskSettingsView: View {
                     rowLabel("Return to profile picker afterward", "When a paired kiosk wakes, drop to the profile picker.")
                 }
                 .tint(NK.primary).padding(.vertical, 14)
+
+                // Photo-slideshow options — only relevant when the saver shows photos.
+                if cfg?.content == "photos" {
+                    divider
+                    VStack(alignment: .leading, spacing: 10) {
+                        rowLabel("Photo source", "Which photos the slideshow plays.")
+                        Picker("", selection: bindPhotoSource) {
+                            Text("All").tag("all")
+                            Text("Favorites").tag("favorites")
+                            Text("Album").tag("album")
+                        }
+                        .pickerStyle(.segmented).labelsHidden()
+                    }
+                    .padding(.vertical, 14)
+                    if cfg?.photoSource == "album" {
+                        divider
+                        menuRow("Album", value: cfg?.photoAlbum ?? "Choose…") {
+                            if albumChoices.isEmpty {
+                                Text("No albums yet — tag photos with an album first.")
+                            } else {
+                                ForEach(albumChoices, id: \.self) { a in
+                                    Button(a) { cfg?.photoAlbum = a; dirty = true }
+                                }
+                            }
+                        }
+                    }
+                    divider
+                    menuRow("Transition speed", value: secondsLabel(cfg?.photoInterval ?? 8)) {
+                        ForEach(intervalChoices, id: \.self) { s in
+                            Button(secondsLabel(s)) { cfg?.photoInterval = s; dirty = true }
+                        }
+                    }
+                    divider
+                    Toggle(isOn: bindBool(\.photoShuffle)) {
+                        rowLabel("Shuffle photos", "Play them in a random order.")
+                    }
+                    .tint(NK.primary).padding(.vertical, 14)
+                }
             }
         }
+    }
+
+    /// Album names seen across the household's photos (for the "Specific album" picker).
+    private var albumChoices: [String] {
+        Array(Set(previewPhotos.compactMap { $0.memory }.filter { !$0.isEmpty })).sorted()
+    }
+    private let intervalChoices = [3, 5, 8, 10, 15, 20, 30]
+    private func secondsLabel(_ s: Int) -> String { s == 1 ? "1 second" : "\(s) seconds" }
+
+    private var bindPhotoSource: Binding<String> {
+        Binding(get: { cfg?.photoSource ?? "all" },
+                set: { cfg?.photoSource = $0; dirty = true })
     }
 
     private var idleCard: some View {
@@ -212,11 +263,15 @@ struct DisplayKioskSettingsView: View {
 
     private func load() async {
         loadFailed = false
-        do { cfg = try await api.displayConfig(); dirty = false }
+        // Fetch config + the preview's photos/weather concurrently, so a tapped Preview
+        // has real photos to show instead of a blank slideshow.
+        async let cfgF = api.displayConfig()
+        async let wxF = api.weather()
+        async let photosF = api.photos()
+        do { cfg = try await cfgF; dirty = false }
         catch { loadFailed = true }
-        // Background data for the live preview (best-effort).
-        previewWeather = try? await api.weather()
-        previewPhotos = (try? await api.photos()) ?? []
+        previewWeather = try? await wxF
+        previewPhotos = (try? await photosF) ?? []
     }
 
     private func save(_ snapshot: NookAPI.DisplayConfig) async {

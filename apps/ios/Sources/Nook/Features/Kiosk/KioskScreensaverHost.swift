@@ -28,8 +28,14 @@ final class ScreensaverModel {
     func load() async {
         cfg = try? await api.displayConfig()
         weather = try? await api.weather()
-        // Only fetch the wall when the saver would actually show photos.
-        if cfg?.content == "photos" { photos = (try? await api.photos()) ?? [] }
+        // Only fetch the wall when the saver would actually show photos, then scope it to
+        // the configured source/album + shuffle.
+        if let cfg, cfg.content == "photos" {
+            let raw = (try? await api.photos()) ?? []
+            photos = NookAPI.screensaverPhotos(raw, cfg)
+        } else {
+            photos = []
+        }
     }
 
     /// Called every second: decide whether to show the saver and whether to night-dim.
@@ -72,7 +78,8 @@ struct KioskScreensaverHost: ViewModifier {
                         content: cfg.content == "photos" ? "photos" : "clock",
                         photos: model.photos, weather: model.weather,
                         nextEvent: nextEvent, timezone: sync.householdTz,
-                        dimmed: model.dimmed, onWake: { model.wake() })
+                        dimmed: model.dimmed, interval: cfg.photoInterval,
+                        onWake: { model.wake() })
                         .transition(.opacity)
                         .zIndex(100)
                 }
