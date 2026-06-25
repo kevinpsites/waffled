@@ -16,6 +16,8 @@ struct DisplayKioskSettingsView: View {
     @State private var previewPhotos: [NookAPI.Photo] = []
     @State private var previewWeather: NookAPI.Weather?
     @State private var showPreview = false
+    // Device-local: the server doesn't store a motion flag, and it's a per-display look.
+    @AppStorage("nook.screensaverMotion") private var motion = true
 
     private let api = NookAPI()
 
@@ -66,7 +68,7 @@ struct DisplayKioskSettingsView: View {
                 content: cfg?.content == "photos" ? "photos" : "clock",
                 photos: cfg.map { NookAPI.screensaverPhotos(previewPhotos, $0) } ?? previewPhotos,
                 weather: previewWeather, nextEvent: nextEvent, timezone: sync.householdTz,
-                dimmed: false, interval: cfg?.photoInterval ?? 8, bare: false,
+                dimmed: false, interval: cfg?.photoInterval ?? 8, bare: false, motion: motion,
                 onWake: { showPreview = false })
         }
         // Debounced auto-save — echoing the server's normalized cfg back into state
@@ -186,6 +188,11 @@ struct DisplayKioskSettingsView: View {
                     divider
                     Toggle(isOn: bindBool(\.photoShuffle)) {
                         rowLabel("Shuffle photos", "Play them in a random order.")
+                    }
+                    .tint(NK.primary).padding(.vertical, 14)
+                    divider
+                    Toggle(isOn: $motion) {
+                        rowLabel("Slow zoom on photos", "A gentle Ken-Burns drift, instead of letting each photo sit still. Saved on this device.")
                     }
                     .tint(NK.primary).padding(.vertical, 14)
                 }

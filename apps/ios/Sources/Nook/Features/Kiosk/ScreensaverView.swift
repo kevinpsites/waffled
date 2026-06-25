@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The full-screen family-display screensaver — the iPad twin of the web kiosk's
 /// `Screensaver`. With `content == "photos"` and photos present it cross-fades through
@@ -17,11 +18,12 @@ struct ScreensaverView: View {
     /// A pure photo slideshow with no clock / weather / next-event / album overlays —
     /// the manual "Play" from the Photos tab. The idle kiosk saver leaves this false.
     var bare: Bool = false
+    /// Slow Ken-Burns drift on each photo (device-local preference). Off = photos sit still.
+    var motion: Bool = true
     let onWake: () -> Void
 
     @State private var idx = 0
     @State private var prevIdx = 0
-    @State private var zoom = 1.0
     @State private var now = Date()
     @State private var elapsed = 0
 
@@ -56,7 +58,7 @@ struct ScreensaverView: View {
             elapsed += 1
             if elapsed >= Int(perPhoto) { elapsed = 0; advance() }
         }
-        .onAppear { startKenBurns() }
+        .onAppear { ScreensaverImageCache.shared.prefetch(photos) }
     }
 
     // MARK: background (cross-fading photos, or a calm gradient)
@@ -64,9 +66,10 @@ struct ScreensaverView: View {
     @ViewBuilder private var background: some View {
         if photoMode {
             ZStack {
-                photoFill(photos[prevIdx % photos.count])               // the photo we're leaving
-                photoFill(photos[idx % photos.count])                   // fades in over it
-                    .scaleEffect(zoom)
+                // The photo we're leaving sits underneath, static, so the incoming one
+                // fades in over a real image — never over a blank/placeholder frame.
+                SlidePhoto(photo: photos[prevIdx % photos.count], motion: false, duration: perPhoto)
+                SlidePhoto(photo: photos[idx % photos.count], motion: motion, duration: perPhoto + 1.2)
                     .id(idx)
                     .transition(.opacity)
             }
@@ -75,29 +78,6 @@ struct ScreensaverView: View {
             LinearGradient(colors: [Color(hex: 0x2B2B2B), Color(hex: 0x161616)],
                            startPoint: .topLeading, endPoint: .bottomTrailing)
                 .ignoresSafeArea()
-        }
-    }
-
-    /// A photo filling the screen. The image lives in an overlay over a flexible spacer
-    /// and is clipped, so scaledToFill can't inflate the layout (the tile-bleed fix).
-    private func photoFill(_ p: NookAPI.Photo) -> some View {
-        Color.clear
-            .overlay {
-                if let url = MediaURL.resolve(p.imageUrl) {
-                    AsyncImage(url: url) { phase in
-                        if let img = phase.image { img.resizable().scaledToFill() }
-                        else { tile(p) }
-                    }
-                } else { tile(p) }
-            }
-            .clipped()
-    }
-
-    private func tile(_ p: NookAPI.Photo) -> some View {
-        let c = Color(hexString: p.colorHex) ?? Color(hex: 0x7FC1E8)
-        return ZStack {
-            LinearGradient(colors: [c, c.opacity(0.7)], startPoint: .topLeading, endPoint: .bottomTrailing)
-            Text(p.emoji ?? "🖼️").font(.system(size: 160))
         }
     }
 
@@ -145,17 +125,12 @@ struct ScreensaverView: View {
 
     private func advance() {
         guard photoMode, photos.count > 1 else { return }
+        let next = (idx + 1) % photos.count
+        // Warm the cache for the photo after next, so its turn is flash-free too.
+        ScreensaverImageCache.shared.prefetch([photos[(next + 1) % photos.count]])
         prevIdx = idx
-        withAnimation(.easeInOut(duration: 1.1)) { idx = (idx + 1) % photos.count }
-        startKenBurns()
-    }
-
-    /// Reset the top photo to 1.0 then slowly drift to 1.08 across its time on screen,
-    /// for the gentle "alive" motion the web slideshow has.
-    private func startKenBurns() {
-        guard photoMode else { return }
-        zoom = 1.0
-        withAnimation(.easeInOut(duration: perPhoto + 1.2)) { zoom = 1.08 }
+        withAnimation(.easeInOut(duration: 1.1)) { idx = next }
+        // Each SlidePhoto runs its own Ken-Burns on appear, so there's nothing to reset.
     }
 
     // MARK: formatting
@@ -185,5 +160,85 @@ struct ScreensaverView: View {
         guard let when = ev.startsAt else { return "Next: \(ev.title)" }
         let f = DateFormatter(); f.timeZone = timezone; f.dateFormat = "h:mm"
         return "Next: \(ev.title) · \(f.string(from: when))"
+    }
+}
+
+// MARK: - Cached, self-animating slideshow photo
+
+/// One full-screen slideshow photo, backed by an in-memory cache so a re-shown image
+/// appears instantly (no AsyncImage placeholder flash mid-crossfade). Runs its own slow
+/// Ken-Burns drift on appear when `motion` is on, so the outgoing photo is never affected.
+private struct SlidePhoto: View {
+    let photo: NookAPI.Photo
+    let motion: Bool
+    let duration: Double
+
+    @State private var image: UIImage?
+    @State private var scale = 1.0
+
+    var body: some View {
+        Color.clear
+            .overlay {
+                if let image {
+                    Image(uiImage: image).resizable().scaledToFill().scaleEffect(scale)
+                } else {
+                    tile
+                }
+            }
+            .clipped()
+            .task(id: photo.id) { await loadAndAnimate() }
+    }
+
+    private func loadAndAnimate() async {
+        scale = 1.0
+        if let url = MediaURL.resolve(photo.imageUrl) {
+            // Synchronous when already cached → the crossfade reveals a real image, not a
+            // placeholder. Falls back to an async fetch the first time only.
+            if let hit = ScreensaverImageCache.shared.cached(url) {
+                image = hit
+            } else {
+                image = await ScreensaverImageCache.shared.load(url)
+            }
+        } else {
+            image = nil
+        }
+        guard motion, image != nil else { return }
+        withAnimation(.easeInOut(duration: duration)) { scale = 1.08 }
+    }
+
+    private var tile: some View {
+        let c = Color(hexString: photo.colorHex) ?? Color(hex: 0x7FC1E8)
+        return ZStack {
+            LinearGradient(colors: [c, c.opacity(0.7)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            Text(photo.emoji ?? "🖼️").font(.system(size: 160))
+        }
+    }
+}
+
+/// Tiny decoded-image cache for the screensaver. NSCache is thread-safe; loads dedupe to
+/// the cache, and a capped sequential prefetch warms upcoming photos in the background.
+final class ScreensaverImageCache: @unchecked Sendable {
+    static let shared = ScreensaverImageCache()
+    private let cache = NSCache<NSURL, UIImage>()
+    private init() { cache.countLimit = 240 }
+
+    func cached(_ url: URL) -> UIImage? { cache.object(forKey: url as NSURL) }
+
+    @discardableResult
+    func load(_ url: URL) async -> UIImage? {
+        if let img = cached(url) { return img }
+        guard let (data, _) = try? await URLSession.shared.data(from: url),
+              let img = UIImage(data: data) else { return nil }
+        cache.setObject(img, forKey: url as NSURL)
+        return img
+    }
+
+    /// Warm the cache for a batch of photos (sequential, capped) without blocking.
+    func prefetch(_ photos: [NookAPI.Photo]) {
+        let urls = photos.prefix(60).compactMap { MediaURL.resolve($0.imageUrl) }.filter { cached($0) == nil }
+        guard !urls.isEmpty else { return }
+        Task.detached(priority: .utility) {
+            for url in urls { _ = await self.load(url) }
+        }
     }
 }

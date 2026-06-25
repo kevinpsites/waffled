@@ -66,6 +66,7 @@ final class ScreensaverModel {
 struct KioskScreensaverHost: ViewModifier {
     @Environment(SyncManager.self) private var sync
     @State private var model = ScreensaverModel()
+    @AppStorage("nook.screensaverMotion") private var motion = true
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     func body(content: Content) -> some View {
@@ -79,7 +80,7 @@ struct KioskScreensaverHost: ViewModifier {
                         photos: model.photos, weather: model.weather,
                         nextEvent: nextEvent, timezone: sync.householdTz,
                         dimmed: model.dimmed, interval: cfg.photoInterval,
-                        onWake: { model.wake() })
+                        motion: motion, onWake: { model.wake() })
                         .transition(.opacity)
                         .zIndex(100)
                 }

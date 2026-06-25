@@ -10,6 +10,7 @@ struct PhotosView: View {
     @State private var showAdd = false
     @State private var selectedAlbum: String?     // nil = all photos
     @State private var playing = false            // the manual slideshow is up
+    @AppStorage("nook.screensaverMotion") private var motion = true
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
 
@@ -45,7 +46,8 @@ struct PhotosView: View {
         // The manual slideshow — a bare, chrome-free play-through of what's on the wall.
         .fullScreenCover(isPresented: $playing) {
             ScreensaverView(content: "photos", photos: shownPhotos, weather: nil, nextEvent: nil,
-                            timezone: .current, dimmed: false, bare: true, onWake: { playing = false })
+                            timezone: .current, dimmed: false, bare: true, motion: motion,
+                            onWake: { playing = false })
         }
         .sheet(item: $detail) { photo in
             PhotoDetailView(photo: photo, memoryCount: photo.memory.map { model.count(inMemory: $0) } ?? 0,
