@@ -27,6 +27,9 @@ struct CaptureSheet: View {
     @State private var taskStars = 0
     @State private var taskCurrency = "stars"
     @State private var taskRrule: String?       // preserved if the parse found a recurrence
+    @State private var evRepeat = RepeatState.none   // event recurrence (seeded by the parse, editable)
+    @State private var evUntilOn = false             // "ends on a date" toggle
+    @State private var evUntil = Date()
     @State private var mealSlot = "dinner"
     @State private var mealDate = Date()
     @State private var lists: [NookAPI.ListSummary] = []   // for the list picker
@@ -253,6 +256,7 @@ struct CaptureSheet: View {
                 Spacer(minLength: 0)
             }
             toggleChip("All day", on: evAllDay) { evAllDay.toggle() }
+            eventRepeatFields
         case "task":
             personChips(allowNone: true, noneLabel: "Up for grabs", icon: "🙌")
             HStack(spacing: 10) {
@@ -325,6 +329,53 @@ struct CaptureSheet: View {
             .overlay(Capsule().strokeBorder(on ? NK.ai : NK.hair, lineWidth: on ? 1.5 : 1)).clipShape(Capsule())
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: event recurrence (capture parity with the web — Repeats + Until)
+
+    /// A compact repeat picker for a captured event: a frequency menu (seeded by the
+    /// AI's parse) plus an optional "ends on a date". Builds an RRULE on commit; the
+    /// full per-occurrence editing lives in the calendar editor.
+    @ViewBuilder private var eventRepeatFields: some View {
+        HStack(spacing: 8) {
+            Text("Repeats").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink2)
+            Menu {
+                Button("Does not repeat") { evRepeat = .none }
+                Button("Daily") { evRepeat = { var s = RepeatState.none; s.freq = .daily; return s }() }
+                Button("Weekdays") { evRepeat = { var s = RepeatState.none; s.freq = .weekdays; return s }() }
+                Button("Weekly") { evRepeat.freq = .weekly }   // keeps any AI-parsed day
+                Button("Monthly") { evRepeat = { var s = RepeatState.none; s.freq = .monthly; return s }() }
+                Button("Yearly") { evRepeat = { var s = RepeatState.none; s.freq = .custom; s.unit = .year; return s }() }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(captureRepeatLabel).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink)
+                    Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).foregroundStyle(NK.ink3)
+                }
+                .padding(.horizontal, 11).padding(.vertical, 7)
+                .background(NK.card2).overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1)).clipShape(Capsule())
+            }
+            Spacer(minLength: 0)
+        }
+        if evRepeat.freq != .none {
+            HStack(spacing: 8) {
+                toggleChip("Ends on", on: evUntilOn) { evUntilOn.toggle() }
+                if evUntilOn {
+                    DatePicker("", selection: $evUntil, in: evDate..., displayedComponents: .date).labelsHidden()
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private var captureRepeatLabel: String {
+        switch evRepeat.freq {
+        case .none: return "Does not repeat"
+        case .daily: return "Daily"
+        case .weekdays: return "Weekdays"
+        case .weekly: return "Weekly"
+        case .monthly: return "Monthly"
+        case .custom: return evRepeat.unit == .year ? "Yearly" : "Custom"
+        }
     }
 
     private func stepper(_ value: Binding<Int>) -> some View {
@@ -452,9 +503,11 @@ struct CaptureSheet: View {
             return iso.date(from: s) ?? isoFrac.date(from: s)
         }
         switch i {
-        case let .event(title, startsAt, allDay, personName, _):
+        case let .event(title, startsAt, allDay, personName, rrule, _, _):
             editKind = "event"; editName = title; evAllDay = allDay; evPerson = personName
             evDate = date(startsAt) ?? Date()
+            evRepeat = Recurrence.parseRepeat(rrule)
+            evUntilOn = false
         case let .grocery(name, quantity):
             editKind = "grocery"; editName = name; editQty = quantity ?? ""
         case let .task(title, personName, stars, rrule, _):
@@ -479,8 +532,14 @@ struct CaptureSheet: View {
             case "event":
                 let cal = Calendar.current
                 let start = evAllDay ? (cal.date(bySettingHour: 12, minute: 0, second: 0, of: evDate) ?? evDate) : evDate
+                let rrule = Recurrence.buildRrule(evRepeat, start: start)
+                var endAt: String?
+                if rrule != nil, evUntilOn {
+                    let eod = cal.date(bySettingHour: 23, minute: 59, second: 0, of: evUntil) ?? evUntil
+                    endAt = ISO8601DateFormatter().string(from: eod)
+                }
                 ok = await sync.commitEvent(title: name, startsAtISO: ISO8601DateFormatter().string(from: start),
-                                            allDay: evAllDay, personName: evPerson)
+                                            allDay: evAllDay, personName: evPerson, rrule: rrule, recurrenceEndAt: endAt)
             case "grocery":
                 ok = await sync.commitGrocery(name: name, quantity: qty)
             case "task":

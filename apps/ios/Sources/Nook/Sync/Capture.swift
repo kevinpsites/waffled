@@ -5,7 +5,7 @@ import Foundation
 /// understanding (pluggable LLM) and resolves dates to the household tz; we render
 /// the preview and commit it.
 enum CaptureIntent: Sendable, Equatable {
-    case event(title: String, startsAt: String, allDay: Bool, personName: String?, whenLabel: String)
+    case event(title: String, startsAt: String, allDay: Bool, personName: String?, rrule: String?, scheduleLabel: String, whenLabel: String)
     case grocery(name: String, quantity: String?)
     case task(title: String, personName: String?, stars: Int?, rrule: String?, scheduleLabel: String)
     case meal(title: String, date: String?, mealType: String, whenLabel: String)
@@ -28,6 +28,8 @@ extension CaptureIntent: Decodable {
                 startsAt: try c.decode(String.self, forKey: .startsAt),
                 allDay: (try? c.decode(Bool.self, forKey: .allDay)) ?? false,
                 personName: try c.decodeIfPresent(String.self, forKey: .personName),
+                rrule: try c.decodeIfPresent(String.self, forKey: .rrule),
+                scheduleLabel: (try? c.decode(String.self, forKey: .scheduleLabel)) ?? "",
                 whenLabel: (try? c.decode(String.self, forKey: .whenLabel)) ?? ""
             )
         case "grocery":
@@ -73,9 +75,9 @@ struct CaptureSummary {
 
     init(_ intent: CaptureIntent) {
         switch intent {
-        case let .event(title, _, _, personName, whenLabel):
+        case let .event(title, _, _, personName, _, scheduleLabel, whenLabel):
             icon = "📅"; kind = "Event"; primary = title
-            detail = [whenLabel, personName].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+            detail = [whenLabel, scheduleLabel, personName].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
         case let .grocery(name, quantity):
             icon = "🛒"; kind = "Grocery"
             primary = [quantity, name].compactMap { $0 }.joined(separator: " ")

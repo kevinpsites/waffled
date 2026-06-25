@@ -312,13 +312,26 @@ private final class Counter { var n = 0 }
         {"kind":"event","title":"Dentist","startsAt":"2026-06-23T20:00:00.000Z",
          "allDay":false,"personName":"Kevin","whenLabel":"Tue, Jun 23 · 2:00 PM"}
         """)
-        guard case let .event(title, startsAt, allDay, person, _) = intent else {
+        guard case let .event(title, startsAt, allDay, person, rrule, _, _) = intent else {
             Issue.record("expected event"); return
         }
         #expect(title == "Dentist")
         #expect(startsAt == "2026-06-23T20:00:00.000Z")
         #expect(allDay == false)
         #expect(person == "Kevin")
+        #expect(rrule == nil)
+    }
+
+    @Test func decodesRecurringEvent() throws {
+        let intent = try decode("""
+        {"kind":"event","title":"Soccer","startsAt":"2026-06-16T16:00:00",
+         "allDay":false,"personName":"Wally","rrule":"FREQ=WEEKLY;BYDAY=TU","scheduleLabel":"Every week"}
+        """)
+        guard case let .event(_, _, _, _, rrule, scheduleLabel, _) = intent else {
+            Issue.record("expected event"); return
+        }
+        #expect(rrule == "FREQ=WEEKLY;BYDAY=TU")
+        #expect(scheduleLabel == "Every week")
     }
 
     @Test func decodesGroceryAndMeal() throws {
