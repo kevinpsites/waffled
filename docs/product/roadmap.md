@@ -17,6 +17,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 - **Self-host packaging** — one-command `./nook up`, in-container migrations, multi-arch
   GHCR images, build-from-source default.
+- **Observability** — structured JSON logging, a deep `/api/health` + **Settings → System
+  Health** panel, **`./nook doctor`**, baked build provenance, and **OpenTelemetry**
+  (off by default) with an all-local **`./nook observability up`** Grafana stack. Restore
+  drills still to come (7.4).
 - **Identity** — built-in email/password auth (rotating refresh), backend-mediated **OIDC
   SSO** (invite-gated, admin-configured), member management (grant logins), **role-based
   permissions** (per-role capability grid for managing/approving chores, rewards & goals —
@@ -74,7 +78,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   already covers the real need; a per-role lists matrix is more machinery than a family hub
   wants. Recorded so the rationale isn't lost (see [permission model](./permissions.md)).
 - **Optional S3 backup** (Phase 4) — parked.
-- **Observability + restore drills** (7.4).
+- **Restore drills** (7.4) — pairs with the parked S3 backup.
 - **App store verification** (7.2) — Apple/Google production review.
 
 ## Dropped ⛔ (superseded by the self-host pivot, 2026-06-20)

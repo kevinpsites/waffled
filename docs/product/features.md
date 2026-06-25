@@ -209,7 +209,20 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported/N-A �
 | **GHCR** multi-arch images (amd64 + arm64) | ✅ | — | ✅ Done |
 | Optional **S3 backup** | 🚧 | — | 🚧 Parked (Phase 4) |
 | Public ingress / auto-TLS beyond LAN | 🟡 | — | 🟡 Configurable (7.3) |
-| Observability + restore drills | 🚧 | — | 🚧 Planned (7.4) |
+| Restore drills | 🚧 | — | 🚧 Planned (7.4) |
+
+## Observability & operations
+
+| Feature | Web / Kiosk | Mobile | Status |
+| --- | :---: | :---: | --- |
+| Structured **JSON logging** + per-request access log | ✅ | — | ✅ Done |
+| Deep **`GET /api/health`** (db, migrations, jobs, calendar backlog, storage) | ✅ | — | ✅ Done |
+| **Settings → System Health** admin panel (live, polls /api/health) | ✅ | ⬜ | ✅ Done |
+| **`./nook doctor`** CLI health report (in-container, no token) | ✅ | — | ✅ Done |
+| Background-**job run registry** (last-run / duration / error per scheduler) | ✅ | — | ✅ Done |
+| Build **provenance** (git sha + build time on /healthz + /api/health) | ✅ | — | ✅ Done |
+| **OpenTelemetry** traces+metrics (OTLP, **off by default**) | ✅ | — | ✅ Done |
+| All-local **Grafana/OTEL stack** (`./nook observability up`, profile) | ✅ | — | ✅ Done |
 
 > **PowerSync scope note.** On the Web/Kiosk, offline-first currently covers the
 > **calendar/events** domain (local-first reads + queued writes). Other domains

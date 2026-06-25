@@ -97,7 +97,20 @@ agenda + range), kiosk agenda card + Calendar month-grid screen. Part 2 below is
 - [~] 7.1 Kiosk PWA: service worker + cached last-known state (survive backend blips)
 - [ ] 7.2 Submit Google + Apple production verification
 - [ ] 7.3 Public ingress when exposing the stack beyond the LAN — Caddy auto-TLS via `CADDY_SITE_ADDRESS` + `PUBLIC_BASE_URL` (or a Cloudflare Tunnel in front). *(Self-host reframe: no tailnet assumption; the operator chooses how to expose it.)*
-- [ ] 7.4 Observability (logs/metrics/health) + scheduled restore drills
+- [~] 7.4 Observability (logs/metrics/health) + scheduled restore drills. **DONE 2026-06-25
+  (core):** structured JSON request/error logging (`platform/logger.ts`, `LOG_LEVEL`/`LOG_FORMAT`,
+  per-request id + access log via `api.finally`); an in-memory **job registry** (`platform/jobs.ts`)
+  wrapping the 3 schedulers (last-run/duration/error/runCount); a deep **`GET /api/health`** (admin)
+  — db + pool, migrations applied/available, scheduler snapshots, calendar push backlog + stale
+  calendars, media writability, build sha — plus an enriched public `/healthz` (db ping + version);
+  baked **build provenance** (Dockerfile `GIT_SHA`/`BUILD_TIME` → `/healthz` + `/api/health`);
+  **OpenTelemetry** traces+metrics (`src/otel.ts` `--require` preload, **off unless
+  `OTEL_EXPORTER_OTLP_ENDPOINT` set**, `@opentelemetry/*` kept esbuild-external so
+  auto-instrumentation works; manual db/job/http instruments in `platform/telemetry.ts`); an
+  all-local **`observability` compose profile** (`grafana/otel-lgtm`, Grafana :3001) toggled by
+  **`./nook observability up|down`**; **`./nook doctor`** (in-container health report, non-zero on
+  degraded); and a **Settings → System Health** admin panel (live cards, polls `/api/health`).
+  *Still open:* scheduled restore drills (pairs with the parked Phase 4 S3 backup).
 
 ---
 
@@ -138,16 +151,18 @@ shipped — see 0048–0050 + the calendar→goal Phase 2 note above.)*
 
 ## Backlog — designed, not yet built
 
-### Tech debt — route auth as middleware (not yet built)
-Almost every API route opens with the same two lines —
-`const tenant = await requireTenant(req)` then (for writes) `requireAdmin(tenant)` —
-copied across chores, rewards, currencies, goals, lists, meals, kiosk, persons, etc.
-Fold this into reusable lambda-api middleware: one that resolves + attaches the tenant
-(short-circuiting 401 when absent) and one that asserts admin (403 otherwise), so routes
-just declare their requirement instead of re-deriving it. Keep `requireTenant`/
-`requireAdmin` as the underlying helpers the middleware calls (and for the few
-dual-auth/device routes that don't fit the common shape). Mechanical, broad, well-tested
-surface — a good standalone pass. *(raised 2026-06-22)*
+### Tech debt — route auth as middleware — ✅ DONE 2026-06-25
+Almost every API route opened with `const tenant = await requireTenant(req)` (+ an inline
+`requireAdmin`/`requireCapability` for writes), copied across ~20 files. lambda-api has no
+path-scoped middleware (only the one global auth gate), so instead of true middleware we added
+**composable per-route guard wrappers** (`platform/route-guards.ts`): `tenantRoute(h)`,
+`adminRoute(h)`, `capRoute(cap, h)` — handlers now receive the resolved `tenant` first and thrown
+`AuthError`s flow to the existing error handler unchanged. ~135 routes converted (net −160 lines);
+conditional carve-outs (chores POST/assign, goals POST/PATCH/DELETE/log) keep `tenantRoute` + an
+inline `requireCapability`; exceptions stay manual (public, device-token kiosk, dual self-or-admin,
+provisioning). `requireTenant`/`requireAdmin`/`requireCapability` remain the underlying helpers.
+The guards also stash `householdId` on the request for the observability access log.
+`route-guards.unit.test.ts` + the per-module integration suites cover it. *(raised 2026-06-22)*
 
 ### Calendar → goal auto-counting (the "auto-from-calendar" bridge) — PHASE 1 SHIPPED 2026-06-18
 The bidirectional Google Calendar **sync already exists and works** (inbound pull +
