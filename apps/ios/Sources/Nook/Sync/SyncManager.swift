@@ -432,6 +432,11 @@ final class SyncManager {
         return ok
     }
 
+    /// Signal that chores changed elsewhere (e.g. a completion driven by ChoresModel's
+    /// own client, which doesn't route through here) so every screen reading `choresRev`
+    /// — the Today tab's "Needs your OK", the tab badge, the kiosk dashboard — reloads.
+    func bumpChores() { choresRev += 1 }
+
     /// Pin (or clear, with `nil`) the reward a person is saving toward. Bumps
     /// `rewardsRev` so the person spotlight and their reward shop reflect it.
     @discardableResult

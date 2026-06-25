@@ -267,7 +267,7 @@ struct ChoresView: View {
         showCamera = false
         guard let target = proofTarget else { return }
         proofTarget = nil
-        Task { await model.completeWithProof(id: target.inst.id, image: image, claimFor: target.claimFor) }
+        Task { await model.completeWithProof(id: target.inst.id, image: image, claimFor: target.claimFor); sync.bumpChores() }
     }
 
     /// A library item was picked: load it to a UIImage, then complete with it.
@@ -283,6 +283,7 @@ struct ChoresView: View {
                 return
             }
             await model.completeWithProof(id: target.inst.id, image: image, claimFor: target.claimFor)
+            sync.bumpChores()
         } catch {
             model.proofError = "Couldn’t read that photo — please try another."
         }
@@ -694,7 +695,10 @@ struct ChoresView: View {
                     // A photo-required chore that isn't yet complete must capture a photo
                     // before it can finish — open the picker instead of toggling.
                     else if inst.requiresPhoto && !isDone && !isAwaiting { startProof(inst) }
-                    else { Task { await model.toggle(inst) } }
+                    // Completing an approval-required chore creates an awaiting item.
+                    // Bump choresRev so this tab's "Needs your OK" card (a separate model)
+                    // and the Today tab / badge all reload — not just the day's columns.
+                    else { Task { await model.toggle(inst); sync.bumpChores() } }
                 } label: { tick(isDone: isDone, isAwaiting: isAwaiting, isGrabs: isGrabs,
                                  needsPhoto: inst.requiresPhoto && !isDone && !isAwaiting) }
                 .buttonStyle(.plain)
@@ -727,14 +731,18 @@ struct ChoresView: View {
                 if isAwaiting || isDone {
                     ChoreProofThumb(chore: inst) { reviewing = inst }
                 }
-                if isAwaiting && sync.can("chore.approve") {
+                // Inline Approve/Reject only on the roomy iPhone rows. On the narrow
+                // iPad Kanban columns the two buttons crowd the row until the labels
+                // wrap vertically — there the top "Needs your OK" card (and tapping the
+                // proof thumb to review) is the approval path instead.
+                if !isKiosk && isAwaiting && sync.can("chore.approve") {
                     HStack(spacing: 6) {
-                        Button { Task { await model.reject(inst.id) } } label: {
+                        Button { Task { await model.reject(inst.id); sync.bumpChores() } } label: {
                             Text("Reject").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
                                 .padding(.horizontal, 10).padding(.vertical, 6)
                                 .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
                         }.buttonStyle(.plain)
-                        Button { Task { await model.approve(inst.id) } } label: {
+                        Button { Task { await model.approve(inst.id); sync.bumpChores() } } label: {
                             Text("Approve").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
                                 .padding(.horizontal, 10).padding(.vertical, 6)
                                 .background(FamilyColor.wally.solid).clipShape(Capsule())
@@ -780,7 +788,7 @@ struct ChoresView: View {
                     // Photo-required up-for-grabs: capture the proof first, then claim +
                     // complete with it; otherwise claim + complete straight away.
                     if inst.requiresPhoto { startProof(inst, claimFor: m.id) }
-                    else { Task { await model.claimComplete(id: inst.id, personId: m.id) } }
+                    else { Task { await model.claimComplete(id: inst.id, personId: m.id); sync.bumpChores() } }
                 } label: {
                     Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 30)
                 }
