@@ -731,33 +731,43 @@ struct ChoresView: View {
                 if isAwaiting || isDone {
                     ChoreProofThumb(chore: inst) { reviewing = inst }
                 }
-                // Inline Approve/Reject only on the roomy iPhone rows. On the narrow
-                // iPad Kanban columns the two buttons crowd the row until the labels
-                // wrap vertically — there the top "Needs your OK" card (and tapping the
-                // proof thumb to review) is the approval path instead.
-                if !isKiosk && isAwaiting && sync.can("chore.approve") {
-                    HStack(spacing: 6) {
-                        Button { Task { await model.reject(inst.id); sync.bumpChores() } } label: {
-                            Text("Reject").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
-                                .padding(.horizontal, 10).padding(.vertical, 6)
-                                .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
-                        }.buttonStyle(.plain)
-                        Button { Task { await model.approve(inst.id); sync.bumpChores() } } label: {
-                            Text("Approve").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
-                                .padding(.horizontal, 10).padding(.vertical, 6)
-                                .background(FamilyColor.wally.solid).clipShape(Capsule())
-                        }.buttonStyle(.plain)
-                    }
-                }
             }
-            .padding(.vertical, 9)
+            .padding(.top, 9)
+            .padding(.bottom, isAwaiting && sync.can("chore.approve") ? 4 : 9)
             // Tap anywhere on the row to edit — the tick and approve/reject Buttons
             // intercept their own taps, so they're unaffected. Editing a chore's
             // definition is manage-only; without it, tapping is a no-op (no dead-end).
             .contentShape(Rectangle())
             .onTapGesture { if sync.can("chore.manage") { editor = .edit(inst) } }
 
+            // Approve/Reject go on their own line beneath the row (both phone and iPad),
+            // so the top row stays icon · title · photo instead of cramming everything in
+            // until the button labels wrap.
+            if isAwaiting && sync.can("chore.approve") {
+                approvalButtons(inst)
+                    .padding(.bottom, 9)
+            }
+
             if isGrabs && claiming == inst.id { claimPicker(inst) }
+        }
+    }
+
+    /// The Reject / Approve pair for an awaiting chore, shown on its own line beneath the
+    /// row (both phone and iPad). Bumps choresRev so the Today tab + badge reflect it too.
+    private func approvalButtons(_ inst: NookAPI.ChoreInstanceDTO) -> some View {
+        // Each button fills half the row — bigger, easier tap targets that read as the
+        // row's primary action rather than two small trailing pills.
+        HStack(spacing: 10) {
+            Button { Task { await model.reject(inst.id); sync.bumpChores() } } label: {
+                Text("Reject").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+                    .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1.5))
+            }.buttonStyle(.plain)
+            Button { Task { await model.approve(inst.id); sync.bumpChores() } } label: {
+                Text("Approve").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+                    .background(FamilyColor.wally.solid).clipShape(Capsule())
+            }.buttonStyle(.plain)
         }
     }
 
