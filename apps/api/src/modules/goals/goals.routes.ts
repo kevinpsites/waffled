@@ -2,6 +2,7 @@
 // goals.service.ts; types in goals.types.ts.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { requireTenant } from '../households/households'
+import { requireCapability } from '../../platform/permissions'
 import type { CreateGoalListInput, UpdateGoalListInput, CreateGoalInput } from './goals.types'
 import {
   listGoalLists,
@@ -16,6 +17,7 @@ import {
   toggleGoalStep,
   logProgress,
   goalExists,
+  goalParticipantIds,
   GOAL_TYPES,
   TRACKING_MODES,
 } from './goals.service'
@@ -43,6 +45,7 @@ export function registerGoalRoutes(api: Api): void {
 
   api.patch('/api/goal-lists/:id', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
+    await requireCapability(tenant, 'goal.manage')
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
     const body = (req.body ?? {}) as UpdateGoalListInput
@@ -58,6 +61,7 @@ export function registerGoalRoutes(api: Api): void {
 
   api.delete('/api/goal-lists/:id', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
+    await requireCapability(tenant, 'goal.manage')
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
     const ok = await softDeleteGoalList(tenant.householdId, id)
@@ -77,6 +81,12 @@ export function registerGoalRoutes(api: Api): void {
     }
     if (!body.trackingMode || !TRACKING_MODES.has(body.trackingMode)) {
       return res.status(400).json({ error: 'BadRequest', message: 'trackingMode is required' })
+    }
+    // Carve-out: a goal that assigns no one else (nobody, or only the caller) is
+    // self-scoped. Assigning another participant takes goal.manage.
+    const assigned = Array.isArray(body.participantIds) ? body.participantIds.filter(Boolean) : []
+    if (assigned.some((pid) => pid !== tenant.personId)) {
+      await requireCapability(tenant, 'goal.manage')
     }
     const goal = await createGoal(tenant, { ...body, title: body.title.trim() } as CreateGoalInput)
     return res.status(201).json({ goal })
@@ -108,6 +118,18 @@ export function registerGoalRoutes(api: Api): void {
     if (body.trackingMode && !TRACKING_MODES.has(body.trackingMode)) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid trackingMode' })
     }
+    // Carve-out: a goal whose sole participant is the caller is their own personal
+    // goal — editable freely. Anything else (shared, others', or a family goal with
+    // no/other participants) takes goal.manage. Confirm the goal exists first so an
+    // unknown id still 404s rather than 403s.
+    if (!(await goalExists(tenant.householdId, id))) {
+      return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    }
+    const editParticipants = await goalParticipantIds(tenant.householdId, id)
+    const editIsSelfOnly = editParticipants.length === 1 && editParticipants[0] === tenant.personId
+    if (!editIsSelfOnly) {
+      await requireCapability(tenant, 'goal.manage')
+    }
     const ok = await updateGoal(tenant, id, req.body ?? {})
     if (!ok) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
     return { goal: await goalDetail(tenant.householdId, id) }
@@ -134,6 +156,11 @@ export function registerGoalRoutes(api: Api): void {
       return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
     }
     const personIds = Array.isArray(body.personIds) ? body.personIds.filter(Boolean) : body.personId ? [body.personId] : []
+    // Carve-out: logging for nobody (a family/shared log) or only for yourself is
+    // always allowed; attributing progress to another person takes goal.manage.
+    if (personIds.some((pid) => pid !== tenant.personId)) {
+      await requireCapability(tenant, 'goal.manage')
+    }
     await logProgress(tenant, id, amount, personIds, body.note ?? null, { at: loggedOn })
     return res.status(201).json({ ok: true })
   })
@@ -154,6 +181,16 @@ export function registerGoalRoutes(api: Api): void {
     const tenant = await requireTenant(req)
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    // Carve-out mirrors edit: deleting your own sole-participant goal is fine; any
+    // shared/others'/family goal takes goal.manage. 404 a missing id before 403.
+    if (!(await goalExists(tenant.householdId, id))) {
+      return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    }
+    const delParticipants = await goalParticipantIds(tenant.householdId, id)
+    const delIsSelfOnly = delParticipants.length === 1 && delParticipants[0] === tenant.personId
+    if (!delIsSelfOnly) {
+      await requireCapability(tenant, 'goal.manage')
+    }
     const ok = await softDeleteGoal(tenant.householdId, id)
     if (!ok) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
     return res.status(204).send('')

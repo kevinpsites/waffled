@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { Icon } from './icons'
 import { LogModal } from './components/LogModal'
 import { ListModal } from './components/ListModal'
-import { useGoalLists, useGoals, type Goal, type GoalList, type GoalListMember, type GoalParticipant } from '../lib/api'
+import { useGoalLists, useGoals, useHousehold, can, type Goal, type GoalList, type GoalListMember, type GoalParticipant } from '../lib/api'
 import { CATEGORIES } from './categories'
 import '../styles/goals.css'
 
@@ -224,6 +224,10 @@ export function Goals() {
   const selectedId = searchParams.get('list')
   const selectList = (id: string) => setSearchParams({ list: id })
   const { lists, loading: listsLoading, error: listsError, refetch: refetchLists } = useGoalLists()
+  const { person } = useHousehold()
+  // Managing goals (attributing a log to others, editing/deleting a group list)
+  // needs goal.manage; logging your own progress + creating a list stay open.
+  const canManageGoals = can(person, 'goal.manage')
   const [filter, setFilter] = useState<'all' | 'shared' | 'each'>('all')
   const [logging, setLogging] = useState<Goal | null>(null)
   const [creatingList, setCreatingList] = useState(false)
@@ -308,7 +312,7 @@ export function Goals() {
             )}
             {/* "Edit group" only makes sense for multi-person lists — an
                 individual isn't a group. */}
-            {selected && !isIndividual && (
+            {selected && !isIndividual && canManageGoals && (
               <button type="button" className="pill" style={{ cursor: 'pointer' }} title="Edit group" onClick={() => setEditingList(selected)}>
                 ✎ Edit group
               </button>
@@ -340,7 +344,17 @@ export function Goals() {
         )}
       </div>
 
-      {logging && <LogModal goal={logging} onClose={() => setLogging(null)} onSaved={refetch} onDeleted={refetch} />}
+      {logging && (
+        <LogModal
+          goal={logging}
+          canLogOthers={canManageGoals}
+          canDelete={canManageGoals || (logging.participants.length === 1 && logging.participants[0].personId === person?.id)}
+          selfPersonId={person?.id ?? null}
+          onClose={() => setLogging(null)}
+          onSaved={refetch}
+          onDeleted={refetch}
+        />
+      )}
       {creatingList && (
         <ListModal
           onClose={() => setCreatingList(false)}

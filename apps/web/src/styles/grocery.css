@@ -147,14 +147,50 @@
   background: var(--wally);
   border-color: var(--wally);
 }
-.gnm {
+/* name + ambient attribution stack; takes the row's flexible space */
+.gitem-body {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gnm {
   font-size: 16px;
   font-weight: 600;
   min-width: 0;
 }
 .gitem.done .gnm {
   text-decoration: line-through;
+  color: var(--ink-3);
+}
+
+/* Ambient attribution line — small, muted, secondary metadata weight. Used both
+   on the grocery board (.gitem) and the generic Lists item (.litem .lnm). */
+.gattr {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  line-height: 1.2;
+}
+/* On the Lists item, the name is a single inline span — float attribution after
+   it as a quiet secondary line. */
+.lnm .gattr {
+  margin-left: 8px;
+}
+.gattr-av {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--panel);
+  font-size: 10px;
+}
+.gattr-meal {
   color: var(--ink-3);
 }
 .gdots {

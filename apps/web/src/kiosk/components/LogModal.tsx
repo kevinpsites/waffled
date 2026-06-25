@@ -31,11 +31,21 @@ const FAMILY = '__family__'
 // an optional note, matching the handoff "Log time" capture sheet.
 export function LogModal({
   goal,
+  canLogOthers = true,
+  canDelete = true,
+  selfPersonId,
   onClose,
   onSaved,
   onDeleted,
 }: {
   goal: Goal
+  // Without goal.manage, restrict the "who took part" picker to self (a
+  // family/shared log stays open) — logging for another person 403s server-side.
+  canLogOthers?: boolean
+  // Deleting a goal follows the edit/delete rule (manage, or your own solo goal);
+  // hide the inline "Delete goal" affordance otherwise.
+  canDelete?: boolean
+  selfPersonId?: string | null
   onClose: () => void
   onSaved: () => void
   onDeleted?: () => void
@@ -59,11 +69,20 @@ export function LogModal({
   // in a way we can represent cleanly: a divisible shared pool (split) or
   // each-tracks (full amount each). Whole-unit goals credit a single party.
   const multi = divisible || !isShared
+  // Restricted users (no goal.manage) can only attribute progress to themselves
+  // or a family/shared log — never to another person. Show only self in the
+  // picker and default the selection to self.
+  const pickable = canLogOthers ? goal.participants : goal.participants.filter((p) => p.personId === selfPersonId)
   const [who, setWho] = useState<string[]>(
-    goal.participants.length === 1 ? [goal.participants[0].personId] : multi ? [] : [FAMILY]
+    !canLogOthers && pickable.length === 1
+      ? [pickable[0].personId]
+      : goal.participants.length === 1
+        ? [goal.participants[0].personId]
+        : multi ? [] : [FAMILY]
   )
   // A single participant is always credited; no picker (and no "Family") needed.
-  const showWho = goal.participants.length > 1
+  // Restricted users with exactly themselves on the goal also skip the picker.
+  const showWho = pickable.length > 1 || (canLogOthers && goal.participants.length > 1)
   // A habit can only be marked done once per day per person (the server enforces
   // it too). It's "done" when everyone currently selected already logged today.
   const doneToday = isHabit && who.length > 0 && who.every((id) => goal.loggedTodayBy.includes(id))
@@ -153,13 +172,15 @@ export function LogModal({
             ))}
           </div>
           <button type="button" className="btn btn-primary" onClick={onClose} style={{ width: '100%', justifyContent: 'center', marginTop: 18 }}>Done</button>
-          <button
-            type="button"
-            onClick={del}
-            style={{ display: 'block', margin: '14px auto 0', border: 0, background: 'none', color: confirmDelete ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
-          >
-            {confirmDelete ? 'Tap again to delete this goal' : 'Delete goal'}
-          </button>
+          {canDelete && (
+            <button
+              type="button"
+              onClick={del}
+              style={{ display: 'block', margin: '14px auto 0', border: 0, background: 'none', color: confirmDelete ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+            >
+              {confirmDelete ? 'Tap again to delete this goal' : 'Delete goal'}
+            </button>
+          )}
         </div>
       </div>
     )
@@ -226,7 +247,7 @@ export function LogModal({
                     <span className="tiny" style={{ fontWeight: 700, color: 'var(--ink-2)' }}>Family</span>
                   </button>
                 )}
-                {goal.participants.map((p) => {
+                {pickable.map((p) => {
                   const on = who.includes(p.personId)
                   return (
                     <button key={p.personId} type="button" className={`log-person ${on ? 'on' : ''}`} onClick={() => toggleWho(p.personId)}>
@@ -273,13 +294,15 @@ export function LogModal({
                 : `Log ${logAmount}${goal.unit ? ` ${goal.unit}` : ''}`}
           </button>
         </form>
-        <button
-          type="button"
-          onClick={del}
-          style={{ display: 'block', margin: '14px auto 0', border: 0, background: 'none', color: confirmDelete ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
-        >
-          {confirmDelete ? 'Tap again to delete this goal' : 'Delete goal'}
-        </button>
+        {canDelete && (
+          <button
+            type="button"
+            onClick={del}
+            style={{ display: 'block', margin: '14px auto 0', border: 0, background: 'none', color: confirmDelete ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+          >
+            {confirmDelete ? 'Tap again to delete this goal' : 'Delete goal'}
+          </button>
+        )}
       </div>
     </div>
   )

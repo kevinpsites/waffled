@@ -90,7 +90,7 @@ function SettingRow({ icon, title, sub, children }: { icon: string; title: strin
 }
 
 // Role-based permissions grid (admin-only). Rows = roles (Adult/Teen/Kid),
-// columns = the four capabilities. Saves the whole matrix on each toggle (optimistic,
+// columns = the capabilities. Saves the whole matrix on each toggle (optimistic,
 // reverts on failure) — matches the auto-save feel of the other settings cards.
 // Admins always have everything, so they're not a row here.
 const PERM_ROLES: Role[] = ['adult', 'teen', 'kid']
@@ -122,7 +122,7 @@ function PermissionsCard() {
     <div className="set-card" style={{ marginTop: 18, padding: 18 }}>
       <div className="card-h" style={{ marginBottom: 4 }}>Permissions</div>
       <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
-        Choose what each role can do. Admins can always do everything. Everyone can always complete their own chores and redeem their own rewards.
+        Choose what each role can do. Admins can always do everything. Everyone can always complete their own chores, redeem their own rewards, and log their own goals.
       </div>
       {matrix === null ? (
         <div className="tiny muted" style={{ fontWeight: 600 }}>Loading…</div>

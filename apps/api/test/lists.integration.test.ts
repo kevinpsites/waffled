@@ -146,6 +146,26 @@ describe('grocery api', () => {
     const res = await call('POST', '/api/lists/grocery/items', kevin, { quantity: '2' })
     expect(res.statusCode).toBe(400)
   })
+
+  it('attributes a hand-added item to the acting person (addedBy) and marks it manual', async () => {
+    const kevinId = (
+      await withClient((c) => c.query<{ id: string }>(`select id from persons where name='Kevin' limit 1`))
+    ).rows[0].id
+
+    const add = await call('POST', '/api/lists/grocery/items', kevin, { name: 'Yogurt' })
+    expect(add.statusCode).toBe(201)
+    const created = JSON.parse(add.body).item
+    expect(created.source).toBe('manual')
+    expect(created.sourceRecipeIds).toEqual([])
+    expect(created.addedBy).toMatchObject({ personId: kevinId, name: 'Kevin' })
+
+    // and the attribution survives a read-back
+    const item = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items.find(
+      (i: { name: string }) => i.name === 'Yogurt'
+    )
+    expect(item.source).toBe('manual')
+    expect(item.addedBy).toMatchObject({ personId: kevinId, name: 'Kevin' })
+  })
 })
 
 describe('grocery item mutations', () => {
@@ -332,12 +352,20 @@ describe('grocery auto-build from a recipe', () => {
     expect(res.statusCode).toBe(201)
     expect(JSON.parse(res.body).added).toBe(2) // Tortillas + Chorizo; Bananas skipped
 
-    const names = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items.map(
-      (i: { name: string }) => i.name
-    )
+    const items = JSON.parse((await call('GET', '/api/lists/grocery', kevin)).body).items
+    const names = items.map((i: { name: string }) => i.name)
     expect(names).toContain('Tortillas')
     expect(names).toContain('Chorizo')
     expect(names.filter((n: string) => n === 'Bananas')).toHaveLength(1)
+
+    // auto-built items carry source='auto', the originating recipe, and the actor
+    const kevinId = (
+      await withClient((c) => c.query<{ id: string }>(`select id from persons where name='Kevin' limit 1`))
+    ).rows[0].id
+    const tortillas = items.find((i: { name: string }) => i.name === 'Tortillas')
+    expect(tortillas.source).toBe('auto')
+    expect(tortillas.sourceRecipeIds).toContain(recipeId)
+    expect(tortillas.addedBy).toMatchObject({ personId: kevinId, name: 'Kevin' })
   })
 
   it('404 for an unknown recipe', async () => {

@@ -18,7 +18,7 @@ export interface Person {
   rewardStyle?: string
   showOnKiosk?: boolean
   // Resolved capabilities for the *current* caller (from /api/household). Admins &
-  // default adults get all four; teen/kid get only what the household grants.
+  // default adults get them all; teen/kid get only what the household grants.
   capabilities?: string[]
 }
 

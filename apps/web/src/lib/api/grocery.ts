@@ -7,11 +7,24 @@ import { tap, useRefetchOn } from './bus'
 
 // ---- grocery (Today dashboard) ---------------------------------------------
 
+// A lightweight person reference (assignee / addedBy attribution). Shared by the
+// list item types below so the two attribution fields stay in lockstep.
+export interface ListItemPersonRef {
+  personId: string
+  name: string | null
+  avatarEmoji: string | null
+  colorHex: string | null
+}
+
 export interface GroceryItem {
   id: string
   name: string
   quantity: string | null
   checked: boolean
+  // ambient attribution (see ListItem) — who hand-added it + where it came from
+  addedBy?: ListItemPersonRef | null
+  source?: string
+  sourceRecipeIds?: string[]
 }
 
 // ---- lists (the Lists screen) ----------------------------------------------
@@ -26,12 +39,8 @@ export interface ListSummary {
   itemCount: number
 }
 
-export interface ListItemAssignee {
-  personId: string
-  name: string | null
-  avatarEmoji: string | null
-  colorHex: string | null
-}
+// Kept as an alias for back-compat; the shape is the shared person ref.
+export type ListItemAssignee = ListItemPersonRef
 
 export interface ListItem {
   id: string
@@ -42,6 +51,13 @@ export interface ListItem {
   section: string | null
   sortOrder: number | null
   assignee: ListItemAssignee | null
+  // ambient attribution: who hand-added the item, and where it came from.
+  // `addedBy` is null for auto/meal-builder items; `source` is one of
+  // 'manual' | 'auto' | 'suggested' | 'voice'; `sourceRecipeIds` is non-empty
+  // for meal-builder ('auto') items.
+  addedBy?: ListItemPersonRef | null
+  source?: string
+  sourceRecipeIds?: string[]
 }
 
 export interface ListDetail {

@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { Settings } from './Settings'
+import type { PermissionMatrix } from '../lib/api'
 
 const renderSettings = () => render(<MemoryRouter><Settings /></MemoryRouter>)
 
@@ -113,6 +114,37 @@ describe('Settings screen', () => {
     const speed = screen.getByDisplayValue('10 seconds') as HTMLSelectElement
     fireEvent.change(speed, { target: { value: '30' } })
     await waitFor(() => expect(puts.some((p) => p.photoInterval === 30)).toBe(true))
+  })
+
+  it('renders the permissions grid with a Manage goals column and toggles it', async () => {
+    const puts: PermissionMatrix[] = []
+    const emptyRow = { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'goal.manage': false }
+    const matrix: PermissionMatrix = { adult: { ...emptyRow }, teen: { ...emptyRow }, kid: { ...emptyRow } }
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/api/permissions')) {
+        if (init?.method === 'PUT') {
+          const body = JSON.parse(String(init.body)) as { permissions: PermissionMatrix }
+          puts.push(body.permissions)
+          return { ok: true, json: async () => ({ permissions: body.permissions }) }
+        }
+        return { ok: true, json: async () => ({ permissions: matrix }) }
+      }
+      if (u.includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
+      if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household, person: members[0] }) }
+      if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    renderSettings()
+    await screen.findByText('Kevin')
+
+    // The grid renders dynamically from CAPABILITIES — the new goal.manage column
+    // shows as a "Manage goals" header.
+    expect(await screen.findByText('Manage goals')).toBeInTheDocument()
+    // Toggling Teen's Manage goals checkbox PUTs the matrix with it flipped on.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Teen: Manage goals' }))
+    await waitFor(() => expect(puts.some((m) => m.teen['goal.manage'] === true)).toBe(true))
   })
 
   it('hides admin-only tabs from non-admins (only About + Sign out)', async () => {

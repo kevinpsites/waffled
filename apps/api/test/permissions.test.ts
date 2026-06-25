@@ -17,6 +17,19 @@ describe('DEFAULT_PERMISSIONS', () => {
       expect(DEFAULT_PERMISSIONS.kid[cap]).toBe(false)
     }
   })
+
+  it('exposes the full capability set, including goal.manage', () => {
+    expect(CAPABILITIES).toEqual([
+      'chore.manage',
+      'chore.approve',
+      'reward.manage',
+      'reward.approve',
+      'goal.manage',
+    ])
+    expect(DEFAULT_PERMISSIONS.adult['goal.manage']).toBe(true)
+    expect(DEFAULT_PERMISSIONS.teen['goal.manage']).toBe(false)
+    expect(DEFAULT_PERMISSIONS.kid['goal.manage']).toBe(false)
+  })
 })
 
 describe('getPermissions', () => {

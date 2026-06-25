@@ -438,6 +438,19 @@ export async function goalExists(householdId: string, id: string): Promise<boole
   return !!rowCount
 }
 
+// The person_ids currently assigned to a goal (live participants only). Powers the
+// goal.manage carve-out: a goal whose sole participant is the caller is "their own".
+export async function goalParticipantIds(householdId: string, goalId: string): Promise<string[]> {
+  const { rows } = await query<{ person_id: string }>(
+    `select pa.person_id
+       from goal_participants pa
+       join goals g on g.id = pa.goal_id and g.household_id = $1 and g.deleted_at is null
+      where pa.goal_id = $2 and pa.deleted_at is null`,
+    [householdId, goalId]
+  )
+  return rows.map((r) => r.person_id)
+}
+
 export async function goalDetail(householdId: string, id: string) {
   const { rows } = await query<GoalRow>(
     `select g.id, g.goal_list_id, g.title, g.emoji, g.category, g.goal_type, g.unit, g.target_value,

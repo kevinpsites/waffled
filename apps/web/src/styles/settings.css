@@ -397,7 +397,7 @@ select.sel {
 
 /* ===== Role permissions grid (Family & People) ===== */
 .perm-grid { display: flex; flex-direction: column; }
-.perm-row { display: grid; grid-template-columns: 1.2fr repeat(4, 1fr); align-items: center; gap: 6px;
+.perm-row { display: grid; grid-template-columns: 1.2fr repeat(5, 1fr); align-items: center; gap: 6px;
   padding: 9px 0; border-bottom: 1px solid var(--hair-2); }
 .perm-row:last-child { border-bottom: 0; }
 .perm-head { border-bottom: 1px solid var(--hair); }

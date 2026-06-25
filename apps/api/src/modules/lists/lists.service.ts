@@ -118,9 +118,11 @@ export async function softDeleteList(householdId: string, id: string): Promise<b
 
 export async function listItems(householdId: string, listId: string): Promise<ListItemRow[]> {
   const { rows } = await query<ListItemRow>(
-    `select i.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color
+    `select i.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color,
+            cb.name as creator_name, cb.avatar_emoji as creator_avatar, cb.color_hex as creator_color
        from list_items i
        left join persons p on p.id = i.assigned_to and p.deleted_at is null
+       left join persons cb on cb.id = i.created_by and cb.deleted_at is null
       where i.household_id = $1 and i.list_id = $2 and i.deleted_at is null
       order by i.checked, i.sort_order nulls last, i.created_at`,
     [householdId, listId]
@@ -139,8 +141,11 @@ export async function addItem(
        values ($1, $2, $3, $4, $5, $6, $7)
        returning *
      )
-     select ins.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color
-       from ins left join persons p on p.id = ins.assigned_to and p.deleted_at is null`,
+     select ins.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color,
+            cb.name as creator_name, cb.avatar_emoji as creator_avatar, cb.color_hex as creator_color
+       from ins
+       left join persons p on p.id = ins.assigned_to and p.deleted_at is null
+       left join persons cb on cb.id = ins.created_by and cb.deleted_at is null`,
     [
       tenant.householdId,
       listId,
@@ -170,8 +175,11 @@ export async function setItemChecked(
         where household_id = $3 and id = $4 and deleted_at is null
         returning *
      )
-     select upd.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color
-       from upd left join persons p on p.id = upd.assigned_to and p.deleted_at is null`,
+     select upd.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color,
+            cb.name as creator_name, cb.avatar_emoji as creator_avatar, cb.color_hex as creator_color
+       from upd
+       left join persons p on p.id = upd.assigned_to and p.deleted_at is null
+       left join persons cb on cb.id = upd.created_by and cb.deleted_at is null`,
     [checked, tenant.personId, tenant.householdId, id]
   )
   return rows[0] ?? null
@@ -219,8 +227,11 @@ export async function patchItem(
         where household_id = $${i++} and id = $${i++} and deleted_at is null
         returning *
      )
-     select upd.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color
-       from upd left join persons p on p.id = upd.assigned_to and p.deleted_at is null`,
+     select upd.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color,
+            cb.name as creator_name, cb.avatar_emoji as creator_avatar, cb.color_hex as creator_color
+       from upd
+       left join persons p on p.id = upd.assigned_to and p.deleted_at is null
+       left join persons cb on cb.id = upd.created_by and cb.deleted_at is null`,
     vals
   )
   return rows[0] ?? null
@@ -228,8 +239,11 @@ export async function patchItem(
 
 async function listItemById(householdId: string, id: string): Promise<ListItemRow | null> {
   const { rows } = await query<ListItemRow>(
-    `select i.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color
-       from list_items i left join persons p on p.id = i.assigned_to and p.deleted_at is null
+    `select i.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color,
+            cb.name as creator_name, cb.avatar_emoji as creator_avatar, cb.color_hex as creator_color
+       from list_items i
+       left join persons p on p.id = i.assigned_to and p.deleted_at is null
+       left join persons cb on cb.id = i.created_by and cb.deleted_at is null
       where i.household_id = $1 and i.id = $2 and i.deleted_at is null`,
     [householdId, id]
   )
@@ -461,9 +475,12 @@ export async function groceryBoard(tenant: Tenant, weekStart: string) {
     })
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (MEAL_ORDER[a.mealType] ?? 9) - (MEAL_ORDER[b.mealType] ?? 9)))
 
-  const itemRows = await query<ListItemRow & { source: string; source_recipe_ids: string[] | null }>(
-    `select li.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color
-       from list_items li left join persons p on p.id = li.assigned_to
+  const itemRows = await query<ListItemRow>(
+    `select li.*, p.name as assignee_name, p.avatar_emoji as assignee_avatar, p.color_hex as assignee_color,
+            cb.name as creator_name, cb.avatar_emoji as creator_avatar, cb.color_hex as creator_color
+       from list_items li
+       left join persons p on p.id = li.assigned_to
+       left join persons cb on cb.id = li.created_by and cb.deleted_at is null
       where li.household_id=$1 and li.list_id=$2 and li.deleted_at is null
       order by li.sort_order nulls last, li.created_at`,
     [tenant.householdId, list.id]
@@ -473,8 +490,6 @@ export async function groceryBoard(tenant: Tenant, weekStart: string) {
     // fall back to name-based classification when a row has no/Other aisle (older
     // items, hand-added items) so the board stays cleanly grouped like the mock.
     aisle: i.category && i.category !== 'Other' ? i.category : aisleFor(i.name, i.quantity),
-    source: i.source,
-    sourceRecipeIds: i.source_recipe_ids ?? [],
   }))
 
   return {
@@ -506,6 +521,8 @@ export function presentListItem(i: ListItemRow) {
     checkedAt: i.checked_at,
     section: i.category,
     sortOrder: i.sort_order,
+    source: i.source,
+    sourceRecipeIds: i.source_recipe_ids ?? [],
     assignee:
       i.assigned_to == null
         ? null
@@ -514,6 +531,15 @@ export function presentListItem(i: ListItemRow) {
             name: i.assignee_name ?? null,
             avatarEmoji: i.assignee_avatar ?? null,
             colorHex: i.assignee_color ?? null,
+          },
+    addedBy:
+      i.created_by == null
+        ? null
+        : {
+            personId: i.created_by,
+            name: i.creator_name ?? null,
+            avatarEmoji: i.creator_avatar ?? null,
+            colorHex: i.creator_color ?? null,
           },
   }
 }

@@ -22,6 +22,12 @@ export interface ListItemRow extends QueryResultRow {
   assignee_name?: string | null
   assignee_avatar?: string | null
   assignee_color?: string | null
+  created_by: string | null
+  source: string
+  source_recipe_ids: string[] | null
+  creator_name?: string | null
+  creator_avatar?: string | null
+  creator_color?: string | null
 }
 
 export interface CreateListInput {

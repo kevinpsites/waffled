@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
-import { api, useGoalLists, useGoalDetail, type GoalList } from '../lib/api'
+import { api, useGoalLists, useGoalDetail, useHousehold, can, type GoalList } from '../lib/api'
 import { CATEGORIES, CATEGORY_KEYS } from './categories'
 import { ListModal } from './components/ListModal'
 import './../styles/goals.css'
@@ -64,6 +64,15 @@ export function GoalCreate() {
   const editing = !!id
   const { lists, refetch: refetchLists } = useGoalLists()
   const { goal: editGoal } = useGoalDetail(id ?? null)
+  const { person } = useHousehold()
+  // Without goal.manage you can still make a goal that's just yours — so the
+  // "Who's it for?" picker is limited to lists where you're the sole member
+  // (a self-only/unassigned goal). Picking a group = assigning others = needs
+  // goal.manage, which 403s server-side; we hide those lists rather than 403.
+  const canAssignOthers = can(person, 'goal.manage')
+  const pickableLists = canAssignOthers
+    ? lists
+    : lists.filter((l) => l.members.length === 1 && l.members[0].personId === person?.id)
   // A suggestion tapped on a person profile pre-fills the title (?title=…).
   const [searchParams] = useSearchParams()
 
@@ -219,7 +228,7 @@ export function GoalCreate() {
             Who’s it for? <span style={{ color: 'var(--ink-3)', textTransform: 'none', letterSpacing: 0, fontWeight: 600 }}>· pick a goal list</span>
           </div>
           <div className="gc-chips">
-            {lists.map((l: GoalList) => {
+            {pickableLists.map((l: GoalList) => {
               const on = form.goalListId === l.id
               return (
                 <button key={l.id} type="button" className={`pill gc-chip ${on ? 'on' : ''}`} onClick={() => set('goalListId', l.id)}>

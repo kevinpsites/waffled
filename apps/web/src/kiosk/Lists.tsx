@@ -73,13 +73,32 @@ function ItemRow({
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const a = item.assignee
+  // Lists are hand-built, so attribution is "added by {name}" only; guard on
+  // source anyway so any stray auto item doesn't claim a person added it.
+  const addedBy = item.source !== 'auto' ? item.addedBy : null
 
   return (
     <div className={`litem ${item.checked ? 'done' : ''}`} onClick={() => onToggle(item)}>
       <div className="lck" aria-label={item.checked ? 'Checked' : 'Not checked'}>
         {item.checked ? CHECK : null}
       </div>
-      <span className="lnm">{item.name}</span>
+      <span className="lnm">
+        {item.name}
+        {addedBy?.name && (
+          <span className="gattr gattr-by">
+            {addedBy.avatarEmoji && (
+              <span
+                className="gattr-av"
+                aria-hidden
+                style={addedBy.colorHex ? { background: `${addedBy.colorHex}22` } : undefined}
+              >
+                {addedBy.avatarEmoji}
+              </span>
+            )}
+            added by {addedBy.name}
+          </span>
+        )}
+      </span>
       {item.quantity ? <span className="lqty">{item.quantity}</span> : null}
       {/* always-visible (touch: no hover) edit + delete */}
       <div className="litem-actions" onClick={(e) => e.stopPropagation()}>

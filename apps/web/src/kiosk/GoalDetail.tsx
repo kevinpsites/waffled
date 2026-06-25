@@ -3,7 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router'
 import { LogModal } from './components/LogModal'
 import { EventModal } from './components/EventModal'
 import { ReviewList } from './components/GoalRecap'
-import { useGoalDetail, api, type GoalParticipant, type GoalMilestone, type GoalLogEntry } from '../lib/api'
+import { useGoalDetail, useHousehold, can, api, type GoalParticipant, type GoalMilestone, type GoalLogEntry } from '../lib/api'
 import { useTopbarFull } from './topbar-slot'
 import { CATEGORIES } from './categories'
 import './../styles/goals.css'
@@ -59,6 +59,13 @@ export function GoalDetail() {
   const navigate = useNavigate()
   const location = useLocation()
   const { goal, loading, error, refetch } = useGoalDetail(id ?? null)
+  const { person } = useHousehold()
+  // Edit/delete is open to goal.manage holders OR to the owner of a goal that's
+  // theirs alone (sole participant). Logging your own progress stays open below.
+  const canManageGoals = can(person, 'goal.manage')
+  const isOwnSoloGoal =
+    (goal?.participants?.length ?? 0) === 1 && goal?.participants[0]?.personId === person?.id
+  const canEdit = canManageGoals || isOwnSoloGoal
   const [logging, setLogging] = useState(false)
   const [planning, setPlanning] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
@@ -120,7 +127,9 @@ export function GoalDetail() {
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
         <button className="pill" style={{ cursor: 'pointer' }} onClick={() => backRef.current()}>{backLabel}</button>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
-          <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(`/goals/${id}/edit`)}>Edit goal</button>
+          {canEdit && (
+            <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(`/goals/${id}/edit`)}>Edit goal</button>
+          )}
           {canPlan && (
             <button className="pill" style={{ cursor: 'pointer' }} onClick={() => planRef.current()}>{planLabel}</button>
           )}
@@ -137,7 +146,7 @@ export function GoalDetail() {
         </div>
       </div>
     ),
-    [navigate, id, logLabel, showLog, backLabel, habitDoneToday, canPlan, planLabel]
+    [navigate, id, logLabel, showLog, backLabel, habitDoneToday, canPlan, planLabel, canEdit]
   )
 
   if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
@@ -279,17 +288,19 @@ export function GoalDetail() {
             ))}
           </div>
 
-          <button
-            type="button"
-            onClick={del}
-            style={{ alignSelf: 'flex-start', border: 0, background: 'none', color: confirmDel ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: '4px 2px' }}
-          >
-            {confirmDel ? 'Tap again to delete this goal' : 'Delete goal'}
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={del}
+              style={{ alignSelf: 'flex-start', border: 0, background: 'none', color: confirmDel ? 'var(--primary)' : 'var(--ink-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: '4px 2px' }}
+            >
+              {confirmDel ? 'Tap again to delete this goal' : 'Delete goal'}
+            </button>
+          )}
         </div>
       </div>
 
-      {logging && <LogModal goal={goal} onClose={() => setLogging(false)} onSaved={refetch} onDeleted={() => navigate('/goals')} />}
+      {logging && <LogModal goal={goal} canLogOthers={canManageGoals} selfPersonId={person?.id ?? null} canDelete={canEdit} onClose={() => setLogging(false)} onSaved={refetch} onDeleted={() => navigate('/goals')} />}
       {planning && (
         <EventModal
           prefill={{

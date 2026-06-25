@@ -30,6 +30,38 @@ const MEAL_LABEL: Record<string, string> = { breakfast: 'Breakfast', lunch: 'Lun
 const MEAL_EMOJI: Record<string, string> = { breakfast: '🍳', lunch: '🥪', dinner: '🍽️', snack: '🍎' }
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const
 
+// Ambient attribution under an item name: meal-builder items read as auto-generated
+// ("from meal plan"); hand-added items show who added them ("added by {name}").
+// Subtle by design — same visual weight as the quantity metadata.
+function ItemAttribution({ item }: { item: GroceryBoardItem }) {
+  const fromMeal = item.source === 'auto' || (item.sourceRecipeIds?.length ?? 0) > 0
+  if (fromMeal) {
+    return (
+      <span className="gattr gattr-meal">
+        <span aria-hidden>🍽</span> from meal plan
+      </span>
+    )
+  }
+  const by = item.addedBy
+  if (by?.name) {
+    return (
+      <span className="gattr gattr-by">
+        {by.avatarEmoji && (
+          <span
+            className="gattr-av"
+            aria-hidden
+            style={by.colorHex ? { background: `${by.colorHex}22` } : undefined}
+          >
+            {by.avatarEmoji}
+          </span>
+        )}
+        added by {by.name}
+      </span>
+    )
+  }
+  return null
+}
+
 function ItemRow({
   item,
   colors,
@@ -60,7 +92,10 @@ function ItemRow({
   return (
     <div className={`gitem ${item.checked ? 'done' : ''}`} onClick={onToggle} role="button" tabIndex={0}>
       <span className="gck" aria-hidden>{item.checked ? CHECK : null}</span>
-      <span className="gnm">{item.name}</span>
+      <span className="gitem-body">
+        <span className="gnm">{item.name}</span>
+        <ItemAttribution item={item} />
+      </span>
       <span className="gdots">
         {colors.map((c, i) => (
           <span key={i} className="gdot" style={{ background: c }} />
