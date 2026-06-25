@@ -79,6 +79,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   wants. Recorded so the rationale isn't lost (see [permission model](./permissions.md)).
 - **Optional S3 backup** (Phase 4) — parked.
 - **Restore drills** (7.4) — pairs with the parked S3 backup.
+- **Server admin CLI** — Immich-style `./nook admin` commands (reset a member's password,
+  grant/revoke admin, reconnect a stuck calendar) for break-glass recovery without the UI.
 - **App store verification** (7.2) — Apple/Google production review.
 
 ## Dropped ⛔ (superseded by the self-host pivot, 2026-06-20)

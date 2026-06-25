@@ -11,15 +11,30 @@ const MARK: Record<Status, string> = {
   down: '\x1b[31m✗\x1b[0m',
 }
 
+const DIM = '\x1b[2m'
+const RESET = '\x1b[0m'
+const HINT = '\x1b[36m' // cyan
+
 function pretty(report: Awaited<ReturnType<typeof buildHealthReport>>): string {
   const lines: string[] = []
   lines.push(`Nook health: ${MARK[report.status]} ${report.status.toUpperCase()}  (build ${report.version.sha})`)
+  const nextSteps: string[] = []
   for (const [name, check] of Object.entries(report.checks)) {
     const extras = Object.entries(check)
-      .filter(([k]) => k !== 'status')
+      .filter(([k]) => k !== 'status' && k !== 'hint')
       .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`)
       .join('  ')
     lines.push(`  ${MARK[check.status]} ${name.padEnd(12)} ${extras}`)
+    const hint = (check as { hint?: string }).hint
+    if (hint) {
+      lines.push(`    ${HINT}↳ ${hint}${RESET}`)
+      nextSteps.push(`${name}: ${hint}`)
+    }
+  }
+  if (nextSteps.length) {
+    lines.push('')
+    lines.push(`${DIM}What to do:${RESET}`)
+    for (const s of nextSteps) lines.push(`  • ${s}`)
   }
   return lines.join('\n')
 }

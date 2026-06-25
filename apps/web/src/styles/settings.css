@@ -477,3 +477,5 @@ select.sel {
 .health-ok { background: #2E9E5B; }
 .health-degraded { background: #D9882B; }
 .health-down { background: var(--danger, #c0392b); }
+.health-hint { margin-top: 10px; font-size: 12px; font-weight: 600; line-height: 1.45; color: var(--ink-2);
+  background: var(--card-2); border-left: 3px solid #D9882B; border-radius: 6px; padding: 7px 10px; }

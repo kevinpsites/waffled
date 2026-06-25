@@ -174,7 +174,8 @@ type JobSnapshot = { name: string; lastRunAt: string | null; lastError: string |
 function HealthCheckCard({ name, check }: { name: string; check: { status: HealthStatus } & Record<string, unknown> }) {
   const jobs = check.jobs as JobSnapshot[] | undefined
   const note = check.note as string | undefined
-  const fields = Object.entries(check).filter(([k]) => k !== 'status')
+  const hint = check.hint as string | undefined
+  const fields = Object.entries(check).filter(([k]) => k !== 'status' && k !== 'hint')
   return (
     <div className="set-card health-card" style={{ padding: 16 }}>
       <div className="health-card-h">
@@ -200,6 +201,7 @@ function HealthCheckCard({ name, check }: { name: string; check: { status: Healt
           ))}
         </div>
       )}
+      {hint && <div className="health-hint">↳ {hint}</div>}
     </div>
   )
 }

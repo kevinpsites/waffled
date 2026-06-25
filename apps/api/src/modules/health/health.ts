@@ -45,7 +45,11 @@ async function checkDb(): Promise<{ status: Status } & Record<string, unknown>> 
     const pool = getPool()
     return { status: 'ok', total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount }
   } catch (err) {
-    return { status: 'down', error: err instanceof Error ? err.message : String(err) }
+    return {
+      status: 'down',
+      error: err instanceof Error ? err.message : String(err),
+      hint: 'Postgres is unreachable. Check it is running: `./nook logs postgres` (and that DATABASE_URL is set).',
+    }
   }
 }
 
@@ -54,8 +58,9 @@ async function checkMigrations(): Promise<{ status: Status } & Record<string, un
     const { rows } = await query<{ count: string }>('select count(*)::int as count from pgmigrations')
     const applied = Number(rows[0]?.count ?? 0)
     const available = availableMigrations()
-    const status: Status = available != null && applied < available ? 'degraded' : 'ok'
-    return { status, applied, available }
+    const behind = available != null && applied < available
+    const status: Status = behind ? 'degraded' : 'ok'
+    return { status, applied, available, ...(behind ? { hint: 'Schema is behind. Apply pending migrations: `./nook migrate` (or `./nook up`).' } : {}) }
   } catch (err) {
     return { status: 'down', error: err instanceof Error ? err.message : String(err) }
   }
@@ -67,6 +72,10 @@ function checkSchedulers(): { status: Status } & Record<string, unknown> {
   const jobs = jobSnapshots()
   const anyError = jobs.some((j) => j.lastError)
   const out: { status: Status } & Record<string, unknown> = { status: anyError ? 'degraded' : 'ok', jobs }
+  if (anyError) {
+    const failed = jobs.filter((j) => j.lastError).map((j) => j.name).join(', ')
+    out.hint = `Background job(s) erroring: ${failed}. See the job's lastError above and \`./nook logs api\`.`
+  }
   // Job state is in-memory per process. `./nook doctor` runs a separate process so
   // it sees none; the live server (this same report via GET /api/health, shown in
   // Settings → System Health) has the real run history.
@@ -88,8 +97,12 @@ async function checkCalendar(): Promise<{ status: Status } & Record<string, unkn
         where sync_token is not null and last_synced_at < now() - interval '1 hour'`
     )
     const staleCalendars = Number(stale[0]?.count ?? 0)
-    const status: Status = failed > 0 ? 'degraded' : 'ok'
-    return { status, pendingPush: pending, failedPush: failed, staleCalendars }
+    const status: Status = failed > 0 || staleCalendars > 0 ? 'degraded' : 'ok'
+    const hint =
+      failed > 0 || staleCalendars > 0
+        ? 'Google sync is failing — almost always an expired/revoked Google sign-in (invalid_grant). Reconnect each account in Settings → Calendars; the backlog drains on the next sync. (Tip: a Google OAuth consent screen in "Testing" mode expires refresh tokens after 7 days — publish it to avoid repeats.)'
+        : undefined
+    return { status, pendingPush: pending, failedPush: failed, staleCalendars, ...(hint ? { hint } : {}) }
   } catch (err) {
     // Calendar tables always exist post-migrate; a query error is a real problem.
     return { status: 'down', error: err instanceof Error ? err.message : String(err) }
@@ -107,7 +120,13 @@ function checkStorage(): { status: Status } & Record<string, unknown> {
     return { status: 'ok', dir, writable: true }
   } catch (err) {
     // Degraded (not down): a dev box without the volume mounted still "works".
-    return { status: 'degraded', dir, writable: false, error: err instanceof Error ? err.message : String(err) }
+    return {
+      status: 'degraded',
+      dir,
+      writable: false,
+      error: err instanceof Error ? err.message : String(err),
+      hint: `Media dir ${dir} is not writable — uploads will fail. Check the nook_media volume mount (MEDIA_DIR).`,
+    }
   }
 }
 
