@@ -101,6 +101,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Daily instances + complete → award | ✅ | ✅ | ✅ | ✅ Done |
 | Family-chores **rings** (Today) + Tasks board | ✅ | ✅ | ✅ | ✅ Done (iPad = wrapping Kanban) |
 | **Weekly/custom schedules** (specific weekdays) | ✅ | ✅ | ✅ | ✅ Done |
+| **One-off / carry-over task** (single day, stays until done) | 🚧 | 🚧 | 🚧 | 🚧 Planned (today every chore defaults to daily; Today is `due_on = today`, no overdue carry) |
 | **Up-for-grabs** claim (unassigned → person) | ✅ | ✅ | ✅ | ✅ Done |
 | **Drag-to-reassign** chores between columns | ✅ | ✅ | ✅ | ✅ Done |
 | **Parent-approval** step (awaiting → approve/reject) | ✅ | ✅ | ✅ | ✅ Done |
