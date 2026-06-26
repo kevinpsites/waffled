@@ -78,9 +78,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   **P1 (schema + backfill) and P2 (account-aware auth module) shipped** — backend now
   authenticates the account, lands on the last-active household, supports `/api/auth/switch`,
   invite-and-accept, OIDC match-by-account, and admin-gated additional-household creation,
-  with zero UX change for single-household accounts. Remaining: **P3** (web + iOS household
-  switcher / pending-invite UI) and **P4** (account-scoped CLI + drop the legacy
-  `credentials` table).
+  with zero UX change for single-household accounts. **P3 web client shipped** — a
+  Settings → Households switcher + pending-invite accept (appears only for multi-household
+  accounts). Remaining: **P3 iOS** (household switcher — mobile owner) and **P4**
+  (account-scoped CLI + drop the legacy `credentials` table).
 - **Notifications tail** — kiosk "due soon" local banner (table not built yet); remote push
   (APNs / web-push) is blocked on a self-host key/relay decision. Recurring-event reminders
   on iOS (only single events fire today) ride along here.

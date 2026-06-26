@@ -257,6 +257,14 @@ mobile owner when P3 starts.
   rewritten `provisioning` suite. **Zero UX change for single-membership accounts.**
 - **P3 — clients**: web household switcher + last-active landing + pending-invite accept;
   iOS switcher (coordinate with mobile owner; PowerSync re-exchange on switch).
+  **WEB SHIPPED 2026-06-25** — `GET /api/household` now returns `memberships` +
+  `pendingInvites`; `useHousehold()` surfaces them; a **Settings → Households** panel lists
+  the account's households (Switch → `POST /api/auth/switch` → new session → reload) and
+  pending invitations (Accept → `POST /api/auth/invites/:id/accept`). The tab only appears
+  when there's >1 membership or a pending invite, so single-household families see no change.
+  Covered by `test/household-context` (backend) + `Households.test.tsx` (component). **iOS
+  switcher is still owed (mobile owner)** — PowerSync re-exchanges its token on switch, which
+  already works server-side.
 - **P4 — CLI + cleanup**: account-scoped `reset-password`, membership-scoped `make-admin`,
   `add-member --email --household` (creates an invite), drop `credentials` (or keep as view).
 
