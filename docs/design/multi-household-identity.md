@@ -65,12 +65,13 @@ Everything downstream stays person-scoped and unchanged. This is the plan below.
 ```sql
 -- The global human login. Email is the cross-household identity.
 create table accounts (
-  id            uuid primary key default gen_random_uuid(),
-  email         text not null,
-  password_hash text,                     -- null = SSO-only account
-  created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now(),
-  deleted_at    timestamptz
+  id                uuid primary key default gen_random_uuid(),
+  email             text not null,
+  password_hash     text,                 -- null = SSO-only account
+  last_household_id uuid references households(id),  -- decision 3: land here on next login
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+  deleted_at        timestamptz
 );
 create unique index uq_accounts_email on accounts (lower(email)) where deleted_at is null;
 
@@ -80,6 +81,22 @@ create index ix_persons_account on persons (account_id) where deleted_at is null
 -- An account is in a household at most once.
 create unique index uq_person_account_household on persons (account_id, household_id)
   where account_id is not null and deleted_at is null;
+
+-- Decision 1: adding an existing account to another household is a pending invite the
+-- account must accept (not an instant membership). Accepting creates the persons row.
+create table household_invites (
+  id           uuid primary key default gen_random_uuid(),
+  household_id uuid not null references households(id),
+  email        text not null,             -- the invited login email
+  member_type  text not null default 'adult',
+  is_admin     boolean not null default false,
+  invited_by   uuid references persons(id),
+  created_at   timestamptz not null default now(),
+  accepted_at  timestamptz,
+  revoked_at   timestamptz
+);
+create index ix_household_invites_email on household_invites (lower(email))
+  where accepted_at is null and revoked_at is null;
 ```
 
 Disposition of existing tables:
@@ -109,22 +126,38 @@ person-anchored path.
 `provisionHousehold` also creates an `accounts` row and sets `persons.account_id`. Owner
 stays `is_admin = true`, `owner_person_id` unchanged.
 
-### 5.3 Login → membership picker
+### 5.3 Login → land on last-active (decision 3)
 `POST /api/auth/login` resolves `email → account`, verifies the password, then:
 - 1 membership → mint a token for it directly (today's behaviour, no UX change).
-- N memberships → return the list `[{ householdId, name, personId, role }]`; the client
-  shows a "Choose a household" step; a follow-up call mints the token for the chosen one.
+- N memberships → mint for `accounts.last_household_id` if still valid, else the most
+  recent; return the membership list too so the client can show a switcher. The response
+  also includes any **pending invites** (decision 1) so the client can prompt to accept.
+No forced picker on every login.
 
 ### 5.4 Switch household
 `POST /api/auth/switch { householdId }` — given a valid account session, mint a fresh
-access+refresh pair for another membership the account owns (403 if not a member). The
-SPA/iOS get a household switcher; PowerSync re-exchanges its token (new `household_id`).
+access+refresh pair for another membership the account owns (403 if not a member) and set
+`accounts.last_household_id`. The SPA/iOS get a household switcher; PowerSync re-exchanges
+its token (new `household_id`).
 
-### 5.5 SSO (OIDC) — invite to *existing* account
-First SSO login matches the verified email to an `account` (not a person). If the account
-is already a member of the target household → straight in. If not, the existing invite gate
-applies (an admin must have added that email to the household first), then we link a new
-`persons` membership to the account. Same email across households = same account.
+### 5.5 Adding a member / SSO — invite-and-accept (decision 1)
+Adding an email that maps to an **existing account** creates a `household_invites` row, not
+an instant membership. The account sees it on next login (or in a notifications area) and
+accepts → we create the `persons` membership linked to the account. Adding an email with
+**no account yet** behaves as today (email-only invite; the account is created on first
+password/SSO sign-in, which then auto-accepts the matching invite).
+
+First **SSO** login matches the verified email to an `account` (not a person). Already a
+member of the target household → straight in. Otherwise the email must have a pending
+invite (the admin added it) → accepting links a new `persons` membership. Same email across
+households = same account.
+
+### 5.8 Create a household — admin-gated (decision 4)
+`POST /api/households` (new, for an existing session) provisions a new household with the
+caller as owner — **allowed only if the caller is already an admin of some household**
+(`tenant.isAdmin`). The new household reuses `provisionHousehold`, linking the existing
+`account_id` rather than creating a new account. Open self-serve onboarding (any signed-up
+user creates a household) is deferred to the sell-time lift (§11).
 
 ### 5.6 Kiosk — unchanged
 A kiosk is a shared device bound to one household; profiles include kids with no account.
@@ -179,29 +212,49 @@ Rollback: steps 1–2 are pure additions; the old code keeps working until step 
 - `list-members` would show the account email per membership; a future `list-accounts`
   could show one human and all their households.
 
-## 9. Open decisions (need product input)
+## 9. Resolved decisions (aligned 2026-06-25)
 
-1. **Join consent:** when an existing account is added to a 2nd household, do they
-   auto-appear there, or must they accept an invite first?
-2. **Email change / merge:** if two accounts should be one human (legacy duplicates), do we
-   need an account-merge tool, or is that out of scope?
-3. **Default household:** on login with N memberships, remember the last active one, or
-   always show the picker?
-4. **Self-service "create another household":** can any logged-in account spin up a new
-   household (becoming its owner), or is that admin/operator-gated?
-5. **iOS:** the mobile app needs the same picker/switch — coordinate with the mobile owner
-   (PowerSync re-exchange on switch is the main touch point).
+1. **Join consent → accept invite first.** Adding an existing account's email to a 2nd
+   household creates a **pending invite**, not an instant membership — the account sees it
+   on next login and taps to accept. No one can attach your account to their household
+   without your OK. Adds a small `household_invites` table + an accept endpoint (see §4/§5.5).
+2. **Account merge → out of scope.** Emails are globally unique today, so the backfill is
+   1:1 and no duplicate accounts can exist. No merge tooling until a real need appears.
+3. **Default household → remember last, skip if only one.** Single-membership accounts go
+   straight in (zero UX change from today). Multi-membership accounts land in their
+   last-active household with a switcher; no forced picker every login. Store
+   `accounts.last_household_id` (nullable).
+4. **Create household → admin-gated, not open self-serve.** Creating a new household (and
+   becoming its owner) requires the actor to already be an admin somewhere. Full self-serve
+   onboarding ("any signed-up user spins up a household") is deferred and treated as a
+   separate lift to scope **if/when we go to sell** — flagged in §11.
+
+**Coordination note (not a decision):** iOS needs the same post-login picker + household
+switcher; the main touch point is re-exchanging the PowerSync token on switch. Hand to the
+mobile owner when P3 starts.
 
 ## 10. Effort / phasing
 
-- **P1 — schema + backfill migration** (additive; no behaviour change). Small.
-- **P2 — account-aware auth module**: `accounts` model, `resolveTenant`, login picker,
-  `/api/auth/switch`, OIDC match-by-account. Medium; concentrated in `modules/auth` +
-  `households.ts`. Integration tests reuse the Testcontainers harness.
-- **P3 — clients**: web household switcher + post-login picker; iOS switcher.
-- **P4 — CLI + cleanup**: `add-member`, account-scoped `reset-password`, drop `credentials`.
+- **P1 — schema + backfill migration** (additive; no behaviour change): `accounts`,
+  `persons.account_id`, `identities.account_id`, `household_invites`,
+  `accounts.last_household_id`. Small.
+- **P2 — account-aware auth module**: `accounts` model, `resolveTenant` (sub + household
+  claim), login → last-active (decision 3), `/api/auth/switch`, invite-and-accept
+  (`household_invites`, decision 1), OIDC match-by-account, admin-gated `POST /api/households`
+  (decision 4). Medium; concentrated in `modules/auth` + `households.ts`. Integration tests
+  reuse the Testcontainers harness.
+- **P3 — clients**: web household switcher + last-active landing + pending-invite accept;
+  iOS switcher (coordinate with mobile owner; PowerSync re-exchange on switch).
+- **P4 — CLI + cleanup**: account-scoped `reset-password`, membership-scoped `make-admin`,
+  `add-member --email --household` (creates an invite), drop `credentials` (or keep as view).
 
 ## 11. Out of scope (for now)
 
-Option A (per-membership profiles), account-merge tooling, org/team hierarchies above
-household, per-household *email* aliases for one account.
+Option A (per-membership profiles), account-merge tooling (decision 2), org/team hierarchies
+above household, per-household *email* aliases for one account.
+
+**Deferred to a sell-time lift (decision 4):** full self-serve onboarding — a brand-new
+visitor signs up and creates their own household with no existing admin. This brings its own
+scope (public sign-up flow, abuse/rate limits, billing/tenant isolation, email verification
+for unknown addresses) and is intentionally separated from the in-family multi-household work
+above, which only lets an **existing admin** create additional households.
