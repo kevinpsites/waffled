@@ -10,6 +10,13 @@ import { config } from '../../platform/config'
 import { query, getPool } from '../../platform/db'
 import { provisionHousehold, presentHousehold, presentPerson, requireTenant, requireAdmin } from '../households/households'
 import { loginMethods } from './oidc'
+import {
+  listMemberships,
+  ensureAccountForLogin,
+  pickActiveHousehold,
+  setLastHousehold,
+  pendingInvitesForEmail,
+} from './accounts'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -58,8 +65,11 @@ export async function issueRefresh(personId: string, subject: string): Promise<s
   return token
 }
 
-// Validate + rotate a refresh token (single use): revoke the old, issue a new one.
-async function rotateRefresh(token: string): Promise<{ subject: string; personId: string; newToken: string } | null> {
+// Validate + single-use revoke a refresh token: confirm it's live, revoke the old
+// row, and return the person + the token's *old* subject — WITHOUT issuing a new
+// one. The refresh route decides the new subject/claim (and re-keys to the account
+// where one exists), which is what upgrades an in-flight legacy token.
+async function validateAndRevokeRefresh(token: string): Promise<{ personId: string; subject: string } | null> {
   const { rows } = await query<{ id: string; person_id: string; subject: string }>(
     `select id, person_id, subject from refresh_tokens
       where token_hash = $1 and revoked_at is null and expires_at > now() limit 1`,
@@ -68,8 +78,7 @@ async function rotateRefresh(token: string): Promise<{ subject: string; personId
   const r = rows[0]
   if (!r) return null
   await query(`update refresh_tokens set revoked_at = now() where id = $1`, [r.id])
-  const newToken = await issueRefresh(r.person_id, r.subject)
-  return { subject: r.subject, personId: r.person_id, newToken }
+  return { personId: r.person_id, subject: r.subject }
 }
 
 async function isInitialized(): Promise<boolean> {
@@ -146,19 +155,53 @@ export function registerAuthRoutes(api: Api): void {
     if (!cred || !cred.password_hash || !verifyPassword(password, cred.password_hash)) {
       return res.status(401).json({ error: 'Unauthorized', message: 'Invalid email or password.' })
     }
-    const access = mintAccess(cred.id)
-    const refreshToken = await issueRefresh(cred.person_id, cred.id)
-    return res.status(200).json({ accessToken: access.token, refreshToken, expiresIn: access.expiresIn })
+    // Authenticate the *account*: resolve the credential's household, lazily
+    // create+link an account if this person predates the accounts layer, then mint
+    // an account-scoped token landing on the last-active household.
+    const ph = await query<{ household_id: string }>(`select household_id from persons where id = $1`, [cred.person_id])
+    const householdId = ph.rows[0].household_id
+    const accountId = await ensureAccountForLogin(email, cred.person_id, householdId, cred.password_hash)
+    const memberships = await listMemberships(accountId)
+    const active = await pickActiveHousehold(accountId, memberships)
+    await setLastHousehold(accountId, active)
+    const activePersonId = memberships.find((m) => m.householdId === active)!.personId
+    const accessTk = mintAccess(accountId, { [config.auth.householdClaim]: active })
+    const refreshToken = await issueRefresh(activePersonId, accountId)
+    return res.status(200).json({
+      accessToken: accessTk.token,
+      refreshToken,
+      expiresIn: accessTk.expiresIn,
+      memberships,
+      pendingInvites: await pendingInvitesForEmail(email),
+    })
   })
 
   // Public: exchange a refresh token for a fresh access token (+ rotated refresh).
   api.post('/api/auth/refresh', async (req: Request, res: Response) => {
     const token = ((req.body ?? {}) as { refreshToken?: string }).refreshToken
     if (!token) return res.status(400).json({ error: 'BadRequest', message: 'refreshToken is required' })
-    const r = await rotateRefresh(token)
+    const r = await validateAndRevokeRefresh(token)
     if (!r) return res.status(401).json({ error: 'Unauthorized', message: 'Invalid or expired refresh token.' })
-    const access = mintAccess(r.subject)
-    return res.status(200).json({ accessToken: access.token, refreshToken: r.newToken, expiresIn: access.expiresIn })
+    // Re-key off the person's account (not the presented token's old subject): this
+    // upgrades an in-flight legacy token (subject = credential id) to an account-
+    // scoped session. Persons without an account (kiosk/device/no-account) keep the
+    // legacy claim-less subject.
+    const pr = await query<{ household_id: string; account_id: string | null }>(
+      `select household_id, account_id from persons where id = $1`,
+      [r.personId]
+    )
+    const person = pr.rows[0]
+    let access: { token: string; expiresIn: number }
+    let newSubject: string
+    if (person?.account_id) {
+      newSubject = person.account_id
+      access = mintAccess(newSubject, { [config.auth.householdClaim]: person.household_id })
+    } else {
+      newSubject = r.subject
+      access = mintAccess(newSubject)
+    }
+    const newToken = await issueRefresh(r.personId, newSubject)
+    return res.status(200).json({ accessToken: access.token, refreshToken: newToken, expiresIn: access.expiresIn })
   })
 
   // Public: revoke a refresh token (best effort).
