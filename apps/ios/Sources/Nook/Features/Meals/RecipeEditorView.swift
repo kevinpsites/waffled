@@ -264,20 +264,24 @@ struct RecipeEditorView: View {
     @ViewBuilder private func ingredientRow(_ row: Binding<EditIng>) -> some View {
         let idx = ings.firstIndex { $0.id == row.id } ?? 0
         VStack(spacing: 6) {
+            // Return on ANY field jumps to the next ingredient — adding a fresh row when
+            // you're on the last one — so you can keep typing a list without reaching up.
+            let advance = { advanceIngredient(after: row.wrappedValue.id) }
             HStack(spacing: 6) {
                 TextField("2", text: row.amount).keyboardType(.decimalPad)
                     .frame(width: 54).padding(8).nkField(fill: NK.panel)
-                TextField("cups", text: row.unit).frame(width: 72).padding(8).nkField(fill: NK.panel)
-                // Return on the name jumps to the next ingredient — adding a fresh row when
-                // you're on the last one — so you can keep typing a list without reaching up.
+                TextField("cups", text: row.unit).submitLabel(.next).onSubmit(advance)
+                    .frame(width: 72).padding(8).nkField(fill: NK.panel)
                 TextField("ingredient", text: row.name)
                     .focused($focused, equals: .ingName(row.wrappedValue.id))
-                    .submitLabel(.next).onSubmit { advanceIngredient(after: row.wrappedValue.id) }
+                    .submitLabel(.next).onSubmit(advance)
                     .padding(8).nkField(fill: NK.panel)
             }
             HStack(spacing: 6) {
-                TextField("diced (optional)", text: row.prepNote).padding(8).nkField(fill: NK.panel)
-                TextField("section", text: row.section).frame(width: 96).padding(8).nkField(fill: NK.panel)
+                TextField("diced (optional)", text: row.prepNote).submitLabel(.next).onSubmit(advance)
+                    .padding(8).nkField(fill: NK.panel)
+                TextField("section", text: row.section).submitLabel(.next).onSubmit(advance)
+                    .frame(width: 96).padding(8).nkField(fill: NK.panel)
                 rowControls(up: idx > 0, down: idx < ings.count - 1,
                             onUp: { ings.swapAt(idx, idx - 1) }, onDown: { ings.swapAt(idx, idx + 1) },
                             onDelete: { ings.removeAll { $0.id == row.wrappedValue.id } })
