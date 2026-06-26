@@ -140,6 +140,15 @@ final class SyncManager {
         await connect()
     }
 
+    /// Re-scope the live sync after the active session changed — a kiosk profile claim
+    /// swaps in a different person's token. Tears the PowerSync session down and stands
+    /// it back up against whatever token `AppConfig` now reports, the same path a fresh
+    /// launch takes. `signOut()` resets `started`, so `start()` runs clean.
+    func reauthenticate() async {
+        await signOut()
+        await start()
+    }
+
     /// Tear down the sync session on sign-out: stop the live queries, disconnect
     /// PowerSync, drop the observable state, and reset so the next `start()` runs
     /// fresh. Keychain tokens are cleared separately by `Session`.

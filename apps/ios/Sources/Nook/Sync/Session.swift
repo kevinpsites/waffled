@@ -102,6 +102,15 @@ final class Session {
         status = try? await api.authStatus()
     }
 
+    /// Adopt a per-person session minted by the kiosk profile picker (the device-token
+    /// claim already returned the tokens). Flips the gate to authed without a password
+    /// round-trip — the kiosk equivalent of `login()`.
+    func enterClaimedSession(access: String, refresh: String) {
+        AuthTokens.save(access: access, refresh: refresh)
+        AppConfig.clearSignedOut()
+        phase = .authed
+    }
+
     /// Re-probe server status (e.g. after editing the server URL on the login screen).
     func refreshStatus() async {
         status = try? await api.authStatus()

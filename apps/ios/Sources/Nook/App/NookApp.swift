@@ -9,19 +9,43 @@ struct NookApp: App {
     @State private var sync = SyncManager()
     @State private var session = Session()
     @State private var notifications = NotificationManager()
+    @State private var kiosk = KioskMode()
 
     var body: some Scene {
         WindowGroup {
-            AuthGate {
-                RootView()
-                    .task { await sync.start() }   // connect PowerSync once signed in
+            // KioskGate wraps the auth gate: a shared-kiosk iPad with nobody claimed in
+            // shows the profile picker INSTEAD of the login screen. On iPhone (and a
+            // single-login iPad) it's a transparent passthrough.
+            KioskGate {
+                AuthGate {
+                    RootView()
+                        .task { await sync.start() }   // connect PowerSync once signed in
+                }
             }
             .environment(sync)
             .environment(session)
             .environment(notifications)
+            .environment(kiosk)
             .tint(NK.primary)
             .preferredColorScheme(.light)          // warm-white canvas is a light theme
             .task { await session.bootstrap() }    // read the Keychain / probe auth status
+        }
+    }
+}
+
+/// Gates a shared-kiosk iPad to its profile picker. When this device is paired as a
+/// family kiosk and no profile is currently claimed, the picker takes over the whole
+/// window (the per-person session, and thus login, doesn't exist yet). Otherwise it
+/// renders its content unchanged — so iPhone and single-login iPads are untouched.
+struct KioskGate<Content: View>: View {
+    @Environment(KioskMode.self) private var kiosk
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        if kiosk.needsPicker {
+            KioskProfilePickerView()
+        } else {
+            content()
         }
     }
 }

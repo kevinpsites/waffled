@@ -79,6 +79,7 @@ final class ScreensaverModel {
 
 struct KioskScreensaverHost: ViewModifier {
     @Environment(SyncManager.self) private var sync
+    @Environment(KioskMode.self) private var kiosk
     @State private var model = ScreensaverModel()
     @AppStorage("nook.screensaverMotion") private var motion = true
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -94,7 +95,7 @@ struct KioskScreensaverHost: ViewModifier {
                         photos: model.photos, weather: model.weather,
                         nextEvent: nextEvent, timezone: sync.householdTz,
                         dimmed: model.dimmed, interval: cfg.photoInterval,
-                        motion: motion, onWake: { model.wake() })
+                        motion: motion, onWake: { wake() })
                         .transition(.opacity)
                         .zIndex(100)
                 }
@@ -111,6 +112,15 @@ struct KioskScreensaverHost: ViewModifier {
             .onReceive(tick) { model.tick($0, tz: sync.householdTz) }
             // Keep the screen awake while the saver is up (it IS the screensaver).
             .onChange(of: model.showing) { _, on in UIApplication.shared.isIdleTimerDisabled = on }
+    }
+
+    /// Tapped the screensaver to wake. On a shared kiosk with "Return to profile picker"
+    /// enabled, waking drops the current person and shows the picker (so the next person
+    /// to walk up isn't acting as whoever last used it); otherwise it just resumes.
+    private func wake() {
+        let toPicker = (model.cfg?.returnToPicker ?? false) && kiosk.isShared
+        model.wake()
+        if toPicker { Task { await kiosk.returnToPicker(sync: sync) } }
     }
 
     /// The soonest upcoming event (timed or all-day) for the "Next:" line.

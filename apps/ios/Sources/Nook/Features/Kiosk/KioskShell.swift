@@ -9,6 +9,7 @@ import SwiftUI
 /// `apps/ios/IPAD_ROADMAP.md` (Phase 3).
 struct KioskShell: View {
     @Environment(SyncManager.self) private var sync
+    @Environment(KioskMode.self) private var kiosk
     @State private var selection: KioskNav = KioskNav(rawValue: DemoHooks.kioskPage ?? "") ?? .today
 
     // Shared models / per-page nav stacks for the reused feature views.
@@ -81,16 +82,37 @@ struct KioskShell: View {
         .padding(.bottom, 4)
     }
 
-    /// "Who's logged in" — the signed-in person's avatar at the bottom of the rail.
+    /// "Who's logged in" — the signed-in person's avatar at the bottom of the rail. On a
+    /// shared kiosk it's a button (with a swap badge) that returns to the profile picker so
+    /// the next person can tap in; on a normal single-login iPad it's just an indicator.
+    @ViewBuilder
     private func currentUserChip(_ m: SyncedMember) -> some View {
-        VStack(spacing: 4) {
-            Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 40)
-                .overlay(Circle().strokeBorder(NK.card, lineWidth: 2))
-            Text(m.name.split(separator: " ").first.map(String.init) ?? m.name)
+        let firstName = m.name.split(separator: " ").first.map(String.init) ?? m.name
+        let chip = VStack(spacing: 4) {
+            ZStack(alignment: .bottomTrailing) {
+                Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 40)
+                    .overlay(Circle().strokeBorder(NK.card, lineWidth: 2))
+                if kiosk.isShared {
+                    Image(systemName: "arrow.left.arrow.right.circle.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(NK.primary)
+                        .background(Circle().fill(NK.panel).frame(width: 17, height: 17))
+                        .offset(x: 3, y: 2)
+                }
+            }
+            Text(firstName)
                 .font(.system(size: 10.5, weight: .bold)).foregroundStyle(NK.ink2).lineLimit(1)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
+
+        if kiosk.isShared {
+            // Tap the avatar → straight back to the picker (the swap badge signals it).
+            Button { Task { await kiosk.returnToPicker(sync: sync) } } label: { chip }
+                .buttonStyle(.plain)
+        } else {
+            chip
+        }
     }
 
     private func railItem(_ item: KioskNav) -> some View {

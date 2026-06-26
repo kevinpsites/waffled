@@ -42,6 +42,7 @@ struct LoginView: View {
     @State private var busy = false
     @State private var showServer = false
     @State private var serverURL = AppConfig.apiBaseURL
+    @State private var showKioskSetup = false
 
     @FocusState private var focus: Field?
     private enum Field { case email, password }
@@ -69,6 +70,7 @@ struct LoginView: View {
                         form
                     }
                     serverDisclosure
+                    if isKiosk { kioskSetupLink }
                     Spacer(minLength: 24)
                 }
                 .padding(.horizontal, 28)
@@ -77,6 +79,20 @@ struct LoginView: View {
             }
             .scrollDismissesKeyboard(.interactively)
         }
+        .sheet(isPresented: $showKioskSetup) { KioskCodeEntrySheet() }
+    }
+
+    /// iPad-only: turn this device into a shared family kiosk (profile picker) instead
+    /// of signing one person in. Pairs with a one-time code from an admin.
+    private var kioskSetupLink: some View {
+        Button { showKioskSetup = true } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "person.2.fill").font(.system(size: 11, weight: .semibold))
+                Text("Set up this iPad as a shared kiosk").font(.system(size: 12.5, weight: .semibold))
+            }
+            .foregroundStyle(NK.ink2)
+        }
+        .buttonStyle(.plain).padding(.top, 18)
     }
 
     private var header: some View {

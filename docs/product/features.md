@@ -18,8 +18,9 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 > Kanban chores board, the **screensaver**) on top of the same `SyncManager`/`NookAPI`
 > data layer. iPad-only items (screensaver, ambient display) read ❌ N/A on iPhone;
 > shared-but-web-only admin actions (first-run setup, OIDC config) read ❌ on both.
-> Multi-profile kiosk pairing/picker is **deliberately deferred** on mobile (single
-> persistent login), so those rows are ❌ N/A on both. See
+> The **shared-kiosk profile picker** (pairing + per-profile PIN) now ships on **iPad** as
+> an opt-in (single persistent login stays the default); it's ❌ N/A on iPhone, which is
+> never a kiosk. See
 > [`apps/ios/IPAD_ROADMAP.md`](../../apps/ios/IPAD_ROADMAP.md) for the mobile build plan.
 
 ---
@@ -43,10 +44,11 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 
 | Feature | Web / Kiosk | iPhone | iPad | Status |
 | --- | :---: | :---: | :---: | --- |
-| **Kiosk device pairing** (admin code or "use this device") | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web); mobile is single-login (deferred) |
-| **Profile picker** (Netflix-style; per-profile real session) | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web); mobile deferred |
-| Optional per-person **PIN** to open a profile (throttled) | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web); mobile deferred |
-| Rail "Switch" + idle return to picker | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web); mobile deferred |
+| **Kiosk device pairing** (admin code or "use this device") | ✅ | ❌ N/A | ✅ | ✅ Done — iPad: admin one-tap *promote* + pair-by-code (opt-in; iPhone never a kiosk) |
+| **Profile picker** (Netflix-style; per-profile real session) | ✅ | ❌ N/A | ✅ | ✅ Done — `KioskProfilePickerView`; device-token model, claim mints a per-person session |
+| Optional per-person **PIN** to open a profile (throttled) | ✅ | ❌ N/A | ✅ | ✅ Done — `KioskPinPad` (4–8 digits, "N tries left" on 401, lockout countdown on 429) |
+| "Switch profile" + idle return to picker | ✅ | ❌ N/A | ✅ | ✅ Done — tap the rail avatar (swap badge) or Settings → Display & Kiosk "Switch profile"; `returnToPicker` also drops to the picker on screensaver wake |
+| **Exit kiosk mode** on the device (un-pair this iPad) | ✅ | ❌ N/A | ✅ | ✅ Done — picker gear → "Exit shared kiosk" (no sign-in needed) or parent Settings → "Stop sharing"; local-only, returns to normal login |
 | Idle **screensaver** auto-start (after N min of no touch) | ✅ | ❌ N/A | ✅ | ✅ Done |
 | Screensaver **photo slideshow** + **crossfade** transitions | ✅ | 🟡 | ✅ | ✅ Done (iPhone via manual "Play"; iPad idle + manual) |
 | Screensaver chrome: clock · date · **weather** · **next event** · album | ✅ | 🟡 | ✅ | ✅ Done (iPhone bare "Play" omits chrome) |
@@ -266,8 +268,8 @@ Tracked in [`apps/ios/IPAD_ROADMAP.md`](../../apps/ios/IPAD_ROADMAP.md). Highlig
 
 - **Chore reminders** on iOS — blocked on chores landing in PowerSync.
 - **Recurring-event reminders** — the local scheduler doesn't expand recurrences yet.
-- **Multi-profile kiosk** (profile picker + per-person PIN) on iPad — deliberately deferred;
-  layers on top of single-login without rework (needs a server device→person binding).
+- ~~**Multi-profile kiosk** (profile picker + per-person PIN) on iPad~~ — **shipped** as an
+  opt-in shared-kiosk mode (single-login stays the default). See IPAD_ROADMAP Phase 6.
 - ~~iPad Today per-card customize (drag/hide)~~ — intentionally not planned; the fixed
   three-group dashboard (recap banners · Today · goals) is the right shape for the wall display.
 - **Household-wide** screensaver motion (currently a per-device toggle; would need the

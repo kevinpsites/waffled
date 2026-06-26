@@ -48,10 +48,11 @@ listing, one download. The device picks the right experience at runtime by idiom
    `MealsView`, chores/goals/lists/etc. via `HubDestination`) become the iPad's pages,
    progressively re-laid-out to match the web. The iPad work is **navigation + screens**,
    not a new data/sync/auth stack.
-4. **Single-profile, no picker (for now).** iPad signs in once and *stays* — one profile,
-   no picker, no switching. Normal persistent login (Keychain + 401-refresh). Full
-   interactivity does **not** require multi-profile; the shared profile-picker flow stays
-   **deferred** (see Backlog) and layers on top without rework.
+4. **Single-profile login is the default; the shared profile picker is opt-in.** Out of
+   the box an iPad signs in once and *stays* — one profile, normal persistent login
+   (Keychain + 401-refresh). An admin can opt this iPad into a **shared family kiosk**
+   (profile picker + optional PIN) — shipped as a clean additive layer (see Phase 6), it
+   never changes the default single-login behavior unless turned on.
 5. **iPad is a full interactive app**, navigable to every page — the web experience, native.
    The **family-display / screensaver** mode is a *secondary, low-priority* overlay
    (Phase 5), not the point. (Was originally scoped kiosk-display-first; re-scoped
@@ -180,21 +181,76 @@ driven by the same `DisplayConfig` (`Features/Settings/DisplayKioskSettingsView.
 - [x] **Slow-zoom (Ken-Burns) toggle** — device-local `@AppStorage` (the server display
       config whitelists fields, so a motion flag wouldn't persist there).
 - [ ] Idle **reset-to-Today** after `resetHomeMinutes` (config exists; not wired yet).
-- [ ] `returnToPicker` — no-op until multi-profile lands.
+- [x] `returnToPicker` — wired (Phase 6): on a shared kiosk, waking the screensaver drops
+      the current person back to the profile picker.
+
+---
+
+## Phase 6 — Shared family kiosk (profile picker + PIN) ✅
+
+Opt-in: an admin turns one iPad into a shared family display where everyone taps their own
+face (optional PIN) to act as themselves. The default single-login behavior is untouched
+unless enabled. Ports the web kiosk's device-token model — no server changes.
+
+- [x] **Device identity layer** — `KioskDevice.swift`: long-lived `deviceSecret` in the
+      Keychain, exchanged by `KioskDeviceAuth` (actor) for short-lived device access
+      tokens (`POST /api/kiosk/device/token`), with a `deviceFetch` 401-refresh path in
+      `NookAPI`. Separate from the per-person `AuthTokens` session.
+- [x] **`NookAPI` kiosk calls** — `pairDevice` (code), `promoteDevice` (admin one-tap),
+      `kioskProfiles`, `claimProfile` (returns the per-person session; throws
+      `KioskClaimError.wrongPin(triesLeft:)` / `.lockedOut(retryAfter:)`), `setKioskDeviceLabel`,
+      `kioskHeartbeat`.
+- [x] **`KioskMode`** (`@Observable`, app-root env) — the state machine. "Show the picker"
+      = paired AND no per-person session (`isShared && !AuthTokens.isSignedIn`). `KioskGate`
+      wraps `AuthGate`; a paired-but-unclaimed iPad shows the picker instead of login.
+- [x] **Profile picker + PIN pad** — `KioskProfilePickerView` (avatar/color grid, 🔒 on
+      PIN'd profiles, 60s poll + heartbeat) and `KioskPinPad` (4–8-digit keypad,
+      "N tries left" on 401, lockout countdown on 429). Matches `ProfilePicker.tsx` / `PinPad.tsx`.
+- [x] **Session swap** — claim → `Session.enterClaimedSession` adopts the per-person tokens →
+      `SyncManager.reauthenticate()` re-scopes PowerSync → the kiosk shell boots as that person.
+- [x] **Enable + manage** — opt-in from **Settings → Display & Kiosk** (admin one-tap
+      *promote*, or *pair with a code*; "Switch profile" / "Stop sharing" once shared) and a
+      **"Set up this iPad as a shared kiosk"** link on the iPad login screen (code entry for
+      a fresh device).
+- [x] **Idle return-to-picker** — waking the screensaver with `returnToPicker` on drops the
+      current person back to the picker (keeps the device paired).
+- [x] **Tap-to-switch** — on a shared kiosk the signed-in person's avatar at the bottom of
+      the rail (`KioskShell.currentUserChip`) is a button (swap badge) that returns to the
+      picker in one tap — the discoverable twin of Settings → "Switch profile". Plain
+      indicator (no behavior change) on a normal single-login iPad.
+- [x] **Revoked-device self-heal** — if an admin unpairs the kiosk from elsewhere, the dead
+      device token (401) forgets the local pairing and falls back to login (mirrors web
+      `clearKioskDevice`) instead of a stuck "No profiles" picker.
+- [x] **Escape hatch on the picker** — a discreet gear (bottom-right) opens
+      `KioskPickerEscapeSheet`: check/fix the **server address** (mints a fresh device token
+      and retries in place) or **exit shared kiosk** (forgets the pairing locally → back to
+      sign-in). Without it, a device pointed at a bad server or remotely unpaired was stranded
+      on the picker with no on-device recovery.
+- [x] **Claim decode fix** — the claim response's embedded `person` object omits `hasPin`
+      (only the picker *list* includes it). `KioskProfile.hasPin` was a required `Bool`, so
+      the present-but-incomplete `person` threw a `DecodingError` that `KioskMode.claim`
+      reported as a bogus **"Couldn't reach the server"** — every profile tap failed. Made
+      `hasPin` tolerant of absence (`decodeIfPresent ?? false`); proven against the real
+      payload. Also: `claimProfile` now passes `retryOn401: false` so a wrong-PIN 401 isn't
+      silently re-submitted (which burned two attempts per tap and raced the lockout).
+- Verified end-to-end against the running server (promote → device token → profiles →
+  claim → wrong-PIN `triesLeft`) and on the iPad simulator (picker + PIN pad + login entry
+  point). iPhone is unaffected — the gate is a no-op off the iPad idiom.
+- ⚠️ The picker/PIN/device-token code must stay in sync with `apps/web/src/kiosk/*` +
+  `apps/web/src/lib/api/kiosk.ts`; each file carries a KEEP-IN-SYNC header.
 
 ---
 
 ## Backlog — deferred, with enough context to resume
 
-### A. Multi-profile shared kiosk (Netflix-style picker)
+### A. Multi-profile shared kiosk (Netflix-style picker) ✅ — see Phase 6
+
+Shipped — promoted out of the backlog. (Original note kept below for context.)
 
 Shared-display flow: device rests on a **profile picker**, anyone taps in (optional PIN),
 ephemeral session, auto-logs-out on idle. The **web kiosk already does this** — port it.
 - Web: `ProfilePicker.tsx`, `PinPad.tsx`, `PairDevice.tsx`, device-secret auth in
   `lib/api/kiosk.ts`, `AuthGate.tsx` picker logic.
-- **Missing server-side (either platform):** no device→person binding — `kiosk_devices`
-  has no `claimed_person_id` / auto-claim / "skip picker". A device pairs to a *household*,
-  then `claim(personId)` mints a per-profile session.
 - v1's single-profile login is a clean subset; the picker is additive.
 
 ### B. Nice-to-haves & known gaps
