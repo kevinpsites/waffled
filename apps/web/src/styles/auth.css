@@ -69,6 +69,12 @@
   width: 100%;
   box-sizing: border-box;
 }
+.auth-select {
+  cursor: pointer;
+  /* keep the native dropdown affordance; just align it with .auth-input metrics */
+  height: 44px;
+  appearance: auto;
+}
 .auth-input:focus {
   outline: none;
   border-color: var(--primary, #e0653f);
@@ -86,6 +92,12 @@
   margin-top: 18px;
   padding: 12px;
   font-size: 15px;
+}
+/* Make the disabled state read as disabled (the bare attribute doesn't dim it). */
+.auth-submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 /* SSO button — distinct from the primary password submit (outlined). */
 .auth-sso {

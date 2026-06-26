@@ -150,6 +150,27 @@ function LoginScreen({ status, oidcError }: { status: AuthStatus | null; oidcErr
   )
 }
 
+// Full IANA timezone list for the setup dropdown when the runtime exposes it (all
+// current browsers do); otherwise a curated North-America-first fallback so the
+// field is never just a free-text guess ("what do I put for Seattle?").
+const TIMEZONES: string[] = (() => {
+  try {
+    const all = (Intl as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf?.('timeZone')
+    if (Array.isArray(all) && all.length) return all
+  } catch {
+    /* Intl.supportedValuesOf unsupported — fall through to the curated list */
+  }
+  return [
+    'America/New_York', 'America/Chicago', 'America/Denver', 'America/Phoenix',
+    'America/Los_Angeles', 'America/Anchorage', 'Pacific/Honolulu', 'America/Toronto',
+    'America/Vancouver', 'Europe/London', 'Europe/Paris', 'Europe/Berlin',
+    'Asia/Tokyo', 'Australia/Sydney', 'UTC',
+  ]
+})()
+
+// Login part of 2+ chars, an @, then a dotted domain — "an accurate email".
+const SETUP_EMAIL_RE = /^[^\s@]{2,}@[^\s@]+\.[^\s@]+$/
+
 function SetupWizard() {
   const detectedTz = (() => {
     try {
@@ -166,9 +187,17 @@ function SetupWizard() {
   const [confirm, setConfirm] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Only surface a field's validation hint when the user leaves it still-invalid —
+  // and hide it again the moment they resume typing. Never yell mid-keystroke.
+  const [showErr, setShowErr] = useState<{ email?: boolean; password?: boolean; confirm?: boolean }>({})
+  const clearErr = (f: 'email' | 'password' | 'confirm') => setShowErr((s) => (s[f] ? { ...s, [f]: false } : s))
 
+  // Pre-select the detected zone; make sure it's selectable even if the fallback list omits it.
+  const tzOptions = TIMEZONES.includes(detectedTz) ? TIMEZONES : [detectedTz, ...TIMEZONES]
+  const emailValid = SETUP_EMAIL_RE.test(email.trim())
+  const passwordLongEnough = password.length >= 8
   const passwordsMatch = password === confirm
-  const valid = householdName.trim() && timezone.trim() && name.trim() && email.trim() && password.length >= 8 && passwordsMatch
+  const valid = !!(householdName.trim() && timezone.trim() && name.trim() && emailValid && passwordLongEnough && passwordsMatch)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -194,18 +223,24 @@ function SetupWizard() {
         <label className="auth-label">Household name</label>
         <input className="auth-input" value={householdName} onChange={(e) => setHouseholdName(e.target.value)} placeholder="The Sites Family" autoFocus required />
         <label className="auth-label">Timezone</label>
-        <input className="auth-input" value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="America/Chicago" required />
+        <select className="auth-input auth-select" value={timezone} onChange={(e) => setTimezone(e.target.value)} required>
+          {tzOptions.map((tz) => (
+            <option key={tz} value={tz}>{tz.replace(/_/g, ' ')}</option>
+          ))}
+        </select>
 
         <div className="auth-section" style={{ marginTop: 14 }}>Admin account</div>
         <label className="auth-label">Your name</label>
-        <input className="auth-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Kevin" required />
+        <input className="auth-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="John Doe" required />
         <label className="auth-label">Email</label>
-        <input className="auth-input" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <input className="auth-input" type="email" autoComplete="username" value={email} onChange={(e) => { setEmail(e.target.value); clearErr('email') }} onBlur={() => setShowErr((s) => ({ ...s, email: !!email.trim() && !emailValid }))} placeholder="you@example.com" required />
+        {showErr.email && <div className="auth-error">Enter a valid email address (e.g. you@example.com).</div>}
         <label className="auth-label">Password</label>
-        <input className="auth-input" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" required />
+        <input className="auth-input" type="password" autoComplete="new-password" value={password} onChange={(e) => { setPassword(e.target.value); clearErr('password') }} onBlur={() => setShowErr((s) => ({ ...s, password: !!password && !passwordLongEnough }))} placeholder="At least 8 characters" required />
+        {showErr.password && <div className="auth-error">Password must be at least 8 characters.</div>}
         <label className="auth-label">Confirm password</label>
-        <input className="auth-input" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
-        {password && confirm && !passwordsMatch && <div className="auth-error">Passwords don't match.</div>}
+        <input className="auth-input" type="password" autoComplete="new-password" value={confirm} onChange={(e) => { setConfirm(e.target.value); clearErr('confirm') }} onBlur={() => setShowErr((s) => ({ ...s, confirm: !!password && !!confirm && !passwordsMatch }))} required />
+        {showErr.confirm && <div className="auth-error">Passwords don't match.</div>}
         {error && <div className="auth-error">{error}</div>}
         <button type="submit" className="btn btn-primary auth-submit" disabled={busy || !valid}>
           {busy ? 'Creating…' : 'Create household'}
