@@ -6,6 +6,7 @@ import { GroceryCard } from './components/GroceryCard'
 import { GoalRecapBar } from './components/GoalRecap'
 import { ApprovalsBar } from './components/Approvals'
 import { CaptureBar } from './components/CaptureBar'
+import { GettingStartedBar } from './onboarding/GettingStarted'
 import { useTopbarRight } from './topbar-slot'
 import { useTodayLayout, type LayoutScope } from '../lib/api'
 
@@ -158,6 +159,7 @@ export function Today() {
 
   return (
     <div className={`today-wrap ${editing ? 'today-editing' : ''}`}>
+      <GettingStartedBar />
       <ApprovalsBar />
       <GoalRecapBar />
 

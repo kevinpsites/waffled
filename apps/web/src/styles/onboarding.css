@@ -1,0 +1,347 @@
+/* "Getting started" onboarding — a slim resumable checklist bar on Today plus a
+   centered overlay wizard. Reuses the existing palette/radius/shadow variables so
+   it reads as part of the app, not a bolt-on. */
+
+/* ── Resumable checklist bar (top of Today) ── */
+.ob-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--card, #fff);
+  border: 1px solid var(--hair, #e4ded4);
+  border-radius: var(--r-lg, 18px);
+  box-shadow: var(--sh-2, 0 12px 40px rgba(0, 0, 0, 0.06));
+  padding: 14px 16px;
+  /* Align to the same horizontal gutter as the card board (.today-board has
+     30px side padding; .recap-bar matches it) so the bar lines up with the cards. */
+  margin: 6px 30px 16px;
+}
+@media (max-width: 720px) {
+  .ob-bar { margin: 6px 16px 14px; }
+}
+.ob-bar-main {
+  flex: 1;
+  min-width: 0;
+}
+.ob-bar-title {
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--ink);
+}
+.ob-bar-sub {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-3, #8a8276);
+  margin-top: 2px;
+}
+.ob-bar-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.ob-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--hair, #e4ded4);
+  background: var(--card-2, #faf8f4);
+  color: var(--ink-2, #5f594f);
+}
+.ob-chip.done {
+  color: var(--good, #2e7d32);
+  border-color: color-mix(in srgb, var(--good, #2e7d32) 35%, transparent);
+  background: color-mix(in srgb, var(--good, #2e7d32) 8%, transparent);
+}
+.ob-chip-mark {
+  font-size: 12px;
+  width: 14px;
+  text-align: center;
+}
+.ob-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.ob-bar-dismiss {
+  border: 0;
+  background: none;
+  color: var(--ink-3, #8a8276);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+.ob-bar-dismiss:hover {
+  color: var(--ink);
+}
+
+/* ── Overlay wizard ── */
+.ob-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(20, 16, 12, 0.42);
+}
+.ob-card {
+  width: 100%;
+  max-width: 520px;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  background: var(--card, #fff);
+  border-radius: var(--r-lg, 18px);
+  box-shadow: var(--sh-2, 0 24px 70px rgba(0, 0, 0, 0.25));
+  padding: 24px 24px 20px;
+  position: relative;
+}
+.ob-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  border: 0;
+  background: none;
+  color: var(--ink-3, #8a8276);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ob-close:hover {
+  color: var(--ink);
+}
+.ob-eyebrow {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3, #8a8276);
+}
+.ob-step-title {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.15;
+  margin-top: 4px;
+}
+.ob-step-blurb {
+  color: var(--ink-2, #5f594f);
+  font-weight: 500;
+  margin: 4px 0 16px;
+}
+.ob-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.ob-note {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2, #5f594f);
+  background: var(--card-2, #faf8f4);
+  border: 1px solid var(--hair, #e4ded4);
+  border-radius: var(--r-md, 12px);
+  padding: 12px 14px;
+}
+.ob-connected {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  color: var(--good, #2e7d32);
+}
+
+/* member / generic list rows inside a step */
+.ob-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.ob-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--r-md, 12px);
+  border: 1px solid var(--hair, #e4ded4);
+  background: var(--card-2, #faf8f4);
+}
+.ob-row-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  color: #fff;
+  flex: none;
+}
+.ob-row-name {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+}
+.ob-row-sub {
+  font-weight: 600;
+  color: var(--ink-3, #8a8276);
+}
+.ob-hint {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-3, #8a8276);
+  margin-top: 6px;
+}
+.ob-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0;
+  color: var(--ink-3, #8a8276);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ob-or::before,
+.ob-or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--hair, #e4ded4);
+}
+.ob-empty {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-3, #8a8276);
+  margin-bottom: 12px;
+}
+
+/* inline form fields (goal / recipe steps) */
+.ob-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+.ob-field > span {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-2, #5f594f);
+}
+.ob-input,
+.ob-textarea {
+  font: inherit;
+  font-size: 15px;
+  padding: 11px 13px;
+  border-radius: var(--r-md, 12px);
+  border: 1px solid var(--hair, #e4ded4);
+  background: var(--card-2, #faf8f4);
+  color: var(--ink);
+  width: 100%;
+  box-sizing: border-box;
+}
+.ob-textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+.ob-input:focus,
+.ob-textarea:focus {
+  outline: none;
+  border-color: var(--primary, #e0653f);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary, #e0653f) 16%, transparent);
+}
+.ob-seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ob-seg-btn {
+  border: 1px solid var(--hair, #e4ded4);
+  background: var(--card-2, #faf8f4);
+  color: var(--ink-2, #5f594f);
+  font-weight: 700;
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.ob-seg-btn.on {
+  border-color: var(--primary, #e0653f);
+  background: color-mix(in srgb, var(--primary, #e0653f) 12%, transparent);
+  color: var(--primary, #e0653f);
+}
+.ob-err {
+  color: var(--primary, #e0653f);
+  font-size: 13px;
+  font-weight: 700;
+  margin-top: -4px;
+  margin-bottom: 10px;
+}
+.ob-saved {
+  font-weight: 700;
+  color: var(--good, #2e7d32);
+  font-size: 13px;
+}
+
+/* ── Footer: dots + nav ── */
+.ob-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hair, #e4ded4);
+}
+.ob-dots {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+.ob-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--hair, #e4ded4);
+}
+.ob-dot.active {
+  background: var(--primary, #e0653f);
+}
+.ob-dot.done {
+  background: var(--good, #2e7d32);
+}
+.ob-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ob-btn {
+  border: 1px solid var(--hair, #e4ded4);
+  background: var(--card, #fff);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.ob-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ob-btn.primary {
+  background: var(--primary, #e0653f);
+  border-color: var(--primary, #e0653f);
+  color: #fff;
+}
+.ob-btn.ghost {
+  border-color: transparent;
+  background: none;
+  color: var(--ink-3, #8a8276);
+}

@@ -206,10 +206,14 @@ function SetupWizard() {
     setError(null)
     const input: SetupInput = {
       household: { name: householdName.trim(), timezone: timezone.trim() },
-      admin: { name: name.trim(), email: email.trim(), password },
+      // Give the owner a default avatar + color (matching PersonModal's defaults) so
+      // they aren't an avatar-less member in pickers/dropdowns; editable later.
+      admin: { name: name.trim(), email: email.trim(), password, avatarEmoji: '🙂', colorHex: '#2F7FED' },
     }
     try {
       await authApi.setup(input)
+      // Brand-new admin → kick off the post-setup "Getting started" onboarding.
+      try { localStorage.setItem('nook.onboarding', 'active') } catch { /* storage unavailable */ }
     } catch (err) {
       setError((err as Error).message)
       setBusy(false)
