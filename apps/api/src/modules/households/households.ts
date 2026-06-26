@@ -243,6 +243,53 @@ export async function provisionHousehold(
   }
 }
 
+// Admin-gated additional-household creation (design §5.8, decision 4). Unlike
+// provisionHousehold (first-login), the caller's account already exists, so we
+// create ONLY the household + owner person and link the person to that account —
+// no identity, no credential, no new account. We also leave the account's
+// last_household_id untouched so the caller's current session isn't disrupted;
+// they switch into the new household explicitly via /api/auth/switch.
+export async function createHouseholdForAccount(
+  accountId: string,
+  input: {
+    householdName: string
+    timezone: string
+    person: { name: string; avatarEmoji: string | null; colorHex: string | null }
+  }
+): Promise<{ household: HouseholdRow; person: PersonRow }> {
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+
+    const h = await client.query<HouseholdRow>(
+      `insert into households (name, timezone) values ($1, $2) returning *`,
+      [input.householdName, input.timezone]
+    )
+    const household = h.rows[0]
+
+    const p = await client.query<PersonRow>(
+      `insert into persons (household_id, name, member_type, is_admin, avatar_emoji, color_hex, account_id)
+       values ($1, $2, 'adult', true, $3, $4, $5) returning *`,
+      [household.id, input.person.name, input.person.avatarEmoji, input.person.colorHex, accountId]
+    )
+    const person = p.rows[0]
+
+    await client.query(`update households set owner_person_id = $1 where id = $2`, [
+      person.id,
+      household.id,
+    ])
+    household.owner_person_id = person.id
+
+    await client.query('commit')
+    return { household, person }
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
 // snake_case rows → clean camelCase API shapes.
 export function presentHousehold(h: HouseholdRow) {
   return {

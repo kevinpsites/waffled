@@ -10,11 +10,12 @@ import { recordHttpRequest } from './platform/telemetry'
 import { registerHealthRoutes } from './modules/health/health'
 import {
   resolveTenant,
+  requireTenant,
+  requireAdmin,
   getContext,
-  provisionHousehold,
+  createHouseholdForAccount,
   presentHousehold,
   presentPerson,
-  inferProvider,
 } from './modules/households/households'
 import { registerPersonRoutes } from './modules/persons/persons'
 import { registerListRoutes } from './modules/lists/lists.routes'
@@ -119,14 +120,13 @@ api.get('/api/household', async (req: Request) => {
   }
 })
 
-// First-login provisioning: create a household with the caller as owner + admin.
+// Admin-gated additional-household creation (design §5.8, decision 4). The first
+// household is created by the first-run wizard (/api/auth/setup); here an existing
+// ADMIN spins up an *additional* household (becoming its owner), linked to their
+// existing account. Open self-serve onboarding for unprovisioned tokens is deferred.
 api.post('/api/households', async (req: Request, res: Response) => {
-  const sub = req.principal!.sub
-  if (await resolveTenant(req.principal!)) {
-    return res
-      .status(409)
-      .json({ error: 'Conflict', message: 'This account already has a household' })
-  }
+  const tenant = await requireTenant(req) // 401 (no token) / 403 (unprovisioned) from upstream/AuthError
+  requireAdmin(tenant) // 403 if not admin
 
   const body = (req.body ?? {}) as {
     name?: string
@@ -139,32 +139,28 @@ api.post('/api/households', async (req: Request, res: Response) => {
       .json({ error: 'BadRequest', message: 'name, timezone, and person.name are required' })
   }
 
-  const claims = req.principal!.claims
-  try {
-    const { household, person } = await provisionHousehold({
-      sub,
-      provider: inferProvider(sub),
-      email: (claims.email as string | undefined) ?? null,
-      emailVerified: (claims.email_verified as boolean | undefined) ?? false,
-      householdName: body.name,
-      timezone: body.timezone,
-      person: {
-        name: body.person.name,
-        avatarEmoji: body.person.avatarEmoji ?? null,
-        colorHex: body.person.colorHex ?? null,
-      },
-    })
-    return res
-      .status(201)
-      .json({ household: presentHousehold(household), person: presentPerson(person) })
-  } catch (err) {
-    if ((err as { code?: string }).code === '23505') {
-      return res
-        .status(409)
-        .json({ error: 'Conflict', message: 'This account already has a household' })
-    }
-    throw err
+  // The additional household links to the caller's existing account.
+  const ar = await query<{ account_id: string | null }>(
+    `select account_id from persons where id = $1`,
+    [tenant.personId]
+  )
+  const accountId = ar.rows[0]?.account_id
+  if (!accountId) {
+    return res.status(403).json({ error: 'Forbidden', message: 'This session has no account.' })
   }
+
+  const { household, person } = await createHouseholdForAccount(accountId, {
+    householdName: body.name,
+    timezone: body.timezone,
+    person: {
+      name: body.person.name,
+      avatarEmoji: body.person.avatarEmoji ?? null,
+      colorHex: body.person.colorHex ?? null,
+    },
+  })
+  return res
+    .status(201)
+    .json({ household: presentHousehold(household), person: presentPerson(person) })
 })
 
 // Members CRUD (/api/persons…)

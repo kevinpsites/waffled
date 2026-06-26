@@ -25,17 +25,23 @@ function call(method: string, path: string, token?: string, body?: unknown) {
   return app.run({ httpMethod: method, path, headers, queryStringParameters: {}, body: body !== undefined ? JSON.stringify(body) : null, isBase64Encoded: false }, {}) as Promise<RunResult>
 }
 
-const kevin = mint('dev|kevin')
+let kevin = ''
 
 beforeAll(async () => {
   pg = await new PostgreSqlContainer('postgres:16').start()
   url = pg.getConnectionUri()
   await runMigrations(url)
   process.env.DATABASE_URL = url
+  process.env.LOCAL_JWT_SECRET = SECRET
   delete process.env.AUTH0_DOMAIN
   app = (await import('../src/app')).default
   closePool = (await import('../src/platform/db')).closePool
-  await call('POST', '/api/households', kevin, { name: 'Sites', timezone: 'America/Chicago', person: { name: 'Kevin' } })
+  const setup = await call('POST', '/api/auth/setup', undefined, {
+    household: { name: 'Sites', timezone: 'America/Chicago' },
+    admin: { name: 'Kevin', email: 'kevin@example.com', password: 'ownerpass1' },
+  })
+  expect(setup.statusCode).toBe(201)
+  kevin = JSON.parse(setup.body).accessToken
 }, 60_000)
 
 afterAll(async () => {

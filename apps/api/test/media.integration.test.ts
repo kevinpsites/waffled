@@ -38,13 +38,14 @@ function call(method: string, path: string, token?: string, body?: unknown) {
   ) as Promise<RunResult>
 }
 
-const kevin = mint('dev|kevin')
+let kevin = ''
 
 beforeAll(async () => {
   pg = await new PostgreSqlContainer('postgres:16').start()
   url = pg.getConnectionUri()
   await runMigrations(url)
   process.env.DATABASE_URL = url
+  process.env.LOCAL_JWT_SECRET = SECRET
   delete process.env.AUTH0_DOMAIN
   mediaDir = join(tmpdir(), `nook-media-it-${randomBytes(8).toString('hex')}`)
   process.env.MEDIA_DIR = mediaDir
@@ -52,7 +53,12 @@ beforeAll(async () => {
   delete process.env.MEDIA_BASE_URL
   app = (await import('../src/app')).default
   closePool = (await import('../src/platform/db')).closePool
-  await call('POST', '/api/households', kevin, { name: 'Sites', timezone: 'America/Chicago', person: { name: 'Kevin' } })
+  const setup = await call('POST', '/api/auth/setup', undefined, {
+    household: { name: 'Sites', timezone: 'America/Chicago' },
+    admin: { name: 'Kevin', email: 'kevin@example.com', password: 'ownerpass1' },
+  })
+  expect(setup.statusCode).toBe(201)
+  kevin = JSON.parse(setup.body).accessToken
 })
 
 afterAll(async () => {

@@ -19,7 +19,7 @@ let nextSuggestions: unknown[] = []
 function mint(sub: string): string {
   return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'nook-local', audience: 'nook-api', expiresIn: '1h' })
 }
-const kevin = mint('dev|kevin')
+let kevin = ''
 
 interface RunResult { statusCode: number; body: string }
 function call(method: string, path: string, token?: string, body?: unknown) {
@@ -51,13 +51,19 @@ beforeAll(async () => {
   await runMigrations(dbUrl)
   const port = await startStub()
   process.env.DATABASE_URL = dbUrl
+  process.env.LOCAL_JWT_SECRET = SECRET
   delete process.env.AUTH0_DOMAIN
   process.env.OPENAI_API_KEY = 'test-key'
   process.env.OPENAI_BASE_URL = `http://127.0.0.1:${port}`
 
   app = (await import('../src/app')).default
   closePool = (await import('../src/platform/db')).closePool
-  await call('POST', '/api/households', kevin, { name: 'Sites', timezone: 'America/Chicago', person: { name: 'Kevin' } })
+  const setup = await call('POST', '/api/auth/setup', undefined, {
+    household: { name: 'Sites', timezone: 'America/Chicago' },
+    admin: { name: 'Kevin', email: 'kevin@example.com', password: 'ownerpass1' },
+  })
+  expect(setup.statusCode).toBe(201)
+  kevin = JSON.parse(setup.body).accessToken
 }, 60_000)
 
 afterAll(async () => {

@@ -45,22 +45,43 @@ function call(method: string, path: string, token?: string, body?: unknown) {
   ) as Promise<RunResult>
 }
 
-const kevin = mint('dev|kevin')
+// Provisioned via /api/auth/setup in beforeAll (first-run onboarding).
+let kevin = ''
 
 beforeAll(async () => {
   pg = await new PostgreSqlContainer('postgres:16').start()
   url = pg.getConnectionUri()
   await runMigrations(url)
   process.env.DATABASE_URL = url
+  process.env.LOCAL_JWT_SECRET = SECRET
   delete process.env.AUTH0_DOMAIN
   app = (await import('../src/app')).default
-  closePool = (await import('../src/platform/db')).closePool
+  const db = await import('../src/platform/db')
+  closePool = db.closePool
+  const query = db.query
 
-  await call('POST', '/api/households', kevin, {
-    name: 'Sites',
-    timezone: 'America/Chicago',
-    person: { name: 'Kevin' },
+  // First-run onboarding: creates the first household + owner admin, returns a token.
+  const setup = await call('POST', '/api/auth/setup', undefined, {
+    household: { name: 'Sites', timezone: 'America/Chicago' },
+    admin: { name: 'Kevin', email: 'kevin@example.com', password: 'ownerpass1' },
   })
+  expect(setup.statusCode).toBe(201)
+  kevin = JSON.parse(setup.body).accessToken
+
+  // Second tenant for the cross-household isolation test. Setup is now locked, so
+  // seed kelly's household directly; mint('dev|kelly') resolves via this identity.
+  const kh = await query<{ id: string }>(`insert into households (name, timezone) values ('K','UTC') returning id`)
+  const kHid = kh.rows[0].id
+  const kp = await query<{ id: string }>(
+    `insert into persons (household_id, name, member_type, is_admin) values ($1,'Kelly','adult',true) returning id`,
+    [kHid]
+  )
+  const kPid = kp.rows[0].id
+  await query(
+    `insert into identities (household_id, person_id, provider, auth0_user_id, email, email_verified)
+     values ($1,$2,'password','dev|kelly','kelly@example.com',true)`,
+    [kHid, kPid]
+  )
 })
 
 afterAll(async () => {
@@ -201,8 +222,7 @@ describe('grocery item mutations', () => {
       (await call('PATCH', '/api/list-items/00000000-0000-0000-0000-000000000000', kevin, { checked: true }))
         .statusCode
     ).toBe(404)
-    const kelly = mint('dev|kelly')
-    await call('POST', '/api/households', kelly, { name: 'K', timezone: 'UTC', person: { name: 'Kelly' } })
+    const kelly = mint('dev|kelly') // resolves via the identity seeded in beforeAll
     expect((await call('PATCH', `/api/list-items/${itemId}`, kelly, { checked: true })).statusCode).toBe(404)
   })
 
