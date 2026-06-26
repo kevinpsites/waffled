@@ -407,6 +407,48 @@ async function listAccounts(): Promise<void> {
   console.log()
 }
 
+// Read-only pre-migration gate for retiring the legacy `credentials` table. Confirms
+// every active credential is fully mirrored into `accounts` (so login can cut over and
+// the table can be dropped without locking anyone out). The three checks must all be 0.
+async function auditCredentials(): Promise<void> {
+  const count = async (sql: string): Promise<number> => Number((await query<{ n: string }>(sql)).rows[0].n)
+  const creds = await count(`select count(*)::text n from credentials where deleted_at is null`)
+  const accts = await count(`select count(*)::text n from accounts where deleted_at is null`)
+  const noAccount = await count(
+    `select count(*)::text n from credentials c
+      where c.deleted_at is null
+        and not exists (select 1 from accounts a where lower(a.email) = lower(c.email) and a.deleted_at is null)`
+  )
+  const hashMismatch = await count(
+    `select count(*)::text n from credentials c
+       join accounts a on lower(a.email) = lower(c.email) and a.deleted_at is null
+      where c.deleted_at is null and c.password_hash is not null
+        and c.password_hash is distinct from a.password_hash`
+  )
+  const nullAccountId = await count(
+    `select count(*)::text n from credentials c
+       join persons p on p.id = c.person_id and p.deleted_at is null
+      where c.deleted_at is null and p.account_id is null`
+  )
+
+  console.log(`\n${c.bold}credentials → accounts completeness${c.reset}\n`)
+  console.log(`  active credentials .......................... ${c.bold}${creds}${c.reset}`)
+  console.log(`  active accounts ............................. ${c.bold}${accts}${c.reset}`)
+  const line = (label: string, n: number) =>
+    console.log(n === 0 ? `  ${ok('✓')} ${label} ${ok('0')}` : `  ${err('✗')} ${label} ${err(String(n))}`)
+  line('creds whose email has NO active account ....', noAccount)
+  line('creds w/ password but account hash MISMATCH ', hashMismatch)
+  line('persons w/ active credential, NULL account_id', nullAccountId)
+  console.log()
+  if (noAccount === 0 && hashMismatch === 0 && nullAccountId === 0) {
+    console.log(ok('✓ Backfill is airtight — safe to cut login over to accounts and drop credentials.'))
+  } else {
+    console.log(err('✗ Gaps found — do NOT drop credentials yet. Investigate the non-zero rows above.'))
+    process.exitCode = 1
+  }
+  console.log()
+}
+
 function help(): void {
   console.log(`${c.bold}Nook admin — operator / break-glass commands${c.reset}
 ${c.dim}Run as: ./nook admin <command> [flags]${c.reset}
@@ -426,6 +468,8 @@ ${c.dim}Run as: ./nook admin <command> [flags]${c.reset}
   ${c.bold}prune-sessions${c.reset} [--email <e>] [--yes]  revoke refresh tokens (one member across all
                                      their households, or everyone)
   ${c.bold}regenerate-powersync-key${c.reset}            print a fresh POWERSYNC_JWT_PRIVATE_KEY
+  ${c.bold}audit-credentials${c.reset}                   read-only: is every login mirrored into accounts?
+                                     (pre-migration gate for retiring the credentials table)
   ${c.bold}list-households${c.reset}                     households with member + login counts
   ${c.bold}delete-household${c.reset} --id <uuid> [--force] [--yes]
                                      permanently delete a household + ALL its data
@@ -434,7 +478,7 @@ ${c.dim}Destructive commands prompt for confirmation (or pass --yes).
 Break-glass: set AUTH_FORCE_PASSWORD=1 in the api env + restart to force password login.${c.reset}`)
 }
 
-export const _cmds = { listMembers, resetPassword, makeAdmin, passwordLogin, clearCalendarError, pruneSessions, regeneratePowerSyncKey, listHouseholds, deleteHousehold, addMember, listAccounts }
+export const _cmds = { listMembers, resetPassword, makeAdmin, passwordLogin, clearCalendarError, pruneSessions, regeneratePowerSyncKey, listHouseholds, deleteHousehold, addMember, listAccounts, auditCredentials }
 
 async function main(): Promise<void> {
   const command = args()[0] ?? 'help'
@@ -451,6 +495,7 @@ async function main(): Promise<void> {
     case 'delete-household': await deleteHousehold(); break
     case 'add-member': await addMember(); break
     case 'list-accounts': await listAccounts(); break
+    case 'audit-credentials': await auditCredentials(); break
     case 'help': case '-h': case '--help': help(); break
     default: process.stderr.write(err(`Unknown command: ${command}`) + '\n\n'); help(); process.exitCode = 1
   }
