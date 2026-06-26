@@ -101,15 +101,28 @@ export async function setLastHousehold(accountId: string, householdId: string): 
   await query(`update accounts set last_household_id = $1 where id = $2`, [householdId, accountId])
 }
 
-// Pending (un-accepted, un-revoked) invites for an email. Empty until the invite
-// accept flow lands in a later phase; included now so the login response shape is stable.
+// Pending (un-accepted, un-revoked) invites for an email, enriched with the
+// household name so callers (login response, GET /api/auth/invites) can render them.
 export async function pendingInvitesForEmail(
   email: string
-): Promise<Array<{ id: string; householdId: string }>> {
-  const { rows } = await query<{ id: string; household_id: string }>(
-    `select id, household_id from household_invites
-      where lower(email) = lower($1) and accepted_at is null and revoked_at is null`,
+): Promise<Array<{ id: string; householdId: string; householdName: string; memberType: string; isAdmin: boolean }>> {
+  const { rows } = await query<{
+    id: string
+    household_id: string
+    household_name: string
+    member_type: string
+    is_admin: boolean
+  }>(
+    `select hi.id, hi.household_id, h.name as household_name, hi.member_type, hi.is_admin
+       from household_invites hi join households h on h.id = hi.household_id
+      where lower(hi.email) = lower($1) and hi.accepted_at is null and hi.revoked_at is null`,
     [email]
   )
-  return rows.map((r) => ({ id: r.id, householdId: r.household_id }))
+  return rows.map((r) => ({
+    id: r.id,
+    householdId: r.household_id,
+    householdName: r.household_name,
+    memberType: r.member_type,
+    isAdmin: r.is_admin,
+  }))
 }

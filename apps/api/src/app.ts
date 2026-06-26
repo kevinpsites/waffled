@@ -32,6 +32,7 @@ import { registerOverviewRoutes } from './modules/overview/overview'
 import { registerPermissionRoutes } from './modules/permissions/permissions.routes'
 import { resolveCapabilities } from './platform/permissions'
 import { registerAuthRoutes } from './modules/auth/auth'
+import { registerInviteRoutes } from './modules/auth/invites'
 import { registerOidcRoutes } from './modules/auth/oidc'
 import { registerKioskRoutes } from './modules/kiosk/kiosk'
 import { registerTodayLayoutRoutes } from './modules/layout/today-layout'
@@ -204,6 +205,8 @@ registerGoalCalendarRoutes(api)
 
 // Built-in auth: setup / login / refresh / logout (/api/auth/*)
 registerAuthRoutes(api)
+// Invite-and-accept across households (/api/households/invites, /api/auth/invites)
+registerInviteRoutes(api)
 registerOidcRoutes(api)
 
 // Kiosk device pairing + profile tokens (/api/kiosk/*)
