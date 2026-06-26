@@ -237,7 +237,12 @@ mobile owner when P3 starts.
 
 - **P1 — schema + backfill migration** (additive; no behaviour change): `accounts`,
   `persons.account_id`, `identities.account_id`, `household_invites`,
-  `accounts.last_household_id`. Small.
+  `accounts.last_household_id`. Small. **SHIPPED 2026-06-25** — migrations
+  `0055_accounts.sql` (accounts + persons/identities links + idempotent 1:1 backfill
+  from credentials & SSO identities) and `0056_household_invites.sql`. Covered by
+  `test/accounts.integration.test.ts` and `test/household-invites.integration.test.ts`
+  (Testcontainers; backfill exercised by migrating to just-before then seeding legacy
+  rows). No runtime behaviour change yet — the auth module still reads `credentials`.
 - **P2 — account-aware auth module**: `accounts` model, `resolveTenant` (sub + household
   claim), login → last-active (decision 3), `/api/auth/switch`, invite-and-accept
   (`household_invites`, decision 1), OIDC match-by-account, admin-gated `POST /api/households`

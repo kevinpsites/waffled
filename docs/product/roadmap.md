@@ -74,7 +74,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   aligned: [`docs/design/multi-household-identity.md`](../design/multi-household-identity.md).
   Global `accounts` table over the existing per-household `persons`, concentrated in one tenant
   resolver; invite-and-accept to join, land on last-active household, admin-gated household
-  creation (open self-serve onboarding deferred to a sell-time lift). Phased P1–P4; not started.
+  creation (open self-serve onboarding deferred to a sell-time lift). Phased P1–P4.
+  **P1 (additive schema + backfill migration) shipped** — `accounts`, `persons`/`identities`
+  links, and `household_invites` are in place with no behaviour change yet; P2 (account-aware
+  auth module) is next.
 - **Notifications tail** — kiosk "due soon" local banner (table not built yet); remote push
   (APNs / web-push) is blocked on a self-host key/relay decision. Recurring-event reminders
   on iOS (only single events fire today) ride along here.
