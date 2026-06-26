@@ -450,6 +450,26 @@ struct NookAPI: Sendable {
         catch { return nil }
     }
 
+    /// Parse a pasted Markdown recipe into editable fields (does NOT create it — the
+    /// editor hydrates from this, the user reviews, then saves). Mirrors web `parseMarkdown`.
+    struct ParsedRecipe: Decodable, Sendable {
+        struct Meta: Decodable, Sendable {
+            let title: String; let emoji: String?; let servings: Int?
+            let tags: [String]?; let notes: String?; let sourceName: String?
+            let mealType: String?; let protein: String?; let base: String?; let cuisine: String?
+            let effort: String?; let cookMethod: String?; let flavorProfile: String?
+            let dietary: [String]?; let vegetables: [String]?
+        }
+        struct Ing: Decodable, Sendable {
+            let name: String; let amount: Double?; let unit: String?; let prepNote: String?; let section: String?
+        }
+        struct Step: Decodable, Sendable { let instruction: String; let ingredients: [String]? }
+        let recipe: Meta; let ingredients: [Ing]; let steps: [Step]
+    }
+    func parseRecipeMarkdown(_ markdown: String) async throws -> ParsedRecipe {
+        try await sendReturning("POST", "/api/recipes/parse-markdown", body: ["markdown": .string(markdown)], as: ParsedRecipe.self)
+    }
+
     // MARK: Today dashboard reads (non-synced domains, fetched over REST)
 
     /// One dinner/lunch/etc. slot in the planned week (mirrors web `WeekEntry`).

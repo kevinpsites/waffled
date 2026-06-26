@@ -223,9 +223,10 @@ ephemeral session, auto-logs-out on idle. The **web kiosk already does this** �
       (falling back to the week's dinners) in its headroom.
 - [x] **In-app recipe editor** (iPhone + iPad) — full create/edit: emoji/title/servings/
       prep/cook, the metadata Details with **AI auto-fill** ("✨ Thinking…", fills empty
-      fields / suggestion chips), ingredient rows, and method steps with **per-step
-      ingredient amounts**. Title auto-focus + Return-to-add-row keyboard flow. Reached
-      from the library "New" pill and the recipe-detail ⋯ menu (the old tags modal is gone).
+      fields / suggestion chips), ingredient rows, method steps with **per-step ingredient
+      amounts**, and notes. **Paste-markdown import** (paste → parse → fills the form for
+      review). Title auto-focus + Return-to-add-row keyboard flow. Reached from the library
+      "New" pill and the recipe-detail ⋯ menu (the old tags modal is gone).
 - [x] **Recipe time** — the library card shows the **combined total** (prep + cook); the
       detail page splits it into 🔪 prep + 🔥 cook.
 - [x] **Calendar swipe** — swipe left/right on the grid to step month / week / day on

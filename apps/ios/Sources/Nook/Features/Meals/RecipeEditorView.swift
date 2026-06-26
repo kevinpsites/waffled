@@ -43,6 +43,13 @@ struct RecipeEditorView: View {
     // Keyboard focus (auto-focus the title on a new recipe; chain Return between rows)
     enum Field: Hashable { case title; case ingAmount(UUID); case ingName(UUID) }
     @FocusState private var focused: Field?
+    // Notes
+    @State private var notes = ""
+    // Paste-markdown import (create only)
+    @State private var showPaste = false
+    @State private var markdown = ""
+    @State private var parsing = false
+    @State private var parseErr: String?
     // Save
     @State private var saving = false
     @State private var errorText: String?
@@ -82,6 +89,7 @@ struct RecipeEditorView: View {
             _dietary = State(initialValue: r.dietary ?? [])
             _vegetables = State(initialValue: r.vegetables ?? [])
             _tags = State(initialValue: r.tags ?? [])
+            _notes = State(initialValue: r.notes ?? "")
             _imageUrl = State(initialValue: r.imageUrl ?? "")
             let editIngs = d.ingredients.map { EditIng($0) }
             _ings = State(initialValue: editIngs.isEmpty ? [EditIng()] : editIngs)
@@ -100,10 +108,12 @@ struct RecipeEditorView: View {
                         Text(errorText).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.primaryD)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    if editingId == nil { pasteBar }
                     basicsCard
                     detailsCard
                     ingredientsCard
                     methodCard
+                    notesCard
                 }
                 .padding(16)
                 .padding(.bottom, 40)
@@ -129,8 +139,151 @@ struct RecipeEditorView: View {
                 focused = .title
             }
             .onChange(of: photoItem) { _, item in Task { await loadPhoto(item) } }
+            .sheet(isPresented: $showPaste) { pasteSheet }
         }
     }
+
+    // MARK: paste-markdown import
+
+    /// A one-line "or paste markdown" affordance above the form (new recipes only).
+    private var pasteBar: some View {
+        HStack(spacing: 10) {
+            Text("Build it by hand, or").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+            Button { showPaste = true } label: {
+                Label("Paste markdown", systemImage: "doc.on.clipboard")
+                    .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink)
+                    .padding(.horizontal, 13).padding(.vertical, 8).background(NK.card).clipShape(Capsule())
+                    .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+            }.buttonStyle(.plain)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var pasteSheet: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 8) {
+                        Button("Use template") { markdown = Self.template }
+                            .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.primary)
+                        Button("See example") { markdown = Self.example }
+                            .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.primary)
+                        Spacer()
+                    }
+                    TextField("Paste frontmatter + markdown here…", text: $markdown, axis: .vertical)
+                        .font(.system(size: 14, design: .monospaced)).lineLimit(10...30)
+                        .padding(12).nkField(fill: NK.panel)
+                    if let parseErr {
+                        Text(parseErr).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.primaryD)
+                    }
+                }
+                .padding(16)
+            }
+            .background(NK.canvas)
+            .navigationTitle("Paste a recipe").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showPaste = false } }
+                ToolbarItem(placement: .primaryAction) {
+                    Button(parsing ? "Parsing…" : "Parse → fill") { Task { await parseMarkdown() } }
+                        .fontWeight(.semibold)
+                        .disabled(parsing || markdown.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+    }
+
+    private func parseMarkdown() async {
+        parsing = true; parseErr = nil
+        defer { parsing = false }
+        do {
+            applyParsed(try await api.parseRecipeMarkdown(markdown))
+            showPaste = false
+        } catch {
+            parseErr = "Couldn’t parse that — check the format and try again."
+        }
+    }
+
+    /// Hydrate the editor fields from a parsed recipe (the user reviews, then saves).
+    private func applyParsed(_ p: NookAPI.ParsedRecipe) {
+        title = p.recipe.title
+        emoji = p.recipe.emoji ?? ""
+        servings = p.recipe.servings.map(String.init) ?? "4"
+        meta["cuisine"] = p.recipe.cuisine; meta["protein"] = p.recipe.protein
+        meta["mealType"] = p.recipe.mealType; meta["base"] = p.recipe.base
+        meta["effort"] = p.recipe.effort; meta["cookMethod"] = p.recipe.cookMethod
+        meta["flavorProfile"] = p.recipe.flavorProfile
+        dietary = p.recipe.dietary ?? []
+        vegetables = p.recipe.vegetables ?? []
+        tags = p.recipe.tags ?? []
+        notes = p.recipe.notes ?? ""
+        let editIngs = p.ingredients.map { EditIng(parsed: $0) }
+        ings = editIngs.isEmpty ? [EditIng()] : editIngs
+        let editSteps = p.steps.map { EditStep(instruction: $0.instruction, ingredientLines: $0.ingredients ?? [], ings: editIngs) }
+        steps = editSteps.isEmpty ? [EditStep()] : editSteps
+    }
+
+    private static let template = """
+    ---
+    type: dinner
+    protein: chicken
+    cuisine: Italian
+    effort: weeknight
+    dietary: [gluten-free]
+    vegetables: [spinach]
+    tags: [family-favorite]
+    ---
+
+    # Recipe title
+
+    *4 servings*
+
+    ## Ingredients
+
+    ### Section name
+    - 1 lb main ingredient, prepped
+    - 2 tbsp something
+
+    ## Instructions
+
+    1. First step.
+    2. Second step.
+
+    ## Notes
+
+    Anything worth remembering.
+    """
+
+    private static let example = """
+    ---
+    type: dinner
+    protein: chicken
+    cuisine: Italian
+    effort: weeknight
+    tags: [weeknight, one-pan]
+    ---
+
+    # Garlic Butter Chicken
+
+    *4 servings*
+
+    ## Ingredients
+
+    - 1.5 lb chicken thighs, boneless
+    - 4 cloves garlic, minced
+    - 3 tbsp butter
+    - 1 cup chicken broth
+    - 2 tbsp parsley, chopped
+
+    ## Instructions
+
+    1. Season the chicken and sear in butter until golden, 4 min per side.
+    2. Add garlic and cook 30 seconds, then pour in the broth.
+    3. Simmer until the chicken is cooked through, 8–10 min. Finish with parsley.
+
+    ## Notes
+
+    Great over rice or with crusty bread.
+    """
 
     // MARK: basics
 
@@ -292,6 +445,14 @@ struct RecipeEditorView: View {
     }
 
     // MARK: method
+
+    private var notesCard: some View {
+        NookFieldCard(title: "Notes") {
+            TextField("Anything worth remembering…", text: $notes, axis: .vertical)
+                .font(.system(size: 15)).lineLimit(2...8)
+                .padding(10).nkField(fill: NK.panel)
+        }
+    }
 
     private var methodCard: some View {
         NookFieldCard(title: "Method") {
@@ -545,6 +706,7 @@ struct RecipeEditorView: View {
             "dietary": .array(dietary.map(JSONValue.string)),
             "vegetables": .array(vegetables.map(JSONValue.string)),
             "tags": .array(tags.map(JSONValue.string)),
+            "notes": str(notes),
             "ingredients": .array(ingBody),
             "steps": .array(stepBody),
         ]
@@ -584,6 +746,10 @@ struct EditIng: Identifiable, Equatable {
         amount = dto.amount.map { $0 == $0.rounded() ? String(Int($0)) : String($0) } ?? ""
         unit = dto.unit ?? ""; name = dto.name; prepNote = dto.prepNote ?? ""; section = dto.section ?? ""
     }
+    init(parsed p: NookAPI.ParsedRecipe.Ing) {
+        amount = p.amount.map { $0 == $0.rounded() ? String(Int($0)) : String($0) } ?? ""
+        unit = p.unit ?? ""; name = p.name; prepNote = p.prepNote ?? ""; section = p.section ?? ""
+    }
 }
 
 struct StepPick: Identifiable, Equatable { let id = UUID(); var ingId: UUID; var amount: String }
@@ -595,13 +761,17 @@ struct EditStep: Identifiable, Equatable {
     var extra: [String] = []
 
     init() {}
-    /// Seed from a saved step — match each "amount name" line back to an ingredient (best
-    /// effort) so the per-step amount stays editable; unmatched lines become free extras.
     init(_ dto: NookAPI.RecipeStepDTO, ings: [EditIng]) {
-        instruction = dto.instruction
+        self.init(instruction: dto.instruction, ingredientLines: dto.ingredients, ings: ings)
+    }
+    /// Seed a step from saved/parsed data — match each "amount name" line back to an
+    /// ingredient (best effort) so the per-step amount stays editable; unmatched lines
+    /// become free extras.
+    init(instruction: String, ingredientLines: [String], ings: [EditIng]) {
+        self.instruction = instruction
         let named = ings.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty }
             .sorted { $0.name.count > $1.name.count }   // longest name first
-        for line in dto.ingredients {
+        for line in ingredientLines {
             let lower = line.lowercased()
             if let g = named.first(where: { lower.contains($0.name.lowercased()) }),
                let r = lower.range(of: g.name.lowercased()) {
