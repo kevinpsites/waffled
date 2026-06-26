@@ -14,6 +14,9 @@ struct CaptureSheet: View {
     @State private var phase: Phase = .input
     @State private var intent: CaptureIntent?
     @State private var via = ""
+    @State private var thinking = false              // the LLM is still improving the guess
+    @State private var serverAlt: CaptureIntent?     // the LLM's take when it disagrees with a confident heuristic
+    @State private var serverAltVia = ""
     @State private var error: String?
     @State private var dictation = Dictation()
     // Inline-editable fields for the "Nook understood" card (populated per intent).
@@ -147,6 +150,7 @@ struct CaptureSheet: View {
     private var glanceView: some View {
         VStack(alignment: .leading, spacing: 12) {
             glanceCard
+            if let alt = serverAlt { altRow(alt) }
             HStack(spacing: 10) {
                 Button { withAnimation(.snappy(duration: 0.22)) { editing = true } } label: {
                     HStack(spacing: 6) {
@@ -196,7 +200,14 @@ struct CaptureSheet: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(editKind.uppercased()).font(.system(size: 11, weight: .heavy)).tracking(0.4).foregroundStyle(NK.ai)
-                    if !viaLabel.isEmpty { Text(viaLabel).font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3) }
+                    if thinking {
+                        HStack(spacing: 3) {
+                            ProgressView().controlSize(.mini)
+                            Text("improving…").font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ai)
+                        }
+                    } else if !viaLabel.isEmpty {
+                        Text(viaLabel).font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
+                    }
                 }
                 Text(editName.isEmpty ? namePlaceholder : editName)
                     .font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
@@ -212,6 +223,48 @@ struct CaptureSheet: View {
         .padding(14)
         .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    /// When the LLM and the on-device guess disagree on the kind, offer the other take —
+    /// "this is what the LLM suggests" — as a one-tap toggle.
+    private func altRow(_ alt: CaptureIntent) -> some View {
+        let s = altSummary(alt)
+        return Button { withAnimation(.snappy(duration: 0.2)) { switchToAlt() } } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "sparkles").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ai)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(altProviderLabel) reads it as a \(s.kind.lowercased())")
+                        .font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ai)
+                    Text(s.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                }
+                Spacer(minLength: 6)
+                Text("Use it").font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ai)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(NK.ai.opacity(0.08)).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.ai.opacity(0.25), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func altSummary(_ i: CaptureIntent) -> (kind: String, title: String) {
+        switch i {
+        case let .event(t, _, _, _, _, _, _): return ("Event", t)
+        case let .grocery(n, _): return ("Grocery", n)
+        case let .task(t, _, _, _, _): return ("Task", t)
+        case let .meal(t, _, _, _): return ("Meal", t)
+        case let .list(item, _, _): return ("List", item)
+        }
+    }
+
+    private var altProviderLabel: String {
+        switch serverAltVia {
+        case "on-device": return "The on-device guess"
+        case "anthropic": return "Claude"
+        case "openai": return "OpenAI"
+        case "ollama": return "The local LLM"
+        default: return "The other parse"
+        }
     }
 
     /// The one-line subtitle under the glance title, per kind.
@@ -493,34 +546,71 @@ struct CaptureSheet: View {
         dictation.stop()
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
-        focused = false; error = nil; phase = .parsing
+        focused = false; error = nil; serverAlt = nil
+
+        // 1) Instant on-device guess — shown immediately, so you can add it before the
+        //    LLM even responds.
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = sync.householdTz
+        let local = CaptureHeuristic.parse(t, persons: sync.members.map(\.name), now: Date(), cal: cal, lists: lists.map(\.name))
+        let localConfident = local != nil && CaptureHeuristic.looksConfident(local, text: t)
+        if let local, localConfident { accept(local, via: "on-device", autoCommit: false) }
+        else { phase = .parsing }
+        thinking = true
+
+        // 2) Upgrade with the configured LLM in the background.
         Task {
-            do {
-                let r = try await sync.resolveCapture(t)
-                if let i = r.intent, !r.fallback { accept(i, via: r.via); return }
-            } catch {
-                // offline / server error → fall through to the on-device heuristic
+            let r = try? await sync.resolveCapture(t)
+            // Bail if the user changed the text meanwhile, or opened the editor (don't
+            // clobber their edits).
+            guard text.trimmingCharacters(in: .whitespacesAndNewlines) == t, !editing else { thinking = false; return }
+            thinking = false
+            if let r, let si = r.intent, !r.fallback {
+                if localConfident, let local, kindOf(si) != kindOf(local) {
+                    serverAlt = si; serverAltVia = r.via          // disagree on kind → keep ours, offer theirs
+                } else {
+                    // Agree (or local weak) → take the LLM's read, but backfill a
+                    // recurrence the (deterministic) heuristic found if the LLM dropped it.
+                    accept(mergeRecurrence(llm: si, local: local), via: r.via, autoCommit: false)
+                }
+            } else if !localConfident {
+                // LLM unavailable AND no confident on-device guess.
+                if let local { accept(local, via: "on-device", autoCommit: false) }
+                else { error = "Couldn’t understand that — try rephrasing."; phase = .input }
             }
-            localFallback(t)
+            if DemoHooks.captureCommit { commit() }
         }
     }
 
-    private func accept(_ i: CaptureIntent, via v: String) {
+    private func accept(_ i: CaptureIntent, via v: String, autoCommit: Bool = true) {
         intent = i; via = v; phase = .preview
         populate(i)
-        if DemoHooks.captureCommit { commit() }
+        if autoCommit, DemoHooks.captureCommit { commit() }
     }
 
-    /// On-device heuristic — runs when the LLM can't (offline, no provider, or it defers).
-    /// So the capture bar still works, just without the AI smarts.
-    private func localFallback(_ t: String) {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = sync.householdTz
-        let names = sync.members.map(\.name)
-        if let i = CaptureHeuristic.parse(t, persons: names, now: Date(), cal: cal, lists: lists.map(\.name)) {
-            accept(i, via: "on-device")
-        } else {
-            error = "Couldn’t understand that — try rephrasing."; phase = .input
+    /// Keep the heuristic's recurrence when the LLM agreed it's an event but returned a
+    /// one-off (small local models often miss "every Thursday"). The LLM still wins on
+    /// title / person / time.
+    private func mergeRecurrence(llm: CaptureIntent, local: CaptureIntent?) -> CaptureIntent {
+        guard case let .event(t, s, a, p, llmRrule, sl, w) = llm, llmRrule == nil,
+              case let .event(_, _, _, _, localRrule?, localSL, _) = local else { return llm }
+        return .event(title: t, startsAt: s, allDay: a, personName: p,
+                      rrule: localRrule, scheduleLabel: localSL.isEmpty ? sl : localSL, whenLabel: w)
+    }
+
+    private func kindOf(_ i: CaptureIntent) -> String {
+        switch i {
+        case .event: return "event"; case .grocery: return "grocery"; case .task: return "task"
+        case .meal: return "meal"; case .list: return "list"
         }
+    }
+
+    /// Swap the shown intent for the other parse (LLM ↔ on-device), keeping the previous
+    /// one offered so it's a one-tap toggle.
+    private func switchToAlt() {
+        guard let alt = serverAlt else { return }
+        let prev = intent, prevVia = via
+        accept(alt, via: serverAltVia, autoCommit: false)
+        if let prev { serverAlt = prev; serverAltVia = prevVia } else { serverAlt = nil }
     }
 
     /// Seed the inline-editable fields from the parsed intent. `editKind` drives which
