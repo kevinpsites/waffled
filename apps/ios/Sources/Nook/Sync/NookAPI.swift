@@ -444,9 +444,10 @@ struct NookAPI: Sendable {
             "ingredients": .array(ingredients.map(JSONValue.string)),
             "steps": .array(steps.map(JSONValue.string)),
         ]
-        // 501 (no provider) → treat as "no suggestion" rather than an error the UI shows.
+        // Any failure (501 no-provider, a slow-model timeout, a network blip) → "no
+        // suggestion this round" rather than an error; the editor just keeps probing.
         do { return try await sendReturning("POST", "/api/recipes/suggest-metadata", body: body, as: Resp.self).suggestion }
-        catch NookAPI.APIError.http { return nil }
+        catch { return nil }
     }
 
     // MARK: Today dashboard reads (non-synced domains, fetched over REST)

@@ -39,8 +39,10 @@ struct RecipeEditorView: View {
     // AI Details auto-fill
     @State private var suggestion: NookAPI.RecipeMetadataSuggestion?
     @State private var suggesting = false
-    @State private var aiOff = false
     @State private var dismissedSug: Set<String> = []
+    // Keyboard focus (auto-focus the title on a new recipe; chain Return between rows)
+    enum Field: Hashable { case title; case ingName(UUID) }
+    @FocusState private var focused: Field?
     // Save
     @State private var saving = false
     @State private var errorText: String?
@@ -120,6 +122,12 @@ struct RecipeEditorView: View {
             }
             // Debounced AI Details auto-fill — restarts whenever the signature changes.
             .task(id: aiSignature) { await runSuggest() }
+            // New recipe → land the cursor in the title, where you'll start.
+            .task {
+                guard editingId == nil else { return }
+                try? await Task.sleep(for: .milliseconds(350))
+                focused = .title
+            }
             .onChange(of: photoItem) { _, item in Task { await loadPhoto(item) } }
         }
     }
@@ -137,7 +145,9 @@ struct RecipeEditorView: View {
                     }
                     field("TITLE") {
                         TextField("Recipe title", text: $title)
-                            .font(.system(size: 16)).padding(.horizontal, 12).padding(.vertical, 11).nkField(fill: NK.panel)
+                            .font(.system(size: 16)).focused($focused, equals: .title)
+                            .submitLabel(.next).onSubmit { focused = ings.first.map { .ingName($0.id) } }
+                            .padding(.horizontal, 12).padding(.vertical, 11).nkField(fill: NK.panel)
                     }
                 }
                 HStack(spacing: 10) {
@@ -242,7 +252,7 @@ struct RecipeEditorView: View {
         NookFieldCard(title: "Ingredients") {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach($ings) { $row in ingredientRow($row) }
-                Button { ings.append(EditIng()) } label: {
+                Button { addIngredient() } label: {
                     Label("Add ingredient", systemImage: "plus").font(.system(size: 14, weight: .bold))
                         .foregroundStyle(NK.ink).padding(.horizontal, 13).padding(.vertical, 9)
                         .background(NK.panel).clipShape(Capsule())
@@ -258,7 +268,12 @@ struct RecipeEditorView: View {
                 TextField("2", text: row.amount).keyboardType(.decimalPad)
                     .frame(width: 54).padding(8).nkField(fill: NK.panel)
                 TextField("cups", text: row.unit).frame(width: 72).padding(8).nkField(fill: NK.panel)
-                TextField("ingredient", text: row.name).padding(8).nkField(fill: NK.panel)
+                // Return on the name jumps to the next ingredient — adding a fresh row when
+                // you're on the last one — so you can keep typing a list without reaching up.
+                TextField("ingredient", text: row.name)
+                    .focused($focused, equals: .ingName(row.wrappedValue.id))
+                    .submitLabel(.next).onSubmit { advanceIngredient(after: row.wrappedValue.id) }
+                    .padding(8).nkField(fill: NK.panel)
             }
             HStack(spacing: 6) {
                 TextField("diced (optional)", text: row.prepNote).padding(8).nkField(fill: NK.panel)
@@ -380,6 +395,20 @@ struct RecipeEditorView: View {
         Binding(get: { meta[key] ?? "" }, set: { meta[key] = $0 })
     }
 
+    /// Add an ingredient row and put the cursor in it (so "+ Add ingredient" keeps a
+    /// keyboard user typing).
+    private func addIngredient() {
+        let new = EditIng()
+        ings.append(new)
+        focused = .ingName(new.id)
+    }
+
+    /// Return on an ingredient name → next row's name, appending a fresh row past the last.
+    private func advanceIngredient(after id: UUID) {
+        guard let i = ings.firstIndex(where: { $0.id == id }) else { return }
+        if i == ings.count - 1 { addIngredient() } else { focused = .ingName(ings[i + 1].id) }
+    }
+
     private func togglePick(_ step: Binding<EditStep>, _ g: EditIng) {
         if let i = step.wrappedValue.picks.firstIndex(where: { $0.ingId == g.id }) {
             step.wrappedValue.picks.remove(at: i)
@@ -401,19 +430,17 @@ struct RecipeEditorView: View {
     private var aiSignature: String { ([title.trimmingCharacters(in: .whitespaces)] + ingNames + ["|"] + stepTexts).joined(separator: "\u{1}") }
 
     private func runSuggest() async {
-        guard !aiOff, title.trimmingCharacters(in: .whitespaces).count >= 3, !ingNames.isEmpty else { return }
-        try? await Task.sleep(for: .milliseconds(1200))
+        guard title.trimmingCharacters(in: .whitespaces).count >= 3, !ingNames.isEmpty else { return }
+        try? await Task.sleep(for: .milliseconds(1200))   // debounce — restarts as you type
         if Task.isCancelled { return }
         suggesting = true
         defer { suggesting = false }
-        do {
-            if let s = try await api.suggestRecipeMetadata(title: title.trimmingCharacters(in: .whitespaces),
-                                                           ingredients: ingNames, steps: stepTexts) {
-                suggestion = s
-                dismissedSug = []
-            }
-        } catch {
-            aiOff = true   // no provider / failure — stop probing this session
+        // Never throws (failures → nil), so a slow-model timeout can't permanently kill it;
+        // it simply tries again on the next change. The prior suggestion stays visible.
+        if let s = try? await api.suggestRecipeMetadata(title: title.trimmingCharacters(in: .whitespaces),
+                                                        ingredients: ingNames, steps: stepTexts) {
+            suggestion = s
+            dismissedSug = []
         }
     }
 

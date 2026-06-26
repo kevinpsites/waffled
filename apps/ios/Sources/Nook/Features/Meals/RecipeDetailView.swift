@@ -16,7 +16,6 @@ struct RecipeDetailView: View {
     @State private var servings: Int?
     @State private var cookedMessage: String?
     @State private var userNotesDraft = ""
-    @State private var editingTags = false
     @State private var editing = false
     @State private var cookMode = false
     @State private var stepNoteEdit: StepNoteEdit?
@@ -64,7 +63,6 @@ struct RecipeDetailView: View {
         .task {
             await loadDetail()
             if autoCook, !steps.isEmpty { cookMode = true }
-            if DemoHooks.editRecipe { editing = true }
         }
         .fullScreenCover(isPresented: $editing) {
             RecipeEditorView(mode: .edit(NookAPI.RecipeDetailDTO(recipe: recipe, ingredients: ingredients, steps: steps))) { updated in
@@ -75,11 +73,6 @@ struct RecipeDetailView: View {
         }
         .fullScreenCover(isPresented: $cookMode) {
             CookModeView(title: r.title, steps: steps, ingredients: ingredients) { markCooked() }
-        }
-        .sheet(isPresented: $editingTags) {
-            TagsEditorSheet(tags: r.tags ?? [], dietary: r.dietary ?? []) { newTags, newDietary in
-                saveTags(displayed: newTags, dietary: newDietary)
-            }
         }
         .sheet(item: $stepNoteEdit) { edit in
             StepNoteSheet(stepNumber: edit.step, note: noteFor(edit.step)) { text in
@@ -149,18 +142,10 @@ struct RecipeDetailView: View {
                 if let s = r.sourceName { metaItem("📖", s) }
             }
 
-            ChipFlow(spacing: 7, lineSpacing: 7) {
-                ForEach(tagChips) { TagChip(chip: $0) }
-                Button { editingTags = true } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "pencil").font(.system(size: 10, weight: .bold))
-                        Text("Edit").font(.system(size: 12, weight: .bold))
-                    }
-                    .foregroundStyle(NK.ink2)
-                    .padding(.horizontal, 11).padding(.vertical, 5)
-                    .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+            if !tagChips.isEmpty {
+                ChipFlow(spacing: 7, lineSpacing: 7) {
+                    ForEach(tagChips) { TagChip(chip: $0) }
                 }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -418,23 +403,6 @@ struct RecipeDetailView: View {
         let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { notes[String(step)] = nil } else { notes[String(step)] = trimmed }
         ov.stepNotes = notes.isEmpty ? nil : notes
-        patchOverrides(ov)
-    }
-
-    /// Translate the user's edited displayed-tag list back into addedTags/removedTags
-    /// over the source set, plus the dietary override; then PATCH the full blob.
-    private func saveTags(displayed: [String], dietary: [String]) {
-        let d0 = Set(r.tags ?? [])
-        let a0 = Set(r.addedTags ?? [])
-        let removed0 = Set(r.overrides?.removedTags ?? [])
-        let sourceFull = d0.subtracting(a0).union(removed0)   // all source tags (visible + previously removed)
-        let dFinal = Set(displayed)
-        let newAdded = dFinal.subtracting(sourceFull)
-        let newRemoved = sourceFull.subtracting(dFinal)
-        var ov = recipe.overrides ?? .init()
-        ov.addedTags = newAdded.isEmpty ? nil : Array(newAdded).sorted()
-        ov.removedTags = newRemoved.isEmpty ? nil : Array(newRemoved).sorted()
-        ov.dietary = dietary.isEmpty ? nil : dietary
         patchOverrides(ov)
     }
 

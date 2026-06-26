@@ -86,7 +86,6 @@ struct RecipesLibraryView: View {
         // In pick mode (the planner's "Choose a recipe" sheet), focus search on open.
         .task {
             if onPick != nil { try? await Task.sleep(for: .milliseconds(350)); searchFocused = true }
-            if DemoHooks.newRecipe, onPick == nil { try? await Task.sleep(for: .milliseconds(400)); creating = true }
         }
     }
 
