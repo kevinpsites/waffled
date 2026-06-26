@@ -48,8 +48,22 @@ final class ScreensaverModel {
         dimmed = Self.inNightWindow(cfg.nightDim, now: now, tz: tz)
         if !showing {
             let idle = now.timeIntervalSince(lastActivity)
-            if idle >= Double(max(1, cfg.screensaverMinutes) * 60) { showing = true }
+            if idle >= Double(max(1, cfg.screensaverMinutes) * 60) {
+                // Don't start the saver over an open sheet/cover — it presents above the
+                // app view tree, so the saver would render *under* it (a broken sandwich).
+                // Wait it out: hold the idle clock until the modal is dismissed.
+                if Self.modalPresented() { lastActivity = now } else { showing = true }
+            }
         }
+    }
+
+    /// Whether a sheet / full-screen cover is currently presented anywhere on screen.
+    static func modalPresented() -> Bool {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let ws = scene as? UIWindowScene else { continue }
+            for w in ws.windows where w.rootViewController?.presentedViewController != nil { return true }
+        }
+        return false
     }
 
     /// Is `now` inside the dim window? Compares "HH:mm" strings in the household tz and

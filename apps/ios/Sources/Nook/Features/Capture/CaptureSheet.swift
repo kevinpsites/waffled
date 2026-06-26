@@ -219,7 +219,14 @@ struct CaptureSheet: View {
         switch editKind {
         case "event":
             let pattern = evAllDay ? "EEE, MMM d" : "EEE, MMM d · h:mm a"
-            return DateFmt.string(evDate, pattern, sync.householdTz) + (evAllDay ? " · all day" : "")
+            var detail = DateFmt.string(evDate, pattern, sync.householdTz) + (evAllDay ? " · all day" : "")
+            // Surface the recurrence in the glance so "every Thursday" reads as recurring.
+            if evRepeat.freq != .none {
+                var cal = Calendar(identifier: .gregorian); cal.timeZone = sync.householdTz
+                let rr = Recurrence.buildRrule(evRepeat, start: evDate, cal)
+                detail += " · 🔁 \(Recurrence.describeRrule(rr, start: evDate, cal))"
+            }
+            return detail
         case "task":
             let who = evPerson ?? "Up for grabs"
             let reward = taskStars > 0 ? " · \(taskStars) \(rewardLabel.lowercased())" : ""
