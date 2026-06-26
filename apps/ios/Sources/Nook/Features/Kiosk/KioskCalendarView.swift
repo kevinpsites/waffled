@@ -571,6 +571,22 @@ struct CalTimeGrid: View {
                                 hourRow(h).frame(height: hourHeight, alignment: .top).id(h)
                             }
                         }
+                        // Faint vertical separators between day columns (week view), so an
+                        // event reads clearly against the right day. Mirrors the event
+                        // columns' gutter + spacing, so the lines fall on the boundaries.
+                        if days.count > 1 {
+                            HStack(spacing: 4) {
+                                Color.clear.frame(width: gutter)
+                                ForEach(Array(days.enumerated()), id: \.element) { idx, _ in
+                                    ZStack(alignment: .leading) {
+                                        if idx > 0 { Rectangle().fill(NK.hair).frame(width: 1) }
+                                    }
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                }
+                            }
+                            .frame(height: 24 * hourHeight, alignment: .topLeading)
+                            .allowsHitTesting(false)
+                        }
                         // Equal-width day columns; overlapping events split into lanes.
                         HStack(spacing: 4) {
                             Color.clear.frame(width: gutter)
