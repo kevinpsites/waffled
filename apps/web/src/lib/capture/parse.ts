@@ -3,6 +3,12 @@
 // commit to the right domain (event / grocery / task / meal). A Claude-backed
 // upgrade can swap in later behind the same ParsedIntent shape.
 //
+// ⚠️ KEEP IN SYNC — this parser is mirrored on iOS at
+//   apps/ios/Sources/Nook/Sync/CaptureHeuristic.swift
+// (tests: apps/ios/Tests/CaptureHeuristicTests.swift ↔ this file's parse.test.ts).
+// If you change a parsing RULE here, port the same change to the Swift file and
+// update BOTH test suites so they stay byte-for-byte equivalent.
+//
 // Routing priority: a date/time → event; otherwise a grocery signal → grocery;
 // otherwise a task signal → task; bare nouns fall back to grocery (the most
 // common quick capture). `now` is injected so the logic is deterministic in tests.

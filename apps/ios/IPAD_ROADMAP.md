@@ -229,6 +229,10 @@ ephemeral session, auto-logs-out on idle. The **web kiosk already does this** �
       "New" pill and the recipe-detail ⋯ menu (the old tags modal is gone).
 - [x] **Recipe time** — the library card shows the **combined total** (prep + cook); the
       detail page splits it into 🔪 prep + 🔥 cook.
+- [x] **On-device capture heuristic** — `CaptureHeuristic.swift` (a port of web `parse.ts`,
+      kept in sync, with a byte-parity test suite) parses the "Add anything…" bar locally
+      when the LLM can't (offline / no provider / provider defers), so capture works with no
+      server. Wired into `CaptureSheet` as the fallback after the server call.
 - [x] **Calendar swipe** — swipe left/right on the grid to step month / week / day on
       both iPhone and iPad (simultaneous gesture; vertical time-grid scroll still works).
 - [x] **Chore photo proof confirm** — a freshly-taken/picked proof shows a "Use this

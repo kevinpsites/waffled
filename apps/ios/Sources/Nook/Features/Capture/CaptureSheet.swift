@@ -489,16 +489,29 @@ struct CaptureSheet: View {
         Task {
             do {
                 let r = try await sync.resolveCapture(t)
-                if let i = r.intent, !r.fallback {
-                    intent = i; via = r.via; phase = .preview
-                    populate(i)
-                    if DemoHooks.captureCommit { commit() }
-                } else {
-                    error = "Couldn't understand that — try rephrasing."; phase = .input
-                }
+                if let i = r.intent, !r.fallback { accept(i, via: r.via); return }
             } catch {
-                self.error = "Parsing failed (offline or server error)."; phase = .input
+                // offline / server error → fall through to the on-device heuristic
             }
+            localFallback(t)
+        }
+    }
+
+    private func accept(_ i: CaptureIntent, via v: String) {
+        intent = i; via = v; phase = .preview
+        populate(i)
+        if DemoHooks.captureCommit { commit() }
+    }
+
+    /// On-device heuristic — runs when the LLM can't (offline, no provider, or it defers).
+    /// So the capture bar still works, just without the AI smarts.
+    private func localFallback(_ t: String) {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = sync.householdTz
+        let names = sync.members.map(\.name)
+        if let i = CaptureHeuristic.parse(t, persons: names, now: Date(), cal: cal, lists: lists.map(\.name)) {
+            accept(i, via: "on-device")
+        } else {
+            error = "Couldn’t understand that — try rephrasing."; phase = .input
         }
     }
 
