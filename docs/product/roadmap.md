@@ -80,8 +80,15 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   invite-and-accept, OIDC match-by-account, and admin-gated additional-household creation,
   with zero UX change for single-household accounts. **P3 web client shipped** — a
   Settings → Households switcher + pending-invite accept (appears only for multi-household
-  accounts). Remaining: **P3 iOS** (household switcher — mobile owner) and **P4**
-  (account-scoped CLI + drop the legacy `credentials` table).
+  accounts).
+- **Multi-household identity — iOS switcher** (P3 iOS, *mobile owner*) — the native app needs
+  the same post-login affordances the web now has: surface the account's memberships +
+  pending invites (both already returned by `GET /api/household` and the login/exchange
+  responses), a household switcher that calls **`POST /api/auth/switch`** and a
+  pending-invite **Accept** that calls **`POST /api/auth/invites/:id/accept`**. The one
+  iOS-specific touch point is **re-exchanging the PowerSync token after a switch** (the
+  account-scoped access token's household claim changes, so the sync token must be refetched);
+  this already works server-side. Single-membership accounts need no UI change.
 - **Notifications tail** — kiosk "due soon" local banner (table not built yet); remote push
   (APNs / web-push) is blocked on a self-host key/relay decision. Recurring-event reminders
   on iOS (only single events fire today) ride along here.
