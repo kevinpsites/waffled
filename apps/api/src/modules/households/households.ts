@@ -4,7 +4,10 @@
 import type { QueryResultRow } from 'pg'
 import type { Request } from 'lambda-api'
 import { getPool, query } from '../../platform/db'
-import { AuthError } from '../../platform/auth'
+import { AuthError, type Principal } from '../../platform/auth'
+import { config } from '../../platform/config'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export interface Tenant {
   sub: string
@@ -52,9 +55,31 @@ export function inferProvider(sub: string): string {
   return 'password'
 }
 
+// Resolve the caller's active membership from their token, or null if none.
+// An account-scoped token carries the active household in config.auth.householdClaim
+// and its `sub` is the account id; otherwise we fall back to the legacy
+// sub → identity → person → household path (covers pre-P2 tokens, kiosk, device).
+export async function resolveTenant(principal: Principal): Promise<Tenant | null> {
+  const claim = principal.claims?.[config.auth.householdClaim]
+  if (typeof claim === 'string' && claim && UUID_RE.test(principal.sub)) {
+    const { rows } = await query<{ person_id: string; is_admin: boolean; member_type: string }>(
+      `select p.id as person_id, p.is_admin, p.member_type
+         from persons p
+         join accounts a on a.id = p.account_id and a.deleted_at is null
+        where p.account_id = $1 and p.household_id = $2 and p.deleted_at is null`,
+      [principal.sub, claim]
+    )
+    const r = rows[0]
+    return r
+      ? { sub: principal.sub, personId: r.person_id, householdId: claim, isAdmin: r.is_admin, memberType: r.member_type }
+      : null
+  }
+  return findTenantBySub(principal.sub)
+}
+
 // Resolve the caller's household, or 403 if they haven't onboarded yet.
 export async function requireTenant(req: Request): Promise<Tenant> {
-  const tenant = await findTenantBySub(req.principal!.sub)
+  const tenant = await resolveTenant(req.principal!)
   if (!tenant) throw new AuthError('No household for this account; create one first', 403)
   return tenant
 }
@@ -153,10 +178,37 @@ export async function provisionHousehold(
     )
     const household = h.rows[0]
 
+    // The global account (the human login, keyed by email). Only when we have an
+    // email — an account is meaningless without one. Reuse an existing active
+    // account for this email (so this composes with multi-household join later);
+    // a select-for-update inside the txn sidesteps the partial unique index that
+    // makes a plain `on conflict` unworkable.
+    let accountId: string | null = null
+    if (input.email) {
+      const existing = await client.query<{ id: string }>(
+        `select id from accounts where lower(email) = lower($1) and deleted_at is null for update`,
+        [input.email]
+      )
+      if (existing.rows[0]) {
+        accountId = existing.rows[0].id
+        await client.query(`update accounts set last_household_id = $1 where id = $2`, [
+          household.id,
+          accountId,
+        ])
+      } else {
+        const a = await client.query<{ id: string }>(
+          `insert into accounts (email, password_hash, last_household_id)
+           values ($1, $2, $3) returning id`,
+          [input.email, input.credential?.passwordHash ?? null, household.id]
+        )
+        accountId = a.rows[0].id
+      }
+    }
+
     const p = await client.query<PersonRow>(
-      `insert into persons (household_id, name, member_type, is_admin, avatar_emoji, color_hex)
-       values ($1, $2, 'adult', true, $3, $4) returning *`,
-      [household.id, input.person.name, input.person.avatarEmoji, input.person.colorHex]
+      `insert into persons (household_id, name, member_type, is_admin, avatar_emoji, color_hex, account_id)
+       values ($1, $2, 'adult', true, $3, $4, $5) returning *`,
+      [household.id, input.person.name, input.person.avatarEmoji, input.person.colorHex, accountId]
     )
     const person = p.rows[0]
 
@@ -167,9 +219,9 @@ export async function provisionHousehold(
     household.owner_person_id = person.id
 
     await client.query(
-      `insert into identities (household_id, person_id, provider, auth0_user_id, email, email_verified, is_primary)
-       values ($1, $2, $3, $4, $5, $6, true)`,
-      [household.id, person.id, input.provider, input.sub, input.email, input.emailVerified]
+      `insert into identities (household_id, person_id, provider, auth0_user_id, email, email_verified, is_primary, account_id)
+       values ($1, $2, $3, $4, $5, $6, true, $7)`,
+      [household.id, person.id, input.provider, input.sub, input.email, input.emailVerified, accountId]
     )
 
     if (input.credential) {

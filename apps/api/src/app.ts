@@ -9,7 +9,7 @@ import { version } from './platform/version'
 import { recordHttpRequest } from './platform/telemetry'
 import { registerHealthRoutes } from './modules/health/health'
 import {
-  findTenantBySub,
+  resolveTenant,
   getContext,
   provisionHousehold,
   presentHousehold,
@@ -106,7 +106,7 @@ api.get('/api/me', async (req: Request) => ({ sub: req.principal?.sub }))
 
 // Your household + person, or { provisioned: false } if you haven't onboarded yet.
 api.get('/api/household', async (req: Request) => {
-  const tenant = await findTenantBySub(req.principal!.sub)
+  const tenant = await resolveTenant(req.principal!)
   if (!tenant) return { provisioned: false }
   const { household, person } = await getContext(tenant)
   // Capabilities the client can gate UI on (admin ⇒ all; else per-role matrix).
@@ -121,7 +121,7 @@ api.get('/api/household', async (req: Request) => {
 // First-login provisioning: create a household with the caller as owner + admin.
 api.post('/api/households', async (req: Request, res: Response) => {
   const sub = req.principal!.sub
-  if (await findTenantBySub(sub)) {
+  if (await resolveTenant(req.principal!)) {
     return res
       .status(409)
       .json({ error: 'Conflict', message: 'This account already has a household' })
