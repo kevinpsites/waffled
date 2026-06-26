@@ -571,31 +571,23 @@ struct CalTimeGrid: View {
                                 hourRow(h).frame(height: hourHeight, alignment: .top).id(h)
                             }
                         }
-                        // Faint vertical separators between day columns (week view), so an
-                        // event reads clearly against the right day. Mirrors the event
-                        // columns' gutter + spacing, so the lines fall on the boundaries.
-                        if days.count > 1 {
-                            HStack(spacing: 4) {
-                                Color.clear.frame(width: gutter)
-                                ForEach(Array(days.enumerated()), id: \.element) { idx, _ in
-                                    ZStack(alignment: .leading) {
-                                        // A touch stronger than the 8%-opacity hour lines so a
-                                        // vertical day boundary actually reads (it's broken up by
-                                        // event blocks, so the faint hour-line tone disappears).
-                                        if idx > 0 { Rectangle().fill(NK.ink.opacity(0.13)).frame(width: 1) }
-                                    }
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                }
-                            }
-                            .frame(height: 24 * hourHeight, alignment: .topLeading)
-                            .allowsHitTesting(false)
-                        }
-                        // Equal-width day columns; overlapping events split into lanes.
+                        // Equal-width day columns; overlapping events split into lanes. In
+                        // week view each column (after the first) carries a faint leading
+                        // divider so the day boundaries read and events align to a day.
                         HStack(spacing: 4) {
                             Color.clear.frame(width: gutter)
-                            ForEach(days, id: \.self) { key in
+                            ForEach(Array(days.enumerated()), id: \.element) { idx, key in
                                 GeometryReader { colGeo in
                                     ZStack(alignment: .topLeading) {
+                                        // A faint day boundary at each column's leading edge
+                                        // (week view), drawn as a sibling of the event blocks
+                                        // so it shares their resolved column height.
+                                        if days.count > 1 && idx > 0 {
+                                            Rectangle().fill(NK.ink.opacity(0.12))
+                                                .frame(width: 1, height: 24 * hourHeight)
+                                                .offset(x: -2)   // centered in the 4pt column gap
+                                                .allowsHitTesting(false)
+                                        }
                                         ForEach(placedEvents(key), id: \.event.id) { placed in
                                             block(placed, colWidth: colGeo.size.width)
                                         }
