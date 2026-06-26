@@ -613,9 +613,11 @@ struct CalTimeGrid: View {
     }
 
     private var dayHeaders: some View {
-        HStack(spacing: 0) {
+        // spacing 4 + the leading dividers match the time grid below, so the day
+        // numbers sit over their columns and the separators line up top-to-bottom.
+        HStack(spacing: 4) {
             Color.clear.frame(width: gutter, height: 1)
-            ForEach(days, id: \.self) { key in
+            ForEach(Array(days.enumerated()), id: \.element) { idx, key in
                 let isToday = key == Agenda.todayKey(tz)
                 Button { onPickDay(key) } label: {
                     VStack(spacing: 2) {
@@ -629,6 +631,12 @@ struct CalTimeGrid: View {
                     .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.plain)
+                .overlay(alignment: .leading) {
+                    if days.count > 1 && idx > 0 {
+                        Rectangle().fill(NK.ink.opacity(0.12)).frame(width: 1, height: 40)
+                            .offset(x: -2).allowsHitTesting(false)
+                    }
+                }
             }
         }
         .frame(height: 48)
@@ -636,19 +644,32 @@ struct CalTimeGrid: View {
     }
 
     private var allDayRow: some View {
-        HStack(spacing: 0) {
+        HStack(alignment: .top, spacing: 4) {
             Text("all-day").font(.system(size: 10, weight: .heavy)).foregroundStyle(NK.ink3)
                 .frame(width: gutter, alignment: .trailing).padding(.trailing, 6)
-            ForEach(days, id: \.self) { key in
+            ForEach(Array(days.enumerated()), id: \.element) { idx, key in
                 VStack(spacing: 3) {
                     ForEach(allDay(key)) { ev in
                         Button { onTapEvent(ev) } label: { miniChip(ev) }.buttonStyle(.plain)
                     }
                 }
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, alignment: .top)
+                .overlay(alignment: .topLeading) {
+                    if days.count > 1 && idx > 0 {
+                        Rectangle().fill(NK.ink.opacity(0.12))
+                            .frame(width: 1, height: allDayContentHeight)
+                            .offset(x: -2).allowsHitTesting(false)
+                    }
+                }
             }
         }
         .padding(.vertical, 6).padding(.bottom, 4)
+    }
+
+    /// Uniform height for the all-day separators — the tallest day's chip stack.
+    private var allDayContentHeight: CGFloat {
+        let n = max(1, days.map { allDay($0).count }.max() ?? 1)
+        return CGFloat(n) * 24 + CGFloat(n - 1) * 3
     }
 
     private func miniChip(_ ev: SyncedEvent) -> some View {
