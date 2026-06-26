@@ -252,7 +252,15 @@ struct KioskDashboard: View {
     // MARK: goal column (Goal-focused layout)
 
     private var goalCol: some View {
-        ScrollView(showsIndicators: false) { goalCard.padding(.bottom, 8) }
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 22) {
+                goalCard
+                // Use the column's headroom for tonight's dinner — or the week's dinners
+                // when nothing's planned for tonight.
+                if model.tonight != nil { tonightCard } else { weekDinnersCard }
+            }
+            .padding(.bottom, 8)
+        }
     }
 
     // The featured-goal green, identical to the Goals page hero.

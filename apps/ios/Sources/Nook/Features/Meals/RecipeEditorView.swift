@@ -41,7 +41,7 @@ struct RecipeEditorView: View {
     @State private var suggesting = false
     @State private var dismissedSug: Set<String> = []
     // Keyboard focus (auto-focus the title on a new recipe; chain Return between rows)
-    enum Field: Hashable { case title; case ingName(UUID) }
+    enum Field: Hashable { case title; case ingAmount(UUID); case ingName(UUID) }
     @FocusState private var focused: Field?
     // Save
     @State private var saving = false
@@ -146,7 +146,7 @@ struct RecipeEditorView: View {
                     field("TITLE") {
                         TextField("Recipe title", text: $title)
                             .font(.system(size: 16)).focused($focused, equals: .title)
-                            .submitLabel(.next).onSubmit { focused = ings.first.map { .ingName($0.id) } }
+                            .submitLabel(.next).onSubmit { focused = ings.first.map { .ingAmount($0.id) } }
                             .padding(.horizontal, 12).padding(.vertical, 11).nkField(fill: NK.panel)
                     }
                 }
@@ -269,6 +269,7 @@ struct RecipeEditorView: View {
             let advance = { advanceIngredient(after: row.wrappedValue.id) }
             HStack(spacing: 6) {
                 TextField("2", text: row.amount).keyboardType(.decimalPad)
+                    .focused($focused, equals: .ingAmount(row.wrappedValue.id))
                     .frame(width: 54).padding(8).nkField(fill: NK.panel)
                 TextField("cups", text: row.unit).submitLabel(.next).onSubmit(advance)
                     .frame(width: 72).padding(8).nkField(fill: NK.panel)
@@ -399,18 +400,17 @@ struct RecipeEditorView: View {
         Binding(get: { meta[key] ?? "" }, set: { meta[key] = $0 })
     }
 
-    /// Add an ingredient row and put the cursor in it (so "+ Add ingredient" keeps a
-    /// keyboard user typing).
+    /// Add an ingredient row and put the cursor in its amount (you start with "how many").
     private func addIngredient() {
         let new = EditIng()
         ings.append(new)
-        focused = .ingName(new.id)
+        focused = .ingAmount(new.id)
     }
 
-    /// Return on an ingredient name → next row's name, appending a fresh row past the last.
+    /// Return on a field → next ingredient's amount, appending a fresh row past the last.
     private func advanceIngredient(after id: UUID) {
         guard let i = ings.firstIndex(where: { $0.id == id }) else { return }
-        if i == ings.count - 1 { addIngredient() } else { focused = .ingName(ings[i + 1].id) }
+        if i == ings.count - 1 { addIngredient() } else { focused = .ingAmount(ings[i + 1].id) }
     }
 
     private func togglePick(_ step: Binding<EditStep>, _ g: EditIng) {
