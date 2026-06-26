@@ -204,6 +204,32 @@ export function registerAuthRoutes(api: Api): void {
     return res.status(200).json({ accessToken: access.token, refreshToken: newToken, expiresIn: access.expiresIn })
   })
 
+  // Authenticated: switch the account's active household. Mints a fresh access +
+  // refresh pair scoped to another household the account belongs to, and remembers
+  // it as last-active. 403 if the account isn't a member of the target.
+  api.post('/api/auth/switch', async (req: Request, res: Response) => {
+    const tenant = await requireTenant(req)
+    const targetHouseholdId = ((req.body ?? {}) as { householdId?: string }).householdId?.trim()
+    if (!targetHouseholdId) return res.status(400).json({ error: 'BadRequest', message: 'householdId is required' })
+    // Resolve the caller's account from their current membership person.
+    const ar = await query<{ account_id: string | null }>(`select account_id from persons where id = $1`, [tenant.personId])
+    const accountId = ar.rows[0]?.account_id
+    if (!accountId) return res.status(403).json({ error: 'Forbidden', message: 'This session has no account.' })
+    const memberships = await listMemberships(accountId)
+    const target = memberships.find((m) => m.householdId === targetHouseholdId)
+    if (!target) return res.status(403).json({ error: 'Forbidden', message: 'Not a member of that household.' })
+    await setLastHousehold(accountId, targetHouseholdId)
+    const accessTk = mintAccess(accountId, { [config.auth.householdClaim]: targetHouseholdId })
+    const refreshToken = await issueRefresh(target.personId, accountId)
+    return res.status(200).json({
+      accessToken: accessTk.token,
+      refreshToken,
+      expiresIn: accessTk.expiresIn,
+      householdId: targetHouseholdId,
+      memberships,
+    })
+  })
+
   // Public: revoke a refresh token (best effort).
   api.post('/api/auth/logout', async (req: Request) => {
     const token = ((req.body ?? {}) as { refreshToken?: string }).refreshToken
