@@ -39,49 +39,6 @@ export async function listMemberships(accountId: string): Promise<Membership[]> 
   }))
 }
 
-// Lazy account backfill on login: a member added via setPersonLogin before the
-// accounts layer existed has a credential but a null person.account_id. Reuse an
-// existing active account for this email (so we never duplicate), else create one,
-// then link the person. Idempotent. Returns the resolved account id.
-export async function ensureAccountForLogin(
-  email: string,
-  personId: string,
-  householdId: string,
-  passwordHash: string | null
-): Promise<string> {
-  const client = await getPool().connect()
-  try {
-    await client.query('begin')
-    // Lock any existing active account for this email so concurrent logins don't
-    // both insert (the partial unique index would otherwise race).
-    const existing = await client.query<{ id: string }>(
-      `select id from accounts where lower(email) = lower($1) and deleted_at is null for update`,
-      [email]
-    )
-    let accountId: string
-    if (existing.rows[0]) {
-      accountId = existing.rows[0].id
-    } else {
-      const ins = await client.query<{ id: string }>(
-        `insert into accounts (email, password_hash, last_household_id) values ($1, $2, $3) returning id`,
-        [email, passwordHash, householdId]
-      )
-      accountId = ins.rows[0].id
-    }
-    await client.query(
-      `update persons set account_id = $1 where id = $2 and account_id is null`,
-      [accountId, personId]
-    )
-    await client.query('commit')
-    return accountId
-  } catch (err) {
-    await client.query('rollback')
-    throw err
-  } finally {
-    client.release()
-  }
-}
-
 // Land the account on its last-active household if that membership still exists,
 // else the first membership. Callers guarantee a non-empty membership list.
 export async function pickActiveHousehold(

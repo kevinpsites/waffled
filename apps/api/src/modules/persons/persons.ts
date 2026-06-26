@@ -155,8 +155,8 @@ export async function householdSettings(householdId: string) {
   const { rows } = await query<PersonRow & { has_login: boolean; login_email: string | null; has_password: boolean; has_pin: boolean }>(
     `select p.*,
             exists(select 1 from identities i where i.person_id = p.id and i.deleted_at is null) as has_login,
-            (select c.email from credentials c where c.person_id = p.id and c.deleted_at is null limit 1) as login_email,
-            exists(select 1 from credentials c where c.person_id = p.id and c.deleted_at is null and c.password_hash is not null) as has_password,
+            (select a.email from accounts a where a.id = p.account_id and a.deleted_at is null) as login_email,
+            exists(select 1 from accounts a where a.id = p.account_id and a.deleted_at is null and a.password_hash is not null) as has_password,
             (p.pin_hash is not null) as has_pin
        from persons p
       where p.household_id = $1 and p.deleted_at is null

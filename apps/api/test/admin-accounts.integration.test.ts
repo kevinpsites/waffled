@@ -97,8 +97,7 @@ beforeAll(async () => {
     [hashPassword('wallypass1'), householdB]
   )
   wallyAccountId = wp.rows[0].id
-  const wPerson = await query(`insert into persons (household_id, name, member_type, account_id) values ($1,'Wally','adult',$2) returning id`, [householdB, wallyAccountId])
-  await query(`insert into credentials (household_id, person_id, email, password_hash) values ($1,$2,'wally@example.com',$3)`, [householdB, wPerson.rows[0].id, hashPassword('wallypass1')])
+  await query(`insert into persons (household_id, name, member_type, account_id) values ($1,'Wally','adult',$2)`, [householdB, wallyAccountId])
 }, 60_000)
 
 afterAll(async () => {

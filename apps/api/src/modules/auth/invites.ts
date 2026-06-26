@@ -41,14 +41,12 @@ export function registerInviteRoutes(api: Api): void {
     const isAdmin = b.isAdmin === true
 
     // Already a member of this household — an active person linked to an account
-    // with that email, or an active credential in this household with that email.
+    // with that email. (The legacy credentials table is retired; accounts is the
+    // single source of truth for who has a login.)
     const member = await query(
       `select 1 where exists(
          select 1 from persons p join accounts a on a.id = p.account_id and a.deleted_at is null
-          where p.household_id = $1 and p.deleted_at is null and lower(a.email) = lower($2))
-        or exists(
-         select 1 from credentials c
-          where c.household_id = $1 and c.deleted_at is null and lower(c.email) = lower($2))`,
+          where p.household_id = $1 and p.deleted_at is null and lower(a.email) = lower($2))`,
       [tenant.householdId, email]
     )
     if (member.rows.length) {

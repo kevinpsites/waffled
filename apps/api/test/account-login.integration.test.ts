@@ -6,7 +6,7 @@
 // account-scoped tokens and UPGRADES in-flight legacy refresh tokens.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 
@@ -63,8 +63,8 @@ beforeAll(async () => {
   kevinAccountId = acct.rows[0].id
   householdA = (await query(`select household_id from persons where name = 'Kevin'`)).rows[0].household_id
 
-  // Member Wally — added post-provision (so his person starts WITHOUT an account_id;
-  // login must lazily create + link one).
+  // Member Wally — added post-provision. Granting a login now creates + links his
+  // account up front (the credentials table is retired; there's no lazy backfill).
   wallyPersonId = json(await call('POST', '/api/persons', ownerToken, { name: 'Wally', memberType: 'adult' })).person.id
   expect((await call('PUT', `/api/persons/${wallyPersonId}/login`, ownerToken, { email: 'wally@example.com', password: 'wallypass1' })).statusCode).toBeLessThan(300)
 
@@ -108,21 +108,19 @@ describe('P2.2 account login', () => {
     expect(json(await call('GET', '/api/household', d.accessToken)).household.name).toBe('A')
   })
 
-  it('single-membership member: lazily creates+links an account and logs in', async () => {
-    const before = await query(`select account_id from persons where id = $1`, [wallyPersonId])
-    expect(before.rows[0].account_id).toBeNull() // added post-provision
+  it('single-membership member: account is linked at grant time and logs in', async () => {
+    // Granting Wally a login linked his account during setPersonLogin.
+    const before = await query(`select p.account_id, a.email from persons p join accounts a on a.id = p.account_id where p.id = $1`, [wallyPersonId])
+    expect(before.rows[0].account_id).toBeTruthy()
+    expect(before.rows[0].email.toLowerCase()).toBe('wally@example.com')
 
     const d = json(await call('POST', '/api/auth/login', undefined, { email: 'wally@example.com', password: 'wallypass1' }))
     expect(d.accessToken).toBeTruthy()
     expect(d.memberships).toHaveLength(1)
     expect(d.memberships[0].householdId).toBe(householdA)
 
-    // the account now exists and the person is linked
-    const after = await query(`select p.account_id, a.email from persons p join accounts a on a.id = p.account_id where p.id = $1`, [wallyPersonId])
-    expect(after.rows[0].account_id).toBeTruthy()
-    expect(after.rows[0].email.toLowerCase()).toBe('wally@example.com')
     // sub is the account id, claim is household A, and it authorizes a request
-    expect(decode(d.accessToken).sub).toBe(after.rows[0].account_id)
+    expect(decode(d.accessToken).sub).toBe(before.rows[0].account_id)
     expect(json(await call('GET', '/api/household', d.accessToken)).household.name).toBe('A')
   })
 
@@ -139,24 +137,24 @@ describe('P2.2 account login', () => {
     expect(json(await call('GET', '/api/household', r.accessToken)).household.name).toBe('A')
   })
 
-  it('upgrades an in-flight legacy refresh token (subject = credential id) to account-scoped', async () => {
-    // Forge a pre-P2 refresh token: subject is the credential id, not the account id.
-    const cred = await query(`select id, person_id from credentials where lower(email) = 'wally@example.com' and deleted_at is null`)
-    const credId = cred.rows[0].id
-    const personId = cred.rows[0].person_id
+  it('upgrades an in-flight legacy refresh token (subject = a legacy id) to account-scoped', async () => {
+    // Forge a pre-P2 refresh token: subject is a legacy identity/credential-style id
+    // (a UUID), not the account id. Refresh must re-key it onto the person's account.
+    const personId = wallyPersonId
+    const legacySubject = randomUUID()
     const rawToken = randomBytes(32).toString('base64url')
     const tokenHash = (await import('../src/modules/auth/auth')).sha256(rawToken)
     await query(
       `insert into refresh_tokens (person_id, subject, token_hash, expires_at) values ($1,$2,$3, now() + interval '60 days')`,
-      [personId, credId, tokenHash]
+      [personId, legacySubject, tokenHash]
     )
 
     const r = json(await call('POST', '/api/auth/refresh', undefined, { refreshToken: rawToken }))
     const claims = decode(r.accessToken)
-    // upgraded: sub is now the account id (not the credential id), claim is the household
+    // upgraded: sub is now the account id (not the legacy subject), claim is the household
     const acct = await query(`select account_id from persons where id = $1`, [personId])
     expect(claims.sub).toBe(acct.rows[0].account_id)
-    expect(claims.sub).not.toBe(credId)
+    expect(claims.sub).not.toBe(legacySubject)
     expect(claims[HH_CLAIM]).toBe(householdA)
     // and it authorizes a request
     expect(json(await call('GET', '/api/household', r.accessToken)).household.name).toBe('A')

@@ -69,13 +69,9 @@ beforeAll(async () => {
     [hashPassword('bobpass12'), householdB]
   )
   bobAccountId = bobAcct.rows[0].id
-  const bobPerson = await query(
+  await query(
     `insert into persons (household_id, name, member_type, is_admin, account_id) values ($1,'Bob','adult',true,$2) returning id`,
     [householdB, bobAccountId]
-  )
-  await query(
-    `insert into credentials (household_id, person_id, email, password_hash) values ($1,$2,'bob@example.com',$3)`,
-    [householdB, bobPerson.rows[0].id, hashPassword('bobpass12')]
   )
 }, 60_000)
 

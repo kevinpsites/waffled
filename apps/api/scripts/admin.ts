@@ -22,7 +22,7 @@
 import { createInterface } from 'node:readline'
 import { generateKeyPairSync, randomBytes } from 'node:crypto'
 import { query, getPool, closePool } from '../src/platform/db'
-import { hashPassword, setPersonLogin, sha256 } from '../src/modules/auth/auth'
+import { setPersonLogin } from '../src/modules/auth/auth'
 
 // ── tiny arg parser ───────────────────────────────────────────────────────────
 // Read argv live (not a captured copy) so tests can set process.argv per call.
@@ -64,13 +64,16 @@ async function confirm(question: string): Promise<boolean> {
   return /^y(es)?$/i.test(answer.trim())
 }
 
-// Resolve a credential (and its person/household) from an email — emails are
-// globally unique in `credentials`, so this is unambiguous across households.
-async function credentialByEmail(email: string) {
-  const { rows } = await query<{ id: string; person_id: string; household_id: string; person_name: string }>(
-    `select c.id, c.person_id, c.household_id, p.name as person_name
-       from credentials c join persons p on p.id = c.person_id
-      where lower(c.email) = lower($1) and c.deleted_at is null and p.deleted_at is null
+// Resolve a person (any one of their memberships) from a login email via their
+// account — accounts are globally unique by email, so the email is unambiguous,
+// but a human may belong to several households; this returns the earliest one for
+// the household-scoped commands (make-admin / reset's display name).
+async function personByLoginEmail(email: string) {
+  const { rows } = await query<{ person_id: string; household_id: string; person_name: string }>(
+    `select p.id as person_id, p.household_id, p.name as person_name
+       from accounts a join persons p on p.account_id = a.id and p.deleted_at is null
+      where lower(a.email) = lower($1) and a.deleted_at is null
+      order by p.created_at
       limit 1`,
     [email]
   )
@@ -103,10 +106,10 @@ async function resolvePerson(): Promise<{ id: string; household_id: string; name
   const email = flag('email')
   const personId = flag('person')
   if (email) {
-    const cred = await credentialByEmail(email)
-    if (!cred) die(`No member found with login email "${email}".`)
-    const { rows } = await query<{ is_admin: boolean }>(`select is_admin from persons where id = $1`, [cred.person_id])
-    return { id: cred.person_id, household_id: cred.household_id, name: cred.person_name, is_admin: rows[0]?.is_admin ?? false }
+    const person = await personByLoginEmail(email)
+    if (!person) die(`No member found with login email "${email}".`)
+    const { rows } = await query<{ is_admin: boolean }>(`select is_admin from persons where id = $1`, [person.person_id])
+    return { id: person.person_id, household_id: person.household_id, name: person.person_name, is_admin: rows[0]?.is_admin ?? false }
   }
   if (personId) {
     const { rows } = await query<{ id: string; household_id: string; name: string; is_admin: boolean }>(
@@ -133,8 +136,8 @@ async function listMembers(): Promise<void> {
   }>(
     `select h.name as household, p.name, p.member_type, p.is_admin,
             (h.owner_person_id = p.id) as is_owner, p.id as person_id,
-            (select c.email from credentials c where c.person_id = p.id and c.deleted_at is null limit 1) as login_email,
-            exists(select 1 from credentials c where c.person_id = p.id and c.deleted_at is null and c.password_hash is not null) as has_password,
+            (select a.email from accounts a where a.id = p.account_id and a.deleted_at is null) as login_email,
+            exists(select 1 from accounts a where a.id = p.account_id and a.deleted_at is null and a.password_hash is not null) as has_password,
             exists(select 1 from identities i where i.person_id = p.id and i.deleted_at is null and i.provider not in ('password')) as has_oidc
        from persons p join households h on h.id = p.household_id
       where p.deleted_at is null
@@ -158,28 +161,21 @@ async function listMembers(): Promise<void> {
 async function resetPassword(): Promise<void> {
   const email = flag('email')
   if (!email) die('reset-password requires --email <login email>.')
-  const cred = await credentialByEmail(email)
-  if (!cred) die(`No member found with login email "${email}".`)
+  const person = await personByLoginEmail(email)
+  if (!person) die(`No member found with login email "${email}".`)
   const provided = flag('password')
   if (provided && provided.length < 8) die('Password must be at least 8 characters.')
   const password = provided ?? generatePassword()
-  if (!(await confirm(`Reset the password for ${c.bold}${cred.person_name}${c.reset} (${email}) and sign out their active sessions?`))) {
+  if (!(await confirm(`Reset the password for ${c.bold}${person.person_name}${c.reset} (${email}) and sign out their active sessions?`))) {
     die('Aborted.', 0)
   }
-  // Reuse the API's own helper: hashes with scrypt + ensures a password identity.
-  // This writes the credential + password identity — the auth source of truth.
-  await setPersonLogin(cred.household_id, cred.person_id, email, password)
-  // Keep the accounts mirror current and revoke sessions across EVERY household the
-  // human belongs to (not just this credential's person).
+  // Reuse the API's own helper: hashes with scrypt, writes accounts.password_hash
+  // (the auth source of truth), and ensures a password identity exists.
+  await setPersonLogin(person.household_id, person.person_id, email, password)
+  // Revoke sessions across EVERY household the human belongs to.
   const account = await accountByEmail(email)
-  if (account) {
-    await query(`update accounts set password_hash = $1, updated_at = now() where id = $2`, [hashPassword(password), account.id])
-    await revokeAccountSessions(account.id)
-  } else {
-    // Legacy edge: no account row — fall back to the credential's person only.
-    await query(`update refresh_tokens set revoked_at = now() where person_id = $1 and revoked_at is null`, [cred.person_id])
-  }
-  console.log(ok(`✓ Password reset for ${cred.person_name} (${email}).`))
+  if (account) await revokeAccountSessions(account.id)
+  console.log(ok(`✓ Password reset for ${person.person_name} (${email}).`))
   if (!provided) console.log(`  New password: ${c.bold}${password}${c.reset}  ${c.dim}(give this to them; they can change it in Settings)${c.reset}`)
   console.log(c.dim + '  Active sessions across all their households were revoked — they must sign in again.' + c.reset)
 }
@@ -231,19 +227,12 @@ async function pruneSessions(): Promise<void> {
   const email = flag('email')
   if (email) {
     // Account-scoped: revoke across all the human's household memberships.
-    const cred = await credentialByEmail(email)
-    if (!cred) die(`No member found with login email "${email}".`)
-    const target = `${cred.person_name} (${email})`
+    const person = await personByLoginEmail(email)
+    if (!person) die(`No member found with login email "${email}".`)
+    const target = `${person.person_name} (${email})`
     if (!(await confirm(`Revoke ALL active sessions for ${c.bold}${target}${c.reset}? They will have to sign in again.`))) die('Aborted.', 0)
     const account = await accountByEmail(email)
-    let revoked: number
-    if (account) {
-      revoked = await revokeAccountSessions(account.id)
-    } else {
-      // Legacy edge: no account row — fall back to the credential's person only.
-      const { rowCount } = await query(`update refresh_tokens set revoked_at = now() where revoked_at is null and person_id = $1`, [cred.person_id])
-      revoked = rowCount ?? 0
-    }
+    const revoked = account ? await revokeAccountSessions(account.id) : 0
     console.log(ok(`✓ Revoked ${revoked} active session(s) for ${target}.`))
     return
   }
@@ -269,8 +258,8 @@ async function listHouseholds(): Promise<void> {
   const { rows } = await query<{ id: string; name: string; created_at: string; members: number; logins: number }>(
     `select h.id, h.name, h.created_at,
             (select count(*)::int from persons p where p.household_id = h.id and p.deleted_at is null) as members,
-            (select count(*)::int from credentials c join persons p on p.id = c.person_id
-              where p.household_id = h.id and c.deleted_at is null) as logins
+            (select count(*)::int from persons p join accounts a on a.id = p.account_id and a.deleted_at is null
+              where p.household_id = h.id and p.deleted_at is null) as logins
        from households h
       order by h.created_at`
   )
@@ -289,8 +278,8 @@ async function deleteHousehold(): Promise<void> {
   const hh = await query<{ name: string; members: number; logins: number }>(
     `select h.name,
             (select count(*)::int from persons p where p.household_id = h.id and p.deleted_at is null) as members,
-            (select count(*)::int from credentials c join persons p on p.id = c.person_id
-              where p.household_id = h.id and c.deleted_at is null) as logins
+            (select count(*)::int from persons p join accounts a on a.id = p.account_id and a.deleted_at is null
+              where p.household_id = h.id and p.deleted_at is null) as logins
        from households h where h.id = $1`,
     [id]
   )
@@ -407,48 +396,6 @@ async function listAccounts(): Promise<void> {
   console.log()
 }
 
-// Read-only pre-migration gate for retiring the legacy `credentials` table. Confirms
-// every active credential is fully mirrored into `accounts` (so login can cut over and
-// the table can be dropped without locking anyone out). The three checks must all be 0.
-async function auditCredentials(): Promise<void> {
-  const count = async (sql: string): Promise<number> => Number((await query<{ n: string }>(sql)).rows[0].n)
-  const creds = await count(`select count(*)::text n from credentials where deleted_at is null`)
-  const accts = await count(`select count(*)::text n from accounts where deleted_at is null`)
-  const noAccount = await count(
-    `select count(*)::text n from credentials c
-      where c.deleted_at is null
-        and not exists (select 1 from accounts a where lower(a.email) = lower(c.email) and a.deleted_at is null)`
-  )
-  const hashMismatch = await count(
-    `select count(*)::text n from credentials c
-       join accounts a on lower(a.email) = lower(c.email) and a.deleted_at is null
-      where c.deleted_at is null and c.password_hash is not null
-        and c.password_hash is distinct from a.password_hash`
-  )
-  const nullAccountId = await count(
-    `select count(*)::text n from credentials c
-       join persons p on p.id = c.person_id and p.deleted_at is null
-      where c.deleted_at is null and p.account_id is null`
-  )
-
-  console.log(`\n${c.bold}credentials → accounts completeness${c.reset}\n`)
-  console.log(`  active credentials .......................... ${c.bold}${creds}${c.reset}`)
-  console.log(`  active accounts ............................. ${c.bold}${accts}${c.reset}`)
-  const line = (label: string, n: number) =>
-    console.log(n === 0 ? `  ${ok('✓')} ${label} ${ok('0')}` : `  ${err('✗')} ${label} ${err(String(n))}`)
-  line('creds whose email has NO active account ....', noAccount)
-  line('creds w/ password but account hash MISMATCH ', hashMismatch)
-  line('persons w/ active credential, NULL account_id', nullAccountId)
-  console.log()
-  if (noAccount === 0 && hashMismatch === 0 && nullAccountId === 0) {
-    console.log(ok('✓ Backfill is airtight — safe to cut login over to accounts and drop credentials.'))
-  } else {
-    console.log(err('✗ Gaps found — do NOT drop credentials yet. Investigate the non-zero rows above.'))
-    process.exitCode = 1
-  }
-  console.log()
-}
-
 function help(): void {
   console.log(`${c.bold}Nook admin — operator / break-glass commands${c.reset}
 ${c.dim}Run as: ./nook admin <command> [flags]${c.reset}
@@ -468,8 +415,6 @@ ${c.dim}Run as: ./nook admin <command> [flags]${c.reset}
   ${c.bold}prune-sessions${c.reset} [--email <e>] [--yes]  revoke refresh tokens (one member across all
                                      their households, or everyone)
   ${c.bold}regenerate-powersync-key${c.reset}            print a fresh POWERSYNC_JWT_PRIVATE_KEY
-  ${c.bold}audit-credentials${c.reset}                   read-only: is every login mirrored into accounts?
-                                     (pre-migration gate for retiring the credentials table)
   ${c.bold}list-households${c.reset}                     households with member + login counts
   ${c.bold}delete-household${c.reset} --id <uuid> [--force] [--yes]
                                      permanently delete a household + ALL its data
@@ -478,7 +423,7 @@ ${c.dim}Destructive commands prompt for confirmation (or pass --yes).
 Break-glass: set AUTH_FORCE_PASSWORD=1 in the api env + restart to force password login.${c.reset}`)
 }
 
-export const _cmds = { listMembers, resetPassword, makeAdmin, passwordLogin, clearCalendarError, pruneSessions, regeneratePowerSyncKey, listHouseholds, deleteHousehold, addMember, listAccounts, auditCredentials }
+export const _cmds = { listMembers, resetPassword, makeAdmin, passwordLogin, clearCalendarError, pruneSessions, regeneratePowerSyncKey, listHouseholds, deleteHousehold, addMember, listAccounts }
 
 async function main(): Promise<void> {
   const command = args()[0] ?? 'help'
@@ -495,7 +440,6 @@ async function main(): Promise<void> {
     case 'delete-household': await deleteHousehold(); break
     case 'add-member': await addMember(); break
     case 'list-accounts': await listAccounts(); break
-    case 'audit-credentials': await auditCredentials(); break
     case 'help': case '-h': case '--help': help(); break
     default: process.stderr.write(err(`Unknown command: ${command}`) + '\n\n'); help(); process.exitCode = 1
   }

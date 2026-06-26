@@ -104,17 +104,16 @@ export async function findTenantBySub(sub: string): Promise<Tenant | null> {
 }
 
 // Invite-gated OIDC: a first-time SSO login only succeeds if its verified email
-// already belongs to a person on file (added by an admin / created at setup). We
-// match against both login surfaces — a password credential's email and any
-// identity's email — so e.g. the setup admin can SSO in by their setup email.
+// already belongs to a person on file (added by an admin / created at setup). The
+// credentials table is retired, so we match against any identity's email — a
+// password login carries the same email on its password identity, so the setup
+// admin can still SSO in by their setup email. (Account-backed members are matched
+// earlier via findAccountByEmail; this is the legacy email-only fallback.)
 export async function findPersonByEmail(
   email: string
 ): Promise<{ personId: string; householdId: string } | null> {
   const { rows } = await query<{ person_id: string; household_id: string }>(
-    `select person_id, household_id from credentials
-       where lower(email) = lower($1) and deleted_at is null
-     union
-     select i.person_id, p.household_id
+    `select i.person_id, p.household_id
        from identities i join persons p on p.id = i.person_id and p.deleted_at is null
       where lower(i.email) = lower($1) and i.deleted_at is null
      limit 1`,
@@ -159,8 +158,9 @@ export interface ProvisionInput {
   householdName: string
   timezone: string
   person: { name: string; avatarEmoji: string | null; colorHex: string | null }
-  // Built-in password setup: create a credentials row (id = sub) in the same
-  // transaction so login can resolve email → subject.
+  // Built-in password setup: seeds the account's password_hash so login (which
+  // authenticates the account) can verify the password. No credentials row — the
+  // legacy credentials table is retired.
   credential?: { email: string; passwordHash: string }
 }
 
@@ -224,14 +224,6 @@ export async function provisionHousehold(
        values ($1, $2, $3, $4, $5, $6, true, $7)`,
       [household.id, person.id, input.provider, input.sub, input.email, input.emailVerified, accountId]
     )
-
-    if (input.credential) {
-      await client.query(
-        `insert into credentials (id, household_id, person_id, email, password_hash)
-         values ($1, $2, $3, $4, $5)`,
-        [input.sub, household.id, person.id, input.credential.email, input.credential.passwordHash]
-      )
-    }
 
     await client.query('commit')
     return { household, person }

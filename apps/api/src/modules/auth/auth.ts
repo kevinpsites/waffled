@@ -12,7 +12,6 @@ import { provisionHousehold, presentHousehold, presentPerson, requireTenant, req
 import { loginMethods } from './oidc'
 import {
   listMemberships,
-  ensureAccountForLogin,
   pickActiveHousehold,
   setLastHousehold,
   pendingInvitesForEmail,
@@ -146,21 +145,19 @@ export function registerAuthRoutes(api: Api): void {
     const email = b.email?.trim()
     const password = b.password ?? ''
     if (!email || !password) return res.status(400).json({ error: 'BadRequest', message: 'email and password are required' })
-    const { rows } = await query<{ id: string; person_id: string; password_hash: string | null }>(
-      `select id, person_id, password_hash from credentials where lower(email) = lower($1) and deleted_at is null limit 1`,
+    // Authenticate the *account* (the global human login, keyed by lower(email)).
+    // The credentials table is gone — accounts.password_hash is the password mirror.
+    const { rows } = await query<{ id: string; password_hash: string | null }>(
+      `select id, password_hash from accounts where lower(email) = lower($1) and deleted_at is null limit 1`,
       [email]
     )
-    const cred = rows[0]
-    // password_hash is null for SSO-only invites — they have no password to verify.
-    if (!cred || !cred.password_hash || !verifyPassword(password, cred.password_hash)) {
+    const account = rows[0]
+    // password_hash is null for SSO-only accounts — they have no password to verify.
+    if (!account || !account.password_hash || !verifyPassword(password, account.password_hash)) {
       return res.status(401).json({ error: 'Unauthorized', message: 'Invalid email or password.' })
     }
-    // Authenticate the *account*: resolve the credential's household, lazily
-    // create+link an account if this person predates the accounts layer, then mint
-    // an account-scoped token landing on the last-active household.
-    const ph = await query<{ household_id: string }>(`select household_id from persons where id = $1`, [cred.person_id])
-    const householdId = ph.rows[0].household_id
-    const accountId = await ensureAccountForLogin(email, cred.person_id, householdId, cred.password_hash)
+    // Mint an account-scoped token landing on the last-active household.
+    const accountId = account.id
     const memberships = await listMemberships(accountId)
     const active = await pickActiveHousehold(accountId, memberships)
     await setLastHousehold(accountId, active)
@@ -281,43 +278,64 @@ export function registerAuthRoutes(api: Api): void {
   })
 }
 
-// Upsert a person's credential (one per person). Setting a password also ensures a
-// matching identity (provider=password, subject=credential id) exists so password
-// login resolves through sub→identity→person; an email-only invite needs no
-// identity (the OIDC flow creates one on first sign-in, matched via the email).
+// Give (or change) a member's login, now backed by `accounts` (the global human
+// login keyed by email) — the credentials table is retired. Find-or-create the
+// active account for the email, set/update its password_hash when a password is
+// given, link persons.account_id, and keep the password→identity wiring intact.
+//
+// Identity wiring: a password identity still exists per person (provider='password')
+// so OIDC invite-gating (findPersonByEmail, which matches by identities.email) and
+// the legacy sub→identity path keep working. With account-scoped tokens its
+// auth0_user_id (the unique, non-null JWT 'sub' column) is no longer a credential
+// id — there's nothing to key off, so we mint a stable random subject. Existing
+// password identities keep their old subject; we only refresh their email.
+//
+// The unique lower(email) index on accounts surfaces a duplicate email as 23505,
+// which the route maps to 409.
 export async function setPersonLogin(householdId: string, personId: string, email: string, password: string | null): Promise<void> {
   const client = await getPool().connect()
   try {
     await client.query('begin')
-    const existing = await client.query<{ id: string }>(
-      `select id from credentials where person_id = $1 and deleted_at is null limit 1`,
-      [personId]
-    )
-    let credId = existing.rows[0]?.id
     const hash = password ? hashPassword(password) : undefined
-    if (credId) {
+    // Find-or-create the account for this email (case-insensitive). Lock any
+    // existing active row so concurrent grants don't race the unique index.
+    const existingAccount = await client.query<{ id: string }>(
+      `select id from accounts where lower(email) = lower($1) and deleted_at is null for update`,
+      [email]
+    )
+    let accountId: string
+    if (existingAccount.rows[0]) {
+      accountId = existingAccount.rows[0].id
+      // Update email casing + set the password only when one was supplied.
       await client.query(
-        `update credentials set email = $1, password_hash = coalesce($2, password_hash), updated_at = now() where id = $3`,
-        [email, hash ?? null, credId]
+        `update accounts set email = $1, password_hash = coalesce($2, password_hash), updated_at = now() where id = $3`,
+        [email, hash ?? null, accountId]
       )
     } else {
       const ins = await client.query<{ id: string }>(
-        `insert into credentials (household_id, person_id, email, password_hash) values ($1, $2, $3, $4) returning id`,
-        [householdId, personId, email, hash ?? null]
+        `insert into accounts (email, password_hash, last_household_id) values ($1, $2, $3) returning id`,
+        [email, hash ?? null, householdId]
       )
-      credId = ins.rows[0].id
+      accountId = ins.rows[0].id
     }
-    // When a password exists, make sure a password identity points at this credential.
+    // Link THIS membership to the account (the unique (account_id, household_id)
+    // index would reject a second membership in the same household, which is fine).
+    await client.query(`update persons set account_id = $1 where id = $2`, [accountId, personId])
+    // When a password exists, make sure a password identity for this person exists
+    // so OIDC invite-gating (matched by identities.email) and any legacy sub path
+    // keep resolving. auth0_user_id must be unique + non-null; mint a fresh subject.
     if (password) {
-      const ident = await client.query(
-        `select 1 from identities where person_id = $1 and provider = 'password' and deleted_at is null`,
+      const ident = await client.query<{ id: string }>(
+        `select id from identities where person_id = $1 and provider = 'password' and deleted_at is null`,
         [personId]
       )
-      if (!ident.rows.length) {
+      if (ident.rows.length) {
+        await client.query(`update identities set email = $1, account_id = $2, updated_at = now() where id = $3`, [email, accountId, ident.rows[0].id])
+      } else {
         await client.query(
-          `insert into identities (household_id, person_id, provider, auth0_user_id, email, email_verified, is_primary)
-           values ($1, $2, 'password', $3, $4, true, false)`,
-          [householdId, personId, credId, email]
+          `insert into identities (household_id, person_id, provider, auth0_user_id, email, email_verified, is_primary, account_id)
+           values ($1, $2, 'password', $3, $4, true, false, $5)`,
+          [householdId, personId, `password:${randomUUID()}`, email, accountId]
         )
       }
     }
@@ -330,15 +348,33 @@ export async function setPersonLogin(householdId: string, personId: string, emai
   }
 }
 
-// Tear down a member's login: drop the credential + their identities and revoke
-// any live refresh tokens, so they can no longer sign in.
+// Remove sign-in for THIS membership only (not the human globally). Null this
+// person's account_id, soft-delete their identities, and revoke their sessions.
+// The account row is soft-deleted only if it has no other active memberships — so a
+// human who belongs to several households keeps their login everywhere else. The
+// person row itself stays (they become a no-login member of this household).
 async function removePersonLogin(personId: string): Promise<void> {
   const client = await getPool().connect()
   try {
     await client.query('begin')
-    await client.query(`update credentials set deleted_at = now() where person_id = $1 and deleted_at is null`, [personId])
+    const pr = await client.query<{ account_id: string | null }>(
+      `select account_id from persons where id = $1`,
+      [personId]
+    )
+    const accountId = pr.rows[0]?.account_id ?? null
+    await client.query(`update persons set account_id = null where id = $1`, [personId])
     await client.query(`update identities set deleted_at = now() where person_id = $1 and deleted_at is null`, [personId])
     await client.query(`update refresh_tokens set revoked_at = now() where person_id = $1 and revoked_at is null`, [personId])
+    if (accountId) {
+      // Drop the account only when no other active membership references it.
+      const others = await client.query(
+        `select 1 from persons where account_id = $1 and id <> $2 and deleted_at is null limit 1`,
+        [accountId, personId]
+      )
+      if (!others.rows.length) {
+        await client.query(`update accounts set deleted_at = now(), updated_at = now() where id = $1 and deleted_at is null`, [accountId])
+      }
+    }
     await client.query('commit')
   } catch (err) {
     await client.query('rollback')
