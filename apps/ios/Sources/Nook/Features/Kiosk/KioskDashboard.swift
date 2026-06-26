@@ -255,44 +255,70 @@ struct KioskDashboard: View {
         ScrollView(showsIndicators: false) { goalCard.padding(.bottom, 8) }
     }
 
+    // The featured-goal green, identical to the Goals page hero.
+    private static let heroGreen = LinearGradient(colors: [Color(hex: 0x2BA86B), Color(hex: 0x1C8A56)],
+                                                  startPoint: .topLeading, endPoint: .bottomTrailing)
+    private static let heroGreenInk = Color(hex: 0x1C8A56)
+
     @ViewBuilder private var goalCard: some View {
-        KioskCard {
+        if let g = kioskGoal {
+            // A green hero card, matching the Goals page — white type on the gradient.
             VStack(alignment: .leading, spacing: 18) {
-                cardHeader("Family Goal", chevron: true) { navigate(.goals) }
-                if let g = kioskGoal {
-                    goalFocusBody(g)
-                } else {
-                    Text(model.loaded ? "No goals yet — add one on the Goals page."
-                                      : "Loading…")
+                HStack {
+                    Text("Family Goal").font(.system(size: 14, weight: .heavy)).tracking(0.5)
+                        .foregroundStyle(.white.opacity(0.9))
+                    Spacer()
+                    Button { navigate(.goals) } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 15, weight: .bold)).foregroundStyle(.white.opacity(0.9))
+                    }
+                    .buttonStyle(.plain)
+                }
+                goalFocusBody(g)
+            }
+            .padding(22)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Self.heroGreen)
+            .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+            .nkShadow1()
+        } else {
+            KioskCard {
+                VStack(alignment: .leading, spacing: 18) {
+                    cardHeader("Family Goal", chevron: true) { navigate(.goals) }
+                    Text(model.loaded ? "No goals yet — add one on the Goals page." : "Loading…")
                         .font(.system(size: 17)).foregroundStyle(NK.ink3).padding(.vertical, 12)
                 }
             }
         }
     }
 
-    /// The featured goal, big: emoji + title, a progress ring, each participant's bar, a
-    /// prominent "Log progress" button, and (when there's more than one goal) a switcher.
+    /// The featured goal, big: a progress ring, title, each participant's bar, a prominent
+    /// "Log progress" button, and (when there's more than one goal) a switcher.
     @ViewBuilder private func goalFocusBody(_ g: NookAPI.Goal) -> some View {
         let frac = g.target.map { $0 > 0 ? min(g.totalProgress / $0, 1) : 0 } ?? 0
         let maxProg = max(1, g.participants.map(\.progress).max() ?? 1)
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .center, spacing: 18) {
-                GoalRing(value: frac, size: 110, lineWidth: 11, stroke: NK.primary, track: NK.primary.opacity(0.16)) {
-                    VStack(spacing: 0) {
-                        Text(goalFmt(g.totalProgress)).font(.system(size: 30, weight: .heavy)).foregroundStyle(NK.ink)
+                GoalRing(value: frac, size: 116, lineWidth: 10, stroke: .white, track: .white.opacity(0.25)) {
+                    // Constrain the inner text well inside the ring so a long total
+                    // (e.g. "333.5") never crowds the stroke.
+                    VStack(spacing: 1) {
+                        Text(goalFmt(g.totalProgress)).font(.system(size: 24, weight: .heavy)).foregroundStyle(.white)
+                            .lineLimit(1).minimumScaleFactor(0.5)
                         if g.target != nil {
                             Text("of \(goalFmt(g.target))\(g.unit.map { " \($0)" } ?? "")")
-                                .font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                                .font(.system(size: 11, weight: .bold)).foregroundStyle(.white.opacity(0.85))
                                 .lineLimit(1).minimumScaleFactor(0.7)
                         }
                     }
+                    .frame(width: 80)
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     Text("\(g.emoji ?? "🎯") \(g.title)")
-                        .font(NK.serif(28)).foregroundStyle(NK.ink).lineLimit(3).minimumScaleFactor(0.7)
+                        .font(NK.serif(26)).foregroundStyle(.white).lineLimit(3).minimumScaleFactor(0.7)
                     if g.streakDays > 0 {
                         Text("🔥 \(g.streakDays)-day streak")
-                            .font(.system(size: 15, weight: .bold)).foregroundStyle(NK.gold)
+                            .font(.system(size: 15, weight: .bold)).foregroundStyle(.white.opacity(0.9))
                     }
                 }
                 Spacer(minLength: 0)
@@ -303,42 +329,50 @@ struct KioskDashboard: View {
                 }
             }
             Button { logGoal = g } label: {
-                Label("Log progress", systemImage: "plus.circle.fill")
-                    .font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                Label("Log \(g.unit ?? "progress")", systemImage: "plus.circle.fill")
+                    .font(.system(size: 17, weight: .bold)).foregroundStyle(Self.heroGreenInk)
                     .frame(maxWidth: .infinity).padding(.vertical, 14)
-                    .background(NK.primary).clipShape(Capsule())
+                    .background(.white).clipShape(Capsule())
             }
             .buttonStyle(.plain)
             if model.goals.count > 1 { goalSwitcher(current: g) }
         }
     }
 
-    /// One participant's progress bar inside the goal card.
+    /// One participant's progress bar inside the green goal card (white on green).
     private func goalContribRow(_ p: NookAPI.Goal.Participant, max: Double, unit: String?) -> some View {
-        let tint = Color(hexString: p.colorHex) ?? NK.primary
-        return HStack(spacing: 12) {
+        HStack(spacing: 12) {
             Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 32)
             VStack(alignment: .leading, spacing: 5) {
                 HStack {
-                    Text(p.name).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                    Text(p.name).font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
                     Spacer()
                     Text("\(goalFmt(p.progress))\(p.target.map { " / \(goalFmt($0))" } ?? "")\(unit.map { " \($0)" } ?? "")")
-                        .font(.system(size: 14, weight: .heavy)).foregroundStyle(NK.ink2)
+                        .font(.system(size: 14, weight: .heavy)).foregroundStyle(.white)
                 }
-                ProgressBar(value: max > 0 ? min(p.progress / max, 1) : 0, tint: tint, track: tint.opacity(0.16))
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(.white.opacity(0.25))
+                        Capsule().fill(.white)
+                            .frame(width: geo.size.width * (max > 0 ? min(p.progress / max, 1) : 0))
+                    }
+                }
+                .frame(height: 8)
             }
         }
     }
 
-    /// A compact switcher so the family can pin a different goal to the wall.
+    /// A compact switcher so the family can pin a different goal to the wall. Picking one
+    /// also re-asserts the goal layout, so the dashboard never drifts off the goal view.
     private func goalSwitcher(current: NookAPI.Goal) -> some View {
         Menu {
-            Button { kioskGoalId = "" } label: {
+            Button { pinGoal("") } label: {
                 Label("Auto (featured)", systemImage: kioskGoalId.isEmpty ? "checkmark" : "sparkles")
             }
             ForEach(model.goals) { g in
-                Button { kioskGoalId = g.id } label: {
-                    Label("\(g.emoji ?? "🎯") \(g.title)", systemImage: kioskGoalId == g.id ? "checkmark" : "")
+                Button { pinGoal(g.id) } label: {
+                    if kioskGoalId == g.id { Label("\(g.emoji ?? "🎯") \(g.title)", systemImage: "checkmark") }
+                    else { Text("\(g.emoji ?? "🎯") \(g.title)") }
                 }
             }
         } label: {
@@ -346,11 +380,18 @@ struct KioskDashboard: View {
                 Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 13, weight: .semibold))
                 Text("Show a different goal").font(.system(size: 14, weight: .bold))
             }
-            .foregroundStyle(NK.ink2)
+            .foregroundStyle(.white)
             .frame(maxWidth: .infinity).padding(.vertical, 11)
-            .background(NK.card).clipShape(Capsule())
-            .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+            .background(.white.opacity(0.16)).clipShape(Capsule())
+            .overlay(Capsule().strokeBorder(.white.opacity(0.4), lineWidth: 1))
         }
+    }
+
+    /// Pin a goal to the wall (empty = auto) and re-assert the goal layout, so picking a
+    /// goal from the card can never drift the dashboard off the goal-focused view.
+    private func pinGoal(_ id: String) {
+        kioskGoalId = id
+        layoutRaw = DashLayout.goal.rawValue
     }
 
     private var dashColumns: some View {
