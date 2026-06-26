@@ -49,8 +49,20 @@ beforeAll(async () => {
   delete process.env.AUTH0_DOMAIN
   app = (await import('../src/app')).default
   closePool = (await import('../src/platform/db')).closePool
-  const h = await call('POST', '/api/households', kevin, { name: 'Sites', timezone: 'America/Chicago', person: { name: 'Kevin' } })
-  kevinId = JSON.parse(h.body).person.id
+  const setup = await call('POST', '/api/auth/setup', undefined, {
+    household: { name: 'Sites', timezone: 'America/Chicago' },
+    admin: { name: 'Kevin', email: 'kevin@example.com', password: 'ownerpass1' },
+  })
+  expect(setup.statusCode).toBe(201)
+  kevinId = JSON.parse(setup.body).person.id
+  const householdId = JSON.parse(setup.body).household.id
+  // Seed an identity so the legacy mint('dev|kevin') token resolves to the owner.
+  await withClient((c) =>
+    c.query(
+      `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1,$2,'password','dev|kevin',true)`,
+      [householdId, kevinId]
+    )
+  )
 })
 
 afterAll(async () => {

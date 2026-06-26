@@ -73,12 +73,20 @@ function post(path: string, token: string, body: unknown) {
 
 describe('powersync auth', () => {
   beforeAll(async () => {
-    const res = await post('/api/households', kevin, {
-      name: 'Sites',
-      timezone: 'America/Chicago',
-      person: { name: 'Kevin' },
+    const query = (await import('../src/platform/db')).query
+    const res = await post('/api/auth/setup', '', {
+      household: { name: 'Sites', timezone: 'America/Chicago' },
+      admin: { name: 'Kevin', email: 'kevin@example.com', password: 'ownerpass1' },
     })
-    kevinHouseholdId = JSON.parse(res.body).household.id
+    expect(res.statusCode).toBe(201)
+    const sb = JSON.parse(res.body)
+    kevinHouseholdId = sb.household.id
+    // Seed an identity so the legacy mint('dev|kevin') token resolves to the owner;
+    // its PowerSync token must carry sub='dev|kevin'.
+    await query(
+      `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1,$2,'password','dev|kevin',true)`,
+      [kevinHouseholdId, sb.person.id]
+    )
   })
 
   it('serves a JWKS at /api/auth/keys without auth', async () => {

@@ -57,19 +57,35 @@ beforeAll(async () => {
   app = (await import('../src/app')).default
   closePool = (await import('../src/platform/db')).closePool
 
-  // Two separate households to prove isolation.
-  const k = await call('POST', '/api/households', kevin, {
-    name: 'Sites',
-    timezone: 'America/Chicago',
-    person: { name: 'Kevin' },
+  const { query } = await import('../src/platform/db')
+
+  // First-run onboarding creates Kevin's household + owner admin. Self-serve
+  // POST /api/households is now admin-gated; mint('dev|kevin') resolves via the
+  // identity seeded below.
+  const setup = await call('POST', '/api/auth/setup', undefined, {
+    household: { name: 'Sites', timezone: 'America/Chicago' },
+    admin: { name: 'Kevin', email: 'kevin@example.com', password: 'ownerpass1' },
   })
-  kevinHouseholdId = JSON.parse(k.body).household.id
-  kevinOwnerId = JSON.parse(k.body).person.id
-  await call('POST', '/api/households', kelly, {
-    name: 'Kelly HQ',
-    timezone: 'UTC',
-    person: { name: 'Kelly' },
-  })
+  expect(setup.statusCode).toBe(201)
+  kevinHouseholdId = JSON.parse(setup.body).household.id
+  kevinOwnerId = JSON.parse(setup.body).person.id
+  await query(
+    `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1,$2,'password','dev|kevin',true)`,
+    [kevinHouseholdId, kevinOwnerId]
+  )
+
+  // Second household to prove isolation. Setup is now locked, so seed Kelly's
+  // household + admin owner directly; mint('dev|kelly') resolves via this identity.
+  const kh = await query<{ id: string }>(`insert into households (name, timezone) values ('Kelly HQ','UTC') returning id`)
+  const kHid = kh.rows[0].id
+  const kp = await query<{ id: string }>(
+    `insert into persons (household_id, name, member_type, is_admin) values ($1,'Kelly','adult',true) returning id`,
+    [kHid]
+  )
+  await query(
+    `insert into identities (household_id, person_id, provider, auth0_user_id, email, email_verified) values ($1,$2,'password','dev|kelly','kelly@example.com',true)`,
+    [kHid, kp.rows[0].id]
+  )
 })
 
 // Seed a logged-in non-admin (teen) directly — the API has no invite flow yet.

@@ -69,13 +69,23 @@ beforeAll(async () => {
   app = (await import('../src/app')).default
   closePool = (await import('../src/platform/db')).closePool
 
-  const h = await call('POST', '/api/households', kevin, {
-    name: 'Sites',
-    timezone: 'America/Chicago',
-    person: { name: 'Kevin' },
+  // First-run onboarding creates the first household + owner admin; self-serve
+  // POST /api/households is now admin-gated. mint('dev|kevin') still resolves via
+  // the identity seeded for the owner below.
+  const setup = await call('POST', '/api/auth/setup', undefined, {
+    household: { name: 'Sites', timezone: 'America/Chicago' },
+    admin: { name: 'Kevin', email: 'kevin@example.com', password: 'ownerpass1' },
   })
-  kevinId = JSON.parse(h.body).person.id
-  householdId = JSON.parse(h.body).household.id
+  expect(setup.statusCode).toBe(201)
+  kevinId = JSON.parse(setup.body).person.id
+  householdId = JSON.parse(setup.body).household.id
+  // Seed an identity so the legacy mint('dev|kevin') token resolves to the owner.
+  await withClient((c) =>
+    c.query(
+      `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1,$2,'password','dev|kevin',true)`,
+      [householdId, kevinId]
+    )
+  )
 })
 
 // Create a member with a login identity so a minted token resolves to them — the

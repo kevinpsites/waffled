@@ -99,7 +99,19 @@ beforeAll(async () => {
 
   app = (await import('../src/app')).default
   closePool = (await import('../src/platform/db')).closePool
-  kevinId = JSON.parse((await call('POST', '/api/households', kevin, { name: 'Sites', timezone: 'America/Chicago', person: { name: 'Kevin' } })).body).person.id
+  const query = (await import('../src/platform/db')).query
+  const setup = await call('POST', '/api/auth/setup', undefined, {
+    household: { name: 'Sites', timezone: 'America/Chicago' },
+    admin: { name: 'Kevin', email: 'kevin@example.com', password: 'ownerpass1' },
+  })
+  expect(setup.statusCode).toBe(201)
+  const sb = JSON.parse(setup.body)
+  kevinId = sb.person.id
+  // Seed an identity so the legacy mint('dev|kevin') token resolves to the owner.
+  await query(
+    `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1,$2,'password','dev|kevin',true)`,
+    [sb.household.id, kevinId]
+  )
   const state = stateFrom(JSON.parse((await call('POST', '/api/calendar/google/connect', kevin, {})).body).url)
   await call('GET', `/auth/google/calendar/callback?code=c1&state=${state}`)
 }, 60_000)

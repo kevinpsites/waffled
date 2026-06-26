@@ -55,10 +55,21 @@ beforeAll(async () => {
   closePool = (await import('../src/platform/db')).closePool
   getPool = (await import('../src/platform/db')).getPool
   applySeriesMeta = (await import('../src/modules/events/event-series-meta')).applySeriesMeta
-  const h = await call('POST', '/api/households', kevin, { name: 'Sites', timezone: 'America/Chicago', person: { name: 'Kevin' } })
-  const body = JSON.parse(h.body)
+  const setup = await call('POST', '/api/auth/setup', undefined, {
+    household: { name: 'Sites', timezone: 'America/Chicago' },
+    admin: { name: 'Kevin', email: 'kevin@example.com', password: 'ownerpass1' },
+  })
+  expect(setup.statusCode).toBe(201)
+  const body = JSON.parse(setup.body)
   kevinId = body.person.id
   householdId = body.household.id
+  // Seed an identity so the legacy mint('dev|kevin') token resolves to the owner.
+  await withClient((cl) =>
+    cl.query(
+      `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1,$2,'password','dev|kevin',true)`,
+      [householdId, kevinId]
+    )
+  )
   const list = await call('POST', '/api/goal-lists', kevin, { name: 'Kevin', memberIds: [kevinId] })
   listId = JSON.parse(list.body).list.id
 }, 60_000)
