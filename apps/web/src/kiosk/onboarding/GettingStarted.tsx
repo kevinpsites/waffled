@@ -294,20 +294,17 @@ function GoalStep({ onCreated, onNavigateAway }: { onCreated: () => void; onNavi
       </div>
       <div className="ob-field">
         <span>Who's it for?</span>
-        {persons.length === 0 ? (
-          <div className="ob-hint">Add family members first to assign this goal.</div>
-        ) : (
-          <>
-            <div className="ob-seg">
-              {persons.map((p) => (
-                <button type="button" key={p.id} className={`ob-seg-btn${participantIds.includes(p.id) ? ' on' : ''}`} onClick={() => toggleParticipant(p.id)}>
-                  {p.avatarEmoji ?? '🙂'} {p.name}
-                </button>
-              ))}
-            </div>
-            <div className="ob-hint">Pick who's tracking this — or leave empty for the whole family.</div>
-          </>
-        )}
+        <div className="ob-seg">
+          {/* "Everyone" is the default (empty participant list = a family goal); it's
+              on whenever no individuals are picked, and picking it clears them. */}
+          <button type="button" className={`ob-seg-btn${participantIds.length === 0 ? ' on' : ''}`} onClick={() => setParticipantIds([])}>👪 Everyone</button>
+          {persons.map((p) => (
+            <button type="button" key={p.id} className={`ob-seg-btn${participantIds.includes(p.id) ? ' on' : ''}`} onClick={() => toggleParticipant(p.id)}>
+              {p.avatarEmoji ?? '🙂'} {p.name}
+            </button>
+          ))}
+        </div>
+        <div className="ob-hint">Tracked by the whole family, or pick specific people.</div>
       </div>
       {err && <div className="ob-err">{err}</div>}
       <button type="button" className="ob-btn primary" disabled={!canCreate || saving} onClick={submit}>
@@ -373,17 +370,21 @@ function RecipeStep({ onCreated, onNavigateAway }: { onCreated: () => void; onNa
 function OverlayWizard({
   steps,
   statuses,
+  initialStep,
   onChanged,
   onClose,
   onFinish,
 }: {
   steps: typeof STEPS
   statuses: Statuses
+  initialStep: number
   onChanged: (key: StepKey) => void
   onClose: () => void
   onFinish: () => void
 }) {
-  const [i, setI] = useState(0)
+  // Open where there's still work to do (e.g. Resume jumps to the first unfinished
+  // step), not always back at step 1.
+  const [i, setI] = useState(initialStep)
   const step = steps[Math.min(i, steps.length - 1)]
   const isLast = i >= steps.length - 1
 
@@ -495,6 +496,7 @@ export function GettingStartedBar() {
         <OverlayWizard
           steps={steps}
           statuses={statuses}
+          initialStep={Math.max(0, steps.findIndex((s) => !statuses[s.key]))}
           onChanged={(key) => { markDone(key); void refresh() }}
           onClose={() => { setOverlayOpen(false); void refresh() }}
           onFinish={dismiss}
