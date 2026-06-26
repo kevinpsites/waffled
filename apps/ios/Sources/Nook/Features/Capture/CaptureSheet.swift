@@ -85,7 +85,19 @@ struct CaptureSheet: View {
             _ = await (warm, currencies)
             lists = fetchedLists
         }
-        .onDisappear { dictation.stop() }
+        .onDisappear { dictation.stop(); resetForm() }
+    }
+
+    /// Clear everything so reopening the bar starts fresh (the sheet's @State otherwise
+    /// survives a dismiss on iPhone, leaving the last parse filled in).
+    private func resetForm() {
+        text = ""; phase = .input; error = nil
+        intent = nil; via = ""; thinking = false
+        serverAlt = nil; serverAltVia = ""
+        editing = false; editKind = "event"; editName = ""; editQty = ""
+        evRepeat = .none; evUntilOn = false; evPerson = nil
+        taskStars = 0; taskRrule = nil
+        detent = .large
     }
 
     // MARK: header
