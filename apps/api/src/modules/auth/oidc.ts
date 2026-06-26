@@ -12,9 +12,21 @@ import jwt, { type JwtPayload, type GetPublicKeyOrSecret } from 'jsonwebtoken'
 import { JwksClient } from 'jwks-rsa'
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
+import { config } from '../../platform/config'
 import { encryptSecret, decryptSecret, encryptionAvailable } from '../../platform/crypto'
 import { mintAccess, issueRefresh } from './auth'
 import { requireTenant, requireAdmin, findTenantBySub, findPersonByEmail, linkIdentity } from '../households/households'
+import {
+  listMemberships,
+  pickActiveHousehold,
+  setLastHousehold,
+  pendingInvitesForEmail,
+  findAccountByEmail,
+  ensureSsoAccount,
+  linkPersonAccount,
+  firstPendingInviteForEmail,
+  createMembershipFromInvite,
+} from './accounts'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -228,12 +240,39 @@ export function registerOidcRoutes(api: Api): void {
         if (!email || !emailVerified) {
           return failSignIn(req, res, st.redirect_to, 403, 'Sign-in blocked', 'Your identity provider did not supply a verified email.', 'no_verified_email')
         }
-        const match = await findPersonByEmail(email)
-        if (!match) {
-          return failSignIn(req, res, st.redirect_to, 403, 'Not invited', `No Nook account uses ${email}. Ask an admin to add you first.`, 'not_invited')
+        // Match the verified email to an ACCOUNT (not just a person). The account is
+        // the global login; we link the OIDC identity to it and land on its active
+        // household so the handoff exchange mints an account-scoped token.
+        const account = await findAccountByEmail(email)
+        let personId: string
+        let householdId: string
+        if (account) {
+          const memberships = await listMemberships(account.id) // an account always has >=1
+          const active = await pickActiveHousehold(account.id, memberships)
+          const m = memberships.find((x) => x.householdId === active)!
+          personId = m.personId
+          householdId = m.householdId
+          await linkIdentity({ householdId, personId, provider: 'oidc', subject, email, emailVerified, accountId: account.id })
+        } else {
+          const personMatch = await findPersonByEmail(email) // legacy email-only person/credential
+          const invite = await firstPendingInviteForEmail(email)
+          if (personMatch) {
+            const acctId = await ensureSsoAccount(email)
+            await linkPersonAccount(personMatch.personId, acctId)
+            personId = personMatch.personId
+            householdId = personMatch.householdId
+            await linkIdentity({ householdId, personId, provider: 'oidc', subject, email, emailVerified, accountId: acctId })
+          } else if (invite) {
+            const acctId = await ensureSsoAccount(email)
+            const m = await createMembershipFromInvite(acctId, email, invite)
+            personId = m.personId
+            householdId = m.householdId
+            await linkIdentity({ householdId, personId, provider: 'oidc', subject, email, emailVerified, accountId: acctId })
+          } else {
+            return failSignIn(req, res, st.redirect_to, 403, 'Not invited', `No Nook account uses ${email}. Ask an admin to add you first.`, 'not_invited')
+          }
         }
-        await linkIdentity({ householdId: match.householdId, personId: match.personId, provider: 'oidc', subject, email, emailVerified })
-        tenant = { sub: subject, personId: match.personId, householdId: match.householdId, isAdmin: false, memberType: 'adult' }
+        tenant = { sub: subject, personId, householdId, isAdmin: false, memberType: 'adult' }
       }
 
       const handoff = randomUUID()
@@ -258,6 +297,30 @@ export function registerOidcRoutes(api: Api): void {
     )
     const h = rows[0]
     if (!h) return res.status(401).json({ error: 'Unauthorized', message: 'Invalid or expired sign-in.' })
+    // Mint an account-scoped session (sub = account.id + household claim) landing on
+    // the account's last-active household — same as password login. Persons without
+    // an account (legacy/kiosk) keep the claim-less subject.
+    const pr = await query<{ account_id: string | null; household_id: string }>(
+      `select account_id, household_id from persons where id = $1`,
+      [h.person_id]
+    )
+    const person = pr.rows[0]
+    if (person?.account_id) {
+      const memberships = await listMemberships(person.account_id)
+      const active = await pickActiveHousehold(person.account_id, memberships)
+      await setLastHousehold(person.account_id, active)
+      const activePersonId = memberships.find((m) => m.householdId === active)!.personId
+      const access = mintAccess(person.account_id, { [config.auth.householdClaim]: active })
+      const refreshToken = await issueRefresh(activePersonId, person.account_id)
+      const acct = await query<{ email: string }>(`select email from accounts where id = $1`, [person.account_id])
+      return res.status(200).json({
+        accessToken: access.token,
+        refreshToken,
+        expiresIn: access.expiresIn,
+        memberships,
+        pendingInvites: await pendingInvitesForEmail(acct.rows[0].email),
+      })
+    }
     const access = mintAccess(h.subject)
     const refreshToken = await issueRefresh(h.person_id, h.subject)
     return res.status(200).json({ accessToken: access.token, refreshToken, expiresIn: access.expiresIn })

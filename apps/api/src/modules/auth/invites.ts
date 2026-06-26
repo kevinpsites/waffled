@@ -5,9 +5,9 @@
 // which creates their persons membership linked to their account. No one is attached
 // without their explicit OK.
 import createAPI, { type Request, type Response } from 'lambda-api'
-import { getPool, query } from '../../platform/db'
+import { query } from '../../platform/db'
 import { requireTenant, requireAdmin } from '../households/households'
-import { pendingInvitesForEmail } from './accounts'
+import { pendingInvitesForEmail, createMembershipFromInvite } from './accounts'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -158,57 +158,20 @@ export function registerInviteRoutes(api: Api): void {
       return res.status(403).json({ error: 'Forbidden', message: 'This invite is addressed to a different email.' })
     }
 
-    // Idempotent: if the account is already a member of the target household, just
-    // mark the invite accepted and return the existing membership — no duplicate.
-    const existing = await query<{ id: string; member_type: string; is_admin: boolean }>(
-      `select id, member_type, is_admin from persons
-        where household_id = $1 and account_id = $2 and deleted_at is null
-        order by created_at limit 1`,
-      [invite.household_id, account.id]
-    )
-    if (existing.rows[0]) {
-      await query(`update household_invites set accepted_at = now() where id = $1`, [invite.id])
-      const m = existing.rows[0]
-      return res.status(200).json({
-        membership: {
-          householdId: invite.household_id,
-          personId: m.id,
-          isAdmin: m.is_admin,
-          memberType: m.member_type,
-        },
-      })
-    }
-
-    // Create the membership + accept the invite atomically. Display name = the
-    // account's existing canonical person name, else the email local-part.
-    const client = await getPool().connect()
-    try {
-      await client.query('begin')
-      const nameRow = await client.query<{ name: string }>(
-        `select name from persons where account_id = $1 and deleted_at is null order by created_at limit 1`,
-        [account.id]
-      )
-      const name = nameRow.rows[0]?.name ?? account.email.split('@')[0]
-      const personRow = await client.query<{ id: string }>(
-        `insert into persons (household_id, name, member_type, is_admin, account_id)
-         values ($1, $2, $3, $4, $5) returning id`,
-        [invite.household_id, name, invite.member_type, invite.is_admin, account.id]
-      )
-      await client.query(`update household_invites set accepted_at = now() where id = $1`, [invite.id])
-      await client.query('commit')
-      return res.status(201).json({
-        membership: {
-          householdId: invite.household_id,
-          personId: personRow.rows[0].id,
-          isAdmin: invite.is_admin,
-          memberType: invite.member_type,
-        },
-      })
-    } catch (err) {
-      await client.query('rollback')
-      throw err
-    } finally {
-      client.release()
-    }
+    // Create (or reuse) the membership + accept the invite via the shared helper.
+    const result = await createMembershipFromInvite(account.id, account.email, {
+      id: invite.id,
+      householdId: invite.household_id,
+      memberType: invite.member_type,
+      isAdmin: invite.is_admin,
+    })
+    return res.status(result.created ? 201 : 200).json({
+      membership: {
+        householdId: result.householdId,
+        personId: result.personId,
+        isAdmin: result.isAdmin,
+        memberType: result.memberType,
+      },
+    })
   })
 }

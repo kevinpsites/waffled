@@ -134,11 +134,12 @@ export async function linkIdentity(input: {
   subject: string
   email: string | null
   emailVerified: boolean
+  accountId: string | null
 }): Promise<void> {
   await query(
-    `insert into identities (household_id, person_id, provider, auth0_user_id, email, email_verified, is_primary)
-     values ($1, $2, $3, $4, $5, $6, false)`,
-    [input.householdId, input.personId, input.provider, input.subject, input.email, input.emailVerified]
+    `insert into identities (household_id, person_id, provider, auth0_user_id, email, email_verified, is_primary, account_id)
+     values ($1, $2, $3, $4, $5, $6, false, $7)`,
+    [input.householdId, input.personId, input.provider, input.subject, input.email, input.emailVerified, input.accountId]
   )
 }
 
