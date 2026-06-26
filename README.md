@@ -146,12 +146,14 @@ and credential→identity wiring the API uses, so there's one source of truth.
 | Command | What it does |
 | --- | --- |
 | `list-members` | List everyone with their login email, admin/owner status, and whether they have a password and/or SSO identity. |
-| `reset-password --email <e> [--password <pw>]` | Set a member's password by login email (the headline use case: locked-out admin, no SSO). Generates a strong one and prints it if `--password` is omitted, and revokes that member's active sessions. |
+| `reset-password --email <e> [--password <pw>]` | Set a member's password by login email (the headline use case: locked-out admin, no SSO). Generates a strong one and prints it if `--password` is omitted, and revokes their active sessions **across all of their households**. |
+| `add-member --email <e> --household-id <uuid> [--member-type adult\|teen\|kid] [--admin]` | Attach an **existing** account to another household directly — the break-glass alternative to the web Households → invite-and-accept flow. The account must already exist (the human has signed in at least once); idempotent if they're already a member. |
+| `list-accounts` | List each human (account) and every household they belong to, with an owner/admin/member marker. |
 | `make-admin (--email <e> \| --person <uuid>)` | Grant admin. |
 | `revoke-admin (--email <e> \| --person <uuid>)` | Revoke admin (the household owner can't be demoted). |
 | `password-login <on\|off>` | Enable/disable email+password login (the DB toggle mirrored in Settings → Login & security). |
 | `clear-calendar-error (--email <e> \| --all)` | Clear a stuck Google account's "sync failing" flag. (The token itself is fixed by **Reconnect** in Settings → Calendars — a browser OAuth step the CLI can't do.) |
-| `prune-sessions [--email <e>]` | Revoke refresh tokens for one member, or everyone — forces re-login. |
+| `prune-sessions [--email <e>]` | Revoke refresh tokens for one member (**across all of their households**), or everyone — forces re-login. |
 | `regenerate-powersync-key` | Print a fresh `POWERSYNC_JWT_PRIVATE_KEY` (RSA-2048) to paste into `.env`, then `./nook restart api powersync`. |
 | `list-households` | List every household with its member + login counts, created date, and id. |
 | `delete-household --id <uuid> [--force]` | Permanently delete a household and **all** of its data (handy for clearing test debris). Refuses a household that has logins unless you add `--force`. |

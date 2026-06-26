@@ -77,6 +77,27 @@ async function credentialByEmail(email: string) {
   return rows[0] ?? null
 }
 
+// Resolve a human account from an email — accounts hold the one source-of-truth
+// password and unify a person's many household memberships.
+async function accountByEmail(email: string): Promise<{ id: string; email: string } | null> {
+  const { rows } = await query<{ id: string; email: string }>(
+    `select id, email from accounts where lower(email) = lower($1) and deleted_at is null limit 1`,
+    [email]
+  )
+  return rows[0] ?? null
+}
+
+// Revoke every active session for an account across ALL its household memberships
+// (a session's person_id is whichever membership was active when it was issued).
+async function revokeAccountSessions(accountId: string): Promise<number> {
+  const { rowCount } = await query(
+    `update refresh_tokens set revoked_at = now()
+      where revoked_at is null and person_id in (select id from persons where account_id = $1)`,
+    [accountId]
+  )
+  return rowCount ?? 0
+}
+
 // Resolve a person by --email or --person, scoped to a real household.
 async function resolvePerson(): Promise<{ id: string; household_id: string; name: string; is_admin: boolean }> {
   const email = flag('email')
@@ -146,12 +167,21 @@ async function resetPassword(): Promise<void> {
     die('Aborted.', 0)
   }
   // Reuse the API's own helper: hashes with scrypt + ensures a password identity.
+  // This writes the credential + password identity — the auth source of truth.
   await setPersonLogin(cred.household_id, cred.person_id, email, password)
-  // Force re-login everywhere with the new password.
-  await query(`update refresh_tokens set revoked_at = now() where person_id = $1 and revoked_at is null`, [cred.person_id])
+  // Keep the accounts mirror current and revoke sessions across EVERY household the
+  // human belongs to (not just this credential's person).
+  const account = await accountByEmail(email)
+  if (account) {
+    await query(`update accounts set password_hash = $1, updated_at = now() where id = $2`, [hashPassword(password), account.id])
+    await revokeAccountSessions(account.id)
+  } else {
+    // Legacy edge: no account row — fall back to the credential's person only.
+    await query(`update refresh_tokens set revoked_at = now() where person_id = $1 and revoked_at is null`, [cred.person_id])
+  }
   console.log(ok(`✓ Password reset for ${cred.person_name} (${email}).`))
   if (!provided) console.log(`  New password: ${c.bold}${password}${c.reset}  ${c.dim}(give this to them; they can change it in Settings)${c.reset}`)
-  console.log(c.dim + '  Active sessions were revoked — they must sign in again.' + c.reset)
+  console.log(c.dim + '  Active sessions across all their households were revoked — they must sign in again.' + c.reset)
 }
 
 async function makeAdmin(grant: boolean): Promise<void> {
@@ -199,18 +229,28 @@ async function clearCalendarError(): Promise<void> {
 
 async function pruneSessions(): Promise<void> {
   const email = flag('email')
-  let target = 'all members'
-  let where = 'revoked_at is null'
-  const params: unknown[] = []
   if (email) {
+    // Account-scoped: revoke across all the human's household memberships.
     const cred = await credentialByEmail(email)
     if (!cred) die(`No member found with login email "${email}".`)
-    where += ' and person_id = $1'; params.push(cred.person_id)
-    target = `${cred.person_name} (${email})`
+    const target = `${cred.person_name} (${email})`
+    if (!(await confirm(`Revoke ALL active sessions for ${c.bold}${target}${c.reset}? They will have to sign in again.`))) die('Aborted.', 0)
+    const account = await accountByEmail(email)
+    let revoked: number
+    if (account) {
+      revoked = await revokeAccountSessions(account.id)
+    } else {
+      // Legacy edge: no account row — fall back to the credential's person only.
+      const { rowCount } = await query(`update refresh_tokens set revoked_at = now() where revoked_at is null and person_id = $1`, [cred.person_id])
+      revoked = rowCount ?? 0
+    }
+    console.log(ok(`✓ Revoked ${revoked} active session(s) for ${target}.`))
+    return
   }
-  if (!(await confirm(`Revoke ALL active sessions for ${c.bold}${target}${c.reset}? They will have to sign in again.`))) die('Aborted.', 0)
-  const { rowCount } = await query(`update refresh_tokens set revoked_at = now() where ${where}`, params)
-  console.log(ok(`✓ Revoked ${rowCount ?? 0} active session(s) for ${target}.`))
+  // No --email: revoke every active session for everyone.
+  if (!(await confirm(`Revoke ALL active sessions for ${c.bold}all members${c.reset}? They will have to sign in again.`))) die('Aborted.', 0)
+  const { rowCount } = await query(`update refresh_tokens set revoked_at = now() where revoked_at is null`)
+  console.log(ok(`✓ Revoked ${rowCount ?? 0} active session(s) for all members.`))
 }
 
 function regeneratePowerSyncKey(): void {
@@ -300,19 +340,91 @@ async function deleteHousehold(): Promise<void> {
   console.log(ok(`✓ Deleted "${row.name}" and ${total} row(s) across the schema.`))
 }
 
+// Break-glass attach: add an EXISTING account to a household directly. This is the
+// operator-side alternative to the web Households → invite-and-accept flow (host
+// access is the authorization). The account must already exist — a human becomes an
+// account the first time they sign in (password or SSO).
+async function addMember(): Promise<void> {
+  const email = flag('email')
+  const householdId = flag('household-id')
+  if (!email || !householdId) die('add-member requires --email <login email> and --household-id <uuid>.')
+
+  const account = await accountByEmail(email)
+  if (!account) {
+    die(`No account uses "${email}". They must sign in once (password or SSO) first, or use the web Households → invite flow.`)
+  }
+
+  const hh = await query<{ name: string }>(`select name from households where id = $1 and deleted_at is null`, [householdId])
+  if (!hh.rows[0]) die(`No household found with id "${householdId}".`)
+  const householdName = hh.rows[0].name
+
+  const existing = await query<{ one: number }>(
+    `select 1 as one from persons where household_id = $1 and account_id = $2 and deleted_at is null limit 1`,
+    [householdId, account.id]
+  )
+  if (existing.rows[0]) {
+    console.log(c.dim + `${email} is already a member of "${householdName}" — no change.` + c.reset)
+    return
+  }
+
+  const memberType = flag('member-type') || 'adult'
+  const isAdmin = has('admin')
+  if (!(await confirm(`Attach ${c.bold}${email}${c.reset} to "${householdName}" as ${memberType}${isAdmin ? ' (admin)' : ''}?`))) {
+    die('Aborted.', 0)
+  }
+
+  // Carry over the human's existing display name if we have one.
+  const nameRow = await query<{ name: string }>(
+    `select name from persons where account_id = $1 and deleted_at is null order by created_at limit 1`,
+    [account.id]
+  )
+  const displayName = nameRow.rows[0]?.name || email.split('@')[0]
+
+  await query(
+    `insert into persons (household_id, name, member_type, is_admin, account_id) values ($1, $2, $3, $4, $5)`,
+    [householdId, displayName, memberType, isAdmin, account.id]
+  )
+  console.log(ok(`✓ Attached ${displayName} (${email}) to "${householdName}" as ${memberType}${isAdmin ? ' (admin)' : ''}.`))
+}
+
+// One human (account) → all the households they belong to.
+async function listAccounts(): Promise<void> {
+  const { rows } = await query<{ email: string; household: string; is_admin: boolean; is_owner: boolean }>(
+    `select a.email, h.name as household, p.is_admin, (h.owner_person_id = p.id) as is_owner
+       from accounts a
+       join persons p on p.account_id = a.id and p.deleted_at is null
+       join households h on h.id = p.household_id and h.deleted_at is null
+      where a.deleted_at is null
+      order by lower(a.email), h.name`
+  )
+  if (!rows.length) { console.log(c.dim + 'No accounts yet.' + c.reset); return }
+  let lastEmail = ''
+  for (const r of rows) {
+    if (r.email !== lastEmail) { console.log(`\n${c.bold}${r.email}${c.reset}`); lastEmail = r.email }
+    const role = r.is_owner ? c.cyan + 'owner' + c.reset : r.is_admin ? c.cyan + 'admin' + c.reset : c.dim + 'member' + c.reset
+    console.log(`  ${ok(r.household)}  ${role}`)
+  }
+  console.log()
+}
+
 function help(): void {
   console.log(`${c.bold}Nook admin — operator / break-glass commands${c.reset}
 ${c.dim}Run as: ./nook admin <command> [flags]${c.reset}
 
   ${c.bold}list-members${c.reset}                       people, login email, admin/owner, password/SSO
   ${c.bold}reset-password${c.reset} --email <e> [--password <pw>] [--yes]
-                                     set a member's password (random if omitted); revokes sessions
+                                     set a member's password (random if omitted); revokes
+                                     their sessions across ALL their households
+  ${c.bold}add-member${c.reset} --email <e> --household-id <uuid> [--member-type adult|teen|kid] [--admin] [--yes]
+                                     attach an existing account to a household (break-glass invite)
+  ${c.bold}list-accounts${c.reset}                      each human and the households they belong to
   ${c.bold}make-admin${c.reset}    (--email <e> | --person <uuid>)    grant admin
   ${c.bold}revoke-admin${c.reset}  (--email <e> | --person <uuid>)    revoke admin (not the owner)
   ${c.bold}password-login${c.reset} <on|off>             enable/disable email+password login
   ${c.bold}clear-calendar-error${c.reset} (--email <e> | --all) [--yes]
                                      clear a stuck Google account's sync-error flag
-  ${c.bold}prune-sessions${c.reset} [--email <e>] [--yes]  revoke refresh tokens (one member, or all)
+  ${c.bold}prune-sessions${c.reset} [--email <e>] [--yes]  revoke refresh tokens (one member across all
+                                     their households, or everyone)
   ${c.bold}regenerate-powersync-key${c.reset}            print a fresh POWERSYNC_JWT_PRIVATE_KEY
   ${c.bold}list-households${c.reset}                     households with member + login counts
   ${c.bold}delete-household${c.reset} --id <uuid> [--force] [--yes]
@@ -322,7 +434,7 @@ ${c.dim}Destructive commands prompt for confirmation (or pass --yes).
 Break-glass: set AUTH_FORCE_PASSWORD=1 in the api env + restart to force password login.${c.reset}`)
 }
 
-export const _cmds = { listMembers, resetPassword, makeAdmin, passwordLogin, clearCalendarError, pruneSessions, regeneratePowerSyncKey, listHouseholds, deleteHousehold }
+export const _cmds = { listMembers, resetPassword, makeAdmin, passwordLogin, clearCalendarError, pruneSessions, regeneratePowerSyncKey, listHouseholds, deleteHousehold, addMember, listAccounts }
 
 async function main(): Promise<void> {
   const command = args()[0] ?? 'help'
@@ -337,6 +449,8 @@ async function main(): Promise<void> {
     case 'regenerate-powersync-key': regeneratePowerSyncKey(); break
     case 'list-households': await listHouseholds(); break
     case 'delete-household': await deleteHousehold(); break
+    case 'add-member': await addMember(); break
+    case 'list-accounts': await listAccounts(); break
     case 'help': case '-h': case '--help': help(); break
     default: process.stderr.write(err(`Unknown command: ${command}`) + '\n\n'); help(); process.exitCode = 1
   }
