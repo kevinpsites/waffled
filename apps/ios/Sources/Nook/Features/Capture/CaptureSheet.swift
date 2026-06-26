@@ -536,7 +536,7 @@ struct CaptureSheet: View {
         case "anthropic": return "via Claude"
         case "openai": return "via OpenAI"
         case "ollama": return "via local LLM"
-        case "on-device": return "on device · no AI"   // the offline heuristic fallback
+        case "on-device": return "on device"   // the offline heuristic fallback
         default: return ""
         }
     }
