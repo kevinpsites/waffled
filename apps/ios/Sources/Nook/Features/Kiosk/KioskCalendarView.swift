@@ -579,7 +579,10 @@ struct CalTimeGrid: View {
                                 Color.clear.frame(width: gutter)
                                 ForEach(Array(days.enumerated()), id: \.element) { idx, _ in
                                     ZStack(alignment: .leading) {
-                                        if idx > 0 { Rectangle().fill(NK.hair).frame(width: 1) }
+                                        // A touch stronger than the 8%-opacity hour lines so a
+                                        // vertical day boundary actually reads (it's broken up by
+                                        // event blocks, so the faint hour-line tone disappears).
+                                        if idx > 0 { Rectangle().fill(NK.ink.opacity(0.13)).frame(width: 1) }
                                     }
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 }
