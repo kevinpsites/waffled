@@ -19,6 +19,7 @@ const NAV = [
   { key: 'display', icon: '🖥️', label: 'Display & Kiosk', admin: true },
   { key: 'notifications', icon: '🔔', label: 'Notifications', admin: true },
   { key: 'health', icon: '🩺', label: 'System Health', admin: true },
+  { key: 'households', icon: '🏠', label: 'Households' },
   { key: 'about', icon: 'ℹ️', label: 'About' },
 ]
 
@@ -1375,6 +1376,82 @@ function AboutPanel() {
   )
 }
 
+// Households — switch between the households this account belongs to, and accept
+// pending invitations. Not admin-gated: any account can switch / accept. Switching
+// mints a fresh session for the other membership and does a full reload so the app
+// (and PowerSync) re-establish cleanly against the new household.
+function HouseholdsPanel() {
+  const { household, memberships, pendingInvites } = useHousehold()
+  const [switching, setSwitching] = useState<string | null>(null)
+  const [accepting, setAccepting] = useState<string | null>(null)
+
+  async function doSwitch(id: string) {
+    setSwitching(id)
+    try {
+      await authApi.switchHousehold(id)
+      window.location.assign('/')
+    } catch {
+      setSwitching(null)
+    }
+  }
+  async function doAccept(id: string) {
+    setAccepting(id)
+    try {
+      await authApi.acceptInvite(id)
+      emitHouseholdChanged()
+    } finally {
+      setAccepting(null)
+    }
+  }
+
+  const soloAndNoInvites = memberships.length <= 1 && pendingInvites.length === 0
+
+  return (
+    <div className="set-panel">
+      <div className="set-head"><div className="nk-serif set-head-t">Households</div></div>
+      <div className="set-card" style={{ padding: 22 }}>
+        <div className="set-row2-t" style={{ marginBottom: 4 }}>Your households</div>
+        <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 16 }}>
+          {soloAndNoInvites
+            ? 'You belong to one household. Invitations to join others will show up here.'
+            : 'Switch between the households you belong to. Switching reloads Nook for that family.'}
+        </div>
+        {memberships.map((m) => {
+          const current = m.householdId === household?.id
+          return (
+            <div key={m.householdId} className="set-row2" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+              <div className="set-row2-t">{m.householdName}</div>
+              {current ? (
+                <span className="tiny muted" style={{ fontWeight: 700 }}>Current</span>
+              ) : (
+                <button type="button" className="btn btn-primary" disabled={switching === m.householdId} onClick={() => doSwitch(m.householdId)}>
+                  {switching === m.householdId ? 'Switching…' : 'Switch'}
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {pendingInvites.length > 0 && (
+        <div className="set-card" style={{ marginTop: 18, padding: 22 }}>
+          <div className="set-row2-t" style={{ marginBottom: 4 }}>Pending invitations</div>
+          <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 16 }}>
+            Accept an invitation to join another household. It then appears above.
+          </div>
+          {pendingInvites.map((inv) => (
+            <div key={inv.id} className="set-row2" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+              <div className="set-row2-t">{inv.householdName}</div>
+              <button type="button" className="btn btn-primary" disabled={accepting === inv.id} onClick={() => doAccept(inv.id)}>
+                {accepting === inv.id ? 'Accepting…' : 'Accept'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Login & security (admin only) — attach an OIDC/SSO provider and decide whether
 // password login stays on. Immich-style: config lives in the DB, edited here. The
 // client secret is write-only (server returns only whether one is set).
@@ -1893,7 +1970,7 @@ function DisplayKioskPanel() {
 }
 
 export function Settings() {
-  const { household, person } = useHousehold()
+  const { household, person, memberships, pendingInvites } = useHousehold()
   // Tab lives in the URL (?tab=) so a refresh returns to where you were.
   const [params, setParams] = useSearchParams()
   const tab = params.get('tab') ?? 'family'
@@ -1905,7 +1982,10 @@ export function Settings() {
   // Non-admins only see what they can actually use (About + Sign out). Admin-only
   // tabs are hidden rather than shown-then-blocked, so there's nothing to fumble.
   const isAdmin = person?.isAdmin ?? false
-  const nav = NAV.filter((n) => !n.admin || isAdmin)
+  // The households tab only appears when there's something to act on (another
+  // membership to switch to, or a pending invite). Not admin-gated.
+  const showHouseholds = memberships.length > 1 || pendingInvites.length > 0
+  const nav = NAV.filter((n) => (!n.admin || isAdmin) && (n.key !== 'households' || showHouseholds))
   const activeTab = nav.some((n) => n.key === tab) ? tab : (nav[0]?.key ?? 'about')
 
   return (
@@ -1923,7 +2003,7 @@ export function Settings() {
         </div>
       </div>
       <div className="set-content">
-        {activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <CalendarsPanel /> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
+        {activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <CalendarsPanel /> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
       </div>
     </div>
   )

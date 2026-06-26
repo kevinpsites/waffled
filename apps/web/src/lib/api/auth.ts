@@ -74,6 +74,16 @@ export const authApi = {
   saveConfig: (patch: OidcConfigPatch) => apiSend<{ ok: true }>('PUT', '/api/auth/config', patch),
   testConfig: (issuerUrl: string) =>
     apiSend<{ ok: boolean; issuer?: string; authorizationEndpoint?: string; message?: string }>('POST', '/api/auth/config/test', { issuerUrl }),
+  // Mint a fresh session for another household this account belongs to. The caller
+  // decides what to do next (we do a full reload to re-establish PowerSync etc.).
+  async switchHousehold(householdId: string): Promise<void> {
+    const d = await apiSend<SessionResponse>('POST', '/api/auth/switch', { householdId })
+    setSession(d.accessToken, d.refreshToken)
+  },
+  // Accept a pending invitation — creates the membership (no auto-switch).
+  async acceptInvite(inviteId: string): Promise<void> {
+    await apiSend('POST', `/api/auth/invites/${inviteId}/accept`, {})
+  },
   async logout(): Promise<void> {
     let refreshToken: string | undefined
     try {

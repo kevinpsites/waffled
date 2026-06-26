@@ -39,6 +39,25 @@ export interface Household {
   ownerPersonId: string | null
 }
 
+// Every household this account belongs to (incl. the current one) — drives the
+// household switcher.
+export interface Membership {
+  householdId: string
+  householdName: string
+  personId: string
+  isAdmin: boolean
+  memberType: string
+}
+
+// An outstanding invitation to join another household.
+export interface PendingInvite {
+  id: string
+  householdId: string
+  householdName: string
+  memberType: string
+  isAdmin: boolean
+}
+
 export const personsApi = {
   persons: () => apiGet<{ persons: Person[] }>('/api/persons'),
   createPerson: (input: Record<string, unknown>) => apiSend<{ person: Person }>('POST', '/api/persons', input).then((r) => r.person),
@@ -51,7 +70,8 @@ export const personsApi = {
   removeLogin: (id: string) => apiDelete(`/api/persons/${id}/login`),
   setSavingToward: (id: string, rewardId: string | null) =>
     apiSend<{ person: Person }>('POST', `/api/persons/${id}/saving-toward`, { rewardId }).then((r) => r.person).then(tap('rewards')),
-  household: () => apiGet<{ provisioned: boolean; household?: Household; person?: Person }>('/api/household'),
+  household: () =>
+    apiGet<{ provisioned: boolean; household?: Household; person?: Person; memberships?: Membership[]; pendingInvites?: PendingInvite[] }>('/api/household'),
   householdSettings: () => apiGet<{ household: Household; members: SettingsMember[] }>('/api/household/settings'),
   updateHousehold: (patch: Record<string, unknown>) => apiSend<{ household: Household }>('PATCH', '/api/household', patch).then((r) => r.household),
 }
@@ -68,15 +88,29 @@ export function emitHouseholdChanged(): void {
 
 // Lightweight household fetch (timezone, name) for the global chrome. Refetches
 // when household basics are edited in Settings.
-export function useHousehold(): { household: Household | null; person: Person | null } {
+export function useHousehold(): {
+  household: Household | null
+  person: Person | null
+  memberships: Membership[]
+  pendingInvites: PendingInvite[]
+} {
   const [household, setHousehold] = useState<Household | null>(null)
   const [person, setPerson] = useState<Person | null>(null)
+  const [memberships, setMemberships] = useState<Membership[]>([])
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([])
   useEffect(() => {
     let alive = true
     const load = () =>
       personsApi
         .household()
-        .then((d) => alive && (setHousehold(d.household ?? null), setPerson(d.person ?? null)))
+        .then(
+          (d) =>
+            alive &&
+            (setHousehold(d.household ?? null),
+            setPerson(d.person ?? null),
+            setMemberships(d.memberships ?? []),
+            setPendingInvites(d.pendingInvites ?? [])),
+        )
         .catch(() => {})
     load()
     window.addEventListener(HOUSEHOLD_CHANGED, load)
@@ -85,7 +119,7 @@ export function useHousehold(): { household: Household | null; person: Person | 
       window.removeEventListener(HOUSEHOLD_CHANGED, load)
     }
   }, [])
-  return { household, person }
+  return { household, person, memberships, pendingInvites }
 }
 
 export interface PersonsState {
