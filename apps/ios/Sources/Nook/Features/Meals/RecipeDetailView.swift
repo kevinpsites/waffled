@@ -136,7 +136,9 @@ struct RecipeDetailView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 14) {
-                if let t = r.cookTimeMinutes { metaItem("🕐", "\(t) min") }
+                // Prep + cook broken out here (the library card shows the combined total).
+                if let p = r.prepTimeMinutes { metaItem("🔪", "\(p) min prep") }
+                if let c = r.cookTimeMinutes { metaItem("🔥", "\(c) min cook") }
                 metaItem("🍽️", "Serves \(baseServings)")
                 if !steps.isEmpty { metaItem("🪜", "\(steps.count) steps") }
                 if let s = r.sourceName { metaItem("📖", s) }

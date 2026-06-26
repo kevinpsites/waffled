@@ -166,7 +166,7 @@ struct RecipesLibraryView: View {
     private func sortLess(_ a: NookAPI.RecipeSummary, _ b: NookAPI.RecipeSummary) -> Bool {
         switch sort {
         case .az: return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
-        case .quickest: return (a.cookTimeMinutes ?? .max) < (b.cookTimeMinutes ?? .max)
+        case .quickest: return (a.totalTimeMinutes ?? .max) < (b.totalTimeMinutes ?? .max)
         case .mostCooked: return a.cookedCount > b.cookedCount
         case .recent: return (a.lastCookedAt ?? "") > (b.lastCookedAt ?? "")
         }
@@ -314,7 +314,8 @@ struct RecipeCard: View {
         HStack(spacing: 8) {
             if let c = recipe.cuisine { meta("🌍", c) }
             if let p = recipe.protein { meta("🥩", p) }
-            if let t = recipe.cookTimeMinutes { meta("🕐", "\(t)m") }
+            // Total time = prep + cook (the card summarizes; the detail breaks it down).
+            if let t = recipe.totalTimeMinutes { meta("🕐", "\(t)m") }
             if recipe.cookedCount > 0 { meta("👨‍🍳", "\(recipe.cookedCount)×") }
         }
         .lineLimit(1)
@@ -350,6 +351,12 @@ enum RecipeGradient {
 }
 
 extension NookAPI.RecipeSummary {
+    /// Total active time = prep + cook (the library card's "🕐"), or nil if neither is set.
+    var totalTimeMinutes: Int? {
+        let t = (prepTimeMinutes ?? 0) + (cookTimeMinutes ?? 0)
+        return t > 0 ? t : nil
+    }
+
     /// A minimal placeholder for an instant recipe-detail header when only partial
     /// info is on hand (the planner, the Today card). The detail screen reloads the
     /// full recipe on appear.
