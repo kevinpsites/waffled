@@ -17,6 +17,7 @@ struct RecipeDetailView: View {
     @State private var cookedMessage: String?
     @State private var userNotesDraft = ""
     @State private var editingTags = false
+    @State private var editing = false
     @State private var cookMode = false
     @State private var stepNoteEdit: StepNoteEdit?
 
@@ -54,8 +55,24 @@ struct RecipeDetailView: View {
                         .foregroundStyle(r.isFavorite ? NK.primary : NK.ink2)
                 }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button { editing = true } label: { Label("Edit recipe", systemImage: "pencil") }
+                } label: { Image(systemName: "ellipsis.circle").foregroundStyle(NK.ink2) }
+            }
         }
-        .task { await loadDetail(); if autoCook, !steps.isEmpty { cookMode = true } }
+        .task {
+            await loadDetail()
+            if autoCook, !steps.isEmpty { cookMode = true }
+            if DemoHooks.editRecipe { editing = true }
+        }
+        .fullScreenCover(isPresented: $editing) {
+            RecipeEditorView(mode: .edit(NookAPI.RecipeDetailDTO(recipe: recipe, ingredients: ingredients, steps: steps))) { updated in
+                recipe = updated
+                model.apply(updated)
+                Task { await loadDetail() }
+            }
+        }
         .fullScreenCover(isPresented: $cookMode) {
             CookModeView(title: r.title, steps: steps, ingredients: ingredients) { markCooked() }
         }
@@ -639,6 +656,7 @@ private extension NookAPI.RecipeSummary {
             cookTimeMinutes: cookTimeMinutes, servings: servings, imageUrl: imageUrl, sourceName: sourceName,
             isFavorite: value, cookedCount: cookedCount, lastCookedAt: lastCookedAt, mealType: mealType,
             protein: protein, base: base, cuisine: cuisine, effort: effort, cookMethod: cookMethod,
+            flavorProfile: flavorProfile,
             dietary: dietary, vegetables: vegetables, collection: collection, tags: tags,
             addedTags: addedTags, notes: notes, userNotes: userNotes, overrides: overrides)
     }

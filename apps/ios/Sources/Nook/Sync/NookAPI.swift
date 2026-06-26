@@ -318,6 +318,7 @@ struct NookAPI: Sendable {
         let cuisine: String?
         let effort: String?
         let cookMethod: String?
+        let flavorProfile: String?
         let dietary: [String]?
         let vegetables: [String]?
         let collection: String?
@@ -410,6 +411,42 @@ struct NookAPI: Sendable {
         struct Resp: Decodable { let recipe: RecipeSummary }
         return try await patchEncodable("/api/recipes/\(id)",
                                         body: Body(userNotes: userNotes, overrides: overrides), as: Resp.self).recipe
+    }
+
+    /// Create a recipe from a full editor body (title + details + ingredients + steps).
+    /// Returns the created recipe summary.
+    @discardableResult
+    func createRecipe(_ body: [String: JSONValue]) async throws -> RecipeSummary {
+        struct Resp: Decodable { let recipe: RecipeSummary }
+        return try await sendReturning("POST", "/api/recipes", body: body, as: Resp.self).recipe
+    }
+
+    /// Replace a recipe's content from the editor (metadata + a full ingredients/steps
+    /// rewrite). Returns the updated summary.
+    @discardableResult
+    func saveRecipeContent(id: String, _ body: [String: JSONValue]) async throws -> RecipeSummary {
+        struct Resp: Decodable { let recipe: RecipeSummary }
+        return try await sendReturning("PATCH", "/api/recipes/\(id)", body: body, as: Resp.self).recipe
+    }
+
+    /// AI Details auto-fill: infer cuisine/protein/tags/etc. from the title + ingredient
+    /// names + step texts. Returns nil when no AI provider is configured or it fails (the
+    /// editor just shows no suggestions then).
+    struct RecipeMetadataSuggestion: Decodable, Sendable {
+        let cuisine: String?; let mealType: String?; let protein: String?; let base: String?
+        let effort: String?; let cookMethod: String?; let flavorProfile: String?
+        let dietary: [String]?; let vegetables: [String]?; let tags: [String]?
+    }
+    func suggestRecipeMetadata(title: String, ingredients: [String], steps: [String]) async throws -> RecipeMetadataSuggestion? {
+        struct Resp: Decodable { let suggestion: RecipeMetadataSuggestion? }
+        let body: [String: JSONValue] = [
+            "title": .string(title),
+            "ingredients": .array(ingredients.map(JSONValue.string)),
+            "steps": .array(steps.map(JSONValue.string)),
+        ]
+        // 501 (no provider) → treat as "no suggestion" rather than an error the UI shows.
+        do { return try await sendReturning("POST", "/api/recipes/suggest-metadata", body: body, as: Resp.self).suggestion }
+        catch NookAPI.APIError.http { return nil }
     }
 
     // MARK: Today dashboard reads (non-synced domains, fetched over REST)

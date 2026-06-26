@@ -60,6 +60,7 @@ struct RecipesLibraryView: View {
     @State private var selCuisine: Set<String> = []
     @State private var selProtein: Set<String> = []
     @State private var selDietary: Set<String> = []
+    @State private var creating = false
     @FocusState private var searchFocused: Bool
 
     // iPhone: 2 fixed columns. iPad: adaptive — as many ~240pt cards as fit the width.
@@ -78,10 +79,14 @@ struct RecipesLibraryView: View {
         }
         .background(NK.canvas)
         .refreshable { await model.load() }
+        .fullScreenCover(isPresented: $creating) {
+            RecipeEditorView(mode: .create) { _ in Task { await model.load() } }
+        }
         .onChange(of: sync.mealsRev) { _, _ in Task { await model.load() } }
         // In pick mode (the planner's "Choose a recipe" sheet), focus search on open.
         .task {
             if onPick != nil { try? await Task.sleep(for: .milliseconds(350)); searchFocused = true }
+            if DemoHooks.newRecipe, onPick == nil { try? await Task.sleep(for: .milliseconds(400)); creating = true }
         }
     }
 
@@ -203,6 +208,10 @@ struct RecipesLibraryView: View {
             Button { withAnimation(.snappy) { onlyFavorites.toggle() } } label: {
                 pill(systemImage: onlyFavorites ? "heart.fill" : "heart",
                      text: "Favorites", active: onlyFavorites)
+            }
+            // Browsing (not picking for a meal slot) → offer "New recipe".
+            if onPick == nil {
+                Button { creating = true } label: { pill(systemImage: "plus", text: "New", active: false) }
             }
         }
         .padding(.horizontal, 16).padding(.top, 8)
@@ -350,7 +359,7 @@ extension NookAPI.RecipeSummary {
         .init(id: id, title: title, emoji: emoji, category: category, prepTimeMinutes: nil,
               cookTimeMinutes: cookTimeMinutes, servings: servings, imageUrl: nil, sourceName: nil,
               isFavorite: false, cookedCount: 0, lastCookedAt: nil, mealType: nil, protein: nil,
-              base: nil, cuisine: nil, effort: nil, cookMethod: nil, dietary: nil, vegetables: nil,
+              base: nil, cuisine: nil, effort: nil, cookMethod: nil, flavorProfile: nil, dietary: nil, vegetables: nil,
               collection: nil, tags: nil, addedTags: nil, notes: nil, userNotes: nil, overrides: nil)
     }
 }

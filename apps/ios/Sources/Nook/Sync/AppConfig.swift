@@ -116,6 +116,10 @@ enum DemoHooks {
     static var openGoal: Bool { AppConfig.env("NOOK_OPEN_GOAL") == "1" }
     /// Auto-open the "New goal" create sheet on the Goals page (verification).
     static var newGoal: Bool { AppConfig.env("NOOK_NEW_GOAL") == "1" }
+    /// Auto-open the "New recipe" editor on the Recipes library (verification).
+    static var newRecipe: Bool { AppConfig.env("NOOK_NEW_RECIPE") == "1" }
+    /// With openRecipe set, auto-open that recipe's editor (verification).
+    static var editRecipe: Bool { AppConfig.env("NOOK_EDIT_RECIPE") == "1" }
     /// Auto-open the first member's spotlight on the iPad Family page (verification).
     static var openPerson: Bool { AppConfig.env("NOOK_OPEN_PERSON") == "1" }
     /// Auto-present the Sync panel on the Family screen.

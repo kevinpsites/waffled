@@ -28,12 +28,12 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 
 | Feature | Web / Kiosk | iPhone | iPad | Status |
 | --- | :---: | :---: | :---: | --- |
-| First-run **setup wizard** (create household + admin) | ✅ | ❌ | ❌ | ✅ Done (web-only; mobile shows a "finish setup on the web" notice) |
+| First-run **setup wizard** (create household + admin) | ✅ | ❌ N/A | ❌ N/A | ✅ Done — **web/server-only by design**, not planned for mobile (mobile shows a "finish setup on the web" notice) |
 | **Email/password** login (built-in) | ✅ | ✅ | ✅ | ✅ Done |
 | Rotating refresh tokens + transparent 401-refresh | ✅ | ✅ | ✅ | ✅ Done (Keychain token store) |
 | **OIDC SSO** (backend-mediated, invite-gated) | ✅ | ✅ | ✅ | ✅ Done (`ASWebAuthenticationSession`) |
-| Admin-managed OIDC config (Settings, secret encrypted at rest) | ✅ | ❌ | ❌ | ✅ Done (web-only admin) |
-| Disable password login / force SSO (break-glass guard) | ✅ | ❌ | ❌ | ✅ Done (web-only admin) |
+| Admin-managed OIDC config (Settings, secret encrypted at rest) | ✅ | ❌ N/A | ❌ N/A | ✅ Done — web/server-only admin by design |
+| Disable password login / force SSO (break-glass guard) | ✅ | ❌ N/A | ❌ N/A | ✅ Done — web/server-only admin by design |
 | **Member management** — grant a person a login (email ± password) + kiosk PIN | ✅ | ✅ | ✅ | ✅ Done |
 | **Members CRUD** (profiles: name, avatar, color, role, admin, birthday) | ✅ | ✅ | ✅ | ✅ Done |
 | **Role-based permissions** — per-role capability grid (Settings → Family); [model](./permissions.md) | ✅ | ✅ | ✅ | ✅ Done (editable matrix, admin-only) |
@@ -165,7 +165,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Drag-to-swap on week/month grid | ✅ | ✅ | ✅ | ✅ Done |
 | Full-screen **recipe detail** (hero image, metadata chips, servings scaler) | ✅ | ✅ | ✅ | ✅ Done |
 | **Recipes library** (search-all, multi-select filters, sort) | ✅ | ✅ | ✅ | ✅ Done |
-| Create / **edit** / delete recipes in-app (ingredients + steps) | ✅ | ✅ | ✅ | ✅ Done (lighter metadata editor on mobile) |
+| Create / **edit** recipes in-app (all metadata + ingredients + steps) | ✅ | ✅ | ✅ | ✅ Done (full editor — shared iPhone/iPad; **per-step ingredient amounts**; delete is web-only) |
 | **Paste-markdown** recipe import (template/example) | ✅ | ❌ | ❌ | 🟡 Web-only |
 | Per-recipe **overrides** (substitutions, notes) | ✅ | 🟡 | 🟡 | ✅ Done (notes; full overrides on web) |
 | **Cook mode** (step-by-step, wake-lock, finish → mark cooked) | ✅ | ✅ | ✅ | ✅ Done (centered, large type; scrolls long steps) |
@@ -173,7 +173,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Open recipe **full-screen** from Today | ✅ | ✅ | ✅ | ✅ Done (iPad opens full-screen, not a page-sheet) |
 | **Grocery auto-build** honoring substitutions | ✅ | ✅ | ✅ | ✅ Done |
 | AI **Plan my week / month** (library-only, themes, gaps) | ✅ | ✅ | ✅ | ✅ Done |
-| AI **metadata auto-fill** (cuisine, protein, vegetables, tags) | ✅ | ❌ | ❌ | 🟡 Web-only (manual metadata editor on mobile) |
+| AI **metadata auto-fill** (cuisine, protein, vegetables, tags) | ✅ | ✅ | ✅ | ✅ Done (debounced "✨ Thinking…" in the editor; fills empty fields / suggestion chips) |
 | **Conversational recipe AI** ("make it gluten-free", photo → recipe) | 🚧 | 🚧 | 🚧 | 🚧 Planned |
 
 ## Photos & memories
@@ -264,7 +264,7 @@ Tracked in [`apps/ios/IPAD_ROADMAP.md`](../../apps/ios/IPAD_ROADMAP.md). Highlig
 
 - **Chore reminders** on iOS — blocked on chores landing in PowerSync.
 - **Recurring-event reminders** — the local scheduler doesn't expand recurrences yet.
-- **Recipe import** (paste-markdown) and **AI metadata auto-fill** on iOS.
+- **Recipe import** (paste-markdown) on iOS — the hand editor + AI metadata auto-fill ship; only the paste-a-block importer is still web-only.
 - **Multi-profile kiosk** (profile picker + per-person PIN) on iPad — deliberately deferred;
   layers on top of single-login without rework (needs a server device→person binding).
 - ~~iPad Today per-card customize (drag/hide)~~ — intentionally not planned; the fixed
