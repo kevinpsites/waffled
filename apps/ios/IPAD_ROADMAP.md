@@ -218,7 +218,16 @@ ephemeral session, auto-logs-out on idle. The **web kiosk already does this** �
       PATCHes `taken_at` and the edit sheet now returns to read mode showing the change.
 - [x] **Goal-focused Today preset** (iPad) — a fourth dashboard layout beside Balanced /
       Agenda / Meals that features a goal big (progress ring · per-person bars · one-tap
-      **Log progress** via the shared `GoalLogSheet`), with a picker to pin any goal.
+      **Log progress** via the shared `GoalLogSheet`), with a picker to pin any goal (the
+      green Goals-page hero treatment). The goal column also surfaces **tonight's dinner**
+      (falling back to the week's dinners) in its headroom.
+- [x] **In-app recipe editor** (iPhone + iPad) — full create/edit: emoji/title/servings/
+      prep/cook, the metadata Details with **AI auto-fill** ("✨ Thinking…", fills empty
+      fields / suggestion chips), ingredient rows, and method steps with **per-step
+      ingredient amounts**. Title auto-focus + Return-to-add-row keyboard flow. Reached
+      from the library "New" pill and the recipe-detail ⋯ menu (the old tags modal is gone).
+- [x] **Recipe time** — the library card shows the **combined total** (prep + cook); the
+      detail page splits it into 🔪 prep + 🔥 cook.
 - [x] **Calendar swipe** — swipe left/right on the grid to step month / week / day on
       both iPhone and iPad (simultaneous gesture; vertical time-grid scroll still works).
 - [x] **Chore photo proof confirm** — a freshly-taken/picked proof shows a "Use this

@@ -65,6 +65,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | --- | :---: | :---: | :---: | --- |
 | Today cards: agenda · tonight's meal · this week · chores · grocery | ✅ | ✅ | ✅ | ✅ Done (iPad = distinct 3-column `KioskDashboard`) |
 | **Customize** mode — drag to reorder cards | ✅ | ✅ | 🟡 | ✅ Done (iPhone reorder+hide; iPad uses layout presets) |
+| iPad Today **layout presets** (Balanced / Agenda / Meals / **Goal-focused**) | 🟡 | ❌ N/A | ✅ | ✅ Done (iPad-only; Goal-focused features a goal big + tonight's dinner) |
 | Save layout **for me** (per-user) vs **for everyone** (family default) | ✅ | ✅ | 🟡 | ✅ Done (iPad layout is device-local) |
 | Mobile-specific Today layout (separate `{order,hidden}` config) | ❌ N/A | ✅ | ✅ | ✅ Done |
 | "Did these happen?" goal recap queue on Today | ✅ | ✅ | ✅ | ✅ Done (iPad banner opens `ReviewEventsView`) |
@@ -164,6 +165,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Month** meal view + planner | ✅ | ✅ | ✅ | ✅ Done |
 | Drag-to-swap on week/month grid | ✅ | ✅ | ✅ | ✅ Done |
 | Full-screen **recipe detail** (hero image, metadata chips, servings scaler) | ✅ | ✅ | ✅ | ✅ Done |
+| **Total time** on the card (prep + cook); prep/cook split on the detail | ✅ | ✅ | ✅ | ✅ Done (mobile) |
 | **Recipes library** (search-all, multi-select filters, sort) | ✅ | ✅ | ✅ | ✅ Done |
 | Create / **edit** recipes in-app (all metadata + ingredients + steps) | ✅ | ✅ | ✅ | ✅ Done (full editor — shared iPhone/iPad; **per-step ingredient amounts**; delete is web-only) |
 | **Paste-markdown** recipe import (template/example) | ✅ | ❌ | ❌ | 🟡 Web-only |
