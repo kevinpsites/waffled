@@ -247,7 +247,14 @@ mobile owner when P3 starts.
   claim), login → last-active (decision 3), `/api/auth/switch`, invite-and-accept
   (`household_invites`, decision 1), OIDC match-by-account, admin-gated `POST /api/households`
   (decision 4). Medium; concentrated in `modules/auth` + `households.ts`. Integration tests
-  reuse the Testcontainers harness.
+  reuse the Testcontainers harness. **SHIPPED 2026-06-25** in six commits (P2.1–P2.6):
+  account-aware `resolveTenant` + accounts on signup; account login landing on last-active
+  with memberships + refresh upgrade; `POST /api/auth/switch`; invite-and-accept
+  (`/api/households/invites` + `/api/auth/invites[/:id/accept]`); OIDC match-by-account with
+  identity→account linking + pure-invite SSO onboarding; admin-gated `POST /api/households`
+  (self-serve onboarding deferred → 403, first household via `/api/auth/setup`). New tests:
+  `resolve-tenant`, `account-login`, `auth-switch`, `invites`, `oidc-account`, plus the
+  rewritten `provisioning` suite. **Zero UX change for single-membership accounts.**
 - **P3 — clients**: web household switcher + last-active landing + pending-invite accept;
   iOS switcher (coordinate with mobile owner; PowerSync re-exchange on switch).
 - **P4 — CLI + cleanup**: account-scoped `reset-password`, membership-scoped `make-admin`,
