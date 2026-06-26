@@ -80,7 +80,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   invite-and-accept, OIDC match-by-account, and admin-gated additional-household creation,
   with zero UX change for single-household accounts. **P3 web client shipped** — a
   Settings → Households switcher + pending-invite accept (appears only for multi-household
-  accounts).
+  accounts). **P4 operator CLI shipped** — `reset-password`/`prune-sessions` act across all of
+  an account's households, plus `add-member` (attach an existing account to a household) and
+  `list-accounts`. The only remaining server-side item is the optional, deferred cleanup of the
+  legacy `credentials` table (login still verifies against it; `accounts` mirrors it).
 - **Multi-household identity — iOS switcher** (P3 iOS, *mobile owner*) — the native app needs
   the same post-login affordances the web now has: surface the account's memberships +
   pending invites (both already returned by `GET /api/household` and the login/exchange

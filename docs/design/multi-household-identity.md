@@ -267,6 +267,16 @@ mobile owner when P3 starts.
   already works server-side.
 - **P4 — CLI + cleanup**: account-scoped `reset-password`, membership-scoped `make-admin`,
   `add-member --email --household` (creates an invite), drop `credentials` (or keep as view).
+  **CLI SHIPPED 2026-06-25** — `reset-password`/`prune-sessions` now revoke across ALL of an
+  account's memberships (and `reset-password` keeps `accounts.password_hash` current);
+  `add-member --email --household-id` attaches an existing account to a household (break-glass,
+  direct membership rather than an invite, idempotent); `list-accounts` shows one human → all
+  their households; `make-admin` was already membership-scoped. Covered by
+  `test/admin-accounts.integration.test.ts`. **Deferred (not done):** dropping the now-mirrored
+  `credentials` table and cutting login over to `accounts.password_hash` as the sole source of
+  truth — left as a future cleanup because (a) it's destructive, which the live-stack rule says
+  to avoid, and (b) `reset-password` already works account-wide since `email→credential` is 1:1,
+  so the drop is pure hygiene, not a functional gap.
 
 ## 11. Out of scope (for now)
 
