@@ -14,13 +14,20 @@ function defaultMigrationsDir(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
 }
 
-export async function runMigrations(databaseUrl: string, migrationsDir = defaultMigrationsDir()): Promise<void> {
+// `count` limits how many *pending* migrations to apply (default: all). Tests use
+// it to migrate up to just before a new migration, seed legacy-shaped data, then
+// run the remaining migration(s) to exercise a backfill.
+export async function runMigrations(
+  databaseUrl: string,
+  migrationsDir = defaultMigrationsDir(),
+  count = Infinity
+): Promise<void> {
   await runner({
     databaseUrl,
     dir: migrationsDir,
     direction: 'up',
     migrationsTable: 'pgmigrations',
-    count: Infinity,
+    count,
     log: () => {}, // quiet; the CLI is the verbose path
   })
 }
