@@ -33,6 +33,7 @@ import { registerOverviewRoutes } from './modules/overview/overview'
 import { registerPermissionRoutes } from './modules/permissions/permissions.routes'
 import { resolveCapabilities } from './platform/permissions'
 import { registerAuthRoutes } from './modules/auth/auth'
+import { listMemberships, pendingInvitesForEmail } from './modules/auth/accounts'
 import { registerInviteRoutes } from './modules/auth/invites'
 import { registerOidcRoutes } from './modules/auth/oidc'
 import { registerKioskRoutes } from './modules/kiosk/kiosk'
@@ -113,10 +114,23 @@ api.get('/api/household', async (req: Request) => {
   const { household, person } = await getContext(tenant)
   // Capabilities the client can gate UI on (admin ⇒ all; else per-role matrix).
   const capabilities = resolveCapabilities(person.member_type, person.is_admin, household.settings)
+  // The account's other memberships + pending invites drive the web household
+  // switcher / invite prompt on any page load (not just right after login).
+  // account-less callers (kiosk/device person) get empty arrays — no switcher.
+  const acct = await query<{ account_id: string | null; email: string | null }>(
+    `select p.account_id, a.email from persons p left join accounts a on a.id = p.account_id and a.deleted_at is null where p.id = $1`,
+    [tenant.personId]
+  )
+  const accountId = acct.rows[0]?.account_id ?? null
+  const accountEmail = acct.rows[0]?.email ?? null
+  const memberships = accountId ? await listMemberships(accountId) : []
+  const pendingInvites = accountEmail ? await pendingInvitesForEmail(accountEmail) : []
   return {
     provisioned: true,
     household: presentHousehold(household),
     person: { ...presentPerson(person), capabilities },
+    memberships,
+    pendingInvites,
   }
 })
 
