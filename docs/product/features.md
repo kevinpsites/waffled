@@ -202,7 +202,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Natural-language capture → event / task / grocery / meal | ✅ | ✅ | ✅ | ✅ Done |
 | Capture parses **event recurrence** + edit Repeats/Ends in the preview | ✅ | ✅ | ✅ | ✅ Done ("lunch every Thursday for a month" → RRULE) |
 | **Pluggable provider** (Anthropic / OpenAI-compatible / Ollama), per household | ✅ | ✅ | ✅ | ✅ Done |
-| Instant on-device parse, then **upgrade to LLM** with a provider tag | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web); mobile parses server-side |
+| Instant on-device parse, then **upgrade to LLM** with a provider tag | ✅ | ✅ | ✅ | ✅ Done (instant guess + "improving…"; **pick** the other take on a kind-disagreement; **recurrence backfill** when a weak LLM drops it) |
 | **Heuristic fallback** (offline / no provider / provider defers) | ✅ | ✅ | ✅ | ✅ Done (on-device `CaptureHeuristic` — capture works with no server; ported from web `parse.ts`, kept in sync) |
 | Household-local "now" + family names for resolution | ✅ | ✅ | ✅ | ✅ Done |
 | Server-side **fuzzy person resolution** (nicknames/aliases) | 🚧 | 🚧 | 🚧 | 🚧 Planned (6.6-names) |

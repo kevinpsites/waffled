@@ -229,10 +229,16 @@ ephemeral session, auto-logs-out on idle. The **web kiosk already does this** �
       "New" pill and the recipe-detail ⋯ menu (the old tags modal is gone).
 - [x] **Recipe time** — the library card shows the **combined total** (prep + cook); the
       detail page splits it into 🔪 prep + 🔥 cook.
-- [x] **On-device capture heuristic** — `CaptureHeuristic.swift` (a port of web `parse.ts`,
-      kept in sync, with a byte-parity test suite) parses the "Add anything…" bar locally
-      when the LLM can't (offline / no provider / provider defers), so capture works with no
-      server. Wired into `CaptureSheet` as the fallback after the server call.
+- [x] **On-device capture heuristic + instant→LLM flow** — `CaptureHeuristic.swift` (a port
+      of web `parse.ts`, kept in sync, byte-parity test suite) parses the "Add anything…" bar
+      locally. `CaptureSheet` shows the on-device guess **instantly** with an "improving…"
+      tag while the LLM runs in the background, then upgrades; on a **kind-disagreement** with
+      a confident guess it keeps the local one and offers the LLM's take as a one-tap pick;
+      and it **backfills a recurrence** the (deterministic) heuristic found when a weak LLM
+      drops it. With no server reachable, capture still works fully on-device.
+- [x] **Screensaver vs modals** — the idle screensaver no longer starts while a sheet /
+      full-screen cover is open (it presents above the app tree, so it rendered *under* the
+      modal); the idle clock holds until the modal is dismissed.
 - [x] **Calendar swipe** — swipe left/right on the grid to step month / week / day on
       both iPhone and iPad (simultaneous gesture; vertical time-grid scroll still works).
 - [x] **Chore photo proof confirm** — a freshly-taken/picked proof shows a "Use this
