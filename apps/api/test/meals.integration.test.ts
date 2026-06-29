@@ -249,6 +249,29 @@ describe('recipes api', () => {
     expect(steps[0].timerSeconds).toBeNull()
     expect(steps[1].timerSeconds).toBe(390)
   })
+
+  it('PATCH replaceSteps persists timers on MULTIPLE steps at once', async () => {
+    const add = await call('POST', '/api/recipes', kevin, { title: 'Multi-timer', emoji: '⏲️' })
+    expect(add.statusCode).toBe(201)
+    const id = JSON.parse(add.body).recipe.id
+
+    // Edit-style write: replace steps with TWO timed steps (the user's repro).
+    const upd = await call('PATCH', `/api/recipes/${id}`, kevin, {
+      steps: [
+        { instruction: 'Boil pasta.', timerSeconds: 600 }, // 10:00
+        { instruction: 'Simmer sauce.', timerSeconds: 300 }, // 5:00
+        { instruction: 'Plate it.' }, // no timer
+      ],
+    })
+    expect(upd.statusCode).toBe(200)
+
+    const detail = JSON.parse((await call('GET', `/api/recipes/${id}`, kevin)).body)
+    const steps = detail.steps as Array<{ timerSeconds: number | null }>
+    expect(steps).toHaveLength(3)
+    expect(steps[0].timerSeconds).toBe(600)
+    expect(steps[1].timerSeconds).toBe(300)
+    expect(steps[2].timerSeconds).toBeNull()
+  })
 })
 
 describe('recipe ingredients api', () => {
