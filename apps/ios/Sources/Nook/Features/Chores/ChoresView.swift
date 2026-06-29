@@ -232,7 +232,13 @@ struct ChoresView: View {
         .task(id: sync.choresRev) { await model.load(); await approvals.load() }
         .task { await sync.loadCurrencies() }
         .sheet(item: $editor) { target in
-            ChoreEditSheet(members: sync.members, target: target,
+            // Snapshot the sync-derived inputs HERE (read `sync` once) instead of letting
+            // the sheet observe SyncManager — see ChoreEditSheet for why that hung the UI.
+            // Managers can assign to anyone; everyone else only to themselves (web parity).
+            let assignable = sync.can("chore.manage")
+                ? sync.members
+                : sync.members.filter { $0.id == sync.currentPersonId }
+            ChoreEditSheet(assignableMembers: assignable, currencies: sync.currencies, target: target,
                 onSave: { choreId, body in await model.save(choreId: choreId, body: body) },
                 onDelete: { choreId in Task { await model.delete(choreId: choreId) } })
         }
@@ -420,7 +426,10 @@ struct ChoresView: View {
             // Capped height + internal scroll, so a long list stays put instead of
             // pushing the columns below it down the page.
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
+                // Lazy: only on-screen rows build their (heavy) drag previews + drop
+                // wiring; an eager VStack rebuilt the whole board's draggable rows on
+                // every ChoresView.body pass (e.g. when a sheet was presented over it).
+                LazyVStack(spacing: 0) {
                     if col.isGrabs && !col.items.isEmpty {
                         Text("Tap to claim it, or drag it into someone’s column.")
                             .font(.system(size: 11.5, weight: .medium)).foregroundStyle(NK.ink3)
@@ -880,8 +889,13 @@ struct ChoresView: View {
 /// toggle. Delete when editing. Mirrors the web ChoreModal. NK-styled.
 struct ChoreEditSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(SyncManager.self) private var sync
-    let members: [SyncedMember]
+    /// Snapshotted by the presenter from SyncManager so the sheet does NOT observe the
+    /// whole @Observable sync object — observing it re-evaluated/re-laid-out the sheet's
+    /// body (segmented Picker + chip flows) on every unrelated sync mutation, which on a
+    /// real iPad stacked into a multi-second hang when presented over the chores board.
+    let assignableMembers: [SyncedMember]
+    /// The household's reward currencies, likewise snapshotted (was `sync.currencies`).
+    let currencies: [NookAPI.Currency]
     let target: ChoresView.ChoreEditorTarget
     /// Persist the chore. Returns nil on success, else a user-facing error message
     /// (so the sheet stays open and shows why, instead of dismissing on a silent fail).
@@ -909,9 +923,11 @@ struct ChoreEditSheet: View {
     @State private var saveError: String?
     @FocusState private var titleFocused: Bool
 
-    init(members: [SyncedMember], target: ChoresView.ChoreEditorTarget,
+    init(assignableMembers: [SyncedMember], currencies: [NookAPI.Currency],
+         target: ChoresView.ChoreEditorTarget,
          onSave: @escaping (String?, [String: JSONValue]) async -> String?, onDelete: @escaping (String) -> Void) {
-        self.members = members; self.target = target; self.onSave = onSave; self.onDelete = onDelete
+        self.assignableMembers = assignableMembers; self.currencies = currencies
+        self.target = target; self.onSave = onSave; self.onDelete = onDelete
         switch target {
         case let .new(pid):
             editChoreId = nil
@@ -936,13 +952,6 @@ struct ChoreEditSheet: View {
     }
 
     private var editing: Bool { editChoreId != nil }
-    /// Who this person may assign a chore to. Managers can pick anyone; everyone else
-    /// may only create one for themselves (or leave it up for grabs) — matching the
-    /// web's `canAssignOthers` carve-out. "Up for grabs" is always offered separately.
-    private var assignableMembers: [SyncedMember] {
-        if sync.can("chore.manage") { return members }
-        return members.filter { $0.id == sync.currentPersonId }
-    }
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty && (freq != "weekly" || !days.isEmpty)
     }
@@ -975,7 +984,11 @@ struct ChoreEditSheet: View {
 
                     VStack(alignment: .leading, spacing: 9) {
                         SectionLabel(text: "Repeats")
-                        Picker("Repeats", selection: $freq.animation()) {
+                        // Plain binding (NOT `$freq.animation()`): an animated binding installs
+                        // an animation transaction on the segmented control's every layout,
+                        // which collides with the keyboard-driven ScrollView resize when the
+                        // title auto-focuses. The animation is scoped to the rows below instead.
+                        Picker("Repeats", selection: $freq) {
                             Text("Just once").tag("once")
                             Text("Every day").tag("daily")
                             Text("Certain days").tag("weekly")
@@ -988,6 +1001,7 @@ struct ChoreEditSheet: View {
                             DatePicker("On", selection: $dueOn, displayedComponents: .date)
                                 .font(.system(size: 15, weight: .semibold))
                                 .tint(NK.primary)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                         if freq == "weekly" {
                             HStack(spacing: 5) {
@@ -1004,8 +1018,10 @@ struct ChoreEditSheet: View {
                                     .buttonStyle(.plain)
                                 }
                             }
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
+                    .animation(.easeInOut(duration: 0.2), value: freq)
 
                     VStack(alignment: .leading, spacing: 9) {
                         SectionLabel(text: "Who")
@@ -1130,8 +1146,6 @@ struct ChoreEditSheet: View {
         .buttonStyle(.plain)
     }
 
-    /// The household's reward currencies (e.g. Stars, plus any custom ones).
-    private var currencies: [NookAPI.Currency] { sync.currencies }
     /// The selected key, falling back to the household default.
     private var effectiveCurrencyKey: String? {
         currencyKey ?? currencies.first(where: { $0.isDefault })?.key
