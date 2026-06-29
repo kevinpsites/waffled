@@ -277,7 +277,7 @@
   100% { background: var(--card); }
 }
 
-/* ── Timer alarm takeover ── fires full-screen + flashing when a timer hits 0 */
+/* ── Timer alarm takeover ── full-screen when a timer hits 0 */
 .cm-alarm {
   position: fixed;
   inset: 0;
@@ -285,12 +285,14 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  animation: cm-alarm-bg 0.9s steps(1, end) infinite;
+  /* A solid, opaque background that hard-switches between two attention colors
+     (warm primary ↔ blue) — a steady siren, not a flash against the step. */
+  animation: cm-alarm-bg 1.2s steps(1, end) infinite;
 }
 @keyframes cm-alarm-bg {
-  0% { background: rgba(20, 16, 12, 0.55); }
-  50% { background: var(--wally-t, rgba(236, 96, 73, 0.42)); }
-  100% { background: rgba(20, 16, 12, 0.55); }
+  0% { background: var(--primary, #e0653f); }
+  50% { background: #2f7fed; }
+  100% { background: var(--primary, #e0653f); }
 }
 .cm-alarm-card {
   width: 100%;
@@ -313,9 +315,11 @@
 }
 .cm-alarm-label { font-weight: 800; font-size: 16px; color: var(--ink); text-align: left; }
 .cm-alarm-actions { display: flex; gap: 8px; flex: none; }
-.cm-alarm-snooze, .cm-alarm-dismiss {
+.cm-alarm-jump, .cm-alarm-snooze, .cm-alarm-dismiss {
   font: inherit; font-size: 14px; font-weight: 800; padding: 10px 16px; border-radius: 999px; cursor: pointer;
 }
+.cm-alarm-jump { border: 1px solid var(--primary, #e0653f); background: var(--card, #fff); color: var(--primary, #e0653f); }
+.cm-alarm-jump:hover { background: var(--wally-t, rgba(236, 96, 73, 0.1)); }
 .cm-alarm-snooze { border: 1px solid var(--hair, #e4ded4); background: var(--card, #fff); color: var(--ink); }
 .cm-alarm-snooze:hover { border-color: var(--primary, #e0653f); }
 .cm-alarm-dismiss { border: 0; background: var(--primary, #e0653f); color: #fff; }

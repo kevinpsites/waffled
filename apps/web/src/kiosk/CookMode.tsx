@@ -8,6 +8,7 @@ import './../styles/cookmode.css'
 interface CookTimer {
   id: number
   label: string
+  stepIndex: number // which step started it — drives "Jump to step"
   totalSeconds: number
   remainingSeconds: number
   running: boolean
@@ -95,11 +96,11 @@ export function CookMode() {
     }
   }, [anyFiring])
 
-  const startTimer = useCallback((label: string, totalSeconds: number) => {
+  const startTimer = useCallback((label: string, totalSeconds: number, stepIndex: number) => {
     if (totalSeconds <= 0) return
     setTimers((ts) => [
       ...ts,
-      { id: nextTimerId.current++, label, totalSeconds, remainingSeconds: totalSeconds, running: true, firing: false },
+      { id: nextTimerId.current++, label, stepIndex, totalSeconds, remainingSeconds: totalSeconds, running: true, firing: false },
     ])
   }, [])
   const toggleTimer = useCallback((tid: number) => {
@@ -115,6 +116,12 @@ export function CookMode() {
 
   const firingTimers = timers.filter((t) => t.firing)
   const runningTimers = timers.filter((t) => !t.firing)
+  // "Jump to step" from the alarm: leave the done screen, go to that step, clear it.
+  const jumpToTimer = useCallback((t: CookTimer) => {
+    setDone(false)
+    setI(Math.max(0, Math.min(t.stepIndex, steps.length - 1)))
+    dismissTimer(t.id)
+  }, [steps.length, dismissTimer])
 
   const total = steps.length
   // Replace (not push) the cook-mode history entry with the recipe so pressing
@@ -155,7 +162,7 @@ export function CookMode() {
           <button className="btn btn-primary" onClick={exit}>Back to recipe</button>
         </div>
         <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} />
-        <TimerAlarm firing={firingTimers} onDismiss={dismissTimer} onSnooze={snoozeTimer} />
+        <TimerAlarm firing={firingTimers} onDismiss={dismissTimer} onSnooze={snoozeTimer} onJump={jumpToTimer} />
       </div>
     )
   }
@@ -187,7 +194,7 @@ export function CookMode() {
         {step.timerSeconds != null && step.timerSeconds > 0 && (
           <button
             className="cm-timer-start"
-            onClick={() => startTimer(`Step ${i + 1}`, step.timerSeconds!)}
+            onClick={() => startTimer(`Step ${i + 1}`, step.timerSeconds!, i)}
           >
             ⏱ Start {fmt(step.timerSeconds)}
           </button>
@@ -222,7 +229,7 @@ export function CookMode() {
       )}
 
       <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} />
-      <TimerAlarm firing={firingTimers} onDismiss={dismissTimer} onSnooze={snoozeTimer} />
+      <TimerAlarm firing={firingTimers} onDismiss={dismissTimer} onSnooze={snoozeTimer} onJump={jumpToTimer} />
     </div>
   )
 }
@@ -234,10 +241,12 @@ function TimerAlarm({
   firing,
   onDismiss,
   onSnooze,
+  onJump,
 }: {
   firing: CookTimer[]
   onDismiss: (id: number) => void
   onSnooze: (id: number, secs: number) => void
+  onJump: (t: CookTimer) => void
 }) {
   if (firing.length === 0) return null
   return (
@@ -250,6 +259,7 @@ function TimerAlarm({
             <div key={t.id} className="cm-alarm-row">
               <span className="cm-alarm-label">{t.label} · {fmt(t.totalSeconds)}</span>
               <div className="cm-alarm-actions">
+                <button className="cm-alarm-jump" onClick={() => onJump(t)}>Jump to step</button>
                 <button className="cm-alarm-snooze" onClick={() => onSnooze(t.id, 60)}>+1:00</button>
                 <button className="cm-alarm-dismiss" onClick={() => onDismiss(t.id)}>Dismiss</button>
               </div>

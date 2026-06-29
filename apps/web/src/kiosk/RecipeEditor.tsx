@@ -659,24 +659,8 @@ function StepIngredients({
 
   return (
     <>
-      {picks.map((p) => {
-        const g = namedIngs.find((x) => x.uid === p.uid)
-        if (!g) return null
-        return (
-          <button type="button" key={p.uid} className="re-tag" onClick={() => setOpen(true)} aria-label={`Edit ${g.name} for this step`}>
-            <span className="re-tag-dot" />
-            <span className="re-tag-name">{g.name}</span>
-            {p.amount.trim() && <span className="re-tag-amt">· {p.amount.trim()}</span>}
-          </button>
-        )
-      })}
-      {extra.map((x, j) => (
-        <span key={`x${j}`} className="re-tag re-tag-extra">
-          <span className="re-tag-dot" />
-          <span className="re-tag-name">{x}</span>
-          <button type="button" tabIndex={-1} aria-label={`Remove ${x}`} className="re-tag-x" onClick={() => onRemoveExtra(j)}>×</button>
-        </span>
-      ))}
+      {/* The tag button (popover anchor) stays FIRST so it never shifts as tags are
+          added or amounts change — otherwise the open popover jumps around. */}
       <div className="re-tagpop-wrap" ref={wrapRef}>
         <button type="button" className="re-tag-add" onClick={() => setOpen((o) => !o)}>+ Tag ingredient</button>
         {open && (
@@ -714,6 +698,24 @@ function StepIngredients({
           </div>
         )}
       </div>
+      {picks.map((p) => {
+        const g = namedIngs.find((x) => x.uid === p.uid)
+        if (!g) return null
+        return (
+          <button type="button" key={p.uid} className="re-tag" onClick={() => setOpen(true)} aria-label={`Edit ${g.name} for this step`}>
+            <span className="re-tag-dot" />
+            <span className="re-tag-name">{g.name}</span>
+            {p.amount.trim() && <span className="re-tag-amt">· {p.amount.trim()}</span>}
+          </button>
+        )
+      })}
+      {extra.map((x, j) => (
+        <span key={`x${j}`} className="re-tag re-tag-extra">
+          <span className="re-tag-dot" />
+          <span className="re-tag-name">{x}</span>
+          <button type="button" tabIndex={-1} aria-label={`Remove ${x}`} className="re-tag-x" onClick={() => onRemoveExtra(j)}>×</button>
+        </span>
+      ))}
     </>
   )
 }
