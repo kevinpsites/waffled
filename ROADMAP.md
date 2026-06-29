@@ -500,3 +500,38 @@ Build-from-source stays the zero-config default; pulling published images is a p
 env change (`NOOK_*_IMAGE` → the GHCR tags).
 
 **Next:** Phase 4 optional S3 backup.
+
+### Multi-household accounts (one human, many homes) — web + backend SHIPPED 2026-06-29
+A single person can belong to **several households** and switch between them without
+re-logging-in. The login is now a global **`accounts`** row (email = the cross-household
+human identity); `persons.account_id` links each membership to an account, and an
+account-scoped token carries `sub = account.id` + the active household in the
+`household_id` claim. Legacy/kiosk/device tokens still resolve via
+`sub → identities → person → household` (`findTenantBySub`), so nothing else changed.
+Shipped:
+- **Accounts model + cutover.** `accounts` table; login authenticates the account;
+  member-login grant/remove (`PUT/DELETE /api/persons/:id/login`) and provisioning all
+  go through accounts. The legacy **`credentials` table is dropped** (migration 0057) —
+  no unused auth table ships GA.
+- **Switcher + join.** `GET /api/household` returns the account's other `memberships`
+  (+ pending invites); `POST /api/auth/switch` re-mints the token onto another household.
+  Admin-gated additional-household creation (`POST /api/households` → owner person linked
+  to the existing account). **Settings → Households** lists every membership with a Switch
+  action; login lands on the account's `last_household_id`.
+- **Operator CLI.** `./nook admin add-member` / `list-accounts` / `list-households` /
+  `delete-household` for attaching a human to a second home and clearing test debris.
+- **Onboarding state moved server-side** (2026-06-29): the post-setup "Getting started"
+  checklist is armed at provision time and tracked in `households.settings.onboarding`
+  (`status` active|dismissed, `opened`) via `PATCH /api/household/onboarding` (admin) —
+  so it **follows the household across the admin's devices** instead of living in one
+  browser's localStorage, and only shows for admins.
+
+**Mobile follow-ups (iOS — not yet built):**
+- [ ] **iOS household switcher** — surface the account's `memberships` (already returned by
+  `GET /api/household`) and call `POST /api/auth/switch` to re-mint the session onto another
+  home, then re-point PowerSync at the new `household_id` claim. Backend + web are done; this
+  is purely the iOS client. Pairs with re-running `fetchCredentials` after a switch so the
+  on-device SQLite mirror reloads for the new household.
+- [ ] **iOS "Getting started" onboarding** — the iOS analog of the web checklist, reading the
+  same server-side `households.settings.onboarding` state so first-run guidance is consistent
+  across surfaces (today it's web/kiosk only).
