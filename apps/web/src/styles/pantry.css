@@ -15,15 +15,23 @@
 }
 .pantry-list { display: flex; flex-direction: column; gap: 8px; }
 .pantry-item {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;
-  text-align: left; padding: 12px 14px; border-radius: var(--r-lg, 14px);
-  border: 1px solid var(--hair); background: var(--card); cursor: pointer; font: inherit;
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 14px; border-radius: var(--r-lg, 14px);
+  border: 1px solid var(--hair); background: var(--card);
 }
 .pantry-item:hover { border-color: var(--primary); }
-.pantry-item-main { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.pantry-item.busy { opacity: 0.5; }
+.pantry-item-main {
+  display: flex; align-items: baseline; gap: 10px; min-width: 0; flex: 1;
+  text-align: left; border: 0; background: none; cursor: pointer; font: inherit; padding: 0;
+}
 .pantry-item-name { font-weight: 700; font-size: 15px; color: var(--ink); }
 .pantry-item-qty { font-size: 13px; font-weight: 600; color: var(--ink-3); }
 .pantry-item-meta { flex: none; }
+.pantry-item-use {
+  flex: none; width: 32px; height: 32px; border-radius: 999px; cursor: pointer; font-size: 15px; line-height: 1;
+  border: 1px solid var(--hair); background: var(--card-2, #faf8f4); color: var(--ink-3); display: grid; place-items: center;
+}
+.pantry-item-use:hover { border-color: #2e9e6b; background: color-mix(in srgb, #2e9e6b 12%, transparent); color: #2e9e6b; }
 .pantry-exp {
   font-size: 12px; font-weight: 700; padding: 4px 9px; border-radius: 999px;
   background: var(--card-2, #faf8f4); color: var(--ink-3); border: 1px solid var(--hair);
@@ -61,20 +69,16 @@
   border: 1px dashed var(--hair); background: transparent; color: var(--ink);
 }
 
-/* Today card (glance) */
-.pantry-card-h { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
-.pantry-card-title { font-weight: 800; font-size: 15px; color: var(--ink); }
+/* Today card (glance) — whole card links to /pantry; list scrolls for many items */
+.pantry-card { display: block; padding: 18px 20px; text-decoration: none; color: inherit; }
+.pantry-card-h { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.pantry-card-title { font-weight: 800; font-size: 17px; color: var(--ink); }
 .pantry-card-count { font-size: 12px; font-weight: 600; color: var(--ink-3); }
-.pantry-card-list { display: flex; flex-direction: column; gap: 2px; }
-.pantry-card-row {
-  display: flex; align-items: baseline; gap: 8px; text-decoration: none; padding: 6px 4px;
-  border-radius: 8px; color: var(--ink);
-}
+.pantry-card-list { display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow-y: auto; }
+.pantry-card-row { display: flex; align-items: baseline; gap: 8px; padding: 6px 4px; border-radius: 8px; }
 .pantry-card-row:hover { background: var(--card-2, #faf8f4); }
-.pantry-card-name { font-weight: 700; font-size: 14px; }
+.pantry-card-name { font-weight: 700; font-size: 14px; color: var(--ink); }
 .pantry-card-qty { font-size: 12px; font-weight: 600; color: var(--ink-3); }
 .pantry-card-meta { margin-left: auto; flex: none; }
-.pantry-card-more, .pantry-card-empty {
-  display: inline-block; margin-top: 8px; font-size: 13px; font-weight: 700; color: var(--primary); text-decoration: none;
-}
+.pantry-card-empty { font-size: 13px; font-weight: 600; color: var(--ink-3); }
 @media (max-width: 720px) { .pantry-screen { padding: 20px 16px 36px; } }

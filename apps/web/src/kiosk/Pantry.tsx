@@ -18,6 +18,13 @@ function ExpiryBadge({ expiresOn }: { expiresOn: string | null }) {
 export function Pantry() {
   const { items, locations, loading, error, refetch } = usePantry()
   const [editing, setEditing] = useState<PantryItem | 'new' | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+
+  // Quick "used it up" — remove without opening the editor.
+  async function markUsed(id: string) {
+    setBusy(id)
+    try { await pantryApi.remove(id); refetch() } catch { setBusy(null) }
+  }
 
   if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
   if (error) return <div className="muted" style={{ padding: 30 }}>Pantry isn't enabled for this household — turn it on in Settings → Modules.</div>
@@ -53,15 +60,14 @@ export function Pantry() {
               <div className="pantry-group-h">{loc}</div>
               <div className="pantry-list">
                 {list.map((it) => (
-                  <button type="button" key={it.id} className="pantry-item" onClick={() => setEditing(it)}>
-                    <span className="pantry-item-main">
+                  <div key={it.id} className={`pantry-item${busy === it.id ? ' busy' : ''}`}>
+                    <button type="button" className="pantry-item-main" onClick={() => setEditing(it)}>
                       <span className="pantry-item-name">{it.name}</span>
                       {(it.amount || it.unit) && <span className="pantry-item-qty">{[it.amount, it.unit].filter(Boolean).join(' ')}</span>}
-                    </span>
-                    <span className="pantry-item-meta">
-                      <ExpiryBadge expiresOn={it.expiresOn} />
-                    </span>
-                  </button>
+                    </button>
+                    <span className="pantry-item-meta"><ExpiryBadge expiresOn={it.expiresOn} /></span>
+                    <button type="button" className="pantry-item-use" aria-label={`Mark ${it.name} used`} title="Mark used" disabled={busy === it.id} onClick={() => markUsed(it.id)}>✓</button>
+                  </div>
                 ))}
               </div>
             </div>
@@ -185,30 +191,27 @@ export function PantryCard() {
     return da - db
   })
   const soon = items.filter((it) => { const d = daysUntil(it.expiresOn); return d != null && d <= 3 }).length
-  const shown = sorted.slice(0, 6)
 
+  // The whole card links to the Pantry tab; the list scrolls inside for many items.
   return (
-    <div className="card pantry-card">
+    <Link to="/pantry" className="card pantry-card">
       <div className="pantry-card-h">
         <span className="pantry-card-title">🥫 Pantry</span>
         <span className="pantry-card-count">{items.length} on hand{soon > 0 ? ` · ${soon} soon` : ''}</span>
       </div>
       {items.length === 0 ? (
-        <Link to="/pantry" className="pantry-card-empty">Nothing logged yet — add what's on hand ›</Link>
+        <div className="pantry-card-empty">Nothing logged yet — add what's on hand ›</div>
       ) : (
-        <>
-          <div className="pantry-card-list">
-            {shown.map((it) => (
-              <Link to="/pantry" key={it.id} className="pantry-card-row">
-                <span className="pantry-card-name">{it.name}</span>
-                {(it.amount || it.unit) && <span className="pantry-card-qty">{[it.amount, it.unit].filter(Boolean).join(' ')}</span>}
-                <span className="pantry-card-meta"><ExpiryBadge expiresOn={it.expiresOn} /></span>
-              </Link>
-            ))}
-          </div>
-          {items.length > shown.length && <Link to="/pantry" className="pantry-card-more">View all {items.length} ›</Link>}
-        </>
+        <div className="pantry-card-list">
+          {sorted.map((it) => (
+            <div key={it.id} className="pantry-card-row">
+              <span className="pantry-card-name">{it.name}</span>
+              {(it.amount || it.unit) && <span className="pantry-card-qty">{[it.amount, it.unit].filter(Boolean).join(' ')}</span>}
+              <span className="pantry-card-meta"><ExpiryBadge expiresOn={it.expiresOn} /></span>
+            </div>
+          ))}
+        </div>
       )}
-    </div>
+    </Link>
   )
 }
