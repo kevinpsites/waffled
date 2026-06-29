@@ -1,8 +1,25 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
 import { mealsApi, useRecipe } from '../lib/api'
 import './../styles/cookmode.css'
+
+// A running (or fired) per-step countdown shown in the floating dock.
+interface CookTimer {
+  id: number
+  label: string
+  totalSeconds: number
+  remainingSeconds: number
+  running: boolean
+  firing: boolean // hit zero; flashes + chimes until dismissed
+}
+
+// mm:ss for a duration (clamps negatives to 0).
+function fmt(secs: number): string {
+  const s = Math.max(0, Math.floor(secs))
+  const m = Math.floor(s / 60)
+  return `${m}:${String(s % 60).padStart(2, '0')}`
+}
 
 // Full-screen, step-by-step cooking view for the kiosk — large type for across-the-
 // kitchen reading, one step at a time, the step's ingredients pulled out, and a
@@ -14,6 +31,10 @@ export function CookMode() {
   const [i, setI] = useState(0)
   const [showAll, setShowAll] = useState(false)
   const [done, setDone] = useState(false)
+  // Background timers — survive step navigation (the component never remounts) and
+  // render in a floating dock above every step + the done screen.
+  const [timers, setTimers] = useState<CookTimer[]>([])
+  const nextTimerId = useRef(1)
   const wakeRef = useRef<{ release: () => void } | null>(null)
 
   // Keep the kiosk awake while cooking; release on unmount.
@@ -28,6 +49,64 @@ export function CookMode() {
       cancelled = true
       wakeRef.current?.release()
     }
+  }, [])
+
+  // One ticker drives every running timer (decrement once/second; flag `firing` at 0).
+  const anyRunning = timers.some((t) => t.running)
+  useEffect(() => {
+    if (!anyRunning) return
+    const handle = setInterval(() => {
+      setTimers((ts) =>
+        ts.map((t) => {
+          if (!t.running) return t
+          const next = t.remainingSeconds - 1
+          if (next <= 0) return { ...t, remainingSeconds: 0, running: false, firing: true }
+          return { ...t, remainingSeconds: next }
+        })
+      )
+    }, 1000)
+    return () => clearInterval(handle)
+  }, [anyRunning])
+
+  // Dependency-free chime: a repeating short oscillator beep while any timer is firing.
+  const anyFiring = timers.some((t) => t.firing)
+  useEffect(() => {
+    if (!anyFiring) return
+    const Ctx = (window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)
+    if (!Ctx) return
+    const ctx = new Ctx()
+    const beep = () => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = 880
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.45)
+      osc.connect(gain).connect(ctx.destination)
+      osc.start()
+      osc.stop(ctx.currentTime + 0.5)
+    }
+    beep()
+    const handle = setInterval(beep, 1400)
+    return () => {
+      clearInterval(handle)
+      ctx.close().catch(() => {})
+    }
+  }, [anyFiring])
+
+  const startTimer = useCallback((label: string, totalSeconds: number) => {
+    if (totalSeconds <= 0) return
+    setTimers((ts) => [
+      ...ts,
+      { id: nextTimerId.current++, label, totalSeconds, remainingSeconds: totalSeconds, running: true, firing: false },
+    ])
+  }, [])
+  const toggleTimer = useCallback((tid: number) => {
+    setTimers((ts) => ts.map((t) => (t.id === tid && !t.firing ? { ...t, running: !t.running } : t)))
+  }, [])
+  const dismissTimer = useCallback((tid: number) => {
+    setTimers((ts) => ts.filter((t) => t.id !== tid))
   }, [])
 
   const total = steps.length
@@ -68,6 +147,7 @@ export function CookMode() {
           <button className="btn btn-ghost" onClick={() => { setDone(false); setI(0) }}>↻ Start over</button>
           <button className="btn btn-primary" onClick={exit}>Back to recipe</button>
         </div>
+        <TimerDock timers={timers} onToggle={toggleTimer} onDismiss={dismissTimer} />
       </div>
     )
   }
@@ -95,6 +175,15 @@ export function CookMode() {
         )}
 
         {step.note && <div className="cm-note">📝 {step.note}</div>}
+
+        {step.timerSeconds != null && step.timerSeconds > 0 && (
+          <button
+            className="cm-timer-start"
+            onClick={() => startTimer(`Step ${i + 1}`, step.timerSeconds!)}
+          >
+            ⏱ Start {fmt(step.timerSeconds)}
+          </button>
+        )}
       </div>
 
       <div className="cm-controls">
@@ -123,6 +212,44 @@ export function CookMode() {
           </div>
         </div>
       )}
+
+      <TimerDock timers={timers} onToggle={toggleTimer} onDismiss={dismissTimer} />
+    </div>
+  )
+}
+
+// Fixed-position dock listing every active timer above the whole view. Multiple
+// concurrent timers stack; a fired one flashes (.cm-timer-firing) until dismissed.
+function TimerDock({
+  timers,
+  onToggle,
+  onDismiss,
+}: {
+  timers: CookTimer[]
+  onToggle: (id: number) => void
+  onDismiss: (id: number) => void
+}) {
+  if (timers.length === 0) return null
+  return (
+    <div className="cm-timers" role="status" aria-live="polite">
+      {timers.map((t) => (
+        <div key={t.id} className={`cm-timer${t.firing ? ' cm-timer-firing' : ''}`}>
+          <div className="cm-timer-info">
+            <div className="cm-timer-label">{t.label}</div>
+            <div className="cm-timer-time">{t.firing ? 'Done!' : fmt(t.remainingSeconds)}</div>
+          </div>
+          {!t.firing && (
+            <button
+              className="cm-timer-btn"
+              aria-label={t.running ? 'Pause timer' : 'Resume timer'}
+              onClick={() => onToggle(t.id)}
+            >
+              {t.running ? '❚❚' : '►'}
+            </button>
+          )}
+          <button className="cm-timer-btn cm-timer-x" aria-label="Dismiss timer" onClick={() => onDismiss(t.id)}>×</button>
+        </div>
+      ))}
     </div>
   )
 }

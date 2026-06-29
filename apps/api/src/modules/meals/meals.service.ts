@@ -70,9 +70,9 @@ async function insertSteps(
     const text = s.instruction.trim()
     if (!text) continue
     await client.query(
-      `insert into recipe_steps (household_id, recipe_id, step_number, instruction, ingredients)
-       values ($1,$2,$3,$4,$5)`,
-      [householdId, recipeId, n++, text, JSON.stringify((s.ingredients ?? []).map((x) => x.trim()).filter(Boolean))]
+      `insert into recipe_steps (household_id, recipe_id, step_number, instruction, ingredients, timer_seconds)
+       values ($1,$2,$3,$4,$5,$6)`,
+      [householdId, recipeId, n++, text, JSON.stringify((s.ingredients ?? []).map((x) => x.trim()).filter(Boolean)), s.timerSeconds ?? null]
     )
   }
 }
@@ -359,14 +359,14 @@ export function presentIngredient(i: RecipeIngredientRow) {
 export async function listSteps(
   householdId: string,
   recipeId: string
-): Promise<Array<{ stepNumber: number; instruction: string; ingredients: string[] }>> {
-  const { rows } = await query<{ step_number: number; instruction: string; ingredients: string[] | null }>(
-    `select step_number, instruction, ingredients from recipe_steps
+): Promise<Array<{ stepNumber: number; instruction: string; ingredients: string[]; timerSeconds: number | null }>> {
+  const { rows } = await query<{ step_number: number; instruction: string; ingredients: string[] | null; timer_seconds: number | null }>(
+    `select step_number, instruction, ingredients, timer_seconds from recipe_steps
        where household_id = $1 and recipe_id = $2 and deleted_at is null
        order by step_number`,
     [householdId, recipeId]
   )
-  return rows.map((r) => ({ stepNumber: r.step_number, instruction: r.instruction, ingredients: r.ingredients ?? [] }))
+  return rows.map((r) => ({ stepNumber: r.step_number, instruction: r.instruction, ingredients: r.ingredients ?? [], timerSeconds: r.timer_seconds ?? null }))
 }
 
 export function getOverrides(r: RecipeRow): RecipeOverrides {

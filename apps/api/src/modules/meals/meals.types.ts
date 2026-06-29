@@ -37,6 +37,7 @@ export interface RecipeMetaInput {
 export interface StepInput {
   instruction: string
   ingredients?: string[]
+  timerSeconds?: number | null
 }
 
 export interface CreateRecipeInput extends RecipeMetaInput {

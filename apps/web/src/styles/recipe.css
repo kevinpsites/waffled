@@ -819,6 +819,20 @@
   border-radius: 999px; font-size: 13px; line-height: 1; cursor: pointer; }
 .re-stepchip-extra { padding: 6px 6px 6px 11px; background: var(--card-2); }
 
+/* per-step timer control */
+.re-step-timer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.re-timer-add { font: inherit; font-size: 13px; font-weight: 700; padding: 6px 12px; border-radius: 999px;
+  border: 1px dashed var(--hair); background: var(--card-2); color: var(--ink-2); cursor: pointer; }
+.re-timer-add:hover { border-color: var(--primary); color: var(--ink); }
+.re-timer-open { padding: 5px 8px; border-radius: 999px; border: 1px solid var(--hair); background: var(--panel); }
+.re-timer-label { font-size: 12.5px; font-weight: 800; color: var(--ink-2); }
+.re-timer-num { width: 52px; font: inherit; font-size: 12.5px; font-weight: 700; text-align: center;
+  padding: 4px 6px; border-radius: 8px; border: 1px solid var(--hair); background: #fff; color: var(--ink); }
+.re-timer-num:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(236,96,73,.12); }
+.re-timer-unit { font-size: 12px; font-weight: 700; color: var(--ink-3); }
+.re-timer-clear { border: 0; background: rgba(0,0,0,0.08); color: var(--ink-2); width: 18px; height: 18px;
+  border-radius: 999px; font-size: 13px; line-height: 1; cursor: pointer; }
+
 .re-notes { width: 100%; font: inherit; font-size: 14.5px; line-height: 1.5; padding: 11px 13px;
   border-radius: var(--r-md); border: 1px solid var(--hair); background: var(--card-2); color: var(--ink); resize: vertical; }
 .re-notes:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(236,96,73,.12); }

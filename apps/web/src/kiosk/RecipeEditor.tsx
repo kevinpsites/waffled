@@ -20,7 +20,7 @@ type EditIng = { uid: string; name: string; amount: string; unit: string; prepNo
 // per-step amount (the "split" case: 2 cups water → 1 cup here, 1 cup elsewhere).
 // `extra` holds free-text lines that didn't map back to an ingredient (legacy data).
 type StepPick = { uid: string; amount: string }
-type EditStep = { instruction: string; picks: StepPick[]; extra: string[] }
+type EditStep = { instruction: string; picks: StepPick[]; extra: string[]; timerSeconds: number | null }
 
 const newUid = (): string =>
   typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `i${Math.random().toString(36).slice(2)}`
@@ -41,7 +41,7 @@ const META_FIELDS: { key: keyof RecipeWriteInput; label: string; placeholder: st
 ]
 
 const blankIng = (): EditIng => ({ uid: newUid(), name: '', amount: '', unit: '', prepNote: '', section: '' })
-const blankStep = (): EditStep => ({ instruction: '', picks: [], extra: [] })
+const blankStep = (): EditStep => ({ instruction: '', picks: [], extra: [], timerSeconds: null })
 
 function toIngInput(r: EditIng, i: number): IngredientInput {
   const amount = r.amount.trim() ? Number(r.amount) : null
@@ -63,13 +63,13 @@ function toStepInput(s: EditStep, ings: EditIng[]): StepInput {
       return [p.amount.trim(), ing.name.trim()].filter(Boolean).join(' ')
     })
     .filter(Boolean)
-  return { instruction: s.instruction.trim(), ingredients: [...fromPicks, ...s.extra] }
+  return { instruction: s.instruction.trim(), ingredients: [...fromPicks, ...s.extra], timerSeconds: s.timerSeconds ?? null }
 }
 
 // Map stored display strings (e.g. "1 cup breadcrumbs") back onto ingredient picks
 // when editing: match each to an ingredient by name (longest wins), the leading text
 // becomes the per-step amount; anything unmatched is preserved as free text.
-function stepFromStrings(instruction: string, strings: string[], ings: EditIng[]): EditStep {
+function stepFromStrings(instruction: string, strings: string[], ings: EditIng[], timerSeconds: number | null = null): EditStep {
   const named = ings.filter((i) => i.name.trim())
   const picks: StepPick[] = []
   const extra: string[] = []
@@ -85,7 +85,7 @@ function stepFromStrings(instruction: string, strings: string[], ings: EditIng[]
       picks.push({ uid: match.uid, amount: s.slice(0, idx).trim() })
     } else extra.push(s)
   }
-  return { instruction, picks, extra }
+  return { instruction, picks, extra, timerSeconds }
 }
 
 export function RecipeEditor() {
@@ -183,7 +183,7 @@ export function RecipeEditor() {
     setIngs(ingRows)
     setStps(
       steps.length
-        ? steps.map((s) => stepFromStrings(s.instruction, s.ingredients, ingRows))
+        ? steps.map((s) => stepFromStrings(s.instruction, s.ingredients, ingRows, s.timerSeconds ?? null))
         : [blankStep()]
     )
     setPrefilled(true)
@@ -305,6 +305,8 @@ export function RecipeEditor() {
     setStps((rs) => patch(rs, i, { picks: rs[i].picks.map((p) => (p.uid === uid ? { ...p, amount } : p)) }))
   const removeExtra = (i: number, j: number) =>
     setStps((rs) => patch(rs, i, { extra: rs[i].extra.filter((_, k) => k !== j) }))
+  const setStepTimer = (i: number, secs: number | null) =>
+    setStps((rs) => patch(rs, i, { timerSeconds: secs }))
 
   const namedIngs = ings.filter((g) => g.name.trim())
 
@@ -585,6 +587,7 @@ export function RecipeEditor() {
                     </span>
                   ))}
                 </div>
+                <StepTimerControl seconds={s.timerSeconds} onChange={(secs) => setStepTimer(i, secs)} />
               </div>
               <div className="re-row-ctl">
                 <button type="button" tabIndex={-1} aria-label="Move up" disabled={i === 0} onClick={() => moveStep(i, -1)}>↑</button>
@@ -638,6 +641,63 @@ function SugChips({ items, onAccept, onDismiss }: { items: string[]; onAccept: (
           <button type="button" className="re-sug-chip-x" aria-label={`Dismiss ${v}`} onClick={() => onDismiss(v)}>×</button>
         </span>
       ))}
+    </div>
+  )
+}
+
+// Per-step timer: a compact "Add timer" affordance that expands to minutes + seconds
+// inputs. Stored as total seconds on the step (null = no timer). Clearing both fields
+// (or hitting Remove) sets it back to null.
+function StepTimerControl({ seconds, onChange }: { seconds: number | null; onChange: (secs: number | null) => void }) {
+  const [open, setOpen] = useState(seconds != null)
+  const mins = seconds != null ? Math.floor(seconds / 60) : 0
+  const secs = seconds != null ? seconds % 60 : 0
+
+  // Commit minute/second edits back to a single total (null when both are empty/0).
+  const commit = (m: number, s: number) => {
+    const total = Math.max(0, Math.floor(m)) * 60 + Math.max(0, Math.min(59, Math.floor(s)))
+    onChange(total > 0 ? total : null)
+  }
+
+  if (!open && seconds == null) {
+    return (
+      <div className="re-step-timer">
+        <button type="button" className="re-timer-add" onClick={() => setOpen(true)}>⏱ Add timer</button>
+      </div>
+    )
+  }
+  return (
+    <div className="re-step-timer re-timer-open">
+      <span className="re-timer-label">⏱ Timer</span>
+      <input
+        type="number"
+        min={0}
+        className="re-timer-num"
+        value={mins || ''}
+        placeholder="0"
+        aria-label="Timer minutes"
+        onChange={(e) => commit(Number(e.target.value || 0), secs)}
+      />
+      <span className="re-timer-unit">min</span>
+      <input
+        type="number"
+        min={0}
+        max={59}
+        className="re-timer-num"
+        value={secs || ''}
+        placeholder="0"
+        aria-label="Timer seconds"
+        onChange={(e) => commit(mins, Number(e.target.value || 0))}
+      />
+      <span className="re-timer-unit">sec</span>
+      <button
+        type="button"
+        className="re-timer-clear"
+        aria-label="Remove timer"
+        onClick={() => { onChange(null); setOpen(false) }}
+      >
+        ×
+      </button>
     </div>
   )
 }

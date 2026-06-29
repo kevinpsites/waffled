@@ -230,6 +230,25 @@ describe('recipes api', () => {
       (await call('GET', '/api/recipes/00000000-0000-0000-0000-000000000000', kevin)).statusCode
     ).toBe(404)
   })
+
+  it('round-trips per-step timerSeconds (null when unset)', async () => {
+    const add = await call('POST', '/api/recipes', kevin, {
+      title: 'Soft-Boiled Eggs',
+      emoji: '🥚',
+      steps: [
+        { instruction: 'Bring water to a boil.' }, // no timer → null
+        { instruction: 'Lower eggs in and cook.', timerSeconds: 390 }, // 6:30
+      ],
+    })
+    expect(add.statusCode).toBe(201)
+    const id = JSON.parse(add.body).recipe.id
+
+    const detail = JSON.parse((await call('GET', `/api/recipes/${id}`, kevin)).body)
+    const steps = detail.steps as Array<{ stepNumber: number; instruction: string; timerSeconds: number | null }>
+    expect(steps).toHaveLength(2)
+    expect(steps[0].timerSeconds).toBeNull()
+    expect(steps[1].timerSeconds).toBe(390)
+  })
 })
 
 describe('recipe ingredients api', () => {

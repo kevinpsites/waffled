@@ -16,6 +16,7 @@ export interface IngredientInput {
 export interface StepInput {
   instruction: string
   ingredients?: string[]
+  timerSeconds?: number | null
 }
 
 // What the editor sends to create or fully edit a recipe.
@@ -201,6 +202,7 @@ export interface RecipeStep {
   instruction: string
   ingredients: string[]
   note: string | null
+  timerSeconds: number | null
 }
 
 export interface PlanCard {

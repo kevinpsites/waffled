@@ -181,3 +181,98 @@
   gap: 12px;
   margin-top: 22px;
 }
+
+/* ===== Per-step timers ===== */
+/* "Start mm:ss" button on a timed step */
+.cm-timer-start {
+  font: inherit;
+  font-size: 19px;
+  font-weight: 700;
+  padding: 14px 26px;
+  border-radius: var(--r-lg);
+  border: 0;
+  background: var(--primary, var(--wally));
+  color: #fff;
+  cursor: pointer;
+  box-shadow: var(--sh-1);
+}
+.cm-timer-start:hover {
+  filter: brightness(0.96);
+}
+
+/* floating dock — stacks active timers above every step + the done screen */
+.cm-timers {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 280px;
+}
+.cm-timer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--hair);
+  background: var(--card);
+  box-shadow: var(--sh-2, var(--sh-1));
+}
+.cm-timer-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-right: auto;
+  min-width: 0;
+}
+.cm-timer-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cm-timer-time {
+  font-size: 26px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  line-height: 1;
+}
+.cm-timer-btn {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid var(--hair);
+  background: var(--card-2);
+  color: var(--ink-2);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cm-timer-btn:hover {
+  background: var(--panel);
+}
+.cm-timer-x {
+  font-size: 18px;
+}
+/* a fired timer flashes (and chimes — handled in JS) until dismissed */
+.cm-timer-firing {
+  border-color: var(--primary, var(--wally));
+  animation: cm-timer-flash 0.8s steps(1, end) infinite;
+}
+.cm-timer-firing .cm-timer-time {
+  color: var(--primary, var(--wally));
+}
+@keyframes cm-timer-flash {
+  0% { background: var(--card); }
+  50% { background: var(--wally-t, rgba(236, 96, 73, 0.16)); }
+  100% { background: var(--card); }
+}
