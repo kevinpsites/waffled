@@ -455,6 +455,8 @@ struct NookAPI: Sendable {
         let stepNumber: Int
         let instruction: String
         let ingredients: [String]
+        /// Total seconds for this step's optional timer; nil = no timer.
+        let timerSeconds: Int?
         let note: String?
         var id: Int { stepNumber }
     }
