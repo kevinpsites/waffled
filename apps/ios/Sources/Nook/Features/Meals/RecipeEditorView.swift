@@ -41,6 +41,9 @@ struct RecipeEditorView: View {
     // it keeps its own blank-headed group even when emptied (mirrors web f8332e5).
     @State private var usedSections: [String] = []
     @State private var pendingSectionId: UUID?
+    // Drag-and-drop highlight targets (the row / section currently hovered).
+    @State private var dropTargetRow: UUID?
+    @State private var dropTargetSection: UUID?
     // AI Details auto-fill
     @State private var suggestion: NookAPI.RecipeMetadataSuggestion?
     @State private var suggesting = false
@@ -419,7 +422,10 @@ struct RecipeEditorView: View {
     private var ingredientsCard: some View {
         NookFieldCard(title: "Ingredients") {
             VStack(alignment: .leading, spacing: 14) {
-                ForEach(Array(ingGroups.enumerated()), id: \.offset) { _, grp in
+                ForEach(Array(ingGroups.enumerated()), id: \.offset) { gi, grp in
+                    // A horizontal rule clearly separates each section (web parity) — the
+                    // 🏷 header alone was too subtle. No rule above the very first group.
+                    if gi > 0 { Divider().overlay(NK.hair) }
                     ingredientGroup(grp)
                 }
                 HStack(spacing: 10) {
@@ -442,6 +448,7 @@ struct RecipeEditorView: View {
     /// (empty-section) run shows no header — unless it's a just-added pending section,
     /// which keeps its blank-headed group so backspacing the name doesn't merge it up.
     @ViewBuilder private func ingredientGroup(_ grp: IngGroup) -> some View {
+        let section = grp.section
         VStack(alignment: .leading, spacing: 8) {
             if grp.section != "" || grp.firstId == pendingSectionId {
                 SectionInput(
@@ -452,38 +459,43 @@ struct RecipeEditorView: View {
             }
             ForEach(grp.ids, id: \.self) { id in
                 if let i = ings.firstIndex(where: { $0.id == id }) {
-                    ingredientRow($ings[i])
+                    // Each row is its own view identity (with the move/delete/drop wiring
+                    // passed as closures), so a keystroke in one ingredient doesn't
+                    // re-evaluate every other row + the section drop targets — part of the
+                    // monolithic-body re-render that froze the keyboard.
+                    IngredientRowView(
+                        row: $ings[i], section: section, focused: $focused,
+                        canMoveUp: i > 0, canMoveDown: i < ings.count - 1,
+                        isDropTarget: dropTargetRow == id,
+                        onAdvance: { advanceIngredient(after: id) },
+                        onUp: { moveIngredientStep(id, by: -1) },
+                        onDown: { moveIngredientStep(id, by: 1) },
+                        onDelete: { ings.removeAll { $0.id == id } },
+                        onDrop: { dragged in moveIngredient(dragged, toSection: section, before: id) },
+                        onHover: { over in dropTargetRow = over ? id : (dropTargetRow == id ? nil : dropTargetRow) }
+                    )
                 }
             }
         }
-    }
-
-    @ViewBuilder private func ingredientRow(_ row: Binding<EditIng>) -> some View {
-        let idx = ings.firstIndex { $0.id == row.id } ?? 0
-        VStack(spacing: 6) {
-            // Return on ANY field jumps to the next ingredient — adding a fresh row when
-            // you're on the last one — so you can keep typing a list without reaching up.
-            let advance = { advanceIngredient(after: row.wrappedValue.id) }
-            HStack(spacing: 6) {
-                TextField("2", text: row.amount).keyboardType(.decimalPad)
-                    .focused($focused, equals: .ingAmount(row.wrappedValue.id))
-                    .frame(width: 54).padding(8).nkField(fill: NK.panel)
-                TextField("cups", text: row.unit).submitLabel(.next).onSubmit(advance)
-                    .frame(width: 72).padding(8).nkField(fill: NK.panel)
-                TextField("ingredient", text: row.name)
-                    .focused($focused, equals: .ingName(row.wrappedValue.id))
-                    .submitLabel(.next).onSubmit(advance)
-                    .padding(8).nkField(fill: NK.panel)
-            }
-            HStack(spacing: 6) {
-                TextField("diced (optional)", text: row.prepNote).submitLabel(.next).onSubmit(advance)
-                    .padding(8).nkField(fill: NK.panel)
-                rowControls(up: idx > 0, down: idx < ings.count - 1,
-                            onUp: { ings.swapAt(idx, idx - 1) }, onDown: { ings.swapAt(idx, idx + 1) },
-                            onDelete: { ings.removeAll { $0.id == row.wrappedValue.id } })
-            }
+        .padding(8).padding(.horizontal, -8)   // a bit of hit-area around the run
+        .background(
+            RoundedRectangle(cornerRadius: NK.rSM, style: .continuous)
+                .fill(dropTargetSection == grp.firstId ? NK.primary.opacity(0.06) : .clear)
+                .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous)
+                    .strokeBorder(dropTargetSection == grp.firstId ? NK.primary.opacity(0.4) : .clear, lineWidth: 1.5))
+        )
+        .contentShape(Rectangle())
+        // Drop onto a section's empty space → the dragged row adopts this section and
+        // lands at the END of the run. (Dropping on a specific row lands it before that
+        // row — see IngredientRowView's own dropDestination.)
+        .dropDestination(for: String.self) { ids, _ in
+            dropTargetSection = nil
+            guard let raw = ids.first, let dragged = UUID(uuidString: raw) else { return false }
+            moveIngredient(dragged, toSection: section, before: nil)
+            return true
+        } isTargeted: { over in
+            dropTargetSection = over ? grp.firstId : (dropTargetSection == grp.firstId ? nil : dropTargetSection)
         }
-        .padding(.bottom, 2)
     }
 
     // MARK: ingredient sections
@@ -536,6 +548,40 @@ struct RecipeEditorView: View {
         pendingSectionId = row.id
     }
 
+    /// Re-home a dragged ingredient: it adopts `section` and is inserted just before
+    /// `before` (or appended to the end of that section's run when `before` is nil). The
+    /// flat `ings` order IS the section grouping, so we splice within the run's range.
+    private func moveIngredient(_ draggedId: UUID, toSection section: String, before: UUID?) {
+        guard let from = ings.firstIndex(where: { $0.id == draggedId }) else { return }
+        // A dropped row stops being the "pending" blank-headed section (it's now placed).
+        if pendingSectionId == draggedId { pendingSectionId = nil }
+        var moved = ings.remove(at: from)
+        moved.section = section
+        if let before, let to = ings.firstIndex(where: { $0.id == before }) {
+            ings.insert(moved, at: to)
+        } else {
+            // Append after the last row already in this section (keep the run contiguous).
+            if let last = ings.lastIndex(where: { $0.section == section }) {
+                ings.insert(moved, at: last + 1)
+            } else {
+                ings.append(moved)
+            }
+        }
+    }
+
+    /// Move a row one slot up/down through the flat list. Crossing the boundary of its
+    /// run makes it ADOPT the neighbor's section (web's "adopt the section you land after"),
+    /// so repeatedly pressing ↓ walks a row through its section and into the next one.
+    private func moveIngredientStep(_ id: UUID, by delta: Int) {
+        guard let i = ings.firstIndex(where: { $0.id == id }) else { return }
+        let j = i + delta
+        guard ings.indices.contains(j) else { return }
+        if pendingSectionId == id { pendingSectionId = nil }
+        // Adopt the section of the row we're stepping onto (the neighbor we land at/after).
+        ings[i].section = ings[j].section
+        ings.swapAt(i, j)
+    }
+
     // MARK: method
 
     private var notesCard: some View {
@@ -547,9 +593,26 @@ struct RecipeEditorView: View {
     }
 
     private var methodCard: some View {
-        NookFieldCard(title: "Method") {
+        // Snapshot the named ingredients ONCE per render (as plain values) instead of
+        // re-filtering `ings` inside every step row — and pass them down so each step's
+        // tag UI doesn't recompute the list on its own re-renders.
+        let named = ings.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty }
+            .map { g in
+                let amt = [g.amount.trimmingCharacters(in: .whitespaces), g.unit.trimmingCharacters(in: .whitespaces)]
+                    .filter { !$0.isEmpty }.joined(separator: " ")
+                return NamedIngredient(id: g.id, name: g.name, defaultAmount: amt)
+            }
+        return NookFieldCard(title: "Method") {
             VStack(alignment: .leading, spacing: 16) {
-                ForEach(Array($steps.enumerated()), id: \.element.id) { i, $step in stepRow(i, $step) }
+                // Each step is its own view identity, so a keystroke in one step (or in a
+                // totally different card) doesn't re-evaluate/re-lay-out every other step's
+                // TextField + ChipFlow tag UI — the freeze came from the whole monolithic
+                // body re-running on every keystroke. (See MethodStepRow.)
+                ForEach(Array($steps.enumerated()), id: \.element.id) { i, $step in
+                    MethodStepRow(index: i, step: $step, named: named, total: steps.count,
+                                  onUp: { steps.swapAt(i, i - 1) }, onDown: { steps.swapAt(i, i + 1) },
+                                  onDelete: { steps.remove(at: i) })
+                }
                 Button { steps.append(EditStep()) } label: {
                     Label("Add step", systemImage: "plus").font(.system(size: 14, weight: .bold))
                         .foregroundStyle(NK.ink).padding(.horizontal, 13).padding(.vertical, 9)
@@ -559,90 +622,6 @@ struct RecipeEditorView: View {
         }
     }
 
-    @ViewBuilder private func stepRow(_ i: Int, _ step: Binding<EditStep>) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                Text("\(i + 1)").font(.system(size: 13, weight: .heavy)).foregroundStyle(NK.ink2)
-                    .frame(width: 26, height: 26).background(NK.panel).clipShape(Circle())
-                Spacer()
-                rowControls(up: i > 0, down: i < steps.count - 1,
-                            onUp: { steps.swapAt(i, i - 1) }, onDown: { steps.swapAt(i, i + 1) },
-                            onDelete: { steps.remove(at: i) })
-            }
-            TextField("Describe this step…", text: step.instruction, axis: .vertical)
-                .font(.system(size: 15)).lineLimit(2...8)
-                .padding(10).nkField(fill: NK.panel)
-            StepTagSection(step: step, named: ings.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty },
-                           onAdd: { g in togglePick(step, g) },
-                           onRemove: { id in removePick(step, id) })
-            stepTimer(step)
-        }
-    }
-
-    /// Per-step timer control. Collapsed: a dashed "⏱ Add timer" affordance. Expanded:
-    /// editable minutes + seconds (0–59) and a filled "⏱ m:ss" pill with a clear button.
-    /// Total seconds = m*60 + s; nil when the total is 0 (= no timer).
-    @ViewBuilder private func stepTimer(_ step: Binding<EditStep>) -> some View {
-        let total = step.wrappedValue.timerSeconds ?? 0
-        if total > 0 {
-            HStack(spacing: 10) {
-                Text("⏱ \(CookTimer.mmss(total))")
-                    .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.primaryD)
-                    .padding(.horizontal, 11).padding(.vertical, 7)
-                    .background(NK.primary.opacity(0.12)).clipShape(Capsule())
-
-                HStack(spacing: 4) {
-                    TextField("0", value: timerMin(step), format: .number)
-                        .keyboardType(.numberPad).multilineTextAlignment(.center)
-                        .font(.system(size: 14, weight: .semibold)).frame(width: 42)
-                        .padding(.vertical, 6).nkField(fill: NK.card)
-                    Text("min").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
-                    TextField("0", value: timerSec(step), format: .number)
-                        .keyboardType(.numberPad).multilineTextAlignment(.center)
-                        .font(.system(size: 14, weight: .semibold)).frame(width: 42)
-                        .padding(.vertical, 6).nkField(fill: NK.card)
-                    Text("sec").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
-                }
-                Spacer()
-                Button { step.wrappedValue.timerSeconds = nil } label: {
-                    Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
-                }.buttonStyle(.plain)
-            }
-        } else {
-            Button { step.wrappedValue.timerSeconds = 60 } label: {
-                Label("Add timer", systemImage: "timer")
-                    .font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.primaryD)
-                    .padding(.horizontal, 11).padding(.vertical, 7)
-                    .overlay(Capsule().stroke(style: StrokeStyle(lineWidth: 1.2, dash: [4, 3]))
-                        .foregroundStyle(NK.primaryD.opacity(0.5)))
-            }.buttonStyle(.plain)
-        }
-    }
-
-    /// Minutes binding over the step's total seconds (clamped ≥ 0).
-    private func timerMin(_ step: Binding<EditStep>) -> Binding<Int> {
-        Binding(
-            get: { (step.wrappedValue.timerSeconds ?? 0) / 60 },
-            set: { m in
-                let s = (step.wrappedValue.timerSeconds ?? 0) % 60
-                let total = max(0, m) * 60 + s
-                step.wrappedValue.timerSeconds = total > 0 ? total : nil
-            }
-        )
-    }
-
-    /// Seconds (0–59) binding over the step's total seconds.
-    private func timerSec(_ step: Binding<EditStep>) -> Binding<Int> {
-        Binding(
-            get: { (step.wrappedValue.timerSeconds ?? 0) % 60 },
-            set: { s in
-                let m = (step.wrappedValue.timerSeconds ?? 0) / 60
-                let total = m * 60 + min(59, max(0, s))
-                step.wrappedValue.timerSeconds = total > 0 ? total : nil
-            }
-        )
-    }
-
     // MARK: shared bits
 
     @ViewBuilder private func field<V: View>(_ label: String, @ViewBuilder _ content: () -> V) -> some View {
@@ -650,23 +629,6 @@ struct RecipeEditorView: View {
             Text(label).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
             content()
         }
-    }
-
-    private func rowControls(up: Bool, down: Bool, onUp: @escaping () -> Void,
-                             onDown: @escaping () -> Void, onDelete: @escaping () -> Void) -> some View {
-        HStack(spacing: 4) {
-            Button(action: onUp) { ctlIcon("arrow.up") }.disabled(!up).buttonStyle(.plain)
-            Button(action: onDown) { ctlIcon("arrow.down") }.disabled(!down).buttonStyle(.plain)
-            Button(action: onDelete) {
-                Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.primaryD)
-                    .frame(width: 30, height: 30).background(NK.primaryD.opacity(0.1)).clipShape(RoundedRectangle(cornerRadius: 8))
-            }.buttonStyle(.plain)
-        }
-    }
-
-    private func ctlIcon(_ name: String) -> some View {
-        Image(systemName: name).font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
-            .frame(width: 30, height: 30).background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func metaBinding(_ key: String) -> Binding<String> {
@@ -686,20 +648,6 @@ struct RecipeEditorView: View {
     private func advanceIngredient(after id: UUID) {
         guard let i = ings.firstIndex(where: { $0.id == id }) else { return }
         if i == ings.count - 1 { addIngredient() } else { focused = .ingAmount(ings[i + 1].id) }
-    }
-
-    private func togglePick(_ step: Binding<EditStep>, _ g: EditIng) {
-        if let i = step.wrappedValue.picks.firstIndex(where: { $0.ingId == g.id }) {
-            step.wrappedValue.picks.remove(at: i)
-        } else {
-            let amt = [g.amount.trimmingCharacters(in: .whitespaces), g.unit.trimmingCharacters(in: .whitespaces)]
-                .filter { !$0.isEmpty }.joined(separator: " ")
-            step.wrappedValue.picks.append(StepPick(ingId: g.id, amount: amt))
-        }
-    }
-
-    private func removePick(_ step: Binding<EditStep>, _ ingId: UUID) {
-        step.wrappedValue.picks.removeAll { $0.ingId == ingId }
     }
 
     // MARK: AI suggestions
@@ -1019,6 +967,219 @@ struct SectionInput: View {
     }
 }
 
+// MARK: - one ingredient row (extracted so each row is its own SwiftUI identity)
+
+/// A single editable ingredient row: amount / unit / name / prep-note, a drag grip to
+/// re-home it into another section, and up / down / delete controls (which now cross the
+/// section boundary). Pulled out of `RecipeEditorView` so typing in one row doesn't
+/// re-evaluate every other row — part of the monolithic-body re-render that froze the
+/// keyboard. The parent owns the `[EditIng]`; this row reaches it only through closures.
+struct IngredientRowView: View {
+    @Binding var row: EditIng
+    let section: String
+    var focused: FocusState<RecipeEditorView.Field?>.Binding
+    let canMoveUp: Bool        // a row exists above → ↑ enabled
+    let canMoveDown: Bool      // a row exists below → ↓ enabled
+    let isDropTarget: Bool
+    let onAdvance: () -> Void
+    let onUp: () -> Void
+    let onDown: () -> Void
+    let onDelete: () -> Void
+    let onDrop: (UUID) -> Void
+    let onHover: (Bool) -> Void
+
+    var body: some View {
+        let id = row.id
+        VStack(spacing: 6) {
+            HStack(spacing: 6) {
+                // A grip handle owns the drag — dragging from a TextField would steal the
+                // text-selection gesture. Drag a row into another section to re-home it.
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+                    .frame(width: 22, height: 30).contentShape(Rectangle())
+                    .draggable(id.uuidString) { dragPreview }
+                TextField("2", text: $row.amount).keyboardType(.decimalPad)
+                    .focused(focused, equals: .ingAmount(id))
+                    .frame(width: 54).padding(8).nkField(fill: NK.panel)
+                TextField("cups", text: $row.unit).submitLabel(.next).onSubmit(onAdvance)
+                    .frame(width: 72).padding(8).nkField(fill: NK.panel)
+                TextField("ingredient", text: $row.name)
+                    .focused(focused, equals: .ingName(id))
+                    .submitLabel(.next).onSubmit(onAdvance)
+                    .padding(8).nkField(fill: NK.panel)
+            }
+            HStack(spacing: 6) {
+                TextField("diced (optional)", text: $row.prepNote).submitLabel(.next).onSubmit(onAdvance)
+                    .padding(8).nkField(fill: NK.panel)
+                // Arrows cross section boundaries: moving past the top/bottom of a run makes
+                // the row adopt the adjacent section (web's "adopt the section you land
+                // after"), so repeated ↓ walks a row down and into the next section.
+                EditorRowControls(up: canMoveUp, down: canMoveDown, onUp: onUp, onDown: onDown, onDelete: onDelete)
+            }
+        }
+        .padding(.bottom, 2)
+        .background(isDropTarget ? NK.primary.opacity(0.06) : .clear)
+        // Drop ONTO a row → the dragged row adopts this row's section and lands just before
+        // it (precise positioning within / into a section).
+        .dropDestination(for: String.self) { ids, _ in
+            guard let raw = ids.first, let dragged = UUID(uuidString: raw), dragged != id else { return false }
+            onDrop(dragged)
+            return true
+        } isTargeted: { onHover($0) }
+    }
+
+    private var dragPreview: some View {
+        let name = row.name.trimmingCharacters(in: .whitespaces)
+        return HStack(spacing: 6) {
+            Image(systemName: "line.3.horizontal").font(.system(size: 13, weight: .bold))
+            Text(name.isEmpty ? "ingredient" : name)
+                .font(.system(size: 14, weight: .semibold)).lineLimit(1)
+        }
+        .foregroundStyle(NK.ink)
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(NK.card).clipShape(Capsule())
+        .overlay(Capsule().strokeBorder(NK.primary.opacity(0.4), lineWidth: 1))
+    }
+}
+
+// MARK: - one method step (extracted so each step is its own SwiftUI identity)
+
+/// A plain, value-typed snapshot of a named ingredient (id + name + the default amount to
+/// seed a step pick). Passing these as `let` values — instead of re-filtering the live
+/// `ings` array inside every step's body — keeps per-keystroke work cheap (the editor's
+/// whole body re-runs on each keystroke; this stops it amplifying across every step row).
+struct NamedIngredient: Identifiable, Equatable {
+    let id: UUID
+    let name: String
+    /// "amount unit" prefilled when this ingredient is first tagged in a step.
+    var defaultAmount: String = ""
+}
+
+/// One method step. Extracted into its own `View` struct so a keystroke in this step (or in
+/// another card entirely) only re-evaluates THIS row's body — not every other step's
+/// TextField + ChipFlow tag UI. The monolithic editor body re-running all of those on every
+/// keystroke was the keyboard-freeze amplifier (same class as the chores new-chore sheet).
+struct MethodStepRow: View {
+    let index: Int
+    @Binding var step: EditStep
+    let named: [NamedIngredient]
+    let total: Int
+    let onUp: () -> Void
+    let onDown: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Text("\(index + 1)").font(.system(size: 13, weight: .heavy)).foregroundStyle(NK.ink2)
+                    .frame(width: 26, height: 26).background(NK.panel).clipShape(Circle())
+                Spacer()
+                EditorRowControls(up: index > 0, down: index < total - 1,
+                                  onUp: onUp, onDown: onDown, onDelete: onDelete)
+            }
+            TextField("Describe this step…", text: $step.instruction, axis: .vertical)
+                .font(.system(size: 15)).lineLimit(2...8)
+                .padding(10).nkField(fill: NK.panel)
+            StepTagSection(step: $step, named: named, onAdd: togglePick, onRemove: removePick)
+            stepTimer
+        }
+    }
+
+    private func togglePick(_ g: NamedIngredient) {
+        if let i = step.picks.firstIndex(where: { $0.ingId == g.id }) {
+            step.picks.remove(at: i)
+        } else {
+            step.picks.append(StepPick(ingId: g.id, amount: g.defaultAmount))
+        }
+    }
+
+    private func removePick(_ ingId: UUID) { step.picks.removeAll { $0.ingId == ingId } }
+
+    /// Per-step timer control. Collapsed: a dashed "⏱ Add timer" affordance. Expanded:
+    /// editable minutes + seconds (0–59) and a filled "⏱ m:ss" pill with a clear button.
+    @ViewBuilder private var stepTimer: some View {
+        let total = step.timerSeconds ?? 0
+        if total > 0 {
+            HStack(spacing: 10) {
+                Text("⏱ \(CookTimer.mmss(total))")
+                    .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.primaryD)
+                    .padding(.horizontal, 11).padding(.vertical, 7)
+                    .background(NK.primary.opacity(0.12)).clipShape(Capsule())
+
+                HStack(spacing: 4) {
+                    TextField("0", value: timerMin, format: .number)
+                        .keyboardType(.numberPad).multilineTextAlignment(.center)
+                        .font(.system(size: 14, weight: .semibold)).frame(width: 42)
+                        .padding(.vertical, 6).nkField(fill: NK.card)
+                    Text("min").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                    TextField("0", value: timerSec, format: .number)
+                        .keyboardType(.numberPad).multilineTextAlignment(.center)
+                        .font(.system(size: 14, weight: .semibold)).frame(width: 42)
+                        .padding(.vertical, 6).nkField(fill: NK.card)
+                    Text("sec").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                }
+                Spacer()
+                Button { step.timerSeconds = nil } label: {
+                    Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                }.buttonStyle(.plain)
+            }
+        } else {
+            Button { step.timerSeconds = 60 } label: {
+                Label("Add timer", systemImage: "timer")
+                    .font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.primaryD)
+                    .padding(.horizontal, 11).padding(.vertical, 7)
+                    .overlay(Capsule().stroke(style: StrokeStyle(lineWidth: 1.2, dash: [4, 3]))
+                        .foregroundStyle(NK.primaryD.opacity(0.5)))
+            }.buttonStyle(.plain)
+        }
+    }
+
+    private var timerMin: Binding<Int> {
+        Binding(
+            get: { (step.timerSeconds ?? 0) / 60 },
+            set: { m in
+                let s = (step.timerSeconds ?? 0) % 60
+                let t = max(0, m) * 60 + s
+                step.timerSeconds = t > 0 ? t : nil
+            }
+        )
+    }
+
+    private var timerSec: Binding<Int> {
+        Binding(
+            get: { (step.timerSeconds ?? 0) % 60 },
+            set: { s in
+                let m = (step.timerSeconds ?? 0) / 60
+                let t = m * 60 + min(59, max(0, s))
+                step.timerSeconds = t > 0 ? t : nil
+            }
+        )
+    }
+}
+
+/// The shared up / down / delete control cluster (moved out of `RecipeEditorView` so the
+/// extracted `MethodStepRow` can reuse it without re-evaluating the parent's body).
+struct EditorRowControls: View {
+    let up: Bool, down: Bool
+    let onUp: () -> Void, onDown: () -> Void, onDelete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Button(action: onUp) { icon("arrow.up") }.disabled(!up).buttonStyle(.plain)
+            Button(action: onDown) { icon("arrow.down") }.disabled(!down).buttonStyle(.plain)
+            Button(action: onDelete) {
+                Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.primaryD)
+                    .frame(width: 30, height: 30).background(NK.primaryD.opacity(0.1)).clipShape(RoundedRectangle(cornerRadius: 8))
+            }.buttonStyle(.plain)
+        }
+    }
+
+    private func icon(_ name: String) -> some View {
+        Image(systemName: name).font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
+            .frame(width: 30, height: 30).background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
 // MARK: - per-step "tag ingredient" (pills + popover)
 
 /// Per-step ingredient tagging — the native twin of the web `StepIngredients`. Tagged
@@ -1028,8 +1189,8 @@ struct SectionInput: View {
 /// Legacy free-text `extra` lines are shown as removable grey pills.
 struct StepTagSection: View {
     @Binding var step: EditStep
-    let named: [EditIng]
-    let onAdd: (EditIng) -> Void
+    let named: [NamedIngredient]
+    let onAdd: (NamedIngredient) -> Void
     let onRemove: (UUID) -> Void
     @State private var showPopover = false
 
@@ -1097,7 +1258,7 @@ struct StepTagSection: View {
         .presentationDetents([.medium, .large])
     }
 
-    @ViewBuilder private func tagRow(_ g: EditIng) -> some View {
+    @ViewBuilder private func tagRow(_ g: NamedIngredient) -> some View {
         let pickIdx = step.picks.firstIndex { $0.ingId == g.id }
         let on = pickIdx != nil
         HStack(spacing: 10) {
