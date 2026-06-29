@@ -50,7 +50,7 @@ export const choresApi = {
     apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/complete`, proof).then(tap('chores')).then(tap('rewards')),
   uncompleteInstance: (id: string) =>
     apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/uncomplete`).then(tap('chores')).then(tap('rewards')),
-  createChore: (input: { title: string; personId?: string | null; emoji?: string | null; rewardAmount?: number; rewardCurrency?: string; rrule?: string; requiresApproval?: boolean; requiresPhoto?: boolean }) =>
+  createChore: (input: { title: string; personId?: string | null; emoji?: string | null; rewardAmount?: number; rewardCurrency?: string; rrule?: string | null; requiresApproval?: boolean; requiresPhoto?: boolean; rollover?: boolean; dueOn?: string }) =>
     apiSend<{ chore: { id: string } }>('POST', '/api/chores', input).then(tap('chores')),
   updateChore: (id: string, patch: Record<string, unknown>) =>
     apiSend<{ chore: { id: string } }>('PATCH', `/api/chores/${id}`, patch).then(tap('chores')),

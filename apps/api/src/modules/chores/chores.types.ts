@@ -11,6 +11,7 @@ export interface ChoreRow extends QueryResultRow {
   reward_amount: number
   due_time: string | null
   is_active: boolean
+  rollover: boolean
 }
 
 export interface CreateChoreInput {
@@ -23,6 +24,12 @@ export interface CreateChoreInput {
   dueTime?: string | null
   requiresApproval?: boolean
   requiresPhoto?: boolean
+  // One-off only (rrule null): carry the single instance forward, day to day,
+  // until it's done. Defaults true; ignored for recurring chores.
+  rollover?: boolean
+  // One-off only: the date the single instance lands on (YYYY-MM-DD). Defaults to
+  // household-local today.
+  dueOn?: string
 }
 
 export interface PersonChoreSummary {
