@@ -151,9 +151,21 @@ shipped — see 0048–0050 + the calendar→goal Phase 2 note above.)*
 
 ## Backlog — designed, not yet built
 
-### Public API — per-user API keys + scopes (Immich-style integration surface) — GREENLIT 2026-06-29 (build #3)
+### Public API — per-user API keys + scopes (Immich-style integration surface) — SHIPPED 2026-06-29 (build #3)
 Design rationale + the A/B/C pattern model: [`docs/product/extensibility.md`](docs/product/extensibility.md).
-Build order: ① module framework + Modules tab → ② Pantry module → ③ this (API keys).
+Build order: ① module framework + Modules tab → ② Pantry module → ③ this (API keys). ✅ all shipped.
+
+**Shipped** (`feat(api-keys)`): `nook_…` secret (sha256 at rest) via the `x-api-key` header;
+migration `0061_api_keys.sql`; central scope gate in the auth gate (only paths in the `API_SCOPES`
+catalog are reachable — auth/kiosk/permissions/key-mgmt/PowerSync are never exposed); scopes are
+`<resource>:read|write` (write implies read) layered over the unchanged in-route capability matrix;
+`GET/POST/DELETE /api/api-keys` (+ `/scopes`); Settings → **API Keys** tab (admin-gated) with a
+scope picker + reveal-once secret + revoke; 12 integration tests.
+
+**Deferred** (not built): per-user (non-admin) issuance; OpenAPI/published contract + exported types
+package; CORS posture for cross-origin browser integrations; `last_used_at` is recorded (throttled).
+
+Original notes ↓
 Today the REST surface is broad (~179 routes, full CRUD on most domains) but there's **no way for
 a self-hoster to build an integration**: auth is short-lived session JWTs only (1h access / 60d
 refresh), authorization is a role→capability matrix bound to the *person* (not a token), there are
