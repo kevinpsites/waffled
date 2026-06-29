@@ -251,7 +251,7 @@ export function Goals() {
   const maxGoalStreak = isIndividual ? Math.max(0, ...visible.map((g) => g.streakDays)) : 0
 
   if (listsError) {
-    return <div className="muted" style={{ padding: 30 }}>Sign this kiosk in to see goals.</div>
+    return <div className="muted" style={{ padding: 30 }}>Couldn't load goals — try reloading or signing in again.</div>
   }
 
   return (

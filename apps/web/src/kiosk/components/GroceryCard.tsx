@@ -29,7 +29,7 @@ export function GroceryCard() {
       </div>
 
       {loading && <div className="tiny muted">Loading…</div>}
-      {error && <div className="tiny muted">Sign this kiosk in to use the list.</div>}
+      {error && <div className="tiny muted">Couldn't load the list — reload or sign in again.</div>}
       {!loading && !error && items.length === 0 && (
         <div className="tiny muted" style={{ paddingBottom: 6 }}>Nothing on the list yet.</div>
       )}

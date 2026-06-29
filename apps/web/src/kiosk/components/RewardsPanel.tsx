@@ -77,7 +77,7 @@ export function RewardsPanel() {
   }
 
   if (loading) return <div className="muted" style={{ padding: 20 }}>Loading…</div>
-  if (error) return <div className="muted" style={{ padding: 20 }}>Sign this kiosk in to see rewards.</div>
+  if (error) return <div className="muted" style={{ padding: 20 }}>Couldn't load rewards — try reloading or signing in again.</div>
 
   return (
     <div className="rewards-panel">

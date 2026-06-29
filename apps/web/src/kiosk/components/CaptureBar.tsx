@@ -370,7 +370,7 @@ export function CaptureBar() {
         setExpanded(false)
       }, 1500)
     } catch {
-      setFlash({ ok: false, msg: 'Sign this kiosk in to add things.' })
+      setFlash({ ok: false, msg: "Couldn't add that — try reloading or signing in again." })
     } finally {
       setBusy(false)
     }

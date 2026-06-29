@@ -319,7 +319,7 @@ export function Lists() {
   }
 
   if (listsError) {
-    return <div className="muted" style={{ padding: 30 }}>Sign this kiosk in to see your lists.</div>
+    return <div className="muted" style={{ padding: 30 }}>Couldn't load your lists — try reloading or signing in again.</div>
   }
 
   // The grocery list opens its dedicated auto-built board (takes over the screen).

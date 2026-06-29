@@ -261,7 +261,7 @@ function FamilyPanel() {
   const [locDraft, setLocDraft] = useState<string | null>(null)
 
   if (loading) return <div className="muted" style={{ padding: 20 }}>Loading…</div>
-  if (error || !household) return <div className="muted" style={{ padding: 20 }}>Sign this kiosk in to manage your family.</div>
+  if (error || !household) return <div className="muted" style={{ padding: 20 }}>Couldn't load your family — try reloading or signing in again.</div>
 
   async function saveHousehold(patch: Record<string, unknown>) {
     await personsApi.updateHousehold(patch)
@@ -436,7 +436,7 @@ function AiPanel() {
     }
   }, [])
 
-  if (error) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Sign this kiosk in to manage AI.</div></div>
+  if (error) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Couldn't load AI settings — try reloading or signing in again.</div></div>
   if (!cfg) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
 
   function pick(p: Provider) {
@@ -617,7 +617,7 @@ function MealsPanel() {
     return () => clearTimeout(t)
   }, [cfg])
 
-  if (error) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Sign this kiosk in to manage meal settings.</div></div>
+  if (error) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Couldn't load meal settings — try reloading or signing in again.</div></div>
   if (!cfg) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
 
   // null participantIds == the whole family; resolve to concrete ids for the chips.
@@ -727,7 +727,7 @@ function CalendarsPanel() {
   useEffect(load, [])
 
   if (loading) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
-  if (error || !status) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Sign this kiosk in to manage calendars.</div></div>
+  if (error || !status) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Couldn't load calendars — try reloading or signing in again.</div></div>
 
   async function connect() {
     setConnecting(true)

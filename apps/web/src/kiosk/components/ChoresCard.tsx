@@ -63,7 +63,7 @@ export function ChoresCard() {
       </div>
       {loading && <div className="tiny muted" style={{ padding: '8px 0' }}>Loading…</div>}
       {error && (
-        <div className="tiny muted" style={{ padding: '8px 0' }}>Sign this kiosk in to see chores.</div>
+        <div className="tiny muted" style={{ padding: '8px 0' }}>Couldn't load chores — reload or sign in.</div>
       )}
       {!loading && !error && withChores.length === 0 && (
         <div className="tiny muted" style={{ padding: '8px 0' }}>No chores yet.</div>

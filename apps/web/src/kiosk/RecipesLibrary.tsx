@@ -122,7 +122,7 @@ export function RecipesLibrary() {
         {anyFilter ? <button type="button" className="pill recipes-clear" onClick={clearAll}>Clear</button> : null}
       </div>
 
-      {error && <div className="muted" style={{ padding: 20 }}>Sign this kiosk in to see recipes.</div>}
+      {error && <div className="muted" style={{ padding: 20 }}>Couldn't load recipes — try reloading or signing in again.</div>}
       {!error && !loading && sorted.length === 0 && (
         <div className="muted" style={{ padding: 20, fontWeight: 600 }}>
           {recipes.length === 0 ? (

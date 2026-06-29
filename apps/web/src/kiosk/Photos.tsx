@@ -195,7 +195,7 @@ export function Photos() {
   }
 
   if (error) {
-    return <div className="ph-empty">Sign this kiosk in to see photos.</div>
+    return <div className="ph-empty">Couldn't load photos — try reloading or signing in again.</div>
   }
 
   return (

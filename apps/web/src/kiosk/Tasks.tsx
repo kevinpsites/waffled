@@ -232,7 +232,7 @@ export function Tasks() {
       {tab === 'chores' && (
       <div className="tasks-screen">
         {loading && <div className="muted" style={{ padding: 20 }}>Loading…</div>}
-        {error && <div className="muted" style={{ padding: 20 }}>Sign this kiosk in to see chores.</div>}
+        {error && <div className="muted" style={{ padding: 20 }}>Couldn't load chores — try reloading or signing in again.</div>}
         {!loading && !error && groups.map((g) => {
           const done = g.items.filter((i) => i.status === 'done').length
           const upForGrabs = g.key === 'unassigned'

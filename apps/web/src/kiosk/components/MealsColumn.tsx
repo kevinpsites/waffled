@@ -95,7 +95,7 @@ export function WeekDinnersCard() {
         </Link>
       </div>
       {loading && <div className="tiny muted" style={{ padding: '6px 0' }}>Loading…</div>}
-      {error && <div className="tiny muted" style={{ padding: '6px 0' }}>Sign this kiosk in to see meals.</div>}
+      {error && <div className="tiny muted" style={{ padding: '6px 0' }}>Couldn't load meals — try reloading or signing in again.</div>}
       {!loading && !error && dinners.length === 0 && (
         <div className="tiny muted" style={{ padding: '6px 0' }}>No dinners planned yet.</div>
       )}

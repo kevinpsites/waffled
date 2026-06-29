@@ -126,7 +126,7 @@ export function AgendaCard() {
       </div>
 
       {loading && <div className="muted" style={{ padding: '14px 4px' }}>Loading…</div>}
-      {error && <div className="muted" style={{ padding: '14px 4px' }}>Sign this kiosk in to see the calendar.</div>}
+      {error && <div className="muted" style={{ padding: '14px 4px' }}>Couldn't load the calendar — try reloading or signing in again.</div>}
       {!loading && !error && shown.length === 0 && (
         <div className="muted" style={{ padding: '14px 4px' }}>
           {filterId ? `Nothing on ${activePerson?.name ?? 'their'} calendar today.` : 'Nothing on the calendar today.'}
