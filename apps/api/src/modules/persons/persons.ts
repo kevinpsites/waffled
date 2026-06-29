@@ -3,6 +3,7 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
 import { presentPerson, presentHousehold, type PersonRow, type HouseholdRow } from '../households/households'
 import { tenantRoute, adminRoute } from '../../platform/route-guards'
+import { MODULES, MODULE_KEYS } from '../../platform/modules'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -223,6 +224,30 @@ export async function updateOnboarding(
   return rows[0] ?? null
 }
 
+// Merge optional-module enable flags into settings.modules (jsonb merge so sibling
+// settings keys are preserved). Only catalog keys with boolean values reach here.
+export async function updateModules(
+  householdId: string,
+  patch: Record<string, boolean>
+): Promise<HouseholdRow | null> {
+  if (Object.keys(patch).length === 0) {
+    const { rows } = await query<HouseholdRow>(`select * from households where id = $1`, [householdId])
+    return rows[0] ?? null
+  }
+  const { rows } = await query<HouseholdRow>(
+    `update households
+        set settings = jsonb_set(
+          coalesce(settings, '{}'::jsonb),
+          '{modules}',
+          coalesce(settings->'modules', '{}'::jsonb) || $2::jsonb
+        )
+      where id = $1
+      returning *`,
+    [householdId, JSON.stringify(patch)]
+  )
+  return rows[0] ?? null
+}
+
 export function registerPersonRoutes(api: Api): void {
   // Household settings: the household + its members (with login/owner flags).
   api.get('/api/household/settings', tenantRoute((tenant) => householdSettings(tenant.householdId)))
@@ -259,6 +284,25 @@ export function registerPersonRoutes(api: Api): void {
     const h = await updateOnboarding(tenant.householdId, patch)
     if (!h) return res.status(404).json({ error: 'NotFound', message: 'household not found' })
     return { onboarding: (h.settings as { onboarding?: unknown })?.onboarding ?? null }
+  }))
+
+  // Enable/disable optional modules (admins only). Stored in settings.modules; only
+  // catalog keys with boolean values are accepted (planned modules are rejected).
+  api.patch('/api/household/modules', adminRoute(async (tenant, req: Request, res: Response) => {
+    const body = (req.body ?? {}) as Record<string, unknown>
+    const patch: Record<string, boolean> = {}
+    for (const [k, v] of Object.entries(body)) {
+      if (!MODULE_KEYS.has(k) || typeof v !== 'boolean') continue
+      const def = MODULES.find((m) => m.key === k)
+      if (def?.status !== 'available') continue // can't toggle a not-yet-built module
+      patch[k] = v
+    }
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ error: 'BadRequest', message: 'no valid module flags provided' })
+    }
+    const h = await updateModules(tenant.householdId, patch)
+    if (!h) return res.status(404).json({ error: 'NotFound', message: 'household not found' })
+    return { modules: (h.settings as { modules?: unknown })?.modules ?? {} }
   }))
 
   // List everyone in the household (any member may read).

@@ -313,3 +313,23 @@ describe('onboarding (settings.onboarding)', () => {
     expect((await call('PATCH', '/api/household/onboarding', mint('dev|ob-teen'), { opened: true })).statusCode).toBe(403)
   })
 })
+
+describe('optional modules (settings.modules)', () => {
+  it('rejects a non-admin (403)', async () => {
+    await seedNonAdmin('dev|mod-teen', kevinHouseholdId)
+    expect((await call('PATCH', '/api/household/modules', mint('dev|mod-teen'), { pantry: true })).statusCode).toBe(403)
+  })
+
+  it('rejects a not-yet-built (planned) module (400)', async () => {
+    // pantry is in the catalog but status:'planned' until built — not togglable yet.
+    expect((await call('PATCH', '/api/household/modules', kevin, { pantry: true })).statusCode).toBe(400)
+  })
+
+  it('rejects an unknown module key (400)', async () => {
+    expect((await call('PATCH', '/api/household/modules', kevin, { nope: true })).statusCode).toBe(400)
+  })
+
+  it('rejects an empty patch (400)', async () => {
+    expect((await call('PATCH', '/api/household/modules', kevin, {})).statusCode).toBe(400)
+  })
+})

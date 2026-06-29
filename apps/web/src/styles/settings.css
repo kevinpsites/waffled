@@ -483,3 +483,24 @@ select.sel {
 .cal-acct-error { margin: 0 14px 12px; padding: 9px 12px; border-radius: 8px; font-size: 12.5px;
   font-weight: 600; line-height: 1.45; color: var(--ink-2); background: #fbe7d8;
   border-left: 3px solid #D9882B; }
+
+/* Modules tab — optional feature toggles */
+.set-head-sub { font-size: 13px; font-weight: 600; color: var(--ink-3); }
+.set-modules { display: flex; flex-direction: column; gap: 10px; }
+.set-module {
+  display: flex; align-items: center; gap: 14px; padding: 14px 16px;
+  background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-lg, 16px);
+}
+.set-module.on { border-color: color-mix(in srgb, var(--primary, #e0653f) 45%, transparent); }
+.set-module-ic {
+  width: 42px; height: 42px; flex: none; border-radius: 12px; display: grid; place-items: center;
+  font-size: 22px; background: var(--card-2, #faf8f4); border: 1px solid var(--hair);
+}
+.set-module-main { flex: 1; min-width: 0; }
+.set-module-name { font-weight: 800; font-size: 15px; color: var(--ink); }
+.set-module-desc { font-size: 13px; font-weight: 500; color: var(--ink-3); margin-top: 2px; }
+.set-module-soon {
+  flex: none; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--ink-3); background: var(--card-2, #faf8f4); border: 1px solid var(--hair);
+  padding: 5px 10px; border-radius: 999px;
+}

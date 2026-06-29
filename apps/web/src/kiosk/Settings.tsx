@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import { personsApi, permissionsApi, healthApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus } from '../lib/api'
+import { MODULES, moduleEnabled } from '../lib/modules'
 import { PersonModal } from './components/PersonModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { Screensaver, screensaverPhotos } from './components/Screensaver'
@@ -18,6 +19,7 @@ const NAV = [
   { key: 'lists', icon: '📝', label: 'Lists', admin: true },
   { key: 'display', icon: '🖥️', label: 'Display & Kiosk', admin: true },
   { key: 'notifications', icon: '🔔', label: 'Notifications', admin: true },
+  { key: 'modules', icon: '🧩', label: 'Modules', admin: true },
   { key: 'health', icon: '🩺', label: 'System Health', admin: true },
   { key: 'households', icon: '🏠', label: 'Households' },
   { key: 'about', icon: 'ℹ️', label: 'About' },
@@ -1354,6 +1356,61 @@ function SignOutButton({ className }: { className?: string }) {
 
 // About / account — what this Nook is, plus the sign-out control. Replaces the old
 // placeholder now that real auth exists.
+// Enable/disable optional, opt-in feature modules for this household. Available
+// modules toggle live; planned ones show as "Coming soon" until they're built.
+function ModulesPanel() {
+  const { household } = useHousehold()
+  const [saving, setSaving] = useState<string | null>(null)
+
+  async function toggle(key: string, on: boolean) {
+    setSaving(key)
+    try {
+      await personsApi.setModules({ [key]: on })
+      emitHouseholdChanged() // refresh household settings everywhere
+    } catch {
+      /* ignore — the switch reverts on the next household refetch */
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  return (
+    <div className="set-panel">
+      <div className="set-head">
+        <div className="nk-serif set-head-t">Modules</div>
+        <div className="set-head-sub">Optional features for your household — turn on just what you want.</div>
+      </div>
+      <div className="set-modules">
+        {MODULES.map((m) => {
+          const available = m.status === 'available'
+          const on = available && moduleEnabled(household, m.key)
+          return (
+            <div key={m.key} className={`set-module${on ? ' on' : ''}`}>
+              <div className="set-module-ic">{m.icon}</div>
+              <div className="set-module-main">
+                <div className="set-module-name">{m.name}</div>
+                <div className="set-module-desc">{m.description}</div>
+              </div>
+              {available ? (
+                <input
+                  type="checkbox"
+                  className="set-check"
+                  checked={on}
+                  disabled={saving === m.key}
+                  aria-label={`Enable ${m.name}`}
+                  onChange={(e) => toggle(m.key, e.target.checked)}
+                />
+              ) : (
+                <span className="set-module-soon">Coming soon</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function AboutPanel() {
   const { household } = useHousehold()
   return (
@@ -2003,7 +2060,7 @@ export function Settings() {
         </div>
       </div>
       <div className="set-content">
-        {activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <CalendarsPanel /> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
+        {activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <CalendarsPanel /> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'modules' ? <ModulesPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
       </div>
     </div>
   )

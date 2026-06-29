@@ -44,7 +44,7 @@ export interface Household {
   weekStart: string
   location: string | null
   ownerPersonId: string | null
-  settings?: { onboarding?: OnboardingState } & Record<string, unknown>
+  settings?: { onboarding?: OnboardingState; modules?: Record<string, boolean> } & Record<string, unknown>
 }
 
 // Every household this account belongs to (incl. the current one) — drives the
@@ -85,6 +85,9 @@ export const personsApi = {
   // Advance the "Getting started" onboarding (admins): mark opened / dismiss.
   setOnboarding: (patch: OnboardingState) =>
     apiSend<{ onboarding: OnboardingState | null }>('PATCH', '/api/household/onboarding', patch).then((r) => r.onboarding),
+  // Enable/disable optional modules (admins): { pantry: true, … }.
+  setModules: (patch: Record<string, boolean>) =>
+    apiSend<{ modules: Record<string, boolean> }>('PATCH', '/api/household/modules', patch).then((r) => r.modules),
 }
 
 // Notify listeners (e.g. the topbar clock) that household basics changed.
