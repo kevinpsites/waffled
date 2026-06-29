@@ -868,12 +868,20 @@
   border-radius: var(--r-md); border: 1px solid var(--hair); background: var(--card-2); color: var(--ink); resize: vertical; }
 .re-notes:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(236,96,73,.12); }
 
-/* row controls (reorder / remove) — stacked rounded buttons on the right */
-.re-row-ctl { display: flex; flex-direction: column; gap: 8px; align-items: center; }
-.re-row-ctl button { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--hair);
+/* step controls — stacked rounded buttons on the right of a (tall) method step */
+.re-step-ctl { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.re-step-ctl button { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--hair);
   background: var(--card); color: var(--ink-2); cursor: pointer; font-size: 15px; font-weight: 700;
   box-shadow: 0 1px 2px rgba(0,0,0,0.04); display: grid; place-items: center; }
-.re-row-ctl button:hover:not(:disabled) { border-color: var(--primary); color: var(--ink); }
+.re-step-ctl button:hover:not(:disabled) { border-color: var(--primary); color: var(--ink); }
+.re-step-ctl button:disabled { opacity: 0.3; cursor: default; }
+.re-step-ctl .re-del { color: var(--danger, #c0392b); }
+
+/* ingredient-row controls (reorder / remove) — compact inline on a single-line row */
+.re-row-ctl { display: flex; gap: 4px; align-items: center; }
+.re-row-ctl button { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--hair);
+  background: var(--card); color: var(--ink-2); cursor: pointer; font-size: 14px; font-weight: 700; }
+.re-row-ctl button:hover:not(:disabled) { background: var(--panel); }
 .re-row-ctl button:disabled { opacity: 0.3; cursor: default; }
 .re-row-ctl .re-del { color: var(--danger, #c0392b); }
 

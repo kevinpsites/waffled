@@ -569,7 +569,7 @@ export function RecipeEditor() {
                   <StepTimerControl seconds={s.timerSeconds} onChange={(secs) => setStepTimer(i, secs)} />
                 </div>
               </div>
-              <div className="re-row-ctl">
+              <div className="re-step-ctl">
                 <button type="button" tabIndex={-1} aria-label="Move up" disabled={i === 0} onClick={() => moveStep(i, -1)}>↑</button>
                 <button type="button" tabIndex={-1} aria-label="Move down" disabled={i === stps.length - 1} onClick={() => moveStep(i, 1)}>↓</button>
                 <button type="button" tabIndex={-1} aria-label="Remove" className="re-del" onClick={() => setStps((rs) => rs.filter((_, j) => j !== i))}>×</button>
