@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { personsApi, permissionsApi, healthApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus } from '../lib/api'
+import { personsApi, permissionsApi, healthApi, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
 import { PersonModal } from './components/PersonModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -21,6 +21,7 @@ const NAV = [
   { key: 'notifications', icon: '🔔', label: 'Notifications', admin: true },
   { key: 'modules', icon: '🧩', label: 'Modules', admin: true },
   { key: 'health', icon: '🩺', label: 'System Health', admin: true },
+  { key: 'apikeys', icon: '🔑', label: 'API Keys', admin: true },
   { key: 'households', icon: '🏠', label: 'Households' },
   { key: 'about', icon: 'ℹ️', label: 'About' },
 ]
@@ -211,6 +212,186 @@ function HealthCheckCard({ name, check }: { name: string; check: { status: Healt
 
 // Admin-only system health. Polls /api/health every 10s; a non-admin gets a 403 →
 // we render nothing (the tab is admin-gated anyway, matching PermissionsCard).
+// ── API Keys ────────────────────────────────────────────────────────────────────
+// Per-user keys for external tools (Home Assistant, scripts, …). The secret is shown
+// exactly once on creation. A key inherits the owner's role/capabilities; its scopes
+// bound which resource families it can touch.
+type ScopeLevel = 'none' | 'read' | 'write'
+
+function scopeLabeler(scopes: ApiScopeDef[]): (scope: string) => string {
+  const byResource = new Map(scopes.map((s) => [s.resource, s.label]))
+  return (scope: string) => {
+    const [resource, action] = scope.split(':')
+    return `${byResource.get(resource) ?? resource} · ${action}`
+  }
+}
+
+function ApiKeysPanel() {
+  const [keys, setKeys] = useState<ApiKey[] | null>(null)
+  const [catalog, setCatalog] = useState<ApiScopeDef[]>([])
+  const [creating, setCreating] = useState(false)
+  const [justCreated, setJustCreated] = useState<{ name: string; secret: string } | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [revoking, setRevoking] = useState<ApiKey | null>(null)
+
+  const refetch = () => apiKeysApi.list().then(setKeys).catch(() => setKeys([]))
+  useEffect(() => {
+    refetch()
+    apiKeysApi.listScopes().then(setCatalog).catch(() => setCatalog([]))
+  }, [])
+
+  const label = scopeLabeler(catalog)
+
+  async function copySecret() {
+    if (!justCreated) return
+    try { await navigator.clipboard.writeText(justCreated.secret); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* clipboard blocked */ }
+  }
+
+  return (
+    <div className="set-panel">
+      <div className="set-head">
+        <div className="nk-serif set-head-t">API Keys</div>
+        <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}>+ New key</button>
+      </div>
+      <div className="tiny muted" style={{ fontWeight: 600, margin: '-6px 2px 16px', lineHeight: 1.45 }}>
+        Give an external tool access to your household over the API. Send the key as the
+        {' '}<code>x-api-key</code> header. A key acts as you — it can only do what your account can,
+        limited further to the scopes you grant. Revoke it any time.
+      </div>
+
+      {justCreated && (
+        <div className="apikey-reveal">
+          <div className="apikey-reveal-h">🔑 Copy your new key now — you won't be able to see it again.</div>
+          <div className="apikey-reveal-row">
+            <code className="apikey-secret">{justCreated.secret}</code>
+            <button type="button" className="btn btn-ghost apikey-copy" onClick={copySecret}>{copied ? 'Copied ✓' : 'Copy'}</button>
+          </div>
+          <button type="button" className="btn btn-ghost tiny" style={{ marginTop: 10 }} onClick={() => setJustCreated(null)}>Done</button>
+        </div>
+      )}
+
+      {keys == null ? (
+        <div className="tiny muted" style={{ fontWeight: 600, padding: 8 }}>Loading…</div>
+      ) : keys.length === 0 ? (
+        <div className="tiny muted" style={{ fontWeight: 600, padding: '14px 2px' }}>No API keys yet. Create one to let an outside app reach Nook.</div>
+      ) : (
+        <div className="apikey-list">
+          {keys.map((k) => (
+            <div key={k.id} className="apikey-row">
+              <div className="apikey-main">
+                <div className="apikey-name">{k.name}</div>
+                <code className="apikey-prefix">{k.prefix}…</code>
+                <div className="apikey-scopes">
+                  {k.scopes.length ? k.scopes.map((s) => <span key={s} className="apikey-scope">{label(s)}</span>) : <span className="tiny muted">no scopes</span>}
+                </div>
+                <div className="tiny muted apikey-meta">
+                  {k.lastUsedAt ? `Last used ${new Date(k.lastUsedAt).toLocaleDateString()}` : 'Never used'}
+                  {' · '}Created {new Date(k.createdAt).toLocaleDateString()}
+                  {k.expiresAt ? ` · Expires ${new Date(k.expiresAt).toLocaleDateString()}` : ''}
+                </div>
+              </div>
+              <button type="button" className="btn btn-ghost apikey-revoke" onClick={() => setRevoking(k)}>Revoke</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {creating && (
+        <NewApiKeyModal
+          catalog={catalog}
+          onClose={() => setCreating(false)}
+          onCreated={(name, secret) => { setCreating(false); setJustCreated({ name, secret }); setCopied(false); refetch() }}
+        />
+      )}
+      {revoking && (
+        <ConfirmDialog
+          title={`Revoke "${revoking.name}"?`}
+          message="Any tool using this key will immediately lose access. This can't be undone."
+          confirmLabel="Revoke"
+          danger
+          onConfirm={async () => { await apiKeysApi.revoke(revoking.id); setRevoking(null); refetch() }}
+          onClose={() => setRevoking(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function NewApiKeyModal({ catalog, onClose, onCreated }: {
+  catalog: ApiScopeDef[]
+  onClose: () => void
+  onCreated: (name: string, secret: string) => void
+}) {
+  const [name, setName] = useState('')
+  const [levels, setLevels] = useState<Record<string, ScopeLevel>>({})
+  const [expiresAt, setExpiresAt] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const setLevel = (resource: string, level: ScopeLevel) => setLevels((m) => ({ ...m, [resource]: level }))
+
+  function buildScopes(): string[] {
+    return Object.entries(levels)
+      .filter(([, l]) => l !== 'none')
+      .map(([resource, l]) => `${resource}:${l}`)
+  }
+
+  async function save() {
+    const scopes = buildScopes()
+    if (!name.trim()) { setErr('Give the key a name.'); return }
+    if (scopes.length === 0) { setErr('Grant at least one scope.'); return }
+    setSaving(true)
+    setErr(null)
+    try {
+      const res = await apiKeysApi.create({ name: name.trim(), scopes, expiresAt: expiresAt || null })
+      onCreated(res.apiKey.name, res.key)
+    } catch {
+      setErr('Could not create the key — please try again.')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+        <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
+        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>New API key</div>
+        <label className="pantry-field"><span>Name</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Home Assistant" autoFocus />
+        </label>
+        <div className="pantry-field"><span>Scopes</span></div>
+        <div className="apikey-scopegrid">
+          {catalog.map((s) => {
+            const level = levels[s.resource] ?? 'none'
+            return (
+              <div key={s.resource} className="apikey-scoperow">
+                <div className="apikey-scoperow-main">
+                  <div className="apikey-scoperow-label">{s.label}</div>
+                  <div className="tiny muted">{s.description}{s.readOnly ? ' · read-only' : ''}</div>
+                </div>
+                <div className="apikey-seg">
+                  <button type="button" className={level === 'none' ? 'on' : ''} onClick={() => setLevel(s.resource, 'none')}>None</button>
+                  <button type="button" className={level === 'read' ? 'on' : ''} onClick={() => setLevel(s.resource, 'read')}>Read</button>
+                  {!s.readOnly && <button type="button" className={level === 'write' ? 'on' : ''} onClick={() => setLevel(s.resource, 'write')}>Write</button>}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <label className="pantry-field" style={{ marginTop: 12 }}><span>Expires (optional)</span>
+          <input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+        </label>
+        {err && <div className="pantry-err">{err}</div>}
+        <div className="pantry-modal-actions">
+          <span style={{ flex: 1 }} />
+          <button type="button" className="btn btn-ghost" disabled={saving} onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" disabled={saving} onClick={save}>{saving ? 'Creating…' : 'Create key'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SystemHealthPanel() {
   const [report, setReport] = useState<HealthReport | null>(null)
   const [error, setError] = useState(false)
@@ -2124,7 +2305,7 @@ export function Settings() {
         </div>
       </div>
       <div className="set-content">
-        {activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <CalendarsPanel /> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'modules' ? <ModulesPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
+        {activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <CalendarsPanel /> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'modules' ? <ModulesPanel /> : activeTab === 'apikeys' ? <ApiKeysPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
       </div>
     </div>
   )

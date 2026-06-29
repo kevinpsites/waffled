@@ -16,7 +16,9 @@ import {
   createHouseholdForAccount,
   presentHousehold,
   presentPerson,
+  type Tenant,
 } from './modules/households/households'
+import { authenticateApiKey, enforceApiKeyScope, registerApiKeyRoutes } from './modules/api-keys/api-keys'
 import { registerPersonRoutes } from './modules/persons/persons'
 import { registerListRoutes } from './modules/lists/lists.routes'
 import { registerPantryRoutes } from './modules/pantry/pantry'
@@ -82,10 +84,20 @@ const PUBLIC_PATHS = new Set([
   '/api/kiosk/device/token',
 ])
 
-// Auth gate — verifies the token (sets req.principal) for every non-public route.
+// Auth gate — authenticates every non-public route. An `x-api-key` header takes the
+// API-key path: it resolves to the owning person (set as req.principal + tenant) and
+// is scope-checked centrally here, since lambda-api has no per-route middleware.
+// Otherwise we verify the Bearer JWT as usual. Either failure throws AuthError → the
+// error handler below.
 api.use(async (req: Request, res: Response, next: NextFunction) => {
   if (req.method === 'OPTIONS' || PUBLIC_PATHS.has(req.path)) return next()
-  await requireAuth(req) // throws AuthError → error handler below
+  const apiKeyHeader = req.headers['x-api-key']
+  if (typeof apiKeyHeader === 'string' && apiKeyHeader) {
+    await authenticateApiKey(req, apiKeyHeader)
+    enforceApiKeyScope(req)
+    return next()
+  }
+  await requireAuth(req)
   next()
 })
 
@@ -110,7 +122,7 @@ api.get('/api/me', async (req: Request) => ({ sub: req.principal?.sub }))
 
 // Your household + person, or { provisioned: false } if you haven't onboarded yet.
 api.get('/api/household', async (req: Request) => {
-  const tenant = await resolveTenant(req.principal!)
+  const tenant = (req as Request & { apiKeyTenant?: Tenant }).apiKeyTenant ?? (await resolveTenant(req.principal!))
   if (!tenant) return { provisioned: false }
   const { household, person } = await getContext(tenant)
   // Capabilities the client can gate UI on (admin ⇒ all; else per-role matrix).
@@ -254,6 +266,10 @@ registerPowerSyncRoutes(api)
 
 // PowerSync offline-write upload sink (/api/powersync/crud)
 registerPowerSyncCrudRoutes(api)
+
+// Per-user API keys (/api/api-keys…) — mint/list/revoke; the keys themselves auth
+// via the x-api-key header in the gate above.
+registerApiKeyRoutes(api)
 
 // Deep health report (/api/health, admin) + the System Health panel's data source.
 registerHealthRoutes(api)

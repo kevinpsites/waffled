@@ -77,8 +77,12 @@ export async function resolveTenant(principal: Principal): Promise<Tenant | null
   return findTenantBySub(principal.sub)
 }
 
-// Resolve the caller's household, or 403 if they haven't onboarded yet.
+// Resolve the caller's household, or 403 if they haven't onboarded yet. A key-
+// authenticated request already resolved its owner tenant in the auth gate, so we
+// return that directly (the key's owner person is the tenant).
 export async function requireTenant(req: Request): Promise<Tenant> {
+  const fromKey = (req as Request & { apiKeyTenant?: Tenant }).apiKeyTenant
+  if (fromKey) return fromKey
   const tenant = await resolveTenant(req.principal!)
   if (!tenant) throw new AuthError('No household for this account; create one first', 403)
   return tenant
