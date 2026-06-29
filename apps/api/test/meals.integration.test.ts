@@ -315,6 +315,18 @@ describe('recipe ingredients api', () => {
       })).statusCode
     ).toBe(404)
   })
+
+  it('GET /api/recipes/sections returns the household\'s distinct section names', async () => {
+    // The "adds ingredients" test above seeded sections Breading + Protein.
+    const res = await call('GET', '/api/recipes/sections', kevin)
+    expect(res.statusCode).toBe(200)
+    const { sections } = JSON.parse(res.body) as { sections: string[] }
+    expect(sections).toContain('Breading')
+    expect(sections).toContain('Protein')
+    // distinct only — no empty/blank entries
+    expect(sections.every((s) => s.trim() !== '')).toBe(true)
+    expect(new Set(sections).size).toBe(sections.length)
+  })
 })
 
 describe('meal planning api', () => {

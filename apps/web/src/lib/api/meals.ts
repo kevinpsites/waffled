@@ -263,6 +263,9 @@ export const mealsApi = {
   planMonth: (req: PlanMonthRequest) =>
     apiSend<{ start: string; mealType: string; suggestions: PlanCard[]; via: string; error?: string; existing?: PlanCard[] }>('POST', '/api/meals/plan-month', req),
   recipes: () => apiGet<{ recipes: Recipe[] }>('/api/recipes'),
+  // Distinct ingredient-section names across the household's recipes (most-used first)
+  // — feeds the editor's section-name suggestions.
+  recipeSections: () => apiGet<{ sections: string[] }>('/api/recipes/sections'),
   recipe: (id: string) =>
     apiGet<{ recipe: RecipeDetail; ingredients: RecipeIngredient[]; steps: RecipeStep[] }>(`/api/recipes/${id}`),
   planSlot: (slot: PlanSlot) => apiSend<{ entry: WeekEntry }>('POST', '/api/meals/plan', slot).then(tap('meals')),

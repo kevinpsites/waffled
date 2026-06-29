@@ -29,6 +29,14 @@ const newUid = (): string =>
 // (e.g. "2 cups"). The user can edit it down for a split.
 const defaultStepAmount = (ing: EditIng): string => [ing.amount.trim(), ing.unit.trim()].filter(Boolean).join(' ')
 
+// Curated common ingredient sections; merged with a global look at the sections the
+// household already uses (so "Produce" et al. don't get retyped every recipe).
+const DEFAULT_SECTIONS = [
+  'Produce', 'Meat', 'Poultry', 'Seafood', 'Dairy', 'Eggs', 'Pantry', 'Spices & seasonings',
+  'Grains & pasta', 'Canned goods', 'Condiments & sauces', 'Baking', 'Bakery', 'Frozen',
+  'Herbs', 'Nuts & seeds', 'Beverages', 'Sauce', 'Garnish', 'For serving',
+]
+
 const META_FIELDS: { key: keyof RecipeWriteInput; label: string; placeholder: string }[] = [
   { key: 'cuisine', label: 'Cuisine', placeholder: 'Italian, Thai…' },
   { key: 'protein', label: 'Protein', placeholder: 'chicken, beef, tofu…' },
@@ -114,6 +122,10 @@ export function RecipeEditor() {
   const [ings, setIngs] = useState<EditIng[]>([blankIng()])
   const [stps, setStps] = useState<EditStep[]>([blankStep()])
   const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [usedSections, setUsedSections] = useState<string[]>([])
+  // uid of a just-added (still unnamed) section row — forces its own group + header
+  // so the user can name it (with suggestions) even before typing anything.
+  const [pendingSectionUid, setPendingSectionUid] = useState<string | null>(null)
 
   const [pasteOpen, setPasteOpen] = useState(false)
   const [markdown, setMarkdown] = useState('')
@@ -311,9 +323,12 @@ export function RecipeEditor() {
     })
     setDragIdx(null)
   }
-  // Rename a section: apply the new name to every row in that group.
-  const renameGroup = (indices: number[], name: string) =>
+  // Rename a section: apply the new name to every row in that group. Once it has a
+  // real name, drop the pending marker (normal section-grouping takes over).
+  const renameGroup = (indices: number[], name: string) => {
+    if (name.trim()) setPendingSectionUid(null)
     setIngs((rs) => rs.map((r, idx) => (indices.includes(idx) ? { ...r, section: name } : r)))
+  }
   const moveStep = (i: number, d: -1 | 1) => setStps((rs) => swap(rs, i, i + d))
   const addPick = (i: number, ing: EditIng) =>
     setStps((rs) => patch(rs, i, { picks: [...rs[i].picks, { uid: ing.uid, amount: defaultStepAmount(ing) }] }))
@@ -328,11 +343,27 @@ export function RecipeEditor() {
 
   const namedIngs = ings.filter((g) => g.name.trim())
 
-  // Group consecutive rows by section for the grouped (header + rows) layout.
+  // Section suggestions: curated defaults + the household's own sections (global
+  // look), deduped case-insensitively. Not scoped to this recipe (you won't reuse a
+  // section within one recipe).
+  const sectionSuggestions = (() => {
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const s of [...DEFAULT_SECTIONS, ...usedSections]) {
+      const key = s.trim().toLowerCase()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      out.push(s.trim())
+    }
+    return out
+  })()
+
+  // Group consecutive rows by section for the grouped (header + rows) layout. A
+  // pending (just-added) section always starts its own group even when empty.
   const ingGroups: { section: string; items: { row: EditIng; i: number }[] }[] = []
   ings.forEach((row, i) => {
     const last = ingGroups[ingGroups.length - 1]
-    if (last && last.section === row.section) last.items.push({ row, i })
+    if (last && last.section === row.section && row.uid !== pendingSectionUid) last.items.push({ row, i })
     else ingGroups.push({ section: row.section, items: [{ row, i }] })
   })
 
@@ -401,8 +432,9 @@ export function RecipeEditor() {
     focusIngRef.current = true
   }
   function addSection() {
-    setIngs((rs) => [...rs, { ...blankIng(), section: 'New section' }])
-    focusIngRef.current = true
+    const row = { ...blankIng(), section: '' }
+    setIngs((rs) => [...rs, row])
+    setPendingSectionUid(row.uid) // renders an empty, focused header with full suggestions
   }
   function addStep() { setStps((rs) => [...rs, blankStep()]); focusStepRef.current = true }
 
@@ -413,6 +445,18 @@ export function RecipeEditor() {
     const rows = ingListRef.current?.querySelectorAll('.re-ing-row')
     ;(rows?.[rows.length - 1]?.querySelector('input') as HTMLInputElement | undefined)?.focus()
   }, [ings.length])
+  // Global look at the household's existing section names (for suggestions).
+  useEffect(() => {
+    let alive = true
+    mealsApi.recipeSections().then((d) => alive && setUsedSections(d.sections)).catch(() => {})
+    return () => { alive = false }
+  }, [])
+  // Focus a freshly added section's header so the user can name it right away.
+  useEffect(() => {
+    if (!pendingSectionUid) return
+    const inputs = ingListRef.current?.querySelectorAll('.re-ing-section')
+    ;(inputs?.[inputs.length - 1] as HTMLInputElement | undefined)?.focus()
+  }, [pendingSectionUid])
   useEffect(() => {
     if (!focusStepRef.current) return
     focusStepRef.current = false
@@ -568,13 +612,14 @@ export function RecipeEditor() {
         <div className="re-ings" ref={ingListRef}>
           {ingGroups.map((grp, gi) => (
             <div className="re-ing-group" key={gi}>
-              {grp.section !== '' && (
+              {(grp.section !== '' || grp.items[0]?.row.uid === pendingSectionUid) && (
                 <input
                   className="re-ing-section"
                   value={grp.section}
                   onChange={(e) => renameGroup(grp.items.map((it) => it.i), e.target.value)}
                   placeholder="Section name"
                   aria-label="Section name"
+                  list="re-ing-sections"
                 />
               )}
               {grp.items.map(({ row, i }) => (
@@ -603,6 +648,11 @@ export function RecipeEditor() {
             </div>
           ))}
         </div>
+        <datalist id="re-ing-sections">
+          {sectionSuggestions.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
         <div className="re-ing-actions">
           <button type="button" className="btn re-add-ing" onClick={addIngredient}>+ Add ingredient</button>
           <button type="button" className="re-add-section" onClick={addSection}>+ Add section</button>
