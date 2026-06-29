@@ -5,11 +5,20 @@ import UIKit
 /// (for admins) kiosk device pairing — mirrors the web's Sign-in & security. Sign out
 /// lives on the Settings landing.
 struct AccountSettingsView: View {
+    @Environment(Session.self) private var session
+    @Environment(SyncManager.self) private var sync
+
     @State private var settings: NookAPI.HouseholdSettings?
     @State private var currentId: String?
     @State private var devices: [NookAPI.KioskDevice] = []
     @State private var showPair = false
     @State private var confirmRevoke: String?
+
+    // Multi-household: the account's memberships + pending invites (the switcher).
+    @State private var overview: NookAPI.HouseholdOverview?
+    @State private var switchingTo: String?     // householdId mid-switch (spinner)
+    @State private var acceptingId: String?     // invite id mid-accept (spinner)
+    @State private var actionError: String?
 
     private let api = NookAPI()
 
@@ -24,6 +33,7 @@ struct AccountSettingsView: View {
             VStack(alignment: .leading, spacing: 16) {
                 identityCard
                 householdCard
+                if let overview { householdSwitcher(overview); pendingInvitesSection(overview) }
                 if isAdmin { kioskSection }
             }
             .padding(16).padding(.bottom, 110)
@@ -68,6 +78,132 @@ struct AccountSettingsView: View {
                 }
                 Spacer(minLength: 0)
             }
+        }
+    }
+
+    // MARK: households (multi-household switcher)
+
+    /// The account's other households, shown only when there's more than one to switch
+    /// between (a single-membership account sees nothing here). Tapping a row switches
+    /// the active household and re-scopes sync.
+    @ViewBuilder
+    private func householdSwitcher(_ o: NookAPI.HouseholdOverview) -> some View {
+        if o.memberships.count > 1 {
+            VStack(alignment: .leading, spacing: 10) {
+                SectionLabel(text: "Your households").padding(.top, 6)
+                Text("Switch which household this device is showing. Your other households stay signed in.")
+                    .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(o.memberships) { membershipRow($0, activeId: o.household?.id) }
+                if let actionError {
+                    Text(actionError).font(.system(size: 12.5, weight: .medium)).foregroundStyle(NK.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private func membershipRow(_ m: NookAPI.Membership, activeId: String?) -> some View {
+        let isCurrent = m.householdId == activeId
+        let busy = switchingTo == m.householdId
+        return Button {
+            if !isCurrent { Task { await switchTo(m) } }
+        } label: {
+            HStack(spacing: 12) {
+                Text("🏡").font(.system(size: 20)).frame(width: 40, height: 40)
+                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(m.householdName).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                    Text(m.isAdmin ? "Admin" : m.memberType.capitalized)
+                        .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                }
+                Spacer(minLength: 0)
+                if isCurrent { tag("Current", NK.primary) }
+                else if busy { ProgressView().controlSize(.small).tint(NK.ink3) }
+                else { Image(systemName: "arrow.left.arrow.right").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink3) }
+            }
+            .padding(12).background(NK.card)
+            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
+                .strokeBorder(isCurrent ? NK.primary.opacity(0.4) : NK.hair, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(isCurrent || switchingTo != nil)
+    }
+
+    /// Outstanding invitations addressed to this account — accepting one creates the
+    /// membership (it then appears above; it does not switch you into it).
+    @ViewBuilder
+    private func pendingInvitesSection(_ o: NookAPI.HouseholdOverview) -> some View {
+        if !o.pendingInvites.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                SectionLabel(text: "Invitations").padding(.top, 6)
+                ForEach(o.pendingInvites) { inviteRow($0) }
+            }
+        }
+    }
+
+    private func inviteRow(_ inv: NookAPI.PendingInvite) -> some View {
+        HStack(spacing: 12) {
+            Text("✉️").font(.system(size: 20)).frame(width: 40, height: 40)
+                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(inv.householdName).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                Text("Invited as \(inv.isAdmin ? "Admin" : inv.memberType.capitalized)")
+                    .font(.system(size: 12)).foregroundStyle(NK.ink3)
+            }
+            Spacer(minLength: 0)
+            Button { Task { await accept(inv) } } label: {
+                if acceptingId == inv.id {
+                    ProgressView().controlSize(.small).tint(NK.primary)
+                } else {
+                    Text("Accept").font(.system(size: 12.5, weight: .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(NK.primary).clipShape(Capsule())
+                }
+            }
+            .buttonStyle(.plain).disabled(acceptingId != nil)
+        }
+        .padding(12).background(NK.card)
+        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    /// Switch the active household: mint a token for it, adopt the session, then clear +
+    /// re-pull the local mirror against the new household. Blocked while writes are still
+    /// queued — clearing the mirror would strand them (the previous household's writes).
+    private func switchTo(_ m: NookAPI.Membership) async {
+        actionError = nil
+        guard sync.pendingUploads == 0 else {
+            let n = sync.pendingUploads
+            actionError = "You have \(n) change\(n == 1 ? "" : "s") still syncing. Wait for sync to finish, then switch."
+            return
+        }
+        switchingTo = m.householdId
+        defer { switchingTo = nil }
+        do {
+            let r = try await api.switchHousehold(householdId: m.householdId)
+            session.enterClaimedSession(access: r.accessToken, refresh: r.refreshToken)
+            await sync.reauthenticate(clearLocal: true)   // household changed → wipe + re-pull
+            await load()
+        } catch let NookAPI.APIError.http(code, _) {
+            actionError = code == 403
+                ? "You're no longer a member of that household."
+                : "Couldn't switch households (error \(code))."
+        } catch {
+            actionError = "Couldn't reach the server to switch."
+        }
+    }
+
+    private func accept(_ inv: NookAPI.PendingInvite) async {
+        actionError = nil
+        acceptingId = inv.id
+        defer { acceptingId = nil }
+        do {
+            try await api.acceptInvite(id: inv.id)
+            await load()   // the new membership now shows under "Your households"
+        } catch {
+            actionError = "Couldn't accept the invitation. Try again."
         }
     }
 
@@ -135,8 +271,10 @@ struct AccountSettingsView: View {
     private func load() async {
         async let s = try? await api.householdSettings()
         async let id = try? await api.currentPersonId()
+        async let o = try? await api.householdOverview()
         settings = await s
         currentId = await id ?? nil
+        overview = await o ?? nil
         if isAdmin { await loadDevices() }
     }
 

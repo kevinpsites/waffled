@@ -144,8 +144,14 @@ final class SyncManager {
     /// swaps in a different person's token. Tears the PowerSync session down and stands
     /// it back up against whatever token `AppConfig` now reports, the same path a fresh
     /// launch takes. `signOut()` resets `started`, so `start()` runs clean.
-    func reauthenticate() async {
-        await signOut()
+    /// `clearLocal` wipes the on-device mirror as part of the teardown — needed when the
+    /// *household* changes (not just the person), because the local SQLite is one shared
+    /// file: a plain disconnect can leave the previous household's rows visible (and the
+    /// `households LIMIT 1` write path picking the wrong one) until PowerSync reconciles
+    /// buckets. The kiosk person-switch keeps the default (`false`): same household, so
+    /// the cheap disconnect is correct.
+    func reauthenticate(clearLocal: Bool = false) async {
+        await signOut(clearLocal: clearLocal)
         await start()
     }
 
@@ -153,16 +159,18 @@ final class SyncManager {
     /// PowerSync, drop the observable state, and reset so the next `start()` runs
     /// fresh. Keychain tokens are cleared separately by `Session`.
     ///
-    /// We `disconnect()` (not `disconnectAndClear()`): clearing the local mirror is
-    /// heavy work to run during teardown and isn't needed for correctness — on the
-    /// next login PowerSync re-scopes its buckets to the new token, the same as the
-    /// web. Keeping teardown light also avoids a memory/Keychain spike at sign-out.
-    func signOut() async {
+    /// By default we `disconnect()` (not `disconnectAndClear()`): clearing the local
+    /// mirror is heavy work to run during teardown and isn't needed for plain sign-out
+    /// or a same-household person-switch — on the next login PowerSync re-scopes its
+    /// buckets to the new token, the same as the web. Keeping teardown light also avoids
+    /// a memory/Keychain spike at sign-out. A **household switch** passes `clearLocal:
+    /// true` so the previous household's rows can't linger in the shared SQLite file.
+    func signOut(clearLocal: Bool = false) async {
         // Stop consuming the live queries BEFORE disconnecting so a watcher can't
         // race the teardown.
         watchTask?.cancel(); eventsTask?.cancel(); statusTask?.cancel()
         watchTask = nil; eventsTask = nil; statusTask = nil
-        try? await db.disconnect()
+        if clearLocal { try? await db.disconnectAndClear() } else { try? await db.disconnect() }
         members = []; events = []
         personCount = 0; eventCount = 0; pendingUploads = 0
         lastSyncedAt = nil; lastError = nil

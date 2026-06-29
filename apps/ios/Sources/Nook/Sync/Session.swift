@@ -102,9 +102,10 @@ final class Session {
         status = try? await api.authStatus()
     }
 
-    /// Adopt a per-person session minted by the kiosk profile picker (the device-token
-    /// claim already returned the tokens). Flips the gate to authed without a password
-    /// round-trip — the kiosk equivalent of `login()`.
+    /// Adopt a freshly-minted session without a password round-trip — used by the kiosk
+    /// profile picker (a per-person device claim) and the household switcher (a new
+    /// access/refresh pair carrying the target household's claim). Saves the tokens and
+    /// flips/keeps the gate at authed.
     func enterClaimedSession(access: String, refresh: String) {
         AuthTokens.save(access: access, refresh: refresh)
         AppConfig.clearSignedOut()

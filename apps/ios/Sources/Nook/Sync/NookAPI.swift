@@ -117,6 +117,96 @@ struct NookAPI: Sendable {
         _ = try? await URLSession.shared.data(for: req)
     }
 
+    // MARK: multi-household identity (memberships, switch, invites)
+    //
+    // One human (an `account`) can belong to several households; the active one is the
+    // `household_id` claim baked into the current access token. These mirror the web's
+    // P3a contract — surface the account's memberships + pending invites, switch the
+    // active household (re-minting the token), and accept an invite.
+
+    /// A household this account belongs to. The "current" one is whichever `householdId`
+    /// matches the active token's household (compare against `HouseholdOverview.household.id`).
+    struct Membership: Decodable, Identifiable, Sendable, Hashable {
+        let householdId: String
+        let householdName: String
+        let personId: String
+        let isAdmin: Bool
+        let memberType: String
+        var id: String { householdId }
+    }
+
+    /// An outstanding invite addressed to this account's email — accept it to join.
+    struct PendingInvite: Decodable, Identifiable, Sendable, Hashable {
+        let id: String
+        let householdName: String
+        let memberType: String
+        let isAdmin: Bool
+    }
+
+    /// `GET /api/household`, decoded for the switcher: the active household plus the
+    /// account's memberships + pending invites. Defensive — an account-less caller
+    /// (kiosk/device person) or an unprovisioned `{ provisioned:false }` body omits the
+    /// arrays, so they default to empty instead of failing the whole decode (the same
+    /// strict-Decodable trap the kiosk claim hit).
+    struct HouseholdOverview: Decodable, Sendable {
+        let household: Ref?
+        let memberships: [Membership]
+        let pendingInvites: [PendingInvite]
+        struct Ref: Decodable, Sendable { let id: String; let name: String }
+
+        private enum CodingKeys: String, CodingKey { case household, memberships, pendingInvites }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            household = try c.decodeIfPresent(Ref.self, forKey: .household)
+            memberships = try c.decodeIfPresent([Membership].self, forKey: .memberships) ?? []
+            pendingInvites = try c.decodeIfPresent([PendingInvite].self, forKey: .pendingInvites) ?? []
+        }
+    }
+
+    /// Fetch the account's household memberships + pending invites (and which household
+    /// is active) for the switcher UI.
+    func householdOverview() async throws -> HouseholdOverview {
+        var req = URLRequest(url: url("/api/household"))
+        authorize(&req)
+        let (data, resp) = try await perform(req)
+        try check(resp, data)
+        return try Self.decoder.decode(HouseholdOverview.self, from: data)
+    }
+
+    /// The fresh session `POST /api/auth/switch` mints for the target household.
+    struct SwitchResult: Decodable, Sendable {
+        let accessToken: String
+        let refreshToken: String
+        let expiresIn: Int?
+        let householdId: String
+    }
+
+    /// Switch the active household. Returns an access+refresh pair whose token carries
+    /// the *target* household claim — the caller must persist both and re-scope PowerSync
+    /// (the sync token is minted from this claim). 403 if not a member of `householdId`.
+    func switchHousehold(householdId: String) async throws -> SwitchResult {
+        var req = URLRequest(url: url("/api/auth/switch"))
+        req.httpMethod = "POST"
+        authorize(&req)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(["householdId": householdId])
+        let (data, resp) = try await perform(req)
+        try check(resp, data)
+        return try Self.decoder.decode(SwitchResult.self, from: data)
+    }
+
+    /// Accept a pending invite (creates the membership; 200 if it already existed). Does
+    /// NOT switch you into it — re-fetch the overview, then switch separately.
+    func acceptInvite(id: String) async throws {
+        var req = URLRequest(url: url("/api/auth/invites/\(id)/accept"))
+        req.httpMethod = "POST"
+        authorize(&req)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = "{}".data(using: .utf8)
+        let (data, resp) = try await perform(req)
+        try check(resp, data)
+    }
+
     /// Exchange the session token for a short-lived PowerSync token + endpoint.
     func fetchPowerSyncToken() async throws -> TokenResponse {
         var req = URLRequest(url: url("/api/powersync/token"))
