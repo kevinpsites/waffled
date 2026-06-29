@@ -126,15 +126,15 @@ struct CookModeView: View {
             .background(NK.canvas)
 
             if !dockTimers.isEmpty && firingTimer == nil {
-                // Pinned bottom-left and width-capped, so it occupies one side instead of
+                // Pinned bottom-right and width-capped, so it occupies one side instead of
                 // spanning the whole screen.
                 HStack {
-                    VStack { Spacer(); timerDock }.frame(maxWidth: 360)
                     Spacer(minLength: 0)
+                    VStack { Spacer(); timerDock }.frame(maxWidth: 360)
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 92)
-                .transition(.move(edge: .leading).combined(with: .opacity))
+                .transition(.move(edge: .trailing).combined(with: .opacity))
             }
 
             if let firing = firingTimer {
