@@ -25,7 +25,7 @@ export function Pantry() {
   // Quick "used it up" — remove without opening the editor.
   async function markUsed(id: string) {
     setBusy(id)
-    try { await pantryApi.remove(id); refetch() } catch { setBusy(null) }
+    try { await pantryApi.remove(id); refetch() } finally { setBusy(null) }
   }
 
   // Drag an item into another location group to move it there.
@@ -37,7 +37,7 @@ export function Pantry() {
     const item = items.find((i) => i.id === id)
     if (!item || item.location === loc) return
     setBusy(id)
-    try { await pantryApi.update(id, { location: loc }); refetch() } catch { setBusy(null) }
+    try { await pantryApi.update(id, { location: loc }); refetch() } finally { setBusy(null) }
   }
 
   if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
@@ -92,7 +92,7 @@ export function Pantry() {
                       aria-label={`Move ${it.name} to another location`}
                       title="Drag to another location"
                       draggable
-                      onDragStart={() => setDragId(it.id)}
+                      onDragStart={(e) => { setDragId(it.id); e.dataTransfer.setData('text/plain', it.id); e.dataTransfer.effectAllowed = 'move' }}
                       onDragEnd={() => { setDragId(null); setOverLoc(null) }}
                     >⠿</button>
                     <button type="button" className="pantry-item-main" onClick={() => setEditing(it)}>
