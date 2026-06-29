@@ -229,6 +229,15 @@
   background: var(--wally-t);
   color: #167a4a;
 }
+/* per-step timer chip in the Method (read view) */
+.rd-step-timer {
+  font-size: 12px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--primary, #e0653f);
+  color: #fff;
+}
 
 @media (max-width: 1000px) {
   .recipe-detail {

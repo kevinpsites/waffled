@@ -66,11 +66,14 @@ function StepRow({ s, onNote }: { s: RecipeStep; onNote: (val: string) => void }
       <div className="rd-step-n">{s.stepNumber}</div>
       <div className="rd-step-body">
         <div className="rd-step-t">{s.instruction}</div>
-        {s.ingredients.length > 0 && (
+        {(s.ingredients.length > 0 || (s.timerSeconds != null && s.timerSeconds > 0)) && (
           <div className="rd-step-ings">
             {s.ingredients.map((ig, i) => (
               <span key={i} className="rd-step-chip">{ig}</span>
             ))}
+            {s.timerSeconds != null && s.timerSeconds > 0 && (
+              <span className="rd-step-timer">⏱ {Math.floor(s.timerSeconds / 60)}:{String(s.timerSeconds % 60).padStart(2, '0')}</span>
+            )}
           </div>
         )}
         {s.note && !editing && <div className="rd-step-note">📝 {s.note}</div>}
