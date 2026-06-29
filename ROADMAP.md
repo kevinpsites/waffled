@@ -151,6 +151,40 @@ shipped — see 0048–0050 + the calendar→goal Phase 2 note above.)*
 
 ## Backlog — designed, not yet built
 
+### Chore rollover / one-off tasks — SHIPPED 2026-06-29 (built + tested; live UI verify pending)
+Before, there were **no true one-off chores**: `createChore` coerced a no-repeat chore to
+`FREQ=DAILY` (`coalesce(rrule,'FREQ=DAILY')`), and the Today read filtered `chore_instances.due_on
+= today` exactly — so a missed task just fell off when the date rolled. Shipped (migration
+**0059_chore_rollover**):
+- **Real "Just once" chores** — `rrule = NULL` now persists; ChoreModal has a "Just once" option
+  with an optional **due date (defaults to today)**; a one-off materializes exactly one instance on
+  that date (`on conflict (chore_id,due_on) do nothing`).
+- **Rollover = read-time carry-forward** — new `chores.rollover` flag (default **on** for one-offs).
+  `listTodayInstances` + `todaySummary` include `due_on < today AND status='pending' AND rrule IS
+  NULL AND rollover`, keeping the **original `due_on`** (history-preserving); Tasks shows an
+  **"overdue · since <day>"** badge. Rolls **forever until done**. Recurring chores unchanged;
+  `rollover` lives only on the chore row (read at query time, never snapshotted).
+- 6 new chores integration tests (one-off persistence/materialize, future hidden, past carried +
+  counted, done not carried, recurring miss not carried, `rollover=false` suppresses). Full api
+  suite **476/476**, web **205/205**.
+- **Deferred:** a one-tap **"Skip for today"** / dismiss so a rolling task isn't stuck forever;
+  **opt-in rollover for *recurring* chores** (needs collapse-duplicates-to-one + streak handling —
+  parked until there's a real need).
+
+### Cook-mode step timers — SHIPPED 2026-06-29 (built + tested; live UI verify pending)
+Recipe steps previously had no time concept (instruction + per-step ingredients + a note only).
+Shipped (migration **0058_recipe_step_timer**):
+- **Data:** nullable `recipe_steps.timer_seconds`, threaded through the step API shape + recipe
+  editor. Editor has a per-step **"Add timer"** control (**minutes + optional seconds**, a single
+  value — the user marks which steps need one; ranges like "9–11 min" just pick a value).
+- **Cook mode:** a timed step shows a **"Start mm:ss"** button → pushes onto a **top-level timers
+  array** that survives Back/Next (component persists across steps); a **floating dock** shows all
+  running timers (pause/resume/dismiss), **chimes (WebAudio) + flashes** on zero (wake-lock already
+  held), **multiple concurrent** timers. 1 new meals integration test (timer round-trips, null when
+  unset).
+- **Deferred:** **AI auto-detect** of timers from step text ("...boil 9–11 minutes") to pre-fill
+  the field — phase 2, manual marking ships first.
+
 ### Tech debt — route auth as middleware — ✅ DONE 2026-06-25
 Almost every API route opened with `const tenant = await requireTenant(req)` (+ an inline
 `requireAdmin`/`requireCapability` for writes), copied across ~20 files. lambda-api has no
