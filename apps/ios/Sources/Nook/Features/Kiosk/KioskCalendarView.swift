@@ -33,6 +33,9 @@ struct KioskCalendarView: View {
         VStack(spacing: 0) {
             header.padding(.horizontal, 28).padding(.top, 18).padding(.bottom, 12)
             content.padding(.horizontal, 28).padding(.bottom, 24)
+                // Swipe left/right to step month / week / day (same as the chevrons).
+                // Simultaneous so the week/day time grids still scroll vertically.
+                .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded(handleSwipe))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(NK.canvas)
@@ -141,6 +144,15 @@ struct KioskCalendarView: View {
         if let d = dayKeyToDate(selectedDay), let nd = cal.date(byAdding: .day, value: n, to: d) {
             withAnimation { selectedDay = EventTime.dayKey(nd, tz) }
         }
+    }
+
+    /// Horizontal flick → step month / week / day (mirrors the header chevrons). Ignores
+    /// agenda mode and predominantly-vertical drags so the time grids still scroll.
+    private func handleSwipe(_ value: DragGesture.Value) {
+        guard mode != .agenda else { return }
+        let dx = value.translation.width, dy = value.translation.height
+        guard abs(dx) > 50, abs(dx) > abs(dy) * 1.5 else { return }
+        step(dx < 0 ? 1 : -1)   // swipe left = next
     }
 
     private func chevron(_ s: String) -> some View {
@@ -259,11 +271,10 @@ struct KioskCalendarView: View {
         .background(color.opacity(0.12)).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 
-    private func chipLabel(_ ev: SyncedEvent) -> String {
-        if ev.allDay { return ev.title }
-        if let d = ev.startsAt { return "\(EventTime.timeLabel(d, tz))  \(ev.title)" }
-        return ev.title
-    }
+    /// Month-cell chips show the title only — in a narrow cell a leading time pushes the
+    /// title out of view, which is the useful part. Tap the day (panel + Day view) for
+    /// the times.
+    private func chipLabel(_ ev: SyncedEvent) -> String { ev.title }
 
     // MARK: day panel (month mode)
 
@@ -560,12 +571,23 @@ struct CalTimeGrid: View {
                                 hourRow(h).frame(height: hourHeight, alignment: .top).id(h)
                             }
                         }
-                        // Equal-width day columns; overlapping events split into lanes.
+                        // Equal-width day columns; overlapping events split into lanes. In
+                        // week view each column (after the first) carries a faint leading
+                        // divider so the day boundaries read and events align to a day.
                         HStack(spacing: 4) {
                             Color.clear.frame(width: gutter)
-                            ForEach(days, id: \.self) { key in
+                            ForEach(Array(days.enumerated()), id: \.element) { idx, key in
                                 GeometryReader { colGeo in
                                     ZStack(alignment: .topLeading) {
+                                        // A faint day boundary at each column's leading edge
+                                        // (week view), drawn as a sibling of the event blocks
+                                        // so it shares their resolved column height.
+                                        if days.count > 1 && idx > 0 {
+                                            Rectangle().fill(NK.ink.opacity(0.12))
+                                                .frame(width: 1, height: 24 * hourHeight)
+                                                .offset(x: -2)   // centered in the 4pt column gap
+                                                .allowsHitTesting(false)
+                                        }
                                         ForEach(placedEvents(key), id: \.event.id) { placed in
                                             block(placed, colWidth: colGeo.size.width)
                                         }
@@ -575,6 +597,9 @@ struct CalTimeGrid: View {
                             }
                         }
                         .frame(height: 24 * hourHeight, alignment: .topLeading)
+                        // The "now" line — a red rule across the grid at the current time,
+                        // shown only when the visible range includes today.
+                        if days.contains(Agenda.todayKey(tz)) { nowLine }
                     }
                     .frame(height: 24 * hourHeight)
                 }
@@ -588,9 +613,11 @@ struct CalTimeGrid: View {
     }
 
     private var dayHeaders: some View {
-        HStack(spacing: 0) {
+        // spacing 4 + the leading dividers match the time grid below, so the day
+        // numbers sit over their columns and the separators line up top-to-bottom.
+        HStack(spacing: 4) {
             Color.clear.frame(width: gutter, height: 1)
-            ForEach(days, id: \.self) { key in
+            ForEach(Array(days.enumerated()), id: \.element) { idx, key in
                 let isToday = key == Agenda.todayKey(tz)
                 Button { onPickDay(key) } label: {
                     VStack(spacing: 2) {
@@ -604,6 +631,12 @@ struct CalTimeGrid: View {
                     .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.plain)
+                .overlay(alignment: .leading) {
+                    if days.count > 1 && idx > 0 {
+                        Rectangle().fill(NK.ink.opacity(0.12)).frame(width: 1, height: 40)
+                            .offset(x: -2).allowsHitTesting(false)
+                    }
+                }
             }
         }
         .frame(height: 48)
@@ -611,19 +644,32 @@ struct CalTimeGrid: View {
     }
 
     private var allDayRow: some View {
-        HStack(spacing: 0) {
+        HStack(alignment: .top, spacing: 4) {
             Text("all-day").font(.system(size: 10, weight: .heavy)).foregroundStyle(NK.ink3)
                 .frame(width: gutter, alignment: .trailing).padding(.trailing, 6)
-            ForEach(days, id: \.self) { key in
+            ForEach(Array(days.enumerated()), id: \.element) { idx, key in
                 VStack(spacing: 3) {
                     ForEach(allDay(key)) { ev in
                         Button { onTapEvent(ev) } label: { miniChip(ev) }.buttonStyle(.plain)
                     }
                 }
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, alignment: .top)
+                .overlay(alignment: .topLeading) {
+                    if days.count > 1 && idx > 0 {
+                        Rectangle().fill(NK.ink.opacity(0.12))
+                            .frame(width: 1, height: allDayContentHeight)
+                            .offset(x: -2).allowsHitTesting(false)
+                    }
+                }
             }
         }
         .padding(.vertical, 6).padding(.bottom, 4)
+    }
+
+    /// Uniform height for the all-day separators — the tallest day's chip stack.
+    private var allDayContentHeight: CGFloat {
+        let n = max(1, days.map { allDay($0).count }.max() ?? 1)
+        return CGFloat(n) * 24 + CGFloat(n - 1) * 3
     }
 
     private func miniChip(_ ev: SyncedEvent) -> some View {
@@ -632,6 +678,28 @@ struct CalTimeGrid: View {
             .padding(.horizontal, 6).padding(.vertical, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(color.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+
+    /// Live red current-time indicator: a dot at the gutter edge + a rule across the
+    /// day columns, repositioned every minute.
+    private var nowLine: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { ctx in
+            ZStack(alignment: .leading) {
+                Rectangle().fill(Self.nowRed).frame(height: 2).padding(.leading, gutter)
+                Circle().fill(Self.nowRed).frame(width: 9, height: 9).offset(x: gutter - 4)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .offset(y: nowY(ctx.date) - 1)
+            .allowsHitTesting(false)
+        }
+    }
+
+    static let nowRed = Color(red: 0.89, green: 0.22, blue: 0.20)
+
+    private func nowY(_ date: Date) -> CGFloat {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let c = cal.dateComponents([.hour, .minute], from: date)
+        return (CGFloat(c.hour ?? 0) + CGFloat(c.minute ?? 0) / 60) * hourHeight
     }
 
     private func hourRow(_ h: Int) -> some View {

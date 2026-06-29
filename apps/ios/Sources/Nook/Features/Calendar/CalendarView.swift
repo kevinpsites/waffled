@@ -67,6 +67,10 @@ struct CalendarView: View {
                     try? await Task.sleep(for: .milliseconds(60))
                     withAnimation { proxy.scrollTo(dayScrollHour(), anchor: .top) }
                 }
+                // Swipe left/right on the month or day grid to step to the next/previous
+                // month or day. Simultaneous (not exclusive) so vertical scrolling still
+                // works; we only act on a clearly-horizontal flick.
+                .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded(handleCalendarSwipe))
             }
         }
         .background(NK.canvas)
@@ -299,9 +303,29 @@ struct CalendarView: View {
                 }
             }
             ForEach(timed) { ev in dayBlock(ev) }
+            // The "now" line, only on today.
+            if selectedDay == Agenda.todayKey(tz) { nowLine }
         }
         .padding(.top, 2)
     }
+
+    /// Live red current-time indicator (dot in the hour gutter + a rule across the day),
+    /// repositioned every minute. Only shown when the day view is on today.
+    private var nowLine: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { ctx in
+            let comps = hourMinute(ctx.date)
+            let y = (CGFloat(comps.h) + CGFloat(comps.m) / 60) * Self.hourHeight
+            ZStack(alignment: .leading) {
+                Rectangle().fill(Self.nowRed).frame(height: 2).padding(.leading, 56)
+                Circle().fill(Self.nowRed).frame(width: 8, height: 8).offset(x: 52)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .offset(y: y - 1)
+            .allowsHitTesting(false)
+        }
+    }
+
+    private static let nowRed = Color(red: 0.89, green: 0.22, blue: 0.20)
 
     @ViewBuilder private func dayBlock(_ ev: SyncedEvent) -> some View {
         if let start = ev.startsAt {
@@ -375,6 +399,19 @@ struct CalendarView: View {
         if let d = cal.date(byAdding: .month, value: n, to: monthAnchor) { withAnimation { monthAnchor = d } }
     }
 
+    /// Horizontal flick on the grid → step month (month view) or day (day view). Ignored
+    /// in agenda mode (a continuous list) and for predominantly-vertical drags.
+    private func handleCalendarSwipe(_ value: DragGesture.Value) {
+        let dx = value.translation.width, dy = value.translation.height
+        guard abs(dx) > 50, abs(dx) > abs(dy) * 1.5 else { return }
+        let forward = dx < 0   // swipe left = go forward (next)
+        switch mode {
+        case .month: stepMonth(forward ? 1 : -1)
+        case .day:   stepDay(forward ? 1 : -1)
+        case .agenda: break
+        }
+    }
+
     private func dayKeyToDate(_ key: String) -> Date? {
         return DateFmt.date(key, "yyyy-MM-dd", tz)
     }
@@ -445,6 +482,9 @@ struct EventCard: View {
             .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
             .nkShadow1()
             .contentShape(Rectangle())
+            // Subtly fade events that have already finished, so the eye lands on what's
+            // still ahead.
+            .opacity(isPast ? 0.5 : 1)
         }
         .buttonStyle(.plain)
     }
@@ -453,6 +493,16 @@ struct EventCard: View {
         if event.allDay { return "All day" }
         if let d = event.startsAt { return EventTime.timeLabel(d, tz) }
         return ""
+    }
+
+    /// Has this event already ended? All-day events are "past" once their day is before
+    /// today; timed events once their end (or start, if open-ended) is before now.
+    private var isPast: Bool {
+        if event.allDay {
+            let key = Agenda.dayKey(event, tz)
+            return !key.isEmpty && key < Agenda.todayKey(tz)
+        }
+        return (event.endsAt ?? event.startsAt ?? .distantFuture) < Date()
     }
 }
 
@@ -504,6 +554,20 @@ struct EventEditSheet: View {
     @State private var location: String
     @State private var confirmDelete = false
     @State private var loadedParticipants = false
+    /// The "Repeats" picker state. Built into an RRULE on save (recurring events go
+    /// through REST — the local mirror can't expand a rule). Loaded from the master's
+    /// rule when editing an existing recurring event.
+    @State private var repeatState = RepeatState.none
+    @State private var loadedRepeat = false
+    /// The recurrence end condition (web parity). `never` repeats forever; `on` passes a
+    /// hard end date (`recurrenceEndAt`); `after` rides a `COUNT=N` inside the rule.
+    @State private var endMode: RepeatEnd = .never
+    @State private var untilDate = Date().addingTimeInterval(60 * 60 * 24 * 90) // ~3 months out
+    @State private var occurrenceCount = 10
+    enum RepeatEnd { case never, on, after }
+    /// When editing/deleting an already-recurring event, ask which occurrences to touch.
+    @State private var scopePrompt: ScopePrompt?
+    enum ScopePrompt { case save, delete }
     // Google calendar picker (create only).
     @State private var calendars: [NookAPI.CalendarLink] = []
     @State private var calendarId: String?
@@ -557,6 +621,15 @@ struct EventEditSheet: View {
 
     private var editing: Bool { event != nil }
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
+    /// True when editing a materialized occurrence of a recurring series (the local
+    /// mirror sets `occurrenceStart` only for those). Drives the scope chooser.
+    private var wasRecurring: Bool { event?.occurrenceStart != nil }
+    /// The chosen start instant (device tz) — used for the RRULE's default weekday /
+    /// nth-weekday ordinal and the live "Repeats" summary.
+    private var resolvedStart: Date {
+        let cal = Calendar.current
+        return allDay ? (cal.date(bySettingHour: 12, minute: 0, second: 0, of: day) ?? day) : combine(day, start)
+    }
 
     /// The owner (first family member who's a participant) drives the calendar list.
     private var primaryPerson: String? { participants.first }
@@ -612,6 +685,8 @@ struct EventEditSheet: View {
                     }
                     .tint(FamilyColor.wally.solid)
                     .padding(14).cardBox()
+
+                    repeatSection
 
                     group("Who") {
                         ChipFlow(spacing: 8, lineSpacing: 8) {
@@ -681,6 +756,21 @@ struct EventEditSheet: View {
             }
             .onChange(of: participants) { _, _ in recomputeDefaultCalendar(); clearOrphanGoal(); scheduleSuggest() }
             .onChange(of: title) { _, _ in scheduleSuggest() }
+            .confirmationDialog(
+                scopePrompt == .delete ? "Delete repeating event" : "Save repeating event",
+                isPresented: Binding(get: { scopePrompt != nil }, set: { if !$0 { scopePrompt = nil } }),
+                titleVisibility: .visible
+            ) {
+                let del = scopePrompt == .delete
+                Button(del ? "This event" : "Save this event") { applyScope("this") }
+                Button(del ? "This and following events" : "Save this and following") { applyScope("following") }
+                Button(del ? "All events" : "Save all events", role: del ? .destructive : nil) { applyScope("all") }
+                Button("Cancel", role: .cancel) { scopePrompt = nil }
+            } message: {
+                Text(scopePrompt == .delete
+                     ? "This is part of a repeating series."
+                     : "Apply your changes to which occurrences?")
+            }
         }
         .modifier(KioskSheetPresentation(kiosk: DeviceExperience.current == .kiosk))
     }
@@ -689,10 +779,12 @@ struct EventEditSheet: View {
         HStack(spacing: 14) {
             if editing {
                 Button {
-                    if confirmDelete { Task { if let id = editId { _ = await sync.deleteEvent(id: id) } }; dismiss() }
+                    // Recurring events choose a scope; single events use tap-again confirm.
+                    if wasRecurring { scopePrompt = .delete }
+                    else if confirmDelete { performDelete(scope: nil); dismiss() }
                     else { withAnimation { confirmDelete = true } }
                 } label: {
-                    Text(confirmDelete ? "Tap again" : "Delete")
+                    Text(confirmDelete && !wasRecurring ? "Tap again" : "Delete")
                         .font(.system(size: 15, weight: .bold)).foregroundStyle(NK.primary)
                 }
                 .buttonStyle(.plain)
@@ -895,6 +987,26 @@ struct EventEditSheet: View {
             eligibleGoals = (try? await NookAPI().goalsIn(listId: nil)) ?? []
         }
         if let gid = goalId, goalSteps.isEmpty { await loadSteps(for: gid) }
+        // The local mirror doesn't carry the rule; load it from the master so the
+        // "Repeats" picker reflects the current cadence when editing a recurring event.
+        if wasRecurring, !loadedRepeat, let ev = event {
+            loadedRepeat = true
+            if let detail = try? await NookAPI().eventDetail(id: ev.seriesId ?? ev.id), let rule = detail.rrule {
+                // COUNT rides in the rule; strip it before parsing the cadence, then
+                // restore it as the "after N times" end condition (mirrors the web).
+                if let n = Self.extractCount(rule) { endMode = .after; occurrenceCount = n }
+                repeatState = Recurrence.parseRepeat(Self.stripCount(rule))
+            }
+        }
+    }
+
+    /// Pull the `COUNT=N` out of a stored rule (the end-condition picker owns it).
+    private static func extractCount(_ rule: String) -> Int? {
+        guard let r = rule.range(of: "COUNT=\\d+", options: .regularExpression) else { return nil }
+        return Int(rule[r].dropFirst("COUNT=".count))
+    }
+    private static func stripCount(_ rule: String) -> String {
+        rule.replacingOccurrences(of: ";?COUNT=\\d+", with: "", options: .regularExpression)
     }
 
     /// Default to the owner's ★ calendar (then any of theirs), until manually picked.
@@ -912,44 +1024,310 @@ struct EventEditSheet: View {
         return h == h.rounded() ? "\(Int(h)) hr" : String(format: "%.1f hr", h)
     }
 
-    private func save() {
-        let cal = Calendar.current
-        let startDate = allDay
-            ? (cal.date(bySettingHour: 12, minute: 0, second: 0, of: day) ?? day)
-            : combine(day, start)
+    // MARK: repeats picker
+
+    private static let freqOptions: [RepeatFreq] = [.none, .daily, .weekdays, .weekly, .monthly, .custom]
+
+    private func freqLabel(_ f: RepeatFreq) -> String {
+        switch f {
+        case .none: return "Does not repeat"
+        case .daily: return "Daily"
+        case .weekdays: return "Every weekday (Mon–Fri)"
+        case .weekly: return "Weekly"
+        case .monthly: return "Monthly"
+        case .custom: return "Custom…"
+        }
+    }
+
+    /// A live plain-English summary of the rule the picker currently builds, including
+    /// the end condition (COUNT renders via `describeRrule`; an end date is appended).
+    private var repeatSummary: String {
+        let d = buildDraft()
+        let base = Recurrence.describeRrule(d.rrule, start: resolvedStart)
+        if endMode == .on, d.rrule != nil {
+            return "\(base), until \(DateFmt.string(untilDate, "MMM d, yyyy", sync.householdTz))"
+        }
+        return base
+    }
+
+    @ViewBuilder private var repeatSection: some View {
+        group("Repeats") {
+            VStack(alignment: .leading, spacing: 12) {
+                Menu {
+                    ForEach(Self.freqOptions, id: \.self) { f in
+                        Button(freqLabel(f)) { setFreq(f) }
+                    }
+                } label: {
+                    HStack {
+                        Text(freqLabel(repeatState.freq)).font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
+                        Spacer()
+                        Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                    }
+                    .padding(.horizontal, 13).padding(.vertical, 11).innerField()
+                }
+                if repeatState.freq == .weekly { weekdayChips }
+                if repeatState.freq == .custom { customBuilder }
+                if repeatState.freq != .none {
+                    endsRow
+                    Text(repeatSummary).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                }
+            }
+        }
+    }
+
+    /// The end condition — Never · On a date · After N times. Mirrors the web's picker.
+    private var endsRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Text("Ends").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink2)
+                Menu {
+                    Button("Never") { endMode = .never }
+                    Button("On a date") { endMode = .on }
+                    Button("After…") { endMode = .after }
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(endModeLabel).font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
+                        Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 9).innerField()
+                }
+                Spacer(minLength: 0)
+            }
+            if endMode == .on {
+                DatePicker("", selection: $untilDate, in: day..., displayedComponents: .date)
+                    .labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if endMode == .after {
+                HStack(spacing: 10) {
+                    Stepper(value: $occurrenceCount, in: 1...365) {
+                        Text("\(occurrenceCount)").font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
+                    }
+                    .fixedSize()
+                    Text(occurrenceCount == 1 ? "occurrence" : "occurrences")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink2)
+                }
+            }
+        }
+    }
+
+    private var endModeLabel: String {
+        switch endMode { case .never: return "Never"; case .on: return "On a date"; case .after: return "After N times" }
+    }
+
+    private func setFreq(_ f: RepeatFreq) {
+        repeatState.freq = f
+        // byday only applies to the weekly preset + custom-weekly; clear it otherwise so
+        // the built rule (and summary) stay clean.
+        if f != .weekly && f != .custom { repeatState.byday = [] }
+    }
+
+    /// The weekday set the picker is effectively using — an empty `byday` means "the
+    /// event's own weekday" (what `buildRrule` defaults to).
+    private var effectiveByday: [String] {
+        repeatState.byday.isEmpty ? [Recurrence.weekdayCode(resolvedStart)] : repeatState.byday
+    }
+
+    private func toggleWeekday(_ code: String) {
+        var days = Set(effectiveByday)
+        if days.contains(code) { if days.count > 1 { days.remove(code) } } // keep ≥1
+        else { days.insert(code) }
+        repeatState.byday = Recurrence.weekdays.filter { days.contains($0) }
+    }
+
+    private var weekdayChips: some View {
+        let current = effectiveByday
+        return HStack(spacing: 6) {
+            ForEach(Recurrence.weekdays, id: \.self) { code in
+                let on = current.contains(code)
+                Button { toggleWeekday(code) } label: {
+                    Text(Self.chipDay[code] ?? code)
+                        .font(.system(size: 13, weight: .bold))
+                        .frame(width: 38, height: 36)
+                        .nkChip(selected: on, tint: FamilyColor.wally.solid)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private static let chipDay = ["SU": "Su", "MO": "Mo", "TU": "Tu", "WE": "We", "TH": "Th", "FR": "Fr", "SA": "Sa"]
+
+    private func unitLabel(_ u: CustomUnit, plural: Bool) -> String {
+        let base: String
+        switch u { case .day: base = "day"; case .week: base = "week"; case .month: base = "month"; case .year: base = "year" }
+        return plural ? base + "s" : base
+    }
+
+    private var customBuilder: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Text("Every").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink2)
+                Stepper(value: $repeatState.interval, in: 1...99) {
+                    Text("\(repeatState.interval)").font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
+                }
+                .fixedSize()
+                Menu {
+                    ForEach(CustomUnit.allCases, id: \.self) { u in
+                        Button(unitLabel(u, plural: repeatState.interval != 1)) { repeatState.unit = u }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(unitLabel(repeatState.unit, plural: repeatState.interval != 1))
+                            .font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
+                        Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 9).innerField()
+                }
+            }
+            if repeatState.unit == .week { weekdayChips }
+            if repeatState.unit == .month { monthlyModeMenu }
+        }
+    }
+
+    /// Ordinals offered for "the Nth <weekday> of the month": 1…5 and -1 (last).
+    private static let monthlyOrdinals = [1, 2, 3, 4, 5, -1]
+    private static let ordinalWord = ["", "first", "second", "third", "fourth", "fifth"]
+
+    private func ordinalWord(_ n: Int) -> String {
+        n == -1 ? "last" : (Self.ordinalWord.indices.contains(n) ? Self.ordinalWord[n] : "\(n)th")
+    }
+
+    private var monthlyModeMenu: some View {
+        let dom = Calendar.current.component(.day, from: resolvedStart)
+        let weekdayName = DateFmt.string(resolvedStart, "EEEE", sync.householdTz)
+        let dayLabel = "On day \(dom)"
+        func nthLabel(_ ord: Int) -> String { "On the \(ordinalWord(ord)) \(weekdayName)" }
+        let current = repeatState.monthlyMode == .dayOfMonth ? dayLabel : nthLabel(repeatState.monthlyOrdinal)
+        return Menu {
+            Button(dayLabel) { repeatState.monthlyMode = .dayOfMonth }
+            ForEach(Self.monthlyOrdinals, id: \.self) { ord in
+                Button(nthLabel(ord)) { repeatState.monthlyMode = .nthWeekday; repeatState.monthlyOrdinal = ord }
+            }
+        } label: {
+            HStack {
+                Text(current).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                Spacer()
+                Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 9).innerField()
+        }
+    }
+
+    /// The resolved field values for a save — recomputed deterministically so both the
+    /// direct save and the scope-chooser path build the same payload.
+    private struct Draft {
+        let startISO: String, endISO: String?, name: String, loc: String?
+        let ids: [String], chosenCal: String?, rrule: String?, recurrenceEndAt: String?
+    }
+
+    private func buildDraft() -> Draft {
+        let startDate = resolvedStart
         let startISO = Self.iso.string(from: startDate)
         let endISO = allDay ? nil : Self.iso.string(from: startDate.addingTimeInterval(Double(durationMin) * 60))
         let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let loc = location.trimmingCharacters(in: .whitespaces).isEmpty ? nil : location.trimmingCharacters(in: .whitespaces)
-        let ids = Array(participants)
-        let chosenCal = showCalendarPicker ? calendarId : nil
-        Task {
-            if let editId {
-                if goalId != nil || prefillGoalId != nil {
-                    // A goal link was set, changed, or removed → PATCH the rich REST
-                    // route (the local mirror has no goal columns); PowerSync re-syncs.
-                    _ = try? await NookAPI().updateEvent(
-                        id: editId, title: name, startsAtISO: startISO, endsAtISO: endISO,
-                        allDay: allDay, location: loc, personIds: ids, goalId: goalId, goalStepId: goalStepId)
-                    sync.touchGoals()
-                } else {
-                    _ = await sync.updateEvent(id: editId, title: name, startsAtISO: startISO,
-                                               endsAtISO: endISO, allDay: allDay, location: loc, personIds: ids)
-                }
-            } else if let gid = goalId {
-                // Goal-linked create goes through the rich REST route (the local
-                // events table has no goal columns); PowerSync down-syncs it back.
-                _ = try? await NookAPI().createEvent(
-                    title: name, startsAtISO: startISO, endsAtISO: endISO, allDay: allDay,
-                    location: loc, personIds: ids, goalId: gid, goalStepId: goalStepId,
-                    calendarId: chosenCal, timezone: sync.householdTz.identifier)
-                sync.touchGoals()
-            } else {
-                _ = await sync.createCalendarEvent(title: name, startsAtISO: startISO, endsAtISO: endISO,
-                                                   allDay: allDay, location: loc, personIds: ids, calendarId: chosenCal)
+        let trimmedLoc = location.trimmingCharacters(in: .whitespaces)
+        // The cadence rule; the end condition is layered on (COUNT in the rule, an end
+        // date passed separately) the same way the web composes it.
+        let base = Recurrence.buildRrule(repeatState, start: startDate)
+        var rrule = base
+        var recurrenceEndAt: String?
+        if let base {
+            if endMode == .after, occurrenceCount > 0 { rrule = "\(base);COUNT=\(occurrenceCount)" }
+            else if endMode == .on {
+                let cal = Calendar.current
+                let endOfDay = cal.date(bySettingHour: 23, minute: 59, second: 0, of: untilDate) ?? untilDate
+                recurrenceEndAt = Self.iso.string(from: endOfDay)
             }
         }
+        return Draft(
+            startISO: startISO, endISO: endISO, name: name,
+            loc: trimmedLoc.isEmpty ? nil : trimmedLoc,
+            ids: Array(participants),
+            chosenCal: showCalendarPicker ? calendarId : nil,
+            rrule: rrule, recurrenceEndAt: recurrenceEndAt)
+    }
+
+    private func save() {
+        // Editing an already-recurring event first asks which occurrences to change.
+        if wasRecurring { scopePrompt = .save; return }
+        performSave(scope: nil)
         dismiss()
+    }
+
+    /// The scope chooser picked an option — run the right action and dismiss.
+    private func applyScope(_ scope: String) {
+        let mode = scopePrompt
+        scopePrompt = nil
+        if mode == .delete { performDelete(scope: scope) } else { performSave(scope: scope) }
+        dismiss()
+    }
+
+    private func performSave(scope: String?) {
+        let d = buildDraft()
+        let tz = sync.householdTz.identifier
+        Task {
+            if let editId {
+                if wasRecurring {
+                    // Recurring edit through REST (server-materialized). 'this'/'following'
+                    // change only the occurrence's own fields; 'all' also rewrites the rule
+                    // (or clears it, turning the series back into a single event).
+                    let isAll = scope == "all"
+                    try? await NookAPI().updateEvent(
+                        id: editId, title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
+                        allDay: allDay, location: d.loc, personIds: d.ids,
+                        goalId: goalId, goalStepId: goalStepId,
+                        rrule: isAll ? d.rrule : nil, clearRrule: isAll && d.rrule == nil,
+                        recurrenceEndAt: isAll ? d.recurrenceEndAt : nil,
+                        scope: scope, occurrenceStart: event?.occurrenceStart)
+                    sync.touchGoals()
+                } else if let rrule = d.rrule {
+                    // A single event being made recurring — promote in place (no scope),
+                    // routed through REST so the server materializes the occurrences.
+                    try? await NookAPI().updateEvent(
+                        id: editId, title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
+                        allDay: allDay, location: d.loc, personIds: d.ids,
+                        goalId: goalId, goalStepId: goalStepId, rrule: rrule,
+                        recurrenceEndAt: d.recurrenceEndAt)
+                    sync.touchGoals()
+                } else if goalId != nil || prefillGoalId != nil {
+                    // A goal link was set, changed, or removed → PATCH the rich REST
+                    // route (the local mirror has no goal columns); PowerSync re-syncs.
+                    try? await NookAPI().updateEvent(
+                        id: editId, title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
+                        allDay: allDay, location: d.loc, personIds: d.ids, goalId: goalId, goalStepId: goalStepId)
+                    sync.touchGoals()
+                } else {
+                    _ = await sync.updateEvent(id: editId, title: d.name, startsAtISO: d.startISO,
+                                               endsAtISO: d.endISO, allDay: allDay, location: d.loc, personIds: d.ids)
+                }
+            } else if d.rrule != nil || goalId != nil {
+                // Recurring and/or goal-linked create goes through the rich REST route
+                // (the local events table has no goal columns and can't expand a rule);
+                // PowerSync down-syncs the master + materialized occurrences.
+                _ = try? await NookAPI().createEvent(
+                    title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO, allDay: allDay,
+                    location: d.loc, personIds: d.ids, goalId: goalId, goalStepId: goalStepId,
+                    calendarId: d.chosenCal, timezone: tz, rrule: d.rrule, recurrenceEndAt: d.recurrenceEndAt)
+                if goalId != nil { sync.touchGoals() }
+            } else {
+                _ = await sync.createCalendarEvent(title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
+                                                   allDay: allDay, location: d.loc, personIds: d.ids, calendarId: d.chosenCal)
+            }
+        }
+    }
+
+    private func performDelete(scope: String?) {
+        guard let id = editId else { return }
+        Task {
+            if wasRecurring {
+                // 'this' cancels one occurrence, 'following' caps the series, 'all' (or
+                // nil) drops the whole series — all server-side over REST.
+                try? await NookAPI().deleteEvent(id: id, scope: scope, occurrenceStart: event?.occurrenceStart)
+                sync.touchGoals()
+            } else {
+                _ = await sync.deleteEvent(id: id)
+            }
+        }
     }
 
     /// Combine a date's Y/M/D with a time's H/M into one instant (device tz).

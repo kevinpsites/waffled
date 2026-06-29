@@ -10,6 +10,16 @@ struct PhotosView: View {
     @State private var showAdd = false
     @State private var selectedAlbum: String?     // nil = all photos
     @State private var playing = false            // the manual slideshow is up
+    @AppStorage("nook.screensaverMotion") private var motion = true
+
+    // Multi-select bulk actions (move to album / delete)
+    @State private var selecting = false
+    @State private var selection: Set<String> = []
+    @State private var showMove = false
+    @State private var showDelete = false
+    @State private var showNewAlbum = false
+    @State private var newAlbumName = ""
+    @State private var busy = false
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
 
@@ -29,23 +39,61 @@ struct PhotosView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(isKiosk ? .hidden : .visible, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button { showAdd = true } label: {
-                    Label("Add", systemImage: "plus").labelStyle(.titleAndIcon).fontWeight(.semibold)
+            if selecting {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { exitSelection() }.fontWeight(.semibold)
                 }
-            }
-            ToolbarItem(placement: .topBarLeading) {
-                Button { playing = true } label: {
-                    Label("Play", systemImage: "play.fill").labelStyle(.titleAndIcon).fontWeight(.semibold)
+                ToolbarItem(placement: .primaryAction) {
+                    Button(allSelected ? "Deselect All" : "Select All") { toggleSelectAll() }
+                        .fontWeight(.semibold).disabled(shownPhotos.isEmpty)
                 }
-                .disabled(shownPhotos.isEmpty)
+            } else {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { playing = true } label: {
+                        Label("Play", systemImage: "play.fill").labelStyle(.titleAndIcon).fontWeight(.semibold)
+                    }
+                    .disabled(shownPhotos.isEmpty)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Select") { enterSelection() }.fontWeight(.semibold)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showAdd = true } label: {
+                        Label("Add", systemImage: "plus").labelStyle(.titleAndIcon).fontWeight(.semibold)
+                    }
+                }
             }
         }
+        .overlay(alignment: .bottom) {
+            if selecting { selectionBar }
+        }
+        .confirmationDialog(moveTitle, isPresented: $showMove, titleVisibility: .visible) {
+            ForEach(model.albums, id: \.self) { album in
+                Button(album) { runMove(to: album) }
+            }
+            Button("New album…") { showNewAlbum = true }
+            Button("Remove from album") { runMove(to: nil) }
+            Button("Cancel", role: .cancel) {}
+        }
+        .alert("New album", isPresented: $showNewAlbum) {
+            TextField("Album name", text: $newAlbumName)
+            Button("Cancel", role: .cancel) { newAlbumName = "" }
+            Button("Move") {
+                let name = newAlbumName.trimmingCharacters(in: .whitespaces)
+                newAlbumName = ""
+                if !name.isEmpty { runMove(to: name) }
+            }
+        } message: { Text("Move \(moveCountLabel) into a new album.") }
+        .confirmationDialog("Delete \(moveCountLabel)?", isPresented: $showDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { runDelete() }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("This removes them from your family wall.") }
         .task { if model.photos.isEmpty { await model.load() } }
         // The manual slideshow — a bare, chrome-free play-through of what's on the wall.
         .fullScreenCover(isPresented: $playing) {
             ScreensaverView(content: "photos", photos: shownPhotos, weather: nil, nextEvent: nil,
-                            timezone: .current, dimmed: false, bare: true, onWake: { playing = false })
+                            timezone: .current, dimmed: false, bare: true, motion: motion,
+                            onWake: { playing = false })
         }
         .sheet(item: $detail) { photo in
             PhotoDetailView(photo: photo, memoryCount: photo.memory.map { model.count(inMemory: $0) } ?? 0,
@@ -79,9 +127,17 @@ struct PhotosView: View {
         VStack(spacing: 14) {
             KioskPageHeader("Photos", "Your family's moments, all in one place.") {
                 HStack(spacing: 10) {
-                    KioskHeaderButton(icon: "play.fill", label: "Play") { playing = true }
-                        .opacity(shownPhotos.isEmpty ? 0.5 : 1).disabled(shownPhotos.isEmpty)
-                    KioskHeaderButton(icon: "plus", label: "Add photos") { showAdd = true }
+                    if selecting {
+                        KioskHeaderButton(icon: "checklist", label: allSelected ? "Deselect all" : "Select all") { toggleSelectAll() }
+                            .opacity(shownPhotos.isEmpty ? 0.5 : 1).disabled(shownPhotos.isEmpty)
+                        KioskHeaderButton(icon: "xmark", label: "Cancel") { exitSelection() }
+                    } else {
+                        KioskHeaderButton(icon: "play.fill", label: "Play") { playing = true }
+                            .opacity(shownPhotos.isEmpty ? 0.5 : 1).disabled(shownPhotos.isEmpty)
+                        KioskHeaderButton(icon: "checkmark.circle", label: "Select") { enterSelection() }
+                            .opacity(model.photos.isEmpty ? 0.5 : 1).disabled(model.photos.isEmpty)
+                        KioskHeaderButton(icon: "plus", label: "Add photos") { showAdd = true }
+                    }
                 }
             }
             albumFilter
@@ -112,8 +168,21 @@ struct PhotosView: View {
         } else {
             LazyVGrid(columns: columns, spacing: tileHeight > 180 ? 14 : 12) {
                 ForEach(shownPhotos) { photo in
-                    Button { detail = photo } label: {
+                    let picked = selection.contains(photo.id)
+                    Button {
+                        if selecting { toggle(photo.id) } else { detail = photo }
+                    } label: {
                         PhotoTile(photo: photo, height: tileHeight)
+                            .overlay {
+                                if selecting && picked {
+                                    RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
+                                        .strokeBorder(NK.primary, lineWidth: 3)
+                                }
+                            }
+                            .overlay(alignment: .topLeading) {
+                                if selecting { selectBadge(on: picked).padding(8) }
+                            }
+                            .opacity(selecting && !picked ? 0.78 : 1)
                     }
                     .buttonStyle(.plain)
                 }
@@ -145,6 +214,78 @@ struct PhotosView: View {
                 .nkChip(selected: on)
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: multi-select
+
+    /// The floating action bar shown while selecting — Move / Delete + a live count.
+    private var selectionBar: some View {
+        HStack(spacing: 18) {
+            Button { showMove = true } label: {
+                Label("Move", systemImage: "folder").fontWeight(.semibold)
+            }
+            .disabled(selection.isEmpty || busy)
+            Button(role: .destructive) { showDelete = true } label: {
+                Label("Delete", systemImage: "trash").fontWeight(.semibold)
+            }
+            .disabled(selection.isEmpty || busy)
+            Spacer(minLength: 8)
+            if busy { ProgressView() }
+            Text(selection.isEmpty ? "Select photos" : "\(selection.count) selected")
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
+        }
+        .padding(.horizontal, 20).padding(.vertical, 13)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(NK.ink3.opacity(0.18)))
+        .nkShadow1()
+        .padding(.horizontal, isKiosk ? 28 : 16)
+        .padding(.bottom, isKiosk ? 18 : 94)   // clear the iPhone tab bar
+    }
+
+    private func selectBadge(on: Bool) -> some View {
+        Image(systemName: on ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 22, weight: .semibold))
+            .foregroundStyle(on ? .white : .white.opacity(0.95), on ? NK.primary : .clear)
+            .background(Circle().fill(on ? Color.white : Color.black.opacity(0.28)).padding(3))
+            .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+    }
+
+    private var allSelected: Bool {
+        !shownPhotos.isEmpty && selection.count == shownPhotos.count
+    }
+    private var moveCountLabel: String {
+        "\(selection.count) photo\(selection.count == 1 ? "" : "s")"
+    }
+    private var moveTitle: String { "Move \(moveCountLabel)" }
+
+    private func enterSelection() { selecting = true; selection = [] }
+    private func exitSelection() { selecting = false; selection = [] }
+    private func toggle(_ id: String) {
+        if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
+    }
+    private func toggleSelectAll() {
+        selection = allSelected ? [] : Set(shownPhotos.map(\.id))
+    }
+
+    private func runMove(to album: String?) {
+        let ids = selection
+        guard !ids.isEmpty else { return }
+        Task {
+            busy = true
+            _ = await model.move(ids, toAlbum: album)
+            busy = false
+            exitSelection()
+        }
+    }
+    private func runDelete() {
+        let ids = selection
+        guard !ids.isEmpty else { return }
+        Task {
+            busy = true
+            _ = await model.delete(ids)
+            busy = false
+            exitSelection()
+        }
     }
 }
 

@@ -337,11 +337,12 @@ struct GoalsView: View {
                             .lineLimit(1).minimumScaleFactor(0.8)
                     }
                 }
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 6) {
                     heroPill("⭐ Featured · shared total")
-                    Text(g.title).font(NK.serif(19)).foregroundStyle(.white).lineLimit(2)
+                    Text(g.title).font(NK.serif(26)).foregroundStyle(.white).lineLimit(2)
+                        .minimumScaleFactor(0.7)
                     Text("Everyone contributes to one pool\(g.deadline.map { " · by \(fmtDeadline($0))" } ?? "")")
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).lineLimit(2)
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).lineLimit(2)
                 }
             }
             if !g.participants.isEmpty {
@@ -366,11 +367,12 @@ struct GoalsView: View {
                 Text(g.emoji ?? "🎯").font(.system(size: 38))
                     .frame(width: 64, height: 64)
                     .background(.white.opacity(0.18)).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 6) {
                     heroPill("⭐ Featured · each tracks their own")
-                    Text(g.title).font(NK.serif(19)).foregroundStyle(.white).lineLimit(2)
+                    Text(g.title).font(NK.serif(26)).foregroundStyle(.white).lineLimit(2)
+                        .minimumScaleFactor(0.7)
                     Text(g.target.map { "\(goalFmt($0)) \(g.unit ?? "")".trimmingCharacters(in: .whitespaces) + " each" } ?? "Everyone tracks their own")
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
                 }
             }
             HStack {

@@ -48,8 +48,22 @@ final class ScreensaverModel {
         dimmed = Self.inNightWindow(cfg.nightDim, now: now, tz: tz)
         if !showing {
             let idle = now.timeIntervalSince(lastActivity)
-            if idle >= Double(max(1, cfg.screensaverMinutes) * 60) { showing = true }
+            if idle >= Double(max(1, cfg.screensaverMinutes) * 60) {
+                // Don't start the saver over an open sheet/cover — it presents above the
+                // app view tree, so the saver would render *under* it (a broken sandwich).
+                // Wait it out: hold the idle clock until the modal is dismissed.
+                if Self.modalPresented() { lastActivity = now } else { showing = true }
+            }
         }
+    }
+
+    /// Whether a sheet / full-screen cover is currently presented anywhere on screen.
+    static func modalPresented() -> Bool {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let ws = scene as? UIWindowScene else { continue }
+            for w in ws.windows where w.rootViewController?.presentedViewController != nil { return true }
+        }
+        return false
     }
 
     /// Is `now` inside the dim window? Compares "HH:mm" strings in the household tz and
@@ -65,7 +79,9 @@ final class ScreensaverModel {
 
 struct KioskScreensaverHost: ViewModifier {
     @Environment(SyncManager.self) private var sync
+    @Environment(KioskMode.self) private var kiosk
     @State private var model = ScreensaverModel()
+    @AppStorage("nook.screensaverMotion") private var motion = true
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     func body(content: Content) -> some View {
@@ -79,7 +95,7 @@ struct KioskScreensaverHost: ViewModifier {
                         photos: model.photos, weather: model.weather,
                         nextEvent: nextEvent, timezone: sync.householdTz,
                         dimmed: model.dimmed, interval: cfg.photoInterval,
-                        onWake: { model.wake() })
+                        motion: motion, onWake: { wake() })
                         .transition(.opacity)
                         .zIndex(100)
                 }
@@ -96,6 +112,15 @@ struct KioskScreensaverHost: ViewModifier {
             .onReceive(tick) { model.tick($0, tz: sync.householdTz) }
             // Keep the screen awake while the saver is up (it IS the screensaver).
             .onChange(of: model.showing) { _, on in UIApplication.shared.isIdleTimerDisabled = on }
+    }
+
+    /// Tapped the screensaver to wake. On a shared kiosk with "Return to profile picker"
+    /// enabled, waking drops the current person and shows the picker (so the next person
+    /// to walk up isn't acting as whoever last used it); otherwise it just resumes.
+    private func wake() {
+        let toPicker = (model.cfg?.returnToPicker ?? false) && kiosk.isShared
+        model.wake()
+        if toPicker { Task { await kiosk.returnToPicker(sync: sync) } }
     }
 
     /// The soonest upcoming event (timed or all-day) for the "Next:" line.

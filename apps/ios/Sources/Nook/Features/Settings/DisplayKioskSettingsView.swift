@@ -7,6 +7,8 @@ import SwiftUI
 /// display" toggle and the live Preview are web-display-only, so they're omitted here.
 struct DisplayKioskSettingsView: View {
     @Environment(SyncManager.self) private var sync
+    @Environment(KioskMode.self) private var kiosk
+    @Environment(Session.self) private var session
     @State private var cfg: NookAPI.DisplayConfig?
     @State private var loadFailed = false
     @State private var dirty = false
@@ -16,8 +18,20 @@ struct DisplayKioskSettingsView: View {
     @State private var previewPhotos: [NookAPI.Photo] = []
     @State private var previewWeather: NookAPI.Weather?
     @State private var showPreview = false
+    // Device-local: the server doesn't store a motion flag, and it's a per-display look.
+    @AppStorage("nook.screensaverMotion") private var motion = true
+    // Shared-kiosk (this device) controls — iPad only.
+    @State private var showCodeSheet = false
+    @State private var confirmPromote = false
+    @State private var confirmUnpair = false
+    @State private var deviceBusy = false
+    @State private var deviceError: String?
 
     private let api = NookAPI()
+
+    /// The device-level "make this a shared kiosk" card only makes sense on an iPad,
+    /// and only a parent can flip it.
+    private var showsDeviceCard: Bool { DeviceExperience.current == .kiosk && sync.isParent }
 
     /// The soonest upcoming event, for the preview's "Next:" line.
     private var nextEvent: SyncedEvent? {
@@ -36,6 +50,7 @@ struct DisplayKioskSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 intro
+                if showsDeviceCard { deviceCard }
                 if loadFailed {
                     errorCard
                 } else if cfg != nil {
@@ -61,12 +76,25 @@ struct DisplayKioskSettingsView: View {
             }
         }
         .task { await load() }
+        .sheet(isPresented: $showCodeSheet) { KioskCodeEntrySheet() }
+        .confirmationDialog("Turn this iPad into a shared kiosk?", isPresented: $confirmPromote, titleVisibility: .visible) {
+            Button("Turn on shared kiosk") { Task { await promote() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You’ll be signed out and the household picks a profile from a picker. You can switch back anytime.")
+        }
+        .confirmationDialog("Stop sharing this iPad?", isPresented: $confirmUnpair, titleVisibility: .visible) {
+            Button("Stop sharing", role: .destructive) { Task { await kiosk.unpair(sync: sync, session: session) } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This iPad returns to a single sign-in. You’ll need to sign in again.")
+        }
         .fullScreenCover(isPresented: $showPreview) {
             ScreensaverView(
                 content: cfg?.content == "photos" ? "photos" : "clock",
                 photos: cfg.map { NookAPI.screensaverPhotos(previewPhotos, $0) } ?? previewPhotos,
                 weather: previewWeather, nextEvent: nextEvent, timezone: sync.householdTz,
-                dimmed: false, interval: cfg?.photoInterval ?? 8, bare: false,
+                dimmed: false, interval: cfg?.photoInterval ?? 8, bare: false, motion: motion,
                 onWake: { showPreview = false })
         }
         // Debounced auto-save — echoing the server's normalized cfg back into state
@@ -85,6 +113,62 @@ struct DisplayKioskSettingsView: View {
         Text("These control the **family display** — a wall tablet or a browser signed in as a kiosk. Changes apply to every display in your home.")
             .font(.system(size: 13)).foregroundStyle(NK.ink2)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    // MARK: this-device shared-kiosk card (iPad only)
+
+    private var deviceCard: some View {
+        card {
+            VStack(alignment: .leading, spacing: 14) {
+                if kiosk.isShared {
+                    rowLabel("This iPad is a shared kiosk", deviceSubtitle)
+                    HStack(spacing: 10) {
+                        pillButton("Switch profile", tint: NK.primary) { Task { await kiosk.returnToPicker(sync: sync) } }
+                        pillButton("Stop sharing", tint: NK.ink2, faint: true) { confirmUnpair = true }
+                    }
+                } else {
+                    rowLabel("Use this iPad as a shared kiosk",
+                             "Show a profile picker so anyone in the household can tap their face to sign in — no shared password.")
+                    pillButton(deviceBusy ? "Setting up…" : "Turn this iPad into a shared kiosk",
+                               tint: NK.primary, wide: true) { confirmPromote = true }
+                        .disabled(deviceBusy)
+                    Button { showCodeSheet = true } label: {
+                        Text("Pair with a code instead")
+                            .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(NK.ink2)
+                    }
+                    .buttonStyle(.plain)
+                    if let deviceError {
+                        Text(deviceError).font(.system(size: 13, weight: .medium)).foregroundStyle(NK.primary)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 16)
+        }
+    }
+
+    private var deviceSubtitle: String {
+        if let l = kiosk.deviceLabel, !l.isEmpty { return "“\(l)” · anyone can switch from the picker." }
+        return "Anyone can switch from the picker."
+    }
+
+    private func pillButton(_ label: String, tint: Color, wide: Bool = false, faint: Bool = false,
+                            _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label).font(.system(size: 14.5, weight: .bold))
+                .foregroundStyle(faint ? NK.ink2 : .white)
+                .frame(maxWidth: wide ? .infinity : nil)
+                .padding(.horizontal, 18).padding(.vertical, 12)
+                .background(faint ? NK.card2 : tint).clipShape(Capsule())
+                .overlay(Capsule().strokeBorder(NK.hair, lineWidth: faint ? 1 : 0))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func promote() async {
+        deviceBusy = true; deviceError = nil
+        deviceError = await kiosk.enableViaPromote(label: nil, sync: sync)
+        deviceBusy = false
     }
 
     private var readOnlyNotice: some View {
@@ -186,6 +270,11 @@ struct DisplayKioskSettingsView: View {
                     divider
                     Toggle(isOn: bindBool(\.photoShuffle)) {
                         rowLabel("Shuffle photos", "Play them in a random order.")
+                    }
+                    .tint(NK.primary).padding(.vertical, 14)
+                    divider
+                    Toggle(isOn: $motion) {
+                        rowLabel("Slow zoom on photos", "A gentle Ken-Burns drift, instead of letting each photo sit still. Saved on this device.")
                     }
                     .tint(NK.primary).padding(.vertical, 14)
                 }

@@ -4,9 +4,19 @@ A living checklist for bringing Nook to iPad as a **full, interactive, web-like 
 app**. Check items off as we land them; keep the rationale notes so we don't lose context
 about *why* a decision was made or *what's deferred and why it's safe to defer*.
 
-> **Status:** Phases 0–2 done (universal app, single-profile login, Today dashboard).
-> Re-scoped 2026-06-23: the iPad is a **full app like the web** — sidebar nav + every page,
-> fully interactive — not just a dashboard. The screensaver is now low-priority.
+> **Status (updated 2026-06-25, post-merge to `main`):** Phases 0–3 done — universal app,
+> single-profile login, Today dashboard, and the **full nav rail + every page** (Today,
+> Calendar, Chores, Rewards, Goals, Family, Meals, Lists, Photos, Settings), all
+> interactive. Phase 5 (**screensaver**) shipped early after all — idle photo slideshow
+> with crossfade + Ken-Burns, clock · weather · next event, night-dim, "Play" from Photos,
+> and a settings "Preview". Remaining: Phase 4 polish (icon/launch/App-Store), the shared
+> top-bar capture, the two iPad-Today banners, and the deferred multi-profile picker.
+>
+> Cross-cutting features that landed alongside the iPad work (both iPhone + iPad): role-based
+> **permission gating** + the **permissions matrix editor**, **chore photo-proof**
+> (capture · review · retention · stored-photo gallery), and the full **photo slideshow /
+> screensaver**. See [`docs/product/features.md`](../../docs/product/features.md) for the
+> per-surface (iPhone / iPad) support matrix.
 
 ---
 
@@ -38,10 +48,11 @@ listing, one download. The device picks the right experience at runtime by idiom
    `MealsView`, chores/goals/lists/etc. via `HubDestination`) become the iPad's pages,
    progressively re-laid-out to match the web. The iPad work is **navigation + screens**,
    not a new data/sync/auth stack.
-4. **Single-profile, no picker (for now).** iPad signs in once and *stays* — one profile,
-   no picker, no switching. Normal persistent login (Keychain + 401-refresh). Full
-   interactivity does **not** require multi-profile; the shared profile-picker flow stays
-   **deferred** (see Backlog) and layers on top without rework.
+4. **Single-profile login is the default; the shared profile picker is opt-in.** Out of
+   the box an iPad signs in once and *stays* — one profile, normal persistent login
+   (Keychain + 401-refresh). An admin can opt this iPad into a **shared family kiosk**
+   (profile picker + optional PIN) — shipped as a clean additive layer (see Phase 6), it
+   never changes the default single-login behavior unless turned on.
 5. **iPad is a full interactive app**, navigable to every page — the web experience, native.
    The **family-display / screensaver** mode is a *secondary, low-priority* overlay
    (Phase 5), not the point. (Was originally scoped kiosk-display-first; re-scoped
@@ -91,8 +102,9 @@ web (per the on-device review — see the web `Today` screenshot reference).
       check-off (`patchListItem`); card / "+N more" → Lists page.
 - [x] **"This week's dinners" card** — planned-dinner rows (Tue · Wed …); card → Meals page.
 - [x] Backed by `KioskTodayModel`; agenda rows → event detail sheet, "This week" → Calendar.
-- [ ] (Optional) Pull the top banners over too — "Needs your OK" approvals + "to review/link"
-      (the iPhone `ApprovalsBanner` / review card already exist).
+- [x] **Top banners** — "Needs your OK" approvals (→ `ApprovalsView`) + "N to review · M to
+      link" goal recap (→ `ReviewEventsView`), pinned atop `KioskDashboard`, capability-gated
+      and hidden when empty.
 
 > **Phase 2 web-parity done.** The iPad Today closely mirrors the web (3 columns: agenda ·
 > tonight + week dinners · per-person chores + grocery list), each widget linked to its page.
@@ -134,7 +146,13 @@ Make the iPad a *real app you navigate*, like the web. This is the main re-scope
   - [x] **Goals** — featured hero kept; "More goals" now a multi-column grid on iPad.
   - [x] **Family** — `KioskFamilyView`: per-person overview grid (role, stars, chores
         progress, today's events) → person spotlight. Drops the rail-redundant hub tiles.
-  - [ ] Photos · [ ] Settings  (low priority — Photos is a placeholder; Settings is a list)
+  - [x] **Photos** — `PhotosView` adaptive grid (2-col iPhone / wider iPad), album filter
+        chips, upload (`PHPicker`), photo detail + edit (caption / album / **date** / favorite),
+        per-tile delete, **multi-select** bulk move-to-album / delete, and the manual
+        **"Play"** slideshow.
+  - [x] **Settings** — every panel built and reachable (Family & people incl. the
+        permissions grid, Calendars, Chores & Rewards incl. proof retention, Meals, AI,
+        Display & Kiosk, Notifications, About). Only the **Lists** row is still "Soon".
 - [x] Rail shows the signed-in person's avatar (`KioskShell.currentMember`).
 - [ ] Capture sheet + detail sheets sized appropriately for the iPad.
 
@@ -145,37 +163,154 @@ Make the iPad a *real app you navigate*, like the web. This is the main re-scope
 - [ ] App Store: single universal listing + iPad screenshots; listing copy.
 - [ ] Update `apps/ios/README.md` with the iPad experience + how to run it.
 
-## Phase 5 — Family-display / screensaver mode (LOW priority)
+## Phase 5 — Family-display / screensaver mode ✅ (shipped 2026-06-25)
 
-Demoted 2026-06-23: a *secondary* idle/display overlay, not core. (The web's own
-screensaver isn't fully baked either.) Driven by the same `DisplayConfig`
-(`Features/Settings/DisplayKioskSettingsView.swift` already reads/writes it).
+Was demoted 2026-06-23, then built on request. `KioskScreensaverHost` + `ScreensaverView`,
+driven by the same `DisplayConfig` (`Features/Settings/DisplayKioskSettingsView.swift`).
 
-- [ ] Idle watcher → screensaver after `screensaverMinutes`; reset to Today after
-      `resetHomeMinutes`.
-- [ ] Screensaver content: clock + weather + next event; photos slideshow; `off`.
-- [ ] Night dimming on the `nightDim` schedule; keep-awake (`isIdleTimerDisabled`).
-- [ ] `returnToPicker` — no-op until multi-profile lands.
+- [x] Idle watcher → screensaver after `screensaverMinutes`. A pass-through gesture
+      recognizer on the window resets the idle clock on any touch without consuming it.
+- [x] Screensaver content: clock + date + **weather** + **next event** + album overlay;
+      photo **slideshow** with **crossfade** + slow **Ken-Burns**; `clock` and `off` modes.
+- [x] Photo selection honors the config (source all/favorites/album, per-photo interval,
+      shuffle) via `NookAPI.screensaverPhotos`. Decoded-image cache + prefetch keep the
+      crossfade flash-free.
+- [x] Night dimming on the `nightDim` schedule; keep-awake (`isIdleTimerDisabled`).
+- [x] Manual **"Play"** (bare, chrome-free) from the Photos tab; **"Preview"** from
+      Display & Kiosk settings.
+- [x] **Slow-zoom (Ken-Burns) toggle** — device-local `@AppStorage` (the server display
+      config whitelists fields, so a motion flag wouldn't persist there).
+- [ ] Idle **reset-to-Today** after `resetHomeMinutes` (config exists; not wired yet).
+- [x] `returnToPicker` — wired (Phase 6): on a shared kiosk, waking the screensaver drops
+      the current person back to the profile picker.
+
+---
+
+## Phase 6 — Shared family kiosk (profile picker + PIN) ✅
+
+Opt-in: an admin turns one iPad into a shared family display where everyone taps their own
+face (optional PIN) to act as themselves. The default single-login behavior is untouched
+unless enabled. Ports the web kiosk's device-token model — no server changes.
+
+- [x] **Device identity layer** — `KioskDevice.swift`: long-lived `deviceSecret` in the
+      Keychain, exchanged by `KioskDeviceAuth` (actor) for short-lived device access
+      tokens (`POST /api/kiosk/device/token`), with a `deviceFetch` 401-refresh path in
+      `NookAPI`. Separate from the per-person `AuthTokens` session.
+- [x] **`NookAPI` kiosk calls** — `pairDevice` (code), `promoteDevice` (admin one-tap),
+      `kioskProfiles`, `claimProfile` (returns the per-person session; throws
+      `KioskClaimError.wrongPin(triesLeft:)` / `.lockedOut(retryAfter:)`), `setKioskDeviceLabel`,
+      `kioskHeartbeat`.
+- [x] **`KioskMode`** (`@Observable`, app-root env) — the state machine. "Show the picker"
+      = paired AND no per-person session (`isShared && !AuthTokens.isSignedIn`). `KioskGate`
+      wraps `AuthGate`; a paired-but-unclaimed iPad shows the picker instead of login.
+- [x] **Profile picker + PIN pad** — `KioskProfilePickerView` (avatar/color grid, 🔒 on
+      PIN'd profiles, 60s poll + heartbeat) and `KioskPinPad` (4–8-digit keypad,
+      "N tries left" on 401, lockout countdown on 429). Matches `ProfilePicker.tsx` / `PinPad.tsx`.
+- [x] **Session swap** — claim → `Session.enterClaimedSession` adopts the per-person tokens →
+      `SyncManager.reauthenticate()` re-scopes PowerSync → the kiosk shell boots as that person.
+- [x] **Enable + manage** — opt-in from **Settings → Display & Kiosk** (admin one-tap
+      *promote*, or *pair with a code*; "Switch profile" / "Stop sharing" once shared) and a
+      **"Set up this iPad as a shared kiosk"** link on the iPad login screen (code entry for
+      a fresh device).
+- [x] **Idle return-to-picker** — waking the screensaver with `returnToPicker` on drops the
+      current person back to the picker (keeps the device paired).
+- [x] **Tap-to-switch** — on a shared kiosk the signed-in person's avatar at the bottom of
+      the rail (`KioskShell.currentUserChip`) is a button (swap badge) that returns to the
+      picker in one tap — the discoverable twin of Settings → "Switch profile". Plain
+      indicator (no behavior change) on a normal single-login iPad.
+- [x] **Revoked-device self-heal** — if an admin unpairs the kiosk from elsewhere, the dead
+      device token (401) forgets the local pairing and falls back to login (mirrors web
+      `clearKioskDevice`) instead of a stuck "No profiles" picker.
+- [x] **Escape hatch on the picker** — a discreet gear (bottom-right) opens
+      `KioskPickerEscapeSheet`: check/fix the **server address** (mints a fresh device token
+      and retries in place) or **exit shared kiosk** (forgets the pairing locally → back to
+      sign-in). Without it, a device pointed at a bad server or remotely unpaired was stranded
+      on the picker with no on-device recovery.
+- [x] **Claim decode fix** — the claim response's embedded `person` object omits `hasPin`
+      (only the picker *list* includes it). `KioskProfile.hasPin` was a required `Bool`, so
+      the present-but-incomplete `person` threw a `DecodingError` that `KioskMode.claim`
+      reported as a bogus **"Couldn't reach the server"** — every profile tap failed. Made
+      `hasPin` tolerant of absence (`decodeIfPresent ?? false`); proven against the real
+      payload. Also: `claimProfile` now passes `retryOn401: false` so a wrong-PIN 401 isn't
+      silently re-submitted (which burned two attempts per tap and raced the lockout).
+- Verified end-to-end against the running server (promote → device token → profiles →
+  claim → wrong-PIN `triesLeft`) and on the iPad simulator (picker + PIN pad + login entry
+  point). iPhone is unaffected — the gate is a no-op off the iPad idiom.
+- ⚠️ The picker/PIN/device-token code must stay in sync with `apps/web/src/kiosk/*` +
+  `apps/web/src/lib/api/kiosk.ts`; each file carries a KEEP-IN-SYNC header.
 
 ---
 
 ## Backlog — deferred, with enough context to resume
 
-### A. Multi-profile shared kiosk (Netflix-style picker)
+### A. Multi-profile shared kiosk (Netflix-style picker) ✅ — see Phase 6
+
+Shipped — promoted out of the backlog. (Original note kept below for context.)
 
 Shared-display flow: device rests on a **profile picker**, anyone taps in (optional PIN),
 ephemeral session, auto-logs-out on idle. The **web kiosk already does this** — port it.
 - Web: `ProfilePicker.tsx`, `PinPad.tsx`, `PairDevice.tsx`, device-secret auth in
   `lib/api/kiosk.ts`, `AuthGate.tsx` picker logic.
-- **Missing server-side (either platform):** no device→person binding — `kiosk_devices`
-  has no `claimed_person_id` / auto-claim / "skip picker". A device pairs to a *household*,
-  then `claim(personId)` mints a per-profile session.
 - v1's single-profile login is a clean subset; the picker is additive.
 
-### B. Nice-to-haves
+### B. Nice-to-haves & known gaps
 
-- [ ] Per-card customize / reorder on Today (web has draggable cards + the `Customize` button).
-- [ ] Recurrence **creation** on iOS (currently read-only; creation is web-only).
+- [x] **iPad Today banners** — "Needs your OK" approvals + goal-recap review banners on
+      `KioskDashboard` (open `ApprovalsView` / `ReviewEventsView`).
+- [ ] Per-card customize / reorder on **iPad** Today (iPhone + web have draggable cards;
+      iPad currently uses fixed layout presets).
+- [x] **Recurring events** — full picker in `EventEditSheet` (Daily / Weekdays / Weekly +
+      day chips / Monthly / Custom "every N"), per-occurrence scope chooser on edit + delete
+      (this / following / all), an end condition (never / on a date / after N), and any
+      monthly ordinal (first…fifth / last). `Recurrence.swift` ports web's `recurrence.ts`
+      (covered by `RecurrenceTests`); recurring writes route through REST so the server
+      materializes occurrences.
+- [x] **Calendar polish** — live red "now" line on the time grids (iPad Week/Day +
+      iPhone Day); month cells show event titles (not times); iPhone agenda dims past events.
+- [x] **Recipe from Today** opens full-screen (not a cramped iPad page-sheet); Cook Mode
+      uses large centered type that scrolls long steps.
+- [x] **Photos:** multi-select bulk move-to-album / delete (Select mode → tap tiles →
+      Move / Delete bar; loops the per-photo REST endpoints). Editing a photo's **date**
+      PATCHes `taken_at` and the edit sheet now returns to read mode showing the change.
+- [x] **Goal-focused Today preset** (iPad) — a fourth dashboard layout beside Balanced /
+      Agenda / Meals that features a goal big (progress ring · per-person bars · one-tap
+      **Log progress** via the shared `GoalLogSheet`), with a picker to pin any goal (the
+      green Goals-page hero treatment). The goal column also surfaces **tonight's dinner**
+      (falling back to the week's dinners) in its headroom.
+- [x] **In-app recipe editor** (iPhone + iPad) — full create/edit: emoji/title/servings/
+      prep/cook, the metadata Details with **AI auto-fill** ("✨ Thinking…", fills empty
+      fields / suggestion chips), ingredient rows, method steps with **per-step ingredient
+      amounts**, and notes. **Paste-markdown import** (paste → parse → fills the form for
+      review). Title auto-focus + Return-to-add-row keyboard flow. Reached from the library
+      "New" pill and the recipe-detail ⋯ menu (the old tags modal is gone).
+- [x] **Recipe time** — the library card shows the **combined total** (prep + cook); the
+      detail page splits it into 🔪 prep + 🔥 cook.
+- [x] **On-device capture heuristic + instant→LLM flow** — `CaptureHeuristic.swift` (a port
+      of web `parse.ts`, kept in sync, byte-parity test suite) parses the "Add anything…" bar
+      locally. `CaptureSheet` shows the on-device guess **instantly** with an "improving…"
+      tag while the LLM runs in the background, then upgrades; on a **kind-disagreement** with
+      a confident guess it keeps the local one and offers the LLM's take as a one-tap pick;
+      and it **backfills a recurrence** the (deterministic) heuristic found when a weak LLM
+      drops it. With no server reachable, capture still works fully on-device.
+- [x] **Screensaver vs modals** — the idle screensaver no longer starts while a sheet /
+      full-screen cover is open (it presents above the app tree, so it rendered *under* the
+      modal); the idle clock holds until the modal is dismissed.
+- [x] **Calendar swipe** — swipe left/right on the grid to step month / week / day on
+      both iPhone and iPad (simultaneous gesture; vertical time-grid scroll still works).
+- [x] **Chore photo proof confirm** — a freshly-taken/picked proof shows a "Use this
+      photo / Retake" preview before it uploads, so an accidental library tap can't submit.
+- [x] **Capture sheet** opens tall and focuses the field instantly — the LLM warm-up +
+      list/currency loads moved off the critical path (they used to freeze it ~10s).
+- [x] **Family Chores** card person rows (iPad) open the Chores page too, not just the header.
+- [ ] **Chore reminders** (local notifications) — blocked on chores landing in PowerSync
+      (the scheduler reads off the synced mirror; chores are REST-only today).
+- [ ] **Recurring-event reminders** — `NotificationManager` doesn't expand recurrences yet.
+- [ ] **Recipe import** (paste-markdown) and **AI metadata auto-fill** on iOS (web-only).
+- [ ] **Remote push** (APNs) so reminders fire with the app closed (blocked on key/relay).
+- [ ] **Household-wide screensaver motion** — the Ken-Burns toggle is per-device
+      (`@AppStorage`) because the server `sanitizeDisplay` drops unknown fields; making it
+      household-wide needs `photoMotion` added to the API + web.
+- [ ] **Settings → Lists** panel (currently a "Soon" row).
 
 ---
 

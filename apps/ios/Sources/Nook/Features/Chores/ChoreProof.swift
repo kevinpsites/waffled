@@ -142,6 +142,71 @@ struct ChoreProofReview: View {
     }
 }
 
+// MARK: - Confirm a freshly-captured proof photo before submitting
+
+/// Shown the moment a proof photo is taken/picked, BEFORE it uploads — so an accidental
+/// tap in the library (or a blurry camera shot) doesn't silently finish the chore. Shows
+/// the chosen image full and offers "Use this photo" / "Retake".
+struct ChoreProofConfirm: View {
+    let image: UIImage
+    let chore: NookAPI.ChoreInstanceDTO
+    let coin: String?
+    let onUse: () -> Void
+    let onRetake: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 12) {
+                        Text(chore.emoji ?? "🧹").font(.system(size: 26))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Finishing").font(.system(size: 13)).foregroundStyle(NK.ink3)
+                            HStack(spacing: 6) {
+                                Text(chore.choreTitle)
+                                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(2)
+                                if let coin {
+                                    Text(coin).font(.system(size: 12.5, weight: .heavy)).foregroundStyle(NK.gold)
+                                        .padding(.horizontal, 7).padding(.vertical, 2)
+                                        .background(NK.gold.opacity(0.14)).clipShape(Capsule())
+                                }
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+
+                    Image(uiImage: image).resizable().scaledToFit()
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+
+                    HStack(spacing: 10) {
+                        Button { onRetake() } label: {
+                            Label("Retake", systemImage: "arrow.counterclockwise")
+                                .font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink2)
+                                .frame(maxWidth: .infinity).padding(.vertical, 13)
+                                .background(NK.panel).clipShape(Capsule())
+                        }.buttonStyle(.plain)
+                        Button { onUse() } label: {
+                            Text("Use this photo").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                                .frame(maxWidth: .infinity).padding(.vertical, 13)
+                                .background(NK.primary).clipShape(Capsule())
+                        }.buttonStyle(.plain)
+                    }
+                }
+                .padding(20)
+            }
+            .background(NK.canvas)
+            .navigationTitle("Use this photo?").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            }
+        }
+        .presentationDetents([.large])
+    }
+}
+
 // MARK: - A small tappable proof thumbnail used in approval rows
 
 /// The little proof thumbnail shown beside an awaiting chore — tap to open the review.

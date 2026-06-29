@@ -169,12 +169,20 @@ struct ChoresView: View {
     @State private var showCamera = false            // camera sheet presented
     @State private var libraryPick: PhotosPickerItem?// PhotosPicker selection token
     @State private var reviewing: NookAPI.ChoreInstanceDTO?  // parent's proof review sheet
+    @State private var proofPreview: ProofPreview?   // captured photo awaiting "Use / Retake"
 
     /// A chore awaiting a photo, plus the person to claim it for first (up-for-grabs).
     struct ProofTarget: Identifiable {
         let inst: NookAPI.ChoreInstanceDTO
         let claimFor: String?
         var id: String { inst.id }
+    }
+
+    /// A freshly-captured proof photo held for the confirm step (before it uploads).
+    struct ProofPreview: Identifiable {
+        let image: UIImage
+        let target: ProofTarget
+        var id: String { target.id }
     }
 
     /// What the chore editor sheet is editing/creating.
@@ -245,6 +253,16 @@ struct ChoresView: View {
                 onApprove: { decide(c) { await sync.approveChore(id: c.id) } },
                 onReject: { decide(c) { await sync.rejectChore(id: c.id) } })
         }
+        // Confirm a freshly-captured photo before it uploads — so an accidental library
+        // tap (or a blurry shot) doesn't silently finish the chore.
+        .sheet(item: $proofPreview) { preview in
+            let inst = preview.target.inst
+            ChoreProofConfirm(
+                image: preview.image, chore: inst,
+                coin: inst.rewardAmount > 0 ? "\(inst.rewardAmount)\(sync.currencySymbol(inst.rewardCurrency))" : nil,
+                onUse: { submitProof(preview) },
+                onRetake: { retakeProof(preview.target) })
+        }
     }
 
     // MARK: photo-proof capture plumbing
@@ -262,15 +280,15 @@ struct ChoresView: View {
     }
     private func presentLibrary() { photosPickerOpen = true }
 
-    /// A camera image was captured: complete the chore with it.
+    /// A camera image was captured: preview it for confirmation (don't submit yet).
     private func onProofImage(_ image: UIImage) {
         showCamera = false
         guard let target = proofTarget else { return }
         proofTarget = nil
-        Task { await model.completeWithProof(id: target.inst.id, image: image, claimFor: target.claimFor); sync.bumpChores() }
+        proofPreview = ProofPreview(image: image, target: target)
     }
 
-    /// A library item was picked: load it to a UIImage, then complete with it.
+    /// A library item was picked: load it to a UIImage, then preview for confirmation.
     private func loadLibraryPick(_ item: PhotosPickerItem?) async {
         photosPickerOpen = false
         defer { libraryPick = nil }
@@ -282,10 +300,30 @@ struct ChoresView: View {
                 model.proofError = "Couldn’t read that photo — please try another."
                 return
             }
-            await model.completeWithProof(id: target.inst.id, image: image, claimFor: target.claimFor)
-            sync.bumpChores()
+            proofPreview = ProofPreview(image: image, target: target)
         } catch {
             model.proofError = "Couldn’t read that photo — please try another."
+        }
+    }
+
+    /// Confirmed: upload the previewed photo and finish the chore.
+    private func submitProof(_ preview: ProofPreview) {
+        proofPreview = nil
+        Task {
+            await model.completeWithProof(id: preview.target.inst.id, image: preview.image, claimFor: preview.target.claimFor)
+            sync.bumpChores()
+        }
+    }
+
+    /// "Retake": drop the previewed photo and reopen the Take Photo / Library choice.
+    private func retakeProof(_ target: ProofTarget) {
+        proofPreview = nil
+        proofTarget = target
+        // Re-present the choice after the confirm sheet finishes dismissing (presenting a
+        // confirmationDialog mid-dismiss otherwise no-ops).
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            showProofChoice = true
         }
     }
 

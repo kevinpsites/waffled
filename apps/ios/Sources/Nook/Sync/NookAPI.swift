@@ -318,6 +318,7 @@ struct NookAPI: Sendable {
         let cuisine: String?
         let effort: String?
         let cookMethod: String?
+        let flavorProfile: String?
         let dietary: [String]?
         let vegetables: [String]?
         let collection: String?
@@ -410,6 +411,63 @@ struct NookAPI: Sendable {
         struct Resp: Decodable { let recipe: RecipeSummary }
         return try await patchEncodable("/api/recipes/\(id)",
                                         body: Body(userNotes: userNotes, overrides: overrides), as: Resp.self).recipe
+    }
+
+    /// Create a recipe from a full editor body (title + details + ingredients + steps).
+    /// Returns the created recipe summary.
+    @discardableResult
+    func createRecipe(_ body: [String: JSONValue]) async throws -> RecipeSummary {
+        struct Resp: Decodable { let recipe: RecipeSummary }
+        return try await sendReturning("POST", "/api/recipes", body: body, as: Resp.self).recipe
+    }
+
+    /// Replace a recipe's content from the editor (metadata + a full ingredients/steps
+    /// rewrite). Returns the updated summary.
+    @discardableResult
+    func saveRecipeContent(id: String, _ body: [String: JSONValue]) async throws -> RecipeSummary {
+        struct Resp: Decodable { let recipe: RecipeSummary }
+        return try await sendReturning("PATCH", "/api/recipes/\(id)", body: body, as: Resp.self).recipe
+    }
+
+    /// AI Details auto-fill: infer cuisine/protein/tags/etc. from the title + ingredient
+    /// names + step texts. Returns nil when no AI provider is configured or it fails (the
+    /// editor just shows no suggestions then).
+    struct RecipeMetadataSuggestion: Decodable, Sendable {
+        let cuisine: String?; let mealType: String?; let protein: String?; let base: String?
+        let effort: String?; let cookMethod: String?; let flavorProfile: String?
+        let dietary: [String]?; let vegetables: [String]?; let tags: [String]?
+    }
+    func suggestRecipeMetadata(title: String, ingredients: [String], steps: [String]) async throws -> RecipeMetadataSuggestion? {
+        struct Resp: Decodable { let suggestion: RecipeMetadataSuggestion? }
+        let body: [String: JSONValue] = [
+            "title": .string(title),
+            "ingredients": .array(ingredients.map(JSONValue.string)),
+            "steps": .array(steps.map(JSONValue.string)),
+        ]
+        // Any failure (501 no-provider, a slow-model timeout, a network blip) → "no
+        // suggestion this round" rather than an error; the editor just keeps probing.
+        do { return try await sendReturning("POST", "/api/recipes/suggest-metadata", body: body, as: Resp.self).suggestion }
+        catch { return nil }
+    }
+
+    /// Parse a pasted Markdown recipe into editable fields (does NOT create it — the
+    /// editor hydrates from this, the user reviews, then saves). Mirrors web `parseMarkdown`.
+    struct ParsedRecipe: Decodable, Sendable {
+        struct Meta: Decodable, Sendable {
+            let title: String; let emoji: String?; let servings: Int?
+            let tags: [String]?; let notes: String?; let sourceName: String?
+            let mealType: String?; let protein: String?; let base: String?; let cuisine: String?
+            let effort: String?; let cookMethod: String?; let flavorProfile: String?
+            let dietary: [String]?; let vegetables: [String]?
+        }
+        struct Ing: Decodable, Sendable {
+            let name: String; let amount: Double?; let unit: String?; let prepNote: String?; let section: String?
+        }
+        struct Step: Decodable, Sendable { let instruction: String; let ingredients: [String]? }
+        let recipe: Meta; let ingredients: [Ing]; let steps: [Step]
+    }
+    func parseRecipeMarkdown(_ markdown: String) async throws -> ParsedRecipe {
+        try await sendReturning("POST", "/api/recipes/parse-markdown", body: ["markdown": .string(markdown)], as: ParsedRecipe.self)
     }
 
     // MARK: Today dashboard reads (non-synced domains, fetched over REST)
@@ -1035,6 +1093,154 @@ struct NookAPI: Sendable {
     }
     /// Revoke (unpair) a kiosk device (admins).
     func revokeKioskDevice(id: String) async throws { try await delete("/api/kiosk/devices/\(id)") }
+
+    // MARK: - Kiosk shared-device mode (profile picker + PIN)
+    //
+    // The device-token half of the family display: an iPad paired as a shared kiosk
+    // lists the household's kiosk profiles and claims one (optionally PIN-gated),
+    // receiving that person's normal access/refresh pair. These calls authenticate
+    // with the DEVICE token (`KioskDeviceAuth`), not the per-person bearer.
+    //
+    // ⚠️ KEEP IN SYNC with `apps/web/src/lib/api/kiosk.ts` + `apps/web/src/kiosk/*`
+    // and the server kiosk routes — endpoints, bodies, and status codes must match.
+
+    /// One selectable face on the kiosk profile picker.
+    struct KioskProfile: Decodable, Identifiable, Sendable, Hashable {
+        let id: String
+        let name: String
+        let memberType: String?
+        let isAdmin: Bool?
+        let avatarEmoji: String?
+        let avatarUrl: String?
+        let colorHex: String?
+        let hasPin: Bool
+
+        private enum CodingKeys: String, CodingKey {
+            case id, name, memberType, isAdmin, avatarEmoji, avatarUrl, colorHex, hasPin
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            name = try c.decode(String.self, forKey: .name)
+            memberType = try c.decodeIfPresent(String.self, forKey: .memberType)
+            isAdmin = try c.decodeIfPresent(Bool.self, forKey: .isAdmin)
+            avatarEmoji = try c.decodeIfPresent(String.self, forKey: .avatarEmoji)
+            avatarUrl = try c.decodeIfPresent(String.self, forKey: .avatarUrl)
+            colorHex = try c.decodeIfPresent(String.self, forKey: .colorHex)
+            // Only the picker LIST includes `hasPin`; the claim response's embedded
+            // `person` object omits it. Tolerate its absence — a present-but-incomplete
+            // `person` would otherwise throw a DecodingError that the claim path reports
+            // as a bogus "couldn't reach the server". We don't use person.hasPin anyway.
+            hasPin = try c.decodeIfPresent(Bool.self, forKey: .hasPin) ?? false
+        }
+    }
+    struct KioskProfiles: Decodable, Sendable {
+        let deviceLabel: String?
+        let profiles: [KioskProfile]
+    }
+    /// A freshly paired device's durable credentials.
+    struct DevicePairing: Decodable, Sendable {
+        let deviceSecret: String
+        let deviceId: String
+        let householdId: String
+    }
+    /// The per-person session minted when a profile is claimed.
+    struct KioskClaim: Decodable, Sendable {
+        let accessToken: String
+        let refreshToken: String
+        let expiresIn: Int?
+        let person: KioskProfile?
+    }
+    /// Why a profile claim failed — drives the PIN pad's retry/lockout messaging.
+    enum KioskClaimError: Error {
+        case wrongPin(triesLeft: Int)
+        case lockedOut(retryAfter: Int)
+        case notFound
+        case other(String)
+    }
+
+    /// Pair this device using a one-time code (an admin generated it elsewhere). The
+    /// code is the credential, so no bearer is required. Returns the device secret.
+    @discardableResult
+    func pairDevice(code: String, label: String?) async throws -> DevicePairing {
+        var body: [String: JSONValue] = ["code": .string(code)]
+        if let label, !label.isEmpty { body["label"] = .string(label) }
+        return try await sendReturning("POST", "/api/kiosk/pair", body: body, as: DevicePairing.self)
+    }
+
+    /// Promote the CURRENT (already signed-in admin) device into a shared kiosk in one
+    /// tap — no code. Uses the admin bearer. Returns the device secret.
+    @discardableResult
+    func promoteDevice(label: String?) async throws -> DevicePairing {
+        var body: [String: JSONValue] = [:]
+        if let label, !label.isEmpty { body["label"] = .string(label) }
+        return try await sendReturning("POST", "/api/kiosk/promote", body: body, as: DevicePairing.self)
+    }
+
+    /// The household's kiosk-visible profiles (device-authed).
+    func kioskProfiles() async throws -> KioskProfiles {
+        try await deviceGet("/api/kiosk/profiles", as: KioskProfiles.self)
+    }
+
+    /// Claim a profile (device-authed), optionally with a PIN. On success returns that
+    /// person's session; on failure throws a `KioskClaimError` carrying retry info.
+    func claimProfile(personId: String, pin: String?) async throws -> KioskClaim {
+        var body: [String: JSONValue] = [:]
+        if let pin, !pin.isEmpty { body["pin"] = .string(pin) }
+        // Don't auto-retry on 401 here: a claim 401 means *wrong PIN* (not an expired
+        // device token — the picker just minted a fresh one). Retrying would re-submit the
+        // PIN and burn a second attempt, racing the lockout. Any genuinely-stale device
+        // token is refreshed by the profiles poll long before a claim.
+        let (data, resp) = try await deviceSend("POST", "/api/kiosk/profile/\(personId)", body: body, retryOn401: false)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
+        switch code {
+        case 200..<300: return try Self.decoder.decode(KioskClaim.self, from: data)
+        case 401:       throw KioskClaimError.wrongPin(triesLeft: Self.intField(data, "triesLeft") ?? 0)
+        case 404:       throw KioskClaimError.notFound
+        case 429:       throw KioskClaimError.lockedOut(retryAfter: Self.intField(data, "retryAfter") ?? 30)
+        default:        throw KioskClaimError.other(String(data: data, encoding: .utf8) ?? "Error \(code)")
+        }
+    }
+
+    /// Name this device from the kiosk itself (device-authed) — e.g. right after pairing.
+    func setKioskDeviceLabel(_ label: String) async throws {
+        _ = try await deviceSend("PUT", "/api/kiosk/device/label", body: ["label": .string(label)])
+    }
+
+    /// Liveness ping so the admin device list shows this kiosk as active (device-authed).
+    func kioskHeartbeat() async {
+        _ = try? await deviceSend("POST", "/api/kiosk/heartbeat", body: [:])
+    }
+
+    // device-token request helpers
+    private static func intField(_ data: Data, _ key: String) -> Int? {
+        ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?[key] as? Int
+    }
+    private func deviceGet<T: Decodable>(_ path: String, as: T.Type) async throws -> T {
+        let (data, resp) = try await deviceFetch(URLRequest(url: url(path)))
+        try check(resp, data)
+        return try Self.decoder.decode(T.self, from: data)
+    }
+    private func deviceSend(_ method: String, _ path: String, body: [String: JSONValue], retryOn401: Bool = true) async throws -> (Data, URLResponse) {
+        var req = URLRequest(url: url(path))
+        req.httpMethod = method
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(body)
+        return try await deviceFetch(req, retryOn401: retryOn401)
+    }
+    /// Run a device-authed request, refreshing the device token once on a 401. Callers
+    /// where a 401 is a *business* outcome (e.g. a wrong PIN on claim) pass
+    /// `retryOn401: false` so the 401 surfaces instead of silently re-submitting.
+    private func deviceFetch(_ req: URLRequest, retryOn401: Bool = true) async throws -> (Data, URLResponse) {
+        var r = req
+        r.setValue("Bearer \(try await KioskDeviceAuth.shared.token())", forHTTPHeaderField: "Authorization")
+        let (data, resp) = try await URLSession.shared.data(for: r)
+        guard retryOn401, (resp as? HTTPURLResponse)?.statusCode == 401 else { return (data, resp) }
+        var retry = req
+        retry.setValue("Bearer \(try await KioskDeviceAuth.shared.refresh())", forHTTPHeaderField: "Authorization")
+        return try await URLSession.shared.data(for: retry)
+    }
 
     // MARK: - Rewards
 
@@ -1781,7 +1987,8 @@ struct NookAPI: Sendable {
     /// Returns the new event id; PowerSync down-syncs it for display.
     func createEvent(title: String, startsAtISO: String, endsAtISO: String?, allDay: Bool,
                      location: String?, personIds: [String], goalId: String?, goalStepId: String?,
-                     calendarId: String?, timezone: String?) async throws -> String {
+                     calendarId: String?, timezone: String?, rrule: String? = nil,
+                     recurrenceEndAt: String? = nil) async throws -> String {
         var body: [String: JSONValue] = [
             "title": .string(title),
             "startsAt": .string(startsAtISO),
@@ -1795,16 +2002,24 @@ struct NookAPI: Sendable {
         if let s = goalStepId { body["goalStepId"] = .string(s) }
         if let c = calendarId { body["calendarId"] = .string(c) }
         if let tz = timezone { body["timezone"] = .string(tz) }
+        if let rr = rrule, !rr.isEmpty { body["rrule"] = .string(rr) }
+        if let end = recurrenceEndAt { body["recurrenceEndAt"] = .string(end) }
         struct Resp: Decodable { let event: Ev; struct Ev: Decodable { let id: String } }
         return try await sendReturning("POST", "/api/events", body: body, as: Resp.self).event.id
     }
 
-    /// Update an event via REST (PATCH /api/events/:id) — used when a goal link is
-    /// involved, since the local mirror's events table has no goal_id columns.
+    /// Update an event via REST (PATCH /api/events/:id) — used when a goal link or a
+    /// recurrence is involved, since the local mirror's events table has no goal_id
+    /// columns and can't expand a rule. For a recurring occurrence, `scope`
+    /// ('this' | 'following' | 'all') + `occurrenceStart` pick which occurrences change;
+    /// the master `rrule` should only be sent with scope 'all' (or when promoting a
+    /// single event to recurring).
     func updateEvent(id: String, title: String, startsAtISO: String, endsAtISO: String?,
                      allDay: Bool, location: String?, personIds: [String],
-                     goalId: String?, goalStepId: String?) async throws {
-        let body: [String: JSONValue] = [
+                     goalId: String?, goalStepId: String?,
+                     rrule: String? = nil, clearRrule: Bool = false, recurrenceEndAt: String? = nil,
+                     scope: String? = nil, occurrenceStart: String? = nil) async throws {
+        var body: [String: JSONValue] = [
             "title": .string(title),
             "startsAt": .string(startsAtISO),
             "endsAt": endsAtISO.map(JSONValue.string) ?? .null,
@@ -1815,7 +2030,28 @@ struct NookAPI: Sendable {
             "goalId": goalId.map(JSONValue.string) ?? .null,
             "goalStepId": goalStepId.map(JSONValue.string) ?? .null,
         ]
+        if let scope { body["scope"] = .string(scope) }
+        if let occ = occurrenceStart { body["occurrenceStart"] = .string(occ) }
+        // Send the rule only when set (or explicitly cleared → `null` tombstones the
+        // occurrences); omitting it leaves an existing rule untouched.
+        if let rr = rrule { body["rrule"] = .string(rr) }
+        else if clearRrule { body["rrule"] = .null }
+        if let end = recurrenceEndAt { body["recurrenceEndAt"] = .string(end) }
         try await send("PATCH", "/api/events/\(id)", body: body)
+    }
+
+    /// Delete an event via REST (DELETE /api/events/:id). For a recurring occurrence,
+    /// `scope` 'this' cancels the one occurrence and 'following' caps the series before
+    /// it; both require `occurrenceStart` (carried as query params — DELETE has no body).
+    /// `scope` 'all' (the default) drops the whole series.
+    func deleteEvent(id: String, scope: String? = nil, occurrenceStart: String? = nil) async throws {
+        var path = "/api/events/\(id)"
+        if let scope, scope != "all", let occ = occurrenceStart {
+            var comps = URLComponents()
+            comps.queryItems = [.init(name: "scope", value: scope), .init(name: "occurrenceStart", value: occ)]
+            path += "?\(comps.percentEncodedQuery ?? "")"
+        }
+        try await delete(path)
     }
 
     // MARK: event detail (the rich detail screen)

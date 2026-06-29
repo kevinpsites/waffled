@@ -16,7 +16,7 @@ struct RecipeDetailView: View {
     @State private var servings: Int?
     @State private var cookedMessage: String?
     @State private var userNotesDraft = ""
-    @State private var editingTags = false
+    @State private var editing = false
     @State private var cookMode = false
     @State private var stepNoteEdit: StepNoteEdit?
 
@@ -54,15 +54,25 @@ struct RecipeDetailView: View {
                         .foregroundStyle(r.isFavorite ? NK.primary : NK.ink2)
                 }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button { editing = true } label: { Label("Edit recipe", systemImage: "pencil") }
+                } label: { Image(systemName: "ellipsis.circle").foregroundStyle(NK.ink2) }
+            }
         }
-        .task { await loadDetail(); if autoCook, !steps.isEmpty { cookMode = true } }
+        .task {
+            await loadDetail()
+            if autoCook, !steps.isEmpty { cookMode = true }
+        }
+        .fullScreenCover(isPresented: $editing) {
+            RecipeEditorView(mode: .edit(NookAPI.RecipeDetailDTO(recipe: recipe, ingredients: ingredients, steps: steps))) { updated in
+                recipe = updated
+                model.apply(updated)
+                Task { await loadDetail() }
+            }
+        }
         .fullScreenCover(isPresented: $cookMode) {
             CookModeView(title: r.title, steps: steps, ingredients: ingredients) { markCooked() }
-        }
-        .sheet(isPresented: $editingTags) {
-            TagsEditorSheet(tags: r.tags ?? [], dietary: r.dietary ?? []) { newTags, newDietary in
-                saveTags(displayed: newTags, dietary: newDietary)
-            }
         }
         .sheet(item: $stepNoteEdit) { edit in
             StepNoteSheet(stepNumber: edit.step, note: noteFor(edit.step)) { text in
@@ -126,24 +136,18 @@ struct RecipeDetailView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 14) {
-                if let t = r.cookTimeMinutes { metaItem("🕐", "\(t) min") }
+                // Prep + cook broken out here (the library card shows the combined total).
+                if let p = r.prepTimeMinutes { metaItem("🔪", "\(p) min prep") }
+                if let c = r.cookTimeMinutes { metaItem("🔥", "\(c) min cook") }
                 metaItem("🍽️", "Serves \(baseServings)")
                 if !steps.isEmpty { metaItem("🪜", "\(steps.count) steps") }
                 if let s = r.sourceName { metaItem("📖", s) }
             }
 
-            ChipFlow(spacing: 7, lineSpacing: 7) {
-                ForEach(tagChips) { TagChip(chip: $0) }
-                Button { editingTags = true } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "pencil").font(.system(size: 10, weight: .bold))
-                        Text("Edit").font(.system(size: 12, weight: .bold))
-                    }
-                    .foregroundStyle(NK.ink2)
-                    .padding(.horizontal, 11).padding(.vertical, 5)
-                    .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+            if !tagChips.isEmpty {
+                ChipFlow(spacing: 7, lineSpacing: 7) {
+                    ForEach(tagChips) { TagChip(chip: $0) }
                 }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -404,23 +408,6 @@ struct RecipeDetailView: View {
         patchOverrides(ov)
     }
 
-    /// Translate the user's edited displayed-tag list back into addedTags/removedTags
-    /// over the source set, plus the dietary override; then PATCH the full blob.
-    private func saveTags(displayed: [String], dietary: [String]) {
-        let d0 = Set(r.tags ?? [])
-        let a0 = Set(r.addedTags ?? [])
-        let removed0 = Set(r.overrides?.removedTags ?? [])
-        let sourceFull = d0.subtracting(a0).union(removed0)   // all source tags (visible + previously removed)
-        let dFinal = Set(displayed)
-        let newAdded = dFinal.subtracting(sourceFull)
-        let newRemoved = sourceFull.subtracting(dFinal)
-        var ov = recipe.overrides ?? .init()
-        ov.addedTags = newAdded.isEmpty ? nil : Array(newAdded).sorted()
-        ov.removedTags = newRemoved.isEmpty ? nil : Array(newRemoved).sorted()
-        ov.dietary = dietary.isEmpty ? nil : dietary
-        patchOverrides(ov)
-    }
-
     private func patchOverrides(_ ov: NookAPI.RecipeOverrides) {
         Task {
             if let updated = try? await api.updateRecipe(id: recipe.id, overrides: ov) { apply(updated) }
@@ -639,6 +626,7 @@ private extension NookAPI.RecipeSummary {
             cookTimeMinutes: cookTimeMinutes, servings: servings, imageUrl: imageUrl, sourceName: sourceName,
             isFavorite: value, cookedCount: cookedCount, lastCookedAt: lastCookedAt, mealType: mealType,
             protein: protein, base: base, cuisine: cuisine, effort: effort, cookMethod: cookMethod,
+            flavorProfile: flavorProfile,
             dietary: dietary, vegetables: vegetables, collection: collection, tags: tags,
             addedTags: addedTags, notes: notes, userNotes: userNotes, overrides: overrides)
     }

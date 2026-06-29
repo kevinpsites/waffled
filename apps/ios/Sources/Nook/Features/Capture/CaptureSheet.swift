@@ -14,6 +14,9 @@ struct CaptureSheet: View {
     @State private var phase: Phase = .input
     @State private var intent: CaptureIntent?
     @State private var via = ""
+    @State private var thinking = false              // the LLM is still improving the guess
+    @State private var serverAlt: CaptureIntent?     // the LLM's take when it disagrees with a confident heuristic
+    @State private var serverAltVia = ""
     @State private var error: String?
     @State private var dictation = Dictation()
     // Inline-editable fields for the "Nook understood" card (populated per intent).
@@ -27,11 +30,15 @@ struct CaptureSheet: View {
     @State private var taskStars = 0
     @State private var taskCurrency = "stars"
     @State private var taskRrule: String?       // preserved if the parse found a recurrence
+    @State private var evRepeat = RepeatState.none   // event recurrence (seeded by the parse, editable)
+    @State private var evUntilOn = false             // "ends on a date" toggle
+    @State private var evUntil = Date()
     @State private var mealSlot = "dinner"
     @State private var mealDate = Date()
     @State private var lists: [NookAPI.ListSummary] = []   // for the list picker
     @State private var editing = false                     // glance → full field editor
     @FocusState private var focused: Bool
+    @State private var detent: PresentationDetent = .large   // open tall (roomy input), draggable to medium
 
     private static let kinds: [(key: String, icon: String, label: String)] = [
         ("event", "📅", "Event"), ("list", "📝", "List"), ("grocery", "🛒", "Grocery"),
@@ -54,12 +61,13 @@ struct CaptureSheet: View {
         }
         .padding(20)
         .background(NK.canvas)
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.medium, .large], selection: $detent)
         .presentationDragIndicator(.visible)
         .task {
-            await sync.warmCapture()
-            await sync.loadCurrencies()
-            lists = (try? await NookAPI().listSummaries()) ?? []
+            // Focus the field (or start dictation / demo) FIRST so the keyboard comes
+            // up instantly. The LLM warm-up + ancillary loads used to be awaited here,
+            // which froze the sheet for ~10s before the keyboard appeared — they now
+            // run off the critical path below.
             if let demo = DemoHooks.captureText {   // headless demo driver (no-op unless set)
                 text = demo
                 parse()
@@ -68,8 +76,28 @@ struct CaptureSheet: View {
             } else {
                 focused = true
             }
+            // Pre-warm the model + load list/currency pickers in the background. None of
+            // these are needed until after the user types and parses, so they never need
+            // to block focus.
+            async let warm: Void = sync.warmCapture()
+            async let currencies: Void = sync.loadCurrencies()
+            let fetchedLists = (try? await NookAPI().listSummaries()) ?? []
+            _ = await (warm, currencies)
+            lists = fetchedLists
         }
-        .onDisappear { dictation.stop() }
+        .onDisappear { dictation.stop(); resetForm() }
+    }
+
+    /// Clear everything so reopening the bar starts fresh (the sheet's @State otherwise
+    /// survives a dismiss on iPhone, leaving the last parse filled in).
+    private func resetForm() {
+        text = ""; phase = .input; error = nil
+        intent = nil; via = ""; thinking = false
+        serverAlt = nil; serverAltVia = ""
+        editing = false; editKind = "event"; editName = ""; editQty = ""
+        evRepeat = .none; evUntilOn = false; evPerson = nil
+        taskStars = 0; taskRrule = nil
+        detent = .large
     }
 
     // MARK: header
@@ -134,6 +162,7 @@ struct CaptureSheet: View {
     private var glanceView: some View {
         VStack(alignment: .leading, spacing: 12) {
             glanceCard
+            if let alt = serverAlt { altRow(alt) }
             HStack(spacing: 10) {
                 Button { withAnimation(.snappy(duration: 0.22)) { editing = true } } label: {
                     HStack(spacing: 6) {
@@ -183,7 +212,14 @@ struct CaptureSheet: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(editKind.uppercased()).font(.system(size: 11, weight: .heavy)).tracking(0.4).foregroundStyle(NK.ai)
-                    if !viaLabel.isEmpty { Text(viaLabel).font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3) }
+                    if thinking {
+                        HStack(spacing: 3) {
+                            ProgressView().controlSize(.mini)
+                            Text("improving…").font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ai)
+                        }
+                    } else if !viaLabel.isEmpty {
+                        Text(viaLabel).font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
+                    }
                 }
                 Text(editName.isEmpty ? namePlaceholder : editName)
                     .font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
@@ -201,12 +237,61 @@ struct CaptureSheet: View {
         .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
     }
 
+    /// When the LLM and the on-device guess disagree on the kind, offer the other take —
+    /// "this is what the LLM suggests" — as a one-tap toggle.
+    private func altRow(_ alt: CaptureIntent) -> some View {
+        let s = altSummary(alt)
+        return Button { withAnimation(.snappy(duration: 0.2)) { switchToAlt() } } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "sparkles").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ai)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(altProviderLabel) reads it as a \(s.kind.lowercased())")
+                        .font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ai)
+                    Text(s.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                }
+                Spacer(minLength: 6)
+                Text("Use it").font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ai)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(NK.ai.opacity(0.08)).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.ai.opacity(0.25), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func altSummary(_ i: CaptureIntent) -> (kind: String, title: String) {
+        switch i {
+        case let .event(t, _, _, _, _, _, _): return ("Event", t)
+        case let .grocery(n, _): return ("Grocery", n)
+        case let .task(t, _, _, _, _): return ("Task", t)
+        case let .meal(t, _, _, _): return ("Meal", t)
+        case let .list(item, _, _): return ("List", item)
+        }
+    }
+
+    private var altProviderLabel: String {
+        switch serverAltVia {
+        case "on-device": return "The on-device guess"
+        case "anthropic": return "Claude"
+        case "openai": return "OpenAI"
+        case "ollama": return "The local LLM"
+        default: return "The other parse"
+        }
+    }
+
     /// The one-line subtitle under the glance title, per kind.
     private var glanceDetail: String {
         switch editKind {
         case "event":
             let pattern = evAllDay ? "EEE, MMM d" : "EEE, MMM d · h:mm a"
-            return DateFmt.string(evDate, pattern, sync.householdTz) + (evAllDay ? " · all day" : "")
+            var detail = DateFmt.string(evDate, pattern, sync.householdTz) + (evAllDay ? " · all day" : "")
+            // Surface the recurrence in the glance so "every Thursday" reads as recurring.
+            if evRepeat.freq != .none {
+                var cal = Calendar(identifier: .gregorian); cal.timeZone = sync.householdTz
+                let rr = Recurrence.buildRrule(evRepeat, start: evDate, cal)
+                detail += " · 🔁 \(Recurrence.describeRrule(rr, start: evDate, cal))"
+            }
+            return detail
         case "task":
             let who = evPerson ?? "Up for grabs"
             let reward = taskStars > 0 ? " · \(taskStars) \(rewardLabel.lowercased())" : ""
@@ -253,6 +338,7 @@ struct CaptureSheet: View {
                 Spacer(minLength: 0)
             }
             toggleChip("All day", on: evAllDay) { evAllDay.toggle() }
+            eventRepeatFields
         case "task":
             personChips(allowNone: true, noneLabel: "Up for grabs", icon: "🙌")
             HStack(spacing: 10) {
@@ -325,6 +411,53 @@ struct CaptureSheet: View {
             .overlay(Capsule().strokeBorder(on ? NK.ai : NK.hair, lineWidth: on ? 1.5 : 1)).clipShape(Capsule())
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: event recurrence (capture parity with the web — Repeats + Until)
+
+    /// A compact repeat picker for a captured event: a frequency menu (seeded by the
+    /// AI's parse) plus an optional "ends on a date". Builds an RRULE on commit; the
+    /// full per-occurrence editing lives in the calendar editor.
+    @ViewBuilder private var eventRepeatFields: some View {
+        HStack(spacing: 8) {
+            Text("Repeats").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink2)
+            Menu {
+                Button("Does not repeat") { evRepeat = .none }
+                Button("Daily") { evRepeat = { var s = RepeatState.none; s.freq = .daily; return s }() }
+                Button("Weekdays") { evRepeat = { var s = RepeatState.none; s.freq = .weekdays; return s }() }
+                Button("Weekly") { evRepeat.freq = .weekly }   // keeps any AI-parsed day
+                Button("Monthly") { evRepeat = { var s = RepeatState.none; s.freq = .monthly; return s }() }
+                Button("Yearly") { evRepeat = { var s = RepeatState.none; s.freq = .custom; s.unit = .year; return s }() }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(captureRepeatLabel).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink)
+                    Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).foregroundStyle(NK.ink3)
+                }
+                .padding(.horizontal, 11).padding(.vertical, 7)
+                .background(NK.card2).overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1)).clipShape(Capsule())
+            }
+            Spacer(minLength: 0)
+        }
+        if evRepeat.freq != .none {
+            HStack(spacing: 8) {
+                toggleChip("Ends on", on: evUntilOn) { evUntilOn.toggle() }
+                if evUntilOn {
+                    DatePicker("", selection: $evUntil, in: evDate..., displayedComponents: .date).labelsHidden()
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private var captureRepeatLabel: String {
+        switch evRepeat.freq {
+        case .none: return "Does not repeat"
+        case .daily: return "Daily"
+        case .weekdays: return "Weekdays"
+        case .weekly: return "Weekly"
+        case .monthly: return "Monthly"
+        case .custom: return evRepeat.unit == .year ? "Yearly" : "Custom"
+        }
     }
 
     private func stepper(_ value: Binding<Int>) -> some View {
@@ -415,6 +548,7 @@ struct CaptureSheet: View {
         case "anthropic": return "via Claude"
         case "openai": return "via OpenAI"
         case "ollama": return "via local LLM"
+        case "on-device": return "on device"   // the offline heuristic fallback
         default: return ""
         }
     }
@@ -424,21 +558,71 @@ struct CaptureSheet: View {
         dictation.stop()
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
-        focused = false; error = nil; phase = .parsing
+        focused = false; error = nil; serverAlt = nil
+
+        // 1) Instant on-device guess — shown immediately, so you can add it before the
+        //    LLM even responds.
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = sync.householdTz
+        let local = CaptureHeuristic.parse(t, persons: sync.members.map(\.name), now: Date(), cal: cal, lists: lists.map(\.name))
+        let localConfident = local != nil && CaptureHeuristic.looksConfident(local, text: t)
+        if let local, localConfident { accept(local, via: "on-device", autoCommit: false) }
+        else { phase = .parsing }
+        thinking = true
+
+        // 2) Upgrade with the configured LLM in the background.
         Task {
-            do {
-                let r = try await sync.resolveCapture(t)
-                if let i = r.intent, !r.fallback {
-                    intent = i; via = r.via; phase = .preview
-                    populate(i)
-                    if DemoHooks.captureCommit { commit() }
+            let r = try? await sync.resolveCapture(t)
+            // Bail if the user changed the text meanwhile, or opened the editor (don't
+            // clobber their edits).
+            guard text.trimmingCharacters(in: .whitespacesAndNewlines) == t, !editing else { thinking = false; return }
+            thinking = false
+            if let r, let si = r.intent, !r.fallback {
+                if localConfident, let local, kindOf(si) != kindOf(local) {
+                    serverAlt = si; serverAltVia = r.via          // disagree on kind → keep ours, offer theirs
                 } else {
-                    error = "Couldn't understand that — try rephrasing."; phase = .input
+                    // Agree (or local weak) → take the LLM's read, but backfill a
+                    // recurrence the (deterministic) heuristic found if the LLM dropped it.
+                    accept(mergeRecurrence(llm: si, local: local), via: r.via, autoCommit: false)
                 }
-            } catch {
-                self.error = "Parsing failed (offline or server error)."; phase = .input
+            } else if !localConfident {
+                // LLM unavailable AND no confident on-device guess.
+                if let local { accept(local, via: "on-device", autoCommit: false) }
+                else { error = "Couldn’t understand that — try rephrasing."; phase = .input }
             }
+            if DemoHooks.captureCommit { commit() }
         }
+    }
+
+    private func accept(_ i: CaptureIntent, via v: String, autoCommit: Bool = true) {
+        intent = i; via = v; phase = .preview
+        populate(i)
+        if autoCommit, DemoHooks.captureCommit { commit() }
+    }
+
+    /// Keep the heuristic's recurrence when the LLM agreed it's an event but returned a
+    /// one-off (small local models often miss "every Thursday"). The LLM still wins on
+    /// title / person / time.
+    private func mergeRecurrence(llm: CaptureIntent, local: CaptureIntent?) -> CaptureIntent {
+        guard case let .event(t, s, a, p, llmRrule, sl, w) = llm, llmRrule == nil,
+              case let .event(_, _, _, _, localRrule?, localSL, _) = local else { return llm }
+        return .event(title: t, startsAt: s, allDay: a, personName: p,
+                      rrule: localRrule, scheduleLabel: localSL.isEmpty ? sl : localSL, whenLabel: w)
+    }
+
+    private func kindOf(_ i: CaptureIntent) -> String {
+        switch i {
+        case .event: return "event"; case .grocery: return "grocery"; case .task: return "task"
+        case .meal: return "meal"; case .list: return "list"
+        }
+    }
+
+    /// Swap the shown intent for the other parse (LLM ↔ on-device), keeping the previous
+    /// one offered so it's a one-tap toggle.
+    private func switchToAlt() {
+        guard let alt = serverAlt else { return }
+        let prev = intent, prevVia = via
+        accept(alt, via: serverAltVia, autoCommit: false)
+        if let prev { serverAlt = prev; serverAltVia = prevVia } else { serverAlt = nil }
     }
 
     /// Seed the inline-editable fields from the parsed intent. `editKind` drives which
@@ -452,9 +636,11 @@ struct CaptureSheet: View {
             return iso.date(from: s) ?? isoFrac.date(from: s)
         }
         switch i {
-        case let .event(title, startsAt, allDay, personName, _):
+        case let .event(title, startsAt, allDay, personName, rrule, _, _):
             editKind = "event"; editName = title; evAllDay = allDay; evPerson = personName
             evDate = date(startsAt) ?? Date()
+            evRepeat = Recurrence.parseRepeat(rrule)
+            evUntilOn = false
         case let .grocery(name, quantity):
             editKind = "grocery"; editName = name; editQty = quantity ?? ""
         case let .task(title, personName, stars, rrule, _):
@@ -479,8 +665,14 @@ struct CaptureSheet: View {
             case "event":
                 let cal = Calendar.current
                 let start = evAllDay ? (cal.date(bySettingHour: 12, minute: 0, second: 0, of: evDate) ?? evDate) : evDate
+                let rrule = Recurrence.buildRrule(evRepeat, start: start)
+                var endAt: String?
+                if rrule != nil, evUntilOn {
+                    let eod = cal.date(bySettingHour: 23, minute: 59, second: 0, of: evUntil) ?? evUntil
+                    endAt = ISO8601DateFormatter().string(from: eod)
+                }
                 ok = await sync.commitEvent(title: name, startsAtISO: ISO8601DateFormatter().string(from: start),
-                                            allDay: evAllDay, personName: evPerson)
+                                            allDay: evAllDay, personName: evPerson, rrule: rrule, recurrenceEndAt: endAt)
             case "grocery":
                 ok = await sync.commitGrocery(name: name, quantity: qty)
             case "task":

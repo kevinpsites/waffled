@@ -1,7 +1,15 @@
-# Nook iOS — the capture companion
+# Nook iOS — the universal app
 
-Native **SwiftUI** phone app for Nook (the family hub). Plays sidekick to the
-always-on kiosk: *add anything, anywhere*, with offline read/write.
+Native **SwiftUI** app for Nook (the family hub), shipped as **one universal binary**:
+
+- **iPhone** — the *personal planner*: check your day, capture anything, manage your stuff.
+- **iPad** — the *family hub*: a left nav rail + every page (Today, Calendar, Chores,
+  Rewards, Goals, Family, Meals, Lists, Photos, Settings), re-laid-out big, plus the idle
+  **family-display screensaver**. The web kiosk, native and sized up.
+
+The device picks the experience at runtime by idiom (`DeviceExperience`). Near-complete
+feature parity with the Web/Kiosk — see the per-surface (iPhone / iPad) **[feature
+matrix](../../docs/product/features.md)** and the **[iPad roadmap](./IPAD_ROADMAP.md)**.
 
 ## Architecture (see `docs/ARCHITECTURE.md` at the repo root)
 

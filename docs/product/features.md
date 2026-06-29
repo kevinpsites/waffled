@@ -3,234 +3,290 @@
 Every Nook feature and whether it's supported on each surface.
 
 - **Web / Kiosk** — the React app (same build powers the desktop browser and the kitchen
-  tablet kiosk). **This column is filled in.**
-- **Mobile** — the native iOS app. **Left ⬜ for the mobile owner to complete.**
+  tablet kiosk).
+- **iPhone** — the native iOS app's *personal-planner* experience (`AppRoot` + bottom tab
+  bar; one person checking their day).
+- **iPad** — the **same** universal app's *family-hub* experience (`KioskRoot` → a left nav
+  rail + every page, re-laid-out big; runs on the counter). One binary, one App Store
+  listing — the device picks the experience by idiom (`DeviceExperience`).
 - **Status** — where the feature sits on the [roadmap](./roadmap.md).
 
-Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported/N-A · ⬜ not yet assessed
+Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
+
+> **iPhone vs iPad.** Most feature screens are *shared* and adapt by size; the iPad adds
+> distinct wide layouts (`KioskDashboard`, `KioskCalendarView`, `KioskListsView`, the
+> Kanban chores board, the **screensaver**) on top of the same `SyncManager`/`NookAPI`
+> data layer. iPad-only items (screensaver, ambient display) read ❌ N/A on iPhone;
+> shared-but-web-only admin actions (first-run setup, OIDC config) read ❌ on both.
+> The **shared-kiosk profile picker** (pairing + per-profile PIN) now ships on **iPad** as
+> an opt-in (single persistent login stays the default); it's ❌ N/A on iPhone, which is
+> never a kiosk. See
+> [`apps/ios/IPAD_ROADMAP.md`](../../apps/ios/IPAD_ROADMAP.md) for the mobile build plan.
 
 ---
 
 ## Accounts, onboarding & identity
 
-| Feature | Web / Kiosk | Mobile | Status |
-| --- | :---: | :---: | --- |
-| First-run **setup wizard** (create household + admin) | ✅ | ⬜ | ✅ Done |
-| **Email/password** login (built-in) | ✅ | ⬜ | ✅ Done |
-| Rotating refresh tokens + transparent 401-refresh | ✅ | ⬜ | ✅ Done |
-| **OIDC SSO** (backend-mediated, invite-gated) | ✅ | ⬜ | ✅ Done |
-| Admin-managed OIDC config (Settings, secret encrypted at rest) | ✅ | ⬜ | ✅ Done |
-| Disable password login / force SSO (break-glass guard) | ✅ | ⬜ | ✅ Done |
-| **Member management** — grant a person a login (email ± password) | ✅ | ⬜ | ✅ Done |
-| **Members CRUD** (profiles: name, avatar, color, role) | ✅ | ⬜ | ✅ Done |
-| **Role-based permissions** — per-role capability grid (Settings → Family); [model & rationale](./permissions.md) | ✅ | ⬜ | ✅ Done |
-| Sign out (revokes refresh) | ✅ | ⬜ | ✅ Done |
+| Feature | Web / Kiosk | iPhone | iPad | Status |
+| --- | :---: | :---: | :---: | --- |
+| First-run **setup wizard** (create household + admin) | ✅ | ❌ N/A | ❌ N/A | ✅ Done — **web/server-only by design**, not planned for mobile (mobile shows a "finish setup on the web" notice) |
+| **Email/password** login (built-in) | ✅ | ✅ | ✅ | ✅ Done |
+| Rotating refresh tokens + transparent 401-refresh | ✅ | ✅ | ✅ | ✅ Done (Keychain token store) |
+| **OIDC SSO** (backend-mediated, invite-gated) | ✅ | ✅ | ✅ | ✅ Done (`ASWebAuthenticationSession`) |
+| Admin-managed OIDC config (Settings, secret encrypted at rest) | ✅ | ❌ N/A | ❌ N/A | ✅ Done — web/server-only admin by design |
+| Disable password login / force SSO (break-glass guard) | ✅ | ❌ N/A | ❌ N/A | ✅ Done — web/server-only admin by design |
+| **Member management** — grant a person a login (email ± password) + kiosk PIN | ✅ | ✅ | ✅ | ✅ Done |
+| **Members CRUD** (profiles: name, avatar, color, role, admin, birthday) | ✅ | ✅ | ✅ | ✅ Done |
+| **Role-based permissions** — per-role capability grid (Settings → Family); [model](./permissions.md) | ✅ | ✅ | ✅ | ✅ Done (editable matrix, admin-only) |
+| Sign out (revokes refresh) | ✅ | ✅ | ✅ | ✅ Done |
 
 ## Kiosk & ambient display
 
-| Feature | Web / Kiosk | Mobile | Status |
-| --- | :---: | :---: | --- |
-| **Kiosk device pairing** (admin code or "use this device") | ✅ | ❌ N/A | ✅ Done |
-| **Profile picker** (Netflix-style; per-profile real session) | ✅ | ❌ N/A | ✅ Done |
-| Optional per-person **PIN** (throttled) | ✅ | ❌ N/A | ✅ Done |
-| Rail "Switch" + idle return to picker | ✅ | ❌ N/A | ✅ Done |
-| Idle **screensaver** auto-start (clock + weather) | ✅ | ⬜ | ✅ Done |
-| Screensaver **photo slideshow** + **crossfade** transitions | ✅ | ⬜ | ✅ Done |
-| Screensaver settings (source: all/favorites/album, speed, shuffle) | ✅ | ⬜ | ✅ Done |
-| **Live weather** on the topbar (Open-Meteo, no key) | ✅ | ⬜ | ✅ Done |
-| Single-login mode (no pairing) — default | ✅ | ⬜ | ✅ Done |
+| Feature | Web / Kiosk | iPhone | iPad | Status |
+| --- | :---: | :---: | :---: | --- |
+| **Kiosk device pairing** (admin code or "use this device") | ✅ | ❌ N/A | ✅ | ✅ Done — iPad: admin one-tap *promote* + pair-by-code (opt-in; iPhone never a kiosk) |
+| **Profile picker** (Netflix-style; per-profile real session) | ✅ | ❌ N/A | ✅ | ✅ Done — `KioskProfilePickerView`; device-token model, claim mints a per-person session |
+| Optional per-person **PIN** to open a profile (throttled) | ✅ | ❌ N/A | ✅ | ✅ Done — `KioskPinPad` (4–8 digits, "N tries left" on 401, lockout countdown on 429) |
+| "Switch profile" + idle return to picker | ✅ | ❌ N/A | ✅ | ✅ Done — tap the rail avatar (swap badge) or Settings → Display & Kiosk "Switch profile"; `returnToPicker` also drops to the picker on screensaver wake |
+| **Exit kiosk mode** on the device (un-pair this iPad) | ✅ | ❌ N/A | ✅ | ✅ Done — picker gear → "Exit shared kiosk" (no sign-in needed) or parent Settings → "Stop sharing"; local-only, returns to normal login |
+| Idle **screensaver** auto-start (after N min of no touch) | ✅ | ❌ N/A | ✅ | ✅ Done |
+| Screensaver **photo slideshow** + **crossfade** transitions | ✅ | 🟡 | ✅ | ✅ Done (iPhone via manual "Play"; iPad idle + manual) |
+| Screensaver chrome: clock · date · **weather** · **next event** · album | ✅ | 🟡 | ✅ | ✅ Done (iPhone bare "Play" omits chrome) |
+| Screensaver settings (source all/favorites/album, speed, shuffle) | ✅ | ✅ | ✅ | ✅ Done (Display & Kiosk) |
+| **Live "Preview"** of the screensaver from settings | ✅ | ✅ | ✅ | ✅ Done |
+| **Night dimming** on a schedule (overnight) | ✅ | ❌ N/A | ✅ | ✅ Done |
+| Keep-awake while displaying (`isIdleTimerDisabled`) | ✅ | ❌ N/A | ✅ | ✅ Done |
+| **Slow-zoom (Ken-Burns)** toggle | ❌ | 🟡 | ✅ | ✅ Done (iOS-only; device-local `@AppStorage`) |
+| **Live weather** (Open-Meteo, no key) | ✅ | ✅ | ✅ | ✅ Done (Today + screensaver) |
+| Branded **cold-start cover** while the first sync lands | ✅ | 🟡 | ✅ | ✅ Done (iPad nest + pulse; iPhone uses the auth splash) |
+| Single-login mode (no pairing) — default | ✅ | ✅ | ✅ | ✅ Done |
 
 ## Today dashboard
 
-| Feature | Web / Kiosk | Mobile | Status |
-| --- | :---: | :---: | --- |
-| Today cards: agenda · tonight's meal · this week · chores · grocery | ✅ | ⬜ | ✅ Done |
-| **Customize** mode — drag to reorder cards | ✅ | ⬜ | ✅ Done |
-| Save layout **for me** (per-user) vs **for everyone** (family default) | ✅ | ⬜ | ✅ Done |
-| Mobile-specific Today layout (separate config) | ❌ N/A | ⬜ | ✅ Done (backend) |
-| "Did these happen?" goal recap queue on Today | ✅ | ⬜ | ✅ Done |
+| Feature | Web / Kiosk | iPhone | iPad | Status |
+| --- | :---: | :---: | :---: | --- |
+| Today cards: agenda · tonight's meal · this week · chores · grocery | ✅ | ✅ | ✅ | ✅ Done (iPad = distinct 3-column `KioskDashboard`) |
+| **Customize** mode — drag to reorder cards | ✅ | ✅ | 🟡 | ✅ Done (iPhone reorder+hide; iPad uses layout presets) |
+| iPad Today **layout presets** (Balanced / Agenda / Meals / **Goal-focused**) | 🟡 | ❌ N/A | ✅ | ✅ Done (iPad-only; Goal-focused features a goal big + tonight's dinner) |
+| Save layout **for me** (per-user) vs **for everyone** (family default) | ✅ | ✅ | 🟡 | ✅ Done (iPad layout is device-local) |
+| Mobile-specific Today layout (separate `{order,hidden}` config) | ❌ N/A | ✅ | ✅ | ✅ Done |
+| "Did these happen?" goal recap queue on Today | ✅ | ✅ | ✅ | ✅ Done (iPad banner opens `ReviewEventsView`) |
+| "Needs your OK" approvals banner on Today | ✅ | ✅ | ✅ | ✅ Done (iPad banner opens `ApprovalsView`) |
 
 ## Calendar & events
 
-| Feature | Web / Kiosk | Mobile | Status |
-| --- | :---: | :---: | --- |
-| Native events (create / edit / delete) | ✅ | ⬜ | ✅ Done |
-| **Multiple participants** per event (stacked avatars, per-person color) | ✅ | ⬜ | ✅ Done |
-| Views: **Month / Week / Day / Agenda** | ✅ | ⬜ | ✅ Done |
-| Full-screen **event detail** (location/Directions, repeats, notes, timeline) | ✅ | ⬜ | ✅ Done |
-| Per-person filter | ✅ | ⬜ | ✅ Done |
-| **Two-way Google Calendar sync** (inbound poll + outbound push) | ✅ | ⬜ | ✅ Done |
-| Connect calendars + per-person write-target (Settings → Calendars) | ✅ | ⬜ | ✅ Done |
-| **Offline** calendar (PowerSync: local reads + queued writes) | ✅ | ⬜ | ✅ Done |
-| AI **"Heads up this week"** digest + **per-event insight** | ✅ | ⬜ | ✅ Done |
-| "Counts toward a goal" tag on an event | ✅ | ⬜ | ✅ Done |
-| **Recurring events** (rrule expansion, per-occurrence) | ✅ | ⬜ | ✅ Done |
+| Feature | Web / Kiosk | iPhone | iPad | Status |
+| --- | :---: | :---: | :---: | --- |
+| Native events (create / edit / delete) | ✅ | ✅ | ✅ | ✅ Done |
+| **Multiple participants** per event (stacked avatars, per-person color) | ✅ | ✅ | ✅ | ✅ Done |
+| Views: **Month / Week / Day / Agenda** | ✅ | ✅ | ✅ | ✅ Done (iPad = `KioskCalendarView` grids) |
+| **Current-time "now" line** on the time grid (Week/Day) | ✅ | ✅ | ✅ | ✅ Done (live red rule; iPhone Day + iPad Week/Day) |
+| Month cells show **event titles** (tap a day for times) | ✅ | ✅ | ✅ | ✅ Done |
+| Agenda **dims past events** | ✅ | ✅ | — | ✅ Done (iPhone agenda) |
+| Full-screen **event detail** (location/Directions, repeats, notes, timeline) | ✅ | ✅ | ✅ | ✅ Done (iPad detail is two-column) |
+| Per-person filter | ✅ | ✅ | ✅ | ✅ Done |
+| **Two-way Google Calendar sync** (inbound poll + outbound push) | ✅ | ✅ | ✅ | ✅ Done (sync runs server-side; connect in Settings → Calendars) |
+| Connect calendars + per-person write-target (Settings → Calendars) | ✅ | ✅ | ✅ | ✅ Done |
+| **Offline** calendar (PowerSync: local reads + queued writes) | ✅ | ✅ | ✅ | ✅ Done |
+| AI **"Heads up this week"** digest + **per-event insight** | ✅ | ✅ | ✅ | ✅ Done |
+| "Counts toward a goal" tag on an event | ✅ | ✅ | ✅ | ✅ Done |
+| **Recurring events** — rrule **expansion / read** | ✅ | ✅ | ✅ | ✅ Done |
+| **Recurring events** — **creation** (Daily/Weekdays/Weekly+days/Monthly/Custom) | ✅ | ✅ | ✅ | ✅ Done (repeat picker in the editor) |
+| **Recurring events** — per-occurrence **edit scope** (this / following / all) | ✅ | ✅ | ✅ | ✅ Done (scope chooser on edit + delete) |
+| **Recurring events** — **end condition** (never / on a date / after N) | ✅ | ✅ | ✅ | ✅ Done (UNTIL date + COUNT) |
+| **Recurring events** — monthly **nth-weekday ordinal** (first…fifth / last) | ✅ | ✅ | ✅ | ✅ Done (mobile offers any ordinal) |
 
 ## Tasks & chores
 
-| Feature | Web / Kiosk | Mobile | Status |
-| --- | :---: | :---: | --- |
-| Chores CRUD (assign person, stars/currency) | ✅ | ⬜ | ✅ Done |
-| Daily instances + complete → award | ✅ | ⬜ | ✅ Done |
-| Family-chores **rings** (Today) + Tasks board | ✅ | ⬜ | ✅ Done |
-| **Weekly/custom schedules** (specific weekdays) | ✅ | ⬜ | ✅ Done |
-| **Up-for-grabs** claim (unassigned → person) | ✅ | ⬜ | ✅ Done |
-| **Drag-to-reassign** chores between columns | ✅ | ⬜ | ✅ Done |
-| **Parent-approval** step (awaiting → approve/reject) | ✅ | ⬜ | ✅ Done |
-| **Streaks** (🔥N consecutive days) | ✅ | ⬜ | ✅ Done |
-| **Photo proof** of completion — per-chore "Requires a photo" toggle; camera/upload on complete | ✅ | ⬜ | ✅ Done |
-| Photo-proof **review modal** (large photo + Approve/Not-yet in one place) | ✅ | ⬜ | ✅ Done |
-| Proof **retention** — auto-delete after N days (per-household setting, default 3) | ✅ | ⬜ | ✅ Done |
-| Stored-proof **review & delete** gallery (slide-over: view / delete / clear all) | ✅ | ⬜ | ✅ Done |
-| **Capability gating** — who can manage/approve chores (`chore.manage`/`chore.approve`); anyone may add a chore for self/up-for-grabs | ✅ | ⬜ | ✅ Done |
+| Feature | Web / Kiosk | iPhone | iPad | Status |
+| --- | :---: | :---: | :---: | --- |
+| Chores CRUD (assign person, stars/currency) | ✅ | ✅ | ✅ | ✅ Done |
+| Daily instances + complete → award | ✅ | ✅ | ✅ | ✅ Done |
+| Family-chores **rings** (Today) + Tasks board | ✅ | ✅ | ✅ | ✅ Done (iPad = wrapping Kanban) |
+| **Weekly/custom schedules** (specific weekdays) | ✅ | ✅ | ✅ | ✅ Done |
+| **One-off / carry-over task** (single day, stays until done) | 🚧 | 🚧 | 🚧 | 🚧 Planned (today every chore defaults to daily; Today is `due_on = today`, no overdue carry) |
+| **Up-for-grabs** claim (unassigned → person) | ✅ | ✅ | ✅ | ✅ Done |
+| **Drag-to-reassign** chores between columns | ✅ | ✅ | ✅ | ✅ Done |
+| **Parent-approval** step (awaiting → approve/reject) | ✅ | ✅ | ✅ | ✅ Done |
+| **Streaks** (🔥N consecutive days) | ✅ | ✅ | ✅ | ✅ Done |
+| **Photo proof** — per-chore "Requires a photo"; camera/library on complete | ✅ | ✅ | ✅ | ✅ Done |
+| Photo-proof **review** (tap thumbnail → large photo → Approve/Not-yet) | ✅ | ✅ | ✅ | ✅ Done |
+| Proof **retention** — auto-delete after N days (default 3, admin setting) | ✅ | ✅ | ✅ | ✅ Done |
+| Stored-proof **review & delete** gallery (view / delete / clear all) | ✅ | ✅ | ✅ | ✅ Done |
+| **Capability gating** — `chore.manage` / `chore.approve`; anyone may add for self/up-for-grabs | ✅ | ✅ | ✅ | ✅ Done |
 
 ## Rewards & economy
 
-| Feature | Web / Kiosk | Mobile | Status |
-| --- | :---: | :---: | --- |
-| Stars **earn ledger** (append-only) + balances | ✅ | ⬜ | ✅ Done |
-| **Rewards catalog** + redeem → parent-approve → ledger debit | ✅ | ⬜ | ✅ Done |
-| Per-kid **balances** + approval queue (Rewards tab) | ✅ | ⬜ | ✅ Done |
-| **Multi-currency** (custom currencies, symbols, colors) | ✅ | ⬜ | ✅ Done |
-| **Conversions / "Trade"** (e.g. 10 ⭐ → 1 💵) | ✅ | ⬜ | ✅ Done |
-| **Saving-toward** a reward — bar/jar progress + inline redeem | ✅ | ⬜ | ✅ Done |
-| **Capability gating** — who can manage rewards / approve redemptions (`reward.manage`/`reward.approve`); anyone may redeem for self | ✅ | ⬜ | ✅ Done |
-| Milestone reward **payouts** | 🚧 | ⬜ | 🚧 Deferred (design done) |
+| Feature | Web / Kiosk | iPhone | iPad | Status |
+| --- | :---: | :---: | :---: | --- |
+| Stars **earn ledger** (append-only) + balances | ✅ | ✅ | ✅ | ✅ Done |
+| **Rewards catalog** + redeem → parent-approve → ledger debit | ✅ | ✅ | ✅ | ✅ Done |
+| Per-kid **balances** + approval queue (Rewards tab) | ✅ | ✅ | ✅ | ✅ Done |
+| **Multi-currency** (custom currencies, symbols, colors) | ✅ | ✅ | ✅ | ✅ Done |
+| **Conversions / "Trade"** (e.g. 10 ⭐ → 1 💵) | ✅ | ✅ | ✅ | ✅ Done |
+| **Saving-toward** a reward — bar/jar progress + inline redeem | ✅ | ✅ | ✅ | ✅ Done |
+| **Capability gating** — `reward.manage` / `reward.approve`; anyone may redeem for self | ✅ | ✅ | ✅ | ✅ Done |
+| Milestone reward **payouts** | 🚧 | 🚧 | 🚧 | 🚧 Deferred (design done) |
 
 ## Goals
 
-| Feature | Web / Kiosk | Mobile | Status |
-| --- | :---: | :---: | --- |
-| Goal types: count / total / habit / checklist | ✅ | ⬜ | ✅ Done |
-| Goal **lists** + membership (shared lists / individual) | ✅ | ⬜ | ✅ Done |
-| Shared-pool vs each-tracks goals | ✅ | ⬜ | ✅ Done |
-| Create / **edit** / delete goals | ✅ | ⬜ | ✅ Done |
-| Type-aware **logging** (amount / stepper / once-a-day / tick steps) | ✅ | ⬜ | ✅ Done |
-| Backdated logs ("When?" picker) | ✅ | ⬜ | ✅ Done |
-| **Goal detail** read-model (milestone track, hours-by-person, streaks, recent) | ✅ | ⬜ | ✅ Done |
-| Checklist **named steps** + per-type **milestones** (text) | ✅ | ⬜ | ✅ Done |
-| **Person profile** + **Family overview** | ✅ | ⬜ | ✅ Done |
-| **Calendar → goal** auto-count recap (single events) | ✅ | ⬜ | ✅ Done (Phase 1) |
-| Smart "might count toward a goal" suggestions + learning | ✅ | ⬜ | ✅ Done (Phase B) |
-| Recurring-event goal counting | ✅ | ⬜ | ✅ Done |
-| **Capability gating** — logging for others / editing shared goals needs `goal.manage`; logging your own progress & personal goals stay open | ✅ | ⬜ | ✅ Done |
+| Feature | Web / Kiosk | iPhone | iPad | Status |
+| --- | :---: | :---: | :---: | --- |
+| Goal types: count / total / habit / checklist | ✅ | ✅ | ✅ | ✅ Done |
+| Goal **lists** + membership (shared lists / individual) | ✅ | ✅ | ✅ | ✅ Done |
+| Shared-pool vs each-tracks goals | ✅ | ✅ | ✅ | ✅ Done |
+| Create / **edit** / delete goals | ✅ | ✅ | ✅ | ✅ Done |
+| Type-aware **logging** (amount / stepper / once-a-day / tick steps) | ✅ | ✅ | ✅ | ✅ Done |
+| Backdated logs ("When?" picker) | ✅ | ✅ | ✅ | ✅ Done |
+| **Goal detail** read-model (milestone track, hours-by-person, streaks, recent) | ✅ | ✅ | ✅ | ✅ Done |
+| Checklist **named steps** + per-type **milestones** (text) | ✅ | ✅ | ✅ | ✅ Done |
+| **Person profile** + **Family overview** | ✅ | ✅ | ✅ | ✅ Done (iPad = `KioskFamilyView` grid) |
+| **Calendar → goal** auto-count recap (single events) | ✅ | ✅ | ✅ | ✅ Done (Phase 1) |
+| Smart "might count toward a goal" suggestions + learning | ✅ | ✅ | ✅ | ✅ Done (Phase B) |
+| Recurring-event goal counting | ✅ | ✅ | ✅ | ✅ Done |
+| **Capability gating** — `goal.manage` for others' / shared goals; own progress stays open | ✅ | ✅ | ✅ | ✅ Done |
 
 ## Lists & groceries
 
-| Feature | Web / Kiosk | Mobile | Status |
-| --- | :---: | :---: | --- |
-| Custom **multi-lists** (sectioned items, quantities, assignees) | ✅ | ⬜ | ✅ Done |
-| Create / rename / delete lists (cascade) | ✅ | ⬜ | ✅ Done |
-| **Auto-built grocery board** from the week's dinners | ✅ | ⬜ | ✅ Done |
-| **Aisle grouping** + **quantity merge** (By aisle / By meal) | ✅ | ⬜ | ✅ Done |
-| **Pantry staples** (kept off the list; Pantry check) | ✅ | ⬜ | ✅ Done |
-| Check off / add / delete (persists) | ✅ | ⬜ | ✅ Done |
-| **Item attribution** — "added by {name}" on manual items; "🍽 from meal plan" on auto-built | ✅ | ⬜ | ✅ Done |
-| **Cross-surface live refresh** (Today ↔ Lists ↔ Rewards) | ✅ | ⬜ | ✅ Done |
+| Feature | Web / Kiosk | iPhone | iPad | Status |
+| --- | :---: | :---: | :---: | --- |
+| Custom **multi-lists** (sectioned items, quantities, assignees) | ✅ | ✅ | ✅ | ✅ Done (iPad = master/detail) |
+| Create / rename / delete lists (cascade) | ✅ | ✅ | ✅ | ✅ Done |
+| **Auto-built grocery board** from the week's dinners | ✅ | ✅ | ✅ | ✅ Done |
+| **Aisle grouping** + **quantity merge** (By aisle / By meal) | ✅ | ✅ | ✅ | ✅ Done |
+| **Pantry staples** (kept off the list; Pantry check) | ✅ | ✅ | ✅ | ✅ Done |
+| Check off / add / delete (persists) | ✅ | ✅ | ✅ | ✅ Done |
+| **Item attribution** — "added by {name}" / "🍽 from meal plan" | ✅ | ✅ | ✅ | ✅ Done |
+| **Cross-surface live refresh** (Today ↔ Lists ↔ Rewards) | ✅ | ✅ | ✅ | ✅ Done (in-app refresh bus) |
 
 ## Meals & recipes
 
-| Feature | Web / Kiosk | Mobile | Status |
-| --- | :---: | :---: | --- |
-| **Weekly** meal planner grid + recipe picker | ✅ | ⬜ | ✅ Done |
-| **Month** meal view + planner | ✅ | ⬜ | ✅ Done |
-| Drag-to-swap on week/month grid | ✅ | ⬜ | ✅ Done |
-| Full-screen **recipe detail** (hero image, metadata chips, servings scaler) | ✅ | ⬜ | ✅ Done |
-| **Recipes library** (search-all, multi-select filters, sort) | ✅ | ⬜ | ✅ Done |
-| Create / **edit** / delete recipes in-app (ingredients + steps) | ✅ | ⬜ | ✅ Done |
-| **Paste-markdown** recipe import (template/example) | ✅ | ⬜ | ✅ Done |
-| Per-recipe **overrides** (substitutions, notes — merge & survive re-import) | ✅ | ⬜ | ✅ Done |
-| **Cook mode** (step-by-step, wake-lock, finish → mark cooked) | ✅ | ⬜ | ✅ Done |
-| **Grocery auto-build** honoring substitutions | ✅ | ⬜ | ✅ Done |
-| AI **Plan my week / month** (library-only, themes, gaps) | ✅ | ⬜ | ✅ Done |
-| AI **metadata auto-fill** (cuisine, protein, vegetables, tags) | ✅ | ⬜ | ✅ Done |
-| **Conversational recipe AI** ("make it gluten-free", photo → recipe) | 🚧 | ⬜ | 🚧 Planned |
+| Feature | Web / Kiosk | iPhone | iPad | Status |
+| --- | :---: | :---: | :---: | --- |
+| **Weekly** meal planner grid + recipe picker | ✅ | ✅ | ✅ | ✅ Done |
+| **Month** meal view + planner | ✅ | ✅ | ✅ | ✅ Done |
+| Drag-to-swap on week/month grid | ✅ | ✅ | ✅ | ✅ Done |
+| Full-screen **recipe detail** (hero image, metadata chips, servings scaler) | ✅ | ✅ | ✅ | ✅ Done |
+| **Total time** on the card (prep + cook); prep/cook split on the detail | ✅ | ✅ | ✅ | ✅ Done (mobile) |
+| **Recipes library** (search-all, multi-select filters, sort) | ✅ | ✅ | ✅ | ✅ Done |
+| Create / **edit** recipes in-app (all metadata + ingredients + steps) | ✅ | ✅ | ✅ | ✅ Done (full editor — shared iPhone/iPad; **per-step ingredient amounts**; delete is web-only) |
+| **Paste-markdown** recipe import (template/example) | ✅ | ✅ | ✅ | ✅ Done (paste → parse → fills the editor for review, then save) |
+| Per-recipe **overrides** (substitutions, notes) | ✅ | 🟡 | 🟡 | ✅ Done (notes; full overrides on web) |
+| **Cook mode** (step-by-step, wake-lock, finish → mark cooked) | ✅ | ✅ | ✅ | ✅ Done (centered, large type; scrolls long steps) |
+| Cook-mode **recipe overview** (jump to any step + ingredients) | ✅ | ✅ | ✅ | ✅ Done (mobile; large sheet) |
+| Open recipe **full-screen** from Today | ✅ | ✅ | ✅ | ✅ Done (iPad opens full-screen, not a page-sheet) |
+| **Grocery auto-build** honoring substitutions | ✅ | ✅ | ✅ | ✅ Done |
+| AI **Plan my week / month** (library-only, themes, gaps) | ✅ | ✅ | ✅ | ✅ Done |
+| AI **metadata auto-fill** (cuisine, protein, vegetables, tags) | ✅ | ✅ | ✅ | ✅ Done (debounced "✨ Thinking…" in the editor; fills empty fields / suggestion chips) |
+| **Conversational recipe AI** ("make it gluten-free", photo → recipe) | 🚧 | 🚧 | 🚧 | 🚧 Planned |
 
 ## Photos & memories
 
-| Feature | Web / Kiosk | Mobile | Status |
-| --- | :---: | :---: | --- |
-| Family **wall** (aspect-preserving masonry) | ✅ | ⬜ | ✅ Done |
-| **Upload** photos (downscaled, JPEG/WebP, 10 MB cap, capability URLs) | ✅ | ⬜ | ✅ Done |
-| **Multi-upload** (up to 10) with per-photo caption/album/favorite | ✅ | ⬜ | ✅ Done |
-| Drag-and-drop upload zone | ✅ | ⬜ | ✅ Done |
-| **Albums** (filter chips; derived from a photo's album field) | ✅ | ⬜ | ✅ Done |
-| **Edit** a photo (caption, album, date, favorite) | ✅ | ⬜ | ✅ Done |
-| **Multi-select** → bulk move-to-album / delete (with confirm) | ✅ | ⬜ | ✅ Done |
-| Per-tile delete with confirmation (touch-friendly) | ✅ | ⬜ | ✅ Done |
-| **Set an album as the screensaver** source | ✅ | ⬜ | ✅ Done |
-| Photo-only **"Play"** slideshow (no clock/weather chrome) | ✅ | ⬜ | ✅ Done |
-| Recipe **hero images** (same upload pipeline) | ✅ | ⬜ | ✅ Done |
-| **Shared album** import (Google Photos / iCloud) | 🚧 | ⬜ | 🚧 Planned |
+| Feature | Web / Kiosk | iPhone | iPad | Status |
+| --- | :---: | :---: | :---: | --- |
+| Family **wall** (aspect-preserving grid) | ✅ | ✅ | ✅ | ✅ Done |
+| **Upload** photos (downscaled, JPEG, 10 MB cap, capability URLs) | ✅ | ✅ | ✅ | ✅ Done (native `PHPicker`) |
+| **Multi-upload** with per-photo caption/album/favorite | ✅ | ✅ | ✅ | ✅ Done |
+| Drag-and-drop upload zone | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web); mobile uses the native picker |
+| **Albums** (filter chips; derived from a photo's album field) | ✅ | ✅ | ✅ | ✅ Done |
+| **Edit** a photo (caption, album, **date**, favorite) | ✅ | ✅ | ✅ | ✅ Done (date edit PATCHes `takenAt`; save stays in read mode showing the change) |
+| **Multi-select** → bulk move-to-album / delete | ✅ | ✅ | ✅ | ✅ Done (Select mode → tap tiles → Move / Delete bar) |
+| Per-tile delete with confirmation (touch-friendly) | ✅ | ✅ | ✅ | ✅ Done |
+| **Set an album as the screensaver** source | ✅ | ✅ | ✅ | ✅ Done |
+| Photo-only **"Play"** slideshow (no clock/weather chrome) | ✅ | ✅ | ✅ | ✅ Done |
+| Recipe **hero images** (same upload pipeline) | ✅ | ✅ | ✅ | ✅ Done |
+| **Shared album** import (Google Photos / iCloud) | 🚧 | 🚧 | 🚧 | 🚧 Planned |
 
 ## AI capture ("Add anything")
 
-| Feature | Web / Kiosk | Mobile | Status |
-| --- | :---: | :---: | --- |
-| Natural-language capture → event / task / grocery / meal | ✅ | ⬜ | ✅ Done |
-| **Pluggable provider** (Anthropic / OpenAI-compatible / Ollama), per household | ✅ | ⬜ | ✅ Done |
-| Instant on-device parse, then **upgrade to LLM** with a provider tag | ✅ | ⬜ | ✅ Done |
-| **Heuristic fallback** (offline / no provider / provider defers) | ✅ | ⬜ | ✅ Done |
-| Household-local "now" + family names for resolution | ✅ | ⬜ | ✅ Done |
-| Server-side **fuzzy person resolution** (nicknames/aliases) | 🚧 | ⬜ | 🚧 Planned (6.6-names) |
+| Feature | Web / Kiosk | iPhone | iPad | Status |
+| --- | :---: | :---: | :---: | --- |
+| Natural-language capture → event / task / grocery / meal | ✅ | ✅ | ✅ | ✅ Done |
+| Capture parses **event recurrence** + edit Repeats/Ends in the preview | ✅ | ✅ | ✅ | ✅ Done ("lunch every Thursday for a month" → RRULE) |
+| **Pluggable provider** (Anthropic / OpenAI-compatible / Ollama), per household | ✅ | ✅ | ✅ | ✅ Done |
+| Instant on-device parse, then **upgrade to LLM** with a provider tag | ✅ | ✅ | ✅ | ✅ Done (instant guess + "improving…"; **pick** the other take on a kind-disagreement; **recurrence backfill** when a weak LLM drops it) |
+| **Heuristic fallback** (offline / no provider / provider defers) | ✅ | ✅ | ✅ | ✅ Done (on-device `CaptureHeuristic` — capture works with no server; ported from web `parse.ts`, kept in sync) |
+| Household-local "now" + family names for resolution | ✅ | ✅ | ✅ | ✅ Done |
+| Server-side **fuzzy person resolution** (nicknames/aliases) | 🚧 | 🚧 | 🚧 | 🚧 Planned (6.6-names) |
 
 ## Notifications
 
-| Feature | Web / Kiosk | Mobile | Status |
-| --- | :---: | :---: | --- |
-| **Kiosk "due soon"** reminder banner (local, while open) | 🚧 | ❌ N/A | 🚧 Planned (table not built) |
-| iOS **local** event reminders (offline, from local mirror) | ❌ N/A | ⬜ | ✅ Done (mobile) |
-| Snooze / View notification actions | ❌ N/A | ⬜ | ✅ Done (mobile) |
-| Chore reminders | ❌ N/A | ⬜ | 🚧 Planned (needs chores in sync) |
-| Recurring-event reminders | ❌ N/A | ⬜ | 🚧 Planned |
-| **Remote push (APNs / web-push)** | 🚧 | ⬜ | 🚧 Planned (blocked on key/relay) |
+| Feature | Web / Kiosk | iPhone | iPad | Status |
+| --- | :---: | :---: | :---: | --- |
+| **Kiosk "due soon"** reminder banner (local, while open) | 🚧 | ❌ N/A | ❌ N/A | 🚧 Planned (web; table not built) |
+| iOS **local** event reminders (offline, from local mirror) | ❌ N/A | ✅ | ✅ | ✅ Done (mobile) |
+| Snooze / View notification actions | ❌ N/A | ✅ | ✅ | ✅ Done (mobile) |
+| Reminder settings (lead time, all-day hour, my-events-only) | ❌ N/A | ✅ | ✅ | ✅ Done (mobile) |
+| Chore reminders | ❌ N/A | 🚧 | 🚧 | 🚧 Planned (needs chores in PowerSync) |
+| Recurring-event reminders | ❌ N/A | 🚧 | 🚧 | 🚧 Planned (no recurrence in scheduler yet) |
+| **Remote push (APNs / web-push)** | 🚧 | 🚧 | 🚧 | 🚧 Planned (blocked on key/relay) |
 
 ## Settings
 
-| Feature | Web / Kiosk | Mobile | Status |
-| --- | :---: | :---: | --- |
-| **Family & people** (CRUD + grant login + **permissions grid**) | ✅ | ⬜ | ✅ Done |
-| **Calendars** (connect Google, write-targets, sync now) | ✅ | ⬜ | ✅ Done |
-| **Chores & rewards** (currencies, conversions) | ✅ | ⬜ | ✅ Done |
-| **AI & capture** (provider/model selection) | ✅ | ⬜ | ✅ Done |
-| **Display & Kiosk** (pairing, screensaver, idle) | ✅ | ⬜ | ✅ Done |
-| **Login & security** (OIDC, password toggle) | ✅ | ⬜ | ✅ Done |
-| Household settings (name, timezone, location) | ✅ | ⬜ | ✅ Done |
+| Feature | Web / Kiosk | iPhone | iPad | Status |
+| --- | :---: | :---: | :---: | --- |
+| **Family & people** (CRUD + grant login/PIN + **permissions grid**) | ✅ | ✅ | ✅ | ✅ Done |
+| **Calendars** (connect Google, write-targets, sync now) | ✅ | ✅ | ✅ | ✅ Done |
+| **Chores & rewards** (currencies, conversions, proof retention) | ✅ | ✅ | ✅ | ✅ Done |
+| **Meals** (meal calendar & meal times) | ✅ | ✅ | ✅ | ✅ Done |
+| **AI & capture** (provider/model selection) | ✅ | ✅ | ✅ | ✅ Done |
+| **Display & Kiosk** (screensaver, photo source, idle, night-dim, preview) | ✅ | ✅ | ✅ | ✅ Done |
+| **Notifications** (reminders) | ❌ N/A | ✅ | ✅ | ✅ Done (mobile) |
+| **Login & security** (OIDC config, password toggle) | ✅ | 🟡 | 🟡 | ✅ Done (web); mobile shows accounts/sign-in, OIDC config is web-only |
+| Household settings (name, week start, timezone, location) | ✅ | ✅ | ✅ | ✅ Done |
+| **About** (version, editable server address + switch warning) | — | ✅ | ✅ | ✅ Done (mobile) |
+| **Lists** settings | 🚧 | 🚧 | 🚧 | 🚧 Planned ("Soon") |
 
 ## Sync, offline & platform
 
-| Feature | Web / Kiosk | Mobile | Status |
-| --- | :---: | :---: | --- |
-| **PowerSync** offline mirror to local SQLite | 🟡 (calendar) | ⬜ | ✅ Done |
-| Offline writes queued + drained on reconnect | 🟡 (calendar) | ⬜ | ✅ Done |
-| Kiosk **PWA** + cached last-known state | 🚧 | ❌ N/A | 🟡 Partial (7.1) |
-| Self-host via **Docker Compose** (`./nook up`) | ✅ | — | ✅ Done |
-| In-container **migrations** (one-shot) | ✅ | — | ✅ Done |
-| **GHCR** multi-arch images (amd64 + arm64) | ✅ | — | ✅ Done |
-| Optional **S3 backup** | 🚧 | — | 🚧 Parked (Phase 4) |
-| Public ingress / auto-TLS beyond LAN | 🟡 | — | 🟡 Configurable (7.3) |
-| Restore drills | 🚧 | — | 🚧 Planned (7.4) |
+| Feature | Web / Kiosk | iPhone | iPad | Status |
+| --- | :---: | :---: | :---: | --- |
+| **PowerSync** offline mirror to local SQLite | 🟡 (calendar) | ✅ | ✅ | ✅ Done (persons · events · participants · households) |
+| Offline writes queued + drained on reconnect | 🟡 (calendar) | ✅ | ✅ | ✅ Done (events domain) |
+| Other domains (chores/rewards/goals/lists/meals/photos) | REST | REST | REST | 🟡 REST-only, kept fresh by the in-app refresh bus while online |
+| Offline status + pending-uploads + last-synced indicators | ✅ | ✅ | ✅ | ✅ Done |
+| Kiosk **PWA** + cached last-known state | 🚧 | ❌ N/A | ❌ N/A | 🟡 Web partial (7.1); mobile is a native app |
+| Self-host via **Docker Compose** (`./nook up`) | ✅ | — | — | ✅ Done |
+| In-container **migrations** (one-shot) | ✅ | — | — | ✅ Done |
+| **GHCR** multi-arch images (amd64 + arm64) | ✅ | — | — | ✅ Done |
+| Optional **S3 backup** | 🚧 | — | — | 🚧 Parked (Phase 4) |
+| Public ingress / auto-TLS beyond LAN | 🟡 | — | — | 🟡 Configurable (7.3) |
+| Restore drills | 🚧 | — | — | 🚧 Planned (7.4) |
 
 ## Observability & operations
 
-| Feature | Web / Kiosk | Mobile | Status |
-| --- | :---: | :---: | --- |
-| Structured **JSON logging** + per-request access log | ✅ | — | ✅ Done |
-| Deep **`GET /api/health`** (db, migrations, jobs, calendar backlog, storage) | ✅ | — | ✅ Done |
-| **Settings → System Health** admin panel (live, polls /api/health) | ✅ | ⬜ | ✅ Done |
-| **`./nook doctor`** CLI health report (in-container, no token) | ✅ | — | ✅ Done |
-| Background-**job run registry** (last-run / duration / error per scheduler) | ✅ | — | ✅ Done |
-| Build **provenance** (git sha + build time on /healthz + /api/health) | ✅ | — | ✅ Done |
-| **OpenTelemetry** traces+metrics (OTLP, **off by default**) | ✅ | — | ✅ Done |
-| All-local **Grafana/OTEL stack** (`./nook observability up`, profile) | ✅ | — | ✅ Done |
+| Feature | Web / Kiosk | iPhone | iPad | Status |
+| --- | :---: | :---: | :---: | --- |
+| Structured **JSON logging** + per-request access log | ✅ | — | — | ✅ Done |
+| Deep **`GET /api/health`** (db, migrations, jobs, calendar backlog, storage) | ✅ | — | — | ✅ Done |
+| **Settings → System Health** admin panel (live, polls /api/health) | ✅ | ⬜ | ⬜ | ✅ Done |
+| **`./nook doctor`** CLI health report (in-container, no token) | ✅ | — | — | ✅ Done |
+| Background-**job run registry** (last-run / duration / error per scheduler) | ✅ | — | — | ✅ Done |
+| Build **provenance** (git sha + build time on /healthz + /api/health) | ✅ | — | — | ✅ Done |
+| **OpenTelemetry** traces+metrics (OTLP, **off by default**) | ✅ | — | — | ✅ Done |
+| All-local **Grafana/OTEL stack** (`./nook observability up`, profile) | ✅ | — | — | ✅ Done |
 
-> **PowerSync scope note.** On the Web/Kiosk, offline-first currently covers the
-> **calendar/events** domain (local-first reads + queued writes). Other domains
-> (chores, lists, rewards, goals, meals, photos) are REST-backed and require connectivity,
-> kept in sync across surfaces by the in-app live-refresh bus while online. The iOS app
-> mirrors persons/events/households/event_participants locally; assessing its full domain
-> coverage is left to the mobile owner.
+> **PowerSync scope note.** Offline-first currently covers the **calendar/events** domain
+> on every surface (local-first reads + queued writes). The iOS app mirrors
+> persons/events/event_participants/households locally. Other domains (chores, lists,
+> rewards, goals, meals, photos) are REST-backed and need connectivity, kept in sync by
+> the in-app live-refresh bus while online. Bringing **chores** into PowerSync is the
+> prerequisite for offline chores *and* iOS chore reminders.
 
 ---
 
-See [roadmap status](./roadmap.md) for the planned/partial items above in context.
+## Mobile backlog (planned, not yet built)
+
+Tracked in [`apps/ios/IPAD_ROADMAP.md`](../../apps/ios/IPAD_ROADMAP.md). Highlights:
+
+- **Chore reminders** on iOS — blocked on chores landing in PowerSync.
+- **Recurring-event reminders** — the local scheduler doesn't expand recurrences yet.
+- ~~**Multi-profile kiosk** (profile picker + per-person PIN) on iPad~~ — **shipped** as an
+  opt-in shared-kiosk mode (single-login stays the default). See IPAD_ROADMAP Phase 6.
+- ~~iPad Today per-card customize (drag/hide)~~ — intentionally not planned; the fixed
+  three-group dashboard (recap banners · Today · goals) is the right shape for the wall display.
+- **Household-wide** screensaver motion (currently a per-device toggle; would need the
+  server display config + web to carry a `photoMotion` field).
+- **Remote push** (APNs) for reminders when the app is closed.
+
+See [roadmap status](./roadmap.md) for the cross-surface planned/partial items in context.

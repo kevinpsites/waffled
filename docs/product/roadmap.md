@@ -54,9 +54,16 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **AI capture** — pluggable provider (Claude / OpenAI-compatible / Ollama), instant
   heuristic → LLM upgrade, offline fallback.
 - **Weather** — Open-Meteo on the topbar (no key).
-- **iOS** (mobile) — native sign-in (password + OIDC), offline-first calendar over
-  PowerSync, local event notifications (Snooze/View). *Full mobile coverage is tracked by
-  the mobile owner.*
+- **iOS** (mobile) — a **universal app**: the iPhone *personal planner* and the iPad
+  *family hub* (nav rail + every page) in one binary. Near-complete feature parity with the
+  Web/Kiosk — Today, Calendar (incl. **recurring events** — create, per-occurrence edit/
+  delete scope, end condition, and a live "now" line on the time grids), Chores (incl.
+  **photo-proof**), Rewards, Goals, Lists, Meals, Photos, AI capture, **role-based permission
+  gating** + the permissions matrix editor, native sign-in (password + OIDC), offline-first
+  calendar over PowerSync, and local event notifications (Snooze/View). The iPad also has the
+  **family-display screensaver** (idle
+  photo slideshow · clock · weather · next event · night-dim). Per-surface (iPhone / iPad)
+  status — and the remaining mobile gaps — live in the [feature matrix](./features.md).
 
 ## Partial / in progress 🟡
 
@@ -95,6 +102,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **Notifications tail** — kiosk "due soon" local banner (table not built yet); remote push
   (APNs / web-push) is blocked on a self-host key/relay decision. Recurring-event reminders
   on iOS (only single events fire today) ride along here.
+- **One-off & carry-over chores** — there is no true single-day task today: a new chore
+  defaults to **daily** (or weekly), and the Today list is an exact `due_on = today` match,
+  so an unfinished one-off neither keeps its incomplete state nor resurfaces as overdue —
+  it just re-appears as a fresh checkbox each day. Add a `once` recurrence + materialization
+  path, an "include overdue one-offs (carry until done)" clause on the today query, and an
+  overdue affordance on the chores screen. Cross-surface (web + iOS); mostly server-side.
 - **Conversational recipe AI** — instruction-driven edits + photo → recipe (needs a vision
   provider).
 - **Shared album import** for Photos (Google Photos / iCloud).

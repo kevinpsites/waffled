@@ -140,6 +140,15 @@ final class SyncManager {
         await connect()
     }
 
+    /// Re-scope the live sync after the active session changed — a kiosk profile claim
+    /// swaps in a different person's token. Tears the PowerSync session down and stands
+    /// it back up against whatever token `AppConfig` now reports, the same path a fresh
+    /// launch takes. `signOut()` resets `started`, so `start()` runs clean.
+    func reauthenticate() async {
+        await signOut()
+        await start()
+    }
+
     /// Tear down the sync session on sign-out: stop the live queries, disconnect
     /// PowerSync, drop the observable state, and reset so the next `start()` runs
     /// fresh. Keychain tokens are cleared separately by `Session`.
@@ -223,7 +232,8 @@ final class SyncManager {
     /// Commit a captured event by writing it to the local mirror. The resolved
     /// person_id drives server-side calendar routing + the Google push (the phone
     /// never talks to Google). Returns false on failure.
-    func commitEvent(title: String, startsAtISO: String, allDay: Bool, personName: String?) async -> Bool {
+    func commitEvent(title: String, startsAtISO: String, allDay: Bool, personName: String?,
+                     rrule: String? = nil, recurrenceEndAt: String? = nil) async -> Bool {
         // Resolve the named assignee to a person id and route through the same path the
         // editor uses, so the capture also writes the `event_participants` row (not just
         // `person_id`) — otherwise the person never shows up as a participant.
@@ -233,6 +243,17 @@ final class SyncManager {
         let ends: String? = allDay
             ? nil
             : EventTime.parse(startsAtISO).map { SyncManager.iso8601.string(from: $0.addingTimeInterval(3600)) }
+        // A recurring capture goes through REST so the server materializes the
+        // occurrences (the local mirror can't expand a rule); PowerSync down-syncs them.
+        if let rrule, !rrule.isEmpty {
+            do {
+                _ = try await api.createEvent(
+                    title: title, startsAtISO: startsAtISO, endsAtISO: ends, allDay: allDay,
+                    location: nil, personIds: personId.map { [$0] } ?? [], goalId: nil, goalStepId: nil,
+                    calendarId: nil, timezone: householdTz.identifier, rrule: rrule, recurrenceEndAt: recurrenceEndAt)
+                return true
+            } catch { lastError = String(describing: error); return false }
+        }
         return await createCalendarEvent(
             title: title, startsAtISO: startsAtISO, endsAtISO: ends, allDay: allDay,
             location: nil, personIds: personId.map { [$0] } ?? [], calendarId: nil)

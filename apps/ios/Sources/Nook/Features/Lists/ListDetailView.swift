@@ -1175,6 +1175,9 @@ struct PantryStaplesEditor: View {
 struct ChipFlow: Layout {
     var spacing: CGFloat = 8
     var lineSpacing: CGFloat = 8
+    /// `.center` centers each wrapped row within the width; `.leading` (default) keeps
+    /// the original left-packed behavior for existing callers.
+    var alignment: HorizontalAlignment = .leading
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let maxWidth = proposal.width ?? .infinity
@@ -1189,13 +1192,25 @@ struct ChipFlow: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
+        // Group into wrapped rows first, so a centered row can be offset by its slack.
+        var rows: [[(v: LayoutSubview, s: CGSize)]] = [[]]
+        var x: CGFloat = 0
         for v in subviews {
             let s = v.sizeThatFits(.unspecified)
-            if x > bounds.minX && x + s.width > bounds.maxX { x = bounds.minX; y += rowHeight + lineSpacing; rowHeight = 0 }
-            v.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(s))
+            if x > 0 && x + s.width > bounds.width { rows.append([]); x = 0 }
+            rows[rows.count - 1].append((v, s))
             x += s.width + spacing
-            rowHeight = max(rowHeight, s.height)
+        }
+        var y = bounds.minY
+        for row in rows where !row.isEmpty {
+            let rowWidth = row.reduce(0) { $0 + $1.s.width } + spacing * CGFloat(row.count - 1)
+            var rx = bounds.minX + (alignment == .center ? max(0, (bounds.width - rowWidth) / 2) : 0)
+            let rowHeight = row.map(\.s.height).max() ?? 0
+            for item in row {
+                item.v.place(at: CGPoint(x: rx, y: y), anchor: .topLeading, proposal: ProposedViewSize(item.s))
+                rx += item.s.width + spacing
+            }
+            y += rowHeight + lineSpacing
         }
     }
 }
