@@ -451,12 +451,6 @@ export function RecipeEditor() {
     mealsApi.recipeSections().then((d) => alive && setUsedSections(d.sections)).catch(() => {})
     return () => { alive = false }
   }, [])
-  // Focus a freshly added section's header so the user can name it right away.
-  useEffect(() => {
-    if (!pendingSectionUid) return
-    const inputs = ingListRef.current?.querySelectorAll('.re-ing-section')
-    ;(inputs?.[inputs.length - 1] as HTMLInputElement | undefined)?.focus()
-  }, [pendingSectionUid])
   useEffect(() => {
     if (!focusStepRef.current) return
     focusStepRef.current = false
@@ -613,13 +607,11 @@ export function RecipeEditor() {
           {ingGroups.map((grp, gi) => (
             <div className="re-ing-group" key={gi}>
               {(grp.section !== '' || grp.items[0]?.row.uid === pendingSectionUid) && (
-                <input
-                  className="re-ing-section"
+                <SectionInput
                   value={grp.section}
-                  onChange={(e) => renameGroup(grp.items.map((it) => it.i), e.target.value)}
-                  placeholder="Section name"
-                  aria-label="Section name"
-                  list="re-ing-sections"
+                  onChange={(v) => renameGroup(grp.items.map((it) => it.i), v)}
+                  suggestions={sectionSuggestions}
+                  autoFocus={grp.items[0]?.row.uid === pendingSectionUid}
                 />
               )}
               {grp.items.map(({ row, i }) => (
@@ -648,11 +640,6 @@ export function RecipeEditor() {
             </div>
           ))}
         </div>
-        <datalist id="re-ing-sections">
-          {sectionSuggestions.map((s) => (
-            <option key={s} value={s} />
-          ))}
-        </datalist>
         <div className="re-ing-actions">
           <button type="button" className="btn re-add-ing" onClick={addIngredient}>+ Add ingredient</button>
           <button type="button" className="re-add-section" onClick={addSection}>+ Add section</button>
@@ -829,6 +816,71 @@ function StepIngredients({
         </span>
       ))}
     </>
+  )
+}
+
+// Section-name field with a compact, custom autocomplete (the native <datalist>
+// dropdown renders huge/full-height across browsers). Filters suggestions as you
+// type, capped + scrollable; click / ↑↓+Enter to choose; Esc / outside-click closes.
+function SectionInput({
+  value,
+  onChange,
+  suggestions,
+  autoFocus,
+}: {
+  value: string
+  onChange: (v: string) => void
+  suggestions: string[]
+  autoFocus?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [hi, setHi] = useState(0)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  const q = value.trim().toLowerCase()
+  const matches = suggestions.filter((s) => !q || s.toLowerCase().includes(q)).slice(0, 12)
+  const pick = (s: string) => { onChange(s); setOpen(false) }
+
+  return (
+    <div className="re-sec-wrap" ref={wrapRef}>
+      <input
+        className="re-ing-section"
+        value={value}
+        autoFocus={autoFocus}
+        placeholder="Section name"
+        aria-label="Section name"
+        onChange={(e) => { onChange(e.target.value); setOpen(true); setHi(0) }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setHi((h) => Math.min(h + 1, matches.length - 1)) }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)) }
+          else if (e.key === 'Enter' && open && matches[hi]) { e.preventDefault(); pick(matches[hi]) }
+          else if (e.key === 'Escape') { setOpen(false) }
+        }}
+      />
+      {open && matches.length > 0 && (
+        <div className="re-sec-pop" role="listbox">
+          {matches.map((s, i) => (
+            <button
+              type="button"
+              key={s}
+              className={`re-sec-opt${i === hi ? ' on' : ''}`}
+              onMouseEnter={() => setHi(i)}
+              onClick={() => pick(s)}
+            >{s}</button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 

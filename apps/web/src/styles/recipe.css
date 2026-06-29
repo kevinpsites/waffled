@@ -801,6 +801,20 @@
   padding: 8px 2px 6px; margin-top: 6px;
 }
 .re-ing-section:focus { outline: none; border-bottom-color: var(--primary); }
+/* custom section-name autocomplete (replaces the oversized native datalist) */
+.re-sec-wrap { position: relative; display: block; }
+.re-sec-wrap .re-ing-section { width: auto; min-width: 180px; }
+.re-sec-pop {
+  position: absolute; top: calc(100% + 2px); left: 0; z-index: 40;
+  min-width: 220px; max-height: 264px; overflow-y: auto;
+  background: var(--card); border: 1px solid var(--hair); border-radius: 12px;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.16); padding: 6px;
+}
+.re-sec-opt {
+  display: block; width: 100%; text-align: left; font: inherit; font-size: 14px; font-weight: 600;
+  color: var(--ink); padding: 8px 10px; border: 0; background: transparent; border-radius: 8px; cursor: pointer;
+}
+.re-sec-opt:hover, .re-sec-opt.on { background: var(--panel); }
 .re-ing-row input {
   width: 100%; font: inherit; font-size: 14px; padding: 9px 11px; border-radius: var(--r-md);
   border: 1px solid var(--hair); background: var(--card-2); color: var(--ink);
