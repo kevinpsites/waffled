@@ -981,12 +981,11 @@ struct ChoreEditSheet: View {
                             Text("Certain days").tag("weekly")
                         }
                         .pickerStyle(.segmented)
-                        // One-off: pick the day it's due. Hidden when editing (its instance
-                        // already exists on a fixed day, matching the web).
-                        if freq == "once" && !editing {
-                            DatePicker("On", selection: $dueOn,
-                                       in: Calendar.current.startOfDay(for: Date())...,
-                                       displayedComponents: .date)
+                        // One-off: pick the day it's due (shown for both new and edit — an
+                        // edit moves the chore's single pending instance). No min, so an
+                        // overdue one-off can be re-dated forward or back.
+                        if freq == "once" {
+                            DatePicker("On", selection: $dueOn, displayedComponents: .date)
                                 .font(.system(size: 15, weight: .semibold))
                                 .tint(NK.primary)
                         }
@@ -1165,9 +1164,10 @@ struct ChoreEditSheet: View {
         if currencies.count > 1, let key = effectiveCurrencyKey {
             body["rewardCurrency"] = .string(key)
         }
-        // The "On" day only applies to a freshly-created one-off; the server defaults it
-        // to household-local today if omitted and ignores it for recurring chores.
-        if freq == "once", !editing {
+        // The "On" day applies to a one-off (create sets the instance's day; edit moves
+        // it). The server defaults it to household-local today if omitted and ignores it
+        // for recurring chores.
+        if freq == "once" {
             body["dueOn"] = .string(DateFmt.string(dueOn, "yyyy-MM-dd", .current))
         }
         Task {
