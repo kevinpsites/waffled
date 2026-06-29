@@ -2,6 +2,7 @@ import { NavLink, Link } from 'react-router'
 import { Icon } from '../icons'
 import { SCREENS, SETTINGS, type Screen } from '../nav'
 import { isKioskMode, authApi, useHousehold } from '../../lib/api'
+import { moduleEnabled } from '../../lib/modules'
 
 function railClass({ isActive }: { isActive: boolean }) {
   return `rail-item ${isActive ? 'on' : ''}`
@@ -50,11 +51,14 @@ function RailLink({ screen }: { screen: Screen }) {
 }
 
 export function Rail() {
+  const { household } = useHousehold()
+  // Hide nav entries for optional modules the household hasn't enabled.
+  const screens = SCREENS.filter((s) => !s.module || moduleEnabled(household, s.module))
   return (
     <nav className="rail">
       <Link to="/" className="rail-logo nk-serif" aria-label="Home">N</Link>
       <div className="rail-new">New</div>
-      {SCREENS.map((s) => (
+      {screens.map((s) => (
         <RailLink key={s.path} screen={s} />
       ))}
       <div className="rail-spacer" />

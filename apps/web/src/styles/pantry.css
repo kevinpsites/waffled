@@ -1,0 +1,76 @@
+/* Pantry module — inventory screen, item/locations modals, and the Today bar. */
+
+.pantry-screen { padding: 24px 30px 40px; }
+.pantry-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.pantry-title { font-size: 28px; font-weight: 600; }
+.pantry-sub { font-size: 13px; font-weight: 600; color: var(--ink-3); margin-top: 2px; }
+.pantry-head-actions { display: flex; gap: 8px; flex: none; }
+
+.pantry-empty { color: var(--ink-3); font-weight: 600; padding: 24px 2px; }
+
+.pantry-groups { display: flex; flex-direction: column; gap: 22px; }
+.pantry-group-h {
+  font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--ink-3); margin-bottom: 8px;
+}
+.pantry-list { display: flex; flex-direction: column; gap: 8px; }
+.pantry-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;
+  text-align: left; padding: 12px 14px; border-radius: var(--r-lg, 14px);
+  border: 1px solid var(--hair); background: var(--card); cursor: pointer; font: inherit;
+}
+.pantry-item:hover { border-color: var(--primary); }
+.pantry-item-main { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.pantry-item-name { font-weight: 700; font-size: 15px; color: var(--ink); }
+.pantry-item-qty { font-size: 13px; font-weight: 600; color: var(--ink-3); }
+.pantry-item-meta { flex: none; }
+.pantry-exp {
+  font-size: 12px; font-weight: 700; padding: 4px 9px; border-radius: 999px;
+  background: var(--card-2, #faf8f4); color: var(--ink-3); border: 1px solid var(--hair);
+}
+.pantry-exp.soon { background: #fdf0e3; color: #b5651d; border-color: #f0d4b3; }
+.pantry-exp.past { background: #fbe3e1; color: #c0392b; border-color: #f0c0bb; }
+
+/* item / locations modals (reuse .modal-overlay/.modal-card) */
+.pantry-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.pantry-field > span { font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.pantry-field input, .pantry-field select {
+  font: inherit; font-size: 15px; padding: 10px 12px; border-radius: var(--r-md, 12px);
+  border: 1px solid var(--hair); background: var(--card-2, #faf8f4); color: var(--ink); width: 100%; box-sizing: border-box;
+}
+.pantry-field input:focus, .pantry-field select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(236,96,73,.12); }
+.pantry-field-row { display: flex; gap: 10px; }
+.pantry-field-row .pantry-field { flex: 1; }
+.pantry-err { color: var(--danger, #c0392b); font-size: 13px; font-weight: 700; margin: -2px 0 10px; }
+.pantry-modal-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.pantry-del { color: var(--danger, #c0392b); cursor: pointer; }
+
+.pantry-loc-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.pantry-loc-row { display: flex; gap: 8px; align-items: center; }
+.pantry-loc-row input {
+  flex: 1; font: inherit; font-size: 14px; padding: 9px 11px; border-radius: var(--r-md, 12px);
+  border: 1px solid var(--hair); background: var(--card-2, #faf8f4); color: var(--ink);
+}
+.pantry-loc-row button {
+  border: 0; background: rgba(0,0,0,0.07); color: var(--ink-2); width: 30px; height: 30px; border-radius: 8px;
+  cursor: pointer; font-size: 16px; flex: none;
+}
+.pantry-loc-add { display: flex; gap: 8px; margin-bottom: 6px; }
+.pantry-loc-add input {
+  flex: 1; font: inherit; font-size: 14px; padding: 9px 11px; border-radius: var(--r-md, 12px);
+  border: 1px dashed var(--hair); background: transparent; color: var(--ink);
+}
+
+/* Today bar */
+.pantry-bar {
+  display: flex; align-items: center; gap: 14px; text-decoration: none;
+  background: var(--card, #fff); border: 1px solid var(--hair, #e4ded4); border-radius: var(--r-lg, 18px);
+  box-shadow: var(--sh-2, 0 12px 40px rgba(0,0,0,0.06)); padding: 12px 16px; margin: 6px 30px 16px;
+}
+.pantry-bar:hover { border-color: var(--primary); }
+.pantry-bar-ic { font-size: 22px; }
+.pantry-bar-main { flex: 1; min-width: 0; }
+.pantry-bar-title { font-weight: 800; font-size: 15px; color: var(--ink); }
+.pantry-bar-sub { display: block; font-size: 13px; font-weight: 600; color: var(--ink-3); margin-top: 1px; }
+.pantry-bar-cta { font-weight: 700; font-size: 13px; color: var(--primary); flex: none; }
+@media (max-width: 720px) { .pantry-bar { margin: 6px 16px 14px; } .pantry-screen { padding: 20px 16px 36px; } }

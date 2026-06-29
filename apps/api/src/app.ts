@@ -19,6 +19,7 @@ import {
 } from './modules/households/households'
 import { registerPersonRoutes } from './modules/persons/persons'
 import { registerListRoutes } from './modules/lists/lists.routes'
+import { registerPantryRoutes } from './modules/pantry/pantry'
 import { registerChoreRoutes } from './modules/chores/chores.routes'
 import { registerRewardRoutes } from './modules/rewards/rewards'
 import { registerCurrencyRoutes } from './modules/currencies/currencies'
@@ -182,6 +183,9 @@ registerPersonRoutes(api)
 
 // Lists (/api/lists…)
 registerListRoutes(api)
+
+// Pantry (/api/pantry…) — optional module, gated per household
+registerPantryRoutes(api)
 
 // Chores (/api/chores…)
 registerChoreRoutes(api)

@@ -22,7 +22,7 @@ export const MODULES: ModuleDef[] = [
     name: 'Pantry',
     icon: '🥫',
     description: "Track what's actually on hand (freezer/fridge/pantry) and let it feed meal planning.",
-    status: 'planned',
+    status: 'available',
     defaultOn: false,
   },
   {

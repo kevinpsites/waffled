@@ -15,6 +15,7 @@ import { RecipeEditor } from './RecipeEditor'
 import { CookMode } from './CookMode'
 import { RecipesLibrary } from './RecipesLibrary'
 import { Lists } from './Lists'
+import { Pantry } from './Pantry'
 import { Photos } from './Photos'
 import { Settings } from './Settings'
 
@@ -42,6 +43,7 @@ export function KioskRoutes() {
         <Route path="meals/recipe/:id/edit" element={<RecipeEditor />} />
         <Route path="meals/recipe/:id/cook" element={<CookMode />} />
         <Route path="lists" element={<Lists />} />
+        <Route path="pantry" element={<Pantry />} />
         <Route path="photos" element={<Photos />} />
         <Route path="settings" element={<Settings />} />
       </Route>

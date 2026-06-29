@@ -7,6 +7,7 @@ import { GoalRecapBar } from './components/GoalRecap'
 import { ApprovalsBar } from './components/Approvals'
 import { CaptureBar } from './components/CaptureBar'
 import { GettingStartedBar } from './onboarding/GettingStarted'
+import { PantryBar } from './Pantry'
 import { useTopbarRight } from './topbar-slot'
 import { useTodayLayout, type LayoutScope } from '../lib/api'
 
@@ -162,6 +163,7 @@ export function Today() {
       <GettingStartedBar />
       <ApprovalsBar />
       <GoalRecapBar />
+      <PantryBar />
 
       {editing && (
         <div className="today-toolbar">

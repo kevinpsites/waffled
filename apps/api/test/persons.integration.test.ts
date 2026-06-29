@@ -321,8 +321,8 @@ describe('optional modules (settings.modules)', () => {
   })
 
   it('rejects a not-yet-built (planned) module (400)', async () => {
-    // pantry is in the catalog but status:'planned' until built — not togglable yet.
-    expect((await call('PATCH', '/api/household/modules', kevin, { pantry: true })).statusCode).toBe(400)
+    // fhe is in the catalog but status:'planned' until built — not togglable yet.
+    expect((await call('PATCH', '/api/household/modules', kevin, { fhe: true })).statusCode).toBe(400)
   })
 
   it('rejects an unknown module key (400)', async () => {
