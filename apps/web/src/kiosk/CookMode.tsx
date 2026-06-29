@@ -108,6 +108,13 @@ export function CookMode() {
   const dismissTimer = useCallback((tid: number) => {
     setTimers((ts) => ts.filter((t) => t.id !== tid))
   }, [])
+  // Snooze a fired timer: restart it for `secs` more (clears the alarm).
+  const snoozeTimer = useCallback((tid: number, secs: number) => {
+    setTimers((ts) => ts.map((t) => (t.id === tid ? { ...t, remainingSeconds: secs, running: true, firing: false } : t)))
+  }, [])
+
+  const firingTimers = timers.filter((t) => t.firing)
+  const runningTimers = timers.filter((t) => !t.firing)
 
   const total = steps.length
   // Replace (not push) the cook-mode history entry with the recipe so pressing
@@ -147,7 +154,8 @@ export function CookMode() {
           <button className="btn btn-ghost" onClick={() => { setDone(false); setI(0) }}>↻ Start over</button>
           <button className="btn btn-primary" onClick={exit}>Back to recipe</button>
         </div>
-        <TimerDock timers={timers} onToggle={toggleTimer} onDismiss={dismissTimer} />
+        <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} />
+        <TimerAlarm firing={firingTimers} onDismiss={dismissTimer} onSnooze={snoozeTimer} />
       </div>
     )
   }
@@ -213,7 +221,42 @@ export function CookMode() {
         </div>
       )}
 
-      <TimerDock timers={timers} onToggle={toggleTimer} onDismiss={dismissTimer} />
+      <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} />
+      <TimerAlarm firing={firingTimers} onDismiss={dismissTimer} onSnooze={snoozeTimer} />
+    </div>
+  )
+}
+
+// Full-screen takeover when one or more timers hit zero — large, centered, and
+// flashing so it grabs attention across the kitchen (the corner dock didn't). Each
+// fired timer can be snoozed (+1:00) or dismissed; the chime repeats until cleared.
+function TimerAlarm({
+  firing,
+  onDismiss,
+  onSnooze,
+}: {
+  firing: CookTimer[]
+  onDismiss: (id: number) => void
+  onSnooze: (id: number, secs: number) => void
+}) {
+  if (firing.length === 0) return null
+  return (
+    <div className="cm-alarm" role="alertdialog" aria-label="Timer finished">
+      <div className="cm-alarm-card">
+        <div className="cm-alarm-ic" aria-hidden>⏱</div>
+        <div className="cm-alarm-h nk-serif">{firing.length > 1 ? `${firing.length} timers done` : 'Timer done'}</div>
+        <div className="cm-alarm-list">
+          {firing.map((t) => (
+            <div key={t.id} className="cm-alarm-row">
+              <span className="cm-alarm-label">{t.label} · {fmt(t.totalSeconds)}</span>
+              <div className="cm-alarm-actions">
+                <button className="cm-alarm-snooze" onClick={() => onSnooze(t.id, 60)}>+1:00</button>
+                <button className="cm-alarm-dismiss" onClick={() => onDismiss(t.id)}>Dismiss</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

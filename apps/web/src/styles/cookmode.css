@@ -276,3 +276,46 @@
   50% { background: var(--wally-t, rgba(236, 96, 73, 0.16)); }
   100% { background: var(--card); }
 }
+
+/* ── Timer alarm takeover ── fires full-screen + flashing when a timer hits 0 */
+.cm-alarm {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  animation: cm-alarm-bg 0.9s steps(1, end) infinite;
+}
+@keyframes cm-alarm-bg {
+  0% { background: rgba(20, 16, 12, 0.55); }
+  50% { background: var(--wally-t, rgba(236, 96, 73, 0.42)); }
+  100% { background: rgba(20, 16, 12, 0.55); }
+}
+.cm-alarm-card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--card, #fff);
+  border-radius: 22px;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.4);
+  padding: 30px 26px 24px;
+  text-align: center;
+  animation: cm-alarm-pop 0.4s ease-out both, cm-alarm-pulse 0.9s ease-in-out infinite;
+}
+@keyframes cm-alarm-pop { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes cm-alarm-pulse { 0%,100% { box-shadow: 0 30px 90px rgba(0,0,0,0.4), 0 0 0 0 var(--wally-t, rgba(236,96,73,0.5)); } 50% { box-shadow: 0 30px 90px rgba(0,0,0,0.4), 0 0 0 14px transparent; } }
+.cm-alarm-ic { font-size: 52px; line-height: 1; }
+.cm-alarm-h { font-size: 30px; font-weight: 600; margin-top: 8px; color: var(--ink); }
+.cm-alarm-list { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
+.cm-alarm-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 14px; border-radius: 14px; background: var(--card-2, #faf8f4); border: 1px solid var(--hair, #e4ded4);
+}
+.cm-alarm-label { font-weight: 800; font-size: 16px; color: var(--ink); text-align: left; }
+.cm-alarm-actions { display: flex; gap: 8px; flex: none; }
+.cm-alarm-snooze, .cm-alarm-dismiss {
+  font: inherit; font-size: 14px; font-weight: 800; padding: 10px 16px; border-radius: 999px; cursor: pointer;
+}
+.cm-alarm-snooze { border: 1px solid var(--hair, #e4ded4); background: var(--card, #fff); color: var(--ink); }
+.cm-alarm-snooze:hover { border-color: var(--primary, #e0653f); }
+.cm-alarm-dismiss { border: 0; background: var(--primary, #e0653f); color: #fff; }
