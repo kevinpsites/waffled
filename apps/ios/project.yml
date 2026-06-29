@@ -66,6 +66,13 @@ targets:
         # Dev only: allow plain-HTTP to localhost/the tailnet (no TLS in local stack).
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # Custom drag type for reordering recipe ingredient rows. Conforms to public.data
+        # (NOT public.text) so the rows' text fields don't intercept the drop as text.
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.kevinsites.nook.ingredient-row
+            UTTypeDescription: Nook recipe ingredient row
+            UTTypeConformsTo:
+              - public.data
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.kevinsites.nook

@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import UniformTypeIdentifiers
 
 /// Create or edit a recipe — the native twin of the web `RecipeEditor`. One shared view
 /// for iPhone and iPad (presented full-screen). Covers the basics, the AI-assisted Details
@@ -488,9 +489,9 @@ struct RecipeEditorView: View {
         // Drop onto a section's empty space → the dragged row adopts this section and
         // lands at the END of the run. (Dropping on a specific row lands it before that
         // row — see IngredientRowView's own dropDestination.)
-        .dropDestination(for: String.self) { ids, _ in
+        .dropDestination(for: IngredientRowDrag.self) { items, _ in
             dropTargetSection = nil
-            guard let raw = ids.first, let dragged = UUID(uuidString: raw) else { return false }
+            guard let raw = items.first?.id, let dragged = UUID(uuidString: raw) else { return false }
             moveIngredient(dragged, toSection: section, before: nil)
             return true
         } isTargeted: { over in
@@ -974,6 +975,21 @@ struct SectionInput: View {
 /// section boundary). Pulled out of `RecipeEditorView` so typing in one row doesn't
 /// re-evaluate every other row — part of the monolithic-body re-render that froze the
 /// keyboard. The parent owns the `[EditIng]`; this row reaches it only through closures.
+/// A custom (non-text) drag payload for reordering ingredient rows. A plain `String`
+/// let the rows' TextFields intercept the drop and paste the id as text (and made drops
+/// unreliable). A custom UTType — declared in Nook-Info.plist, conforming to `public.data`
+/// (NOT `public.text`) — means only the row/section drop targets accept it.
+extension UTType {
+    static let nookIngredientRow = UTType(exportedAs: "com.kevinsites.nook.ingredient-row")
+}
+
+struct IngredientRowDrag: Transferable, Codable {
+    let id: String
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .nookIngredientRow)
+    }
+}
+
 struct IngredientRowView: View {
     @Binding var row: EditIng
     let section: String
@@ -997,7 +1013,7 @@ struct IngredientRowView: View {
                 Image(systemName: "line.3.horizontal")
                     .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
                     .frame(width: 22, height: 30).contentShape(Rectangle())
-                    .draggable(id.uuidString) { dragPreview }
+                    .draggable(IngredientRowDrag(id: id.uuidString)) { dragPreview }
                 TextField("2", text: $row.amount).keyboardType(.decimalPad)
                     .focused(focused, equals: .ingAmount(id))
                     .frame(width: 54).padding(8).nkField(fill: NK.panel)
@@ -1021,8 +1037,8 @@ struct IngredientRowView: View {
         .background(isDropTarget ? NK.primary.opacity(0.06) : .clear)
         // Drop ONTO a row → the dragged row adopts this row's section and lands just before
         // it (precise positioning within / into a section).
-        .dropDestination(for: String.self) { ids, _ in
-            guard let raw = ids.first, let dragged = UUID(uuidString: raw), dragged != id else { return false }
+        .dropDestination(for: IngredientRowDrag.self) { items, _ in
+            guard let raw = items.first?.id, let dragged = UUID(uuidString: raw), dragged != id else { return false }
             onDrop(dragged)
             return true
         } isTargeted: { onHover($0) }
