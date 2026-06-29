@@ -20,7 +20,7 @@ type EditIng = { uid: string; name: string; amount: string; unit: string; prepNo
 // per-step amount (the "split" case: 2 cups water → 1 cup here, 1 cup elsewhere).
 // `extra` holds free-text lines that didn't map back to an ingredient (legacy data).
 type StepPick = { uid: string; amount: string }
-type EditStep = { instruction: string; picks: StepPick[]; extra: string[]; timerSeconds: number | null }
+type EditStep = { uid: string; instruction: string; picks: StepPick[]; extra: string[]; timerSeconds: number | null }
 
 const newUid = (): string =>
   typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `i${Math.random().toString(36).slice(2)}`
@@ -41,7 +41,7 @@ const META_FIELDS: { key: keyof RecipeWriteInput; label: string; placeholder: st
 ]
 
 const blankIng = (): EditIng => ({ uid: newUid(), name: '', amount: '', unit: '', prepNote: '', section: '' })
-const blankStep = (): EditStep => ({ instruction: '', picks: [], extra: [], timerSeconds: null })
+const blankStep = (): EditStep => ({ uid: newUid(), instruction: '', picks: [], extra: [], timerSeconds: null })
 
 function toIngInput(r: EditIng, i: number): IngredientInput {
   const amount = r.amount.trim() ? Number(r.amount) : null
@@ -85,7 +85,7 @@ function stepFromStrings(instruction: string, strings: string[], ings: EditIng[]
       picks.push({ uid: match.uid, amount: s.slice(0, idx).trim() })
     } else extra.push(s)
   }
-  return { instruction, picks, extra, timerSeconds }
+  return { uid: newUid(), instruction, picks, extra, timerSeconds }
 }
 
 export function RecipeEditor() {
@@ -552,42 +552,22 @@ export function RecipeEditor() {
         <div className="card-h re-section-h" style={{ marginBottom: 14 }}>Method</div>
         <div className="re-steps" ref={stepListRef}>
           {stps.map((s, i) => (
-            <div key={i} className="re-step-row">
+            <div key={s.uid} className="re-step-row">
               <div className="re-step-n">{i + 1}</div>
               <div className="re-step-body">
                 <textarea value={s.instruction} onChange={(e) => setStps((rs) => patch(rs, i, { instruction: e.target.value }))} placeholder="Describe this step…" rows={2} />
-                <div className="re-stepings">
-                  <span className="re-stepings-label">Ingredients used</span>
-                  {namedIngs.length === 0 && <span className="tiny muted" style={{ fontWeight: 600 }}>Add ingredients above to pick them here.</span>}
-                  {namedIngs.map((g) => {
-                    const picked = s.picks.find((p) => p.uid === g.uid)
-                    if (picked) {
-                      return (
-                        <span key={g.uid} className="re-stepchip on">
-                          <input
-                            className="re-stepchip-amt"
-                            value={picked.amount}
-                            onChange={(e) => setPickAmount(i, g.uid, e.target.value)}
-                            placeholder="amt"
-                            aria-label={`Amount of ${g.name} for this step`}
-                          />
-                          <span className="re-stepchip-name">{g.name}</span>
-                          <button type="button" tabIndex={-1} aria-label={`Remove ${g.name} from step`} onClick={() => removePick(i, g.uid)}>×</button>
-                        </span>
-                      )
-                    }
-                    return (
-                      <button key={g.uid} type="button" className="re-stepchip add" onClick={() => addPick(i, g)}>+ {g.name}</button>
-                    )
-                  })}
-                  {s.extra.map((x, j) => (
-                    <span key={`x${j}`} className="re-stepchip on re-stepchip-extra">
-                      <span className="re-stepchip-name">{x}</span>
-                      <button type="button" tabIndex={-1} aria-label={`Remove ${x} from step`} onClick={() => removeExtra(i, j)}>×</button>
-                    </span>
-                  ))}
+                <div className="re-step-tags">
+                  <StepIngredients
+                    picks={s.picks}
+                    extra={s.extra}
+                    namedIngs={namedIngs}
+                    onAddPick={(ing) => addPick(i, ing)}
+                    onRemovePick={(uid) => removePick(i, uid)}
+                    onSetAmount={(uid, amt) => setPickAmount(i, uid, amt)}
+                    onRemoveExtra={(j) => removeExtra(i, j)}
+                  />
+                  <StepTimerControl seconds={s.timerSeconds} onChange={(secs) => setStepTimer(i, secs)} />
                 </div>
-                <StepTimerControl seconds={s.timerSeconds} onChange={(secs) => setStepTimer(i, secs)} />
               </div>
               <div className="re-row-ctl">
                 <button type="button" tabIndex={-1} aria-label="Move up" disabled={i === 0} onClick={() => moveStep(i, -1)}>↑</button>
@@ -645,11 +625,108 @@ function SugChips({ items, onAccept, onDismiss }: { items: string[]; onAccept: (
   )
 }
 
-// Per-step timer: a compact "Add timer" affordance that expands to minutes + seconds
-// inputs. Stored as total seconds on the step (null = no timer). Clearing both fields
-// (or hitting Remove) sets it back to null.
+// Per-step ingredient tagging: shows only the tagged ingredients as compact
+// "• name · amount" tags; a "+ Tag ingredient" button opens a popover to check
+// ingredients on/off and set per-step amounts (keeps the step row uncluttered).
+function StepIngredients({
+  picks,
+  extra,
+  namedIngs,
+  onAddPick,
+  onRemovePick,
+  onSetAmount,
+  onRemoveExtra,
+}: {
+  picks: StepPick[]
+  extra: string[]
+  namedIngs: EditIng[]
+  onAddPick: (ing: EditIng) => void
+  onRemovePick: (uid: string) => void
+  onSetAmount: (uid: string, amount: string) => void
+  onRemoveExtra: (j: number) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  return (
+    <>
+      {picks.map((p) => {
+        const g = namedIngs.find((x) => x.uid === p.uid)
+        if (!g) return null
+        return (
+          <button type="button" key={p.uid} className="re-tag" onClick={() => setOpen(true)} aria-label={`Edit ${g.name} for this step`}>
+            <span className="re-tag-dot" />
+            <span className="re-tag-name">{g.name}</span>
+            {p.amount.trim() && <span className="re-tag-amt">· {p.amount.trim()}</span>}
+          </button>
+        )
+      })}
+      {extra.map((x, j) => (
+        <span key={`x${j}`} className="re-tag re-tag-extra">
+          <span className="re-tag-dot" />
+          <span className="re-tag-name">{x}</span>
+          <button type="button" tabIndex={-1} aria-label={`Remove ${x}`} className="re-tag-x" onClick={() => onRemoveExtra(j)}>×</button>
+        </span>
+      ))}
+      <div className="re-tagpop-wrap" ref={wrapRef}>
+        <button type="button" className="re-tag-add" onClick={() => setOpen((o) => !o)}>+ Tag ingredient</button>
+        {open && (
+          <div className="re-tagpop">
+            <div className="re-tagpop-h">Tag an ingredient for this step</div>
+            {namedIngs.length === 0 ? (
+              <div className="re-tagpop-empty">Add ingredients above first.</div>
+            ) : (
+              namedIngs.map((g) => {
+                const picked = picks.find((p) => p.uid === g.uid)
+                return (
+                  <div className="re-tagpop-row" key={g.uid}>
+                    <button
+                      type="button"
+                      className={`re-tagpop-check${picked ? ' on' : ''}`}
+                      onClick={() => (picked ? onRemovePick(g.uid) : onAddPick(g))}
+                      aria-label={picked ? `Untag ${g.name}` : `Tag ${g.name}`}
+                    >
+                      {picked ? '✓' : ''}
+                    </button>
+                    <span className={`re-tagpop-name${picked ? ' on' : ''}`}>{g.name}</span>
+                    {picked && (
+                      <input
+                        className="re-tagpop-amt"
+                        value={picked.amount}
+                        placeholder="amt"
+                        aria-label={`Amount of ${g.name}`}
+                        onChange={(e) => onSetAmount(g.uid, e.target.value)}
+                      />
+                    )}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
+function fmtTimer(s: number): string {
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+// Per-step timer: a filled "⏱ m:ss" pill when set (tap to edit, × to clear), or a
+// dashed "⏱ Add timer" button when unset. Editing exposes minute + second inputs.
+// The value lives on the step (prop-driven) so it never desyncs from saved state.
 function StepTimerControl({ seconds, onChange }: { seconds: number | null; onChange: (secs: number | null) => void }) {
-  const [open, setOpen] = useState(seconds != null)
+  const [editing, setEditing] = useState(false)
   const mins = seconds != null ? Math.floor(seconds / 60) : 0
   const secs = seconds != null ? seconds % 60 : 0
 
@@ -659,46 +736,30 @@ function StepTimerControl({ seconds, onChange }: { seconds: number | null; onCha
     onChange(total > 0 ? total : null)
   }
 
-  if (!open && seconds == null) {
+  if (editing) {
     return (
-      <div className="re-step-timer">
-        <button type="button" className="re-timer-add" onClick={() => setOpen(true)}>⏱ Add timer</button>
-      </div>
+      <span className="re-timer-edit">
+        <span className="re-timer-ic" aria-hidden>⏱</span>
+        <input type="number" min={0} className="re-timer-num" value={mins || ''} placeholder="0" aria-label="Timer minutes" autoFocus onChange={(e) => commit(Number(e.target.value || 0), secs)} />
+        <span className="re-timer-unit">min</span>
+        <input type="number" min={0} max={59} className="re-timer-num" value={secs || ''} placeholder="0" aria-label="Timer seconds" onChange={(e) => commit(mins, Number(e.target.value || 0))} />
+        <span className="re-timer-unit">sec</span>
+        <button type="button" className="re-timer-done" aria-label="Done" onClick={() => setEditing(false)}>✓</button>
+        <button type="button" className="re-timer-cancel" aria-label="Remove timer" onClick={() => { onChange(null); setEditing(false) }}>×</button>
+      </span>
+    )
+  }
+  if (seconds != null) {
+    return (
+      <span className="re-timer-pill">
+        <span aria-hidden>⏱</span>
+        <button type="button" className="re-timer-time" onClick={() => setEditing(true)} aria-label="Edit timer">{fmtTimer(seconds)}</button>
+        <button type="button" className="re-timer-x" aria-label="Remove timer" onClick={() => onChange(null)}>×</button>
+      </span>
     )
   }
   return (
-    <div className="re-step-timer re-timer-open">
-      <span className="re-timer-label">⏱ Timer</span>
-      <input
-        type="number"
-        min={0}
-        className="re-timer-num"
-        value={mins || ''}
-        placeholder="0"
-        aria-label="Timer minutes"
-        onChange={(e) => commit(Number(e.target.value || 0), secs)}
-      />
-      <span className="re-timer-unit">min</span>
-      <input
-        type="number"
-        min={0}
-        max={59}
-        className="re-timer-num"
-        value={secs || ''}
-        placeholder="0"
-        aria-label="Timer seconds"
-        onChange={(e) => commit(mins, Number(e.target.value || 0))}
-      />
-      <span className="re-timer-unit">sec</span>
-      <button
-        type="button"
-        className="re-timer-clear"
-        aria-label="Remove timer"
-        onClick={() => { onChange(null); setOpen(false) }}
-      >
-        ×
-      </button>
-    </div>
+    <button type="button" className="re-timer-add" onClick={() => setEditing(true)}>⏱ Add timer</button>
   )
 }
 

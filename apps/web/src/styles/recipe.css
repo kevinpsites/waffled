@@ -800,48 +800,71 @@
 }
 .re-step-body > textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(236,96,73,.12); }
 
-/* per-step ingredient picker — chips drawn from the recipe's ingredients */
-.re-stepings { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
-.re-stepings-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
-  color: var(--ink-3); margin-right: 2px; }
-.re-stepchip { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 13px; font-weight: 700;
-  border-radius: 999px; line-height: 1; cursor: pointer; }
-/* unselected = outline "+ name" button to add it to the step */
-.re-stepchip.add { padding: 6px 12px; border: 1px dashed var(--hair); background: var(--card-2); color: var(--ink-2); }
-.re-stepchip.add:hover { border-color: var(--primary); color: var(--ink); }
-/* selected = filled chip with an inline per-step amount field */
-.re-stepchip.on { padding: 4px 6px 4px 6px; border: 1px solid var(--hair); background: var(--panel); color: var(--ink); }
-.re-stepchip-amt { width: 64px; font: inherit; font-size: 12.5px; font-weight: 700; text-align: center;
-  padding: 4px 6px; border-radius: 999px; border: 1px solid var(--hair); background: #fff; color: var(--ink); }
-.re-stepchip-amt:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(236,96,73,.12); }
-.re-stepchip-name { padding: 0 2px; }
-.re-stepchip.on button { border: 0; background: rgba(0,0,0,0.08); color: var(--ink-2); width: 18px; height: 18px;
-  border-radius: 999px; font-size: 13px; line-height: 1; cursor: pointer; }
-.re-stepchip-extra { padding: 6px 6px 6px 11px; background: var(--card-2); }
+/* per-step tagged ingredients + timer — one wrapping row of compact tags */
+.re-step-tags { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* a tagged ingredient: "• name · amount" */
+.re-tag { display: inline-flex; align-items: center; gap: 7px; font: inherit; font-size: 13px; font-weight: 700;
+  padding: 7px 13px; border-radius: 999px; border: 1px solid var(--hair); background: var(--card); color: var(--ink);
+  line-height: 1; cursor: pointer; }
+.re-tag:hover { border-color: var(--primary); }
+.re-tag-dot { width: 7px; height: 7px; border-radius: 50%; background: #2e9e6b; flex: none; }
+.re-tag-amt { color: var(--ink-3); font-weight: 600; }
+.re-tag-extra { cursor: default; }
+.re-tag-x { border: 0; background: rgba(0,0,0,0.08); color: var(--ink-2); width: 18px; height: 18px; border-radius: 50%;
+  font-size: 13px; line-height: 1; cursor: pointer; display: grid; place-items: center; }
+.re-tag-add { font: inherit; font-size: 13px; font-weight: 700; padding: 7px 13px; border-radius: 999px;
+  border: 1px dashed var(--hair); background: transparent; color: var(--ink-3); cursor: pointer; }
+.re-tag-add:hover { border-color: var(--primary); color: var(--ink-2); }
 
-/* per-step timer control */
-.re-step-timer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.re-timer-add { font: inherit; font-size: 13px; font-weight: 700; padding: 6px 12px; border-radius: 999px;
-  border: 1px dashed var(--hair); background: var(--card-2); color: var(--ink-2); cursor: pointer; }
-.re-timer-add:hover { border-color: var(--primary); color: var(--ink); }
-.re-timer-open { padding: 5px 8px; border-radius: 999px; border: 1px solid var(--hair); background: var(--panel); }
-.re-timer-label { font-size: 12.5px; font-weight: 800; color: var(--ink-2); }
-.re-timer-num { width: 52px; font: inherit; font-size: 12.5px; font-weight: 700; text-align: center;
-  padding: 4px 6px; border-radius: 8px; border: 1px solid var(--hair); background: #fff; color: var(--ink); }
+/* "Tag an ingredient" popover */
+.re-tagpop-wrap { position: relative; display: inline-block; }
+.re-tagpop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; min-width: 264px;
+  background: var(--card); border: 1px solid var(--hair); border-radius: 14px;
+  box-shadow: 0 14px 44px rgba(0,0,0,0.16); padding: 12px; }
+.re-tagpop-h { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--ink-3); margin-bottom: 8px; }
+.re-tagpop-empty { font-size: 13px; font-weight: 600; color: var(--ink-3); padding: 4px 2px; }
+.re-tagpop-row { display: flex; align-items: center; gap: 10px; padding: 6px 2px; }
+.re-tagpop-check { width: 22px; height: 22px; flex: none; border-radius: 7px; border: 1.5px solid var(--hair);
+  background: var(--card); cursor: pointer; display: grid; place-items: center; font-size: 13px; color: #fff; line-height: 1; }
+.re-tagpop-check.on { background: #2e9e6b; border-color: #2e9e6b; }
+.re-tagpop-name { flex: 1; font-size: 14px; font-weight: 700; color: var(--ink-3); }
+.re-tagpop-name.on { color: var(--ink); }
+.re-tagpop-amt { width: 84px; font: inherit; font-size: 13px; font-weight: 700; text-align: center; padding: 6px 8px;
+  border-radius: 8px; border: 1px solid var(--hair); background: var(--panel); color: var(--ink); }
+.re-tagpop-amt:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(236,96,73,.12); }
+
+/* per-step timer: dashed "Add timer" → filled "m:ss" pill (tap to edit, × clears) */
+.re-timer-add { font: inherit; font-size: 13px; font-weight: 700; padding: 7px 13px; border-radius: 999px;
+  border: 1px dashed var(--hair); background: transparent; color: var(--ink-3); cursor: pointer; }
+.re-timer-add:hover { border-color: var(--primary); color: var(--ink-2); }
+.re-timer-pill { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800;
+  padding: 6px 9px 6px 13px; border-radius: 999px; background: var(--primary); color: #fff; line-height: 1; }
+.re-timer-time { border: 0; background: transparent; color: #fff; font: inherit; font-weight: 800; cursor: pointer; padding: 0; }
+.re-timer-x { border: 0; background: rgba(255,255,255,0.28); color: #fff; width: 18px; height: 18px; border-radius: 50%;
+  font-size: 13px; line-height: 1; cursor: pointer; display: grid; place-items: center; }
+.re-timer-edit { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 999px;
+  border: 1px solid var(--primary); background: var(--card); }
+.re-timer-ic { color: var(--primary); }
+.re-timer-num { width: 48px; font: inherit; font-size: 13px; font-weight: 700; text-align: center; padding: 4px 6px;
+  border-radius: 7px; border: 1px solid var(--hair); background: var(--panel); color: var(--ink); }
 .re-timer-num:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(236,96,73,.12); }
 .re-timer-unit { font-size: 12px; font-weight: 700; color: var(--ink-3); }
-.re-timer-clear { border: 0; background: rgba(0,0,0,0.08); color: var(--ink-2); width: 18px; height: 18px;
-  border-radius: 999px; font-size: 13px; line-height: 1; cursor: pointer; }
+.re-timer-done { border: 0; background: var(--primary); color: #fff; width: 22px; height: 22px; border-radius: 50%;
+  cursor: pointer; display: grid; place-items: center; font-size: 13px; line-height: 1; }
+.re-timer-cancel { border: 0; background: rgba(0,0,0,0.08); color: var(--ink-2); width: 22px; height: 22px; border-radius: 50%;
+  cursor: pointer; display: grid; place-items: center; font-size: 13px; line-height: 1; }
 
 .re-notes { width: 100%; font: inherit; font-size: 14.5px; line-height: 1.5; padding: 11px 13px;
   border-radius: var(--r-md); border: 1px solid var(--hair); background: var(--card-2); color: var(--ink); resize: vertical; }
 .re-notes:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(236,96,73,.12); }
 
-/* row controls (reorder / remove) */
-.re-row-ctl { display: flex; gap: 4px; align-items: center; }
-.re-row-ctl button { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--hair);
-  background: var(--card); color: var(--ink-2); cursor: pointer; font-size: 14px; font-weight: 700; }
-.re-row-ctl button:hover:not(:disabled) { background: var(--panel); }
+/* row controls (reorder / remove) — stacked rounded buttons on the right */
+.re-row-ctl { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.re-row-ctl button { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--hair);
+  background: var(--card); color: var(--ink-2); cursor: pointer; font-size: 15px; font-weight: 700;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04); display: grid; place-items: center; }
+.re-row-ctl button:hover:not(:disabled) { border-color: var(--primary); color: var(--ink); }
 .re-row-ctl button:disabled { opacity: 0.3; cursor: default; }
 .re-row-ctl .re-del { color: var(--danger, #c0392b); }
 
