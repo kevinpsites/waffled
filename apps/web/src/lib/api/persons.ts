@@ -30,6 +30,13 @@ export interface SettingsMember extends Person {
   isOwner: boolean
 }
 
+// Post-setup onboarding state, stored server-side in households.settings so it
+// follows the household across the admin's devices (was per-browser localStorage).
+export interface OnboardingState {
+  status?: 'active' | 'dismissed'
+  opened?: boolean
+}
+
 export interface Household {
   id: string
   name: string
@@ -37,6 +44,7 @@ export interface Household {
   weekStart: string
   location: string | null
   ownerPersonId: string | null
+  settings?: { onboarding?: OnboardingState } & Record<string, unknown>
 }
 
 // Every household this account belongs to (incl. the current one) — drives the
@@ -74,6 +82,9 @@ export const personsApi = {
     apiGet<{ provisioned: boolean; household?: Household; person?: Person; memberships?: Membership[]; pendingInvites?: PendingInvite[] }>('/api/household'),
   householdSettings: () => apiGet<{ household: Household; members: SettingsMember[] }>('/api/household/settings'),
   updateHousehold: (patch: Record<string, unknown>) => apiSend<{ household: Household }>('PATCH', '/api/household', patch).then((r) => r.household),
+  // Advance the "Getting started" onboarding (admins): mark opened / dismiss.
+  setOnboarding: (patch: OnboardingState) =>
+    apiSend<{ onboarding: OnboardingState | null }>('PATCH', '/api/household/onboarding', patch).then((r) => r.onboarding),
 }
 
 // Notify listeners (e.g. the topbar clock) that household basics changed.

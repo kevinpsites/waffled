@@ -273,3 +273,43 @@ describe('DELETE /api/persons/:id', () => {
     expect((await call('DELETE', `/api/persons/${id}`, mint('dev|teen'))).statusCode).toBe(403)
   })
 })
+
+describe('onboarding (settings.onboarding)', () => {
+  it('is armed active (not opened) on a first-run setup household', async () => {
+    const res = await call('GET', '/api/household', kevin)
+    expect(res.statusCode).toBe(200)
+    const { household } = JSON.parse(res.body)
+    expect(household.settings?.onboarding?.status).toBe('active')
+    expect(household.settings?.onboarding?.opened).toBeUndefined()
+  })
+
+  it('is absent on a household seeded outside the wizard', async () => {
+    const { household } = JSON.parse((await call('GET', '/api/household', kelly)).body)
+    expect(household.settings?.onboarding).toBeUndefined()
+  })
+
+  it('marks opened without clobbering status', async () => {
+    const res = await call('PATCH', '/api/household/onboarding', kevin, { opened: true })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).onboarding).toMatchObject({ status: 'active', opened: true })
+  })
+
+  it('dismisses, leaving opened intact', async () => {
+    const res = await call('PATCH', '/api/household/onboarding', kevin, { status: 'dismissed' })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).onboarding).toMatchObject({ status: 'dismissed', opened: true })
+  })
+
+  it('rejects an invalid status (400)', async () => {
+    expect((await call('PATCH', '/api/household/onboarding', kevin, { status: 'nope' })).statusCode).toBe(400)
+  })
+
+  it('rejects an empty patch (400)', async () => {
+    expect((await call('PATCH', '/api/household/onboarding', kevin, {})).statusCode).toBe(400)
+  })
+
+  it('forbids a non-admin (403)', async () => {
+    await seedNonAdmin('dev|ob-teen', kevinHouseholdId)
+    expect((await call('PATCH', '/api/household/onboarding', mint('dev|ob-teen'), { opened: true })).statusCode).toBe(403)
+  })
+})

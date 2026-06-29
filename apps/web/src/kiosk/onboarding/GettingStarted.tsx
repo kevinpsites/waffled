@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import {
   personsApi,
@@ -7,6 +7,8 @@ import {
   choresApi,
   calendarsApi,
   usePersons,
+  useHousehold,
+  emitHouseholdChanged,
   type Person,
   type CalendarStatus,
   type ChoreInstance,
@@ -16,17 +18,17 @@ import { PersonModal } from '../components/PersonModal'
 import { ChoreModal } from '../components/ChoreModal'
 import '../../styles/onboarding.css'
 
-// Post-setup "Getting started" onboarding. Activated (localStorage) by the Setup
-// wizard; this renders a slim resumable checklist on Today plus an overlay wizard
-// of 5 optional, skippable steps. Everything is derived from live data so the
-// checklist self-heals — if the admin completed a step elsewhere, it shows done.
+// Post-setup "Getting started" onboarding. Armed by the first-run wizard (the API
+// sets households.settings.onboarding.status = 'active' at provision time); this
+// renders a slim resumable checklist on Today plus an overlay wizard of 5 optional,
+// skippable steps. Everything is derived from live data so the checklist self-heals
+// — if the admin completed a step elsewhere, it shows done.
 //
-// Persistence (no backend):
-//   nook.onboarding         'active' | 'dismissed' (absent = inactive)
-//   nook.onboarding.opened  '1' once the overlay has auto-opened (survives reload)
-
-const ACTIVE_KEY = 'nook.onboarding'
-const OPENED_KEY = 'nook.onboarding.opened'
+// Persistence is server-side (households.settings.onboarding), so onboarding follows
+// the admin across devices instead of living in one browser's localStorage:
+//   status  'active' | 'dismissed' (absent = inactive)
+//   opened  true once the overlay has auto-opened (so a reload doesn't reopen it)
+// Admin-only: the steps are admin actions and dismissal writes the household record.
 
 type StepKey = 'family' | 'calendar' | 'chores' | 'goal' | 'recipes'
 
@@ -433,33 +435,35 @@ function OverlayWizard({
 
 // ── public bar + lifecycle host ──────────────────────────────────────────────
 export function GettingStartedBar() {
-  // Read the activation flag once on mount; re-render-driving state lives here so a
-  // dismiss flips the key AND unmounts the UI.
-  const [active, setActive] = useState(() => {
-    try { return localStorage.getItem(ACTIVE_KEY) === 'active' } catch { return false }
-  })
+  // Onboarding state is server-authoritative (households.settings.onboarding) and
+  // admin-only. `dismissed` mirrors the dismiss locally so the bar disappears the
+  // instant it's clicked, without waiting on the household refetch.
+  const { household, person } = useHousehold()
+  const onboarding = household?.settings?.onboarding ?? null
+  const isAdmin = person?.isAdmin ?? false
+  const [dismissed, setDismissed] = useState(false)
   const [overlayOpen, setOverlayOpen] = useState(false)
   const { statuses, loaded, refresh, markDone } = useOnboardingStatuses()
+  // Guard so the one-time auto-open + its PATCH fire at most once per mount.
+  const openedRef = useRef(false)
 
   const steps = STEPS
   const allDone = steps.every((s) => statuses[s.key])
+  const active = isAdmin && onboarding?.status === 'active' && !dismissed
 
-  // Auto-open the overlay the first time onboarding becomes active — but only once,
-  // tracked separately so a page reload doesn't reopen it.
+  // Auto-open the overlay the first time onboarding is active — once, tracked on the
+  // household (settings.onboarding.opened) so a page reload doesn't reopen it.
   useEffect(() => {
-    if (!active) return
-    try {
-      if (localStorage.getItem(OPENED_KEY) !== '1') {
-        localStorage.setItem(OPENED_KEY, '1')
-        setOverlayOpen(true)
-      }
-    } catch { /* storage unavailable */ }
-  }, [active])
+    if (!active || onboarding?.opened || openedRef.current) return
+    openedRef.current = true
+    setOverlayOpen(true)
+    personsApi.setOnboarding({ opened: true }).then(emitHouseholdChanged).catch(() => {})
+  }, [active, onboarding?.opened])
 
   const dismiss = useCallback(() => {
-    try { localStorage.setItem(ACTIVE_KEY, 'dismissed') } catch { /* ignore */ }
+    setDismissed(true)
     setOverlayOpen(false)
-    setActive(false)
+    personsApi.setOnboarding({ status: 'dismissed' }).then(emitHouseholdChanged).catch(() => {})
   }, [])
 
   // All five complete → quietly retire the onboarding for good.

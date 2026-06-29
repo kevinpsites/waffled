@@ -173,8 +173,12 @@ export async function provisionHousehold(
   try {
     await client.query('begin')
 
+    // Brand-new household from the first-run wizard → arm the post-setup "Getting
+    // started" onboarding (server-authoritative, in settings.onboarding so it's
+    // shared across the admin's devices, not stuck in one browser's localStorage).
     const h = await client.query<HouseholdRow>(
-      `insert into households (name, timezone) values ($1, $2) returning *`,
+      `insert into households (name, timezone, settings)
+       values ($1, $2, '{"onboarding":{"status":"active"}}'::jsonb) returning *`,
       [input.householdName, input.timezone]
     )
     const household = h.rows[0]

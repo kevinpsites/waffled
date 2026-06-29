@@ -212,8 +212,8 @@ function SetupWizard() {
     }
     try {
       await authApi.setup(input)
-      // Brand-new admin → kick off the post-setup "Getting started" onboarding.
-      try { localStorage.setItem('nook.onboarding', 'active') } catch { /* storage unavailable */ }
+      // The post-setup "Getting started" onboarding is armed server-side at provision
+      // time (households.settings.onboarding), so there's nothing to flip here.
     } catch (err) {
       setError((err as Error).message)
       setBusy(false)

@@ -195,6 +195,34 @@ export async function updateHousehold(householdId: string, patch: Record<string,
   return rows[0] ?? null
 }
 
+// Merge the post-setup "Getting started" onboarding state into settings.onboarding
+// (status: active|dismissed, opened: has the overlay auto-opened once). jsonb merge
+// so we never clobber sibling settings keys (rewards/chores/etc.).
+export async function updateOnboarding(
+  householdId: string,
+  patch: { status?: string; opened?: boolean }
+): Promise<HouseholdRow | null> {
+  const merge: Record<string, unknown> = {}
+  if (patch.status !== undefined) merge.status = patch.status
+  if (patch.opened !== undefined) merge.opened = patch.opened
+  if (Object.keys(merge).length === 0) {
+    const { rows } = await query<HouseholdRow>(`select * from households where id = $1`, [householdId])
+    return rows[0] ?? null
+  }
+  const { rows } = await query<HouseholdRow>(
+    `update households
+        set settings = jsonb_set(
+          coalesce(settings, '{}'::jsonb),
+          '{onboarding}',
+          coalesce(settings->'onboarding', '{}'::jsonb) || $2::jsonb
+        )
+      where id = $1
+      returning *`,
+    [householdId, JSON.stringify(merge)]
+  )
+  return rows[0] ?? null
+}
+
 export function registerPersonRoutes(api: Api): void {
   // Household settings: the household + its members (with login/owner flags).
   api.get('/api/household/settings', tenantRoute((tenant) => householdSettings(tenant.householdId)))
@@ -211,6 +239,26 @@ export function registerPersonRoutes(api: Api): void {
     const h = await updateHousehold(tenant.householdId, patch)
     if (!h) return res.status(404).json({ error: 'NotFound', message: 'household not found' })
     return { household: presentHousehold(h) }
+  }))
+
+  // Advance the "Getting started" onboarding (admins only): mark the overlay opened
+  // or dismiss the checklist. Server-side so it follows the household, not a device.
+  api.patch('/api/household/onboarding', adminRoute(async (tenant, req: Request, res: Response) => {
+    const body = (req.body ?? {}) as { status?: unknown; opened?: unknown }
+    const patch: { status?: string; opened?: boolean } = {}
+    if (body.status !== undefined) {
+      if (body.status !== 'active' && body.status !== 'dismissed') {
+        return res.status(400).json({ error: 'BadRequest', message: 'status must be active|dismissed' })
+      }
+      patch.status = body.status
+    }
+    if (body.opened !== undefined) patch.opened = !!body.opened
+    if (patch.status === undefined && patch.opened === undefined) {
+      return res.status(400).json({ error: 'BadRequest', message: 'provide status and/or opened' })
+    }
+    const h = await updateOnboarding(tenant.householdId, patch)
+    if (!h) return res.status(404).json({ error: 'NotFound', message: 'household not found' })
+    return { onboarding: (h.settings as { onboarding?: unknown })?.onboarding ?? null }
   }))
 
   // List everyone in the household (any member may read).
