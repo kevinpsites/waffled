@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Throwaway isolated demo stack — a second, fully separate Nook (project "nook-demo")
+# with its own DB/media volumes and ports, for trying the first-run setup wizard and a
+# fresh household WITHOUT touching the real `nook` stack or its data.
+#
+#   ./nook-demo up      build + start (empty DB → first-run wizard at http://localhost:8081)
+#   ./nook-demo status  container health
+#   ./nook-demo logs    follow logs (optionally a service)
+#   ./nook-demo psql    psql into the demo DB
+#   ./nook-demo down    stop (KEEP volumes)
+#   ./nook-demo nuke    stop + DELETE this stack's volumes (safe: only nook-demo_*)
+#
+# The real stack stays up the whole time; this never touches nook_pgdata / nook_media.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DC=(docker compose -p nook-demo \
+  -f "$ROOT/infra/compose/docker-compose.yml" \
+  -f "$ROOT/infra/compose/docker-compose.demo.yml" \
+  --env-file "$ROOT/infra/compose/.env.demo")
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  up)
+    export GIT_SHA="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo demo)"
+    export BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    "${DC[@]}" up -d --build "$@"
+    echo
+    echo "Demo stack up.  Web/setup wizard:  http://localhost:8081"
+    echo "                API:               http://localhost:3100"
+    ;;
+  status) "${DC[@]}" ps ;;
+  logs)   "${DC[@]}" logs -f "$@" ;;
+  psql)   docker exec -it nook-demo-postgres psql -U nook -d nook ;;
+  exec)   "${DC[@]}" exec "$@" ;;
+  down)   "${DC[@]}" down "$@" ;;
+  nuke)   "${DC[@]}" down -v "$@"; echo "Removed nook-demo containers + volumes." ;;
+  *) grep -E '^#( |$)' "$0" | sed -E 's/^# ?//' ;;
+esac
