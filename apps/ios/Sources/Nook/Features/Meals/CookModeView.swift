@@ -79,19 +79,23 @@ struct CookModeView: View {
                 // long step is never clipped (short steps sit dead-center; long ones scroll).
                 GeometryReader { geo in
                     ScrollView {
-                        VStack(alignment: .center, spacing: 24) {
+                        // Left-aligned and using the full width (with margins) so the big
+                        // type fills the screen instead of wrapping into a narrow center
+                        // column — long steps fit without scrolling.
+                        VStack(alignment: .leading, spacing: 24) {
                             Text("STEP \(step?.stepNumber ?? index + 1) OF \(steps.count)")
                                 .font(.system(size: 14, weight: .heavy)).tracking(1.4)
                                 .foregroundStyle(Color(hex: 0x167A4A))
                             Text(step?.instruction ?? "")
                                 .font(NK.serif(instructionSize, .semibold)).foregroundStyle(NK.ink)
-                                .multilineTextAlignment(.center)
+                                .multilineTextAlignment(.leading)
                                 .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             if let secs = step?.timerSeconds, secs > 0 {
                                 startTimerButton(secs: secs)
                             }
                             if let igs = step?.ingredients, !igs.isEmpty {
-                                ChipFlow(spacing: 8, lineSpacing: 8, alignment: .center) {
+                                ChipFlow(spacing: 8, lineSpacing: 8, alignment: .leading) {
                                     ForEach(igs, id: \.self) { ig in
                                         Text(ig).font(.system(size: isKiosk ? 18 : 15, weight: .medium))
                                             .foregroundStyle(Color(hex: 0x167A4A))
@@ -103,16 +107,15 @@ struct CookModeView: View {
                             }
                             if let note = step?.note {
                                 Text("📝 \(note)").font(.system(size: isKiosk ? 19 : 16)).foregroundStyle(NK.ink2)
-                                    .multilineTextAlignment(.center)
-                                    .padding(14).frame(maxWidth: .infinity)
+                                    .multilineTextAlignment(.leading)
+                                    .padding(14).frame(maxWidth: .infinity, alignment: .leading)
                                     .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
                             }
                         }
-                        .frame(maxWidth: 720)
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 28).padding(.vertical, 24)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, isKiosk ? 56 : 28).padding(.vertical, 24)
                         // Leave room so the floating dock never hides content.
-                        .padding(.bottom, dockTimers.isEmpty ? 0 : 88)
+                        .padding(.bottom, dockTimers.isEmpty ? 0 : 96)
                         // Center vertically when the step is short; grow (and scroll) when long.
                         .frame(minHeight: geo.size.height, alignment: .center)
                     }
@@ -123,10 +126,15 @@ struct CookModeView: View {
             .background(NK.canvas)
 
             if !dockTimers.isEmpty && firingTimer == nil {
-                VStack { Spacer(); timerDock }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 92)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                // Pinned bottom-left and width-capped, so it occupies one side instead of
+                // spanning the whole screen.
+                HStack {
+                    VStack { Spacer(); timerDock }.frame(maxWidth: 360)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 92)
+                .transition(.move(edge: .leading).combined(with: .opacity))
             }
 
             if let firing = firingTimer {
@@ -169,33 +177,44 @@ struct CookModeView: View {
     }
 
     /// Floating dock of running/paused timers — stays put across step navigation.
+    /// Wrapped in a TimelineView so each timer's remaining ticks live every second
+    /// (the parent's per-second pass alone didn't reliably refresh the dock — e.g. a
+    /// timer froze at its new value right after "+1:00" until you paused/resumed it).
     private var timerDock: some View {
-        VStack(spacing: 8) {
-            ForEach(dockTimers) { t in
-                HStack(spacing: 12) {
-                    Image(systemName: "timer").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.primaryD)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(t.label).font(.system(size: 11, weight: .heavy)).tracking(0.6).foregroundStyle(NK.ink2)
-                        Text(CookTimer.mmss(t.remaining))
-                            .font(.system(size: 22, weight: .heavy, design: .rounded))
-                            .monospacedDigit().foregroundStyle(NK.ink)
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            VStack(spacing: 8) {
+                ForEach(dockTimers) { t in
+                    HStack(spacing: 12) {
+                        // Tap the timer to jump to its step (the timer keeps running).
+                        Button { goToStep(t) } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "timer").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.primaryD)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(t.label).font(.system(size: 11, weight: .heavy)).tracking(0.6).foregroundStyle(NK.ink2)
+                                    Text(CookTimer.mmss(t.remaining))
+                                        .font(.system(size: 22, weight: .heavy, design: .rounded))
+                                        .monospacedDigit().foregroundStyle(NK.ink)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                        Spacer(minLength: 8)
+                        Button { togglePause(t) } label: {
+                            Image(systemName: t.running ? "pause.fill" : "play.fill")
+                                .font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                                .frame(width: 34, height: 34).background(NK.panel).clipShape(Circle())
+                        }.buttonStyle(.plain)
+                        Button { dismissTimer(t) } label: {
+                            Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
+                                .frame(width: 34, height: 34).background(NK.panel).clipShape(Circle())
+                        }.buttonStyle(.plain)
                     }
-                    Spacer(minLength: 0)
-                    Button { togglePause(t) } label: {
-                        Image(systemName: t.running ? "pause.fill" : "play.fill")
-                            .font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
-                            .frame(width: 34, height: 34).background(NK.panel).clipShape(Circle())
-                    }.buttonStyle(.plain)
-                    Button { dismissTimer(t) } label: {
-                        Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
-                            .frame(width: 34, height: 34).background(NK.panel).clipShape(Circle())
-                    }.buttonStyle(.plain)
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(NK.card)
+                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).stroke(NK.hair, lineWidth: 1))
+                    .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
                 }
-                .padding(.horizontal, 14).padding(.vertical, 10)
-                .background(NK.card)
-                .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).stroke(NK.hair, lineWidth: 1))
-                .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
             }
         }
     }
@@ -275,6 +294,12 @@ struct CookModeView: View {
     private func jumpTo(_ t: CookTimer) {
         if steps.indices.contains(t.stepIndex) { withAnimation { index = t.stepIndex } }
         dismissTimer(t)
+    }
+
+    /// Tap a running dock timer → jump to its step, keeping the timer counting (unlike
+    /// the alarm's "Jump to step", which clears the finished timer).
+    private func goToStep(_ t: CookTimer) {
+        if steps.indices.contains(t.stepIndex) { withAnimation { index = t.stepIndex } }
     }
 
     private func addMinute(_ t: CookTimer) {
