@@ -113,6 +113,7 @@ export function RecipeEditor() {
   const [notes, setNotes] = useState('')
   const [ings, setIngs] = useState<EditIng[]>([blankIng()])
   const [stps, setStps] = useState<EditStep[]>([blankStep()])
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
 
   const [pasteOpen, setPasteOpen] = useState(false)
   const [markdown, setMarkdown] = useState('')
@@ -295,7 +296,24 @@ export function RecipeEditor() {
   }
 
   // ── ingredient/step row ops ──
-  const moveIng = (i: number, d: -1 | 1) => setIngs((rs) => swap(rs, i, i + d))
+  // Drag-handle reorder: a dropped row adopts the section of the row it lands after,
+  // so dragging a row into a section group just works.
+  const dropRow = (target: number) => {
+    setIngs((rs) => {
+      if (dragIdx == null || dragIdx === target) return rs
+      const arr = [...rs]
+      const [moved] = arr.splice(dragIdx, 1)
+      const insertAt = dragIdx < target ? target - 1 : target
+      const before = arr[insertAt - 1]
+      moved.section = before ? before.section : (arr[insertAt]?.section ?? moved.section)
+      arr.splice(insertAt, 0, moved)
+      return arr
+    })
+    setDragIdx(null)
+  }
+  // Rename a section: apply the new name to every row in that group.
+  const renameGroup = (indices: number[], name: string) =>
+    setIngs((rs) => rs.map((r, idx) => (indices.includes(idx) ? { ...r, section: name } : r)))
   const moveStep = (i: number, d: -1 | 1) => setStps((rs) => swap(rs, i, i + d))
   const addPick = (i: number, ing: EditIng) =>
     setStps((rs) => patch(rs, i, { picks: [...rs[i].picks, { uid: ing.uid, amount: defaultStepAmount(ing) }] }))
@@ -309,6 +327,14 @@ export function RecipeEditor() {
     setStps((rs) => patch(rs, i, { timerSeconds: secs }))
 
   const namedIngs = ings.filter((g) => g.name.trim())
+
+  // Group consecutive rows by section for the grouped (header + rows) layout.
+  const ingGroups: { section: string; items: { row: EditIng; i: number }[] }[] = []
+  ings.forEach((row, i) => {
+    const last = ingGroups[ingGroups.length - 1]
+    if (last && last.section === row.section) last.items.push({ row, i })
+    else ingGroups.push({ section: row.section, items: [{ row, i }] })
+  })
 
   // ── quiet AI auto-fill ──
   const META_AI_KEYS = ['cuisine', 'protein', 'mealType', 'base', 'effort', 'cookMethod', 'flavorProfile'] as const
@@ -369,7 +395,15 @@ export function RecipeEditor() {
   }
   const dismissAll = () => { setSuggestion(null); setDismissed(new Set()) }
 
-  function addIngredient() { setIngs((rs) => [...rs, blankIng()]); focusIngRef.current = true }
+  // New rows join the current (last) section; "Add section" starts a fresh group.
+  function addIngredient() {
+    setIngs((rs) => [...rs, { ...blankIng(), section: rs.length ? rs[rs.length - 1].section : '' }])
+    focusIngRef.current = true
+  }
+  function addSection() {
+    setIngs((rs) => [...rs, { ...blankIng(), section: 'New section' }])
+    focusIngRef.current = true
+  }
   function addStep() { setStps((rs) => [...rs, blankStep()]); focusStepRef.current = true }
 
   // After adding a row, drop the cursor into it so entry stays on the keyboard.
@@ -528,23 +562,51 @@ export function RecipeEditor() {
       {/* ingredients */}
       <div className="card re-card">
         <div className="card-h re-section-h" style={{ marginBottom: 14 }}>Ingredients</div>
+        <div className="re-ing-head">
+          <span /><span>Qty</span><span>Unit</span><span>Ingredient</span><span>Prep · optional</span><span />
+        </div>
         <div className="re-ings" ref={ingListRef}>
-          {ings.map((row, i) => (
-            <div key={i} className="re-ing-row">
-              <input className="re-ing-amt" value={row.amount} onChange={(e) => setIngs((rs) => patch(rs, i, { amount: e.target.value }))} placeholder="2" />
-              <input className="re-ing-unit" value={row.unit} onChange={(e) => setIngs((rs) => patch(rs, i, { unit: e.target.value }))} placeholder="cups" />
-              <input className="re-ing-name" value={row.name} onChange={(e) => setIngs((rs) => patch(rs, i, { name: e.target.value }))} placeholder="ingredient" />
-              <input className="re-ing-prep" value={row.prepNote} onChange={(e) => setIngs((rs) => patch(rs, i, { prepNote: e.target.value }))} placeholder="diced (optional)" />
-              <input className="re-ing-sec" value={row.section} onChange={(e) => setIngs((rs) => patch(rs, i, { section: e.target.value }))} placeholder="section" />
-              <div className="re-row-ctl">
-                <button type="button" tabIndex={-1} aria-label="Move up" disabled={i === 0} onClick={() => moveIng(i, -1)}>↑</button>
-                <button type="button" tabIndex={-1} aria-label="Move down" disabled={i === ings.length - 1} onClick={() => moveIng(i, 1)}>↓</button>
-                <button type="button" tabIndex={-1} aria-label="Remove" className="re-del" onClick={() => setIngs((rs) => rs.filter((_, j) => j !== i))}>×</button>
-              </div>
+          {ingGroups.map((grp, gi) => (
+            <div className="re-ing-group" key={gi}>
+              {grp.section !== '' && (
+                <input
+                  className="re-ing-section"
+                  value={grp.section}
+                  onChange={(e) => renameGroup(grp.items.map((it) => it.i), e.target.value)}
+                  placeholder="Section name"
+                  aria-label="Section name"
+                />
+              )}
+              {grp.items.map(({ row, i }) => (
+                <div
+                  key={row.uid}
+                  className={`re-ing-row${dragIdx === i ? ' re-ing-dragging' : ''}`}
+                  onDragOver={(e) => { if (dragIdx != null) e.preventDefault() }}
+                  onDrop={() => dropRow(i)}
+                >
+                  <button
+                    type="button"
+                    className="re-ing-drag"
+                    aria-label="Drag to reorder"
+                    tabIndex={-1}
+                    draggable
+                    onDragStart={() => setDragIdx(i)}
+                    onDragEnd={() => setDragIdx(null)}
+                  >⠿</button>
+                  <input className="re-ing-amt" value={row.amount} onChange={(e) => setIngs((rs) => patch(rs, i, { amount: e.target.value }))} placeholder="2" />
+                  <input className="re-ing-unit" value={row.unit} onChange={(e) => setIngs((rs) => patch(rs, i, { unit: e.target.value }))} placeholder="cups" />
+                  <input className="re-ing-name" value={row.name} onChange={(e) => setIngs((rs) => patch(rs, i, { name: e.target.value }))} placeholder="ingredient" />
+                  <input className="re-ing-prep" value={row.prepNote} onChange={(e) => setIngs((rs) => patch(rs, i, { prepNote: e.target.value }))} placeholder="diced" />
+                  <button type="button" tabIndex={-1} aria-label="Remove" className="re-ing-x" onClick={() => setIngs((rs) => rs.filter((_, j) => j !== i))}>×</button>
+                </div>
+              ))}
             </div>
           ))}
         </div>
-        <button type="button" className="pill re-add-row" onClick={addIngredient}>+ Add ingredient</button>
+        <div className="re-ing-actions">
+          <button type="button" className="btn re-add-ing" onClick={addIngredient}>+ Add ingredient</button>
+          <button type="button" className="re-add-section" onClick={addSection}>+ Add section</button>
+        </div>
       </div>
 
       {/* steps */}

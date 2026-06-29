@@ -788,14 +788,44 @@
 /* bottom "add row" button (keyboard flow: tab past the rows to add another) */
 .re-add-row { margin-top: 12px; cursor: pointer; }
 
-/* ingredient rows */
-.re-ings { display: flex; flex-direction: column; gap: 8px; }
-.re-ing-row { display: grid; grid-template-columns: 60px 80px 1.4fr 1.2fr 110px auto; gap: 8px; align-items: center; }
+/* ingredient rows — grouped by section, drag handle + single remove */
+.re-ings { display: flex; flex-direction: column; gap: 4px; }
+.re-ing-cols { } /* shared grid template */
+.re-ing-head, .re-ing-row { display: grid; grid-template-columns: 24px 60px 84px 1.5fr 1.2fr 32px; gap: 8px; align-items: center; }
+.re-ing-head { padding: 0 0 2px; }
+.re-ing-head > span { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
+.re-ing-group { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.re-ing-section {
+  font: inherit; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--ink-2); background: transparent; border: 0; border-bottom: 1px solid var(--hair);
+  padding: 8px 2px 6px; margin-top: 6px;
+}
+.re-ing-section:focus { outline: none; border-bottom-color: var(--primary); }
 .re-ing-row input {
   width: 100%; font: inherit; font-size: 14px; padding: 9px 11px; border-radius: var(--r-md);
   border: 1px solid var(--hair); background: var(--card-2); color: var(--ink);
 }
 .re-ing-row input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(236,96,73,.12); }
+.re-ing-dragging { opacity: 0.45; }
+.re-ing-drag {
+  border: 0; background: transparent; color: var(--ink-3); cursor: grab; font-size: 15px;
+  padding: 0; line-height: 1; display: grid; place-items: center;
+}
+.re-ing-drag:active { cursor: grabbing; }
+.re-ing-x {
+  border: 0; background: transparent; color: var(--ink-3); cursor: pointer; font-size: 18px;
+  width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center;
+}
+.re-ing-x:hover { background: var(--panel); color: var(--danger, #c0392b); }
+.re-ing-actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+.re-add-ing {
+  font: inherit; font-size: 14px; font-weight: 800; padding: 11px 18px; border-radius: 999px;
+  border: 1px solid var(--hair); background: var(--card); color: var(--ink); cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.re-add-ing:hover { border-color: var(--primary); }
+.re-add-section { font: inherit; font-size: 14px; font-weight: 700; border: 0; background: transparent; color: var(--ink-3); cursor: pointer; }
+.re-add-section:hover { color: var(--ink); }
 
 /* method steps */
 .re-steps { display: flex; flex-direction: column; gap: 12px; }
@@ -900,7 +930,13 @@
 @media (max-width: 760px) {
   .re-meta-grid { grid-template-columns: repeat(2, 1fr); }
   .re-chips { grid-template-columns: 1fr; }
-  .re-ing-row { grid-template-columns: 56px 1fr auto; }
-  .re-ing-row .re-ing-unit { grid-column: 1 / 2; }
-  .re-ing-row .re-ing-prep, .re-ing-row .re-ing-sec { grid-column: 2 / 3; }
+  /* stack the row into two columns on narrow screens; drag + remove flank it */
+  .re-ing-head { display: none; }
+  .re-ing-row { grid-template-columns: 22px 56px 1fr 30px; }
+  .re-ing-row .re-ing-amt { grid-column: 2 / 3; }
+  .re-ing-row .re-ing-unit { grid-column: 3 / 4; }
+  .re-ing-row .re-ing-name { grid-column: 2 / 4; }
+  .re-ing-row .re-ing-prep { grid-column: 2 / 4; }
+  .re-ing-row .re-ing-drag { grid-row: 1 / 4; }
+  .re-ing-row .re-ing-x { grid-row: 1 / 4; grid-column: 4 / 5; }
 }
