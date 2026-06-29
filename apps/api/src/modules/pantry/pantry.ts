@@ -49,6 +49,12 @@ function readLocations(settings: unknown): string[] {
   return Array.isArray(l) && l.length ? (l as unknown[]).map(String) : DEFAULT_LOCATIONS
 }
 
+// Whether the pantry shows a card on Today — default on (the glance is the point).
+function readShowOnToday(settings: unknown): boolean {
+  const v = (settings as { pantry?: { showOnToday?: unknown } } | null | undefined)?.pantry?.showOnToday
+  return v !== false
+}
+
 export function registerPantryRoutes(api: Api): void {
   // List all pantry items + the household's configured locations.
   api.get('/api/pantry', tenantRoute(async (tenant) => {
@@ -60,7 +66,7 @@ export function registerPantryRoutes(api: Api): void {
         order by location, name`,
       [tenant.householdId]
     )
-    return { items: rows.map(present), locations: readLocations(settings) }
+    return { items: rows.map(present), locations: readLocations(settings), showOnToday: readShowOnToday(settings) }
   }))
 
   // Add an item (any member — collaborative, like lists).
@@ -133,34 +139,39 @@ export function registerPantryRoutes(api: Api): void {
     return res.status(204).send('')
   }))
 
-  // Set the household's pantry locations (any member). Trims, dedupes, drops blanks;
-  // always keeps at least the defaults.
-  api.put('/api/pantry/locations', tenantRoute(async (tenant, req: Request, res: Response) => {
+  // Update the pantry module's per-household config (any member): the location list
+  // and/or whether it shows a Today card. Both live in settings.pantry.
+  api.put('/api/pantry/config', tenantRoute(async (tenant, req: Request, res: Response) => {
     await requirePantry(tenant)
-    const b = (req.body ?? {}) as { locations?: unknown }
-    if (!Array.isArray(b.locations)) return res.status(400).json({ error: 'BadRequest', message: 'locations must be an array' })
-    const seen = new Set<string>()
-    const clean: string[] = []
-    for (const raw of b.locations) {
-      const s = String(raw).trim()
-      const key = s.toLowerCase()
-      if (!s || seen.has(key)) continue
-      seen.add(key)
-      clean.push(s)
+    const b = (req.body ?? {}) as { locations?: unknown; showOnToday?: unknown }
+    const merge: Record<string, unknown> = {}
+    if (Array.isArray(b.locations)) {
+      const seen = new Set<string>()
+      const clean: string[] = []
+      for (const raw of b.locations) {
+        const s = String(raw).trim()
+        const key = s.toLowerCase()
+        if (!s || seen.has(key)) continue
+        seen.add(key)
+        clean.push(s)
+      }
+      merge.locations = clean.length ? clean : DEFAULT_LOCATIONS
     }
-    const locations = clean.length ? clean : DEFAULT_LOCATIONS
+    if (typeof b.showOnToday === 'boolean') merge.showOnToday = b.showOnToday
+    if (Object.keys(merge).length === 0) {
+      return res.status(400).json({ error: 'BadRequest', message: 'provide locations and/or showOnToday' })
+    }
     // Nested merge (jsonb_set's 2-level path won't create a missing `pantry` parent):
-    // preserve sibling settings + any other pantry keys, set/replace pantry.locations.
-    await query(
+    // preserve sibling settings + any other pantry keys.
+    const { rows } = await query<{ settings: unknown }>(
       `update households
           set settings = coalesce(settings, '{}'::jsonb)
-               || jsonb_build_object(
-                    'pantry',
-                    coalesce(settings->'pantry', '{}'::jsonb) || jsonb_build_object('locations', $2::jsonb)
-                  )
-        where id = $1`,
-      [tenant.householdId, JSON.stringify(locations)]
+               || jsonb_build_object('pantry', coalesce(settings->'pantry', '{}'::jsonb) || $2::jsonb)
+        where id = $1
+        returning settings`,
+      [tenant.householdId, JSON.stringify(merge)]
     )
-    return { locations }
+    const settings = rows[0]?.settings
+    return { locations: readLocations(settings), showOnToday: readShowOnToday(settings) }
   }))
 }

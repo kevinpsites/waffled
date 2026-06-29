@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { personsApi, permissionsApi, healthApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus } from '../lib/api'
+import { personsApi, permissionsApi, healthApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
 import { PersonModal } from './components/PersonModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -1356,8 +1356,25 @@ function SignOutButton({ className }: { className?: string }) {
 
 // About / account — what this Nook is, plus the sign-out control. Replaces the old
 // placeholder now that real auth exists.
-// Enable/disable optional, opt-in feature modules for this household. Available
-// modules toggle live; planned ones show as "Coming soon" until they're built.
+// A pill toggle switch (replaces the bare checkbox for on/off settings).
+function Switch({ checked, disabled, onChange, ariaLabel }: { checked: boolean; disabled?: boolean; onChange: (v: boolean) => void; ariaLabel: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      className={`set-switch${checked ? ' on' : ''}`}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="set-switch-knob" />
+    </button>
+  )
+}
+
+// Enable/disable optional modules for this household. Available modules use a live
+// toggle and, when on, reveal their own settings; planned ones show "Coming soon".
 function ModulesPanel() {
   const { household } = useHousehold()
   const [saving, setSaving] = useState<string | null>(null)
@@ -1386,26 +1403,73 @@ function ModulesPanel() {
           const on = available && moduleEnabled(household, m.key)
           return (
             <div key={m.key} className={`set-module${on ? ' on' : ''}`}>
-              <div className="set-module-ic">{m.icon}</div>
-              <div className="set-module-main">
-                <div className="set-module-name">{m.name}</div>
-                <div className="set-module-desc">{m.description}</div>
+              <div className="set-module-row">
+                <div className="set-module-ic">{m.icon}</div>
+                <div className="set-module-main">
+                  <div className="set-module-name">{m.name}</div>
+                  <div className="set-module-desc">{m.description}</div>
+                </div>
+                {available ? (
+                  <Switch checked={on} disabled={saving === m.key} onChange={(v) => toggle(m.key, v)} ariaLabel={`Enable ${m.name}`} />
+                ) : (
+                  <span className="set-module-soon">Coming soon</span>
+                )}
               </div>
-              {available ? (
-                <input
-                  type="checkbox"
-                  className="set-check"
-                  checked={on}
-                  disabled={saving === m.key}
-                  aria-label={`Enable ${m.name}`}
-                  onChange={(e) => toggle(m.key, e.target.checked)}
-                />
-              ) : (
-                <span className="set-module-soon">Coming soon</span>
-              )}
+              {on && m.hasSettings && m.key === 'pantry' && <PantrySettings />}
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+// Pantry's own settings (shown when the module is on): the Today-card toggle and
+// the editable location list. Saves immediately; refreshes household so Today reacts.
+function PantrySettings() {
+  const { locations, showOnToday, loading } = usePantry()
+  const [list, setList] = useState<string[]>([])
+  const [adding, setAdding] = useState('')
+  const [show, setShow] = useState(true)
+  useEffect(() => { if (!loading) { setList(locations); setShow(showOnToday) } }, [loading, locations, showOnToday])
+
+  async function commitLocations(next: string[]) {
+    setList(next)
+    try { await pantryApi.setConfig({ locations: next.filter((x) => x.trim()) }); emitHouseholdChanged() } catch { /* ignore */ }
+  }
+  async function toggleShow(v: boolean) {
+    setShow(v)
+    try { await pantryApi.setConfig({ showOnToday: v }); emitHouseholdChanged() } catch { /* ignore */ }
+  }
+
+  if (loading) return null
+  return (
+    <div className="set-module-settings">
+      <div className="set-module-setrow">
+        <span>Show a card on Today</span>
+        <Switch checked={show} onChange={toggleShow} ariaLabel="Show pantry on Today" />
+      </div>
+      <div className="set-module-setlabel">Locations</div>
+      <div className="pantry-loc-list">
+        {list.map((l, i) => (
+          <div className="pantry-loc-row" key={i}>
+            <input
+              value={l}
+              onChange={(e) => setList((ls) => ls.map((x, j) => (j === i ? e.target.value : x)))}
+              onBlur={() => commitLocations(list)}
+            />
+            <button type="button" aria-label={`Remove ${l}`} onClick={() => commitLocations(list.filter((_, j) => j !== i))}>×</button>
+          </div>
+        ))}
+      </div>
+      <div className="pantry-loc-add">
+        <input
+          value={adding}
+          onChange={(e) => setAdding(e.target.value)}
+          placeholder="Add a location…"
+          onKeyDown={(e) => { if (e.key === 'Enter' && adding.trim()) { commitLocations([...list, adding.trim()]); setAdding('') } }}
+        />
+        <button type="button" className="pill" disabled={!adding.trim()} onClick={() => { commitLocations([...list, adding.trim()]); setAdding('') }}>Add</button>
       </div>
     </div>
   )

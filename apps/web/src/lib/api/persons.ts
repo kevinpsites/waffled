@@ -44,7 +44,11 @@ export interface Household {
   weekStart: string
   location: string | null
   ownerPersonId: string | null
-  settings?: { onboarding?: OnboardingState; modules?: Record<string, boolean> } & Record<string, unknown>
+  settings?: {
+    onboarding?: OnboardingState
+    modules?: Record<string, boolean>
+    pantry?: { locations?: string[]; showOnToday?: boolean }
+  } & Record<string, unknown>
 }
 
 // Every household this account belongs to (incl. the current one) — drives the

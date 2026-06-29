@@ -71,12 +71,13 @@ describe('pantry module gate', () => {
 describe('pantry CRUD', () => {
   let itemId = ''
 
-  it('starts empty with the default locations', async () => {
+  it('starts empty with the default locations + Today on', async () => {
     const res = await call('GET', '/api/pantry', kevin)
     expect(res.statusCode).toBe(200)
     const body = JSON.parse(res.body)
     expect(body.items).toEqual([])
     expect(body.locations).toEqual(['Freezer', 'Fridge', 'Pantry'])
+    expect(body.showOnToday).toBe(true)
   })
 
   it('adds an item with amount + unit + location', async () => {
@@ -104,12 +105,21 @@ describe('pantry CRUD', () => {
     expect(JSON.parse(res.body).item).toMatchObject({ amount: '1', note: 'half used', name: 'Ground beef' })
   })
 
-  it('sets custom locations (adds a garage freezer)', async () => {
-    const res = await call('PUT', '/api/pantry/locations', kevin, { locations: ['Freezer', 'Garage freezer', 'Fridge', 'Pantry'] })
+  it('sets custom locations (adds a garage freezer) via config', async () => {
+    const res = await call('PUT', '/api/pantry/config', kevin, { locations: ['Freezer', 'Garage freezer', 'Fridge', 'Pantry'] })
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).locations).toContain('Garage freezer')
     const body = JSON.parse((await call('GET', '/api/pantry', kevin)).body)
     expect(body.locations).toContain('Garage freezer')
+  })
+
+  it('toggles the Today card off via config (locations preserved)', async () => {
+    const res = await call('PUT', '/api/pantry/config', kevin, { showOnToday: false })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).showOnToday).toBe(false)
+    const body = JSON.parse((await call('GET', '/api/pantry', kevin)).body)
+    expect(body.showOnToday).toBe(false)
+    expect(body.locations).toContain('Garage freezer') // not clobbered
   })
 
   it('deletes an item (204) and it stops listing', async () => {

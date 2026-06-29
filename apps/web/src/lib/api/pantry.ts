@@ -22,17 +22,19 @@ export type PantryItemInput = {
 }
 
 export const pantryApi = {
-  list: () => apiGet<{ items: PantryItem[]; locations: string[] }>('/api/pantry'),
+  list: () => apiGet<{ items: PantryItem[]; locations: string[]; showOnToday: boolean }>('/api/pantry'),
   create: (input: PantryItemInput) => apiSend<{ item: PantryItem }>('POST', '/api/pantry', input).then((r) => r.item),
   update: (id: string, patch: PantryItemInput) => apiSend<{ item: PantryItem }>('PATCH', `/api/pantry/${id}`, patch).then((r) => r.item),
   remove: (id: string) => apiDelete(`/api/pantry/${id}`),
-  setLocations: (locations: string[]) =>
-    apiSend<{ locations: string[] }>('PUT', '/api/pantry/locations', { locations }).then((r) => r.locations),
+  // Module config: locations and/or the Today-card toggle (settings.pantry).
+  setConfig: (patch: { locations?: string[]; showOnToday?: boolean }) =>
+    apiSend<{ locations: string[]; showOnToday: boolean }>('PUT', '/api/pantry/config', patch),
 }
 
 export interface PantryState {
   items: PantryItem[]
   locations: string[]
+  showOnToday: boolean
   loading: boolean
   error: boolean
   refetch: () => void
@@ -41,6 +43,7 @@ export interface PantryState {
 export function usePantry(): PantryState {
   const [items, setItems] = useState<PantryItem[]>([])
   const [locations, setLocations] = useState<string[]>([])
+  const [showOnToday, setShowOnToday] = useState(true)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [nonce, setNonce] = useState(0)
@@ -48,13 +51,13 @@ export function usePantry(): PantryState {
     let alive = true
     pantryApi
       .list()
-      .then((d) => alive && (setItems(d.items), setLocations(d.locations), setLoading(false), setError(false)))
+      .then((d) => alive && (setItems(d.items), setLocations(d.locations), setShowOnToday(d.showOnToday), setLoading(false), setError(false)))
       .catch(() => alive && (setError(true), setLoading(false)))
     return () => {
       alive = false
     }
   }, [nonce])
-  return { items, locations, loading, error, refetch: () => setNonce((n) => n + 1) }
+  return { items, locations, showOnToday, loading, error, refetch: () => setNonce((n) => n + 1) }
 }
 
 // Days until an item expires (null if no date). Negative = already past.

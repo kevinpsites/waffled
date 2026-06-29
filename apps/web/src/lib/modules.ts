@@ -12,6 +12,8 @@ export interface ModuleDef {
   description: string
   status: 'available' | 'planned'
   defaultOn: boolean
+  // Whether the module has its own settings panel (shown in Settings → Modules when on).
+  hasSettings?: boolean
 }
 
 export const MODULES: ModuleDef[] = [
@@ -22,6 +24,7 @@ export const MODULES: ModuleDef[] = [
     description: "Track what's actually on hand (freezer/fridge/pantry) and let it feed meal planning.",
     status: 'available',
     defaultOn: false,
+    hasSettings: true,
   },
   {
     key: 'fhe',

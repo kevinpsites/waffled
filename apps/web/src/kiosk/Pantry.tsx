@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
-import { usePantry, pantryApi, daysUntil, useHousehold, type PantryItem, type PantryItemInput } from '../lib/api'
-import { moduleEnabled } from '../lib/modules'
+import { usePantry, pantryApi, daysUntil, type PantryItem, type PantryItemInput } from '../lib/api'
 import '../styles/pantry.css'
 
 // A small expiry badge: red if past, amber within 3 days, muted date otherwise.
@@ -19,7 +18,6 @@ function ExpiryBadge({ expiresOn }: { expiresOn: string | null }) {
 export function Pantry() {
   const { items, locations, loading, error, refetch } = usePantry()
   const [editing, setEditing] = useState<PantryItem | 'new' | null>(null)
-  const [managingLocations, setManagingLocations] = useState(false)
 
   if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
   if (error) return <div className="muted" style={{ padding: 30 }}>Pantry isn't enabled for this household — turn it on in Settings → Modules.</div>
@@ -42,7 +40,6 @@ export function Pantry() {
           <div className="pantry-sub">{items.length} item{items.length === 1 ? '' : 's'} on hand</div>
         </div>
         <div className="pantry-head-actions">
-          <button type="button" className="pill" onClick={() => setManagingLocations(true)}>⚙ Locations</button>
           <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} onClick={() => setEditing('new')}>+ Add item</button>
         </div>
       </div>
@@ -78,13 +75,6 @@ export function Pantry() {
           locations={locations}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); refetch() }}
-        />
-      )}
-      {managingLocations && (
-        <LocationsModal
-          locations={locations}
-          onClose={() => setManagingLocations(false)}
-          onSaved={() => { setManagingLocations(false); refetch() }}
         />
       )}
     </div>
@@ -174,74 +164,51 @@ function ItemModal({ item, locations, onClose, onSaved }: {
   )
 }
 
-function LocationsModal({ locations, onClose, onSaved }: {
-  locations: string[]
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const [list, setList] = useState<string[]>(locations.length ? locations : ['Freezer', 'Fridge', 'Pantry'])
-  const [adding, setAdding] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  async function save() {
-    setSaving(true)
-    try { await pantryApi.setLocations(list); onSaved() } catch { setSaving(false) }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
-        <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>Pantry locations</div>
-        <div className="pantry-sub" style={{ marginBottom: 14 }}>Where you store things — add your own (e.g. garage freezer).</div>
-        <div className="pantry-loc-list">
-          {list.map((l, i) => (
-            <div className="pantry-loc-row" key={i}>
-              <input value={l} onChange={(e) => setList((ls) => ls.map((x, j) => (j === i ? e.target.value : x)))} />
-              <button type="button" aria-label={`Remove ${l}`} onClick={() => setList((ls) => ls.filter((_, j) => j !== i))}>×</button>
-            </div>
-          ))}
-        </div>
-        <div className="pantry-loc-add">
-          <input value={adding} onChange={(e) => setAdding(e.target.value)} placeholder="Add a location…"
-            onKeyDown={(e) => { if (e.key === 'Enter' && adding.trim()) { setList((ls) => [...ls, adding.trim()]); setAdding('') } }} />
-          <button type="button" className="pill" disabled={!adding.trim()} onClick={() => { setList((ls) => [...ls, adding.trim()]); setAdding('') }}>Add</button>
-        </div>
-        <div className="pantry-modal-actions">
-          <span style={{ flex: 1 }} />
-          <button type="button" className="pill" disabled={saving} onClick={onClose}>Cancel</button>
-          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={saving} onClick={save}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// Slim Today nudge — shows when the module is on and there are items expiring soon
-// (or just a count). Rendered as a bar like the other Today bars.
-export function PantryBar() {
-  const { household } = useHousehold()
-  const enabled = moduleEnabled(household, 'pantry')
+// Today card — an at-a-glance "what's on hand," soonest-to-expire first. Lives in
+// one of the Today columns (Today decides whether to show it, per the module's
+// enabled state + "Show on Today" setting).
+export function PantryCard() {
   const [items, setItems] = useState<PantryItem[] | null>(null)
   useEffect(() => {
-    if (!enabled) return
     let alive = true
     pantryApi.list().then((d) => alive && setItems(d.items)).catch(() => {})
     return () => { alive = false }
-  }, [enabled])
+  }, [])
 
-  if (!enabled || !items || items.length === 0) return null
+  if (!items) return null
+  // Soonest expiry first (dated before undated), then name.
+  const sorted = [...items].sort((a, b) => {
+    const da = daysUntil(a.expiresOn), db = daysUntil(b.expiresOn)
+    if (da == null && db == null) return a.name.localeCompare(b.name)
+    if (da == null) return 1
+    if (db == null) return -1
+    return da - db
+  })
   const soon = items.filter((it) => { const d = daysUntil(it.expiresOn); return d != null && d <= 3 }).length
+  const shown = sorted.slice(0, 6)
+
   return (
-    <Link className="pantry-bar" to="/pantry">
-      <span className="pantry-bar-ic">🥫</span>
-      <span className="pantry-bar-main">
-        <span className="pantry-bar-title">Pantry</span>
-        <span className="pantry-bar-sub">{items.length} on hand{soon > 0 ? ` · ${soon} expiring soon` : ''}</span>
-      </span>
-      <span className="pantry-bar-cta">Open ›</span>
-    </Link>
+    <div className="card pantry-card">
+      <div className="pantry-card-h">
+        <span className="pantry-card-title">🥫 Pantry</span>
+        <span className="pantry-card-count">{items.length} on hand{soon > 0 ? ` · ${soon} soon` : ''}</span>
+      </div>
+      {items.length === 0 ? (
+        <Link to="/pantry" className="pantry-card-empty">Nothing logged yet — add what's on hand ›</Link>
+      ) : (
+        <>
+          <div className="pantry-card-list">
+            {shown.map((it) => (
+              <Link to="/pantry" key={it.id} className="pantry-card-row">
+                <span className="pantry-card-name">{it.name}</span>
+                {(it.amount || it.unit) && <span className="pantry-card-qty">{[it.amount, it.unit].filter(Boolean).join(' ')}</span>}
+                <span className="pantry-card-meta"><ExpiryBadge expiresOn={it.expiresOn} /></span>
+              </Link>
+            ))}
+          </div>
+          {items.length > shown.length && <Link to="/pantry" className="pantry-card-more">View all {items.length} ›</Link>}
+        </>
+      )}
+    </div>
   )
 }

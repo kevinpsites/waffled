@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react'
 import { AgendaCard } from './components/AgendaCard'
 import { TonightCardSlot, WeekDinnersCard } from './components/MealsColumn'
 import { ChoresCard } from './components/ChoresCard'
@@ -7,9 +7,10 @@ import { GoalRecapBar } from './components/GoalRecap'
 import { ApprovalsBar } from './components/Approvals'
 import { CaptureBar } from './components/CaptureBar'
 import { GettingStartedBar } from './onboarding/GettingStarted'
-import { PantryBar } from './Pantry'
+import { PantryCard } from './Pantry'
 import { useTopbarRight } from './topbar-slot'
-import { useTodayLayout, type LayoutScope } from '../lib/api'
+import { useTodayLayout, useHousehold, type LayoutScope } from '../lib/api'
+import { moduleEnabled } from '../lib/modules'
 
 // The cards that can live on Today, keyed the same as the stored layout. `fill`
 // cards are long, scrollable lists (agenda, grocery) — they take the spare room in
@@ -23,11 +24,28 @@ const CARDS: Record<string, { label: string; node: ReactNode; fill?: boolean }> 
   week: { label: "This week's dinners", node: <WeekDinnersCard /> },
   chores: { label: 'Family Chores', node: <ChoresCard /> },
   grocery: { label: 'Grocery', node: <GroceryCard />, fill: true },
+  pantry: { label: 'Pantry', node: <PantryCard /> },
 }
 
 // Layout helpers (pure). A card lives in exactly one column.
 function removeCard(layout: string[][], card: string): string[][] {
   return layout.map((col) => col.filter((c) => c !== card))
+}
+
+// Reconcile an optional module's card with the saved layout: drop it when the
+// module is off/hidden; inject it (into the shortest column) when it's on but the
+// saved layout doesn't have it yet. Preserves a user-placed position once saved.
+function applyModuleCard(layout: string[][], card: string, show: boolean): string[][] {
+  const present = layout.some((col) => col.includes(card))
+  if (show && !present) {
+    const cols = layout.map((c) => [...c])
+    let shortest = 0
+    for (let i = 1; i < cols.length; i++) if (cols[i].length < cols[shortest].length) shortest = i
+    cols[shortest] = [...cols[shortest], card]
+    return cols
+  }
+  if (!show && present) return removeCard(layout, card)
+  return layout
 }
 
 // Which column + insertion index is under the pointer, read from the live DOM
@@ -55,8 +73,12 @@ function dropTargetAt(x: number, y: number): { col: number; index: number } | nu
 // mode via drag-and-drop, then saved for just you or the whole family.
 export function Today() {
   const { resolved, source, loading, save, reset } = useTodayLayout()
+  const { household } = useHousehold()
+  // Optional-module cards: shown when the module is enabled and not hidden from Today.
+  const showPantry = moduleEnabled(household, 'pantry') && household?.settings?.pantry?.showOnToday !== false
+  const effectiveResolved = useMemo(() => applyModuleCard(resolved, 'pantry', showPantry), [resolved, showPantry])
   const [editing, setEditing] = useState(false)
-  const [layout, setLayout] = useState<string[][]>(resolved)
+  const [layout, setLayout] = useState<string[][]>(effectiveResolved)
   const [saving, setSaving] = useState(false)
 
   // Pointer drag state (edit mode only). `drag` is set once per drag so the
@@ -68,10 +90,10 @@ export function Today() {
   const targetRef = useRef<{ col: number; index: number } | null>(null)
   targetRef.current = target
 
-  // Keep the working copy in sync with the server layout when not editing.
+  // Keep the working copy in sync with the server layout (+ module cards) when not editing.
   useEffect(() => {
-    if (!editing) setLayout(resolved)
-  }, [resolved, editing])
+    if (!editing) setLayout(effectiveResolved)
+  }, [effectiveResolved, editing])
 
   useEffect(() => {
     if (!drag) return
@@ -155,7 +177,7 @@ export function Today() {
 
   // During a drag, render the layout without the dragged card so the drop
   // indicator and indices line up; otherwise render the working/resolved layout.
-  const cols = editing ? layout : resolved
+  const cols = editing ? layout : effectiveResolved
   const display = drag ? removeCard(cols, drag.card) : cols
 
   return (
@@ -163,7 +185,6 @@ export function Today() {
       <GettingStartedBar />
       <ApprovalsBar />
       <GoalRecapBar />
-      <PantryBar />
 
       {editing && (
         <div className="today-toolbar">

@@ -488,10 +488,36 @@ select.sel {
 .set-head-sub { font-size: 13px; font-weight: 600; color: var(--ink-3); }
 .set-modules { display: flex; flex-direction: column; gap: 10px; }
 .set-module {
-  display: flex; align-items: center; gap: 14px; padding: 14px 16px;
+  display: flex; flex-direction: column; padding: 14px 16px;
   background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-lg, 16px);
 }
+.set-module-row { display: flex; align-items: center; gap: 14px; }
 .set-module.on { border-color: color-mix(in srgb, var(--primary, #e0653f) 45%, transparent); }
+
+/* pill toggle switch */
+.set-switch {
+  flex: none; width: 46px; height: 27px; border-radius: 999px; border: 0; cursor: pointer; padding: 0;
+  background: var(--hair, #e4ded4); position: relative; transition: background 0.15s ease;
+}
+.set-switch.on { background: var(--primary, #e0653f); }
+.set-switch:disabled { opacity: 0.5; cursor: default; }
+.set-switch-knob {
+  position: absolute; top: 3px; left: 3px; width: 21px; height: 21px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: transform 0.15s ease;
+}
+.set-switch.on .set-switch-knob { transform: translateX(19px); }
+
+/* a module's own settings, revealed when it's on */
+.set-module-settings {
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--hair);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.set-module-setrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.set-module-setrow > span { font-weight: 700; font-size: 14px; color: var(--ink); }
+.set-module-setlabel {
+  font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--ink-3); margin-top: 4px;
+}
 .set-module-ic {
   width: 42px; height: 42px; flex: none; border-radius: 12px; display: grid; place-items: center;
   font-size: 22px; background: var(--card-2, #faf8f4); border: 1px solid var(--hair);
