@@ -19,6 +19,8 @@ export function Pantry() {
   const { items, locations, loading, error, refetch } = usePantry()
   const [editing, setEditing] = useState<PantryItem | 'new' | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [overLoc, setOverLoc] = useState<string | null>(null)
 
   // Quick "used it up" — remove without opening the editor.
   async function markUsed(id: string) {
@@ -26,18 +28,33 @@ export function Pantry() {
     try { await pantryApi.remove(id); refetch() } catch { setBusy(null) }
   }
 
+  // Drag an item into another location group to move it there.
+  async function moveTo(loc: string) {
+    const id = dragId
+    setDragId(null)
+    setOverLoc(null)
+    if (id == null || loc === 'Other') return
+    const item = items.find((i) => i.id === id)
+    if (!item || item.location === loc) return
+    setBusy(id)
+    try { await pantryApi.update(id, { location: loc }); refetch() } catch { setBusy(null) }
+  }
+
   if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
   if (error) return <div className="muted" style={{ padding: 30 }}>Pantry isn't enabled for this household — turn it on in Settings → Modules.</div>
 
-  // Group items by location, in the household's configured order; anything with an
-  // unknown location falls into "Other".
-  const order = [...locations, 'Other']
+  // Group items by location; unknown locations fall into "Other". While dragging,
+  // show every configured location (even empty ones) so they can be dropped into.
   const byLoc = new Map<string, PantryItem[]>()
   for (const it of items) {
     const key = locations.includes(it.location) ? it.location : 'Other'
     ;(byLoc.get(key) ?? byLoc.set(key, []).get(key)!).push(it)
   }
-  const groups = order.filter((loc) => (byLoc.get(loc)?.length ?? 0) > 0).map((loc) => ({ loc, items: byLoc.get(loc)! }))
+  const dragging = dragId != null
+  const groups = locations
+    .filter((loc) => dragging || (byLoc.get(loc)?.length ?? 0) > 0)
+    .map((loc) => ({ loc, items: byLoc.get(loc) ?? [] }))
+  if ((byLoc.get('Other')?.length ?? 0) > 0) groups.push({ loc: 'Other', items: byLoc.get('Other')! })
 
   return (
     <div className="pantry-screen">
@@ -56,11 +73,28 @@ export function Pantry() {
       ) : (
         <div className="pantry-groups">
           {groups.map(({ loc, items: list }) => (
-            <div className="pantry-group" key={loc}>
+            <div
+              className={`pantry-group${overLoc === loc ? ' over' : ''}`}
+              key={loc}
+              onDragOver={(e) => { if (dragging && loc !== 'Other') { e.preventDefault(); setOverLoc(loc) } }}
+              onDragLeave={() => setOverLoc((c) => (c === loc ? null : c))}
+              onDrop={() => moveTo(loc)}
+            >
               <div className="pantry-group-h">{loc}</div>
               <div className="pantry-list">
-                {list.map((it) => (
-                  <div key={it.id} className={`pantry-item${busy === it.id ? ' busy' : ''}`}>
+                {list.length === 0 ? (
+                  <div className="pantry-drop-hint">Drop here</div>
+                ) : list.map((it) => (
+                  <div key={it.id} className={`pantry-item${busy === it.id ? ' busy' : ''}${dragId === it.id ? ' dragging' : ''}`}>
+                    <button
+                      type="button"
+                      className="pantry-item-drag"
+                      aria-label={`Move ${it.name} to another location`}
+                      title="Drag to another location"
+                      draggable
+                      onDragStart={() => setDragId(it.id)}
+                      onDragEnd={() => { setDragId(null); setOverLoc(null) }}
+                    >⠿</button>
                     <button type="button" className="pantry-item-main" onClick={() => setEditing(it)}>
                       <span className="pantry-item-name">{it.name}</span>
                       {(it.amount || it.unit) && <span className="pantry-item-qty">{[it.amount, it.unit].filter(Boolean).join(' ')}</span>}
