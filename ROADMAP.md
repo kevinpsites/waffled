@@ -151,7 +151,9 @@ shipped — see 0048–0050 + the calendar→goal Phase 2 note above.)*
 
 ## Backlog — designed, not yet built
 
-### Public API — per-user API keys + scopes (Immich-style integration surface) — PLANNED 2026-06-29
+### Public API — per-user API keys + scopes (Immich-style integration surface) — GREENLIT 2026-06-29 (build #3)
+Design rationale + the A/B/C pattern model: [`docs/product/extensibility.md`](docs/product/extensibility.md).
+Build order: ① module framework + Modules tab → ② Pantry module → ③ this (API keys).
 Today the REST surface is broad (~179 routes, full CRUD on most domains) but there's **no way for
 a self-hoster to build an integration**: auth is short-lived session JWTs only (1h access / 60d
 refresh), authorization is a role→capability matrix bound to the *person* (not a token), there are
@@ -173,7 +175,8 @@ documented API — the platform enabler that the optional modules below can also
   already exists).
 Effort: key system ≈ a focused day; OpenAPI/contract is a separable add-on.
 
-### Pluggable optional modules + a "Modules" settings tab — IDEA 2026-06-29
+### Pluggable optional modules + a "Modules" settings tab — GREENLIT 2026-06-29 (build #1; Pantry = build #2)
+Design rationale + web/iOS model: [`docs/product/extensibility.md`](docs/product/extensibility.md).
 A way to ship optional, opt-in features (core stays lean; households enable extras; some are
 community/personal rather than official). A module registry + per-household enable flag in
 `households.settings.modules`; Today cards, nav entries, and routes gate on whether their module is
