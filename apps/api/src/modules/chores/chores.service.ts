@@ -68,25 +68,46 @@ export function requestedDate(raw: unknown, today: string): string {
 
 export async function createChore(tenant: Tenant, input: CreateChoreInput): Promise<ChoreRow> {
   const currency = input.rewardCurrency?.trim() || (await getDefaultCurrencyKey(tenant.householdId))
+  // A blank/absent rrule now persists as NULL — a true one-off — instead of being
+  // coerced to FREQ=DAILY. One-offs have no scheduled materialization path (that's
+  // only for recurring chores), so we drop their single instance ourselves, below.
+  const rrule = input.rrule?.trim() || null
   const { rows } = await query<ChoreRow>(
     `insert into chores
-       (household_id, title, emoji, person_id, rrule, reward_currency, reward_amount, due_time, requires_approval, requires_photo)
-     values ($1, $2, $3, $4, coalesce($5,'FREQ=DAILY'), $6, coalesce($7,0), $8, $9, $10)
+       (household_id, title, emoji, person_id, rrule, reward_currency, reward_amount, due_time, requires_approval, requires_photo, rollover)
+     values ($1, $2, $3, $4, $5, $6, coalesce($7,0), $8, $9, $10, $11)
      returning *`,
     [
       tenant.householdId,
       input.title,
       input.emoji ?? null,
       input.personId ?? null,
-      input.rrule ?? null,
+      rrule,
       currency,
       input.rewardAmount ?? 0,
       input.dueTime ?? null,
       input.requiresApproval ?? false,
       input.requiresPhoto ?? false,
+      input.rollover ?? true,
     ]
   )
-  return rows[0]
+  const chore = rows[0]
+
+  // One-off: materialize exactly ONE instance on the requested due date (default
+  // household-local today). Snapshot columns mirror the recurring materialize
+  // INSERT; the unique (chore_id, due_on) index guards a double-create.
+  if (chore.rrule == null) {
+    const dueOn = input.dueOn?.trim() || todayDate(await householdTz(tenant.householdId))
+    await query(
+      `insert into chore_instances
+         (household_id, chore_id, person_id, due_on, reward_currency, reward_amount, requires_approval, requires_photo)
+       select household_id, id, person_id, $2::date, reward_currency, reward_amount, requires_approval, requires_photo
+         from chores where id = $1
+       on conflict (chore_id, due_on) do nothing`,
+      [chore.id, dueOn]
+    )
+  }
+  return chore
 }
 
 const WEEKDAY_CODES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
@@ -163,8 +184,11 @@ export async function todaySummary(householdId: string, dueOn: string): Promise<
             coalesce(b.balance, 0) as stars
        from persons p
        left join chore_instances ci
-         on ci.person_id = p.id and ci.due_on = $2::date and ci.deleted_at is null
-       left join chores c on c.id = ci.chore_id and c.deleted_at is null
+         on ci.person_id = p.id and ci.deleted_at is null
+       left join chores c
+         on c.id = ci.chore_id and c.deleted_at is null
+         and (ci.due_on = $2::date
+              or (ci.due_on < $2::date and ci.status = 'pending' and c.rrule is null and c.rollover))
        left join v_person_balances b
          on b.person_id = p.id and b.currency = $3
       where p.household_id = $1 and p.deleted_at is null
@@ -225,7 +249,9 @@ export async function listTodayInstances(householdId: string, dueOn: string): Pr
        from chore_instances ci
        join chores c on c.id = ci.chore_id and c.deleted_at is null
        left join persons p on p.id = ci.person_id
-      where ci.household_id = $1 and ci.due_on = $2::date and ci.deleted_at is null
+      where ci.household_id = $1 and ci.deleted_at is null
+        and (ci.due_on = $2::date
+             or (ci.due_on < $2::date and ci.status = 'pending' and c.rrule is null and c.rollover))
       order by p.sort_order nulls last, c.due_time nulls last, c.title`,
     [householdId, dueOn]
   )
@@ -300,6 +326,7 @@ export const UPDATABLE_CHORE: Record<string, string> = {
   rrule: 'rrule',
   requiresApproval: 'requires_approval',
   requiresPhoto: 'requires_photo',
+  rollover: 'rollover',
 }
 
 export async function updateChore(
@@ -577,6 +604,7 @@ export function presentChore(c: ChoreRow) {
     isActive: c.is_active,
     requiresApproval: (c as { requires_approval?: boolean }).requires_approval ?? false,
     requiresPhoto: (c as { requires_photo?: boolean }).requires_photo ?? false,
+    rollover: (c as { rollover?: boolean }).rollover ?? true,
   }
 }
 

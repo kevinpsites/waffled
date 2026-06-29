@@ -50,8 +50,9 @@ describe('RecipeEditor — new', () => {
     fireEvent.change(screen.getByPlaceholderText('cups'), { target: { value: 'cups' } })
     fireEvent.change(screen.getByPlaceholderText('Describe this step…'), { target: { value: 'Simmer everything.' } })
 
-    // Pick the ingredient as a step chip (no retyping); default amount is "3 cups".
-    fireEvent.click(screen.getByText('+ carrots'))
+    // Tag the ingredient onto the step via the popover (no retyping); default amount "3 cups".
+    fireEvent.click(screen.getByText('+ Tag ingredient'))
+    fireEvent.click(screen.getByLabelText('Tag carrots'))
 
     fireEvent.click(screen.getByText('Create recipe'))
 
@@ -77,9 +78,10 @@ describe('RecipeEditor — new', () => {
     fireEvent.change(screen.getByPlaceholderText('cups'), { target: { value: 'cups' } })
     fireEvent.change(screen.getByPlaceholderText('Describe this step…'), { target: { value: 'Add half the water.' } })
 
-    fireEvent.click(screen.getByText('+ water'))
-    // override the prefilled "2 cups" down to "1 cup" for this step
-    fireEvent.change(screen.getByLabelText('Amount of water for this step'), { target: { value: '1 cup' } })
+    fireEvent.click(screen.getByText('+ Tag ingredient'))
+    fireEvent.click(screen.getByLabelText('Tag water'))
+    // override the prefilled "2 cups" down to "1 cup" for this step (in the popover)
+    fireEvent.change(screen.getByLabelText('Amount of water'), { target: { value: '1 cup' } })
 
     fireEvent.click(screen.getByText('Create recipe'))
     await waitFor(() => expect(sent.some((s) => s.url.endsWith('/api/recipes') && s.method === 'POST')).toBe(true))

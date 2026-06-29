@@ -713,3 +713,103 @@ describe('chore capability gating (non-admin members)', () => {
     expect((await call('PUT', '/api/permissions', adultToken, { permissions: {} })).statusCode).toBe(403)
   })
 })
+
+describe('one-off chores + rollover (carry-forward)', () => {
+  const today = todayInTz(TZ)
+  function shift(d: string, days: number): string {
+    const dt = new Date(`${d}T00:00:00Z`)
+    dt.setUTCDate(dt.getUTCDate() + days)
+    return dt.toISOString().slice(0, 10)
+  }
+
+  type Inst = { id: string; choreId: string; choreTitle: string; dueOn: string; status: string; rrule: string | null }
+  async function instances(): Promise<Inst[]> {
+    return JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body).instances as Inst[]
+  }
+  async function meTotal(): Promise<{ total: number; done: number }> {
+    const body = JSON.parse((await call('GET', '/api/chores/today', kevin)).body)
+    const me = body.people.find((p: { id: string }) => p.id === kevinId)
+    return { total: me.total, done: me.done }
+  }
+  async function choreRrule(choreId: string): Promise<string | null> {
+    return withClient(async (c) => {
+      const r = await c.query<{ rrule: string | null }>(`select rrule from chores where id=$1`, [choreId])
+      return r.rows[0].rrule
+    })
+  }
+
+  it('a chore with no rrule persists rrule=NULL and gets exactly one instance today', async () => {
+    const add = await call('POST', '/api/chores', kevin, { title: 'OneOff Today', personId: kevinId, rewardAmount: 4 })
+    expect(add.statusCode).toBe(201)
+    const list = await instances()
+    const mine = list.filter((i) => i.choreTitle === 'OneOff Today')
+    expect(mine).toHaveLength(1)
+    expect(mine[0].dueOn).toBe(today)
+    expect(mine[0].rrule).toBeNull()
+    expect(await choreRrule(mine[0].choreId)).toBeNull()
+  })
+
+  it('a one-off can be placed on a future date (hidden until that day)', async () => {
+    const future = shift(today, 3)
+    const add = await call('POST', '/api/chores', kevin, { title: 'OneOff Future', personId: kevinId, dueOn: future })
+    expect(add.statusCode).toBe(201)
+    // not in today's list…
+    expect((await instances()).some((i) => i.choreTitle === 'OneOff Future')).toBe(false)
+    // …but present when that day is requested
+    const ahead = JSON.parse((await call('GET', `/api/chore-instances/today?date=${future}`, kevin)).body).instances as Inst[]
+    const f = ahead.filter((i) => i.choreTitle === 'OneOff Future')
+    expect(f).toHaveLength(1)
+    expect(f[0].dueOn).toBe(future)
+  })
+
+  it('carries a pending one-off forward (keeps original due_on) and counts it in the summary', async () => {
+    const add = await call('POST', '/api/chores', kevin, { title: 'Carry Me', personId: kevinId, rewardAmount: 2 })
+    expect(add.statusCode).toBe(201)
+    const choreId = (await instances()).find((i) => i.choreTitle === 'Carry Me')!.choreId
+    const past = shift(today, -2)
+    await withClient((c) => c.query(`update chore_instances set due_on=$2 where chore_id=$1`, [choreId, past]))
+
+    const before = await meTotal()
+    const list = await instances()
+    const carried = list.find((i) => i.choreTitle === 'Carry Me')
+    expect(carried).toBeTruthy()
+    expect(carried!.dueOn).toBe(past) // original date preserved → "overdue · since …"
+    expect(carried!.status).toBe('pending')
+    // and it counts toward today's totals
+    expect(before.total).toBeGreaterThanOrEqual(1)
+  })
+
+  it('a done one-off in the past is NOT carried forward', async () => {
+    const add = await call('POST', '/api/chores', kevin, { title: 'Done OneOff', personId: kevinId, rewardAmount: 1 })
+    expect(add.statusCode).toBe(201)
+    const inst = (await instances()).find((i) => i.choreTitle === 'Done OneOff')!
+    const past = shift(today, -3)
+    await withClient((c) => c.query(`update chore_instances set due_on=$2 where id=$1`, [inst.id, past]))
+    // complete it (on its past date)
+    expect((await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin)).statusCode).toBe(200)
+    expect((await instances()).some((i) => i.choreTitle === 'Done OneOff')).toBe(false)
+  })
+
+  it('a recurring chore’s missed past instance is NOT carried forward', async () => {
+    const add = await call('POST', '/api/chores', kevin, { title: 'Recurring Miss', personId: kevinId, rrule: 'FREQ=DAILY' })
+    expect(add.statusCode).toBe(201)
+    const choreId = (await instances()).find((i) => i.choreTitle === 'Recurring Miss')!.choreId
+    const past = shift(today, -2)
+    // back-date today's materialized instance so it's a "missed" past one, leaving none on `today`
+    await withClient((c) => c.query(`update chore_instances set due_on=$2 where chore_id=$1`, [choreId, past]))
+    // ensureTodayInstances re-materializes a fresh one for today; the past one must not be carried.
+    const list = await instances()
+    const rows = list.filter((i) => i.choreTitle === 'Recurring Miss')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].dueOn).toBe(today)
+  })
+
+  it('rollover=false on a one-off suppresses carry-forward', async () => {
+    const add = await call('POST', '/api/chores', kevin, { title: 'NoRoll', personId: kevinId, rollover: false })
+    expect(add.statusCode).toBe(201)
+    const inst = (await instances()).find((i) => i.choreTitle === 'NoRoll')!
+    const past = shift(today, -2)
+    await withClient((c) => c.query(`update chore_instances set due_on=$2 where id=$1`, [inst.id, past]))
+    expect((await instances()).some((i) => i.choreTitle === 'NoRoll')).toBe(false)
+  })
+})

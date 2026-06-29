@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { api, usePersons, useCurrencies } from '../../lib/api'
+import { api, usePersons, useCurrencies, localToday } from '../../lib/api'
 
 export interface ChoreDraft {
   id: string
@@ -17,15 +17,21 @@ const DAYS: Array<[string, string]> = [
   ['MO', 'Mon'], ['TU', 'Tue'], ['WE', 'Wed'], ['TH', 'Thu'], ['FR', 'Fri'], ['SA', 'Sat'], ['SU', 'Sun'],
 ]
 
-function parseRrule(rrule?: string | null): { freq: 'daily' | 'weekly'; days: string[] } {
+type Freq = 'once' | 'daily' | 'weekly'
+
+function parseRrule(rrule: string | null | undefined, editing: boolean): { freq: Freq; days: string[] } {
   if (rrule && /FREQ=WEEKLY/i.test(rrule)) {
     const m = rrule.match(/BYDAY=([A-Z,]+)/i)
     return { freq: 'weekly', days: m ? m[1].toUpperCase().split(',') : [] }
   }
-  return { freq: 'daily', days: [] }
+  if (rrule && /FREQ=DAILY/i.test(rrule)) return { freq: 'daily', days: [] }
+  // No rrule: an existing chore with null rrule is a one-off; a brand-new chore
+  // still defaults to "Every day" (the common case).
+  return { freq: editing ? 'once' : 'daily', days: [] }
 }
 
-function buildRrule(freq: 'daily' | 'weekly', days: string[]): string {
+function buildRrule(freq: Freq, days: string[]): string | null {
+  if (freq === 'once') return null // one-off — no recurrence
   if (freq === 'weekly' && days.length) {
     const sorted = DAYS.map((d) => d[0]).filter((d) => days.includes(d))
     return `FREQ=WEEKLY;BYDAY=${sorted.join(',')}`
@@ -34,7 +40,7 @@ function buildRrule(freq: 'daily' | 'weekly', days: string[]): string {
 }
 
 function initialForm(chore?: ChoreDraft, personId?: string | null, canAssignOthers = true, selfPersonId?: string | null) {
-  const sched = parseRrule(chore?.rrule)
+  const sched = parseRrule(chore?.rrule, !!chore)
   // Restricted users (no chore.manage) can only target themselves or up-for-grabs;
   // default them to self rather than the full-list default.
   const prefill = chore?.personId ?? personId ?? (canAssignOthers ? '' : selfPersonId ?? '')
@@ -46,6 +52,9 @@ function initialForm(chore?: ChoreDraft, personId?: string | null, canAssignOthe
     rewardCurrency: chore?.rewardCurrency ?? '',
     freq: sched.freq,
     days: sched.days,
+    // One-off (freq === 'once') only: which day the single task lands on. New
+    // one-offs default to today; editing can't move an already-materialized one.
+    dueOn: localToday(),
     requiresApproval: chore?.requiresApproval ?? false,
     requiresPhoto: chore?.requiresPhoto ?? false,
   }
@@ -96,7 +105,9 @@ export function ChoreModal({
     }
     try {
       if (editing) await api.updateChore(chore!.id, payload)
-      else await api.createChore(payload)
+      // On create, a one-off also carries its due date (where its single instance
+      // lands). Editing can't move an already-materialized one-off's date.
+      else await api.createChore(form.freq === 'once' ? { ...payload, dueOn: form.dueOn } : payload)
       onSaved()
       onClose()
     } catch {
@@ -145,6 +156,7 @@ export function ChoreModal({
           <div className="field" style={{ marginBottom: 10 }}>
             <span>Repeats</span>
             <div className="seg" style={{ width: 'fit-content' }}>
+              <button type="button" className={form.freq === 'once' ? 'on' : ''} onClick={() => set('freq', 'once')}>Just once</button>
               <button type="button" className={form.freq === 'daily' ? 'on' : ''} onClick={() => set('freq', 'daily')}>Every day</button>
               <button type="button" className={form.freq === 'weekly' ? 'on' : ''} onClick={() => set('freq', 'weekly')}>Certain days</button>
             </div>
@@ -161,6 +173,15 @@ export function ChoreModal({
                   </button>
                 ))}
               </div>
+            )}
+            {/* One-off: pick the day (today by default). Only on create — an
+                existing one-off's instance is already on the calendar. It also
+                carries forward until done unless rollover is turned off. */}
+            {form.freq === 'once' && !editing && (
+              <label className="field" style={{ marginTop: 8 }}>
+                <span>On</span>
+                <input type="date" min={localToday()} value={form.dueOn} onChange={(e) => set('dueOn', e.target.value || localToday())} />
+              </label>
             )}
           </div>
 

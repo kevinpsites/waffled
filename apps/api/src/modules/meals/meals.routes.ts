@@ -59,6 +59,22 @@ export function registerMealRoutes(api: Api): void {
     return { recipes: recipes.map(presentRecipe) }
   }))
 
+  // Distinct section names used across the household's recipes (most-used first) —
+  // powers the recipe editor's section-name suggestions. Registered before
+  // /api/recipes/:id so "sections" isn't taken as an id.
+  api.get('/api/recipes/sections', tenantRoute(async (tenant) => {
+    const { rows } = await query<{ section: string }>(
+      `select section from recipe_ingredients
+        where household_id = $1 and deleted_at is null
+          and section is not null and btrim(section) <> ''
+        group by section
+        order by count(*) desc, section
+        limit 50`,
+      [tenant.householdId]
+    )
+    return { sections: rows.map((r) => r.section) }
+  }))
+
   api.get('/api/recipes/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })

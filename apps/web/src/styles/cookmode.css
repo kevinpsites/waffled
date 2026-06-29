@@ -181,3 +181,145 @@
   gap: 12px;
   margin-top: 22px;
 }
+
+/* ===== Per-step timers ===== */
+/* "Start mm:ss" button on a timed step */
+.cm-timer-start {
+  font: inherit;
+  font-size: 19px;
+  font-weight: 700;
+  padding: 14px 26px;
+  border-radius: var(--r-lg);
+  border: 0;
+  background: var(--primary, var(--wally));
+  color: #fff;
+  cursor: pointer;
+  box-shadow: var(--sh-1);
+}
+.cm-timer-start:hover {
+  filter: brightness(0.96);
+}
+
+/* floating dock — stacks active timers above every step + the done screen */
+.cm-timers {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 280px;
+}
+.cm-timer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--hair);
+  background: var(--card);
+  box-shadow: var(--sh-2, var(--sh-1));
+}
+.cm-timer-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-right: auto;
+  min-width: 0;
+}
+.cm-timer-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cm-timer-time {
+  font-size: 26px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  line-height: 1;
+}
+.cm-timer-btn {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid var(--hair);
+  background: var(--card-2);
+  color: var(--ink-2);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cm-timer-btn:hover {
+  background: var(--panel);
+}
+.cm-timer-x {
+  font-size: 18px;
+}
+/* a fired timer flashes (and chimes — handled in JS) until dismissed */
+.cm-timer-firing {
+  border-color: var(--primary, var(--wally));
+  animation: cm-timer-flash 0.8s steps(1, end) infinite;
+}
+.cm-timer-firing .cm-timer-time {
+  color: var(--primary, var(--wally));
+}
+@keyframes cm-timer-flash {
+  0% { background: var(--card); }
+  50% { background: var(--wally-t, rgba(236, 96, 73, 0.16)); }
+  100% { background: var(--card); }
+}
+
+/* ── Timer alarm takeover ── full-screen when a timer hits 0 */
+.cm-alarm {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  /* A solid, opaque background that hard-switches between two attention colors
+     (warm primary ↔ blue) — a steady siren, not a flash against the step. */
+  animation: cm-alarm-bg 1.2s steps(1, end) infinite;
+}
+@keyframes cm-alarm-bg {
+  0% { background: var(--primary, #e0653f); }
+  50% { background: #2f7fed; }
+  100% { background: var(--primary, #e0653f); }
+}
+.cm-alarm-card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--card, #fff);
+  border-radius: 22px;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.4);
+  padding: 30px 26px 24px;
+  text-align: center;
+  animation: cm-alarm-pop 0.4s ease-out both, cm-alarm-pulse 0.9s ease-in-out infinite;
+}
+@keyframes cm-alarm-pop { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes cm-alarm-pulse { 0%,100% { box-shadow: 0 30px 90px rgba(0,0,0,0.4), 0 0 0 0 var(--wally-t, rgba(236,96,73,0.5)); } 50% { box-shadow: 0 30px 90px rgba(0,0,0,0.4), 0 0 0 14px transparent; } }
+.cm-alarm-ic { font-size: 52px; line-height: 1; }
+.cm-alarm-h { font-size: 30px; font-weight: 600; margin-top: 8px; color: var(--ink); }
+.cm-alarm-list { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
+.cm-alarm-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 14px; border-radius: 14px; background: var(--card-2, #faf8f4); border: 1px solid var(--hair, #e4ded4);
+}
+.cm-alarm-label { font-weight: 800; font-size: 16px; color: var(--ink); text-align: left; }
+.cm-alarm-actions { display: flex; gap: 8px; flex: none; }
+.cm-alarm-jump, .cm-alarm-snooze, .cm-alarm-dismiss {
+  font: inherit; font-size: 14px; font-weight: 800; padding: 10px 16px; border-radius: 999px; cursor: pointer;
+}
+.cm-alarm-jump { border: 1px solid var(--primary, #e0653f); background: var(--card, #fff); color: var(--primary, #e0653f); }
+.cm-alarm-jump:hover { background: var(--wally-t, rgba(236, 96, 73, 0.1)); }
+.cm-alarm-snooze { border: 1px solid var(--hair, #e4ded4); background: var(--card, #fff); color: var(--ink); }
+.cm-alarm-snooze:hover { border-color: var(--primary, #e0653f); }
+.cm-alarm-dismiss { border: 0; background: var(--primary, #e0653f); color: #fff; }

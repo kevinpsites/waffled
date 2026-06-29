@@ -780,6 +780,11 @@ button.tick {
 .chore-streak {
   margin-left: 8px; font-size: 12px; font-weight: 800; color: #d9650a;
 }
+/* carried-forward one-off that's past its due date — a subtle nudge, not an alarm */
+.chore-overdue {
+  margin-left: 8px; font-size: 11px; font-weight: 800; color: #b04a4a;
+  background: #fdeaea; padding: 2px 7px; border-radius: 999px; white-space: nowrap;
+}
 
 /* up-for-grabs: a normal left-side column with a subtle shared tint */
 .chore-col.up-for-grabs { background: linear-gradient(160deg, #f5f1fe, #eef4fe); }

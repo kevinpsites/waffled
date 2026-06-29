@@ -20,7 +20,7 @@ type EditIng = { uid: string; name: string; amount: string; unit: string; prepNo
 // per-step amount (the "split" case: 2 cups water → 1 cup here, 1 cup elsewhere).
 // `extra` holds free-text lines that didn't map back to an ingredient (legacy data).
 type StepPick = { uid: string; amount: string }
-type EditStep = { instruction: string; picks: StepPick[]; extra: string[] }
+type EditStep = { uid: string; instruction: string; picks: StepPick[]; extra: string[]; timerSeconds: number | null }
 
 const newUid = (): string =>
   typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `i${Math.random().toString(36).slice(2)}`
@@ -28,6 +28,14 @@ const newUid = (): string =>
 // The full-amount label shown by default when an ingredient is added to a step
 // (e.g. "2 cups"). The user can edit it down for a split.
 const defaultStepAmount = (ing: EditIng): string => [ing.amount.trim(), ing.unit.trim()].filter(Boolean).join(' ')
+
+// Curated common ingredient sections; merged with a global look at the sections the
+// household already uses (so "Produce" et al. don't get retyped every recipe).
+const DEFAULT_SECTIONS = [
+  'Produce', 'Meat', 'Poultry', 'Seafood', 'Dairy', 'Eggs', 'Pantry', 'Spices & seasonings',
+  'Grains & pasta', 'Canned goods', 'Condiments & sauces', 'Baking', 'Bakery', 'Frozen',
+  'Herbs', 'Nuts & seeds', 'Beverages', 'Sauce', 'Garnish', 'For serving',
+]
 
 const META_FIELDS: { key: keyof RecipeWriteInput; label: string; placeholder: string }[] = [
   { key: 'cuisine', label: 'Cuisine', placeholder: 'Italian, Thai…' },
@@ -41,7 +49,7 @@ const META_FIELDS: { key: keyof RecipeWriteInput; label: string; placeholder: st
 ]
 
 const blankIng = (): EditIng => ({ uid: newUid(), name: '', amount: '', unit: '', prepNote: '', section: '' })
-const blankStep = (): EditStep => ({ instruction: '', picks: [], extra: [] })
+const blankStep = (): EditStep => ({ uid: newUid(), instruction: '', picks: [], extra: [], timerSeconds: null })
 
 function toIngInput(r: EditIng, i: number): IngredientInput {
   const amount = r.amount.trim() ? Number(r.amount) : null
@@ -63,13 +71,13 @@ function toStepInput(s: EditStep, ings: EditIng[]): StepInput {
       return [p.amount.trim(), ing.name.trim()].filter(Boolean).join(' ')
     })
     .filter(Boolean)
-  return { instruction: s.instruction.trim(), ingredients: [...fromPicks, ...s.extra] }
+  return { instruction: s.instruction.trim(), ingredients: [...fromPicks, ...s.extra], timerSeconds: s.timerSeconds ?? null }
 }
 
 // Map stored display strings (e.g. "1 cup breadcrumbs") back onto ingredient picks
 // when editing: match each to an ingredient by name (longest wins), the leading text
 // becomes the per-step amount; anything unmatched is preserved as free text.
-function stepFromStrings(instruction: string, strings: string[], ings: EditIng[]): EditStep {
+function stepFromStrings(instruction: string, strings: string[], ings: EditIng[], timerSeconds: number | null = null): EditStep {
   const named = ings.filter((i) => i.name.trim())
   const picks: StepPick[] = []
   const extra: string[] = []
@@ -85,7 +93,7 @@ function stepFromStrings(instruction: string, strings: string[], ings: EditIng[]
       picks.push({ uid: match.uid, amount: s.slice(0, idx).trim() })
     } else extra.push(s)
   }
-  return { instruction, picks, extra }
+  return { uid: newUid(), instruction, picks, extra, timerSeconds }
 }
 
 export function RecipeEditor() {
@@ -113,6 +121,11 @@ export function RecipeEditor() {
   const [notes, setNotes] = useState('')
   const [ings, setIngs] = useState<EditIng[]>([blankIng()])
   const [stps, setStps] = useState<EditStep[]>([blankStep()])
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [usedSections, setUsedSections] = useState<string[]>([])
+  // uid of a just-added (still unnamed) section row — forces its own group + header
+  // so the user can name it (with suggestions) even before typing anything.
+  const [pendingSectionUid, setPendingSectionUid] = useState<string | null>(null)
 
   const [pasteOpen, setPasteOpen] = useState(false)
   const [markdown, setMarkdown] = useState('')
@@ -183,7 +196,7 @@ export function RecipeEditor() {
     setIngs(ingRows)
     setStps(
       steps.length
-        ? steps.map((s) => stepFromStrings(s.instruction, s.ingredients, ingRows))
+        ? steps.map((s) => stepFromStrings(s.instruction, s.ingredients, ingRows, s.timerSeconds ?? null))
         : [blankStep()]
     )
     setPrefilled(true)
@@ -295,7 +308,27 @@ export function RecipeEditor() {
   }
 
   // ── ingredient/step row ops ──
-  const moveIng = (i: number, d: -1 | 1) => setIngs((rs) => swap(rs, i, i + d))
+  // Drag-handle reorder: a dropped row adopts the section of the row it lands after,
+  // so dragging a row into a section group just works.
+  const dropRow = (target: number) => {
+    setIngs((rs) => {
+      if (dragIdx == null || dragIdx === target) return rs
+      const arr = [...rs]
+      const [moved] = arr.splice(dragIdx, 1)
+      const insertAt = dragIdx < target ? target - 1 : target
+      const before = arr[insertAt - 1]
+      moved.section = before ? before.section : (arr[insertAt]?.section ?? moved.section)
+      arr.splice(insertAt, 0, moved)
+      return arr
+    })
+    setDragIdx(null)
+  }
+  // Rename a section: apply the new name to every row in that group. Once it has a
+  // real name, drop the pending marker (normal section-grouping takes over).
+  const renameGroup = (indices: number[], name: string) => {
+    if (name.trim()) setPendingSectionUid(null)
+    setIngs((rs) => rs.map((r, idx) => (indices.includes(idx) ? { ...r, section: name } : r)))
+  }
   const moveStep = (i: number, d: -1 | 1) => setStps((rs) => swap(rs, i, i + d))
   const addPick = (i: number, ing: EditIng) =>
     setStps((rs) => patch(rs, i, { picks: [...rs[i].picks, { uid: ing.uid, amount: defaultStepAmount(ing) }] }))
@@ -305,8 +338,34 @@ export function RecipeEditor() {
     setStps((rs) => patch(rs, i, { picks: rs[i].picks.map((p) => (p.uid === uid ? { ...p, amount } : p)) }))
   const removeExtra = (i: number, j: number) =>
     setStps((rs) => patch(rs, i, { extra: rs[i].extra.filter((_, k) => k !== j) }))
+  const setStepTimer = (i: number, secs: number | null) =>
+    setStps((rs) => patch(rs, i, { timerSeconds: secs }))
 
   const namedIngs = ings.filter((g) => g.name.trim())
+
+  // Section suggestions: curated defaults + the household's own sections (global
+  // look), deduped case-insensitively. Not scoped to this recipe (you won't reuse a
+  // section within one recipe).
+  const sectionSuggestions = (() => {
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const s of [...DEFAULT_SECTIONS, ...usedSections]) {
+      const key = s.trim().toLowerCase()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      out.push(s.trim())
+    }
+    return out
+  })()
+
+  // Group consecutive rows by section for the grouped (header + rows) layout. A
+  // pending (just-added) section always starts its own group even when empty.
+  const ingGroups: { section: string; items: { row: EditIng; i: number }[] }[] = []
+  ings.forEach((row, i) => {
+    const last = ingGroups[ingGroups.length - 1]
+    if (last && last.section === row.section && row.uid !== pendingSectionUid) last.items.push({ row, i })
+    else ingGroups.push({ section: row.section, items: [{ row, i }] })
+  })
 
   // ── quiet AI auto-fill ──
   const META_AI_KEYS = ['cuisine', 'protein', 'mealType', 'base', 'effort', 'cookMethod', 'flavorProfile'] as const
@@ -367,7 +426,16 @@ export function RecipeEditor() {
   }
   const dismissAll = () => { setSuggestion(null); setDismissed(new Set()) }
 
-  function addIngredient() { setIngs((rs) => [...rs, blankIng()]); focusIngRef.current = true }
+  // New rows join the current (last) section; "Add section" starts a fresh group.
+  function addIngredient() {
+    setIngs((rs) => [...rs, { ...blankIng(), section: rs.length ? rs[rs.length - 1].section : '' }])
+    focusIngRef.current = true
+  }
+  function addSection() {
+    const row = { ...blankIng(), section: '' }
+    setIngs((rs) => [...rs, row])
+    setPendingSectionUid(row.uid) // renders an empty, focused header with full suggestions
+  }
   function addStep() { setStps((rs) => [...rs, blankStep()]); focusStepRef.current = true }
 
   // After adding a row, drop the cursor into it so entry stays on the keyboard.
@@ -377,6 +445,18 @@ export function RecipeEditor() {
     const rows = ingListRef.current?.querySelectorAll('.re-ing-row')
     ;(rows?.[rows.length - 1]?.querySelector('input') as HTMLInputElement | undefined)?.focus()
   }, [ings.length])
+  // Global look at the household's existing section names (for suggestions).
+  useEffect(() => {
+    let alive = true
+    mealsApi.recipeSections().then((d) => alive && setUsedSections(d.sections)).catch(() => {})
+    return () => { alive = false }
+  }, [])
+  // Focus a freshly added section's header so the user can name it right away.
+  useEffect(() => {
+    if (!pendingSectionUid) return
+    const inputs = ingListRef.current?.querySelectorAll('.re-ing-section')
+    ;(inputs?.[inputs.length - 1] as HTMLInputElement | undefined)?.focus()
+  }, [pendingSectionUid])
   useEffect(() => {
     if (!focusStepRef.current) return
     focusStepRef.current = false
@@ -526,23 +606,57 @@ export function RecipeEditor() {
       {/* ingredients */}
       <div className="card re-card">
         <div className="card-h re-section-h" style={{ marginBottom: 14 }}>Ingredients</div>
+        <div className="re-ing-head">
+          <span /><span>Qty</span><span>Unit</span><span>Ingredient</span><span>Prep · optional</span><span />
+        </div>
         <div className="re-ings" ref={ingListRef}>
-          {ings.map((row, i) => (
-            <div key={i} className="re-ing-row">
-              <input className="re-ing-amt" value={row.amount} onChange={(e) => setIngs((rs) => patch(rs, i, { amount: e.target.value }))} placeholder="2" />
-              <input className="re-ing-unit" value={row.unit} onChange={(e) => setIngs((rs) => patch(rs, i, { unit: e.target.value }))} placeholder="cups" />
-              <input className="re-ing-name" value={row.name} onChange={(e) => setIngs((rs) => patch(rs, i, { name: e.target.value }))} placeholder="ingredient" />
-              <input className="re-ing-prep" value={row.prepNote} onChange={(e) => setIngs((rs) => patch(rs, i, { prepNote: e.target.value }))} placeholder="diced (optional)" />
-              <input className="re-ing-sec" value={row.section} onChange={(e) => setIngs((rs) => patch(rs, i, { section: e.target.value }))} placeholder="section" />
-              <div className="re-row-ctl">
-                <button type="button" tabIndex={-1} aria-label="Move up" disabled={i === 0} onClick={() => moveIng(i, -1)}>↑</button>
-                <button type="button" tabIndex={-1} aria-label="Move down" disabled={i === ings.length - 1} onClick={() => moveIng(i, 1)}>↓</button>
-                <button type="button" tabIndex={-1} aria-label="Remove" className="re-del" onClick={() => setIngs((rs) => rs.filter((_, j) => j !== i))}>×</button>
-              </div>
+          {ingGroups.map((grp, gi) => (
+            <div className="re-ing-group" key={gi}>
+              {(grp.section !== '' || grp.items[0]?.row.uid === pendingSectionUid) && (
+                <input
+                  className="re-ing-section"
+                  value={grp.section}
+                  onChange={(e) => renameGroup(grp.items.map((it) => it.i), e.target.value)}
+                  placeholder="Section name"
+                  aria-label="Section name"
+                  list="re-ing-sections"
+                />
+              )}
+              {grp.items.map(({ row, i }) => (
+                <div
+                  key={row.uid}
+                  className={`re-ing-row${dragIdx === i ? ' re-ing-dragging' : ''}`}
+                  onDragOver={(e) => { if (dragIdx != null) e.preventDefault() }}
+                  onDrop={() => dropRow(i)}
+                >
+                  <button
+                    type="button"
+                    className="re-ing-drag"
+                    aria-label="Drag to reorder"
+                    tabIndex={-1}
+                    draggable
+                    onDragStart={() => setDragIdx(i)}
+                    onDragEnd={() => setDragIdx(null)}
+                  >⠿</button>
+                  <input className="re-ing-amt" value={row.amount} onChange={(e) => setIngs((rs) => patch(rs, i, { amount: e.target.value }))} placeholder="2" />
+                  <input className="re-ing-unit" value={row.unit} onChange={(e) => setIngs((rs) => patch(rs, i, { unit: e.target.value }))} placeholder="cups" />
+                  <input className="re-ing-name" value={row.name} onChange={(e) => setIngs((rs) => patch(rs, i, { name: e.target.value }))} placeholder="ingredient" />
+                  <input className="re-ing-prep" value={row.prepNote} onChange={(e) => setIngs((rs) => patch(rs, i, { prepNote: e.target.value }))} placeholder="diced" />
+                  <button type="button" tabIndex={-1} aria-label="Remove" className="re-ing-x" onClick={() => setIngs((rs) => rs.filter((_, j) => j !== i))}>×</button>
+                </div>
+              ))}
             </div>
           ))}
         </div>
-        <button type="button" className="pill re-add-row" onClick={addIngredient}>+ Add ingredient</button>
+        <datalist id="re-ing-sections">
+          {sectionSuggestions.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
+        <div className="re-ing-actions">
+          <button type="button" className="btn re-add-ing" onClick={addIngredient}>+ Add ingredient</button>
+          <button type="button" className="re-add-section" onClick={addSection}>+ Add section</button>
+        </div>
       </div>
 
       {/* steps */}
@@ -550,43 +664,24 @@ export function RecipeEditor() {
         <div className="card-h re-section-h" style={{ marginBottom: 14 }}>Method</div>
         <div className="re-steps" ref={stepListRef}>
           {stps.map((s, i) => (
-            <div key={i} className="re-step-row">
+            <div key={s.uid} className="re-step-row">
               <div className="re-step-n">{i + 1}</div>
               <div className="re-step-body">
                 <textarea value={s.instruction} onChange={(e) => setStps((rs) => patch(rs, i, { instruction: e.target.value }))} placeholder="Describe this step…" rows={2} />
-                <div className="re-stepings">
-                  <span className="re-stepings-label">Ingredients used</span>
-                  {namedIngs.length === 0 && <span className="tiny muted" style={{ fontWeight: 600 }}>Add ingredients above to pick them here.</span>}
-                  {namedIngs.map((g) => {
-                    const picked = s.picks.find((p) => p.uid === g.uid)
-                    if (picked) {
-                      return (
-                        <span key={g.uid} className="re-stepchip on">
-                          <input
-                            className="re-stepchip-amt"
-                            value={picked.amount}
-                            onChange={(e) => setPickAmount(i, g.uid, e.target.value)}
-                            placeholder="amt"
-                            aria-label={`Amount of ${g.name} for this step`}
-                          />
-                          <span className="re-stepchip-name">{g.name}</span>
-                          <button type="button" tabIndex={-1} aria-label={`Remove ${g.name} from step`} onClick={() => removePick(i, g.uid)}>×</button>
-                        </span>
-                      )
-                    }
-                    return (
-                      <button key={g.uid} type="button" className="re-stepchip add" onClick={() => addPick(i, g)}>+ {g.name}</button>
-                    )
-                  })}
-                  {s.extra.map((x, j) => (
-                    <span key={`x${j}`} className="re-stepchip on re-stepchip-extra">
-                      <span className="re-stepchip-name">{x}</span>
-                      <button type="button" tabIndex={-1} aria-label={`Remove ${x} from step`} onClick={() => removeExtra(i, j)}>×</button>
-                    </span>
-                  ))}
+                <div className="re-step-tags">
+                  <StepIngredients
+                    picks={s.picks}
+                    extra={s.extra}
+                    namedIngs={namedIngs}
+                    onAddPick={(ing) => addPick(i, ing)}
+                    onRemovePick={(uid) => removePick(i, uid)}
+                    onSetAmount={(uid, amt) => setPickAmount(i, uid, amt)}
+                    onRemoveExtra={(j) => removeExtra(i, j)}
+                  />
+                  <StepTimerControl seconds={s.timerSeconds} onChange={(secs) => setStepTimer(i, secs)} />
                 </div>
               </div>
-              <div className="re-row-ctl">
+              <div className="re-step-ctl">
                 <button type="button" tabIndex={-1} aria-label="Move up" disabled={i === 0} onClick={() => moveStep(i, -1)}>↑</button>
                 <button type="button" tabIndex={-1} aria-label="Move down" disabled={i === stps.length - 1} onClick={() => moveStep(i, 1)}>↓</button>
                 <button type="button" tabIndex={-1} aria-label="Remove" className="re-del" onClick={() => setStps((rs) => rs.filter((_, j) => j !== i))}>×</button>
@@ -639,6 +734,146 @@ function SugChips({ items, onAccept, onDismiss }: { items: string[]; onAccept: (
         </span>
       ))}
     </div>
+  )
+}
+
+// Per-step ingredient tagging: shows only the tagged ingredients as compact
+// "• name · amount" tags; a "+ Tag ingredient" button opens a popover to check
+// ingredients on/off and set per-step amounts (keeps the step row uncluttered).
+function StepIngredients({
+  picks,
+  extra,
+  namedIngs,
+  onAddPick,
+  onRemovePick,
+  onSetAmount,
+  onRemoveExtra,
+}: {
+  picks: StepPick[]
+  extra: string[]
+  namedIngs: EditIng[]
+  onAddPick: (ing: EditIng) => void
+  onRemovePick: (uid: string) => void
+  onSetAmount: (uid: string, amount: string) => void
+  onRemoveExtra: (j: number) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  return (
+    <>
+      {/* The tag button (popover anchor) stays FIRST so it never shifts as tags are
+          added or amounts change — otherwise the open popover jumps around. */}
+      <div className="re-tagpop-wrap" ref={wrapRef}>
+        <button type="button" className="re-tag-add" onClick={() => setOpen((o) => !o)}>+ Tag ingredient</button>
+        {open && (
+          <div className="re-tagpop">
+            <div className="re-tagpop-h">Tag an ingredient for this step</div>
+            {namedIngs.length === 0 ? (
+              <div className="re-tagpop-empty">Add ingredients above first.</div>
+            ) : (
+              namedIngs.map((g) => {
+                const picked = picks.find((p) => p.uid === g.uid)
+                return (
+                  <div className="re-tagpop-row" key={g.uid}>
+                    <button
+                      type="button"
+                      className={`re-tagpop-check${picked ? ' on' : ''}`}
+                      onClick={() => (picked ? onRemovePick(g.uid) : onAddPick(g))}
+                      aria-label={picked ? `Untag ${g.name}` : `Tag ${g.name}`}
+                    >
+                      {picked ? '✓' : ''}
+                    </button>
+                    <span className={`re-tagpop-name${picked ? ' on' : ''}`}>{g.name}</span>
+                    {picked && (
+                      <input
+                        className="re-tagpop-amt"
+                        value={picked.amount}
+                        placeholder="amt"
+                        aria-label={`Amount of ${g.name}`}
+                        onChange={(e) => onSetAmount(g.uid, e.target.value)}
+                      />
+                    )}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )}
+      </div>
+      {picks.map((p) => {
+        const g = namedIngs.find((x) => x.uid === p.uid)
+        if (!g) return null
+        return (
+          <button type="button" key={p.uid} className="re-tag" onClick={() => setOpen(true)} aria-label={`Edit ${g.name} for this step`}>
+            <span className="re-tag-dot" />
+            <span className="re-tag-name">{g.name}</span>
+            {p.amount.trim() && <span className="re-tag-amt">· {p.amount.trim()}</span>}
+          </button>
+        )
+      })}
+      {extra.map((x, j) => (
+        <span key={`x${j}`} className="re-tag re-tag-extra">
+          <span className="re-tag-dot" />
+          <span className="re-tag-name">{x}</span>
+          <button type="button" tabIndex={-1} aria-label={`Remove ${x}`} className="re-tag-x" onClick={() => onRemoveExtra(j)}>×</button>
+        </span>
+      ))}
+    </>
+  )
+}
+
+function fmtTimer(s: number): string {
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+// Per-step timer: a filled "⏱ m:ss" pill when set (tap to edit, × to clear), or a
+// dashed "⏱ Add timer" button when unset. Editing exposes minute + second inputs.
+// The value lives on the step (prop-driven) so it never desyncs from saved state.
+function StepTimerControl({ seconds, onChange }: { seconds: number | null; onChange: (secs: number | null) => void }) {
+  const [editing, setEditing] = useState(false)
+  const mins = seconds != null ? Math.floor(seconds / 60) : 0
+  const secs = seconds != null ? seconds % 60 : 0
+
+  // Commit minute/second edits back to a single total (null when both are empty/0).
+  const commit = (m: number, s: number) => {
+    const total = Math.max(0, Math.floor(m)) * 60 + Math.max(0, Math.min(59, Math.floor(s)))
+    onChange(total > 0 ? total : null)
+  }
+
+  if (editing) {
+    return (
+      <span className="re-timer-edit">
+        <span className="re-timer-ic" aria-hidden>⏱</span>
+        <input type="number" min={0} className="re-timer-num" value={mins || ''} placeholder="0" aria-label="Timer minutes" autoFocus onChange={(e) => commit(Number(e.target.value || 0), secs)} />
+        <span className="re-timer-unit">min</span>
+        <input type="number" min={0} max={59} className="re-timer-num" value={secs || ''} placeholder="0" aria-label="Timer seconds" onChange={(e) => commit(mins, Number(e.target.value || 0))} />
+        <span className="re-timer-unit">sec</span>
+        <button type="button" className="re-timer-done" aria-label="Done" onClick={() => setEditing(false)}>✓</button>
+        <button type="button" className="re-timer-cancel" aria-label="Remove timer" onClick={() => { onChange(null); setEditing(false) }}>×</button>
+      </span>
+    )
+  }
+  if (seconds != null) {
+    return (
+      <span className="re-timer-pill">
+        <span aria-hidden>⏱</span>
+        <button type="button" className="re-timer-time" onClick={() => setEditing(true)} aria-label="Edit timer">{fmtTimer(seconds)}</button>
+        <button type="button" className="re-timer-x" aria-label="Remove timer" onClick={() => onChange(null)}>×</button>
+      </span>
+    )
+  }
+  return (
+    <button type="button" className="re-timer-add" onClick={() => setEditing(true)}>⏱ Add timer</button>
   )
 }
 

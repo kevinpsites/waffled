@@ -21,6 +21,19 @@ function dayMeta(d: string): { rel: string; full: string; diff: number; weekday:
   return { rel, full, diff, weekday }
 }
 
+// A carried-forward one-off keeps its original due date, so when it shows up on a
+// later day it's overdue. Describe how long ago it was due ("since Mon", or a date
+// once it's more than a week old). Returns null when it's not actually overdue.
+function overdueLabel(dueOn: string, viewing: string): string | null {
+  const due = new Date(`${dueOn}T00:00:00`)
+  const ref = new Date(`${viewing}T00:00:00`)
+  const diff = Math.round((ref.getTime() - due.getTime()) / 86_400_000)
+  if (diff <= 0) return null
+  if (diff === 1) return 'since yesterday'
+  if (diff < 7) return `since ${due.toLocaleDateString('en-US', { weekday: 'short' })}`
+  return `since ${due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+}
+
 type Column = { key: string; name: string; items: ChoreInstance[]; emoji?: string | null; color?: string | null }
 type PersonLite = { id: string; name: string; avatarEmoji?: string | null; colorHex?: string | null }
 
@@ -295,6 +308,10 @@ export function Tasks() {
                         {i.emoji ? `${i.emoji} ` : ''}
                         {i.choreTitle}
                         {i.streak >= 2 && <span className="chore-streak" title={`${i.streak}-day streak`}>🔥 {i.streak}</span>}
+                        {!isComplete && (() => {
+                          const od = overdueLabel(i.dueOn, date)
+                          return od ? <span className="chore-overdue" title={`Was due ${i.dueOn}`}>overdue · {od}</span> : null
+                        })()}
                       </div>
                       <div className="star">
                         <span style={{ fontSize: 12 }}>{(i.rewardCurrency ? cur.byKey[i.rewardCurrency] : cur.defaultCurrency)?.symbol ?? '⭐'}</span> {i.rewardAmount ?? 0}
