@@ -151,6 +151,52 @@ shipped — see 0048–0050 + the calendar→goal Phase 2 note above.)*
 
 ## Backlog — designed, not yet built
 
+### Public API — per-user API keys + scopes (Immich-style integration surface) — PLANNED 2026-06-29
+Today the REST surface is broad (~179 routes, full CRUD on most domains) but there's **no way for
+a self-hoster to build an integration**: auth is short-lived session JWTs only (1h access / 60d
+refresh), authorization is a role→capability matrix bound to the *person* (not a token), there are
+**no API keys, no scopes**, no OpenAPI/published contract, and the API is same-origin (no CORS).
+Goal: let operators (and the people they share with) build their own integrations against a stable,
+documented API — the platform enabler that the optional modules below can also be fed by.
+- **`api_keys` table** — account/person + household, name, hashed key (`nook_…` prefix), `scopes[]`,
+  `last_used_at`, `expires_at`, `revoked_at`. Key shown once on creation.
+- **Issuance UI** — Settings → API keys (generate / name / scope / revoke); admin-gated at first,
+  per-user later.
+- **Auth gate** — `requireAuth` recognizes a `nook_…` bearer, looks the key up by hash, resolves the
+  tenant from the key's person+household, and attaches its scopes (sessions keep current behavior).
+- **Scopes** — coarse to start (e.g. `read`/`write` per domain: `recipes:read`, `chores:write`, …),
+  enforced in the route guards for key-auth callers (layered over the existing capability matrix —
+  a key can never exceed its person's role).
+- **Contract** — an OpenAPI spec (or a generated/exported types package; the web client currently
+  hand-mirrors types). Decide CORS posture for cross-origin browser integrations (opt-in allowlist).
+- **Docs** — a short "build an integration" guide + publish the data model (`docs/DATA_MODEL.md`
+  already exists).
+Effort: key system ≈ a focused day; OpenAPI/contract is a separable add-on.
+
+### Pluggable optional modules + a "Modules" settings tab — IDEA 2026-06-29
+A way to ship optional, opt-in features (core stays lean; households enable extras; some are
+community/personal rather than official). A module registry + per-household enable flag in
+`households.settings.modules`; Today cards, nav entries, and routes gate on whether their module is
+enabled. This is the "module tab" that makes the personal modules below shippable without bloating
+the default app. Most such modules are **in-tree (pattern A)** — they integrate with Today/persons/
+meals — but each should also expose REST endpoints so **external integrations (the API-keys work
+above, pattern B)** can feed them (e.g. push today's quote, update pantry from a barcode scanner).
+Candidate modules (Kevin's use cases):
+- **Family Home Evening (FHE)** — weekly (default Mon) family meeting with a structured agenda
+  (opening prayer · song · spiritual thought/scripture · lesson · activity · optional family council ·
+  treat), per-part **assignment + rotation** across family members, a **Today card** on the meeting
+  day, and history. Deeply integrated (persons, recurrence, Today) → **in-tree optional module**;
+  LDS-specific so likely community-tier, not core. (Built on the module framework.)
+- **Food / pantry inventory** — track what's actually on hand (freezer/fridge/pantry) beyond the
+  existing "expected staples," with quantities + locations; **feeds meal planning** ("use this
+  soon," surface leftovers) and ties to grocery (buy → stock, cook → deplete). Broadly useful (not
+  faith-specific) → **in-tree, plausibly core**; benefits from API keys for external input
+  (barcode/scanner scripts).
+- **Daily quote / snippet** — preloadable (bulk import) daily content shown on the Today tab.
+  Simplest module: a `quotes` table + a Today card + import. Best as a small **in-tree card** that's
+  **also writable via the public API**, so an external source can populate it — the cleanest first
+  demonstration of the A+B hybrid.
+
 ### Chore rollover / one-off tasks — SHIPPED 2026-06-29 (built + tested; live UI verify pending)
 Before, there were **no true one-off chores**: `createChore` coerced a no-repeat chore to
 `FREQ=DAILY` (`coalesce(rrule,'FREQ=DAILY')`), and the Today read filtered `chore_instances.due_on
