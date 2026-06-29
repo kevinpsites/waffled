@@ -783,6 +783,10 @@ struct NookAPI: Sendable {
         let rewardAmount: Int
         let rewardCurrency: String?   // currency key (e.g. "stars"); nil = default
         let rrule: String?
+        /// The day this instance is due (`yyyy-MM-dd`). For a one-off (`rrule == nil`)
+        /// that has rolled over, it keeps its ORIGINAL due day — so the client can show
+        /// how overdue it is. nil on older payloads.
+        let dueOn: String?
         let requiresApproval: Bool
         let streak: Int
         /// Photo-proof: the chore needs a snapshot to complete; the (resolved, maybe
@@ -796,7 +800,7 @@ struct NookAPI: Sendable {
 
         private enum CodingKeys: String, CodingKey {
             case id, choreId, choreTitle, emoji, personId, personName, status
-            case rewardAmount, rewardCurrency, rrule, requiresApproval, streak
+            case rewardAmount, rewardCurrency, rrule, dueOn, requiresApproval, streak
             case requiresPhoto, proofUrl, hadProof
         }
 
@@ -812,6 +816,7 @@ struct NookAPI: Sendable {
             rewardAmount = (try? c.decode(Int.self, forKey: .rewardAmount)) ?? 0
             rewardCurrency = try c.decodeIfPresent(String.self, forKey: .rewardCurrency)
             rrule = try c.decodeIfPresent(String.self, forKey: .rrule)
+            dueOn = try c.decodeIfPresent(String.self, forKey: .dueOn)
             requiresApproval = (try? c.decode(Bool.self, forKey: .requiresApproval)) ?? false
             streak = (try? c.decode(Int.self, forKey: .streak)) ?? 0
             requiresPhoto = (try? c.decode(Bool.self, forKey: .requiresPhoto)) ?? false

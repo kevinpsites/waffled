@@ -140,6 +140,20 @@ enum ChoreDates {
         }
         return (rel, DateFmt.string(date, "EEEE, MMM d", .current), diff == 0)
     }
+
+    /// Client-side "since …" suffix for an overdue one-off (web parity: Tasks.tsx
+    /// `overdueLabel`) — its `dueOn` is before the day being viewed. nil when not overdue.
+    static func overdueLabel(dueOn: String?, viewing: String) -> String? {
+        guard let dueOn,
+              let due = DateFmt.date(dueOn, "yyyy-MM-dd", .current),
+              let view = DateFmt.date(viewing, "yyyy-MM-dd", .current) else { return nil }
+        let cal = Calendar.current
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: due), to: cal.startOfDay(for: view)).day ?? 0
+        guard days >= 1 else { return nil }
+        if days == 1 { return "since yesterday" }
+        if days < 7 { return "since \(DateFmt.string(due, "EEE", .current))" }
+        return "since \(DateFmt.string(due, "MMM d", .current))"
+    }
 }
 
 /// A person's (or the up-for-grabs) column of chores for the day.
@@ -750,6 +764,16 @@ struct ChoresView: View {
                         if inst.streak >= 2 {
                             Text("🔥 \(inst.streak)").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink2)
                         }
+                        // Carried-forward one-off: red "overdue · since …" pill (web parity).
+                        if !isDone, !isAwaiting,
+                           let since = ChoreDates.overdueLabel(dueOn: inst.dueOn, viewing: model.date) {
+                            Text("overdue · \(since)")
+                                .font(.system(size: 10.5, weight: .heavy))
+                                .foregroundStyle(NK.primaryD)
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(NK.primary.opacity(0.12)).clipShape(Capsule())
+                                .lineLimit(1)
+                        }
                     }
                     HStack(spacing: 5) {
                         Text(sync.currencySymbol(inst.rewardCurrency)).font(.system(size: 11))
@@ -875,8 +899,9 @@ struct ChoreEditSheet: View {
     @State private var stars: Int
     /// Chosen reward currency key; nil = the household default.
     @State private var currencyKey: String?
-    @State private var freq: String        // "daily" | "weekly"
+    @State private var freq: String        // "once" | "daily" | "weekly"
     @State private var days: Set<String>
+    @State private var dueOn: Date         // the "On" date for a one-off ("Just once")
     @State private var requiresApproval: Bool
     @State private var requiresPhoto: Bool
     @State private var confirmDelete = false
@@ -894,6 +919,7 @@ struct ChoreEditSheet: View {
             _personId = State(initialValue: pid); _stars = State(initialValue: 1)
             _currencyKey = State(initialValue: nil)
             _freq = State(initialValue: "daily"); _days = State(initialValue: [])
+            _dueOn = State(initialValue: Date())
             _requiresApproval = State(initialValue: false)
             _requiresPhoto = State(initialValue: false)
         case let .edit(i):
@@ -903,6 +929,7 @@ struct ChoreEditSheet: View {
             _currencyKey = State(initialValue: i.rewardCurrency)
             let parsed = ChoreEditSheet.parseRrule(i.rrule)
             _freq = State(initialValue: parsed.freq); _days = State(initialValue: Set(parsed.days))
+            _dueOn = State(initialValue: DateFmt.date(i.dueOn ?? "", "yyyy-MM-dd", .current) ?? Date())
             _requiresApproval = State(initialValue: i.requiresApproval)
             _requiresPhoto = State(initialValue: i.requiresPhoto)
         }
@@ -949,9 +976,20 @@ struct ChoreEditSheet: View {
                     VStack(alignment: .leading, spacing: 9) {
                         SectionLabel(text: "Repeats")
                         Picker("Repeats", selection: $freq.animation()) {
-                            Text("Every day").tag("daily"); Text("Certain days").tag("weekly")
+                            Text("Just once").tag("once")
+                            Text("Every day").tag("daily")
+                            Text("Certain days").tag("weekly")
                         }
                         .pickerStyle(.segmented)
+                        // One-off: pick the day it's due. Hidden when editing (its instance
+                        // already exists on a fixed day, matching the web).
+                        if freq == "once" && !editing {
+                            DatePicker("On", selection: $dueOn,
+                                       in: Calendar.current.startOfDay(for: Date())...,
+                                       displayedComponents: .date)
+                                .font(.system(size: 15, weight: .semibold))
+                                .tint(NK.primary)
+                        }
                         if freq == "weekly" {
                             HStack(spacing: 5) {
                                 ForEach(Self.days, id: \.code) { d in
@@ -1117,7 +1155,8 @@ struct ChoreEditSheet: View {
             "emoji": emoji.trimmingCharacters(in: .whitespaces).isEmpty ? .null : .string(emoji.trimmingCharacters(in: .whitespaces)),
             "personId": personId.map(JSONValue.string) ?? .null,
             "rewardAmount": .int(stars),
-            "rrule": .string(buildRrule()),
+            // One-off ("Just once") sends no rrule (null); recurring sends FREQ=…
+            "rrule": buildRrule().map(JSONValue.string) ?? .null,
             "requiresApproval": .bool(requiresApproval),
             "requiresPhoto": .bool(requiresPhoto),
         ]
@@ -1125,6 +1164,11 @@ struct ChoreEditSheet: View {
         // backend uses its default).
         if currencies.count > 1, let key = effectiveCurrencyKey {
             body["rewardCurrency"] = .string(key)
+        }
+        // The "On" day only applies to a freshly-created one-off; the server defaults it
+        // to household-local today if omitted and ignores it for recurring chores.
+        if freq == "once", !editing {
+            body["dueOn"] = .string(DateFmt.string(dueOn, "yyyy-MM-dd", .current))
         }
         Task {
             saving = true; saveError = nil
@@ -1134,14 +1178,23 @@ struct ChoreEditSheet: View {
         }
     }
 
-    private func buildRrule() -> String {
-        guard freq == "weekly", !days.isEmpty else { return "FREQ=DAILY" }
-        let ordered = Self.days.map(\.code).filter { days.contains($0) }
-        return "FREQ=WEEKLY;BYDAY=\(ordered.joined(separator: ","))"
+    /// nil = one-off ("Just once"); else the recurrence rule.
+    private func buildRrule() -> String? {
+        switch freq {
+        case "once": return nil
+        case "weekly":
+            guard !days.isEmpty else { return nil }   // canSave already guards this
+            let ordered = Self.days.map(\.code).filter { days.contains($0) }
+            return "FREQ=WEEKLY;BYDAY=\(ordered.joined(separator: ","))"
+        default: return "FREQ=DAILY"
+        }
     }
 
     private static func parseRrule(_ rrule: String?) -> (freq: String, days: [String]) {
-        guard let r = rrule, r.uppercased().contains("FREQ=WEEKLY") else { return ("daily", []) }
+        // A blank/absent rrule is a one-off — NOT a daily chore. (Editing a one-off must
+        // keep "once", or saving would silently convert it to a recurring daily chore.)
+        guard let r = rrule, !r.trimmingCharacters(in: .whitespaces).isEmpty else { return ("once", []) }
+        guard r.uppercased().contains("FREQ=WEEKLY") else { return ("daily", []) }
         guard let range = r.range(of: "BYDAY=", options: .caseInsensitive) else { return ("weekly", []) }
         let rest = r[range.upperBound...].prefix { $0.isLetter || $0 == "," }
         return ("weekly", rest.uppercased().split(separator: ",").map(String.init))
