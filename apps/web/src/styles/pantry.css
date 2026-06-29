@@ -16,9 +16,10 @@
 .pantry-group { border-radius: var(--r-lg, 16px); transition: background 0.12s ease; }
 .pantry-group.over { background: color-mix(in srgb, var(--primary, #e0653f) 8%, transparent); outline: 2px dashed color-mix(in srgb, var(--primary, #e0653f) 40%, transparent); outline-offset: 4px; }
 .pantry-drop-hint {
-  font-size: 13px; font-weight: 700; color: var(--ink-3); padding: 14px; text-align: center;
-  border: 1px dashed var(--hair); border-radius: var(--r-lg, 14px);
+  font-size: 13px; font-weight: 600; color: var(--ink-3); padding: 10px 14px; text-align: center;
+  border: 1px solid transparent; border-radius: var(--r-lg, 14px);
 }
+.pantry-drop-hint.active { font-weight: 700; border: 1px dashed var(--hair); }
 .pantry-list { display: flex; flex-direction: column; gap: 8px; }
 .pantry-item {
   display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 8px; border-radius: var(--r-lg, 14px);

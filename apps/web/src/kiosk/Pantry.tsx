@@ -51,9 +51,12 @@ export function Pantry() {
     ;(byLoc.get(key) ?? byLoc.set(key, []).get(key)!).push(it)
   }
   const dragging = dragId != null
-  const groups = locations
-    .filter((loc) => dragging || (byLoc.get(loc)?.length ?? 0) > 0)
-    .map((loc) => ({ loc, items: byLoc.get(loc) ?? [] }))
+  // Render ALL configured locations always, in a fixed order. The DOM must stay
+  // structurally stable during a drag — if groups reorder/insert mid-drag (e.g. an
+  // empty location appears), the dragged node's ancestor moves and the browser
+  // aborts the native drag (the "flashing, won't move" bug). Empty groups double as
+  // drop targets.
+  const groups = locations.map((loc) => ({ loc, items: byLoc.get(loc) ?? [] }))
   if ((byLoc.get('Other')?.length ?? 0) > 0) groups.push({ loc: 'Other', items: byLoc.get('Other')! })
 
   return (
@@ -83,7 +86,7 @@ export function Pantry() {
               <div className="pantry-group-h">{loc}</div>
               <div className="pantry-list">
                 {list.length === 0 ? (
-                  <div className="pantry-drop-hint">Drop here</div>
+                  <div className={`pantry-drop-hint${dragging ? ' active' : ''}`}>{dragging ? 'Drop here' : 'Empty'}</div>
                 ) : list.map((it) => (
                   <div key={it.id} className={`pantry-item${busy === it.id ? ' busy' : ''}${dragId === it.id ? ' dragging' : ''}`}>
                     <button
