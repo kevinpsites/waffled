@@ -479,6 +479,14 @@ struct NookAPI: Sendable {
         try await getJSON("/api/recipes/\(id)", as: RecipeDetailDTO.self)
     }
 
+    /// The household's previously-used ingredient section names (a global look across
+    /// recipes), for the editor's section-name autocomplete. Merged client-side with the
+    /// curated defaults.
+    func recipeSections() async throws -> [String] {
+        struct Resp: Decodable { let sections: [String] }
+        return try await getJSON("/api/recipes/sections", as: Resp.self).sections
+    }
+
     /// Toggle a recipe's favorite flag; returns the updated recipe.
     @discardableResult
     func setRecipeFavorite(id: String, isFavorite: Bool) async throws -> RecipeSummary {
