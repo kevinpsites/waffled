@@ -323,12 +323,14 @@ export function RecipeEditor() {
     })
     setDragIdx(null)
   }
-  // Rename a section: apply the new name to every row in that group. Once it has a
-  // real name, drop the pending marker (normal section-grouping takes over).
-  const renameGroup = (indices: number[], name: string) => {
-    if (name.trim()) setPendingSectionUid(null)
+  // Rename a section: apply the new name to every row in that group. We keep the
+  // pending marker on a just-added section so backspacing the name back to empty
+  // leaves it as its own blank-headed group (showing the full suggestion list) —
+  // instead of collapsing the row into the section above. The marker is harmless
+  // once named (a named group renders its header anyway) and is replaced by the
+  // next "Add section".
+  const renameGroup = (indices: number[], name: string) =>
     setIngs((rs) => rs.map((r, idx) => (indices.includes(idx) ? { ...r, section: name } : r)))
-  }
   const moveStep = (i: number, d: -1 | 1) => setStps((rs) => swap(rs, i, i + d))
   const addPick = (i: number, ing: EditIng) =>
     setStps((rs) => patch(rs, i, { picks: [...rs[i].picks, { uid: ing.uid, amount: defaultStepAmount(ing) }] }))
