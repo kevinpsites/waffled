@@ -481,7 +481,72 @@ struct RecipeEditorView: View {
                 .font(.system(size: 15)).lineLimit(2...8)
                 .padding(10).nkField(fill: NK.panel)
             stepIngredients(step)
+            stepTimer(step)
         }
+    }
+
+    /// Per-step timer control. Collapsed: a dashed "⏱ Add timer" affordance. Expanded:
+    /// editable minutes + seconds (0–59) and a filled "⏱ m:ss" pill with a clear button.
+    /// Total seconds = m*60 + s; nil when the total is 0 (= no timer).
+    @ViewBuilder private func stepTimer(_ step: Binding<EditStep>) -> some View {
+        let total = step.wrappedValue.timerSeconds ?? 0
+        if total > 0 {
+            HStack(spacing: 10) {
+                Text("⏱ \(CookTimer.mmss(total))")
+                    .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.primaryD)
+                    .padding(.horizontal, 11).padding(.vertical, 7)
+                    .background(NK.primary.opacity(0.12)).clipShape(Capsule())
+
+                HStack(spacing: 4) {
+                    TextField("0", value: timerMin(step), format: .number)
+                        .keyboardType(.numberPad).multilineTextAlignment(.center)
+                        .font(.system(size: 14, weight: .semibold)).frame(width: 42)
+                        .padding(.vertical, 6).nkField(fill: NK.card)
+                    Text("min").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                    TextField("0", value: timerSec(step), format: .number)
+                        .keyboardType(.numberPad).multilineTextAlignment(.center)
+                        .font(.system(size: 14, weight: .semibold)).frame(width: 42)
+                        .padding(.vertical, 6).nkField(fill: NK.card)
+                    Text("sec").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                }
+                Spacer()
+                Button { step.wrappedValue.timerSeconds = nil } label: {
+                    Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                }.buttonStyle(.plain)
+            }
+        } else {
+            Button { step.wrappedValue.timerSeconds = 60 } label: {
+                Label("Add timer", systemImage: "timer")
+                    .font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.primaryD)
+                    .padding(.horizontal, 11).padding(.vertical, 7)
+                    .overlay(Capsule().stroke(style: StrokeStyle(lineWidth: 1.2, dash: [4, 3]))
+                        .foregroundStyle(NK.primaryD.opacity(0.5)))
+            }.buttonStyle(.plain)
+        }
+    }
+
+    /// Minutes binding over the step's total seconds (clamped ≥ 0).
+    private func timerMin(_ step: Binding<EditStep>) -> Binding<Int> {
+        Binding(
+            get: { (step.wrappedValue.timerSeconds ?? 0) / 60 },
+            set: { m in
+                let s = (step.wrappedValue.timerSeconds ?? 0) % 60
+                let total = max(0, m) * 60 + s
+                step.wrappedValue.timerSeconds = total > 0 ? total : nil
+            }
+        )
+    }
+
+    /// Seconds (0–59) binding over the step's total seconds.
+    private func timerSec(_ step: Binding<EditStep>) -> Binding<Int> {
+        Binding(
+            get: { (step.wrappedValue.timerSeconds ?? 0) % 60 },
+            set: { s in
+                let m = (step.wrappedValue.timerSeconds ?? 0) / 60
+                let total = m * 60 + min(59, max(0, s))
+                step.wrappedValue.timerSeconds = total > 0 ? total : nil
+            }
+        )
     }
 
     /// "Ingredients used" — toggle a recipe ingredient onto this step, then (below) set the
@@ -690,7 +755,8 @@ struct RecipeEditorView: View {
                 }
                 lines.append(contentsOf: s.extra)
                 return .object(["instruction": .string(s.instruction.trimmingCharacters(in: .whitespaces)),
-                                "ingredients": .array(lines.map(JSONValue.string))])
+                                "ingredients": .array(lines.map(JSONValue.string)),
+                                "timerSeconds": s.timerSeconds.map(JSONValue.int) ?? .null])
             }
 
         var body: [String: JSONValue] = [
@@ -759,16 +825,20 @@ struct EditStep: Identifiable, Equatable {
     var instruction = ""
     var picks: [StepPick] = []
     var extra: [String] = []
+    /// Total seconds for this step's optional timer; nil = no timer.
+    var timerSeconds: Int?
 
     init() {}
     init(_ dto: NookAPI.RecipeStepDTO, ings: [EditIng]) {
-        self.init(instruction: dto.instruction, ingredientLines: dto.ingredients, ings: ings)
+        self.init(instruction: dto.instruction, ingredientLines: dto.ingredients, ings: ings,
+                  timerSeconds: dto.timerSeconds)
     }
     /// Seed a step from saved/parsed data — match each "amount name" line back to an
     /// ingredient (best effort) so the per-step amount stays editable; unmatched lines
     /// become free extras.
-    init(instruction: String, ingredientLines: [String], ings: [EditIng]) {
+    init(instruction: String, ingredientLines: [String], ings: [EditIng], timerSeconds: Int? = nil) {
         self.instruction = instruction
+        self.timerSeconds = timerSeconds
         let named = ings.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty }
             .sorted { $0.name.count > $1.name.count }   // longest name first
         for line in ingredientLines {
