@@ -299,6 +299,7 @@
 .pl-cook-go { flex: none; font: inherit; font-size: 13px; font-weight: 800; color: #fff; background: var(--wally, #25a368); border: 0; border-radius: 999px; padding: 7px 16px; cursor: pointer; }
 .pl-plan-btn { flex: none; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink); background: var(--card-2, #faf8f4); border: 1px solid var(--hair); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
 .pl-plan-btn:hover { border-color: var(--primary); }
+.pl-plan-btn.done { color: #1c7a44; background: #e6f4ea; border-color: #cfe9d8; }
 .pl-plan-pick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
 .pl-plan-pick select, .pl-plan-pick input { font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--hair); background: var(--card-2, #faf8f4); color: var(--ink); }
 .pl-plan-pick .pill { cursor: pointer; }

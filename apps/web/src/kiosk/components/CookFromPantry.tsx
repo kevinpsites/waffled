@@ -28,6 +28,10 @@ function expiryNote(d: string | null): string {
   return `${days} days`
 }
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+function dayLabel(d: string): string {
+  if (d === new Date().toISOString().slice(0, 10)) return 'today'
+  return new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short' })
+}
 const isSoon = (i: PantryItem) => { const d = daysUntil(i.expiresOn); return d != null && d <= 3 }
 
 export function CookFromPantry({ items }: { items: PantryItem[] }) {
@@ -76,11 +80,21 @@ function CookModal({ items, ready, mains, onClose }: { items: PantryItem[]; read
   const [planFor, setPlanFor] = useState<string | null>(null)
   const [planDate, setPlanDate] = useState(today)
   const [planMeal, setPlanMeal] = useState('dinner')
-  const [planned, setPlanned] = useState<Set<string>>(new Set())
+  // What's already on the plan (by free-text title → date), so a leftover that's been
+  // scheduled shows "Planned" across reopens and we don't double-add it.
+  const [plannedMap, setPlannedMap] = useState<Record<string, string>>({})
+  useEffect(() => {
+    mealsApi.mealsWeek(today, 21).then((d) => {
+      const m: Record<string, string> = {}
+      for (const e of d.entries) if (e.title && e.date >= today) m[e.title.trim().toLowerCase()] = e.date
+      setPlannedMap(m)
+    }).catch(() => {})
+  }, [today])
+  const plannedDate = (item: PantryItem) => plannedMap[item.name.trim().toLowerCase()]
 
   async function planItem(item: PantryItem) {
     try { await mealsApi.planSlot({ date: planDate, mealType: planMeal, title: item.name }) } catch { /* ignore */ }
-    setPlanned((s) => new Set(s).add(item.id))
+    setPlannedMap((m) => ({ ...m, [item.name.trim().toLowerCase()]: planDate }))
     setPlanFor(null)
   }
 
@@ -124,8 +138,8 @@ function CookModal({ items, ready, mains, onClose }: { items: PantryItem[]; read
                   <div className="pl-cookm-cardmain">
                     <div className="pl-cookm-cardrow">
                       <span className="pl-cookm-cardname">{m.name}</span>
-                      <button type="button" className="pl-plan-btn" onClick={() => { if (planned.has(m.id)) return; setPlanDate(today); setPlanMeal('dinner'); setPlanFor(planFor === m.id ? null : m.id) }}>
-                        {planned.has(m.id) ? '✓ Planned' : 'Plan'}
+                      <button type="button" className={`pl-plan-btn${plannedDate(m) ? ' done' : ''}`} onClick={() => { if (plannedDate(m)) { navigate('/meals'); return } setPlanDate(today); setPlanMeal('dinner'); setPlanFor(planFor === m.id ? null : m.id) }}>
+                        {plannedDate(m) ? `✓ Planned ${dayLabel(plannedDate(m)!)}` : 'Plan'}
                       </button>
                     </div>
                     <div className="pl-cookm-badges">
