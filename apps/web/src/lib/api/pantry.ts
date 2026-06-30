@@ -86,6 +86,9 @@ export const ALLERGEN_KEYS = Object.keys(ALLERGEN_LABELS)
 export const pantryApi = {
   list: () => apiGet<{ items: PantryItem[]; locations: string[]; showOnToday: boolean; avoidAllergens: string[]; allergenPeople: Record<string, string[]>; lowThreshold: number; locationIcons: Record<string, string> }>('/api/pantry'),
   create: (input: PantryItemInput) => apiSend<{ item: PantryItem }>('POST', '/api/pantry', input).then((r) => r.item),
+  // Scan upsert: increments a matching on-hand item (by barcode, else name) instead
+  // of duplicating. Returns whether it incremented an existing item.
+  scan: (input: PantryItemInput) => apiSend<{ item: PantryItem; incremented: boolean }>('POST', '/api/pantry/scan', input),
   update: (id: string, patch: PantryItemInput) => apiSend<{ item: PantryItem }>('PATCH', `/api/pantry/${id}`, patch).then((r) => r.item),
   remove: (id: string) => apiDelete(`/api/pantry/${id}`),
   // Barcode → Open Food Facts product (cached server-side). Returns null if not found.

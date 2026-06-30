@@ -23,8 +23,14 @@ export function ScanModal({ locations, onClose, onAdded }: { locations: string[]
   const [name, setName] = useState('')
   const [location, setLocation] = useState(locations[0] ?? 'Pantry')
   const [amount, setAmount] = useState('1')
+  const [unit, setUnit] = useState('')
+  const [expiresOn, setExpiresOn] = useState('')
+  const [note, setNote] = useState('')
+  const [lowAt, setLowAt] = useState('')
+  const [showMore, setShowMore] = useState(false)
   const [busy, setBusy] = useState(false)
   const [added, setAdded] = useState(0)
+  const [flash, setFlash] = useState<string | null>(null)
 
   async function handleCode(raw: string) {
     if (!acceptRef.current) return
@@ -50,18 +56,32 @@ export function ScanModal({ locations, onClose, onAdded }: { locations: string[]
     return () => { cancelled = true; controlsRef.current?.stop() }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function resume() { setFound(undefined); setCode(null); setName(''); setAmount('1'); acceptRef.current = true }
+  function resume() {
+    setFound(undefined); setCode(null); setName(''); setAmount('1')
+    setUnit(''); setExpiresOn(''); setNote(''); setLowAt(''); setShowMore(false)
+    acceptRef.current = true
+  }
 
   async function add() {
     if (busy) return
     setBusy(true)
-    const input: PantryItemInput = { name: name.trim() || 'Item', amount: amount.trim(), location }
+    const input: PantryItemInput = {
+      name: name.trim() || 'Item', amount: amount.trim(), location,
+      unit: unit.trim() || undefined, expiresOn: expiresOn || undefined,
+      note: note.trim() || undefined, lowAt: lowAt.trim() === '' ? undefined : Number(lowAt),
+    }
     if (found) Object.assign(input, {
       barcode: found.barcode, brand: found.brand, imageUrl: found.imageUrl, quantityText: found.quantityText,
       servingBasis: found.servingBasis, nutrition: found.nutrition, allergens: found.allergens, dietary: found.dietary, source: found.source,
     })
     else if (code) input.barcode = code
-    try { await pantryApi.create(input); setAdded((n) => n + 1); onAdded(); resume() } finally { setBusy(false) }
+    try {
+      const r = await pantryApi.scan(input)
+      setAdded((n) => n + 1)
+      setFlash(`${r.incremented ? 'Updated' : 'Added'} ${r.item.name} — now ${r.item.amount || '1'}${r.item.unit ? ' ' + r.item.unit : ''}`)
+      onAdded()
+      resume()
+    } finally { setBusy(false) }
   }
 
   async function lookupManual() {
@@ -104,7 +124,12 @@ export function ScanModal({ locations, onClose, onAdded }: { locations: string[]
           </div>
 
           <div className="pl-scan-result">
-            {found === undefined && <div className="pl-scan-idle">{camErr ? 'Type a barcode to look it up.' : 'Point the camera at a barcode…'}</div>}
+            {found === undefined && (
+              <div className="pl-scan-idle">
+                {flash && <div className="pl-scan-flash">✓ {flash}</div>}
+                {camErr ? 'Type a barcode to look it up.' : 'Point the camera at a barcode…'}
+              </div>
+            )}
 
             {found !== undefined && (
               <>
@@ -136,6 +161,17 @@ export function ScanModal({ locations, onClose, onAdded }: { locations: string[]
                     <input value={amount} onChange={(e) => setAmount(e.target.value)} />
                   </label>
                 </div>
+
+                {!showMore ? (
+                  <button type="button" className="pl-scan-more" onClick={() => setShowMore(true)}>+ Unit, expiry, note, warn-below</button>
+                ) : (
+                  <div className="pl-scan-more-grid">
+                    <label><span>Unit</span><input value={unit} placeholder="bag / lbs" onChange={(e) => setUnit(e.target.value)} /></label>
+                    <label><span>Expires</span><input type="date" value={expiresOn} onChange={(e) => setExpiresOn(e.target.value)} /></label>
+                    <label><span>Warn below</span><input type="number" min="0" step="any" value={lowAt} placeholder="default" onChange={(e) => setLowAt(e.target.value)} /></label>
+                    <label className="pl-scan-more-note"><span>Note</span><input value={note} onChange={(e) => setNote(e.target.value)} /></label>
+                  </div>
+                )}
 
                 <div className="pl-scan-acts">
                   <button type="button" className="pill" disabled={busy} onClick={resume}>Cancel</button>

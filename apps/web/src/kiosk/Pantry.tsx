@@ -333,12 +333,13 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card pl-detail" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="pl-detail-hero">
+      <div className="modal-card pl-detail2" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="modal-close pl-d2-close" aria-label="Close" onClick={onClose}>×</button>
+        <div className="pl-d2-img">
           {isOff && <span className="pl-off-tag">● Open Food Facts</span>}
-          {item.imageUrl ? <img className="pl-detail-img" src={item.imageUrl} alt="" /> : <span className="pl-detail-emoji">{foodEmoji(item.name)}</span>}
+          {item.imageUrl ? <img src={item.imageUrl} alt="" /> : <span className="pl-d2-emoji">{foodEmoji(item.name)}</span>}
         </div>
+        <div className="pl-d2-main">
         <div className="pl-detail-title">{item.name}</div>
         {(item.brand || item.quantityText) && <div className="pl-detail-sub">{[item.brand, item.quantityText].filter(Boolean).join(' · ')}</div>}
 
@@ -378,6 +379,7 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
 
         <div className="pl-detail-acts">
           <button type="button" className="pill" onClick={onEdit}>Edit</button>
+        </div>
         </div>
       </div>
     </div>

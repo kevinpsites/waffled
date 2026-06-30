@@ -243,7 +243,37 @@
 .pl-lookup-msg { font-size: 12.5px; font-weight: 600; color: var(--ink-3); margin-top: 6px; display: block; }
 .pl-lookup-msg.ok { color: #1c7a44; }
 
-/* ===== item detail sheet ===== */
+/* ===== item detail sheet (two-column: image left, details right) ===== */
+.pl-detail2 { max-width: 760px; width: 92vw; display: flex; padding: 0; overflow: hidden; }
+.pl-d2-img {
+  position: relative; flex: 0 0 42%; min-height: 440px; display: grid; place-items: center; padding: 16px;
+  background: linear-gradient(135deg, #f6e7d6, #f3d9bf);
+}
+.pl-d2-img img { width: 100%; height: 100%; object-fit: contain; }
+.pl-d2-emoji { font-size: 104px; }
+.pl-d2-main { flex: 1; min-width: 0; padding: 22px 24px; overflow-y: auto; max-height: 88vh; }
+/* close button: a contrasting chip so it's visible over the image corner */
+.pl-d2-close {
+  position: absolute; top: 12px; right: 12px; z-index: 3; width: 32px; height: 32px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18); border: 0; cursor: pointer;
+  font-size: 20px; line-height: 1; color: var(--ink);
+}
+.pl-d2-close:hover { background: #fff; }
+@media (max-width: 680px) {
+  .pl-detail2 { flex-direction: column; }
+  .pl-d2-img { flex-basis: auto; min-height: 200px; }
+}
+
+/* scan modal: "more details" expander + flash feedback */
+.pl-scan-flash { color: #1c7a44; font-weight: 800; margin-bottom: 10px; }
+.pl-scan-more { border: 0; background: none; color: var(--primary); font: inherit; font-weight: 700; font-size: 13px; cursor: pointer; text-align: left; padding: 0 0 12px; }
+.pl-scan-more-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; margin-bottom: 12px; }
+.pl-scan-more-grid label { display: flex; flex-direction: column; gap: 4px; }
+.pl-scan-more-grid span { font-size: 12px; font-weight: 700; color: var(--ink-2); }
+.pl-scan-more-grid input { font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--hair); background: var(--card-2, #faf8f4); color: var(--ink); }
+.pl-scan-more-note { grid-column: 1 / -1; }
+
+/* legacy single-column detail bits (kept for reference) */
 .pl-detail { max-width: 460px; }
 .pl-detail-hero {
   position: relative; height: 150px; margin: -4px -4px 14px; border-radius: var(--r-lg, 16px);

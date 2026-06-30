@@ -236,6 +236,24 @@ describe('pantry Open Food Facts integration', () => {
     expect(patched.lowAt).toBeNull()
   })
 
+  it('scan upserts: re-scanning a barcode increments the existing item', async () => {
+    const first = await call('POST', '/api/pantry/scan', kevin, { name: 'Sparkling water', location: 'Pantry', amount: '1', barcode: '55550001' })
+    expect(first.statusCode).toBe(201)
+    expect(JSON.parse(first.body)).toMatchObject({ incremented: false })
+    expect(JSON.parse(first.body).item.amount).toBe('1')
+
+    const second = await call('POST', '/api/pantry/scan', kevin, { name: 'Sparkling water', location: 'Pantry', amount: '2', barcode: '55550001' })
+    expect(second.statusCode).toBe(200)
+    expect(JSON.parse(second.body)).toMatchObject({ incremented: true })
+    expect(JSON.parse(second.body).item.amount).toBe('3')
+
+    // No-barcode items match by name.
+    await call('POST', '/api/pantry/scan', kevin, { name: 'Bananas', location: 'Pantry', amount: '4' })
+    const dup = await call('POST', '/api/pantry/scan', kevin, { name: 'bananas', location: 'Pantry', amount: '1' })
+    expect(JSON.parse(dup.body)).toMatchObject({ incremented: true })
+    expect(JSON.parse(dup.body).item.amount).toBe('5')
+  })
+
   it("rolls a member's allergens into allergenPeople (known keys only)", async () => {
     const me = JSON.parse((await call('GET', '/api/persons', kevin)).body).persons[0]
     const upd = await call('PATCH', `/api/persons/${me.id}`, kevin, { allergens: ['gluten', 'bogus'] })
