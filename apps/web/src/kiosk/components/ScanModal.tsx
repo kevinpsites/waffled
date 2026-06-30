@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
 import { pantryApi, flaggedAllergens, ALLERGEN_LABELS, type OffProduct, type PantryItemInput } from '../../lib/api'
+import { AllergenBadge } from './Allergens'
 
 // Barcode scan-into-pantry. Uses the device camera (zxing decoder, which works in
 // Chrome/Edge/Android and Safari/iOS) to read a barcode, looks it up via Open Food
@@ -157,7 +158,7 @@ export function ScanModal({ locations, avoidAllergens, allergenPeople, onClose, 
                         return (
                           <>
                             <div className="pl-scan-allergens">
-                              {found.allergens.map((a) => <span key={a} className={`pl-contains-chip${flag.has(a) ? ' avoid' : ''}`}>{ALLERGEN_LABELS[a] ?? a}</span>)}
+                              {found.allergens.map((a) => <span key={a} className="pl-contains-item"><AllergenBadge allergen={a} avoid={flag.has(a)} /> {ALLERGEN_LABELS[a] ?? a}</span>)}
                             </div>
                             {flag.size > 0 && <div className="pl-affects">⚠ Contains {[...flag].map((a) => ALLERGEN_LABELS[a] ?? a).join(', ')}{affects.length ? ` — affects ${affects.join(', ')}` : ''}</div>}
                           </>

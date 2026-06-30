@@ -5,6 +5,7 @@ import {
   type PantryItem, type PantryItemInput, type OffProduct,
 } from '../lib/api'
 import { ScanModal } from './components/ScanModal'
+import { AllergenBadges, AllergenBadge, AllergenKey } from './components/Allergens'
 import '../styles/pantry.css'
 
 // A small expiry badge: red if past, amber within 3 days, muted date otherwise.
@@ -49,6 +50,7 @@ export function Pantry() {
   const { items, locations, avoidAllergens, allergenPeople, lowThreshold, locationIcons, loading, error, refetch } = usePantry()
   // The effective warning set: household avoid-list ∪ allergens any member has.
   const effectiveAvoid = useMemo(() => Array.from(new Set([...avoidAllergens, ...Object.keys(allergenPeople)])), [avoidAllergens, allergenPeople])
+  const avoidSet = useMemo(() => new Set(effectiveAvoid), [effectiveAvoid])
   const [view, setView] = useState<string>('all') // 'all' | 'use_soon' | 'running_low' | <location>
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<SortKey>('expiring')
@@ -174,6 +176,7 @@ export function Pantry() {
               <span className="pl-navitem-ic">📦</span><span className="pl-navitem-l">Other</span><span className="pl-navitem-n">{counts.byLoc.Other}</span>
             </button>
           )}
+          <AllergenKey avoid={avoidSet} />
         </aside>
 
         <main className="pl-main">
@@ -194,6 +197,7 @@ export function Pantry() {
                 const flagged = flaggedAllergens(it, avoidAllergens, allergenPeople)
                 const exp = expiryText(it.expiresOn)
                 const loc = locations.includes(it.location) ? it.location : 'Other'
+                const itemAllergens = it.allergens ?? []
                 return (
                   <div key={it.id} className={`pl-item${busy === it.id ? ' busy' : ''}${flagged.length ? ' flagged' : ''}`}>
                     <button type="button" className="pl-item-face" onClick={() => setDetail(it)}>
@@ -203,7 +207,7 @@ export function Pantry() {
                         {/* Second line: Location · allergies · use-by */}
                         <span className="pl-sub">
                           <span className="pl-loc">{loc}</span>
-                          {flagged.length > 0 && <span className="pl-warn">⚠ {flagged.map((a) => ALLERGEN_LABELS[a] ?? a).join(', ')}</span>}
+                          {itemAllergens.length > 0 && <AllergenBadges allergens={itemAllergens} avoid={avoidSet} />}
                           <span className={`pl-exp pl-exp-${exp.tone}`}>{exp.text}</span>
                         </span>
                       </span>
@@ -251,17 +255,6 @@ export function Pantry() {
             </div>
           )}
 
-          {effectiveAvoid.length > 0 && (
-            <div className="pl-legend">
-              <span className="pl-legend-l">Avoiding:</span>
-              {effectiveAvoid.map((a) => (
-                <span key={a} className="pl-legend-chip" title={allergenPeople[a]?.length ? `Affects ${allergenPeople[a].join(', ')}` : undefined}>
-                  {ALLERGEN_LABELS[a] ?? a}
-                </span>
-              ))}
-              <Link to="/settings" className="pl-legend-edit">Edit in Settings</Link>
-            </div>
-          )}
         </main>
       </div>
 
@@ -359,7 +352,7 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
           <div className="pl-detail-contains">
             <span className="pl-contains-l">Contains</span>
             {item.allergens.map((a) => (
-              <span key={a} className={`pl-contains-chip${flagged.has(a) ? ' avoid' : ''}`}>{ALLERGEN_LABELS[a] ?? a}</span>
+              <span key={a} className="pl-contains-item"><AllergenBadge allergen={a} avoid={flagged.has(a)} /> {ALLERGEN_LABELS[a] ?? a}</span>
             ))}
           </div>
         )}

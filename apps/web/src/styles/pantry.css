@@ -238,6 +238,23 @@
 /* location in the card's second line (plain muted text, not a chip) */
 .pl-loc { font-weight: 700; color: var(--ink-3); }
 
+/* ===== allergen badges + key ===== */
+.alg-badge {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 6px; flex: none;
+  font-size: 9.5px; font-weight: 800; line-height: 1; letter-spacing: -0.02em;
+}
+.alg-badge.avoid { box-shadow: 0 0 0 2px var(--card, #fff), 0 0 0 3.5px #c0392b; } /* red ring = avoiding */
+.alg-badges { display: inline-flex; align-items: center; gap: 5px; }
+
+/* the persistent key (bottom-left of the sidebar) */
+.alg-key { margin-top: auto; padding-top: 18px; }
+.alg-key-h { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); margin-bottom: 9px; }
+.alg-key-items { display: flex; flex-wrap: wrap; gap: 7px 12px; }
+.alg-key-item { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--ink-2); }
+
+/* badge + name, used in the detail "Contains" row and the scan panel */
+.pl-contains-item { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+
 /* barcode lookup row in the add modal */
 .pl-barcode-row { display: flex; gap: 8px; }
 .pl-barcode-row input { flex: 1; min-width: 0; }
