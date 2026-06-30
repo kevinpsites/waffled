@@ -223,6 +223,16 @@
 .pl-allergen-chip:hover { border-color: var(--primary); }
 .pl-allergen-chip.on { background: #fbe3e1; border-color: #f0c0bb; color: #c0392b; }
 
+/* running-low threshold input + per-location emoji input (Settings → Pantry) */
+.pl-low-input {
+  width: 80px; font: inherit; font-size: 14px; text-align: center; padding: 7px 10px; border-radius: 10px;
+  border: 1px solid var(--hair); background: var(--card-2, #faf8f4); color: var(--ink);
+}
+.pl-low-input:focus { outline: none; border-color: var(--primary); }
+.pl-loc-icon {
+  flex: none !important; width: 46px; text-align: center; font-size: 16px;
+}
+
 /* location chip on cross-location cards (All / Use soon / Running low) */
 .pl-loc { font-size: 11.5px; font-weight: 700; color: var(--ink-3); padding: 2px 8px; border-radius: 999px; background: var(--panel); }
 

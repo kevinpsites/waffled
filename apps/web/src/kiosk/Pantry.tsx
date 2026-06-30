@@ -45,7 +45,7 @@ type SortKey = 'expiring' | 'az' | 'recent'
 // sort, Open Food Facts nutrition/allergens, and avoid-allergen warnings. Gated
 // behind the optional `pantry` module (nav hidden when off; direct nav redirects).
 export function Pantry() {
-  const { items, locations, avoidAllergens, loading, error, refetch } = usePantry()
+  const { items, locations, avoidAllergens, lowThreshold, locationIcons, loading, error, refetch } = usePantry()
   const [view, setView] = useState<string>('all') // 'all' | 'use_soon' | 'running_low' | <location>
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<SortKey>('expiring')
@@ -83,7 +83,8 @@ export function Pantry() {
   }
 
   const isSoon = (i: PantryItem) => { const d = daysUntil(i.expiresOn); return d != null && d <= 3 }
-  const isLow = (i: PantryItem) => { const n = parseFloat(i.amount); return Number.isFinite(n) && n <= 1 }
+  // Low when the numeric amount is at/below the item's own threshold, or the household default.
+  const isLow = (i: PantryItem) => { const n = parseFloat(i.amount); return Number.isFinite(n) && n <= (i.lowAt ?? lowThreshold) }
 
   const live = useMemo(() => items.filter((i) => !i.usedUp), [items])
   const used = useMemo(() => items.filter((i) => i.usedUp), [items])
@@ -95,7 +96,7 @@ export function Pantry() {
       byLoc[loc] = (byLoc[loc] ?? 0) + 1
     }
     return { all: live.length, use_soon: live.filter(isSoon).length, running_low: live.filter(isLow).length, byLoc }
-  }, [live, locations])
+  }, [live, locations, lowThreshold]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apply the selected view, the search, then the sort.
   function applyView(list: PantryItem[]): PantryItem[] {
@@ -121,7 +122,7 @@ export function Pantry() {
     return c
   }
 
-  const shown = useMemo(() => sortItems(applyView(live)), [live, view, q, sort, locations]) // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = useMemo(() => sortItems(applyView(live)), [live, view, q, sort, locations, lowThreshold]) // eslint-disable-line react-hooks/exhaustive-deps
   const shownUsed = useMemo(() => applyView(used), [used, view, q, locations]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const viewLabel = view === 'all' ? 'All items' : view === 'use_soon' ? 'Use soon' : view === 'running_low' ? 'Running low' : view
@@ -159,7 +160,7 @@ export function Pantry() {
           <div className="pl-side-sep" />
           {locations.map((loc) => (
             <button key={loc} type="button" className={`pl-navitem${view === loc ? ' on' : ''}`} onClick={() => setView(loc)}>
-              <span className="pl-navitem-ic">📦</span>
+              <span className="pl-navitem-ic">{locationIcons[loc] || '📦'}</span>
               <span className="pl-navitem-l">{loc}</span>
               <span className="pl-navitem-n">{counts.byLoc[loc] ?? 0}</span>
             </button>
@@ -377,6 +378,7 @@ function ItemModal({ item, locations, onClose, onSaved }: {
   const [location, setLocation] = useState(item?.location ?? locations[0] ?? 'Pantry')
   const [expiresOn, setExpiresOn] = useState(item?.expiresOn ?? '')
   const [note, setNote] = useState(item?.note ?? '')
+  const [lowAt, setLowAt] = useState(item?.lowAt != null ? String(item.lowAt) : '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   // Barcode → Open Food Facts prefill (adding only). `off` holds the looked-up
@@ -406,6 +408,7 @@ function ItemModal({ item, locations, onClose, onSaved }: {
     const input: PantryItemInput = {
       name: name.trim(), amount: amount.trim(), unit: unit.trim(), location,
       expiresOn: expiresOn || null, note: note.trim(),
+      lowAt: lowAt.trim() === '' ? null : Number(lowAt),
       // Carry the OFF snapshot when the item was matched by barcode.
       ...(off ? {
         barcode: off.barcode, brand: off.brand, imageUrl: off.imageUrl, quantityText: off.quantityText,
@@ -463,9 +466,14 @@ function ItemModal({ item, locations, onClose, onSaved }: {
             <input type="date" value={expiresOn} onChange={(e) => setExpiresOn(e.target.value)} />
           </label>
         </div>
-        <label className="pantry-field"><span>Note (optional)</span>
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="leftovers from Tuesday" />
-        </label>
+        <div className="pantry-field-row">
+          <label className="pantry-field"><span>Note (optional)</span>
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="leftovers from Tuesday" />
+          </label>
+          <label className="pantry-field"><span>Warn below (optional)</span>
+            <input type="number" min="0" step="any" value={lowAt} onChange={(e) => setLowAt(e.target.value)} placeholder="default" />
+          </label>
+        </div>
         {err && <div className="pantry-err">{err}</div>}
         <div className="pantry-modal-actions">
           {item && <button type="button" className="pill pantry-del" disabled={saving} onClick={remove}>Delete</button>}

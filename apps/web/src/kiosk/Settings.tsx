@@ -1609,12 +1609,14 @@ function ModulesPanel() {
 // Pantry's own settings (shown when the module is on): the Today-card toggle and
 // the editable location list. Saves immediately; refreshes household so Today reacts.
 function PantrySettings() {
-  const { locations, showOnToday, avoidAllergens, loading } = usePantry()
+  const { locations, showOnToday, avoidAllergens, lowThreshold, locationIcons, loading } = usePantry()
   const [list, setList] = useState<string[]>([])
   const [adding, setAdding] = useState('')
   const [show, setShow] = useState(true)
   const [avoid, setAvoid] = useState<string[]>([])
-  useEffect(() => { if (!loading) { setList(locations); setShow(showOnToday); setAvoid(avoidAllergens) } }, [loading, locations, showOnToday, avoidAllergens])
+  const [low, setLow] = useState('1')
+  const [icons, setIcons] = useState<Record<string, string>>({})
+  useEffect(() => { if (!loading) { setList(locations); setShow(showOnToday); setAvoid(avoidAllergens); setLow(String(lowThreshold)); setIcons(locationIcons) } }, [loading, locations, showOnToday, avoidAllergens, lowThreshold, locationIcons])
 
   async function commitLocations(next: string[]) {
     setList(next)
@@ -1629,6 +1631,17 @@ function PantrySettings() {
     setAvoid(next)
     try { await pantryApi.setConfig({ avoidAllergens: next }); emitHouseholdChanged() } catch { /* ignore */ }
   }
+  async function commitLow(v: string) {
+    const n = Number(v)
+    if (!Number.isFinite(n) || n < 0) return
+    try { await pantryApi.setConfig({ lowThreshold: n }); emitHouseholdChanged() } catch { /* ignore */ }
+  }
+  async function commitIcon(loc: string, emoji: string) {
+    const next = { ...icons, [loc]: emoji.trim() }
+    if (!emoji.trim()) delete next[loc]
+    setIcons(next)
+    try { await pantryApi.setConfig({ locationIcons: next }); emitHouseholdChanged() } catch { /* ignore */ }
+  }
 
   if (loading) return null
   return (
@@ -1636,6 +1649,15 @@ function PantrySettings() {
       <div className="set-module-setrow">
         <span>Show a card on Today</span>
         <Switch checked={show} onChange={toggleShow} ariaLabel="Show pantry on Today" />
+      </div>
+      <div className="set-module-setrow">
+        <span>Running low at (or below)</span>
+        <input type="number" min="0" step="any" className="pl-low-input" value={low}
+          onChange={(e) => setLow(e.target.value)} onBlur={() => commitLow(low)}
+          onKeyDown={(e) => { if (e.key === 'Enter') commitLow(low) }} aria-label="Running low threshold" />
+      </div>
+      <div className="set-module-desc" style={{ marginBottom: 4 }}>
+        Default for all items; set a per-item override in the item editor’s “Warn below”.
       </div>
       <div className="set-module-setlabel">Allergens to avoid</div>
       <div className="set-module-desc" style={{ marginBottom: 8 }}>
@@ -1658,6 +1680,15 @@ function PantrySettings() {
       <div className="pantry-loc-list">
         {list.map((l, i) => (
           <div className="pantry-loc-row" key={i}>
+            <input
+              className="pl-loc-icon"
+              value={icons[l] ?? ''}
+              placeholder="📦"
+              maxLength={4}
+              aria-label={`Icon for ${l}`}
+              onChange={(e) => setIcons((m) => ({ ...m, [l]: e.target.value }))}
+              onBlur={() => commitIcon(l, icons[l] ?? '')}
+            />
             <input
               value={l}
               onChange={(e) => setList((ls) => ls.map((x, j) => (j === i ? e.target.value : x)))}

@@ -217,4 +217,22 @@ describe('pantry Open Food Facts integration', () => {
     const body = JSON.parse((await call('GET', '/api/pantry', kevin)).body)
     expect(body.avoidAllergens.sort()).toEqual(['gluten', 'milk'])
   })
+
+  it('round-trips the running-low threshold and per-location icons', async () => {
+    const res = await call('PUT', '/api/pantry/config', kevin, { lowThreshold: 2, locationIcons: { Freezer: '🧊', Fridge: '' } })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.lowThreshold).toBe(2)
+    expect(body.locationIcons).toEqual({ Freezer: '🧊' }) // blank dropped
+    const list = JSON.parse((await call('GET', '/api/pantry', kevin)).body)
+    expect(list.lowThreshold).toBe(2)
+    expect(list.locationIcons).toEqual({ Freezer: '🧊' })
+  })
+
+  it('stores a per-item low_at override', async () => {
+    const created = JSON.parse((await call('POST', '/api/pantry', kevin, { name: 'Olive oil', location: 'Pantry', amount: '3', lowAt: 2 })).body).item
+    expect(created.lowAt).toBe(2)
+    const patched = JSON.parse((await call('PATCH', `/api/pantry/${created.id}`, kevin, { lowAt: null })).body).item
+    expect(patched.lowAt).toBeNull()
+  })
 })

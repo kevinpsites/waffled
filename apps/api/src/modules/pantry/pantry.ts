@@ -36,11 +36,12 @@ interface PantryRow {
   allergens: string[] | null
   dietary: string[] | null
   source: string | null
+  low_at: string | null
   created_at: string
 }
 
 const RETURNING = `id, name, amount, unit, location, expires_on::text as expires_on, note, used_up_at::text as used_up_at,
-  barcode, brand, image_url, quantity_text, serving_basis, nutrition, allergens, dietary, source, created_at::text as created_at`
+  barcode, brand, image_url, quantity_text, serving_basis, nutrition, allergens, dietary, source, low_at, created_at::text as created_at`
 
 function present(r: PantryRow) {
   return {
@@ -62,6 +63,7 @@ function present(r: PantryRow) {
     allergens: r.allergens,
     dietary: r.dietary,
     source: r.source,
+    lowAt: r.low_at != null ? Number(r.low_at) : null,
     createdAt: r.created_at,
   }
 }
@@ -112,6 +114,19 @@ function readAvoidAllergens(settings: unknown): string[] {
   return Array.isArray(v) ? (v as unknown[]).map(String).filter((a) => ALLERGEN_KEYS.includes(a)) : []
 }
 
+// Household default "running low" threshold (an item is low when its numeric amount
+// is <= this, unless the item sets its own low_at). Defaults to 1.
+function readLowThreshold(settings: unknown): number {
+  const v = (settings as { pantry?: { lowThreshold?: unknown } } | null | undefined)?.pantry?.lowThreshold
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 1
+}
+
+// Per-location emoji icons (name → emoji), shown in the sidebar. Empty by default.
+function readLocationIcons(settings: unknown): Record<string, string> {
+  const v = (settings as { pantry?: { locationIcons?: unknown } } | null | undefined)?.pantry?.locationIcons
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, string>) : {}
+}
+
 export function registerPantryRoutes(api: Api): void {
   // List all pantry items + the household's configured locations.
   api.get('/api/pantry', tenantRoute(async (tenant) => {
@@ -128,6 +143,8 @@ export function registerPantryRoutes(api: Api): void {
       locations: readLocations(settings),
       showOnToday: readShowOnToday(settings),
       avoidAllergens: readAvoidAllergens(settings),
+      lowThreshold: readLowThreshold(settings),
+      locationIcons: readLocationIcons(settings),
     }
   }))
 
@@ -166,6 +183,7 @@ export function registerPantryRoutes(api: Api): void {
       b.expiresOn ? String(b.expiresOn) : null,
       b.note != null ? String(b.note).trim() : null,
     ]
+    if (b.lowAt != null && b.lowAt !== '' && Number.isFinite(Number(b.lowAt))) { cols.push('low_at'); vals.push(Number(b.lowAt)) }
     // OFF snapshot (barcode/brand/nutrition/allergens/…) when added via a lookup.
     for (const p of offPatches(b)) { cols.push(p.col); vals.push(p.val) }
     const placeholders = vals.map((_, idx) => `$${idx + 1}${cols[idx] === 'nutrition' ? '::jsonb' : ''}`)
@@ -195,6 +213,7 @@ export function registerPantryRoutes(api: Api): void {
     if (typeof b.location === 'string' && b.location.trim()) set('location', b.location.trim())
     if ('expiresOn' in b) set('expires_on', b.expiresOn ? String(b.expiresOn) : null)
     if ('note' in b) set('note', b.note != null ? String(b.note).trim() : null)
+    if ('lowAt' in b) set('low_at', b.lowAt != null && b.lowAt !== '' && Number.isFinite(Number(b.lowAt)) ? Number(b.lowAt) : null)
     // OFF snapshot edits (relink a barcode, replace the photo, refresh nutrition).
     for (const p of offPatches(b)) {
       if (p.col === 'nutrition') { cols.push(`nutrition = $${i++}::jsonb`); vals.push(p.val) }
@@ -232,11 +251,21 @@ export function registerPantryRoutes(api: Api): void {
   // and/or whether it shows a Today card. Both live in settings.pantry.
   api.put('/api/pantry/config', tenantRoute(async (tenant, req: Request, res: Response) => {
     await requirePantry(tenant)
-    const b = (req.body ?? {}) as { locations?: unknown; showOnToday?: unknown; avoidAllergens?: unknown }
+    const b = (req.body ?? {}) as { locations?: unknown; showOnToday?: unknown; avoidAllergens?: unknown; lowThreshold?: unknown; locationIcons?: unknown }
     const merge: Record<string, unknown> = {}
     if (Array.isArray(b.avoidAllergens)) {
       // Keep only known allergen keys, deduped.
       merge.avoidAllergens = Array.from(new Set((b.avoidAllergens as unknown[]).map(String).filter((a) => ALLERGEN_KEYS.includes(a))))
+    }
+    if (typeof b.lowThreshold === 'number' && Number.isFinite(b.lowThreshold) && b.lowThreshold >= 0) {
+      merge.lowThreshold = b.lowThreshold
+    }
+    if (b.locationIcons && typeof b.locationIcons === 'object' && !Array.isArray(b.locationIcons)) {
+      const clean: Record<string, string> = {}
+      for (const [k, v] of Object.entries(b.locationIcons as Record<string, unknown>)) {
+        if (typeof v === 'string' && v.trim()) clean[String(k)] = String(v).trim().slice(0, 4)
+      }
+      merge.locationIcons = clean
     }
     if (Array.isArray(b.locations)) {
       const seen = new Set<string>()
@@ -252,7 +281,7 @@ export function registerPantryRoutes(api: Api): void {
     }
     if (typeof b.showOnToday === 'boolean') merge.showOnToday = b.showOnToday
     if (Object.keys(merge).length === 0) {
-      return res.status(400).json({ error: 'BadRequest', message: 'provide locations, showOnToday, and/or avoidAllergens' })
+      return res.status(400).json({ error: 'BadRequest', message: 'provide locations, showOnToday, avoidAllergens, lowThreshold, and/or locationIcons' })
     }
     // Nested merge (jsonb_set's 2-level path won't create a missing `pantry` parent):
     // preserve sibling settings + any other pantry keys.
@@ -265,6 +294,12 @@ export function registerPantryRoutes(api: Api): void {
       [tenant.householdId, JSON.stringify(merge)]
     )
     const settings = rows[0]?.settings
-    return { locations: readLocations(settings), showOnToday: readShowOnToday(settings), avoidAllergens: readAvoidAllergens(settings) }
+    return {
+      locations: readLocations(settings),
+      showOnToday: readShowOnToday(settings),
+      avoidAllergens: readAvoidAllergens(settings),
+      lowThreshold: readLowThreshold(settings),
+      locationIcons: readLocationIcons(settings),
+    }
   }))
 }

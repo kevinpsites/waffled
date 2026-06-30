@@ -34,6 +34,7 @@ export interface PantryItem extends OffFields {
   expiresOn: string | null
   note: string
   usedUp: boolean
+  lowAt: number | null
   createdAt: string
 }
 
@@ -62,6 +63,7 @@ export type PantryItemInput = {
   expiresOn?: string | null
   note?: string
   usedUp?: boolean
+  lowAt?: number | null
   // OFF snapshot — set when adding/editing via a barcode lookup.
   barcode?: string | null
   brand?: string | null
@@ -82,7 +84,7 @@ export const ALLERGEN_LABELS: Record<string, string> = {
 export const ALLERGEN_KEYS = Object.keys(ALLERGEN_LABELS)
 
 export const pantryApi = {
-  list: () => apiGet<{ items: PantryItem[]; locations: string[]; showOnToday: boolean; avoidAllergens: string[] }>('/api/pantry'),
+  list: () => apiGet<{ items: PantryItem[]; locations: string[]; showOnToday: boolean; avoidAllergens: string[]; lowThreshold: number; locationIcons: Record<string, string> }>('/api/pantry'),
   create: (input: PantryItemInput) => apiSend<{ item: PantryItem }>('POST', '/api/pantry', input).then((r) => r.item),
   update: (id: string, patch: PantryItemInput) => apiSend<{ item: PantryItem }>('PATCH', `/api/pantry/${id}`, patch).then((r) => r.item),
   remove: (id: string) => apiDelete(`/api/pantry/${id}`),
@@ -91,9 +93,10 @@ export const pantryApi = {
     apiGet<{ found: boolean; product?: OffProduct }>(`/api/pantry/lookup/${encodeURIComponent(barcode)}`)
       .then((r) => (r.found ? r.product! : null))
       .catch(() => null),
-  // Module config: locations, the Today-card toggle, and/or the avoid-allergen list.
-  setConfig: (patch: { locations?: string[]; showOnToday?: boolean; avoidAllergens?: string[] }) =>
-    apiSend<{ locations: string[]; showOnToday: boolean; avoidAllergens: string[] }>('PUT', '/api/pantry/config', patch),
+  // Module config: locations, Today-card toggle, avoid-allergens, the running-low
+  // threshold, and/or per-location icons.
+  setConfig: (patch: { locations?: string[]; showOnToday?: boolean; avoidAllergens?: string[]; lowThreshold?: number; locationIcons?: Record<string, string> }) =>
+    apiSend<{ locations: string[]; showOnToday: boolean; avoidAllergens: string[]; lowThreshold: number; locationIcons: Record<string, string> }>('PUT', '/api/pantry/config', patch),
 }
 
 export interface PantryState {
@@ -101,6 +104,8 @@ export interface PantryState {
   locations: string[]
   showOnToday: boolean
   avoidAllergens: string[]
+  lowThreshold: number
+  locationIcons: Record<string, string>
   loading: boolean
   error: boolean
   refetch: () => void
@@ -111,6 +116,8 @@ export function usePantry(): PantryState {
   const [locations, setLocations] = useState<string[]>([])
   const [showOnToday, setShowOnToday] = useState(true)
   const [avoidAllergens, setAvoidAllergens] = useState<string[]>([])
+  const [lowThreshold, setLowThreshold] = useState(1)
+  const [locationIcons, setLocationIcons] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [nonce, setNonce] = useState(0)
@@ -118,13 +125,13 @@ export function usePantry(): PantryState {
     let alive = true
     pantryApi
       .list()
-      .then((d) => alive && (setItems(d.items), setLocations(d.locations), setShowOnToday(d.showOnToday), setAvoidAllergens(d.avoidAllergens ?? []), setLoading(false), setError(false)))
+      .then((d) => alive && (setItems(d.items), setLocations(d.locations), setShowOnToday(d.showOnToday), setAvoidAllergens(d.avoidAllergens ?? []), setLowThreshold(d.lowThreshold ?? 1), setLocationIcons(d.locationIcons ?? {}), setLoading(false), setError(false)))
       .catch(() => alive && (setError(true), setLoading(false)))
     return () => {
       alive = false
     }
   }, [nonce])
-  return { items, locations, showOnToday, avoidAllergens, loading, error, refetch: () => setNonce((n) => n + 1) }
+  return { items, locations, showOnToday, avoidAllergens, lowThreshold, locationIcons, loading, error, refetch: () => setNonce((n) => n + 1) }
 }
 
 // Which of an item's allergens are on the household's avoid list (for red warnings).
