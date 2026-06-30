@@ -281,6 +281,13 @@
 .pl-cookm-soon { font-size: 11px; font-weight: 800; color: #b5651d; background: #fdf0e3; padding: 3px 8px; border-radius: 999px; flex: none; }
 .pl-cookm-go { color: var(--ink-3); font-size: 18px; flex: none; }
 .pl-cookm-add { flex: none; cursor: pointer; }
+.pl-cookm-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.pl-cookm-chip {
+  display: inline-flex; align-items: center; gap: 7px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+  padding: 8px 14px; border-radius: 999px; border: 1px solid var(--hair); background: var(--card-2, #faf8f4); color: var(--ink);
+}
+.pl-cookm-chip:hover { border-color: var(--primary); }
+.pl-cookm-chip-n { font-size: 12px; font-weight: 800; color: var(--ink-3); background: var(--card); padding: 1px 7px; border-radius: 999px; }
 .pl-cookm-foot { display: flex; justify-content: flex-end; }
 .pl-cookm-foot .pill { cursor: pointer; }
 

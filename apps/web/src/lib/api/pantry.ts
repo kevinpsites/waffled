@@ -102,6 +102,8 @@ export interface CookableRecipe {
   mainItem: string | null
 }
 export interface ItemRecipe { recipeId: string; title: string; emoji: string | null }
+// A protein you have on hand + how many library recipes use it (chip → filtered library).
+export interface PantryMain { protein: string; count: number }
 
 // Dietary flags captured from Open Food Facts (ingredients analysis).
 export const DIETARY_LABELS: Record<string, string> = {
@@ -122,7 +124,7 @@ export const pantryApi = {
       .then((r) => (r.found ? r.product! : null))
       .catch(() => null),
   // "Cook from your pantry": recipes makeable now + nearly (1–2 short).
-  cookable: () => apiGet<{ ready: CookableRecipe[]; haveMain: CookableRecipe[] }>('/api/pantry/cookable'),
+  cookable: () => apiGet<{ ready: CookableRecipe[]; mains: PantryMain[] }>('/api/pantry/cookable'),
   // Recipes that use a given pantry item (detail "Plan it in").
   itemRecipes: (id: string) => apiGet<{ recipes: ItemRecipe[] }>(`/api/pantry/${id}/recipes`),
   // Module config: locations, Today-card toggle, avoid-allergens, the running-low

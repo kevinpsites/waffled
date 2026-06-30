@@ -275,15 +275,15 @@ describe('pantry Open Food Facts integration', () => {
     expect(JSON.parse(ck.body).ready.map((r: { title: string }) => r.title)).toContain('Taco Night')
   })
 
-  it('cook-from-pantry: surfaces recipes where you have most of it ("have the main")', async () => {
-    await call('POST', '/api/recipes', kevin, { title: 'Veggie Bowl', ingredients: [{ name: 'Broccoli' }, { name: 'Carrots' }, { name: 'Bell peppers' }] })
-    await call('POST', '/api/pantry', kevin, { name: 'Broccoli', location: 'Fridge' })
-    await call('POST', '/api/pantry', kevin, { name: 'Carrots', location: 'Fridge' })
-    // 2 of 3 on hand (no protein tagged) → "have the main" via coverage, missing peppers.
+  it('cook-from-pantry: surfaces an on-hand protein as a "main" (with a recipe count)', async () => {
+    // Two pork recipes; the protein ingredient (pork chops) is on hand, a side is not.
+    await call('POST', '/api/recipes', kevin, { title: 'Pork & Asparagus', protein: 'pork', ingredients: [{ name: 'Pork chops' }, { name: 'Asparagus' }] })
+    await call('POST', '/api/recipes', kevin, { title: 'Pork & Beans', protein: 'pork', ingredients: [{ name: 'Pork chops' }, { name: 'Beans' }] })
+    await call('POST', '/api/pantry', kevin, { name: 'Pork chops', location: 'Freezer' })
     const ck = JSON.parse((await call('GET', '/api/pantry/cookable', kevin)).body)
-    const hm = ck.haveMain.find((r: { title: string }) => r.title === 'Veggie Bowl')
-    expect(hm).toBeTruthy()
-    expect(hm.missing).toEqual(['Bell peppers'])
+    const pork = ck.mains.find((m: { protein: string }) => m.protein === 'pork')
+    expect(pork).toBeTruthy()
+    expect(pork.count).toBeGreaterThanOrEqual(2) // both pork recipes counted
   })
 
   it('cook-from-pantry: lists recipes that use a given item', async () => {
