@@ -5,7 +5,7 @@ import { ChoreModal, type ChoreDraft } from './components/ChoreModal'
 import { RewardsPanel } from './components/RewardsPanel'
 import { ChoreApprovalsCard, ChoreProofModal } from './components/Approvals'
 import { choresApi, usePersons, useHousehold, can, useDayInstances, useAwaitingChores, useCurrencies, localToday, uploadImage, type ChoreInstance } from '../lib/api'
-import { moduleEnabled } from '../lib/modules'
+import { rewardsEnabled } from '../lib/modules'
 
 // Shift a YYYY-MM-DD by N days (local), and describe a day relative to today.
 function shiftDate(d: string, days: number): string {
@@ -78,8 +78,8 @@ export function Tasks() {
   const { instances, loading, error, setDone, assign, refetch } = useDayInstances(date)
   const { persons } = usePersons()
   const { person, household } = useHousehold()
-  // Rewards live as a tab on this (chores) page; hide it when the rewards module is off.
-  const rewardsOn = moduleEnabled(household, 'rewards')
+  // Rewards live as a tab on this (chores) page; hide it when the rewards sub-toggle is off.
+  const rewardsOn = rewardsEnabled(household)
   // Anyone can add a chore for themselves / up-for-grabs; assigning it to someone
   // else needs chore.manage (carved-out server-side, gated here to avoid the 403).
   const canAssignOthers = can(person, 'chore.manage')

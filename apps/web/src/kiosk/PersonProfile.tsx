@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
 import { usePersonOverview, useConversions, usePersons, useHousehold, useGoalLists, can, personsApi, rewardsApi, type OverviewGoal, type CategoryBalance, type ShopReward, type SavingToward, type OverviewCurrency, type StreakSummary } from '../lib/api'
 import { TradeModal } from './components/TradeModal'
-import { moduleEnabled } from '../lib/modules'
+import { rewardsEnabled } from '../lib/modules'
 import './../styles/overview.css'
 
 const CAT_CLASS: Record<string, string> = {
@@ -181,7 +181,7 @@ export function PersonProfile() {
   const { person: me, household } = useHousehold()
   // The spend side of the economy (jar + redemptions) hides when rewards is off;
   // the earn side (wallet/ledger, fed by chores) stays.
-  const rewardsOn = moduleEnabled(household, 'rewards')
+  const rewardsOn = rewardsEnabled(household)
   const { lists: goalLists } = useGoalLists()
   const [trading, setTrading] = useState(false)
 

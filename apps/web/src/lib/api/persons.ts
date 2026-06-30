@@ -48,6 +48,7 @@ export interface Household {
     onboarding?: OnboardingState
     modules?: Record<string, boolean>
     pantry?: { locations?: string[]; showOnToday?: boolean }
+    chores?: { rewards?: boolean; proofTtlDays?: number }
   } & Record<string, unknown>
 }
 

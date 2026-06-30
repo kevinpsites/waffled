@@ -6,12 +6,13 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
-import { moduleRoutes } from '../../platform/route-guards'
+import { rewardsRoutes } from '../../platform/route-guards'
 import { listCurrencies, getDefaultCurrencyKey, presentCurrency } from '../currencies/currencies'
 
 type Api = ReturnType<typeof createAPI>
-// Reward routes are gated by the optional `rewards` module (403 when off).
-const { tenantRoute, capRoute } = moduleRoutes('rewards')
+// Rewards is the spend half of the chores economy: these routes require the chores
+// module on AND its rewards sub-toggle (settings.chores.rewards) enabled.
+const { tenantRoute, capRoute } = rewardsRoutes()
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 interface RewardRow extends QueryResultRow {

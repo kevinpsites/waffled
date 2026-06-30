@@ -60,7 +60,6 @@ afterAll(async () => {
 const PROBES: Array<{ key: string; method: string; path: string }> = [
   { key: 'chores', method: 'GET', path: '/api/chores/today' },
   { key: 'goals', method: 'GET', path: '/api/goal-lists' },
-  { key: 'rewards', method: 'GET', path: '/api/rewards' },
   { key: 'meals', method: 'GET', path: '/api/recipes' },
   { key: 'lists', method: 'GET', path: '/api/lists' },
 ]
@@ -117,5 +116,35 @@ describe('optional-module gating', () => {
 
   it('an unauthenticated request still 401s (auth before module)', async () => {
     expect((await call('GET', '/api/recipes')).statusCode).toBe(401)
+  })
+})
+
+describe('rewards nested under chores', () => {
+  it('rewards work by default (chores on, sub-flag on)', async () => {
+    expect((await call('GET', '/api/rewards', kevin)).statusCode).toBe(200)
+  })
+
+  it('turning off the rewards sub-flag 403s reward routes; chores still work', async () => {
+    const put = await call('PUT', '/api/chores/settings', kevin, { rewards: false })
+    expect(put.statusCode).toBe(200)
+    expect(JSON.parse(put.body).rewards).toBe(false)
+
+    const off = await call('GET', '/api/rewards', kevin)
+    expect(off.statusCode).toBe(403)
+    expect(JSON.parse(off.body).message).toMatch(/rewards are turned off/i)
+    // Chores itself is unaffected.
+    expect((await call('GET', '/api/chores/today', kevin)).statusCode).toBe(200)
+
+    await call('PUT', '/api/chores/settings', kevin, { rewards: true })
+    expect((await call('GET', '/api/rewards', kevin)).statusCode).toBe(200)
+  })
+
+  it('disabling the chores module also disables rewards', async () => {
+    await setModule('chores', false)
+    const off = await call('GET', '/api/rewards', kevin)
+    expect(off.statusCode).toBe(403)
+    expect(JSON.parse(off.body).message).toMatch(/chores module is not enabled/i)
+    await setModule('chores', true)
+    expect((await call('GET', '/api/rewards', kevin)).statusCode).toBe(200)
   })
 })

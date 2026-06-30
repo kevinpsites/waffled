@@ -66,10 +66,13 @@ export const choresApi = {
     apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/approve`).then(tap('chores')).then(tap('rewards')),
   rejectInstance: (id: string) =>
     apiSend<{ instance: { id: string; status: string } }>('POST', `/api/chore-instances/${id}/reject`).then(tap('chores')),
-  // Household chore settings (Settings → Chores & rewards) — photo-proof retention.
-  getSettings: () => apiGet<{ proofTtlDays: number }>('/api/chores/settings'),
+  // Household chore settings (Settings → Chores & rewards) — photo-proof retention
+  // and the rewards sub-toggle (the spend half of the chores economy).
+  getSettings: () => apiGet<{ proofTtlDays: number; rewards: boolean }>('/api/chores/settings'),
   setProofTtlDays: (proofTtlDays: number) =>
     apiSend<{ proofTtlDays: number }>('PUT', '/api/chores/settings', { proofTtlDays }).then((r) => r.proofTtlDays),
+  setRewardsEnabled: (rewards: boolean) =>
+    apiSend<{ rewards: boolean }>('PUT', '/api/chores/settings', { rewards }).then((r) => r.rewards),
   // Stored proof photos — review/manage surface (Settings → Chores & rewards).
   listProofs: () => apiGet<{ proofs: StoredProof[] }>('/api/chore-proofs'),
   deleteProof: (id: string) => apiDelete(`/api/chore-proofs/${id}`).then(tap('chores')),

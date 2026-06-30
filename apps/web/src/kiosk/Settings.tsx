@@ -1597,6 +1597,7 @@ function ModulesPanel() {
                 )}
               </div>
               {on && m.hasSettings && m.key === 'pantry' && <PantrySettings />}
+              {on && m.hasSettings && m.key === 'chores' && <ChoresModuleSettings />}
             </div>
           )
         })}
@@ -1651,6 +1652,31 @@ function PantrySettings() {
           onKeyDown={(e) => { if (e.key === 'Enter' && adding.trim()) { commitLocations([...list, adding.trim()]); setAdding('') } }}
         />
         <button type="button" className="pill" disabled={!adding.trim()} onClick={() => { commitLocations([...list, adding.trim()]); setAdding('') }}>Add</button>
+      </div>
+    </div>
+  )
+}
+
+// Chores module sub-settings (shown when the module is on): the rewards sub-toggle.
+// Rewards is the spend half of the chores economy, so it lives here rather than as
+// its own module — it can't be on without chores. Saves immediately; refreshes the
+// household so the Tasks "Rewards" tab and the profile jar/redemption cards react.
+function ChoresModuleSettings() {
+  const [rewards, setRewards] = useState<boolean | null>(null)
+  useEffect(() => { choresApi.getSettings().then((s) => setRewards(s.rewards)).catch(() => setRewards(true)) }, [])
+  async function toggle(v: boolean) {
+    setRewards(v)
+    try { await choresApi.setRewardsEnabled(v); emitHouseholdChanged() } catch { /* reverts on next refetch */ }
+  }
+  if (rewards === null) return null
+  return (
+    <div className="set-module-settings">
+      <div className="set-module-setrow">
+        <span>Rewards (star shop &amp; redemptions)</span>
+        <Switch checked={rewards} onChange={toggle} ariaLabel="Enable rewards" />
+      </div>
+      <div className="set-module-desc" style={{ marginTop: 6 }}>
+        Kids spend earned stars on a reward shop. Turn off for chores without a points economy.
       </div>
     </div>
   )

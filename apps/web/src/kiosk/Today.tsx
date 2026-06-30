@@ -10,7 +10,7 @@ import { GettingStartedBar } from './onboarding/GettingStarted'
 import { PantryCard } from './Pantry'
 import { useTopbarRight } from './topbar-slot'
 import { useTodayLayout, useHousehold, type LayoutScope } from '../lib/api'
-import { moduleEnabled } from '../lib/modules'
+import { moduleEnabled, rewardsEnabled } from '../lib/modules'
 
 // The cards that can live on Today, keyed the same as the stored layout. `fill`
 // cards are long, scrollable lists (agenda, grocery) — they take the spare room in
@@ -203,7 +203,7 @@ export function Today() {
   return (
     <div className={`today-wrap ${editing ? 'today-editing' : ''}`}>
       <GettingStartedBar />
-      {(showChores || moduleEnabled(household, 'rewards')) && <ApprovalsBar />}
+      {(showChores || rewardsEnabled(household)) && <ApprovalsBar />}
       {moduleEnabled(household, 'goals') && <GoalRecapBar />}
 
       {editing && (

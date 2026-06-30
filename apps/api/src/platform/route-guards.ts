@@ -14,7 +14,7 @@ import { requireTenant, requireAdmin, type Tenant } from '../modules/households/
 import { requireCapability, type Capability } from './permissions'
 import { query } from './db'
 import { AuthError } from './auth'
-import { moduleEnabled, type ModuleKey } from './modules'
+import { moduleEnabled, rewardsEnabled, type ModuleKey } from './modules'
 
 // A guarded handler receives the resolved tenant first (mirroring how routes used
 // to open with `const tenant = await requireTenant(req)`), then the usual req/res.
@@ -93,6 +93,37 @@ export function moduleRoutes(key: ModuleKey) {
         const tenant = await requireTenant(req)
         attach(req, tenant)
         await requireModule(tenant, key)
+        await requireCapability(tenant, cap)
+        return handler(tenant, req, res)
+      }
+    },
+  }
+}
+
+// Rewards isn't a module of its own — it's the spend half of the chores economy
+// (settings.chores.rewards). Its routes require chores enabled AND the sub-flag on.
+async function requireRewards(tenant: Tenant): Promise<void> {
+  const { rows } = await query<{ settings: unknown }>('select settings from households where id = $1', [tenant.householdId])
+  const settings = rows[0]?.settings
+  if (!moduleEnabled(settings, 'chores')) throw new AuthError('The chores module is not enabled', 403)
+  if (!rewardsEnabled(settings)) throw new AuthError('Rewards are turned off', 403)
+}
+
+export function rewardsRoutes() {
+  return {
+    tenantRoute(handler: TenantHandler) {
+      return async (req: Request, res: Response) => {
+        const tenant = await requireTenant(req)
+        attach(req, tenant)
+        await requireRewards(tenant)
+        return handler(tenant, req, res)
+      }
+    },
+    capRoute(cap: Capability, handler: TenantHandler) {
+      return async (req: Request, res: Response) => {
+        const tenant = await requireTenant(req)
+        attach(req, tenant)
+        await requireRewards(tenant)
         await requireCapability(tenant, cap)
         return handler(tenant, req, res)
       }

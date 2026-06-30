@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { MODULES, moduleEnabled, type ModuleKey } from './modules'
+import { MODULES, moduleEnabled, rewardsEnabled, type ModuleKey } from './modules'
 import { SCREENS } from '../kiosk/nav'
 import type { Household } from './api'
 
-// Minimal Household stub carrying just the module flags moduleEnabled reads.
-function hh(modules?: Record<string, boolean>): Household {
-  return { settings: { modules } } as unknown as Household
+// Minimal Household stub carrying just the settings moduleEnabled/rewardsEnabled read.
+function hh(settings?: Household['settings']): Household {
+  return { settings } as unknown as Household
 }
 
-const CORE: ModuleKey[] = ['chores', 'goals', 'rewards', 'meals', 'lists']
+const CORE: ModuleKey[] = ['chores', 'goals', 'meals', 'lists']
 
 describe('module catalog', () => {
   it('the five core feature modules are available and default ON', () => {
@@ -23,12 +23,29 @@ describe('module catalog', () => {
   it('defaults to on (null household / no override) and respects an explicit override', () => {
     expect(moduleEnabled(null, 'meals')).toBe(true)
     expect(moduleEnabled(hh({}), 'meals')).toBe(true)
-    expect(moduleEnabled(hh({ meals: false }), 'meals')).toBe(false)
-    expect(moduleEnabled(hh({ meals: false }), 'goals')).toBe(true)
+    expect(moduleEnabled(hh({ modules: { meals: false } }), 'meals')).toBe(false)
+    expect(moduleEnabled(hh({ modules: { meals: false } }), 'goals')).toBe(true)
   })
 
   it('planned modules are never enabled', () => {
-    expect(moduleEnabled(hh({ fhe: true }), 'fhe')).toBe(false)
+    expect(moduleEnabled(hh({ modules: { fhe: true } }), 'fhe')).toBe(false)
+  })
+})
+
+describe('rewards (nested under chores)', () => {
+  it('rewards is NOT a top-level module', () => {
+    expect(MODULES.some((m) => m.key === ('rewards' as ModuleKey))).toBe(false)
+  })
+
+  it('on by default when chores is on; never on when chores is off', () => {
+    expect(rewardsEnabled(null)).toBe(true) // chores defaults on
+    expect(rewardsEnabled(hh({}))).toBe(true)
+    expect(rewardsEnabled(hh({ modules: { chores: false } }))).toBe(false)
+    // explicit sub-flag wins while chores is on
+    expect(rewardsEnabled(hh({ chores: { rewards: false } }))).toBe(false)
+    expect(rewardsEnabled(hh({ chores: { rewards: true } }))).toBe(true)
+    // ...but chores off forces rewards off regardless of the sub-flag
+    expect(rewardsEnabled(hh({ modules: { chores: false }, chores: { rewards: true } }))).toBe(false)
   })
 })
 
@@ -49,7 +66,7 @@ describe('rail nav gating', () => {
   })
 
   it('hides a disabled page but keeps Today/Calendar/Family/Photos', () => {
-    const paths = visible(hh({ meals: false, lists: false }))
+    const paths = visible(hh({ modules: { meals: false, lists: false } }))
     expect(paths).not.toContain('/meals')
     expect(paths).not.toContain('/lists')
     expect(paths).toContain('/')
