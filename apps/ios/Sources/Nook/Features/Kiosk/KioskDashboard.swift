@@ -132,12 +132,16 @@ struct KioskDashboard: View {
     /// phone/web pin atop Today. Each renders only when it has work and opens its
     /// focused queue as a page sheet. Hidden entirely (no gap) when both are empty.
     @ViewBuilder private var banners: some View {
-        if (sync.canApprove && !approvals.isEmpty) || !reviewRecap.isEmpty || !reviewSuggestions.isEmpty {
+        // Gate each bar by its module: approvals with chores, the goal-recap review
+        // bar with goals (calendar itself is never gated).
+        let showApprovalsBar = sync.module(.chores) && sync.canApprove && !approvals.isEmpty
+        let showReviewBar = sync.module(.goals) && (!reviewRecap.isEmpty || !reviewSuggestions.isEmpty)
+        if showApprovalsBar || showReviewBar {
             VStack(spacing: 12) {
-                if sync.canApprove && !approvals.isEmpty {
+                if showApprovalsBar {
                     Button { showApprovals = true } label: { approvalsBanner }.buttonStyle(.plain)
                 }
-                if !reviewRecap.isEmpty || !reviewSuggestions.isEmpty {
+                if showReviewBar {
                     Button { showReview = true } label: { reviewBanner }.buttonStyle(.plain)
                 }
             }

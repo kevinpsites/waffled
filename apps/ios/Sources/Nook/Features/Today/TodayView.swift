@@ -56,10 +56,12 @@ struct TodayView: View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    // Parent-only "Needs your OK" banner, pinned above everything.
-                    ApprovalsBanner(model: approvals)
-                    // The review banner is pinned (transient alert), not customizable.
-                    if !reviewRecap.isEmpty || !reviewSuggestions.isEmpty {
+                    // Parent-only "Needs your OK" banner — gated with the chores module
+                    // (no chores ⇒ nothing in the chore/reward approval queues).
+                    if sync.module(.chores) { ApprovalsBanner(model: approvals) }
+                    // The goal-recap review banner (calendar↔goal bridge) — gated with
+                    // the goals module so it can't surface for a disabled feature.
+                    if sync.module(.goals), !reviewRecap.isEmpty || !reviewSuggestions.isEmpty {
                         Button { path.append(.reviewEvents) } label: { reviewCard }.buttonStyle(.plain)
                     }
                     // The rest render in the user's saved order, hidden cards omitted.

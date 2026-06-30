@@ -33,8 +33,11 @@ struct AppRoot: View {
     /// Only those who can approve owe approvals — and the badge counts just the items
     /// they can actually action (chore check-offs and/or reward purchases).
     private var approvalCount: Int {
-        (sync.can("chore.approve") ? approvals.chores.count : 0)
-        + (sync.can("reward.approve") ? approvals.redemptions.count : 0)
+        // No chores module ⇒ nothing to approve; keep the badge reactively at 0 even
+        // before the next approvals reload lands.
+        guard sync.module(.chores) else { return 0 }
+        return (sync.can("chore.approve") ? approvals.chores.count : 0)
+            + (sync.can("reward.approve") ? approvals.redemptions.count : 0)
     }
 
     private static var initialTab: Tab {
