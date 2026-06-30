@@ -152,6 +152,15 @@ export function Meals() {
   const [picking, setPicking] = useState<{ date: string; mealType: MealType; dayLabel: string } | null>(null)
   const [planning, setPlanning] = useState(false)
   const [planningMonth, setPlanningMonth] = useState(false)
+  // "Plan from pantry" (from the Pantry screen) seeds the planner with use-up items.
+  const [seedUseUp, setSeedUseUp] = useState<string[]>([])
+  useEffect(() => {
+    const raw = sessionStorage.getItem('nook.planUseUp')
+    if (raw) {
+      sessionStorage.removeItem('nook.planUseUp')
+      try { const items = JSON.parse(raw); if (Array.isArray(items) && items.length) { setSeedUseUp(items); setPlanning(true) } } catch { /* ignore */ }
+    }
+  }, [])
 
   const weekStartD = useMemo(() => weekStart(anchor), [anchor])
   const monthStartD = useMemo(() => monthStartOf(anchor), [anchor])
@@ -358,7 +367,7 @@ export function Meals() {
   const rows: MealType[] = filter === 'dinner' ? ['dinner'] : [...MEALS]
 
   if (planning) {
-    return <PlanWeek startStr={startStr} days={days} onClose={() => setPlanning(false)} onApplied={refetch} />
+    return <PlanWeek startStr={startStr} days={days} initialUseUp={seedUseUp} onClose={() => { setPlanning(false); setSeedUseUp([]) }} onApplied={refetch} />
   }
 
   if (planningMonth) {

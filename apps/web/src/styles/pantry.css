@@ -255,6 +255,37 @@
 /* badge + name, used in the detail "Contains" row and the scan panel */
 .pl-contains-item { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
 
+/* ===== Cook from your pantry (sidebar card + modal + detail section) ===== */
+.pl-cook { margin-top: 18px; padding: 14px; border-radius: var(--r-lg, 14px); background: var(--wally-t, #eaf5ee); }
+.pl-cook-h { font-size: 14px; font-weight: 800; color: var(--ink); }
+.pl-cook-sub { font-size: 12px; font-weight: 600; color: var(--ink-2); margin: 5px 0 10px; line-height: 1.4; }
+.pl-cook-btn { width: 100%; justify-content: center; cursor: pointer; }
+
+.pl-cookm { max-width: 460px; width: 92vw; }
+.pl-cookm-title { font-size: 20px; font-weight: 600; margin-bottom: 14px; }
+.pl-cookm-ai { width: 100%; justify-content: center; cursor: pointer; margin-bottom: 16px; }
+.pl-cookm-h { font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); margin: 4px 0 8px; }
+.pl-cookm-empty { font-size: 13px; font-weight: 600; color: var(--ink-3); padding: 4px 0 12px; }
+.pl-cookm-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.pl-cookm-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; cursor: pointer;
+  border: 1px solid var(--hair); background: var(--card); border-radius: 12px; padding: 9px 12px; font: inherit;
+}
+.pl-cookm-row:hover { border-color: var(--primary); }
+.pl-cookm-row.near { cursor: default; }
+.pl-cookm-emoji { font-size: 20px; flex: none; }
+.pl-cookm-name { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 700; color: var(--ink); display: flex; flex-direction: column; gap: 2px; }
+.pl-cookm-need { font-size: 12px; font-weight: 600; color: var(--ink-3); }
+.pl-cookm-soon { font-size: 11px; font-weight: 800; color: #b5651d; background: #fdf0e3; padding: 3px 8px; border-radius: 999px; flex: none; }
+.pl-cookm-go { color: var(--ink-3); font-size: 18px; flex: none; }
+.pl-cookm-add { flex: none; cursor: pointer; }
+.pl-cookm-foot { display: flex; justify-content: flex-end; }
+.pl-cookm-foot .pill { cursor: pointer; }
+
+.pl-planin { margin-bottom: 14px; }
+.pl-planin-h { font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); margin-bottom: 8px; }
+.pl-planin .pl-cookm-row { margin-bottom: 6px; }
+
 /* barcode lookup row in the add modal */
 .pl-barcode-row { display: flex; gap: 8px; }
 .pl-barcode-row input { flex: 1; min-width: 0; }

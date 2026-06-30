@@ -9,6 +9,7 @@ import { moduleEnabled } from '../../platform/modules'
 import { AuthError } from '../../platform/auth'
 import type { Tenant } from '../households/households'
 import { lookupBarcode } from './off'
+import { cookableRecipes, recipesUsingItem } from './cook'
 import { ALLERGEN_KEYS } from '../../platform/allergens'
 
 type Api = ReturnType<typeof createAPI>
@@ -197,6 +198,26 @@ export function registerPantryRoutes(api: Api): void {
     }
     if (!product) return res.status(404).json({ found: false, barcode })
     return { found: true, product }
+  }))
+
+  // "Cook from your pantry": recipes makeable now (nothing to buy beyond staples) +
+  // nearly-makeable (1–2 missing). Deterministic name matching.
+  api.get('/api/pantry/cookable', tenantRoute(async (tenant) => {
+    await requirePantry(tenant)
+    return cookableRecipes(tenant.householdId)
+  }))
+
+  // Recipes that use a given pantry item (the detail sheet's "Plan it in").
+  api.get('/api/pantry/:id/recipes', tenantRoute(async (tenant, req: Request, res: Response) => {
+    await requirePantry(tenant)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'item not found' })
+    const { rows } = await query<{ name: string }>(
+      `select name from pantry_items where household_id = $1 and id = $2 and deleted_at is null`,
+      [tenant.householdId, id]
+    )
+    if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'item not found' })
+    return { recipes: await recipesUsingItem(tenant.householdId, rows[0].name) }
   }))
 
   // Add an item (any member — collaborative, like lists).

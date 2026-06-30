@@ -93,6 +93,15 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Planned 🚧
 
+- **Pantry ↔ meal-planning loop.** The pantry redesign + Open Food Facts integration
+  (cached barcode lookup/scanner, nutrition + colored allergen badges, household∪per-person
+  allergen warnings incl. "may contain" traces, dietary flags, running-low thresholds,
+  location icons, replace-photo) shipped, plus the first meal tie-ins: deterministic
+  **"Cook from your pantry"** (recipes makeable now, staple-aware) + per-item **"Plan it in"**
+  + **"Plan my week"** seeded with soon-to-expire items. **Next: cook → decrement pantry** —
+  marking a recipe cooked subtracts its ingredients from on-hand stock (with an "add missing
+  to grocery" path), closing the loop. (Bigger lift: unit/quantity reconciliation.)
+
 - **Multi-household identity** — one email/account that belongs to many households (separate
   profile + role per household, switch after login). Design spike written + product decisions
   aligned: [`docs/design/multi-household-identity.md`](../design/multi-household-identity.md).

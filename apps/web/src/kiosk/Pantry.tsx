@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import {
   usePantry, pantryApi, daysUntil, groceryApi, flaggedAllergens, uploadImage, ALLERGEN_LABELS, DIETARY_LABELS,
-  type PantryItem, type PantryItemInput, type OffProduct,
+  type PantryItem, type PantryItemInput, type OffProduct, type ItemRecipe,
 } from '../lib/api'
 import { ScanModal } from './components/ScanModal'
+import { CookFromPantry } from './components/CookFromPantry'
 import { AllergenBadges, AllergenBadge, AllergenKey } from './components/Allergens'
 import '../styles/pantry.css'
 
@@ -176,6 +177,7 @@ export function Pantry() {
               <span className="pl-navitem-ic">📦</span><span className="pl-navitem-l">Other</span><span className="pl-navitem-n">{counts.byLoc.Other}</span>
             </button>
           )}
+          <CookFromPantry useSoon={live.filter(isSoon).map((i) => i.name)} />
           <AllergenKey avoid={avoidSet} />
         </aside>
 
@@ -295,11 +297,14 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
   onEdit: () => void
   onChanged: () => void
 }) {
+  const navigate = useNavigate()
   const [amt, setAmt] = useState(item.amount)
   const [busy, setBusy] = useState(false)
   const [img, setImg] = useState(item.imageUrl)
   const [photoBusy, setPhotoBusy] = useState(false)
+  const [recipes, setRecipes] = useState<ItemRecipe[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
+  useEffect(() => { pantryApi.itemRecipes(item.id).then((d) => setRecipes(d.recipes)).catch(() => {}) }, [item.id])
   const flaggedList = flaggedAllergens(item, avoidAllergens, allergenPeople)
   const flagged = new Set(flaggedList)
   // Who the flagged allergens affect (for the "affects …" note).
@@ -402,6 +407,19 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
         )}
 
         {isOff && <div className="pl-off-foot">● Nutrition &amp; allergens from Open Food Facts</div>}
+
+        {recipes.length > 0 && (
+          <div className="pl-planin">
+            <div className="pl-planin-h">Plan it in</div>
+            {recipes.slice(0, 4).map((r) => (
+              <button type="button" key={r.recipeId} className="pl-cookm-row" onClick={() => navigate(`/meals/recipe/${r.recipeId}`)}>
+                <span className="pl-cookm-emoji">{r.emoji ?? '🍽️'}</span>
+                <span className="pl-cookm-name">{r.title}</span>
+                <span className="pl-cookm-go">›</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="pl-detail-acts">
           <button type="button" className="pill" onClick={onEdit}>Edit</button>

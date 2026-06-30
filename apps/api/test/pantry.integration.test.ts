@@ -262,4 +262,22 @@ describe('pantry Open Food Facts integration', () => {
     const body = JSON.parse((await call('GET', '/api/pantry', kevin)).body)
     expect(body.allergenPeople.gluten).toContain(me.name)
   })
+
+  let beefId = ''
+  it('cook-from-pantry: finds recipes makeable from on-hand items (staple-aware)', async () => {
+    const rec = await call('POST', '/api/recipes', kevin, { title: 'Taco Night', ingredients: [{ name: 'Ground beef' }, { name: 'Tortillas' }, { name: 'Salt' }] })
+    expect(rec.statusCode).toBe(201)
+    beefId = JSON.parse((await call('POST', '/api/pantry', kevin, { name: 'Ground Beef', location: 'Freezer' })).body).item.id
+    await call('POST', '/api/pantry', kevin, { name: 'Tortillas', location: 'Pantry' })
+    // Salt isn't on hand, but it's a default staple → recipe is still "makeable".
+    const ck = await call('GET', '/api/pantry/cookable', kevin)
+    expect(ck.statusCode).toBe(200)
+    expect(JSON.parse(ck.body).makeable.map((r: { title: string }) => r.title)).toContain('Taco Night')
+  })
+
+  it('cook-from-pantry: lists recipes that use a given item', async () => {
+    const r = await call('GET', `/api/pantry/${beefId}/recipes`, kevin)
+    expect(r.statusCode).toBe(200)
+    expect(JSON.parse(r.body).recipes.map((x: { title: string }) => x.title)).toContain('Taco Night')
+  })
 })
