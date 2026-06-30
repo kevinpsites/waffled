@@ -6,7 +6,7 @@ import { ALLERGEN_KEYS, ALLERGEN_LABELS } from '../../lib/api'
 // short letter + color per canonical allergen key.
 export const ALLERGEN_BADGE: Record<string, { short: string; bg: string; fg: string }> = {
   gluten: { short: 'G', bg: '#E08A3C', fg: '#fff' },
-  milk: { short: 'M', bg: '#4F8FD6', fg: '#fff' },
+  milk: { short: 'D', bg: '#4F8FD6', fg: '#fff' },
   soy: { short: 'S', bg: '#3FA45B', fg: '#fff' },
   egg: { short: 'E', bg: '#F0CF52', fg: '#5a4a00' },
   peanut: { short: 'P', bg: '#A9743B', fg: '#fff' },

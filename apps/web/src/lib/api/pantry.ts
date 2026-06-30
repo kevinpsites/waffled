@@ -77,8 +77,10 @@ export type PantryItemInput = {
 }
 
 // Canonical allergen keys (match the backend + OFF normalizer) with display labels.
+// Display labels for the canonical allergen keys. `milk` is OFF's tag for all dairy,
+// so we surface it as "Dairy".
 export const ALLERGEN_LABELS: Record<string, string> = {
-  gluten: 'Gluten', milk: 'Milk', soy: 'Soy', egg: 'Egg', peanut: 'Peanut',
+  gluten: 'Gluten', milk: 'Dairy', soy: 'Soy', egg: 'Egg', peanut: 'Peanut',
   tree_nut: 'Tree nut', fish: 'Fish', shellfish: 'Shellfish', sesame: 'Sesame',
 }
 export const ALLERGEN_KEYS = Object.keys(ALLERGEN_LABELS)
