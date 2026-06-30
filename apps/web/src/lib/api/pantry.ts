@@ -36,6 +36,7 @@ export interface PantryItem extends OffFields {
   note: string
   usedUp: boolean
   lowAt: number | null
+  isMeal: boolean
   createdAt: string
 }
 
@@ -66,6 +67,7 @@ export type PantryItemInput = {
   note?: string
   usedUp?: boolean
   lowAt?: number | null
+  isMeal?: boolean
   // OFF snapshot — set when adding/editing via a barcode lookup.
   barcode?: string | null
   brand?: string | null
@@ -97,6 +99,7 @@ export interface CookableRecipe {
   onHand: number
   missing: string[]
   usesExpiring: boolean
+  mainItem: string | null
 }
 export interface ItemRecipe { recipeId: string; title: string; emoji: string | null }
 
@@ -119,7 +122,7 @@ export const pantryApi = {
       .then((r) => (r.found ? r.product! : null))
       .catch(() => null),
   // "Cook from your pantry": recipes makeable now + nearly (1–2 short).
-  cookable: () => apiGet<{ makeable: CookableRecipe[]; nearly: CookableRecipe[] }>('/api/pantry/cookable'),
+  cookable: () => apiGet<{ ready: CookableRecipe[]; haveMain: CookableRecipe[] }>('/api/pantry/cookable'),
   // Recipes that use a given pantry item (detail "Plan it in").
   itemRecipes: (id: string) => apiGet<{ recipes: ItemRecipe[] }>(`/api/pantry/${id}/recipes`),
   // Module config: locations, Today-card toggle, avoid-allergens, the running-low

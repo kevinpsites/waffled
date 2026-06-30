@@ -273,6 +273,8 @@
 }
 .pl-cookm-row:hover { border-color: var(--primary); }
 .pl-cookm-row.near { cursor: default; }
+.pl-cookm-row.near:has(.pl-cookm-open):hover { border-color: var(--primary); }
+.pl-cookm-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; border: 0; background: none; cursor: pointer; font: inherit; padding: 0; text-align: left; }
 .pl-cookm-emoji { font-size: 20px; flex: none; }
 .pl-cookm-name { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 700; color: var(--ink); display: flex; flex-direction: column; gap: 2px; }
 .pl-cookm-need { font-size: 12px; font-weight: 600; color: var(--ink-3); }
@@ -285,6 +287,10 @@
 .pl-planin { margin-bottom: 14px; }
 .pl-planin-h { font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); margin-bottom: 8px; }
 .pl-planin .pl-cookm-row { margin-bottom: 6px; }
+
+/* "It's a meal" toggle in the item editor */
+.pantry-meal-toggle { display: flex; gap: 9px; align-items: flex-start; margin: 2px 0 12px; font-size: 13px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
+.pantry-meal-toggle input { margin-top: 2px; flex: none; width: 16px; height: 16px; }
 
 /* barcode lookup row in the add modal */
 .pl-barcode-row { display: flex; gap: 8px; }

@@ -37,11 +37,12 @@ interface PantryRow {
   dietary: string[] | null
   source: string | null
   low_at: string | null
+  is_meal: boolean
   created_at: string
 }
 
 const RETURNING = `id, name, amount, unit, location, expires_on::text as expires_on, note, used_up_at::text as used_up_at,
-  barcode, brand, image_url, quantity_text, serving_basis, nutrition, allergens, traces, dietary, source, low_at, created_at::text as created_at`
+  barcode, brand, image_url, quantity_text, serving_basis, nutrition, allergens, traces, dietary, source, low_at, is_meal, created_at::text as created_at`
 
 function present(r: PantryRow) {
   return {
@@ -65,6 +66,7 @@ function present(r: PantryRow) {
     dietary: r.dietary,
     source: r.source,
     lowAt: r.low_at != null ? Number(r.low_at) : null,
+    isMeal: r.is_meal,
     createdAt: r.created_at,
   }
 }
@@ -104,6 +106,7 @@ async function insertItem(householdId: string, b: Record<string, unknown>): Prom
     b.note != null ? String(b.note).trim() : null,
   ]
   if (b.lowAt != null && b.lowAt !== '' && Number.isFinite(Number(b.lowAt))) { cols.push('low_at'); vals.push(Number(b.lowAt)) }
+  if (typeof b.isMeal === 'boolean') { cols.push('is_meal'); vals.push(b.isMeal) }
   for (const p of offPatches(b)) { cols.push(p.col); vals.push(p.val) }
   const placeholders = vals.map((_, idx) => `$${idx + 1}${cols[idx] === 'nutrition' ? '::jsonb' : ''}`)
   const { rows } = await query<PantryRow>(
@@ -283,6 +286,7 @@ export function registerPantryRoutes(api: Api): void {
     if ('expiresOn' in b) set('expires_on', b.expiresOn ? String(b.expiresOn) : null)
     if ('note' in b) set('note', b.note != null ? String(b.note).trim() : null)
     if ('lowAt' in b) set('low_at', b.lowAt != null && b.lowAt !== '' && Number.isFinite(Number(b.lowAt)) ? Number(b.lowAt) : null)
+    if (typeof b.isMeal === 'boolean') set('is_meal', b.isMeal)
     // OFF snapshot edits (relink a barcode, replace the photo, refresh nutrition).
     for (const p of offPatches(b)) {
       if (p.col === 'nutrition') { cols.push(`nutrition = $${i++}::jsonb`); vals.push(p.val) }

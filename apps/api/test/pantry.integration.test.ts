@@ -272,7 +272,18 @@ describe('pantry Open Food Facts integration', () => {
     // Salt isn't on hand, but it's a default staple → recipe is still "makeable".
     const ck = await call('GET', '/api/pantry/cookable', kevin)
     expect(ck.statusCode).toBe(200)
-    expect(JSON.parse(ck.body).makeable.map((r: { title: string }) => r.title)).toContain('Taco Night')
+    expect(JSON.parse(ck.body).ready.map((r: { title: string }) => r.title)).toContain('Taco Night')
+  })
+
+  it('cook-from-pantry: surfaces recipes where you have most of it ("have the main")', async () => {
+    await call('POST', '/api/recipes', kevin, { title: 'Veggie Bowl', ingredients: [{ name: 'Broccoli' }, { name: 'Carrots' }, { name: 'Bell peppers' }] })
+    await call('POST', '/api/pantry', kevin, { name: 'Broccoli', location: 'Fridge' })
+    await call('POST', '/api/pantry', kevin, { name: 'Carrots', location: 'Fridge' })
+    // 2 of 3 on hand (no protein tagged) → "have the main" via coverage, missing peppers.
+    const ck = JSON.parse((await call('GET', '/api/pantry/cookable', kevin)).body)
+    const hm = ck.haveMain.find((r: { title: string }) => r.title === 'Veggie Bowl')
+    expect(hm).toBeTruthy()
+    expect(hm.missing).toEqual(['Bell peppers'])
   })
 
   it('cook-from-pantry: lists recipes that use a given item', async () => {

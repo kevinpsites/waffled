@@ -177,7 +177,10 @@ export function Pantry() {
               <span className="pl-navitem-ic">📦</span><span className="pl-navitem-l">Other</span><span className="pl-navitem-n">{counts.byLoc.Other}</span>
             </button>
           )}
-          <CookFromPantry useSoon={live.filter(isSoon).map((i) => i.name)} />
+          <CookFromPantry
+            eatUp={live.filter((i) => i.isMeal || isSoon(i)).map((i) => ({ name: i.name, expiresOn: i.expiresOn, isMeal: i.isMeal }))}
+            useSoon={live.filter(isSoon).map((i) => i.name)}
+          />
           <AllergenKey avoid={avoidSet} />
         </aside>
 
@@ -443,6 +446,7 @@ function ItemModal({ item, locations, onClose, onSaved }: {
   const [expiresOn, setExpiresOn] = useState(item?.expiresOn ?? '')
   const [note, setNote] = useState(item?.note ?? '')
   const [lowAt, setLowAt] = useState(item?.lowAt != null ? String(item.lowAt) : '')
+  const [isMeal, setIsMeal] = useState(item?.isMeal ?? false)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   // Barcode → Open Food Facts prefill (adding only). `off` holds the looked-up
@@ -473,6 +477,7 @@ function ItemModal({ item, locations, onClose, onSaved }: {
       name: name.trim(), amount: amount.trim(), unit: unit.trim(), location,
       expiresOn: expiresOn || null, note: note.trim(),
       lowAt: lowAt.trim() === '' ? null : Number(lowAt),
+      isMeal,
       // Carry the OFF snapshot when the item was matched by barcode.
       ...(off ? {
         barcode: off.barcode, brand: off.brand, imageUrl: off.imageUrl, quantityText: off.quantityText,
@@ -538,6 +543,10 @@ function ItemModal({ item, locations, onClose, onSaved }: {
             <input type="number" min="0" step="any" value={lowAt} onChange={(e) => setLowAt(e.target.value)} placeholder="default" />
           </label>
         </div>
+        <label className="pantry-meal-toggle">
+          <input type="checkbox" checked={isMeal} onChange={(e) => setIsMeal(e.target.checked)} />
+          <span>It's a meal — ready to eat (leftovers, pre-made, or a protein to use up). Shows in “Cook from your pantry”.</span>
+        </label>
         {err && <div className="pantry-err">{err}</div>}
         <div className="pantry-modal-actions">
           {item && <button type="button" className="pill pantry-del" disabled={saving} onClick={remove}>Delete</button>}

@@ -32,7 +32,12 @@ export interface CookableRecipe {
   onHand: number
   missing: string[]
   usesExpiring: boolean
+  mainItem: string | null // the on-hand item that is the recipe's protein/"main", if any
 }
+
+const COVERAGE_FALLBACK = 0.6 // when a recipe has no protein tagged, "have the main" ≈ this much on hand
+const MAX_MISSING_MAIN = 4 // "have the main" = the main + only a few sides to buy (not a whole shop)
+const MAX_RESULTS = 12 // cap each tier so a big recipe library doesn't flood the card
 
 // Days until a YYYY-MM-DD date (null if none); negative = past.
 function daysUntil(d: string | null): number | null {
@@ -42,21 +47,23 @@ function daysUntil(d: string | null): number | null {
   return Math.round((new Date(`${d}T00:00:00`).getTime() - today.getTime()) / 86_400_000)
 }
 
-interface OnHand { tokens: Set<string>; expiring: boolean }
+interface OnHand { name: string; tokens: Set<string>; expiring: boolean }
 
 async function pantryOnHand(householdId: string): Promise<OnHand[]> {
+  // is_meal items are finished meals (a frozen pot pie, leftovers) — not cooking
+  // ingredients — so they don't count toward matching a recipe's ingredients/protein.
   const { rows } = await query<{ name: string; expires_on: string | null }>(
     `select name, expires_on::text as expires_on from pantry_items
-       where household_id = $1 and used_up_at is null and deleted_at is null`,
+       where household_id = $1 and used_up_at is null and deleted_at is null and is_meal = false`,
     [householdId]
   )
-  return rows.map((r) => { const d = daysUntil(r.expires_on); return { tokens: tokens(r.name), expiring: d != null && d <= 3 } })
+  return rows.map((r) => { const d = daysUntil(r.expires_on); return { name: r.name, tokens: tokens(r.name), expiring: d != null && d <= 3 } })
 }
 
 // All recipes with their ingredients, in one pass (avoids N+1).
 async function recipeIngredients(householdId: string) {
-  const recipes = await query<{ id: string; title: string; emoji: string | null }>(
-    `select id, title, emoji from recipes where household_id = $1 and deleted_at is null order by title`,
+  const recipes = await query<{ id: string; title: string; emoji: string | null; protein: string | null }>(
+    `select id, title, emoji, protein from recipes where household_id = $1 and deleted_at is null order by title`,
     [householdId]
   )
   const ings = await query<{ recipe_id: string; name: string; is_staple: boolean }>(
@@ -68,35 +75,49 @@ async function recipeIngredients(householdId: string) {
   return { recipes: recipes.rows, byRecipe }
 }
 
-// Makeable + nearly-makeable recipes given what's on hand.
-export async function cookableRecipes(householdId: string): Promise<{ makeable: CookableRecipe[]; nearly: CookableRecipe[] }> {
+// Recipes you can cook now ("ready", nothing to buy) and ones where you already have
+// the MAIN ingredient ("haveMain") — the recipe's protein is on hand (or, when no
+// protein is tagged, you have most of it) even if a few sides are missing. The point:
+// lean into the protein you already own instead of buying a new one.
+export async function cookableRecipes(householdId: string): Promise<{ ready: CookableRecipe[]; haveMain: CookableRecipe[] }> {
   await ensureDefaultStaples(householdId)
   const staples = new Set((await listPantryStaples(householdId)).map((s) => s.name.trim().toLowerCase()))
   const onHand = await pantryOnHand(householdId)
   const { recipes, byRecipe } = await recipeIngredients(householdId)
 
-  const makeable: CookableRecipe[] = []
-  const nearly: CookableRecipe[] = []
+  const ready: CookableRecipe[] = []
+  const haveMain: CookableRecipe[] = []
   for (const r of recipes) {
     const ings = byRecipe.get(r.id) ?? []
     const required = ings.filter((i) => !i.is_staple && !staples.has(i.name.trim().toLowerCase()))
-    if (required.length === 0) continue // nothing to match (all staples / no ingredients)
+    if (required.length === 0) continue
+    const proteinTok = r.protein ? tokens(r.protein) : null
     const missing: string[] = []
     let usesExpiring = false
+    let mainItem: string | null = null // the on-hand item that is the recipe's protein
     for (const ing of required) {
-      const it = tokens(ing.name)
-      const hit = onHand.find((o) => matches(it, o.tokens))
-      if (hit) { if (hit.expiring) usesExpiring = true } else missing.push(ing.name.trim())
+      const ingTok = tokens(ing.name)
+      const hit = onHand.find((o) => matches(ingTok, o.tokens))
+      if (hit) { if (hit.expiring) usesExpiring = true } else { missing.push(ing.name.trim()); continue }
+      // Is THIS ingredient the recipe's protein, and is it the one we have on hand?
+      // (ties "the main" to the actual protein ingredient, not a coincidental meal).
+      if (proteinTok && proteinTok.size && matches(proteinTok, ingTok)) mainItem = hit.name
     }
-    const entry: CookableRecipe = { recipeId: r.id, title: r.title, emoji: r.emoji, total: required.length, onHand: required.length - missing.length, missing, usesExpiring }
-    if (missing.length === 0) makeable.push(entry)
-    else if (missing.length <= 2) nearly.push(entry)
+    const coverage = (required.length - missing.length) / required.length
+    const entry: CookableRecipe = {
+      recipeId: r.id, title: r.title, emoji: r.emoji, total: required.length,
+      onHand: required.length - missing.length, missing, usesExpiring, mainItem,
+    }
+    if (missing.length === 0) { ready.push(entry); continue }
+    // "Have the main": the protein ingredient is on hand (or, untagged, you already
+    // have most of it) AND only a few sides are missing — not a whole shop.
+    const qualifies = !!mainItem || (!r.protein && required.length >= 3 && coverage >= COVERAGE_FALLBACK)
+    if (qualifies && missing.length <= MAX_MISSING_MAIN) haveMain.push(entry)
   }
-  // Makeable: ones that use up expiring items first, then by title.
-  makeable.sort((a, b) => Number(b.usesExpiring) - Number(a.usesExpiring) || a.title.localeCompare(b.title))
-  // Nearly: fewest missing first.
-  nearly.sort((a, b) => a.missing.length - b.missing.length || a.title.localeCompare(b.title))
-  return { makeable, nearly }
+  ready.sort((a, b) => Number(b.usesExpiring) - Number(a.usesExpiring) || a.title.localeCompare(b.title))
+  // Have-the-main: fewest missing first (closest to ready), then uses-expiring.
+  haveMain.sort((a, b) => a.missing.length - b.missing.length || Number(b.usesExpiring) - Number(a.usesExpiring) || a.title.localeCompare(b.title))
+  return { ready: ready.slice(0, MAX_RESULTS), haveMain: haveMain.slice(0, MAX_RESULTS) }
 }
 
 // Recipes whose ingredients include a given item (for the detail "Plan it in").
