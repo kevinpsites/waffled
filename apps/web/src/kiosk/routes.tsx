@@ -27,6 +27,9 @@ import { Settings } from './Settings'
 // catalog default (on), so the common case never flashes a redirect.
 function ModuleGate({ module }: { module: ModuleKey }) {
   const { household } = useHousehold()
+  // Wait for settings to load before deciding — otherwise a default-off module
+  // (pantry) would flash-redirect on the null household during the initial fetch.
+  if (!household) return null
   if (!moduleEnabled(household, module)) return <Navigate to="/" replace />
   return <Outlet />
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { personsApi, permissionsApi, healthApi, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
+import { personsApi, permissionsApi, healthApi, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
 import { PersonModal } from './components/PersonModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -1609,11 +1609,12 @@ function ModulesPanel() {
 // Pantry's own settings (shown when the module is on): the Today-card toggle and
 // the editable location list. Saves immediately; refreshes household so Today reacts.
 function PantrySettings() {
-  const { locations, showOnToday, loading } = usePantry()
+  const { locations, showOnToday, avoidAllergens, loading } = usePantry()
   const [list, setList] = useState<string[]>([])
   const [adding, setAdding] = useState('')
   const [show, setShow] = useState(true)
-  useEffect(() => { if (!loading) { setList(locations); setShow(showOnToday) } }, [loading, locations, showOnToday])
+  const [avoid, setAvoid] = useState<string[]>([])
+  useEffect(() => { if (!loading) { setList(locations); setShow(showOnToday); setAvoid(avoidAllergens) } }, [loading, locations, showOnToday, avoidAllergens])
 
   async function commitLocations(next: string[]) {
     setList(next)
@@ -1623,6 +1624,11 @@ function PantrySettings() {
     setShow(v)
     try { await pantryApi.setConfig({ showOnToday: v }); emitHouseholdChanged() } catch { /* ignore */ }
   }
+  async function toggleAvoid(key: string) {
+    const next = avoid.includes(key) ? avoid.filter((a) => a !== key) : [...avoid, key]
+    setAvoid(next)
+    try { await pantryApi.setConfig({ avoidAllergens: next }); emitHouseholdChanged() } catch { /* ignore */ }
+  }
 
   if (loading) return null
   return (
@@ -1630,6 +1636,23 @@ function PantrySettings() {
       <div className="set-module-setrow">
         <span>Show a card on Today</span>
         <Switch checked={show} onChange={toggleShow} ariaLabel="Show pantry on Today" />
+      </div>
+      <div className="set-module-setlabel">Allergens to avoid</div>
+      <div className="set-module-desc" style={{ marginBottom: 8 }}>
+        Items containing these (from Open Food Facts) get a red warning — e.g. a gluten-free home.
+      </div>
+      <div className="pl-allergen-pick">
+        {ALLERGEN_KEYS.map((key) => (
+          <button
+            key={key}
+            type="button"
+            className={`pl-allergen-chip${avoid.includes(key) ? ' on' : ''}`}
+            aria-pressed={avoid.includes(key)}
+            onClick={() => toggleAvoid(key)}
+          >
+            {ALLERGEN_LABELS[key]}
+          </button>
+        ))}
       </div>
       <div className="set-module-setlabel">Locations</div>
       <div className="pantry-loc-list">

@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
-import { usePantry, pantryApi, daysUntil, groceryApi, type PantryItem, type PantryItemInput } from '../lib/api'
+import {
+  usePantry, pantryApi, daysUntil, groceryApi, flaggedAllergens, ALLERGEN_LABELS,
+  type PantryItem, type PantryItemInput,
+} from '../lib/api'
 import '../styles/pantry.css'
 
 // A small expiry badge: red if past, amber within 3 days, muted date otherwise.
@@ -13,19 +16,44 @@ function ExpiryBadge({ expiresOn }: { expiresOn: string | null }) {
   return <span className="pantry-exp">{expiresOn}</span>
 }
 
-// The Pantry screen — on-hand inventory grouped by location. Gated behind the
-// optional `pantry` module (the nav entry is hidden when off; direct nav 403s).
+// A compact per-item expiry sub-line (greyed when far off / absent).
+function expiryText(expiresOn: string | null): { text: string; tone: 'past' | 'soon' | 'ok' | 'none' } {
+  const d = daysUntil(expiresOn)
+  if (d == null) return { text: 'No date', tone: 'none' }
+  if (d < 0) return { text: 'Expired', tone: 'past' }
+  if (d === 0) return { text: 'Today', tone: 'soon' }
+  if (d <= 3) return { text: `${d} day${d === 1 ? '' : 's'}`, tone: 'soon' }
+  return { text: expiresOn!, tone: 'ok' }
+}
+
+// Best-effort food emoji from the item name (the OFF image is preferred when present).
+const EMOJI_RULES: [RegExp, string][] = [
+  [/beef|steak|burger/i, '🥩'], [/chicken|poultry/i, '🍗'], [/turkey/i, '🦃'], [/pork|bacon|ham|sausage/i, '🥓'],
+  [/shrimp|prawn/i, '🦐'], [/fish|salmon|tuna|cod/i, '🐟'], [/pizza/i, '🍕'], [/lasagna|pasta|spaghetti|noodle/i, '🍝'],
+  [/pie|pot pie/i, '🥧'], [/burrito|taco|wrap/i, '🌯'], [/bean/i, '🫘'], [/nugget/i, '🍗'], [/waffle|pancake/i, '🧇'],
+  [/pea|veg|broccoli|spinach/i, '🥦'], [/berry|berries|fruit/i, '🫐'], [/ice cream|gelato/i, '🍦'], [/cheese/i, '🧀'],
+  [/bread|bun|roll|bagel/i, '🍞'], [/milk|cream|yogurt/i, '🥛'], [/egg/i, '🥚'], [/rice/i, '🍚'], [/soup|broth/i, '🍲'],
+]
+function foodEmoji(name: string): string {
+  for (const [re, e] of EMOJI_RULES) if (re.test(name)) return e
+  return '🥫'
+}
+
+type SortKey = 'expiring' | 'az' | 'recent'
+
+// The Pantry screen — on-hand inventory with a location/smart-group sidebar, search,
+// sort, Open Food Facts nutrition/allergens, and avoid-allergen warnings. Gated
+// behind the optional `pantry` module (nav hidden when off; direct nav redirects).
 export function Pantry() {
-  const { items, locations, loading, error, refetch } = usePantry()
+  const { items, locations, avoidAllergens, loading, error, refetch } = usePantry()
+  const [view, setView] = useState<string>('all') // 'all' | 'use_soon' | 'running_low' | <location>
+  const [q, setQ] = useState('')
+  const [sort, setSort] = useState<SortKey>('expiring')
   const [editing, setEditing] = useState<PantryItem | 'new' | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
-  const [dragId, setDragId] = useState<string | null>(null)
-  const [overLoc, setOverLoc] = useState<string | null>(null)
-  // The "edit amount" popover (tap the quantity) — id + the in-flight value.
   const [editAmt, setEditAmt] = useState<{ id: string; amount: string; unit: string } | null>(null)
 
-  // Stepper: bump the (numeric) amount by ±1. Empty/non-numeric amounts start at 1
-  // on +, and any − that can't go above zero marks the item used up.
+  // Stepper: bump the numeric amount by ±1; a − that can't stay above zero marks used up.
   async function adjust(it: PantryItem, delta: number) {
     const n = parseFloat(it.amount)
     const next = Number.isFinite(n) ? n + delta : delta > 0 ? 1 : 0
@@ -33,7 +61,6 @@ export function Pantry() {
     setBusy(it.id)
     try { await pantryApi.update(it.id, { amount: String(next) }); refetch() } finally { setBusy(null) }
   }
-
   async function saveAmt() {
     const e = editAmt
     setEditAmt(null)
@@ -41,13 +68,10 @@ export function Pantry() {
     setBusy(e.id)
     try { await pantryApi.update(e.id, { amount: e.amount.trim(), unit: e.unit.trim() }); refetch() } finally { setBusy(null) }
   }
-
   async function markUsedUp(it: PantryItem) {
     setBusy(it.id)
     try { await pantryApi.update(it.id, { usedUp: true }); refetch() } finally { setBusy(null) }
   }
-
-  // Used-up actions.
   async function toShoppingList(it: PantryItem) {
     setBusy(it.id)
     try { await groceryApi.addGroceryItem(it.name); await pantryApi.remove(it.id); refetch() } finally { setBusy(null) }
@@ -57,81 +81,124 @@ export function Pantry() {
     try { await pantryApi.remove(it.id); refetch() } finally { setBusy(null) }
   }
 
-  // Drag an on-hand item into another location group to move it there.
-  async function moveTo(loc: string) {
-    const id = dragId
-    setDragId(null)
-    setOverLoc(null)
-    if (id == null || loc === 'Other') return
-    const item = items.find((i) => i.id === id)
-    if (!item || item.location === loc) return
-    setBusy(id)
-    try { await pantryApi.update(id, { location: loc }); refetch() } finally { setBusy(null) }
+  const isSoon = (i: PantryItem) => { const d = daysUntil(i.expiresOn); return d != null && d <= 3 }
+  const isLow = (i: PantryItem) => { const n = parseFloat(i.amount); return Number.isFinite(n) && n <= 1 }
+
+  const live = useMemo(() => items.filter((i) => !i.usedUp), [items])
+  const used = useMemo(() => items.filter((i) => i.usedUp), [items])
+
+  const counts = useMemo(() => {
+    const byLoc: Record<string, number> = {}
+    for (const i of live) {
+      const loc = locations.includes(i.location) ? i.location : 'Other'
+      byLoc[loc] = (byLoc[loc] ?? 0) + 1
+    }
+    return { all: live.length, use_soon: live.filter(isSoon).length, running_low: live.filter(isLow).length, byLoc }
+  }, [live, locations])
+
+  // Apply the selected view, the search, then the sort.
+  function applyView(list: PantryItem[]): PantryItem[] {
+    let out = list
+    if (view === 'use_soon') out = out.filter(isSoon)
+    else if (view === 'running_low') out = out.filter(isLow)
+    else if (view !== 'all') out = out.filter((i) => (locations.includes(i.location) ? i.location : 'Other') === view)
+    const s = q.trim().toLowerCase()
+    if (s) out = out.filter((i) => i.name.toLowerCase().includes(s) || (i.brand ?? '').toLowerCase().includes(s))
+    return out
   }
+  function sortItems(list: PantryItem[]): PantryItem[] {
+    const c = [...list]
+    if (sort === 'az') c.sort((a, b) => a.name.localeCompare(b.name))
+    else if (sort === 'recent') c.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+    else c.sort((a, b) => { // expiring: dated soonest first, undated last
+      const da = daysUntil(a.expiresOn), db = daysUntil(b.expiresOn)
+      if (da == null && db == null) return a.name.localeCompare(b.name)
+      if (da == null) return 1
+      if (db == null) return -1
+      return da - db
+    })
+    return c
+  }
+
+  const shown = useMemo(() => sortItems(applyView(live)), [live, view, q, sort, locations]) // eslint-disable-line react-hooks/exhaustive-deps
+  const shownUsed = useMemo(() => applyView(used), [used, view, q, locations]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const viewLabel = view === 'all' ? 'All items' : view === 'use_soon' ? 'Use soon' : view === 'running_low' ? 'Running low' : view
+  const soonInView = shown.filter(isSoon).length
 
   if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
   if (error) return <div className="muted" style={{ padding: 30 }}>Pantry isn't enabled for this household — turn it on in Settings → Modules.</div>
 
-  // Group by location (unknown → "Other"), split on-hand vs used-up. All configured
-  // locations always render in a fixed order so the DOM stays structurally stable
-  // during a drag (reordering/inserting mid-drag aborts the native HTML5 drag).
-  const onHandByLoc = new Map<string, PantryItem[]>()
-  const usedByLoc = new Map<string, PantryItem[]>()
-  for (const it of items) {
-    const key = locations.includes(it.location) ? it.location : 'Other'
-    const map = it.usedUp ? usedByLoc : onHandByLoc
-    ;(map.get(key) ?? map.set(key, []).get(key)!).push(it)
-  }
-  const groups = locations.map((loc) => ({ loc, onHand: onHandByLoc.get(loc) ?? [], used: usedByLoc.get(loc) ?? [] }))
-  const otherOn = onHandByLoc.get('Other') ?? []
-  const otherUsed = usedByLoc.get('Other') ?? []
-  if (otherOn.length || otherUsed.length) groups.push({ loc: 'Other', onHand: otherOn, used: otherUsed })
-
-  const onHandCount = items.filter((i) => !i.usedUp).length
-  const usedCount = items.filter((i) => i.usedUp).length
-  const dragging = dragId != null
+  const NAV: { key: string; label: string; icon: string; count: number }[] = [
+    { key: 'all', label: 'All items', icon: '🗂️', count: counts.all },
+    { key: 'use_soon', label: 'Use soon', icon: '⏰', count: counts.use_soon },
+    { key: 'running_low', label: 'Running low', icon: '📉', count: counts.running_low },
+  ]
 
   return (
-    <div className="pantry-screen">
-      <div className="pantry-head">
-        <div>
-          <div className="nk-serif pantry-title">Pantry</div>
-          <div className="pantry-sub">{onHandCount} on hand{usedCount > 0 ? ` · ${usedCount} used up` : ''}</div>
-        </div>
-        <div className="pantry-head-actions">
+    <div className="pl-wrap">
+      <div className="pl-head">
+        <div className="nk-serif pl-title">Pantry</div>
+        <input className="pl-search" placeholder={`Search all ${counts.all} items…`} value={q} onChange={(e) => setQ(e.target.value)} />
+        <div className="pl-head-actions">
+          <button type="button" className="pill" onClick={() => setEditing('new')}>⛶ Scan</button>
           <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} onClick={() => setEditing('new')}>+ Add item</button>
         </div>
       </div>
 
-      {items.length === 0 ? (
-        <div className="pantry-empty">Nothing logged yet. Add what's in your freezer, fridge, and pantry.</div>
-      ) : (
-        <div className="pantry-groups">
-          {groups.map(({ loc, onHand, used }) => (
-            <div
-              className={`pantry-group${overLoc === loc ? ' over' : ''}`}
-              key={loc}
-              onDragOver={(e) => { if (dragging && loc !== 'Other') { e.preventDefault(); setOverLoc(loc) } }}
-              onDragLeave={() => setOverLoc((c) => (c === loc ? null : c))}
-              onDrop={() => moveTo(loc)}
-            >
-              <div className="pantry-group-h">{loc}</div>
-              <div className="pantry-list">
-                {onHand.map((it) => (
-                  <div key={it.id} className={`pantry-item${busy === it.id ? ' busy' : ''}${dragId === it.id ? ' dragging' : ''}`}>
-                    <button
-                      type="button"
-                      className="pantry-item-drag"
-                      aria-label={`Move ${it.name} to another location`}
-                      title="Drag to another location"
-                      draggable
-                      onDragStart={(e) => { setDragId(it.id); e.dataTransfer.setData('text/plain', it.id); e.dataTransfer.effectAllowed = 'move' }}
-                      onDragEnd={() => { setDragId(null); setOverLoc(null) }}
-                    >⠿</button>
-                    <button type="button" className="pantry-item-main" onClick={() => setEditing(it)}>
-                      <span className="pantry-item-name">{it.name}</span>
+      <div className="pl-body">
+        <aside className="pl-side">
+          {NAV.map((n) => (
+            <button key={n.key} type="button" className={`pl-navitem${view === n.key ? ' on' : ''}`} onClick={() => setView(n.key)}>
+              <span className="pl-navitem-ic">{n.icon}</span>
+              <span className="pl-navitem-l">{n.label}</span>
+              <span className="pl-navitem-n">{n.count}</span>
+            </button>
+          ))}
+          <div className="pl-side-sep" />
+          {locations.map((loc) => (
+            <button key={loc} type="button" className={`pl-navitem${view === loc ? ' on' : ''}`} onClick={() => setView(loc)}>
+              <span className="pl-navitem-ic">📦</span>
+              <span className="pl-navitem-l">{loc}</span>
+              <span className="pl-navitem-n">{counts.byLoc[loc] ?? 0}</span>
+            </button>
+          ))}
+          {(counts.byLoc.Other ?? 0) > 0 && (
+            <button type="button" className={`pl-navitem${view === 'Other' ? ' on' : ''}`} onClick={() => setView('Other')}>
+              <span className="pl-navitem-ic">📦</span><span className="pl-navitem-l">Other</span><span className="pl-navitem-n">{counts.byLoc.Other}</span>
+            </button>
+          )}
+        </aside>
+
+        <main className="pl-main">
+          <div className="pl-main-head">
+            <div className="pl-main-title">{viewLabel} <span className="pl-main-sub">· {shown.length} item{shown.length === 1 ? '' : 's'}{soonInView > 0 ? ` · ${soonInView} use soon` : ''}</span></div>
+            <div className="seg pl-sort">
+              <button className={sort === 'expiring' ? 'on' : ''} onClick={() => setSort('expiring')}>Expiring</button>
+              <button className={sort === 'az' ? 'on' : ''} onClick={() => setSort('az')}>A–Z</button>
+              <button className={sort === 'recent' ? 'on' : ''} onClick={() => setSort('recent')}>Recent</button>
+            </div>
+          </div>
+
+          {shown.length === 0 && shownUsed.length === 0 ? (
+            <div className="pantry-empty">{q.trim() ? 'Nothing matches your search.' : 'Nothing here yet. Add what’s on hand.'}</div>
+          ) : (
+            <div className="pl-grid">
+              {shown.map((it) => {
+                const flagged = flaggedAllergens(it, avoidAllergens)
+                const exp = expiryText(it.expiresOn)
+                return (
+                  <div key={it.id} className={`pl-item${busy === it.id ? ' busy' : ''}${flagged.length ? ' flagged' : ''}`}>
+                    <button type="button" className="pl-item-face" onClick={() => setEditing(it)}>
+                      <span className="pl-emoji">{it.imageUrl ? <img src={it.imageUrl} alt="" /> : foodEmoji(it.name)}</span>
+                      <span className="pl-item-text">
+                        <span className="pl-name">{it.name}</span>
+                        <span className="pl-sub">
+                          {flagged.length > 0 && <span className="pl-warn">⚠ {flagged.map((a) => ALLERGEN_LABELS[a] ?? a).join(', ')}</span>}
+                          <span className={`pl-exp pl-exp-${exp.tone}`}>{exp.text}</span>
+                        </span>
+                      </span>
                     </button>
-                    <span className="pantry-item-meta"><ExpiryBadge expiresOn={it.expiresOn} /></span>
                     <div className="pantry-step-wrap">
                       <div className="pantry-step">
                         <button type="button" className="pantry-step-btn minus" aria-label={`Use one ${it.name}`} disabled={busy === it.id} onClick={() => adjust(it, -1)}>−</button>
@@ -148,20 +215,8 @@ export function Pantry() {
                             <div className="pantry-amtpop-caret" />
                             <div className="pantry-amtpop-h">Edit amount</div>
                             <div className="pantry-amtpop-row">
-                              <input
-                                className="pantry-amtpop-num"
-                                value={editAmt.amount}
-                                autoFocus
-                                onChange={(e) => setEditAmt((c) => (c ? { ...c, amount: e.target.value } : c))}
-                                onKeyDown={(e) => { if (e.key === 'Enter') saveAmt() }}
-                              />
-                              <input
-                                className="pantry-amtpop-unit"
-                                value={editAmt.unit}
-                                placeholder="unit"
-                                onChange={(e) => setEditAmt((c) => (c ? { ...c, unit: e.target.value } : c))}
-                                onKeyDown={(e) => { if (e.key === 'Enter') saveAmt() }}
-                              />
+                              <input className="pantry-amtpop-num" value={editAmt.amount} autoFocus onChange={(e) => setEditAmt((c) => (c ? { ...c, amount: e.target.value } : c))} onKeyDown={(e) => { if (e.key === 'Enter') saveAmt() }} />
+                              <input className="pantry-amtpop-unit" value={editAmt.unit} placeholder="unit" onChange={(e) => setEditAmt((c) => (c ? { ...c, unit: e.target.value } : c))} onKeyDown={(e) => { if (e.key === 'Enter') saveAmt() }} />
                             </div>
                             <div className="pantry-amtpop-help">Tap the number any time to type an exact amount — ½ a bag, 0.75 lb, whatever fits.</div>
                           </div>
@@ -169,28 +224,33 @@ export function Pantry() {
                       )}
                     </div>
                   </div>
-                ))}
-                {onHand.length === 0 && (dragging ? (
-                  <div className="pantry-drop-hint active">Drop here</div>
-                ) : used.length === 0 ? (
-                  <div className="pantry-drop-hint">Empty</div>
-                ) : null)}
-                {used.map((it) => (
-                  <div key={it.id} className={`pantry-item used${busy === it.id ? ' busy' : ''}`}>
-                    <span className="pantry-item-drag ghost">⠿</span>
-                    <div className="pantry-item-main static">
-                      <span className="pantry-item-name">{it.name}</span>
-                      <span className="pantry-used-tag">• Used up</span>
-                    </div>
-                    <button type="button" className="pill btn-primary pantry-used-buy" style={{ color: '#fff', border: 0 }} disabled={busy === it.id} onClick={() => toShoppingList(it)}>+ Shopping list</button>
-                    <button type="button" className="pill pantry-used-remove" disabled={busy === it.id} onClick={() => removeItem(it)}>Remove</button>
-                  </div>
-                ))}
-              </div>
+                )
+              })}
             </div>
-          ))}
-        </div>
-      )}
+          )}
+
+          {shownUsed.length > 0 && (
+            <div className="pl-used">
+              <div className="pl-used-h">Used up</div>
+              {shownUsed.map((it) => (
+                <div key={it.id} className={`pantry-item used${busy === it.id ? ' busy' : ''}`}>
+                  <div className="pantry-item-main static"><span className="pantry-item-name">{it.name}</span><span className="pantry-used-tag">• Used up</span></div>
+                  <button type="button" className="pill btn-primary pantry-used-buy" style={{ color: '#fff', border: 0 }} disabled={busy === it.id} onClick={() => toShoppingList(it)}>+ Shopping list</button>
+                  <button type="button" className="pill pantry-used-remove" disabled={busy === it.id} onClick={() => removeItem(it)}>Remove</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {avoidAllergens.length > 0 && (
+            <div className="pl-legend">
+              <span className="pl-legend-l">Avoiding:</span>
+              {avoidAllergens.map((a) => <span key={a} className="pl-legend-chip">{ALLERGEN_LABELS[a] ?? a}</span>)}
+              <Link to="/settings" className="pl-legend-edit">Edit in Settings</Link>
+            </div>
+          )}
+        </main>
+      </div>
 
       {editing && (
         <ItemModal
@@ -236,7 +296,6 @@ function ItemModal({ item, locations, onClose, onSaved }: {
       setSaving(false)
     }
   }
-
   async function remove() {
     if (!item || saving) return
     setSaving(true)
@@ -287,9 +346,8 @@ function ItemModal({ item, locations, onClose, onSaved }: {
   )
 }
 
-// Today card — an at-a-glance "what's on hand," soonest-to-expire first. Lives in
-// one of the Today columns (Today decides whether to show it, per the module's
-// enabled state + "Show on Today" setting). Used-up items are excluded.
+// Today card — an at-a-glance "what's on hand," soonest-to-expire first. Used-up
+// items are excluded.
 export function PantryCard() {
   const [items, setItems] = useState<PantryItem[] | null>(null)
   useEffect(() => {
@@ -299,7 +357,6 @@ export function PantryCard() {
   }, [])
 
   if (!items) return null
-  // Soonest expiry first (dated before undated), then name.
   const sorted = [...items].sort((a, b) => {
     const da = daysUntil(a.expiresOn), db = daysUntil(b.expiresOn)
     if (da == null && db == null) return a.name.localeCompare(b.name)
@@ -309,7 +366,6 @@ export function PantryCard() {
   })
   const soon = items.filter((it) => { const d = daysUntil(it.expiresOn); return d != null && d <= 3 }).length
 
-  // The whole card links to the Pantry tab; the list scrolls inside for many items.
   return (
     <Link to="/pantry" className="card pantry-card">
       <div className="pantry-card-h">

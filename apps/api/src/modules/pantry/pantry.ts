@@ -36,10 +36,11 @@ interface PantryRow {
   allergens: string[] | null
   dietary: string[] | null
   source: string | null
+  created_at: string
 }
 
 const RETURNING = `id, name, amount, unit, location, expires_on::text as expires_on, note, used_up_at::text as used_up_at,
-  barcode, brand, image_url, quantity_text, serving_basis, nutrition, allergens, dietary, source`
+  barcode, brand, image_url, quantity_text, serving_basis, nutrition, allergens, dietary, source, created_at::text as created_at`
 
 function present(r: PantryRow) {
   return {
@@ -61,6 +62,7 @@ function present(r: PantryRow) {
     allergens: r.allergens,
     dietary: r.dietary,
     source: r.source,
+    createdAt: r.created_at,
   }
 }
 
