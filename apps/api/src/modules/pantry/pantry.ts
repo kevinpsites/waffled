@@ -22,7 +22,10 @@ interface PantryRow {
   location: string
   expires_on: string | null
   note: string | null
+  used_up_at: string | null
 }
+
+const RETURNING = `id, name, amount, unit, location, expires_on::text as expires_on, note, used_up_at::text as used_up_at`
 
 function present(r: PantryRow) {
   return {
@@ -33,6 +36,7 @@ function present(r: PantryRow) {
     location: r.location,
     expiresOn: r.expires_on,
     note: r.note ?? '',
+    usedUp: !!r.used_up_at,
   }
 }
 
@@ -60,10 +64,10 @@ export function registerPantryRoutes(api: Api): void {
   api.get('/api/pantry', tenantRoute(async (tenant) => {
     const settings = await requirePantry(tenant)
     const { rows } = await query<PantryRow>(
-      `select id, name, amount, unit, location, expires_on::text as expires_on, note
+      `select ${RETURNING}
          from pantry_items
         where household_id = $1 and deleted_at is null
-        order by location, name`,
+        order by location, (used_up_at is not null), name`,
       [tenant.householdId]
     )
     return { items: rows.map(present), locations: readLocations(settings), showOnToday: readShowOnToday(settings) }
@@ -81,7 +85,7 @@ export function registerPantryRoutes(api: Api): void {
     const { rows } = await query<PantryRow>(
       `insert into pantry_items (household_id, name, amount, unit, location, expires_on, note)
        values ($1, $2, $3, $4, $5, $6, $7)
-       returning id, name, amount, unit, location, expires_on::text as expires_on, note`,
+       returning ${RETURNING}`,
       [
         tenant.householdId,
         name,
@@ -114,12 +118,15 @@ export function registerPantryRoutes(api: Api): void {
     if (typeof b.location === 'string' && b.location.trim()) set('location', b.location.trim())
     if ('expiresOn' in b) set('expires_on', b.expiresOn ? String(b.expiresOn) : null)
     if ('note' in b) set('note', b.note != null ? String(b.note).trim() : null)
+    // "Used up" is a soft, recoverable state (distinct from delete). The timestamp
+    // is set/cleared server-side, so it takes no bind param.
+    if (typeof b.usedUp === 'boolean') cols.push(b.usedUp ? 'used_up_at = now()' : 'used_up_at = null')
     if (cols.length === 0) return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields provided' })
     vals.push(tenant.householdId, id)
     const { rows } = await query<PantryRow>(
       `update pantry_items set ${cols.join(', ')}
         where household_id = $${i++} and id = $${i} and deleted_at is null
-        returning id, name, amount, unit, location, expires_on::text as expires_on, note`,
+        returning ${RETURNING}`,
       vals
     )
     if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'item not found' })

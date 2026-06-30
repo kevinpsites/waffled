@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
-import { usePantry, pantryApi, daysUntil, type PantryItem, type PantryItemInput } from '../lib/api'
+import { usePantry, pantryApi, daysUntil, groceryApi, type PantryItem, type PantryItemInput } from '../lib/api'
 import '../styles/pantry.css'
 
 // A small expiry badge: red if past, amber within 3 days, muted date otherwise.
@@ -21,14 +21,43 @@ export function Pantry() {
   const [busy, setBusy] = useState<string | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
   const [overLoc, setOverLoc] = useState<string | null>(null)
+  // The "edit amount" popover (tap the quantity) — id + the in-flight value.
+  const [editAmt, setEditAmt] = useState<{ id: string; amount: string; unit: string } | null>(null)
 
-  // Quick "used it up" — remove without opening the editor.
-  async function markUsed(id: string) {
-    setBusy(id)
-    try { await pantryApi.remove(id); refetch() } finally { setBusy(null) }
+  // Stepper: bump the (numeric) amount by ±1. Empty/non-numeric amounts start at 1
+  // on +, and any − that can't go above zero marks the item used up.
+  async function adjust(it: PantryItem, delta: number) {
+    const n = parseFloat(it.amount)
+    const next = Number.isFinite(n) ? n + delta : delta > 0 ? 1 : 0
+    if (next <= 0) return markUsedUp(it)
+    setBusy(it.id)
+    try { await pantryApi.update(it.id, { amount: String(next) }); refetch() } finally { setBusy(null) }
   }
 
-  // Drag an item into another location group to move it there.
+  async function saveAmt() {
+    const e = editAmt
+    setEditAmt(null)
+    if (!e) return
+    setBusy(e.id)
+    try { await pantryApi.update(e.id, { amount: e.amount.trim(), unit: e.unit.trim() }); refetch() } finally { setBusy(null) }
+  }
+
+  async function markUsedUp(it: PantryItem) {
+    setBusy(it.id)
+    try { await pantryApi.update(it.id, { usedUp: true }); refetch() } finally { setBusy(null) }
+  }
+
+  // Used-up actions.
+  async function toShoppingList(it: PantryItem) {
+    setBusy(it.id)
+    try { await groceryApi.addGroceryItem(it.name); await pantryApi.remove(it.id); refetch() } finally { setBusy(null) }
+  }
+  async function removeItem(it: PantryItem) {
+    setBusy(it.id)
+    try { await pantryApi.remove(it.id); refetch() } finally { setBusy(null) }
+  }
+
+  // Drag an on-hand item into another location group to move it there.
   async function moveTo(loc: string) {
     const id = dragId
     setDragId(null)
@@ -43,28 +72,31 @@ export function Pantry() {
   if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
   if (error) return <div className="muted" style={{ padding: 30 }}>Pantry isn't enabled for this household — turn it on in Settings → Modules.</div>
 
-  // Group items by location; unknown locations fall into "Other". While dragging,
-  // show every configured location (even empty ones) so they can be dropped into.
-  const byLoc = new Map<string, PantryItem[]>()
+  // Group by location (unknown → "Other"), split on-hand vs used-up. All configured
+  // locations always render in a fixed order so the DOM stays structurally stable
+  // during a drag (reordering/inserting mid-drag aborts the native HTML5 drag).
+  const onHandByLoc = new Map<string, PantryItem[]>()
+  const usedByLoc = new Map<string, PantryItem[]>()
   for (const it of items) {
     const key = locations.includes(it.location) ? it.location : 'Other'
-    ;(byLoc.get(key) ?? byLoc.set(key, []).get(key)!).push(it)
+    const map = it.usedUp ? usedByLoc : onHandByLoc
+    ;(map.get(key) ?? map.set(key, []).get(key)!).push(it)
   }
+  const groups = locations.map((loc) => ({ loc, onHand: onHandByLoc.get(loc) ?? [], used: usedByLoc.get(loc) ?? [] }))
+  const otherOn = onHandByLoc.get('Other') ?? []
+  const otherUsed = usedByLoc.get('Other') ?? []
+  if (otherOn.length || otherUsed.length) groups.push({ loc: 'Other', onHand: otherOn, used: otherUsed })
+
+  const onHandCount = items.filter((i) => !i.usedUp).length
+  const usedCount = items.filter((i) => i.usedUp).length
   const dragging = dragId != null
-  // Render ALL configured locations always, in a fixed order. The DOM must stay
-  // structurally stable during a drag — if groups reorder/insert mid-drag (e.g. an
-  // empty location appears), the dragged node's ancestor moves and the browser
-  // aborts the native drag (the "flashing, won't move" bug). Empty groups double as
-  // drop targets.
-  const groups = locations.map((loc) => ({ loc, items: byLoc.get(loc) ?? [] }))
-  if ((byLoc.get('Other')?.length ?? 0) > 0) groups.push({ loc: 'Other', items: byLoc.get('Other')! })
 
   return (
     <div className="pantry-screen">
       <div className="pantry-head">
         <div>
           <div className="nk-serif pantry-title">Pantry</div>
-          <div className="pantry-sub">{items.length} item{items.length === 1 ? '' : 's'} on hand</div>
+          <div className="pantry-sub">{onHandCount} on hand{usedCount > 0 ? ` · ${usedCount} used up` : ''}</div>
         </div>
         <div className="pantry-head-actions">
           <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} onClick={() => setEditing('new')}>+ Add item</button>
@@ -75,7 +107,7 @@ export function Pantry() {
         <div className="pantry-empty">Nothing logged yet. Add what's in your freezer, fridge, and pantry.</div>
       ) : (
         <div className="pantry-groups">
-          {groups.map(({ loc, items: list }) => (
+          {groups.map(({ loc, onHand, used }) => (
             <div
               className={`pantry-group${overLoc === loc ? ' over' : ''}`}
               key={loc}
@@ -85,9 +117,7 @@ export function Pantry() {
             >
               <div className="pantry-group-h">{loc}</div>
               <div className="pantry-list">
-                {list.length === 0 ? (
-                  <div className={`pantry-drop-hint${dragging ? ' active' : ''}`}>{dragging ? 'Drop here' : 'Empty'}</div>
-                ) : list.map((it) => (
+                {onHand.map((it) => (
                   <div key={it.id} className={`pantry-item${busy === it.id ? ' busy' : ''}${dragId === it.id ? ' dragging' : ''}`}>
                     <button
                       type="button"
@@ -100,10 +130,60 @@ export function Pantry() {
                     >⠿</button>
                     <button type="button" className="pantry-item-main" onClick={() => setEditing(it)}>
                       <span className="pantry-item-name">{it.name}</span>
-                      {(it.amount || it.unit) && <span className="pantry-item-qty">{[it.amount, it.unit].filter(Boolean).join(' ')}</span>}
                     </button>
                     <span className="pantry-item-meta"><ExpiryBadge expiresOn={it.expiresOn} /></span>
-                    <button type="button" className="pantry-item-use" aria-label={`Mark ${it.name} used`} title="Mark used" disabled={busy === it.id} onClick={() => markUsed(it.id)}>✓</button>
+                    <div className="pantry-step-wrap">
+                      <div className="pantry-step">
+                        <button type="button" className="pantry-step-btn minus" aria-label={`Use one ${it.name}`} disabled={busy === it.id} onClick={() => adjust(it, -1)}>−</button>
+                        <button type="button" className="pantry-step-val" disabled={busy === it.id} onClick={() => setEditAmt({ id: it.id, amount: it.amount, unit: it.unit })}>
+                          <span className="pantry-step-num">{it.amount || '—'}</span>
+                          {it.unit && <span className="pantry-step-unit">{it.unit}</span>}
+                        </button>
+                        <button type="button" className="pantry-step-btn plus" aria-label={`Add one ${it.name}`} disabled={busy === it.id} onClick={() => adjust(it, 1)}>+</button>
+                      </div>
+                      {editAmt?.id === it.id && (
+                        <>
+                          <div className="pantry-amtpop-scrim" onClick={saveAmt} />
+                          <div className="pantry-amtpop" role="dialog">
+                            <div className="pantry-amtpop-caret" />
+                            <div className="pantry-amtpop-h">Edit amount</div>
+                            <div className="pantry-amtpop-row">
+                              <input
+                                className="pantry-amtpop-num"
+                                value={editAmt.amount}
+                                autoFocus
+                                onChange={(e) => setEditAmt((c) => (c ? { ...c, amount: e.target.value } : c))}
+                                onKeyDown={(e) => { if (e.key === 'Enter') saveAmt() }}
+                              />
+                              <input
+                                className="pantry-amtpop-unit"
+                                value={editAmt.unit}
+                                placeholder="unit"
+                                onChange={(e) => setEditAmt((c) => (c ? { ...c, unit: e.target.value } : c))}
+                                onKeyDown={(e) => { if (e.key === 'Enter') saveAmt() }}
+                              />
+                            </div>
+                            <div className="pantry-amtpop-help">Tap the number any time to type an exact amount — ½ a bag, 0.75 lb, whatever fits.</div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {onHand.length === 0 && (dragging ? (
+                  <div className="pantry-drop-hint active">Drop here</div>
+                ) : used.length === 0 ? (
+                  <div className="pantry-drop-hint">Empty</div>
+                ) : null)}
+                {used.map((it) => (
+                  <div key={it.id} className={`pantry-item used${busy === it.id ? ' busy' : ''}`}>
+                    <span className="pantry-item-drag ghost">⠿</span>
+                    <div className="pantry-item-main static">
+                      <span className="pantry-item-name">{it.name}</span>
+                      <span className="pantry-used-tag">• Used up</span>
+                    </div>
+                    <button type="button" className="pill btn-primary pantry-used-buy" style={{ color: '#fff', border: 0 }} disabled={busy === it.id} onClick={() => toShoppingList(it)}>+ Shopping list</button>
+                    <button type="button" className="pill pantry-used-remove" disabled={busy === it.id} onClick={() => removeItem(it)}>Remove</button>
                   </div>
                 ))}
               </div>
@@ -209,12 +289,12 @@ function ItemModal({ item, locations, onClose, onSaved }: {
 
 // Today card — an at-a-glance "what's on hand," soonest-to-expire first. Lives in
 // one of the Today columns (Today decides whether to show it, per the module's
-// enabled state + "Show on Today" setting).
+// enabled state + "Show on Today" setting). Used-up items are excluded.
 export function PantryCard() {
   const [items, setItems] = useState<PantryItem[] | null>(null)
   useEffect(() => {
     let alive = true
-    pantryApi.list().then((d) => alive && setItems(d.items)).catch(() => {})
+    pantryApi.list().then((d) => alive && setItems(d.items.filter((i) => !i.usedUp))).catch(() => {})
     return () => { alive = false }
   }, [])
 

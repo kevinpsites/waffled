@@ -33,18 +33,66 @@
   padding: 0 2px; line-height: 1; display: grid; place-items: center; align-self: stretch;
 }
 .pantry-item-drag:active { cursor: grabbing; }
+.pantry-item-drag.ghost { color: var(--ink-3); opacity: 0.4; cursor: default; }
 .pantry-item-main {
   display: flex; align-items: baseline; gap: 10px; min-width: 0; flex: 1;
   text-align: left; border: 0; background: none; cursor: pointer; font: inherit; padding: 0;
 }
+.pantry-item-main.static { cursor: default; }
 .pantry-item-name { font-weight: 700; font-size: 15px; color: var(--ink); }
 .pantry-item-qty { font-size: 13px; font-weight: 600; color: var(--ink-3); }
 .pantry-item-meta { flex: none; }
-.pantry-item-use {
-  flex: none; width: 32px; height: 32px; border-radius: 999px; cursor: pointer; font-size: 15px; line-height: 1;
-  border: 1px solid var(--hair); background: var(--card-2, #faf8f4); color: var(--ink-3); display: grid; place-items: center;
+
+/* quantity stepper: − [amount unit] + */
+.pantry-step-wrap { position: relative; flex: none; }
+.pantry-step {
+  display: inline-flex; align-items: stretch; border-radius: 999px;
+  background: var(--card-2, #faf8f4); border: 1px solid var(--hair); overflow: hidden;
 }
-.pantry-item-use:hover { border-color: #2e9e6b; background: color-mix(in srgb, #2e9e6b 12%, transparent); color: #2e9e6b; }
+.pantry-step-btn {
+  flex: none; border: 0; background: transparent; font: inherit; font-size: 19px; font-weight: 700; line-height: 1;
+  width: 40px; cursor: pointer; color: var(--ink); display: grid; place-items: center;
+}
+.pantry-step-btn.minus { color: var(--primary, #e0653f); }
+.pantry-step-btn:hover { background: rgba(0, 0, 0, 0.04); }
+.pantry-step-btn:disabled { opacity: 0.4; cursor: default; }
+.pantry-step-val {
+  border: 0; background: transparent; cursor: pointer; font: inherit;
+  display: flex; align-items: baseline; gap: 5px; padding: 7px 6px; min-width: 56px; justify-content: center;
+}
+.pantry-step-val:hover { background: rgba(0, 0, 0, 0.04); }
+.pantry-step-val:disabled { cursor: default; }
+.pantry-step-num { font-weight: 800; font-size: 16px; color: var(--ink); }
+.pantry-step-unit { font-size: 13px; font-weight: 600; color: var(--ink-3); }
+
+/* edit-amount popover (anchored under the stepper) */
+.pantry-amtpop-scrim { position: fixed; inset: 0; z-index: 40; }
+.pantry-amtpop {
+  position: absolute; top: calc(100% + 10px); right: 0; z-index: 41; width: 320px;
+  background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-lg, 16px);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.18); padding: 16px;
+}
+.pantry-amtpop-caret {
+  position: absolute; top: -8px; right: 64px; width: 16px; height: 16px; background: var(--card);
+  border-left: 1px solid var(--hair); border-top: 1px solid var(--hair); transform: rotate(45deg);
+}
+.pantry-amtpop-h { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); margin-bottom: 10px; }
+.pantry-amtpop-row { display: flex; gap: 10px; }
+.pantry-amtpop-num, .pantry-amtpop-unit {
+  font: inherit; font-size: 18px; font-weight: 700; padding: 10px 12px; border-radius: 12px;
+  border: 1px solid var(--hair); background: var(--card-2, #faf8f4); color: var(--ink); width: 100%; box-sizing: border-box;
+}
+.pantry-amtpop-num { flex: 0 0 90px; text-align: center; }
+.pantry-amtpop-unit { flex: 1; font-weight: 600; }
+.pantry-amtpop-num:focus, .pantry-amtpop-unit:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(236, 96, 73, .12); }
+.pantry-amtpop-help { font-size: 13px; font-weight: 500; color: var(--ink-3); margin-top: 12px; line-height: 1.45; }
+
+/* used-up row: greyed, with shopping-list / remove actions */
+.pantry-item.used { background: transparent; border-style: dashed; }
+.pantry-item.used .pantry-item-name { color: var(--ink-3); font-weight: 700; }
+.pantry-used-tag { font-size: 13px; font-weight: 700; color: var(--ink-3); }
+.pantry-used-buy { flex: none; font-size: 13px; }
+.pantry-used-remove { flex: none; font-size: 13px; }
 .pantry-exp {
   font-size: 12px; font-weight: 700; padding: 4px 9px; border-radius: 999px;
   background: var(--card-2, #faf8f4); color: var(--ink-3); border: 1px solid var(--hair);

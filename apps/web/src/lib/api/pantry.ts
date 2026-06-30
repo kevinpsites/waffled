@@ -10,6 +10,7 @@ export interface PantryItem {
   location: string
   expiresOn: string | null
   note: string
+  usedUp: boolean
 }
 
 export type PantryItemInput = {
@@ -19,6 +20,7 @@ export type PantryItemInput = {
   location?: string
   expiresOn?: string | null
   note?: string
+  usedUp?: boolean
 }
 
 export const pantryApi = {

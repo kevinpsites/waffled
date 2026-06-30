@@ -105,6 +105,17 @@ describe('pantry CRUD', () => {
     expect(JSON.parse(res.body).item).toMatchObject({ amount: '1', note: 'half used', name: 'Ground beef' })
   })
 
+  it('marks an item used up and back (soft, recoverable)', async () => {
+    let res = await call('PATCH', `/api/pantry/${itemId}`, kevin, { usedUp: true })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).item.usedUp).toBe(true)
+    // still listed (used-up is not removal)
+    const body = JSON.parse((await call('GET', '/api/pantry', kevin)).body)
+    expect(body.items.find((i: { id: string }) => i.id === itemId).usedUp).toBe(true)
+    res = await call('PATCH', `/api/pantry/${itemId}`, kevin, { usedUp: false })
+    expect(JSON.parse(res.body).item.usedUp).toBe(false)
+  })
+
   it('sets custom locations (adds a garage freezer) via config', async () => {
     const res = await call('PUT', '/api/pantry/config', kevin, { locations: ['Freezer', 'Garage freezer', 'Fridge', 'Pantry'] })
     expect(res.statusCode).toBe(200)
