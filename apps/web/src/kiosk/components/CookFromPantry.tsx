@@ -8,7 +8,8 @@
 // Deterministic matching lives server-side; only shown when the meals module is on.
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { pantryApi, groceryApi, daysUntil, useHousehold, type PantryItem, type CookReady, type CookMain } from '../../lib/api'
+import { pantryApi, groceryApi, mealsApi, daysUntil, useHousehold, type PantryItem, type CookReady, type CookMain } from '../../lib/api'
+import { MEALS, MEAL_LABEL } from './RecipeBrowser'
 import { moduleEnabled } from '../../lib/modules'
 
 const PROTEIN_EMOJI: Record<string, string> = {
@@ -70,6 +71,18 @@ function Dots({ have, total }: { have: number; total: number }) {
 function CookModal({ items, ready, mains, onClose }: { items: PantryItem[]; ready: CookReady[]; mains: CookMain[]; onClose: () => void }) {
   const navigate = useNavigate()
   const [added, setAdded] = useState<Set<string>>(new Set())
+  // Planning a meal-flagged item into a slot (tonight or another day/meal).
+  const today = new Date().toISOString().slice(0, 10)
+  const [planFor, setPlanFor] = useState<string | null>(null)
+  const [planDate, setPlanDate] = useState(today)
+  const [planMeal, setPlanMeal] = useState('dinner')
+  const [planned, setPlanned] = useState<Set<string>>(new Set())
+
+  async function planItem(item: PantryItem) {
+    try { await mealsApi.planSlot({ date: planDate, mealType: planMeal, title: item.name }) } catch { /* ignore */ }
+    setPlanned((s) => new Set(s).add(item.id))
+    setPlanFor(null)
+  }
 
   const meals = items.filter((i) => i.isMeal)
   const useSoonNames = items.filter(isSoon).map((i) => i.name)
@@ -109,12 +122,26 @@ function CookModal({ items, ready, mains, onClose }: { items: PantryItem[]; read
                 <div key={m.id} className="pl-cookm-card">
                   <span className="pl-cookm-thumb">{m.imageUrl ? <img src={m.imageUrl} alt="" /> : '🍱'}</span>
                   <div className="pl-cookm-cardmain">
-                    <div className="pl-cookm-cardname">{m.name}</div>
+                    <div className="pl-cookm-cardrow">
+                      <span className="pl-cookm-cardname">{m.name}</span>
+                      <button type="button" className="pl-plan-btn" onClick={() => { if (planned.has(m.id)) return; setPlanDate(today); setPlanMeal('dinner'); setPlanFor(planFor === m.id ? null : m.id) }}>
+                        {planned.has(m.id) ? '✓ Planned' : 'Plan'}
+                      </button>
+                    </div>
                     <div className="pl-cookm-badges">
                       <span className="pl-badge green">{heat ? 'Heat & serve' : 'Ready to eat'}</span>
                       {m.expiresOn && <span className="pl-badge amber">{expiryNote(m.expiresOn)} left</span>}
                     </div>
                     {(m.note || m.amount) && <div className="pl-cookm-cardsub">{m.note || [m.amount, m.unit, m.location].filter(Boolean).join(' ')}</div>}
+                    {planFor === m.id && (
+                      <div className="pl-plan-pick">
+                        <select value={planMeal} onChange={(e) => setPlanMeal(e.target.value)} aria-label="Meal">
+                          {MEALS.map((mt) => <option key={mt} value={mt}>{MEAL_LABEL[mt]}</option>)}
+                        </select>
+                        <input type="date" value={planDate} onChange={(e) => setPlanDate(e.target.value)} aria-label="Day" />
+                        <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} onClick={() => planItem(m)}>Add to plan</button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )
