@@ -2,7 +2,7 @@
 // in chores.service.ts; types in chores.types.ts.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { requireCapability } from '../../platform/permissions'
-import { tenantRoute, adminRoute, capRoute } from '../../platform/route-guards'
+import { moduleRoutes } from '../../platform/route-guards'
 import type { CreateChoreInput } from './chores.types'
 import {
   createChore,
@@ -32,6 +32,9 @@ import {
 import { getProofTtlDays, setProofTtlDays } from './chore-proof-cleanup.service'
 
 type Api = ReturnType<typeof createAPI>
+
+// Every route here is gated by the optional `chores` module (403 when off).
+const { tenantRoute, adminRoute, capRoute } = moduleRoutes('chores')
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 

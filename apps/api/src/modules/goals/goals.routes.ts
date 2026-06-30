@@ -2,7 +2,7 @@
 // goals.service.ts; types in goals.types.ts.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { requireCapability } from '../../platform/permissions'
-import { tenantRoute, capRoute } from '../../platform/route-guards'
+import { moduleRoutes } from '../../platform/route-guards'
 import type { CreateGoalListInput, UpdateGoalListInput, CreateGoalInput } from './goals.types'
 import {
   listGoalLists,
@@ -23,6 +23,9 @@ import {
 } from './goals.service'
 
 type Api = ReturnType<typeof createAPI>
+
+// Every route here is gated by the optional `goals` module (403 when off).
+const { tenantRoute, capRoute } = moduleRoutes('goals')
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 

@@ -3,7 +3,7 @@
 // docs/product/extensibility.md.
 import type { Household } from './api'
 
-export type ModuleKey = 'pantry' | 'fhe' | 'quotes'
+export type ModuleKey = 'pantry' | 'chores' | 'goals' | 'rewards' | 'meals' | 'lists' | 'fhe' | 'quotes'
 
 export interface ModuleDef {
   key: ModuleKey
@@ -25,6 +25,48 @@ export const MODULES: ModuleDef[] = [
     status: 'available',
     defaultOn: false,
     hasSettings: true,
+  },
+  // Core feature pages — on by default; a household turns off what it doesn't use.
+  // Today + Calendar are never gated. (Mirror of apps/api/src/platform/modules.ts.)
+  {
+    key: 'chores',
+    name: 'Chores & Tasks',
+    icon: '✅',
+    description: 'The Tasks board — assignable chores, photo proof, approvals, and stars.',
+    status: 'available',
+    defaultOn: true,
+  },
+  {
+    key: 'goals',
+    name: 'Goals',
+    icon: '🎯',
+    description: 'Personal and family goals with progress tracking, streaks, and checklists.',
+    status: 'available',
+    defaultOn: true,
+  },
+  {
+    key: 'rewards',
+    name: 'Rewards',
+    icon: '⭐',
+    description: 'A reward shop and redemptions kids spend stars on (managed from the Tasks page).',
+    status: 'available',
+    defaultOn: true,
+  },
+  {
+    key: 'meals',
+    name: 'Meals & Recipes',
+    icon: '🍽️',
+    description: 'Recipe library, weekly meal planning, and meals on the calendar.',
+    status: 'available',
+    defaultOn: true,
+  },
+  {
+    key: 'lists',
+    name: 'Lists & Groceries',
+    icon: '🛒',
+    description: 'Shared lists and the auto-built grocery board (used by Pantry and Meals).',
+    status: 'available',
+    defaultOn: true,
   },
   {
     key: 'fhe',

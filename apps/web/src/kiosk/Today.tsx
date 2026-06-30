@@ -48,6 +48,14 @@ function applyModuleCard(layout: string[][], card: string, show: boolean): strin
   return layout
 }
 
+// For cards that ship in the default layout (chores/meals/grocery): strip them
+// when their module is off, but never inject — so a user who removed the card in
+// Customize keeps it removed while the module is on. (Pantry, which isn't in the
+// default layout, uses applyModuleCard to appear when enabled.)
+function hideModuleCard(layout: string[][], card: string, show: boolean): string[][] {
+  return show ? layout : removeCard(layout, card)
+}
+
 // Which column + insertion index is under the pointer, read from the live DOM
 // (columns carry data-col, cards data-card). The dragged card isn't rendered
 // during a drag, so indices map straight into the card's would-be position.
@@ -75,8 +83,20 @@ export function Today() {
   const { resolved, source, loading, save, reset } = useTodayLayout()
   const { household } = useHousehold()
   // Optional-module cards: shown when the module is enabled and not hidden from Today.
+  // Pantry appears when on (not in the default layout); chores/meals/grocery cards
+  // ship in the default layout, so we only strip them when their module is off.
   const showPantry = moduleEnabled(household, 'pantry') && household?.settings?.pantry?.showOnToday !== false
-  const effectiveResolved = useMemo(() => applyModuleCard(resolved, 'pantry', showPantry), [resolved, showPantry])
+  const showChores = moduleEnabled(household, 'chores')
+  const showMeals = moduleEnabled(household, 'meals')
+  const showGrocery = moduleEnabled(household, 'lists')
+  const effectiveResolved = useMemo(() => {
+    let l = applyModuleCard(resolved, 'pantry', showPantry)
+    l = hideModuleCard(l, 'chores', showChores)
+    l = hideModuleCard(l, 'tonight', showMeals)
+    l = hideModuleCard(l, 'week', showMeals)
+    l = hideModuleCard(l, 'grocery', showGrocery)
+    return l
+  }, [resolved, showPantry, showChores, showMeals, showGrocery])
   const [editing, setEditing] = useState(false)
   const [layout, setLayout] = useState<string[][]>(effectiveResolved)
   const [saving, setSaving] = useState(false)

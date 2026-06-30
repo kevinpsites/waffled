@@ -13,11 +13,11 @@ export interface Screen {
 export const SCREENS: Screen[] = [
   { path: '/', label: 'Today', icon: 'home' },
   { path: '/calendar', label: 'Calendar', icon: 'calendar' },
-  { path: '/tasks', label: 'Tasks', icon: 'tasks' },
-  { path: '/goals', label: 'Goals', icon: 'goals' },
+  { path: '/tasks', label: 'Tasks', icon: 'tasks', module: 'chores' },
+  { path: '/goals', label: 'Goals', icon: 'goals', module: 'goals' },
   { path: '/family', label: 'Family', icon: 'family' },
-  { path: '/meals', label: 'Meals', icon: 'meals' },
-  { path: '/lists', label: 'Lists', icon: 'lists' },
+  { path: '/meals', label: 'Meals', icon: 'meals', module: 'meals' },
+  { path: '/lists', label: 'Lists', icon: 'lists', module: 'lists' },
   { path: '/pantry', label: 'Pantry', icon: 'pantry', module: 'pantry' },
   { path: '/photos', label: 'Photos', icon: 'photos' },
 ]

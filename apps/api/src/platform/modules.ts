@@ -2,7 +2,7 @@
 // them on/off in Settings → Modules (stored in households.settings.modules). See
 // docs/product/extensibility.md for the A/B/C pattern model.
 
-export type ModuleKey = 'pantry' | 'fhe' | 'quotes'
+export type ModuleKey = 'pantry' | 'chores' | 'goals' | 'rewards' | 'meals' | 'lists' | 'fhe' | 'quotes'
 
 export interface ModuleDef {
   key: ModuleKey
@@ -24,6 +24,50 @@ export const MODULES: ModuleDef[] = [
     description: "Track what's actually on hand (freezer/fridge/pantry) and let it feed meal planning.",
     status: 'available',
     defaultOn: false,
+  },
+  // Core feature pages. On by default (so existing households are unchanged); a
+  // household can turn off whichever it doesn't use. Today + Calendar are never
+  // gated. Dependencies degrade softly (e.g. rewards is funded by chores; with
+  // chores off the reward jar simply has nothing feeding it).
+  {
+    key: 'chores',
+    name: 'Chores & Tasks',
+    icon: '✅',
+    description: 'The Tasks board — assignable chores, photo proof, approvals, and stars.',
+    status: 'available',
+    defaultOn: true,
+  },
+  {
+    key: 'goals',
+    name: 'Goals',
+    icon: '🎯',
+    description: 'Personal and family goals with progress tracking, streaks, and checklists.',
+    status: 'available',
+    defaultOn: true,
+  },
+  {
+    key: 'rewards',
+    name: 'Rewards',
+    icon: '⭐',
+    description: 'A reward shop and redemptions kids spend stars on (managed from the Tasks page).',
+    status: 'available',
+    defaultOn: true,
+  },
+  {
+    key: 'meals',
+    name: 'Meals & Recipes',
+    icon: '🍽️',
+    description: 'Recipe library, weekly meal planning, and meals on the calendar.',
+    status: 'available',
+    defaultOn: true,
+  },
+  {
+    key: 'lists',
+    name: 'Lists & Groceries',
+    icon: '🛒',
+    description: 'Shared lists and the auto-built grocery board (used by Pantry and Meals).',
+    status: 'available',
+    defaultOn: true,
   },
   {
     key: 'fhe',

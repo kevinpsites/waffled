@@ -2,7 +2,7 @@
 // meals.service.ts; types in meals.types.ts.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { query } from '../../platform/db'
-import { tenantRoute, adminRoute } from '../../platform/route-guards'
+import { moduleRoutes } from '../../platform/route-guards'
 import {
   syncMealEventForEntry,
   removeMealEventForEntry,
@@ -38,6 +38,9 @@ import {
 import { parseRecipe } from './recipe-markdown'
 
 type Api = ReturnType<typeof createAPI>
+
+// Every route here is gated by the optional `meals` module (403 when off).
+const { tenantRoute, adminRoute } = moduleRoutes('meals')
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
