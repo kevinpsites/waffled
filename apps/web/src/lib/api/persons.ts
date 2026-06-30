@@ -15,6 +15,7 @@ export interface Person {
   paletteSlot?: string | null
   birthday?: string | null
   dietaryNotes?: string | null
+  allergens?: string[]
   rewardStyle?: string
   showOnKiosk?: boolean
   // Resolved capabilities for the *current* caller (from /api/household). Admins &
@@ -48,6 +49,7 @@ export interface Household {
     onboarding?: OnboardingState
     modules?: Record<string, boolean>
     pantry?: { locations?: string[]; showOnToday?: boolean }
+    chores?: { rewards?: boolean; proofTtlDays?: number }
   } & Record<string, unknown>
 }
 

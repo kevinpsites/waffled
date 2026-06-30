@@ -2,7 +2,7 @@
 // in chores.service.ts; types in chores.types.ts.
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { requireCapability } from '../../platform/permissions'
-import { tenantRoute, adminRoute, capRoute } from '../../platform/route-guards'
+import { moduleRoutes } from '../../platform/route-guards'
 import type { CreateChoreInput } from './chores.types'
 import {
   createChore,
@@ -28,25 +28,41 @@ import {
   listStoredProofs,
   deleteStoredProof,
   clearStoredProofs,
+  getChoreRewardsEnabled,
+  setChoreRewardsEnabled,
 } from './chores.service'
 import { getProofTtlDays, setProofTtlDays } from './chore-proof-cleanup.service'
 
 type Api = ReturnType<typeof createAPI>
 
+// Every route here is gated by the optional `chores` module (403 when off).
+const { tenantRoute, adminRoute, capRoute } = moduleRoutes('chores')
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function registerChoreRoutes(api: Api): void {
-  // Household chore settings — currently just the photo-proof retention window.
+  // Household chore settings — the photo-proof retention window and the rewards
+  // sub-toggle (rewards is the spend half of the chores economy, not its own module).
   api.get('/api/chores/settings', tenantRoute(async (tenant) => ({
     proofTtlDays: await getProofTtlDays(tenant.householdId),
+    rewards: await getChoreRewardsEnabled(tenant.householdId),
   })))
 
   api.put('/api/chores/settings', adminRoute(async (tenant, req: Request, res: Response) => {
-    const body = (req.body ?? {}) as { proofTtlDays?: unknown }
-    if (typeof body.proofTtlDays !== 'number' || !Number.isFinite(body.proofTtlDays) || body.proofTtlDays < 0) {
+    const body = (req.body ?? {}) as { proofTtlDays?: unknown; rewards?: unknown }
+    // Both fields optional; accept either (or both) in one call.
+    if (body.proofTtlDays !== undefined && (typeof body.proofTtlDays !== 'number' || !Number.isFinite(body.proofTtlDays) || body.proofTtlDays < 0)) {
       return res.status(400).json({ error: 'BadRequest', message: 'proofTtlDays must be a non-negative number' })
     }
-    return { proofTtlDays: await setProofTtlDays(tenant.householdId, body.proofTtlDays) }
+    if (body.rewards !== undefined && typeof body.rewards !== 'boolean') {
+      return res.status(400).json({ error: 'BadRequest', message: 'rewards must be a boolean' })
+    }
+    if (typeof body.proofTtlDays === 'number') await setProofTtlDays(tenant.householdId, body.proofTtlDays)
+    if (typeof body.rewards === 'boolean') await setChoreRewardsEnabled(tenant.householdId, body.rewards)
+    return {
+      proofTtlDays: await getProofTtlDays(tenant.householdId),
+      rewards: await getChoreRewardsEnabled(tenant.householdId),
+    }
   }))
 
   // Stored proof photos — the review/manage surface (admins). A separate path from

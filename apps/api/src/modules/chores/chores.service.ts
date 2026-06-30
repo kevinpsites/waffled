@@ -8,6 +8,29 @@ import { getDefaultCurrencyKey } from '../currencies/currencies'
 import { getBlobStore, mediaUrl } from '../../platform/storage'
 import type { ChoreRow, CreateChoreInput, PersonChoreSummary, TodayInstance } from './chores.types'
 
+// Rewards sub-toggle (settings.chores.rewards) — the spend half of the chores
+// economy. Defaults on; read/written from Settings → Chores & rewards.
+export async function getChoreRewardsEnabled(householdId: string): Promise<boolean> {
+  const { rows } = await query<{ v: boolean | null }>(
+    `select (settings #>> '{chores,rewards}')::boolean as v from households where id = $1`,
+    [householdId]
+  )
+  return rows[0]?.v ?? true
+}
+
+export async function setChoreRewardsEnabled(householdId: string, on: boolean): Promise<boolean> {
+  await query(
+    `update households
+        set settings = coalesce(settings, '{}'::jsonb)
+                       || jsonb_build_object('chores',
+                            coalesce(settings->'chores', '{}'::jsonb)
+                            || jsonb_build_object('rewards', $2::boolean))
+      where id = $1`,
+    [householdId, on]
+  )
+  return on
+}
+
 interface ChoreInstanceRow extends QueryResultRow {
   id: string
   person_id: string | null

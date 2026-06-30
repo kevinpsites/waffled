@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { personsApi, permissionsApi, healthApi, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
+import { personsApi, permissionsApi, healthApi, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
 import { PersonModal } from './components/PersonModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -1597,6 +1597,7 @@ function ModulesPanel() {
                 )}
               </div>
               {on && m.hasSettings && m.key === 'pantry' && <PantrySettings />}
+              {on && m.hasSettings && m.key === 'chores' && <ChoresModuleSettings />}
             </div>
           )
         })}
@@ -1608,11 +1609,14 @@ function ModulesPanel() {
 // Pantry's own settings (shown when the module is on): the Today-card toggle and
 // the editable location list. Saves immediately; refreshes household so Today reacts.
 function PantrySettings() {
-  const { locations, showOnToday, loading } = usePantry()
+  const { locations, showOnToday, avoidAllergens, lowThreshold, locationIcons, loading } = usePantry()
   const [list, setList] = useState<string[]>([])
   const [adding, setAdding] = useState('')
   const [show, setShow] = useState(true)
-  useEffect(() => { if (!loading) { setList(locations); setShow(showOnToday) } }, [loading, locations, showOnToday])
+  const [avoid, setAvoid] = useState<string[]>([])
+  const [low, setLow] = useState('1')
+  const [icons, setIcons] = useState<Record<string, string>>({})
+  useEffect(() => { if (!loading) { setList(locations); setShow(showOnToday); setAvoid(avoidAllergens); setLow(String(lowThreshold)); setIcons(locationIcons) } }, [loading, locations, showOnToday, avoidAllergens, lowThreshold, locationIcons])
 
   async function commitLocations(next: string[]) {
     setList(next)
@@ -1622,6 +1626,22 @@ function PantrySettings() {
     setShow(v)
     try { await pantryApi.setConfig({ showOnToday: v }); emitHouseholdChanged() } catch { /* ignore */ }
   }
+  async function toggleAvoid(key: string) {
+    const next = avoid.includes(key) ? avoid.filter((a) => a !== key) : [...avoid, key]
+    setAvoid(next)
+    try { await pantryApi.setConfig({ avoidAllergens: next }); emitHouseholdChanged() } catch { /* ignore */ }
+  }
+  async function commitLow(v: string) {
+    const n = Number(v)
+    if (!Number.isFinite(n) || n < 0) return
+    try { await pantryApi.setConfig({ lowThreshold: n }); emitHouseholdChanged() } catch { /* ignore */ }
+  }
+  async function commitIcon(loc: string, emoji: string) {
+    const next = { ...icons, [loc]: emoji.trim() }
+    if (!emoji.trim()) delete next[loc]
+    setIcons(next)
+    try { await pantryApi.setConfig({ locationIcons: next }); emitHouseholdChanged() } catch { /* ignore */ }
+  }
 
   if (loading) return null
   return (
@@ -1630,10 +1650,45 @@ function PantrySettings() {
         <span>Show a card on Today</span>
         <Switch checked={show} onChange={toggleShow} ariaLabel="Show pantry on Today" />
       </div>
+      <div className="set-module-setrow">
+        <span>Running low at (or below)</span>
+        <input type="number" min="0" step="any" className="pl-low-input" value={low}
+          onChange={(e) => setLow(e.target.value)} onBlur={() => commitLow(low)}
+          onKeyDown={(e) => { if (e.key === 'Enter') commitLow(low) }} aria-label="Running low threshold" />
+      </div>
+      <div className="set-module-desc" style={{ marginBottom: 4 }}>
+        Default for all items; set a per-item override in the item editor’s “Warn below”.
+      </div>
+      <div className="set-module-setlabel">Allergens to avoid</div>
+      <div className="set-module-desc" style={{ marginBottom: 8 }}>
+        Items containing these (from Open Food Facts) get a red warning — e.g. a gluten-free home.
+      </div>
+      <div className="pl-allergen-pick">
+        {ALLERGEN_KEYS.map((key) => (
+          <button
+            key={key}
+            type="button"
+            className={`pl-allergen-chip${avoid.includes(key) ? ' on' : ''}`}
+            aria-pressed={avoid.includes(key)}
+            onClick={() => toggleAvoid(key)}
+          >
+            {ALLERGEN_LABELS[key]}
+          </button>
+        ))}
+      </div>
       <div className="set-module-setlabel">Locations</div>
       <div className="pantry-loc-list">
         {list.map((l, i) => (
           <div className="pantry-loc-row" key={i}>
+            <input
+              className="pl-loc-icon"
+              value={icons[l] ?? ''}
+              placeholder="📦"
+              maxLength={4}
+              aria-label={`Icon for ${l}`}
+              onChange={(e) => setIcons((m) => ({ ...m, [l]: e.target.value }))}
+              onBlur={() => commitIcon(l, icons[l] ?? '')}
+            />
             <input
               value={l}
               onChange={(e) => setList((ls) => ls.map((x, j) => (j === i ? e.target.value : x)))}
@@ -1651,6 +1706,31 @@ function PantrySettings() {
           onKeyDown={(e) => { if (e.key === 'Enter' && adding.trim()) { commitLocations([...list, adding.trim()]); setAdding('') } }}
         />
         <button type="button" className="pill" disabled={!adding.trim()} onClick={() => { commitLocations([...list, adding.trim()]); setAdding('') }}>Add</button>
+      </div>
+    </div>
+  )
+}
+
+// Chores module sub-settings (shown when the module is on): the rewards sub-toggle.
+// Rewards is the spend half of the chores economy, so it lives here rather than as
+// its own module — it can't be on without chores. Saves immediately; refreshes the
+// household so the Tasks "Rewards" tab and the profile jar/redemption cards react.
+function ChoresModuleSettings() {
+  const [rewards, setRewards] = useState<boolean | null>(null)
+  useEffect(() => { choresApi.getSettings().then((s) => setRewards(s.rewards)).catch(() => setRewards(true)) }, [])
+  async function toggle(v: boolean) {
+    setRewards(v)
+    try { await choresApi.setRewardsEnabled(v); emitHouseholdChanged() } catch { /* reverts on next refetch */ }
+  }
+  if (rewards === null) return null
+  return (
+    <div className="set-module-settings">
+      <div className="set-module-setrow">
+        <span>Rewards (star shop &amp; redemptions)</span>
+        <Switch checked={rewards} onChange={toggle} ariaLabel="Enable rewards" />
+      </div>
+      <div className="set-module-desc" style={{ marginTop: 6 }}>
+        Kids spend earned stars on a reward shop. Turn off for chores without a points economy.
       </div>
     </div>
   )

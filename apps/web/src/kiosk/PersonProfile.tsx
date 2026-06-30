@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
 import { usePersonOverview, useConversions, usePersons, useHousehold, useGoalLists, can, personsApi, rewardsApi, type OverviewGoal, type CategoryBalance, type ShopReward, type SavingToward, type OverviewCurrency, type StreakSummary } from '../lib/api'
 import { TradeModal } from './components/TradeModal'
+import { rewardsEnabled } from '../lib/modules'
 import './../styles/overview.css'
 
 const CAT_CLASS: Record<string, string> = {
@@ -177,7 +178,10 @@ export function PersonProfile() {
   const { data, loading, error } = usePersonOverview(id ?? null)
   const { conversions } = useConversions()
   const { persons } = usePersons()
-  const { person: me } = useHousehold()
+  const { person: me, household } = useHousehold()
+  // The spend side of the economy (jar + redemptions) hides when rewards is off;
+  // the earn side (wallet/ledger, fed by chores) stays.
+  const rewardsOn = rewardsEnabled(household)
   const { lists: goalLists } = useGoalLists()
   const [trading, setTrading] = useState(false)
 
@@ -285,13 +289,15 @@ export function PersonProfile() {
       <div className="pp-right">
         <StreakCard streak={data.streak} />
 
-        <SavingTowardCard
-          saving={data.savingToward}
-          shop={data.rewardShop}
-          cur={symOf}
-          onPick={(rid) => personsApi.setSavingToward(person.id, rid)}
-          onRedeem={(r) => rewardsApi.redeem(r.id, person.id)}
-        />
+        {rewardsOn && (
+          <SavingTowardCard
+            saving={data.savingToward}
+            shop={data.rewardShop}
+            cur={symOf}
+            onPick={(rid) => personsApi.setSavingToward(person.id, rid)}
+            onRedeem={(r) => rewardsApi.redeem(r.id, person.id)}
+          />
+        )}
 
         <div className="card pp-card pp-stars">
           <div className="card-h" style={{ marginBottom: 8, display: 'flex', alignItems: 'center' }}>
@@ -321,21 +327,23 @@ export function PersonProfile() {
           ))}
         </div>
 
-        <div className="card pp-card">
-          <div className="card-h" style={{ marginBottom: 10, display: 'flex', alignItems: 'center' }}>
-            <span>Reward redemptions</span>
-            <button type="button" className="pp-trade" style={{ marginLeft: 'auto' }} onClick={() => navigate('/tasks?tab=rewards')}>🎁 Shop</button>
-          </div>
-          {data.redemptions.length === 0 && <div className="muted tiny" style={{ fontWeight: 600 }}>None yet — earn {(defaultCur?.label ?? 'stars').toLowerCase()}, then redeem in Tasks → Rewards.</div>}
-          {data.redemptions.map((r) => (
-            <div key={r.id} className="pp-redeem">
-              <span className="pp-redeem-emo">{r.emoji ?? '🎁'}</span>
-              <span className="pp-redeem-t">{r.title}</span>
-              <span className={`pp-redeem-status st-${r.status}`}>{r.status}</span>
-              <span className="pp-redeem-cost">{symOf(r.currency)?.symbol ?? '⭐'} {r.cost}</span>
+        {rewardsOn && (
+          <div className="card pp-card">
+            <div className="card-h" style={{ marginBottom: 10, display: 'flex', alignItems: 'center' }}>
+              <span>Reward redemptions</span>
+              <button type="button" className="pp-trade" style={{ marginLeft: 'auto' }} onClick={() => navigate('/tasks?tab=rewards')}>🎁 Shop</button>
             </div>
-          ))}
-        </div>
+            {data.redemptions.length === 0 && <div className="muted tiny" style={{ fontWeight: 600 }}>None yet — earn {(defaultCur?.label ?? 'stars').toLowerCase()}, then redeem in Tasks → Rewards.</div>}
+            {data.redemptions.map((r) => (
+              <div key={r.id} className="pp-redeem">
+                <span className="pp-redeem-emo">{r.emoji ?? '🎁'}</span>
+                <span className="pp-redeem-t">{r.title}</span>
+                <span className={`pp-redeem-status st-${r.status}`}>{r.status}</span>
+                <span className="pp-redeem-cost">{symOf(r.currency)?.symbol ?? '⭐'} {r.cost}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {trading && (

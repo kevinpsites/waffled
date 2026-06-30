@@ -3,7 +3,7 @@
 // docs/product/extensibility.md.
 import type { Household } from './api'
 
-export type ModuleKey = 'pantry' | 'fhe' | 'quotes'
+export type ModuleKey = 'pantry' | 'chores' | 'goals' | 'meals' | 'lists' | 'fhe' | 'quotes'
 
 export interface ModuleDef {
   key: ModuleKey
@@ -25,6 +25,41 @@ export const MODULES: ModuleDef[] = [
     status: 'available',
     defaultOn: false,
     hasSettings: true,
+  },
+  // Core feature pages — on by default; a household turns off what it doesn't use.
+  // Today + Calendar are never gated. (Mirror of apps/api/src/platform/modules.ts.)
+  {
+    key: 'chores',
+    name: 'Chores & Tasks',
+    icon: '✅',
+    description: 'The Tasks board — assignable chores, photo proof, approvals, and stars.',
+    status: 'available',
+    defaultOn: true,
+    hasSettings: true,
+  },
+  {
+    key: 'goals',
+    name: 'Goals',
+    icon: '🎯',
+    description: 'Personal and family goals with progress tracking, streaks, and checklists.',
+    status: 'available',
+    defaultOn: true,
+  },
+  {
+    key: 'meals',
+    name: 'Meals & Recipes',
+    icon: '🍽️',
+    description: 'Recipe library, weekly meal planning, and meals on the calendar.',
+    status: 'available',
+    defaultOn: true,
+  },
+  {
+    key: 'lists',
+    name: 'Lists & Groceries',
+    icon: '🛒',
+    description: 'Shared lists and the auto-built grocery board (used by Pantry and Meals).',
+    status: 'available',
+    defaultOn: true,
   },
   {
     key: 'fhe',
@@ -51,4 +86,13 @@ export function moduleEnabled(household: Household | null | undefined, key: Modu
   if (!def || def.status !== 'available') return false
   const v = household?.settings?.modules?.[key]
   return typeof v === 'boolean' ? v : def.defaultOn
+}
+
+// Rewards is the spend half of the chores economy, not its own module: a sub-toggle
+// (settings.chores.rewards, default on) that can never be on without chores. Mirror
+// of rewardsEnabled() in apps/api/src/platform/modules.ts.
+export function rewardsEnabled(household: Household | null | undefined): boolean {
+  if (!moduleEnabled(household, 'chores')) return false
+  const v = household?.settings?.chores?.rewards
+  return typeof v === 'boolean' ? v : true
 }

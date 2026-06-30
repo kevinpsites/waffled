@@ -1,7 +1,7 @@
 // Lists domain — HTTP routes (/api/lists, /api/list-items, /api/lists/grocery,
 // /api/pantry-staples). Logic in lists.service.ts; types in lists.types.ts.
 import createAPI, { type Request, type Response } from 'lambda-api'
-import { tenantRoute } from '../../platform/route-guards'
+import { moduleRoutes } from '../../platform/route-guards'
 import type { CreateListInput, PatchItemInput } from './lists.types'
 import {
   getOrCreateGroceryList,
@@ -26,6 +26,9 @@ import {
 } from './lists.service'
 
 type Api = ReturnType<typeof createAPI>
+
+// Every route here is gated by the optional `lists` module (403 when off).
+const { tenantRoute } = moduleRoutes('lists')
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 

@@ -1,5 +1,5 @@
 // Pantry module CRUD + the module gate, against a real Postgres (Testcontainers).
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
@@ -144,5 +144,104 @@ describe('pantry CRUD', () => {
 
   it('403s for a caller with no household', async () => {
     expect((await call('GET', '/api/pantry', mint('dev|nobody'))).statusCode).toBe(403)
+  })
+})
+
+// Open Food Facts lookup + cache + snapshot. fetch is stubbed so no real network.
+describe('pantry Open Food Facts integration', () => {
+  const FOUND = '11111111'
+  const UNKNOWN = '99999999'
+  const offProduct = {
+    product_name: 'Chicken Pot Pie',
+    brands: "Marie Callender's",
+    quantity: '2-ct family size',
+    serving_size: '1 pie',
+    image_front_url: 'https://img/pie.jpg',
+    allergens_tags: ['en:gluten', 'en:milk', 'en:soybeans'],
+    ingredients_analysis_tags: ['en:non-vegan', 'en:non-vegetarian'],
+    nutriscore_grade: 'd',
+    nova_group: 4,
+    nutriments: { 'energy-kcal_serving': 520, proteins_serving: 13, fat_serving: 31, carbohydrates_serving: 49, sodium_serving: 0.8 },
+  }
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeAll(() => {
+    fetchMock = vi.fn(async (url: string) => {
+      const code = String(url).match(/product\/(\d+)/)?.[1] ?? ''
+      if (code === FOUND) return { ok: true, json: async () => ({ status: 'success', result: { id: 'product_found' }, product: offProduct }) }
+      return { ok: true, json: async () => ({ status: 'failure', result: { id: 'product_not_found' } }) }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+  })
+  afterAll(() => vi.unstubAllGlobals())
+
+  it('looks up a barcode, normalizes it, and caches (no second fetch)', async () => {
+    const before = fetchMock.mock.calls.length
+    const r1 = await call('GET', `/api/pantry/lookup/${FOUND}`, kevin)
+    expect(r1.statusCode).toBe(200)
+    const p = JSON.parse(r1.body).product
+    expect(p).toMatchObject({ name: 'Chicken Pot Pie', brand: "Marie Callender's", servingBasis: 'per 1 pie' })
+    expect(p.nutrition).toEqual({ calories: 520, protein_g: 13, fat_g: 31, carbs_g: 49, sodium_mg: 800 })
+    expect(p.allergens.sort()).toEqual(['gluten', 'milk', 'soy'])
+    expect(fetchMock.mock.calls.length).toBe(before + 1)
+
+    // Second lookup is served from cache — no new fetch.
+    const r2 = await call('GET', `/api/pantry/lookup/${FOUND}`, kevin)
+    expect(r2.statusCode).toBe(200)
+    expect(fetchMock.mock.calls.length).toBe(before + 1)
+  })
+
+  it('404s an unknown barcode (cached not_found)', async () => {
+    const r = await call('GET', `/api/pantry/lookup/${UNKNOWN}`, kevin)
+    expect(r.statusCode).toBe(404)
+    expect(JSON.parse(r.body).found).toBe(false)
+  })
+
+  it('stores the OFF snapshot on an added item', async () => {
+    const res = await call('POST', '/api/pantry', kevin, {
+      name: 'Chicken Pot Pie', location: 'Freezer', barcode: FOUND, brand: "Marie Callender's",
+      quantityText: '2-ct family size', servingBasis: 'per 1 pie',
+      nutrition: { calories: 520, protein_g: 13 }, allergens: ['gluten', 'milk', 'soy'], dietary: [], source: 'openfoodfacts',
+    })
+    expect(res.statusCode).toBe(201)
+    const item = JSON.parse(res.body).item
+    expect(item).toMatchObject({ barcode: FOUND, brand: "Marie Callender's", source: 'openfoodfacts' })
+    expect(item.nutrition).toEqual({ calories: 520, protein_g: 13 })
+    expect(item.allergens).toEqual(['gluten', 'milk', 'soy'])
+  })
+
+  it('round-trips the household avoid-allergen list (known keys only)', async () => {
+    const res = await call('PUT', '/api/pantry/config', kevin, { avoidAllergens: ['gluten', 'bogus', 'milk'] })
+    expect(res.statusCode).toBe(200)
+    expect(JSON.parse(res.body).avoidAllergens.sort()).toEqual(['gluten', 'milk'])
+    const body = JSON.parse((await call('GET', '/api/pantry', kevin)).body)
+    expect(body.avoidAllergens.sort()).toEqual(['gluten', 'milk'])
+  })
+
+  it('round-trips the running-low threshold and per-location icons', async () => {
+    const res = await call('PUT', '/api/pantry/config', kevin, { lowThreshold: 2, locationIcons: { Freezer: '🧊', Fridge: '' } })
+    expect(res.statusCode).toBe(200)
+    const body = JSON.parse(res.body)
+    expect(body.lowThreshold).toBe(2)
+    expect(body.locationIcons).toEqual({ Freezer: '🧊' }) // blank dropped
+    const list = JSON.parse((await call('GET', '/api/pantry', kevin)).body)
+    expect(list.lowThreshold).toBe(2)
+    expect(list.locationIcons).toEqual({ Freezer: '🧊' })
+  })
+
+  it('stores a per-item low_at override', async () => {
+    const created = JSON.parse((await call('POST', '/api/pantry', kevin, { name: 'Olive oil', location: 'Pantry', amount: '3', lowAt: 2 })).body).item
+    expect(created.lowAt).toBe(2)
+    const patched = JSON.parse((await call('PATCH', `/api/pantry/${created.id}`, kevin, { lowAt: null })).body).item
+    expect(patched.lowAt).toBeNull()
+  })
+
+  it("rolls a member's allergens into allergenPeople (known keys only)", async () => {
+    const me = JSON.parse((await call('GET', '/api/persons', kevin)).body).persons[0]
+    const upd = await call('PATCH', `/api/persons/${me.id}`, kevin, { allergens: ['gluten', 'bogus'] })
+    expect(upd.statusCode).toBe(200)
+    expect(JSON.parse(upd.body).person.allergens).toEqual(['gluten']) // bogus dropped
+    const body = JSON.parse((await call('GET', '/api/pantry', kevin)).body)
+    expect(body.allergenPeople.gluten).toContain(me.name)
   })
 })

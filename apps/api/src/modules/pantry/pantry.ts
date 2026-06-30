@@ -8,6 +8,8 @@ import { tenantRoute } from '../../platform/route-guards'
 import { moduleEnabled } from '../../platform/modules'
 import { AuthError } from '../../platform/auth'
 import type { Tenant } from '../households/households'
+import { lookupBarcode } from './off'
+import { ALLERGEN_KEYS } from '../../platform/allergens'
 
 type Api = ReturnType<typeof createAPI>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -23,9 +25,21 @@ interface PantryRow {
   expires_on: string | null
   note: string | null
   used_up_at: string | null
+  barcode: string | null
+  brand: string | null
+  image_url: string | null
+  quantity_text: string | null
+  serving_basis: string | null
+  nutrition: Record<string, number> | null
+  allergens: string[] | null
+  dietary: string[] | null
+  source: string | null
+  low_at: string | null
+  created_at: string
 }
 
-const RETURNING = `id, name, amount, unit, location, expires_on::text as expires_on, note, used_up_at::text as used_up_at`
+const RETURNING = `id, name, amount, unit, location, expires_on::text as expires_on, note, used_up_at::text as used_up_at,
+  barcode, brand, image_url, quantity_text, serving_basis, nutrition, allergens, dietary, source, low_at, created_at::text as created_at`
 
 function present(r: PantryRow) {
   return {
@@ -37,7 +51,39 @@ function present(r: PantryRow) {
     expiresOn: r.expires_on,
     note: r.note ?? '',
     usedUp: !!r.used_up_at,
+    // OFF snapshot (null when the item was added manually without a lookup).
+    barcode: r.barcode,
+    brand: r.brand,
+    imageUrl: r.image_url,
+    quantityText: r.quantity_text,
+    servingBasis: r.serving_basis,
+    nutrition: r.nutrition,
+    allergens: r.allergens,
+    dietary: r.dietary,
+    source: r.source,
+    lowAt: r.low_at != null ? Number(r.low_at) : null,
+    createdAt: r.created_at,
   }
+}
+
+// Pull the OFF snapshot fields off a request body (shared by create + update). Each
+// is optional; arrays/objects are stored as-is, blanks become null.
+type OffPatch = { col: string; val: unknown }
+function offPatches(b: Record<string, unknown>, opts: { includeUnset?: boolean } = {}): OffPatch[] {
+  const out: OffPatch[] = []
+  const strField = (key: string, col: string) => {
+    if (key in b || opts.includeUnset) out.push({ col, val: b[key] != null && String(b[key]).trim() ? String(b[key]).trim() : null })
+  }
+  strField('barcode', 'barcode')
+  strField('brand', 'brand')
+  strField('imageUrl', 'image_url')
+  strField('quantityText', 'quantity_text')
+  strField('servingBasis', 'serving_basis')
+  if ('nutrition' in b) out.push({ col: 'nutrition', val: b.nutrition && typeof b.nutrition === 'object' ? JSON.stringify(b.nutrition) : null })
+  if ('allergens' in b) out.push({ col: 'allergens', val: Array.isArray(b.allergens) ? (b.allergens as unknown[]).map(String) : null })
+  if ('dietary' in b) out.push({ col: 'dietary', val: Array.isArray(b.dietary) ? (b.dietary as unknown[]).map(String) : null })
+  strField('source', 'source')
+  return out
 }
 
 // Module gate: 403 unless the household has the pantry module enabled.
@@ -59,6 +105,26 @@ function readShowOnToday(settings: unknown): boolean {
   return v !== false
 }
 
+// Allergens the household flags to avoid (e.g. a gluten-free home) — items that
+// contain them get a red warning. Empty by default.
+function readAvoidAllergens(settings: unknown): string[] {
+  const v = (settings as { pantry?: { avoidAllergens?: unknown } } | null | undefined)?.pantry?.avoidAllergens
+  return Array.isArray(v) ? (v as unknown[]).map(String).filter((a) => ALLERGEN_KEYS.includes(a)) : []
+}
+
+// Household default "running low" threshold (an item is low when its numeric amount
+// is <= this, unless the item sets its own low_at). Defaults to 1.
+function readLowThreshold(settings: unknown): number {
+  const v = (settings as { pantry?: { lowThreshold?: unknown } } | null | undefined)?.pantry?.lowThreshold
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 1
+}
+
+// Per-location emoji icons (name → emoji), shown in the sidebar. Empty by default.
+function readLocationIcons(settings: unknown): Record<string, string> {
+  const v = (settings as { pantry?: { locationIcons?: unknown } } | null | undefined)?.pantry?.locationIcons
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, string>) : {}
+}
+
 export function registerPantryRoutes(api: Api): void {
   // List all pantry items + the household's configured locations.
   api.get('/api/pantry', tenantRoute(async (tenant) => {
@@ -70,7 +136,41 @@ export function registerPantryRoutes(api: Api): void {
         order by location, (used_up_at is not null), name`,
       [tenant.householdId]
     )
-    return { items: rows.map(present), locations: readLocations(settings), showOnToday: readShowOnToday(settings) }
+    // Per-person allergens roll up into the warning set: allergen → who it affects.
+    const people = await query<{ name: string; allergens: string[] }>(
+      `select name, allergens from persons
+        where household_id = $1 and deleted_at is null and array_length(allergens, 1) > 0`,
+      [tenant.householdId]
+    )
+    const allergenPeople: Record<string, string[]> = {}
+    for (const p of people.rows) {
+      for (const a of p.allergens ?? []) (allergenPeople[a] ??= []).push(p.name)
+    }
+    return {
+      items: rows.map(present),
+      locations: readLocations(settings),
+      showOnToday: readShowOnToday(settings),
+      avoidAllergens: readAvoidAllergens(settings),
+      allergenPeople,
+      lowThreshold: readLowThreshold(settings),
+      locationIcons: readLocationIcons(settings),
+    }
+  }))
+
+  // Look up a barcode via Open Food Facts (cached). Returns the normalized product
+  // to prefill the add/scan flow; 404 (found:false) when OFF has no such barcode.
+  api.get('/api/pantry/lookup/:barcode', tenantRoute(async (tenant, req: Request, res: Response) => {
+    await requirePantry(tenant)
+    const barcode = String(req.params.barcode ?? '').replace(/\D/g, '')
+    if (!barcode) return res.status(400).json({ error: 'BadRequest', message: 'barcode required' })
+    let product
+    try {
+      product = await lookupBarcode(barcode)
+    } catch {
+      return res.status(502).json({ error: 'LookupFailed', message: 'Open Food Facts is unreachable — add it manually.' })
+    }
+    if (!product) return res.status(404).json({ found: false, barcode })
+    return { found: true, product }
   }))
 
   // Add an item (any member — collaborative, like lists).
@@ -82,19 +182,23 @@ export function registerPantryRoutes(api: Api): void {
     if (b.expiresOn != null && b.expiresOn !== '' && !DATE_RE.test(String(b.expiresOn))) {
       return res.status(400).json({ error: 'BadRequest', message: 'expiresOn must be YYYY-MM-DD' })
     }
+    const cols = ['household_id', 'name', 'amount', 'unit', 'location', 'expires_on', 'note']
+    const vals: unknown[] = [
+      tenant.householdId,
+      name,
+      b.amount != null ? String(b.amount).trim() : null,
+      b.unit != null ? String(b.unit).trim() : null,
+      b.location != null && String(b.location).trim() ? String(b.location).trim() : 'Pantry',
+      b.expiresOn ? String(b.expiresOn) : null,
+      b.note != null ? String(b.note).trim() : null,
+    ]
+    if (b.lowAt != null && b.lowAt !== '' && Number.isFinite(Number(b.lowAt))) { cols.push('low_at'); vals.push(Number(b.lowAt)) }
+    // OFF snapshot (barcode/brand/nutrition/allergens/…) when added via a lookup.
+    for (const p of offPatches(b)) { cols.push(p.col); vals.push(p.val) }
+    const placeholders = vals.map((_, idx) => `$${idx + 1}${cols[idx] === 'nutrition' ? '::jsonb' : ''}`)
     const { rows } = await query<PantryRow>(
-      `insert into pantry_items (household_id, name, amount, unit, location, expires_on, note)
-       values ($1, $2, $3, $4, $5, $6, $7)
-       returning ${RETURNING}`,
-      [
-        tenant.householdId,
-        name,
-        b.amount != null ? String(b.amount).trim() : null,
-        b.unit != null ? String(b.unit).trim() : null,
-        b.location != null && String(b.location).trim() ? String(b.location).trim() : 'Pantry',
-        b.expiresOn ? String(b.expiresOn) : null,
-        b.note != null ? String(b.note).trim() : null,
-      ]
+      `insert into pantry_items (${cols.join(', ')}) values (${placeholders.join(', ')}) returning ${RETURNING}`,
+      vals
     )
     return res.status(201).json({ item: present(rows[0]) })
   }))
@@ -118,6 +222,12 @@ export function registerPantryRoutes(api: Api): void {
     if (typeof b.location === 'string' && b.location.trim()) set('location', b.location.trim())
     if ('expiresOn' in b) set('expires_on', b.expiresOn ? String(b.expiresOn) : null)
     if ('note' in b) set('note', b.note != null ? String(b.note).trim() : null)
+    if ('lowAt' in b) set('low_at', b.lowAt != null && b.lowAt !== '' && Number.isFinite(Number(b.lowAt)) ? Number(b.lowAt) : null)
+    // OFF snapshot edits (relink a barcode, replace the photo, refresh nutrition).
+    for (const p of offPatches(b)) {
+      if (p.col === 'nutrition') { cols.push(`nutrition = $${i++}::jsonb`); vals.push(p.val) }
+      else set(p.col, p.val)
+    }
     // "Used up" is a soft, recoverable state (distinct from delete). The timestamp
     // is set/cleared server-side, so it takes no bind param.
     if (typeof b.usedUp === 'boolean') cols.push(b.usedUp ? 'used_up_at = now()' : 'used_up_at = null')
@@ -150,8 +260,22 @@ export function registerPantryRoutes(api: Api): void {
   // and/or whether it shows a Today card. Both live in settings.pantry.
   api.put('/api/pantry/config', tenantRoute(async (tenant, req: Request, res: Response) => {
     await requirePantry(tenant)
-    const b = (req.body ?? {}) as { locations?: unknown; showOnToday?: unknown }
+    const b = (req.body ?? {}) as { locations?: unknown; showOnToday?: unknown; avoidAllergens?: unknown; lowThreshold?: unknown; locationIcons?: unknown }
     const merge: Record<string, unknown> = {}
+    if (Array.isArray(b.avoidAllergens)) {
+      // Keep only known allergen keys, deduped.
+      merge.avoidAllergens = Array.from(new Set((b.avoidAllergens as unknown[]).map(String).filter((a) => ALLERGEN_KEYS.includes(a))))
+    }
+    if (typeof b.lowThreshold === 'number' && Number.isFinite(b.lowThreshold) && b.lowThreshold >= 0) {
+      merge.lowThreshold = b.lowThreshold
+    }
+    if (b.locationIcons && typeof b.locationIcons === 'object' && !Array.isArray(b.locationIcons)) {
+      const clean: Record<string, string> = {}
+      for (const [k, v] of Object.entries(b.locationIcons as Record<string, unknown>)) {
+        if (typeof v === 'string' && v.trim()) clean[String(k)] = String(v).trim().slice(0, 4)
+      }
+      merge.locationIcons = clean
+    }
     if (Array.isArray(b.locations)) {
       const seen = new Set<string>()
       const clean: string[] = []
@@ -166,7 +290,7 @@ export function registerPantryRoutes(api: Api): void {
     }
     if (typeof b.showOnToday === 'boolean') merge.showOnToday = b.showOnToday
     if (Object.keys(merge).length === 0) {
-      return res.status(400).json({ error: 'BadRequest', message: 'provide locations and/or showOnToday' })
+      return res.status(400).json({ error: 'BadRequest', message: 'provide locations, showOnToday, avoidAllergens, lowThreshold, and/or locationIcons' })
     }
     // Nested merge (jsonb_set's 2-level path won't create a missing `pantry` parent):
     // preserve sibling settings + any other pantry keys.
@@ -179,6 +303,12 @@ export function registerPantryRoutes(api: Api): void {
       [tenant.householdId, JSON.stringify(merge)]
     )
     const settings = rows[0]?.settings
-    return { locations: readLocations(settings), showOnToday: readShowOnToday(settings) }
+    return {
+      locations: readLocations(settings),
+      showOnToday: readShowOnToday(settings),
+      avoidAllergens: readAvoidAllergens(settings),
+      lowThreshold: readLowThreshold(settings),
+      locationIcons: readLocationIcons(settings),
+    }
   }))
 }

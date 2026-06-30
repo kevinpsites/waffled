@@ -5,6 +5,7 @@ import { ChoreModal, type ChoreDraft } from './components/ChoreModal'
 import { RewardsPanel } from './components/RewardsPanel'
 import { ChoreApprovalsCard, ChoreProofModal } from './components/Approvals'
 import { choresApi, usePersons, useHousehold, can, useDayInstances, useAwaitingChores, useCurrencies, localToday, uploadImage, type ChoreInstance } from '../lib/api'
+import { rewardsEnabled } from '../lib/modules'
 
 // Shift a YYYY-MM-DD by N days (local), and describe a day relative to today.
 function shiftDate(d: string, days: number): string {
@@ -76,7 +77,9 @@ export function Tasks() {
   const [date, setDate] = useState(() => localToday())
   const { instances, loading, error, setDone, assign, refetch } = useDayInstances(date)
   const { persons } = usePersons()
-  const { person } = useHousehold()
+  const { person, household } = useHousehold()
+  // Rewards live as a tab on this (chores) page; hide it when the rewards sub-toggle is off.
+  const rewardsOn = rewardsEnabled(household)
   // Anyone can add a chore for themselves / up-for-grabs; assigning it to someone
   // else needs chore.manage (carved-out server-side, gated here to avoid the 403).
   const canAssignOthers = can(person, 'chore.manage')
@@ -86,7 +89,9 @@ export function Tasks() {
   const groups = buildColumns(instances, persons)
   const [modal, setModal] = useState<{ chore?: ChoreDraft; personId?: string | null } | null>(null)
   const [searchParams] = useSearchParams()
-  const [tab, setTab] = useState<'chores' | 'rewards'>(searchParams.get('tab') === 'rewards' ? 'rewards' : 'chores')
+  const [tabState, setTab] = useState<'chores' | 'rewards'>(searchParams.get('tab') === 'rewards' ? 'rewards' : 'chores')
+  // Pin to chores whenever rewards is off, so a stale ?tab=rewards can't strand us.
+  const tab = rewardsOn ? tabState : 'chores'
   const [claimId, setClaimId] = useState<string | null>(null)
   // Photo-proof capture: a hidden file input, the instance (and optional person to
   // claim first) we're capturing for, and any upload/guard error to surface.
@@ -199,10 +204,12 @@ export function Tasks() {
         <div className="card-h nk-serif" style={{ fontSize: 20 }}>
           {tab === 'chores' ? `${Math.abs(meta.diff) <= 1 ? meta.rel : meta.weekday}’s chores` : 'Stars & rewards'}
         </div>
-        <div className="seg" style={{ marginLeft: 'auto' }}>
-          <button className={tab === 'chores' ? 'on' : ''} style={{ cursor: 'pointer' }} onClick={() => setTab('chores')}>Chores</button>
-          <button className={tab === 'rewards' ? 'on' : ''} style={{ cursor: 'pointer' }} onClick={() => setTab('rewards')}>Rewards</button>
-        </div>
+        {rewardsOn && (
+          <div className="seg" style={{ marginLeft: 'auto' }}>
+            <button className={tab === 'chores' ? 'on' : ''} style={{ cursor: 'pointer' }} onClick={() => setTab('chores')}>Chores</button>
+            <button className={tab === 'rewards' ? 'on' : ''} style={{ cursor: 'pointer' }} onClick={() => setTab('rewards')}>Rewards</button>
+          </div>
+        )}
         {tab === 'chores' && (
           <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={() => setModal({})}>
             <Icon name="plus" />

@@ -42,6 +42,7 @@ export interface PersonRow extends QueryResultRow {
   palette_slot: string | null
   birthday: string | null
   dietary_notes: string | null
+  allergens: string[] | null
   reward_style: string
   show_on_kiosk: boolean
   sort_order: number
@@ -318,6 +319,7 @@ export function presentPerson(p: PersonRow) {
     paletteSlot: p.palette_slot ?? null,
     birthday: p.birthday ?? null,
     dietaryNotes: p.dietary_notes ?? null,
+    allergens: p.allergens ?? [],
     rewardStyle: p.reward_style ?? 'stars',
     showOnKiosk: p.show_on_kiosk ?? true,
   }

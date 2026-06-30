@@ -237,6 +237,11 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 | **Pantry / on-hand inventory** module — items + quantities + locations (fridge/freezer/pantry) | ✅ | 🚧 | 🚧 | ✅ Done (web; build #2) — the first optional module |
 | Pantry: quantity **stepper** + tap-to-type amount, **"used up"** state | ✅ | 🚧 | 🚧 | ✅ Done (web) |
 | Pantry: **drag items between locations**; **Today card** (whole-card tap, mark-used) | ✅ | 🚧 | 🚧 | ✅ Done (web) |
+| Pantry: **redesigned list** (location sidebar + counts, search, sort), **item detail** sheet | ✅ | 🚧 | 🚧 | ✅ Done (web) |
+| Pantry: **Open Food Facts** integration — barcode lookup (cached), nutrition + allergen snapshots | ✅ | 🚧 | 🚧 | ✅ Done (web) |
+| Pantry: **allergen warnings** — household avoid-list ∪ per-person allergens, red flags + "affects X" | ✅ | 🚧 | 🚧 | ✅ Done (web) |
+| Pantry: **running-low threshold** (household default + per-item), **per-location icons** | ✅ | 🚧 | 🚧 | ✅ Done (web) |
+| Pantry: **barcode camera scanner** (zxing) — ⚠️ **requires HTTPS / localhost** (camera is blocked on plain-http LAN; falls back to typing the barcode) | ✅ | 🚧 | 🚧 | ✅ Done (web; needs secure context) |
 | **Public API keys + scopes** — `nook_…` key, `x-api-key`, `<resource>:read\|write` scopes | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web; build #3) — external-integration surface (pattern B), admin-issued |
 | **Settings → API Keys** tab (generate / scope / reveal-once / revoke) | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web; admin-gated) |
 

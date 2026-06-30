@@ -2,7 +2,7 @@
 // them on/off in Settings → Modules (stored in households.settings.modules). See
 // docs/product/extensibility.md for the A/B/C pattern model.
 
-export type ModuleKey = 'pantry' | 'fhe' | 'quotes'
+export type ModuleKey = 'pantry' | 'chores' | 'goals' | 'meals' | 'lists' | 'fhe' | 'quotes'
 
 export interface ModuleDef {
   key: ModuleKey
@@ -24,6 +24,42 @@ export const MODULES: ModuleDef[] = [
     description: "Track what's actually on hand (freezer/fridge/pantry) and let it feed meal planning.",
     status: 'available',
     defaultOn: false,
+  },
+  // Core feature pages. On by default (so existing households are unchanged); a
+  // household can turn off whichever it doesn't use. Today + Calendar are never
+  // gated. Dependencies degrade softly (e.g. rewards is funded by chores; with
+  // chores off the reward jar simply has nothing feeding it).
+  {
+    key: 'chores',
+    name: 'Chores & Tasks',
+    icon: '✅',
+    description: 'The Tasks board — assignable chores, photo proof, approvals, and stars.',
+    status: 'available',
+    defaultOn: true,
+  },
+  {
+    key: 'goals',
+    name: 'Goals',
+    icon: '🎯',
+    description: 'Personal and family goals with progress tracking, streaks, and checklists.',
+    status: 'available',
+    defaultOn: true,
+  },
+  {
+    key: 'meals',
+    name: 'Meals & Recipes',
+    icon: '🍽️',
+    description: 'Recipe library, weekly meal planning, and meals on the calendar.',
+    status: 'available',
+    defaultOn: true,
+  },
+  {
+    key: 'lists',
+    name: 'Lists & Groceries',
+    icon: '🛒',
+    description: 'Shared lists and the auto-built grocery board (used by Pantry and Meals).',
+    status: 'available',
+    defaultOn: true,
   },
   {
     key: 'fhe',
@@ -53,4 +89,14 @@ export function moduleEnabled(settings: unknown, key: ModuleKey): boolean {
   const m = (settings as { modules?: Record<string, unknown> } | null | undefined)?.modules
   const v = m?.[key]
   return typeof v === 'boolean' ? v : def.defaultOn
+}
+
+// Rewards is the "spend" half of the chores economy, not its own module: it's a
+// sub-toggle of chores (settings.chores.rewards, default on). It can never be on
+// without chores — so a reward shop always has a way to earn. Off either when
+// chores is off or the sub-flag is explicitly false.
+export function rewardsEnabled(settings: unknown): boolean {
+  if (!moduleEnabled(settings, 'chores')) return false
+  const v = (settings as { chores?: { rewards?: unknown } } | null | undefined)?.chores?.rewards
+  return typeof v === 'boolean' ? v : true
 }

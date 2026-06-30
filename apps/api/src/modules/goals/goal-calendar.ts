@@ -9,7 +9,7 @@
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
-import { tenantRoute } from '../../platform/route-guards'
+import { moduleRoutes } from '../../platform/route-guards'
 import { logProgress } from './goals.service'
 import { updateEvent } from '../events/events'
 import { keywordMatch, type MatchGoal } from './goal-match'
@@ -17,6 +17,11 @@ import { loadMemory, loadMemoryGrouped, forgetMemory, clearMemory, memoryMatch, 
 import { getAiConfig, completeJson } from '../../platform/llm'
 
 type Api = ReturnType<typeof createAPI>
+
+// The calendar↔goal bridge is part of the goals feature — gated by the optional
+// `goals` module (403 when off), so you can't link an event to a goal with goals
+// turned off. Calendar events themselves stay (calendar is never gated).
+const { tenantRoute } = moduleRoutes('goals')
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
