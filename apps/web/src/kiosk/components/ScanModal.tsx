@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
-import { pantryApi, ALLERGEN_LABELS, type OffProduct, type PantryItemInput } from '../../lib/api'
+import { pantryApi, flaggedAllergens, ALLERGEN_LABELS, type OffProduct, type PantryItemInput } from '../../lib/api'
+import { AllergenBadge } from './Allergens'
 
 // Barcode scan-into-pantry. Uses the device camera (zxing decoder, which works in
 // Chrome/Edge/Android and Safari/iOS) to read a barcode, looks it up via Open Food
@@ -9,7 +10,13 @@ import { pantryApi, ALLERGEN_LABELS, type OffProduct, type PantryItemInput } fro
 // The camera needs a SECURE CONTEXT (https or localhost). On a plain-http LAN origin
 // window.isSecureContext is false and getUserMedia is blocked, so we surface a clear
 // warning and fall back to typing the barcode. (HTTPS is a documented requirement.)
-export function ScanModal({ locations, onClose, onAdded }: { locations: string[]; onClose: () => void; onAdded: () => void }) {
+export function ScanModal({ locations, avoidAllergens, allergenPeople, onClose, onAdded }: {
+  locations: string[]
+  avoidAllergens: string[]
+  allergenPeople: Record<string, string[]>
+  onClose: () => void
+  onAdded: () => void
+}) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<IScannerControls | null>(null)
   const acceptRef = useRef(true) // gate: stop accepting scans while a result is shown
@@ -23,8 +30,14 @@ export function ScanModal({ locations, onClose, onAdded }: { locations: string[]
   const [name, setName] = useState('')
   const [location, setLocation] = useState(locations[0] ?? 'Pantry')
   const [amount, setAmount] = useState('1')
+  const [unit, setUnit] = useState('')
+  const [expiresOn, setExpiresOn] = useState('')
+  const [note, setNote] = useState('')
+  const [lowAt, setLowAt] = useState('')
+  const [showMore, setShowMore] = useState(false)
   const [busy, setBusy] = useState(false)
   const [added, setAdded] = useState(0)
+  const [flash, setFlash] = useState<string | null>(null)
 
   async function handleCode(raw: string) {
     if (!acceptRef.current) return
@@ -50,18 +63,32 @@ export function ScanModal({ locations, onClose, onAdded }: { locations: string[]
     return () => { cancelled = true; controlsRef.current?.stop() }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function resume() { setFound(undefined); setCode(null); setName(''); setAmount('1'); acceptRef.current = true }
+  function resume() {
+    setFound(undefined); setCode(null); setName(''); setAmount('1')
+    setUnit(''); setExpiresOn(''); setNote(''); setLowAt(''); setShowMore(false)
+    acceptRef.current = true
+  }
 
   async function add() {
     if (busy) return
     setBusy(true)
-    const input: PantryItemInput = { name: name.trim() || 'Item', amount: amount.trim(), location }
+    const input: PantryItemInput = {
+      name: name.trim() || 'Item', amount: amount.trim(), location,
+      unit: unit.trim() || undefined, expiresOn: expiresOn || undefined,
+      note: note.trim() || undefined, lowAt: lowAt.trim() === '' ? undefined : Number(lowAt),
+    }
     if (found) Object.assign(input, {
       barcode: found.barcode, brand: found.brand, imageUrl: found.imageUrl, quantityText: found.quantityText,
-      servingBasis: found.servingBasis, nutrition: found.nutrition, allergens: found.allergens, dietary: found.dietary, source: found.source,
+      servingBasis: found.servingBasis, nutrition: found.nutrition, allergens: found.allergens, traces: found.traces, dietary: found.dietary, source: found.source,
     })
     else if (code) input.barcode = code
-    try { await pantryApi.create(input); setAdded((n) => n + 1); onAdded(); resume() } finally { setBusy(false) }
+    try {
+      const r = await pantryApi.scan(input)
+      setAdded((n) => n + 1)
+      setFlash(`${r.incremented ? 'Updated' : 'Added'} ${r.item.name} — now ${r.item.amount || '1'}${r.item.unit ? ' ' + r.item.unit : ''}`)
+      onAdded()
+      resume()
+    } finally { setBusy(false) }
   }
 
   async function lookupManual() {
@@ -93,7 +120,12 @@ export function ScanModal({ locations, onClose, onAdded }: { locations: string[]
                 </div>
               </div>
             ) : (
-              <video ref={videoRef} className="pl-scan-video" muted playsInline />
+              <div className="pl-scan-viewport">
+                <video ref={videoRef} className="pl-scan-video" muted playsInline />
+                <div className="pl-scan-reticle" aria-hidden>
+                  <span className="pl-rt tl" /><span className="pl-rt tr" /><span className="pl-rt bl" /><span className="pl-rt br" />
+                </div>
+              </div>
             )}
             <div className="pl-scan-manual">
               <input value={manual} placeholder="Type a barcode" inputMode="numeric"
@@ -104,7 +136,12 @@ export function ScanModal({ locations, onClose, onAdded }: { locations: string[]
           </div>
 
           <div className="pl-scan-result">
-            {found === undefined && <div className="pl-scan-idle">{camErr ? 'Type a barcode to look it up.' : 'Point the camera at a barcode…'}</div>}
+            {found === undefined && (
+              <div className="pl-scan-idle">
+                {flash && <div className="pl-scan-flash">✓ {flash}</div>}
+                {camErr ? 'Type a barcode to look it up.' : 'Point the camera at a barcode…'}
+              </div>
+            )}
 
             {found !== undefined && (
               <>
@@ -115,8 +152,23 @@ export function ScanModal({ locations, onClose, onAdded }: { locations: string[]
                       {found.imageUrl ? <img className="pl-scan-prodimg" src={found.imageUrl} alt="" /> : <span className="pl-scan-prodemoji">🥫</span>}
                       <div className="pl-scan-prodname">{found.name}</div>
                       {found.brand && <div className="pl-scan-prodbrand">{found.brand}</div>}
-                      {found.allergens.length > 0 && (
-                        <div className="pl-scan-allergens">{found.allergens.map((a) => <span key={a} className="pl-contains-chip">{ALLERGEN_LABELS[a] ?? a}</span>)}</div>
+                      {found.allergens.length > 0 && (() => {
+                        const flag = new Set(flaggedAllergens({ allergens: found.allergens }, avoidAllergens, allergenPeople))
+                        const affects = Array.from(new Set([...flag].flatMap((a) => allergenPeople[a] ?? [])))
+                        return (
+                          <>
+                            <div className="pl-scan-allergens">
+                              {found.allergens.map((a) => <span key={a} className="pl-contains-item"><AllergenBadge allergen={a} avoid={flag.has(a)} /> {ALLERGEN_LABELS[a] ?? a}</span>)}
+                            </div>
+                            {flag.size > 0 && <div className="pl-affects">⚠ Contains {[...flag].map((a) => ALLERGEN_LABELS[a] ?? a).join(', ')}{affects.length ? ` — affects ${affects.join(', ')}` : ''}</div>}
+                          </>
+                        )
+                      })()}
+                      {found.traces.length > 0 && (
+                        <div className="pl-scan-allergens">
+                          <span className="pl-contains-l">May contain</span>
+                          {found.traces.map((a) => <span key={a} className="pl-contains-item"><AllergenBadge allergen={a} trace avoid={avoidAllergens.includes(a) || !!allergenPeople[a]} /> {ALLERGEN_LABELS[a] ?? a}</span>)}
+                        </div>
                       )}
                     </div>
                   </>
@@ -136,6 +188,17 @@ export function ScanModal({ locations, onClose, onAdded }: { locations: string[]
                     <input value={amount} onChange={(e) => setAmount(e.target.value)} />
                   </label>
                 </div>
+
+                {!showMore ? (
+                  <button type="button" className="pl-scan-more" onClick={() => setShowMore(true)}>+ Unit, expiry, note, warn-below</button>
+                ) : (
+                  <div className="pl-scan-more-grid">
+                    <label><span>Unit</span><input value={unit} placeholder="bag / lbs" onChange={(e) => setUnit(e.target.value)} /></label>
+                    <label><span>Expires</span><input type="date" value={expiresOn} onChange={(e) => setExpiresOn(e.target.value)} /></label>
+                    <label><span>Warn below</span><input type="number" min="0" step="any" value={lowAt} placeholder="default" onChange={(e) => setLowAt(e.target.value)} /></label>
+                    <label className="pl-scan-more-note"><span>Note</span><input value={note} onChange={(e) => setNote(e.target.value)} /></label>
+                  </div>
+                )}
 
                 <div className="pl-scan-acts">
                   <button type="button" className="pill" disabled={busy} onClick={resume}>Cancel</button>

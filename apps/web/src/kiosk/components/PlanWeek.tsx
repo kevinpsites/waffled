@@ -23,7 +23,7 @@ function ymd(d: Date): string {
 // Full-screen "Plan my week": guardrails on the left, the drafted week on the
 // right. Drafts via the household's chosen LLM; reshuffle/swap re-draft (keeping
 // locked nights); "Add week" applies every card via the normal plan endpoint.
-export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: string; days: Date[]; onClose: () => void; onApplied: () => void }) {
+export function PlanWeek({ startStr, days, onClose, onApplied, initialUseUp }: { startStr: string; days: Date[]; onClose: () => void; onApplied: () => void; initialUseUp?: string[] }) {
   const { persons } = usePersons()
   const familySize = Math.max(1, persons.length)
 
@@ -34,7 +34,7 @@ export function PlanWeek({ startStr, days, onClose, onApplied }: { startStr: str
     return s
   })
   const [cookingFor, setCookingFor] = useState(0) // 0 = whole family
-  const [useUp, setUseUp] = useState<string[]>([])
+  const [useUp, setUseUp] = useState<string[]>(initialUseUp ?? [])
   const [useUpInput, setUseUpInput] = useState('')
   const [keepInMind, setKeepInMind] = useState('')
 

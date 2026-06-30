@@ -9,6 +9,7 @@ import { moduleEnabled } from '../../platform/modules'
 import { AuthError } from '../../platform/auth'
 import type { Tenant } from '../households/households'
 import { lookupBarcode } from './off'
+import { cookableRecipes, recipesUsingItem } from './cook'
 import { ALLERGEN_KEYS } from '../../platform/allergens'
 
 type Api = ReturnType<typeof createAPI>
@@ -32,14 +33,16 @@ interface PantryRow {
   serving_basis: string | null
   nutrition: Record<string, number> | null
   allergens: string[] | null
+  traces: string[] | null
   dietary: string[] | null
   source: string | null
   low_at: string | null
+  is_meal: boolean
   created_at: string
 }
 
 const RETURNING = `id, name, amount, unit, location, expires_on::text as expires_on, note, used_up_at::text as used_up_at,
-  barcode, brand, image_url, quantity_text, serving_basis, nutrition, allergens, dietary, source, low_at, created_at::text as created_at`
+  barcode, brand, image_url, quantity_text, serving_basis, nutrition, allergens, traces, dietary, source, low_at, is_meal, created_at::text as created_at`
 
 function present(r: PantryRow) {
   return {
@@ -59,9 +62,11 @@ function present(r: PantryRow) {
     servingBasis: r.serving_basis,
     nutrition: r.nutrition,
     allergens: r.allergens,
+    traces: r.traces,
     dietary: r.dietary,
     source: r.source,
     lowAt: r.low_at != null ? Number(r.low_at) : null,
+    isMeal: r.is_meal,
     createdAt: r.created_at,
   }
 }
@@ -81,9 +86,34 @@ function offPatches(b: Record<string, unknown>, opts: { includeUnset?: boolean }
   strField('servingBasis', 'serving_basis')
   if ('nutrition' in b) out.push({ col: 'nutrition', val: b.nutrition && typeof b.nutrition === 'object' ? JSON.stringify(b.nutrition) : null })
   if ('allergens' in b) out.push({ col: 'allergens', val: Array.isArray(b.allergens) ? (b.allergens as unknown[]).map(String) : null })
+  if ('traces' in b) out.push({ col: 'traces', val: Array.isArray(b.traces) ? (b.traces as unknown[]).map(String) : null })
   if ('dietary' in b) out.push({ col: 'dietary', val: Array.isArray(b.dietary) ? (b.dietary as unknown[]).map(String) : null })
   strField('source', 'source')
   return out
+}
+
+// Build + run the INSERT for a new item from a (validated) request body. Shared by
+// POST /api/pantry and the scan upsert.
+async function insertItem(householdId: string, b: Record<string, unknown>): Promise<PantryRow> {
+  const cols = ['household_id', 'name', 'amount', 'unit', 'location', 'expires_on', 'note']
+  const vals: unknown[] = [
+    householdId,
+    String(b.name).trim(),
+    b.amount != null ? String(b.amount).trim() : null,
+    b.unit != null ? String(b.unit).trim() : null,
+    b.location != null && String(b.location).trim() ? String(b.location).trim() : 'Pantry',
+    b.expiresOn ? String(b.expiresOn) : null,
+    b.note != null ? String(b.note).trim() : null,
+  ]
+  if (b.lowAt != null && b.lowAt !== '' && Number.isFinite(Number(b.lowAt))) { cols.push('low_at'); vals.push(Number(b.lowAt)) }
+  if (typeof b.isMeal === 'boolean') { cols.push('is_meal'); vals.push(b.isMeal) }
+  for (const p of offPatches(b)) { cols.push(p.col); vals.push(p.val) }
+  const placeholders = vals.map((_, idx) => `$${idx + 1}${cols[idx] === 'nutrition' ? '::jsonb' : ''}`)
+  const { rows } = await query<PantryRow>(
+    `insert into pantry_items (${cols.join(', ')}) values (${placeholders.join(', ')}) returning ${RETURNING}`,
+    vals
+  )
+  return rows[0]
 }
 
 // Module gate: 403 unless the household has the pantry module enabled.
@@ -173,6 +203,26 @@ export function registerPantryRoutes(api: Api): void {
     return { found: true, product }
   }))
 
+  // "Cook from your pantry": recipes makeable now (nothing to buy beyond staples) +
+  // nearly-makeable (1–2 missing). Deterministic name matching.
+  api.get('/api/pantry/cookable', tenantRoute(async (tenant) => {
+    await requirePantry(tenant)
+    return cookableRecipes(tenant.householdId)
+  }))
+
+  // Recipes that use a given pantry item (the detail sheet's "Plan it in").
+  api.get('/api/pantry/:id/recipes', tenantRoute(async (tenant, req: Request, res: Response) => {
+    await requirePantry(tenant)
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'item not found' })
+    const { rows } = await query<{ name: string }>(
+      `select name from pantry_items where household_id = $1 and id = $2 and deleted_at is null`,
+      [tenant.householdId, id]
+    )
+    if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'item not found' })
+    return { recipes: await recipesUsingItem(tenant.householdId, rows[0].name) }
+  }))
+
   // Add an item (any member — collaborative, like lists).
   api.post('/api/pantry', tenantRoute(async (tenant, req: Request, res: Response) => {
     await requirePantry(tenant)
@@ -182,25 +232,38 @@ export function registerPantryRoutes(api: Api): void {
     if (b.expiresOn != null && b.expiresOn !== '' && !DATE_RE.test(String(b.expiresOn))) {
       return res.status(400).json({ error: 'BadRequest', message: 'expiresOn must be YYYY-MM-DD' })
     }
-    const cols = ['household_id', 'name', 'amount', 'unit', 'location', 'expires_on', 'note']
-    const vals: unknown[] = [
-      tenant.householdId,
-      name,
-      b.amount != null ? String(b.amount).trim() : null,
-      b.unit != null ? String(b.unit).trim() : null,
-      b.location != null && String(b.location).trim() ? String(b.location).trim() : 'Pantry',
-      b.expiresOn ? String(b.expiresOn) : null,
-      b.note != null ? String(b.note).trim() : null,
-    ]
-    if (b.lowAt != null && b.lowAt !== '' && Number.isFinite(Number(b.lowAt))) { cols.push('low_at'); vals.push(Number(b.lowAt)) }
-    // OFF snapshot (barcode/brand/nutrition/allergens/…) when added via a lookup.
-    for (const p of offPatches(b)) { cols.push(p.col); vals.push(p.val) }
-    const placeholders = vals.map((_, idx) => `$${idx + 1}${cols[idx] === 'nutrition' ? '::jsonb' : ''}`)
-    const { rows } = await query<PantryRow>(
-      `insert into pantry_items (${cols.join(', ')}) values (${placeholders.join(', ')}) returning ${RETURNING}`,
-      vals
-    )
-    return res.status(201).json({ item: present(rows[0]) })
+    const row = await insertItem(tenant.householdId, { ...b, name })
+    return res.status(201).json({ item: present(row) })
+  }))
+
+  // Scan upsert: add an item, but if a matching on-hand item already exists (same
+  // barcode, or same name when there's no barcode) bump its amount instead of
+  // creating a duplicate — so re-scanning the same product just counts up.
+  api.post('/api/pantry/scan', tenantRoute(async (tenant, req: Request, res: Response) => {
+    await requirePantry(tenant)
+    const b = (req.body ?? {}) as Record<string, unknown>
+    const name = typeof b.name === 'string' ? b.name.trim() : ''
+    if (!name) return res.status(400).json({ error: 'BadRequest', message: 'name is required' })
+    if (b.expiresOn != null && b.expiresOn !== '' && !DATE_RE.test(String(b.expiresOn))) {
+      return res.status(400).json({ error: 'BadRequest', message: 'expiresOn must be YYYY-MM-DD' })
+    }
+    const addAmt = Number.isFinite(Number(b.amount)) ? Number(b.amount) : 1
+    const barcode = typeof b.barcode === 'string' && b.barcode.trim() ? b.barcode.trim() : null
+    const match = barcode
+      ? await query<PantryRow>(`select ${RETURNING} from pantry_items where household_id=$1 and barcode=$2 and used_up_at is null and deleted_at is null order by created_at limit 1`, [tenant.householdId, barcode])
+      : await query<PantryRow>(`select ${RETURNING} from pantry_items where household_id=$1 and lower(name)=lower($2) and used_up_at is null and deleted_at is null order by created_at limit 1`, [tenant.householdId, name])
+    if (match.rows[0]) {
+      const ex = match.rows[0]
+      const cur = parseFloat(ex.amount ?? '')
+      const next = (Number.isFinite(cur) ? cur : 0) + addAmt
+      const upd = await query<PantryRow>(
+        `update pantry_items set amount=$1 where household_id=$2 and id=$3 returning ${RETURNING}`,
+        [String(next), tenant.householdId, ex.id]
+      )
+      return res.status(200).json({ item: present(upd.rows[0]), incremented: true })
+    }
+    const row = await insertItem(tenant.householdId, { ...b, name })
+    return res.status(201).json({ item: present(row), incremented: false })
   }))
 
   // Update an item.
@@ -223,6 +286,7 @@ export function registerPantryRoutes(api: Api): void {
     if ('expiresOn' in b) set('expires_on', b.expiresOn ? String(b.expiresOn) : null)
     if ('note' in b) set('note', b.note != null ? String(b.note).trim() : null)
     if ('lowAt' in b) set('low_at', b.lowAt != null && b.lowAt !== '' && Number.isFinite(Number(b.lowAt)) ? Number(b.lowAt) : null)
+    if (typeof b.isMeal === 'boolean') set('is_meal', b.isMeal)
     // OFF snapshot edits (relink a barcode, replace the photo, refresh nutrition).
     for (const p of offPatches(b)) {
       if (p.col === 'nutrition') { cols.push(`nutrition = $${i++}::jsonb`); vals.push(p.val) }

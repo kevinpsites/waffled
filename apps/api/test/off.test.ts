@@ -11,6 +11,7 @@ const NUTELLA = {
   image_front_url: 'https://img/front.jpg',
   image_url: 'https://img/other.jpg',
   allergens_tags: ['en:milk', 'en:nuts', 'en:soybeans', 'en:gluten'],
+  traces_tags: ['en:peanuts', 'en:milk'],
   ingredients_analysis_tags: ['en:palm-oil', 'en:non-vegan', 'en:vegetarian'],
   nutriscore_grade: 'e',
   nova_group: 4,
@@ -40,6 +41,12 @@ describe('normalizeOffProduct', () => {
   it('normalizes allergen tags to the canonical set', () => {
     const v = normalizeOffProduct('x', NUTELLA)
     expect(v.allergens.sort()).toEqual(['gluten', 'milk', 'soy', 'tree_nut'])
+  })
+
+  it('maps traces ("may contain") and excludes any that are already definite allergens', () => {
+    const v = normalizeOffProduct('x', NUTELLA)
+    // traces_tags peanuts + milk; milk is already definite → only peanut remains
+    expect(v.traces).toEqual(['peanut'])
   })
 
   it('extracts only positive dietary flags', () => {

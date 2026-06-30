@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router'
 import {
-  usePantry, pantryApi, daysUntil, groceryApi, flaggedAllergens, ALLERGEN_LABELS,
-  type PantryItem, type PantryItemInput, type OffProduct,
+  usePantry, pantryApi, daysUntil, groceryApi, flaggedAllergens, uploadImage, ALLERGEN_LABELS, DIETARY_LABELS,
+  type PantryItem, type PantryItemInput, type OffProduct, type ItemRecipe,
 } from '../lib/api'
 import { ScanModal } from './components/ScanModal'
+import { CookFromPantry } from './components/CookFromPantry'
+import { AllergenBadges, AllergenBadge, AllergenKey } from './components/Allergens'
 import '../styles/pantry.css'
 
 // A small expiry badge: red if past, amber within 3 days, muted date otherwise.
@@ -49,6 +51,7 @@ export function Pantry() {
   const { items, locations, avoidAllergens, allergenPeople, lowThreshold, locationIcons, loading, error, refetch } = usePantry()
   // The effective warning set: household avoid-list ∪ allergens any member has.
   const effectiveAvoid = useMemo(() => Array.from(new Set([...avoidAllergens, ...Object.keys(allergenPeople)])), [avoidAllergens, allergenPeople])
+  const avoidSet = useMemo(() => new Set(effectiveAvoid), [effectiveAvoid])
   const [view, setView] = useState<string>('all') // 'all' | 'use_soon' | 'running_low' | <location>
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<SortKey>('expiring')
@@ -174,6 +177,11 @@ export function Pantry() {
               <span className="pl-navitem-ic">📦</span><span className="pl-navitem-l">Other</span><span className="pl-navitem-n">{counts.byLoc.Other}</span>
             </button>
           )}
+          <CookFromPantry
+            eatUp={live.filter((i) => i.isMeal || isSoon(i)).map((i) => ({ name: i.name, expiresOn: i.expiresOn, isMeal: i.isMeal }))}
+            useSoon={live.filter(isSoon).map((i) => i.name)}
+          />
+          <AllergenKey avoid={avoidSet} />
         </aside>
 
         <main className="pl-main">
@@ -191,21 +199,20 @@ export function Pantry() {
           ) : (
             <div className="pl-grid">
               {shown.map((it) => {
-                const flagged = flaggedAllergens(it, avoidAllergens, allergenPeople)
                 const exp = expiryText(it.expiresOn)
-                // In cross-location views (All / Use soon / Running low) show where it lives.
-                const crossLoc = view === 'all' || view === 'use_soon' || view === 'running_low'
                 const loc = locations.includes(it.location) ? it.location : 'Other'
+                const itemAllergens = it.allergens ?? []
                 return (
-                  <div key={it.id} className={`pl-item${busy === it.id ? ' busy' : ''}${flagged.length ? ' flagged' : ''}`}>
+                  <div key={it.id} className={`pl-item${busy === it.id ? ' busy' : ''}`}>
                     <button type="button" className="pl-item-face" onClick={() => setDetail(it)}>
                       <span className="pl-emoji">{it.imageUrl ? <img src={it.imageUrl} alt="" /> : foodEmoji(it.name)}</span>
                       <span className="pl-item-text">
                         <span className="pl-name">{it.name}</span>
+                        {/* Second line: Location · allergies · use-by */}
                         <span className="pl-sub">
-                          {flagged.length > 0 && <span className="pl-warn">⚠ {flagged.map((a) => ALLERGEN_LABELS[a] ?? a).join(', ')}</span>}
-                          {crossLoc && <span className="pl-loc">{loc}</span>}
-                          <span className={`pl-exp pl-exp-${exp.tone}`}>{exp.text}</span>
+                          <span className="pl-loc">{loc}</span>
+                          {itemAllergens.length > 0 && <AllergenBadges allergens={itemAllergens} avoid={avoidSet} />}
+                          {it.expiresOn && <span className={`pl-exp pl-exp-${exp.tone}`}>{exp.text}</span>}
                         </span>
                       </span>
                     </button>
@@ -252,22 +259,11 @@ export function Pantry() {
             </div>
           )}
 
-          {effectiveAvoid.length > 0 && (
-            <div className="pl-legend">
-              <span className="pl-legend-l">Avoiding:</span>
-              {effectiveAvoid.map((a) => (
-                <span key={a} className="pl-legend-chip" title={allergenPeople[a]?.length ? `Affects ${allergenPeople[a].join(', ')}` : undefined}>
-                  {ALLERGEN_LABELS[a] ?? a}
-                </span>
-              ))}
-              <Link to="/settings" className="pl-legend-edit">Edit in Settings</Link>
-            </div>
-          )}
         </main>
       </div>
 
       {scanning && (
-        <ScanModal locations={locations} onClose={() => setScanning(false)} onAdded={refetch} />
+        <ScanModal locations={locations} avoidAllergens={avoidAllergens} allergenPeople={allergenPeople} onClose={() => setScanning(false)} onAdded={refetch} />
       )}
 
       {detail && (
@@ -304,14 +300,33 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
   onEdit: () => void
   onChanged: () => void
 }) {
+  const navigate = useNavigate()
   const [amt, setAmt] = useState(item.amount)
   const [busy, setBusy] = useState(false)
+  const [img, setImg] = useState(item.imageUrl)
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const [recipes, setRecipes] = useState<ItemRecipe[]>([])
+  const fileRef = useRef<HTMLInputElement>(null)
+  useEffect(() => { pantryApi.itemRecipes(item.id).then((d) => setRecipes(d.recipes)).catch(() => {}) }, [item.id])
   const flaggedList = flaggedAllergens(item, avoidAllergens, allergenPeople)
   const flagged = new Set(flaggedList)
   // Who the flagged allergens affect (for the "affects …" note).
   const affects = Array.from(new Set(flaggedList.flatMap((a) => allergenPeople[a] ?? [])))
+  // "May contain" (traces) the household avoids → flag those too.
+  const traceFlag = new Set((item.traces ?? []).filter((a) => avoidAllergens.includes(a) || allergenPeople[a]))
   const n = item.nutrition
   const isOff = item.source === 'openfoodfacts'
+
+  async function replacePhoto(file: File | undefined) {
+    if (!file) return
+    setPhotoBusy(true)
+    try {
+      const up = await uploadImage(file)
+      setImg(up.url)
+      await pantryApi.update(item.id, { imageUrl: up.url })
+      onChanged()
+    } catch { /* ignore — keep old image */ } finally { setPhotoBusy(false) }
+  }
 
   async function bump(delta: number) {
     const cur = parseFloat(amt)
@@ -333,12 +348,17 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card pl-detail" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="pl-detail-hero">
+      <div className="modal-card pl-detail2" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="modal-close pl-d2-close" aria-label="Close" onClick={onClose}>×</button>
+        <div className="pl-d2-img">
           {isOff && <span className="pl-off-tag">● Open Food Facts</span>}
-          {item.imageUrl ? <img className="pl-detail-img" src={item.imageUrl} alt="" /> : <span className="pl-detail-emoji">{foodEmoji(item.name)}</span>}
+          {img ? <img src={img} alt="" /> : <span className="pl-d2-emoji">{foodEmoji(item.name)}</span>}
+          <button type="button" className="pl-d2-replace" disabled={photoBusy} onClick={() => fileRef.current?.click()}>
+            {photoBusy ? 'Uploading…' : '📷 Replace photo'}
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => replacePhoto(e.target.files?.[0])} />
         </div>
+        <div className="pl-d2-main">
         <div className="pl-detail-title">{item.name}</div>
         {(item.brand || item.quantityText) && <div className="pl-detail-sub">{[item.brand, item.quantityText].filter(Boolean).join(' · ')}</div>}
 
@@ -359,11 +379,26 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
           <div className="pl-detail-contains">
             <span className="pl-contains-l">Contains</span>
             {item.allergens.map((a) => (
-              <span key={a} className={`pl-contains-chip${flagged.has(a) ? ' avoid' : ''}`}>{ALLERGEN_LABELS[a] ?? a}</span>
+              <span key={a} className="pl-contains-item"><AllergenBadge allergen={a} avoid={flagged.has(a)} /> {ALLERGEN_LABELS[a] ?? a}</span>
             ))}
           </div>
         )}
         {affects.length > 0 && <div className="pl-affects">⚠ Affects {affects.join(', ')}</div>}
+
+        {item.traces && item.traces.length > 0 && (
+          <div className="pl-detail-contains">
+            <span className="pl-contains-l">May contain</span>
+            {item.traces.map((a) => (
+              <span key={a} className="pl-contains-item"><AllergenBadge allergen={a} trace avoid={traceFlag.has(a)} /> {ALLERGEN_LABELS[a] ?? a}</span>
+            ))}
+          </div>
+        )}
+
+        {item.dietary && item.dietary.length > 0 && (
+          <div className="pl-diet">
+            {item.dietary.map((d) => <span key={d} className="pl-diet-chip">{DIETARY_LABELS[d] ?? d}</span>)}
+          </div>
+        )}
 
         {nutriRows.length > 0 && (
           <div className="pl-nutri">
@@ -376,8 +411,22 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
 
         {isOff && <div className="pl-off-foot">● Nutrition &amp; allergens from Open Food Facts</div>}
 
+        {recipes.length > 0 && (
+          <div className="pl-planin">
+            <div className="pl-planin-h">Plan it in</div>
+            {recipes.slice(0, 4).map((r) => (
+              <button type="button" key={r.recipeId} className="pl-cookm-row" onClick={() => navigate(`/meals/recipe/${r.recipeId}`)}>
+                <span className="pl-cookm-emoji">{r.emoji ?? '🍽️'}</span>
+                <span className="pl-cookm-name">{r.title}</span>
+                <span className="pl-cookm-go">›</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="pl-detail-acts">
           <button type="button" className="pill" onClick={onEdit}>Edit</button>
+        </div>
         </div>
       </div>
     </div>
@@ -397,6 +446,7 @@ function ItemModal({ item, locations, onClose, onSaved }: {
   const [expiresOn, setExpiresOn] = useState(item?.expiresOn ?? '')
   const [note, setNote] = useState(item?.note ?? '')
   const [lowAt, setLowAt] = useState(item?.lowAt != null ? String(item.lowAt) : '')
+  const [isMeal, setIsMeal] = useState(item?.isMeal ?? false)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   // Barcode → Open Food Facts prefill (adding only). `off` holds the looked-up
@@ -427,10 +477,11 @@ function ItemModal({ item, locations, onClose, onSaved }: {
       name: name.trim(), amount: amount.trim(), unit: unit.trim(), location,
       expiresOn: expiresOn || null, note: note.trim(),
       lowAt: lowAt.trim() === '' ? null : Number(lowAt),
+      isMeal,
       // Carry the OFF snapshot when the item was matched by barcode.
       ...(off ? {
         barcode: off.barcode, brand: off.brand, imageUrl: off.imageUrl, quantityText: off.quantityText,
-        servingBasis: off.servingBasis, nutrition: off.nutrition, allergens: off.allergens, dietary: off.dietary, source: off.source,
+        servingBasis: off.servingBasis, nutrition: off.nutrition, allergens: off.allergens, traces: off.traces, dietary: off.dietary, source: off.source,
       } : {}),
     }
     try {
@@ -492,6 +543,10 @@ function ItemModal({ item, locations, onClose, onSaved }: {
             <input type="number" min="0" step="any" value={lowAt} onChange={(e) => setLowAt(e.target.value)} placeholder="default" />
           </label>
         </div>
+        <label className="pantry-meal-toggle">
+          <input type="checkbox" checked={isMeal} onChange={(e) => setIsMeal(e.target.checked)} />
+          <span>It's a meal — ready to eat (leftovers, pre-made, or a protein to use up). Shows in “Cook from your pantry”.</span>
+        </label>
         {err && <div className="pantry-err">{err}</div>}
         <div className="pantry-modal-actions">
           {item && <button type="button" className="pill pantry-del" disabled={saving} onClick={remove}>Delete</button>}

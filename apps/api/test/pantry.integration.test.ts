@@ -236,6 +236,24 @@ describe('pantry Open Food Facts integration', () => {
     expect(patched.lowAt).toBeNull()
   })
 
+  it('scan upserts: re-scanning a barcode increments the existing item', async () => {
+    const first = await call('POST', '/api/pantry/scan', kevin, { name: 'Sparkling water', location: 'Pantry', amount: '1', barcode: '55550001' })
+    expect(first.statusCode).toBe(201)
+    expect(JSON.parse(first.body)).toMatchObject({ incremented: false })
+    expect(JSON.parse(first.body).item.amount).toBe('1')
+
+    const second = await call('POST', '/api/pantry/scan', kevin, { name: 'Sparkling water', location: 'Pantry', amount: '2', barcode: '55550001' })
+    expect(second.statusCode).toBe(200)
+    expect(JSON.parse(second.body)).toMatchObject({ incremented: true })
+    expect(JSON.parse(second.body).item.amount).toBe('3')
+
+    // No-barcode items match by name.
+    await call('POST', '/api/pantry/scan', kevin, { name: 'Bananas', location: 'Pantry', amount: '4' })
+    const dup = await call('POST', '/api/pantry/scan', kevin, { name: 'bananas', location: 'Pantry', amount: '1' })
+    expect(JSON.parse(dup.body)).toMatchObject({ incremented: true })
+    expect(JSON.parse(dup.body).item.amount).toBe('5')
+  })
+
   it("rolls a member's allergens into allergenPeople (known keys only)", async () => {
     const me = JSON.parse((await call('GET', '/api/persons', kevin)).body).persons[0]
     const upd = await call('PATCH', `/api/persons/${me.id}`, kevin, { allergens: ['gluten', 'bogus'] })
@@ -243,5 +261,34 @@ describe('pantry Open Food Facts integration', () => {
     expect(JSON.parse(upd.body).person.allergens).toEqual(['gluten']) // bogus dropped
     const body = JSON.parse((await call('GET', '/api/pantry', kevin)).body)
     expect(body.allergenPeople.gluten).toContain(me.name)
+  })
+
+  let beefId = ''
+  it('cook-from-pantry: finds recipes makeable from on-hand items (staple-aware)', async () => {
+    const rec = await call('POST', '/api/recipes', kevin, { title: 'Taco Night', ingredients: [{ name: 'Ground beef' }, { name: 'Tortillas' }, { name: 'Salt' }] })
+    expect(rec.statusCode).toBe(201)
+    beefId = JSON.parse((await call('POST', '/api/pantry', kevin, { name: 'Ground Beef', location: 'Freezer' })).body).item.id
+    await call('POST', '/api/pantry', kevin, { name: 'Tortillas', location: 'Pantry' })
+    // Salt isn't on hand, but it's a default staple → recipe is still "makeable".
+    const ck = await call('GET', '/api/pantry/cookable', kevin)
+    expect(ck.statusCode).toBe(200)
+    expect(JSON.parse(ck.body).ready.map((r: { title: string }) => r.title)).toContain('Taco Night')
+  })
+
+  it('cook-from-pantry: surfaces recipes where you have most of it ("have the main")', async () => {
+    await call('POST', '/api/recipes', kevin, { title: 'Veggie Bowl', ingredients: [{ name: 'Broccoli' }, { name: 'Carrots' }, { name: 'Bell peppers' }] })
+    await call('POST', '/api/pantry', kevin, { name: 'Broccoli', location: 'Fridge' })
+    await call('POST', '/api/pantry', kevin, { name: 'Carrots', location: 'Fridge' })
+    // 2 of 3 on hand (no protein tagged) → "have the main" via coverage, missing peppers.
+    const ck = JSON.parse((await call('GET', '/api/pantry/cookable', kevin)).body)
+    const hm = ck.haveMain.find((r: { title: string }) => r.title === 'Veggie Bowl')
+    expect(hm).toBeTruthy()
+    expect(hm.missing).toEqual(['Bell peppers'])
+  })
+
+  it('cook-from-pantry: lists recipes that use a given item', async () => {
+    const r = await call('GET', `/api/pantry/${beefId}/recipes`, kevin)
+    expect(r.statusCode).toBe(200)
+    expect(JSON.parse(r.body).recipes.map((x: { title: string }) => x.title)).toContain('Taco Night')
   })
 })

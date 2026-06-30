@@ -40,6 +40,7 @@ export interface ProductView {
   servingBasis: string | null
   nutrition: Record<string, number>
   allergens: string[]
+  traces: string[]
   dietary: string[]
   nutriscore: string | null
   nova: number | null
@@ -56,6 +57,7 @@ interface ProductRow {
   serving_basis: string | null
   nutrition: Record<string, number>
   allergens: string[]
+  traces: string[]
   dietary: string[]
   nutriscore: string | null
   nova: number | null
@@ -93,9 +95,11 @@ export function normalizeOffProduct(barcode: string, p: Record<string, unknown>)
   // OFF reports sodium in grams; the UI shows mg.
   const sodium = pick('sodium'); if (sodium != null) nutrition.sodium_mg = Math.round(sodium * 1000)
 
-  const allergens = Array.from(
-    new Set((Array.isArray(p.allergens_tags) ? p.allergens_tags : []).map((t) => ALLERGEN_MAP[untag(String(t))] ?? untag(String(t))))
-  )
+  const mapTags = (tags: unknown) =>
+    Array.from(new Set((Array.isArray(tags) ? tags : []).map((t) => ALLERGEN_MAP[untag(String(t))] ?? untag(String(t)))))
+  const allergens = mapTags(p.allergens_tags)
+  // Traces ("may contain") minus anything already a definite allergen.
+  const traces = mapTags(p.traces_tags).filter((t) => !allergens.includes(t))
 
   const analysis = (Array.isArray(p.ingredients_analysis_tags) ? p.ingredients_analysis_tags : []).map((t) => untag(String(t)))
   const dietary: string[] = []
@@ -112,6 +116,7 @@ export function normalizeOffProduct(barcode: string, p: Record<string, unknown>)
     servingBasis: serving ? `per ${serving}` : 'per 100 g',
     nutrition,
     allergens,
+    traces,
     dietary,
     nutriscore: typeof p.nutriscore_grade === 'string' ? p.nutriscore_grade : null,
     nova: num(p.nova_group),
@@ -130,6 +135,7 @@ function presentRow(r: ProductRow): ProductView {
     servingBasis: r.serving_basis,
     nutrition: r.nutrition ?? {},
     allergens: r.allergens ?? [],
+    traces: r.traces ?? [],
     dietary: r.dietary ?? [],
     nutriscore: r.nutriscore,
     nova: r.nova,
@@ -146,7 +152,7 @@ export async function fetchFromOff(barcode: string): Promise<Record<string, unkn
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), OFF_TIMEOUT_MS)
   try {
-    const fields = 'product_name,brands,quantity,serving_size,image_url,image_front_url,allergens_tags,ingredients_analysis_tags,nutriscore_grade,nova_group,nutriments'
+    const fields = 'product_name,brands,quantity,serving_size,image_url,image_front_url,allergens_tags,traces_tags,ingredients_analysis_tags,nutriscore_grade,nova_group,nutriments'
     const res = await fetch(`${OFF_BASE}/api/v3/product/${barcode}?fields=${fields}`, {
       headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
       signal: ctrl.signal,
@@ -175,13 +181,13 @@ async function fetchAndStore(barcode: string): Promise<ProductView | null> {
   const v = normalizeOffProduct(barcode, raw)
   await query(
     `insert into products
-       (barcode, name, brand, image_url, quantity_text, serving_basis, nutrition, allergens, dietary, nutriscore, nova, raw, status, source, fetched_at)
-     values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12::jsonb,'found',$13, now())
+       (barcode, name, brand, image_url, quantity_text, serving_basis, nutrition, allergens, traces, dietary, nutriscore, nova, raw, status, source, fetched_at)
+     values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13::jsonb,'found',$14, now())
      on conflict (barcode) do update set
        name=excluded.name, brand=excluded.brand, image_url=excluded.image_url, quantity_text=excluded.quantity_text,
-       serving_basis=excluded.serving_basis, nutrition=excluded.nutrition, allergens=excluded.allergens, dietary=excluded.dietary,
+       serving_basis=excluded.serving_basis, nutrition=excluded.nutrition, allergens=excluded.allergens, traces=excluded.traces, dietary=excluded.dietary,
        nutriscore=excluded.nutriscore, nova=excluded.nova, raw=excluded.raw, status='found', source=excluded.source, fetched_at=now()`,
-    [barcode, v.name, v.brand, v.imageUrl, v.quantityText, v.servingBasis, JSON.stringify(v.nutrition), v.allergens, v.dietary, v.nutriscore, v.nova, JSON.stringify(raw), v.source]
+    [barcode, v.name, v.brand, v.imageUrl, v.quantityText, v.servingBasis, JSON.stringify(v.nutrition), v.allergens, v.traces, v.dietary, v.nutriscore, v.nova, JSON.stringify(raw), v.source]
   )
   return v
 }

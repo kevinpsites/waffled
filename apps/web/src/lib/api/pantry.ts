@@ -21,6 +21,7 @@ export interface OffFields {
   servingBasis: string | null
   nutrition: PantryNutrition | null
   allergens: string[] | null
+  traces: string[] | null
   dietary: string[] | null
   source: string | null
 }
@@ -35,6 +36,7 @@ export interface PantryItem extends OffFields {
   note: string
   usedUp: boolean
   lowAt: number | null
+  isMeal: boolean
   createdAt: string
 }
 
@@ -48,6 +50,7 @@ export interface OffProduct {
   servingBasis: string | null
   nutrition: PantryNutrition
   allergens: string[]
+  traces: string[]
   dietary: string[]
   nutriscore: string | null
   nova: number | null
@@ -64,6 +67,7 @@ export type PantryItemInput = {
   note?: string
   usedUp?: boolean
   lowAt?: number | null
+  isMeal?: boolean
   // OFF snapshot — set when adding/editing via a barcode lookup.
   barcode?: string | null
   brand?: string | null
@@ -72,20 +76,44 @@ export type PantryItemInput = {
   servingBasis?: string | null
   nutrition?: PantryNutrition | null
   allergens?: string[] | null
+  traces?: string[] | null
   dietary?: string[] | null
   source?: string | null
 }
 
 // Canonical allergen keys (match the backend + OFF normalizer) with display labels.
+// Display labels for the canonical allergen keys. `milk` is OFF's tag for all dairy,
+// so we surface it as "Dairy".
 export const ALLERGEN_LABELS: Record<string, string> = {
-  gluten: 'Gluten', milk: 'Milk', soy: 'Soy', egg: 'Egg', peanut: 'Peanut',
+  gluten: 'Gluten', milk: 'Dairy', soy: 'Soy', egg: 'Egg', peanut: 'Peanut',
   tree_nut: 'Tree nut', fish: 'Fish', shellfish: 'Shellfish', sesame: 'Sesame',
 }
 export const ALLERGEN_KEYS = Object.keys(ALLERGEN_LABELS)
 
+// A recipe matched against what's on hand (from /api/pantry/cookable).
+export interface CookableRecipe {
+  recipeId: string
+  title: string
+  emoji: string | null
+  total: number
+  onHand: number
+  missing: string[]
+  usesExpiring: boolean
+  mainItem: string | null
+}
+export interface ItemRecipe { recipeId: string; title: string; emoji: string | null }
+
+// Dietary flags captured from Open Food Facts (ingredients analysis).
+export const DIETARY_LABELS: Record<string, string> = {
+  vegan: 'Vegan', vegetarian: 'Vegetarian', palm_oil_free: 'Palm-oil-free',
+}
+
 export const pantryApi = {
   list: () => apiGet<{ items: PantryItem[]; locations: string[]; showOnToday: boolean; avoidAllergens: string[]; allergenPeople: Record<string, string[]>; lowThreshold: number; locationIcons: Record<string, string> }>('/api/pantry'),
   create: (input: PantryItemInput) => apiSend<{ item: PantryItem }>('POST', '/api/pantry', input).then((r) => r.item),
+  // Scan upsert: increments a matching on-hand item (by barcode, else name) instead
+  // of duplicating. Returns whether it incremented an existing item.
+  scan: (input: PantryItemInput) => apiSend<{ item: PantryItem; incremented: boolean }>('POST', '/api/pantry/scan', input),
   update: (id: string, patch: PantryItemInput) => apiSend<{ item: PantryItem }>('PATCH', `/api/pantry/${id}`, patch).then((r) => r.item),
   remove: (id: string) => apiDelete(`/api/pantry/${id}`),
   // Barcode → Open Food Facts product (cached server-side). Returns null if not found.
@@ -93,6 +121,10 @@ export const pantryApi = {
     apiGet<{ found: boolean; product?: OffProduct }>(`/api/pantry/lookup/${encodeURIComponent(barcode)}`)
       .then((r) => (r.found ? r.product! : null))
       .catch(() => null),
+  // "Cook from your pantry": recipes makeable now + nearly (1–2 short).
+  cookable: () => apiGet<{ ready: CookableRecipe[]; haveMain: CookableRecipe[] }>('/api/pantry/cookable'),
+  // Recipes that use a given pantry item (detail "Plan it in").
+  itemRecipes: (id: string) => apiGet<{ recipes: ItemRecipe[] }>(`/api/pantry/${id}/recipes`),
   // Module config: locations, Today-card toggle, avoid-allergens, the running-low
   // threshold, and/or per-location icons.
   setConfig: (patch: { locations?: string[]; showOnToday?: boolean; avoidAllergens?: string[]; lowThreshold?: number; locationIcons?: Record<string, string> }) =>
