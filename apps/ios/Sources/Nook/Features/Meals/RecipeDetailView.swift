@@ -19,6 +19,7 @@ struct RecipeDetailView: View {
     @State private var editing = false
     @State private var cookMode = false
     @State private var stepNoteEdit: StepNoteEdit?
+    @State private var subEdit: SubEdit?
 
     private let api = NookAPI()
 
@@ -77,6 +78,11 @@ struct RecipeDetailView: View {
         .sheet(item: $stepNoteEdit) { edit in
             StepNoteSheet(stepNumber: edit.step, note: noteFor(edit.step)) { text in
                 saveStepNote(step: edit.step, note: text)
+            }
+        }
+        .sheet(item: $subEdit) { edit in
+            IngredientSubSheet(ingredientName: edit.name, sub: edit.current) { text in
+                saveSub(name: edit.name, value: text)
             }
         }
     }
@@ -217,17 +223,27 @@ struct RecipeDetailView: View {
     }
 
     private func ingredientRow(_ ing: NookAPI.RecipeIngredientDTO) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        let sub = subFor(ing)
+        return HStack(alignment: .top, spacing: 12) {
             Text(amountText(ing)).font(.system(size: 14, weight: .semibold, design: .rounded))
                 .foregroundStyle(NK.ink2).frame(width: 62, alignment: .trailing)
             VStack(alignment: .leading, spacing: 2) {
-                Text(ing.sub ?? nameText(ing)).font(.system(size: 15)).foregroundStyle(NK.ink)
+                Text(sub ?? nameText(ing)).font(.system(size: 15)).foregroundStyle(NK.ink)
                     .fixedSize(horizontal: false, vertical: true)
-                if let sub = ing.sub {
+                if sub != nil {
                     Text("↺ instead of \(ing.name)").font(.system(size: 12)).foregroundStyle(NK.ink3)
                 }
             }
             Spacer(minLength: 0)
+            Button { subEdit = SubEdit(name: ing.name, current: sub) } label: {
+                Image(systemName: "arrow.left.arrow.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(sub != nil ? NK.ai : NK.ink3)
+                    .frame(width: 30, height: 30)
+                    .background(sub != nil ? NK.ai.opacity(0.12) : NK.panel)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -368,6 +384,15 @@ struct RecipeDetailView: View {
         return steps.first { $0.stepNumber == step }?.note
     }
 
+    /// The current substitution for an ingredient, read from the authoritative
+    /// overrides blob (keyed by the same lowercased name the server uses) so it
+    /// reflects an edit immediately — and a *cleared* sub correctly shows nothing.
+    private func subFor(_ ing: NookAPI.RecipeIngredientDTO) -> String? {
+        let key = ing.name.trimmingCharacters(in: .whitespaces).lowercased()
+        if let s = recipe.overrides?.subs?[key], !s.isEmpty { return s }
+        return nil
+    }
+
     private func loadDetail() async {
         loading = true
         do {
@@ -414,6 +439,16 @@ struct RecipeDetailView: View {
         patchOverrides(ov)
     }
 
+    private func saveSub(name: String, value: String) {
+        var ov = recipe.overrides ?? .init()
+        var subs = ov.subs ?? [:]
+        let key = name.trimmingCharacters(in: .whitespaces).lowercased()
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { subs[key] = nil } else { subs[key] = trimmed }
+        ov.subs = subs.isEmpty ? nil : subs
+        patchOverrides(ov)
+    }
+
     private func patchOverrides(_ ov: NookAPI.RecipeOverrides) {
         Task {
             if let updated = try? await api.updateRecipe(id: recipe.id, overrides: ov) { apply(updated) }
@@ -427,6 +462,7 @@ struct RecipeDetailView: View {
     }
 
     private struct StepNoteEdit: Identifiable { let step: Int; var id: Int { step } }
+    private struct SubEdit: Identifiable { let name: String; let current: String?; var id: String { name } }
 }
 
 /// Whole-number + common-fraction amount formatting (½ ¼ ¾ ⅓ ⅔), shared by the
@@ -527,6 +563,59 @@ struct StepNoteSheet: View {
             }
         }
         .presentationDetents([.height(280), .medium])
+    }
+}
+
+/// A small editor for one ingredient's substitution ("use X instead"). Writes the
+/// recipe's `overrides.subs` blob — the same field the web kiosk edits, so it flows
+/// straight into the substitution-aware grocery build. Empty = use the original.
+struct IngredientSubSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let ingredientName: String
+    @State private var text: String
+    @FocusState private var focused: Bool
+    let onSave: (String) -> Void
+
+    init(ingredientName: String, sub: String?, onSave: @escaping (String) -> Void) {
+        self.ingredientName = ingredientName
+        self.onSave = onSave
+        _text = State(initialValue: sub ?? "")
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionLabel(text: "Substitute for \(ingredientName)")
+                TextField("e.g. olive oil", text: $text)
+                    .font(.system(size: 16)).foregroundStyle(NK.ink)
+                    .focused($focused)
+                    .textInputAutocapitalization(.never)
+                    .padding(14).background(NK.card2)
+                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                    .onSubmit { onSave(text); dismiss() }
+                Text("Swaps this ingredient in the recipe and on the grocery list. Leave empty to use the original.")
+                    .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                if !text.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Button { onSave(""); dismiss() } label: {
+                        Text("↺ Use the original (\(ingredientName))")
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ai)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+            }
+            .onAppear { focused = true }
+            .padding(20).background(NK.canvas)
+            .navigationTitle("Substitution").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { onSave(text); dismiss() }.fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.height(300), .medium])
     }
 }
 

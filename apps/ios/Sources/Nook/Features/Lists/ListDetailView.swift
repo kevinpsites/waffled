@@ -977,8 +977,12 @@ struct ItemDetailEditor: View {
 
                     VStack(alignment: .leading, spacing: 9) {
                         SectionLabel(text: "Section")
-                        if !suggestions.isEmpty { sectionChips }
+                        sectionChips
                         inputCard { TextField("e.g. Produce", text: $section) }
+                        Text(sectionIsAuto
+                             ? "Auto — filed by item name."
+                             : "Filed under “\(section.trimmingCharacters(in: .whitespaces))”.")
+                            .font(.system(size: 12)).foregroundStyle(NK.ink3)
                     }
                 }
                 .padding(20)
@@ -1051,9 +1055,23 @@ struct ItemDetailEditor: View {
         .buttonStyle(.plain)
     }
 
+    private var sectionIsAuto: Bool { section.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    /// "Auto" (clear the override → let the server classify by name) followed by each
+    /// known section. Mirrors the web grocery editor's "Auto (by name)" option.
     private var sectionChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                Button { section = "" } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "wand.and.stars").font(.system(size: 10, weight: .heavy))
+                        Text("Auto").font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundStyle(sectionIsAuto ? NK.ink : NK.ink2)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .nkChip(selected: sectionIsAuto)
+                }
+                .buttonStyle(.plain)
                 ForEach(suggestions, id: \.self) { s in
                     let selected = section.caseInsensitiveCompare(s) == .orderedSame
                     Button { section = s } label: {

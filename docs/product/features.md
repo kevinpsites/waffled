@@ -157,7 +157,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Pantry staples** (kept off the list; Pantry check) | ✅ | ✅ | ✅ | ✅ Done |
 | Check off / add / delete (persists) | ✅ | ✅ | ✅ | ✅ Done |
 | **Item attribution** — "added by {name}" / "🍽 from meal plan" | ✅ | ✅ | ✅ | ✅ Done |
-| **Re-aisle** a grocery item (move it to another aisle section from its editor) | ✅ | 🚧 | 🚧 | ✅ Done (web); mobile uses the auto-classifier only |
+| **Re-aisle** a grocery item (move it to another aisle section from its editor) | ✅ | ✅ | ✅ | ✅ Done — mobile: section chips + an **Auto** chip (clear the override → classify by name) in the item Details editor |
 | **Cross-surface live refresh** (Today ↔ Lists ↔ Rewards) | ✅ | ✅ | ✅ | ✅ Done (in-app refresh bus) |
 
 ## Meals & recipes
@@ -172,7 +172,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Recipes library** (search-all, multi-select filters, sort) | ✅ | ✅ | ✅ | ✅ Done |
 | Create / **edit** recipes in-app (all metadata + ingredients + steps) | ✅ | ✅ | ✅ | ✅ Done (full editor — shared iPhone/iPad; **per-step ingredient amounts**; **ingredient sections** with dividers + cross-section drag-drop; delete is web-only) |
 | **Paste-markdown** recipe import (template/example) | ✅ | ✅ | ✅ | ✅ Done (paste → parse → fills the editor for review, then save) |
-| Per-recipe **overrides** (substitutions, notes) | ✅ | 🟡 | 🟡 | ✅ Done (notes; full overrides on web) |
+| Per-recipe **overrides** (substitutions, notes) | ✅ | ✅ | ✅ | ✅ Done — mobile now edits **ingredient substitutions** (⇄ per row → `overrides.subs`, feeds the substitution-aware grocery build) alongside per-step + recipe notes |
 | **Cook mode** (step-by-step, wake-lock, finish → mark cooked) | ✅ | ✅ | ✅ | ✅ Done (mobile: left-aligned full-width large type) |
 | Cook-mode **recipe overview** (jump to any step + ingredients) | ✅ | ✅ | ✅ | ✅ Done (mobile; large sheet) |
 | **Per-step timers** — set in the editor; floating dock in cook mode | ✅ | ✅ | ✅ | ✅ Done (mobile: bottom-right dock, live tick, tap → jump to step, looping alarm + local-notif fallback) |
