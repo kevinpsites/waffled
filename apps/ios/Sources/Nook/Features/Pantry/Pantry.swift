@@ -6,20 +6,7 @@ import SwiftUI
 /// a barcode scan — a denormalized Open Food Facts snapshot (brand, photo, nutrition,
 /// allergens). REST-only over `NookAPI`; not in the PowerSync mirror.
 
-// MARK: - Allergens
-
-/// The canonical 9 allergen keys + labels, mirroring `ALLERGEN_LABELS` in
-/// apps/web/src/lib/api/pantry.ts (and the OFF normalizer on the server).
-enum PantryAllergen {
-    static let labels: [String: String] = [
-        "gluten": "Gluten", "milk": "Milk", "soy": "Soy", "egg": "Egg",
-        "peanut": "Peanut", "tree_nut": "Tree nut", "fish": "Fish",
-        "shellfish": "Shellfish", "sesame": "Sesame",
-    ]
-    static func label(_ key: String) -> String { labels[key] ?? key.capitalized }
-    /// A one-letter chip glyph (the web uses G/M/S etc).
-    static func glyph(_ key: String) -> String { String(label(key).prefix(1)) }
-}
+// (Allergen labels + the colored badge system live in PantryAllergens.swift.)
 
 // MARK: - Food emoji (fallback when there's no product photo)
 
@@ -89,6 +76,7 @@ extension NookAPI.OffProduct {
         if let v = quantityText { b["quantityText"] = .string(v) }
         if let v = servingBasis { b["servingBasis"] = .string(v) }
         if !allergens.isEmpty { b["allergens"] = .array(allergens.map(JSONValue.string)) }
+        if let t = traces, !t.isEmpty { b["traces"] = .array(t.map(JSONValue.string)) }
         if !dietary.isEmpty { b["dietary"] = .array(dietary.map(JSONValue.string)) }
         var n: [String: JSONValue] = [:]
         if let v = nutrition.calories { n["calories"] = .double(v) }
@@ -111,6 +99,7 @@ final class PantryModel {
     private(set) var avoidAllergens: [String] = []
     private(set) var allergenPeople: [String: [String]] = [:]
     private(set) var lowThreshold: Double = 1
+    private(set) var locationIcons: [String: String] = [:]
     private(set) var loading = true
     private(set) var error = false
     private(set) var loaded = false
@@ -126,10 +115,20 @@ final class PantryModel {
             avoidAllergens = r.avoidAllergens
             allergenPeople = r.allergenPeople
             lowThreshold = r.lowThreshold
+            locationIcons = r.locationIcons ?? [:]
             error = false
             loaded = true
         } catch { self.error = true }
         loading = false
+    }
+
+    /// The effective avoid-set: household avoid-list ∪ any allergen a member has.
+    var avoidSet: Set<String> { Set(avoidAllergens).union(allergenPeople.keys) }
+
+    /// "Use soon" — expires within 3 days (or already past).
+    func isSoon(_ item: NookAPI.PantryItem) -> Bool {
+        guard let d = PantryExpiry.daysUntil(item.expiresOn, tz: .current) else { return false }
+        return d <= 3
     }
 
     // MARK: grouping

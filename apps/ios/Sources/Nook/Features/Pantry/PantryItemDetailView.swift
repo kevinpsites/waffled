@@ -41,6 +41,10 @@ struct PantryItemDetailView: View {
                 title(item)
                 factsRow(item)
                 if let allergens = item.allergens, !allergens.isEmpty { containsRow(item, allergens) }
+                if let traces = item.traces, !traces.isEmpty {
+                    Text("May contain \(traces.map(PantryAllergen.label).joined(separator: ", "))")
+                        .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                }
                 if let n = item.nutrition, !n.isEmpty { nutritionCard(item, n) }
                 if item.isOff {
                     HStack(spacing: 6) {
@@ -97,9 +101,9 @@ struct PantryItemDetailView: View {
     private func factsRow(_ item: NookAPI.PantryItem) -> some View {
         HStack(spacing: 10) {
             Text(item.location).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
-            if let exp = PantryExpiry.shortLabel(item.expiresOn) {
+            if let exp = expiryTag(item) {
                 Text("·").foregroundStyle(NK.ink3)
-                ExpiryBadge(label: exp, days: PantryExpiry.daysUntil(item.expiresOn, tz: sync.householdTz))
+                Text(exp.text).font(.system(size: 13, weight: .semibold)).foregroundStyle(exp.color)
             }
             Spacer()
             if !item.usedUp {
@@ -124,6 +128,14 @@ struct PantryItemDetailView: View {
     private func stepGlyph(_ n: String) -> some View {
         Image(systemName: n).font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink)
             .frame(width: 30, height: 30).background(NK.panel).clipShape(Circle())
+    }
+
+    private func expiryTag(_ item: NookAPI.PantryItem) -> (text: String, color: Color)? {
+        guard let d = PantryExpiry.daysUntil(item.expiresOn, tz: sync.householdTz) else { return nil }
+        if d < 0 { return ("Expired", Color(hex: 0xC0392B)) }
+        if d == 0 { return ("Today", Color(hex: 0xB8860B)) }
+        if d <= 3 { return ("\(d) day\(d == 1 ? "" : "s") left", Color(hex: 0xB8860B)) }
+        return ("Best by \(item.expiresOn.flatMap(PantryExpiry.shortLabel) ?? "")", NK.ink3)
     }
 
     // MARK: allergens

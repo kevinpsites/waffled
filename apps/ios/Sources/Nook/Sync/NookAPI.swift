@@ -1158,9 +1158,11 @@ struct NookAPI: Sendable {
         let servingBasis: String?
         let nutrition: PantryNutrition?
         let allergens: [String]?
+        let traces: [String]?
         let dietary: [String]?
         let source: String?
         let lowAt: Double?
+        let isMeal: Bool?
         let createdAt: String?
         var isOff: Bool { source == "openfoodfacts" }
     }
@@ -1175,6 +1177,7 @@ struct NookAPI: Sendable {
         let servingBasis: String?
         let nutrition: PantryNutrition
         let allergens: [String]
+        let traces: [String]?
         let dietary: [String]
         let nutriscore: String?
         let nova: Double?
@@ -1182,7 +1185,8 @@ struct NookAPI: Sendable {
     }
 
     /// GET /api/pantry payload — the items + the household's pantry config (locations,
-    /// the allergen avoid-list and per-person rollup, the running-low threshold).
+    /// the allergen avoid-list and per-person rollup, the running-low threshold, and
+    /// the per-location emoji icons).
     struct PantryList: Decodable, Sendable {
         let items: [PantryItem]
         let locations: [String]
@@ -1190,6 +1194,7 @@ struct NookAPI: Sendable {
         let avoidAllergens: [String]
         let allergenPeople: [String: [String]]
         let lowThreshold: Double
+        let locationIcons: [String: String]?
     }
 
     func pantryList() async throws -> PantryList {
@@ -1214,6 +1219,14 @@ struct NookAPI: Sendable {
     func pantryCreate(_ body: [String: JSONValue]) async throws -> PantryItem {
         struct Resp: Decodable { let item: PantryItem }
         return try await sendReturning("POST", "/api/pantry", body: body, as: Resp.self).item
+    }
+
+    /// Scan upsert — increments a matching on-hand item (by barcode, else name) instead
+    /// of duplicating it. Returns the item + whether an existing one was incremented.
+    func pantryScan(_ body: [String: JSONValue]) async throws -> (item: PantryItem, incremented: Bool) {
+        struct Resp: Decodable { let item: PantryItem; let incremented: Bool }
+        let r = try await sendReturning("POST", "/api/pantry/scan", body: body, as: Resp.self)
+        return (r.item, r.incremented)
     }
 
     @discardableResult

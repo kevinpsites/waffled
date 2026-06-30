@@ -1,45 +1,50 @@
 import SwiftUI
 
-/// Pantry — on-hand food inventory, grouped by location. A prominent **Scan** entry
-/// (barcode → Open Food Facts → add) sits up top; items can also be added by hand.
-/// Tapping an item opens its detail (nutrition + allergens for scanned items).
+/// Pantry — on-hand inventory, mirroring the web kiosk: a location / smart-group
+/// sidebar (a chip row on iPhone), search, sort (Expiring / A–Z / Recent), a card grid
+/// with Open Food Facts photos + colored allergen badges, and the allergen legend.
+/// Scan (barcode → OFF) and Add item up top. Gated behind the `pantry` module.
 struct PantryView: View {
-    @Environment(SyncManager.self) private var sync
+    @Environment(\.horizontalSizeClass) private var hSize
     @State private var model = PantryModel()
     @State private var showScan = false
     @State private var addManually = false
+    @State private var query = ""
+    @State private var filter: PantryFilter = .all
+    @State private var sort: PantrySort = .expiring
+
+    private var isWide: Bool { hSize == .regular }
+
+    enum PantryFilter: Equatable { case all, useSoon, runningLow, location(String) }
+    enum PantrySort: String, CaseIterable { case expiring, az, recent
+        var label: String { self == .expiring ? "Expiring" : self == .az ? "A–Z" : "Recent" }
+    }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                scanCard
-                if model.loading && model.items.isEmpty {
-                    NookLoading(top: 40)
-                } else if model.error && model.items.isEmpty {
-                    errorState
-                } else if model.onHand.isEmpty && model.usedUp.isEmpty {
-                    emptyState
-                } else {
-                    ForEach(model.sectionLocations, id: \.self) { loc in
-                        locationSection(loc)
-                    }
-                    if !model.usedUp.isEmpty { usedUpSection }
+        VStack(spacing: 0) {
+            headBar
+            if model.loading && !model.loaded {
+                NookLoading(top: 40); Spacer()
+            } else if model.error && model.items.isEmpty {
+                errorState; Spacer()
+            } else if isWide {
+                HStack(alignment: .top, spacing: 0) {
+                    sidebar.frame(width: 234)
+                    Rectangle().fill(NK.hair).frame(width: 1)
+                    mainScroll
+                }
+            } else {
+                VStack(spacing: 0) {
+                    filterChips
+                    mainScroll
                 }
             }
-            .padding(16).padding(.bottom, 110)
         }
         .background(NK.canvas)
         .navigationTitle("Pantry").navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { addManually = true } label: { Image(systemName: "plus").foregroundStyle(NK.ink2) }
-            }
-        }
-        .navigationDestination(for: NookAPI.PantryItem.self) { item in
-            PantryItemDetailView(itemId: item.id, model: model)
-        }
-        .refreshable { await model.load() }
+        .navigationDestination(for: NookAPI.PantryItem.self) { PantryItemDetailView(itemId: $0.id, model: model) }
         .task { await model.load() }
+        .refreshable { await model.load() }
         .fullScreenCover(isPresented: $showScan) {
             PantryScanView(locations: model.locations) { await model.load() }
         }
@@ -50,159 +55,299 @@ struct PantryView: View {
         }
     }
 
-    // MARK: scan entry
+    // MARK: head bar (search + scan + add)
 
-    private var scanCard: some View {
-        Button { showScan = true } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "barcode.viewfinder")
-                    .font(.system(size: 26, weight: .semibold)).foregroundStyle(.white)
-                    .frame(width: 50, height: 50)
-                    .background(NK.ink).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Scan into pantry").font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
-                    Text("Point at a barcode — looks it up on Open Food Facts")
-                        .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
-                        .fixedSize(horizontal: false, vertical: true)
+    private var headBar: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
+                TextField("Search all \(model.onHand.count) items…", text: $query)
+                    .font(.system(size: 15)).textInputAutocapitalization(.never)
+                if !query.isEmpty {
+                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(NK.ink3) }.buttonStyle(.plain)
                 }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
             }
-            .padding(14).background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(NK.card).clipShape(Capsule())
+            .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+            Button { showScan = true } label: {
+                Label("Scan", systemImage: "barcode.viewfinder").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                    .padding(.horizontal, 14).padding(.vertical, 10).background(NK.card).clipShape(Capsule())
+                    .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+            }.buttonStyle(.plain)
+            Button { addManually = true } label: {
+                Label("Add", systemImage: "plus").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                    .padding(.horizontal, 14).padding(.vertical, 10).background(NK.primary).clipShape(Capsule())
+            }.buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
+        .labelStyle(.titleAndIcon)
+        .padding(.horizontal, 16).padding(.vertical, 10)
     }
 
-    // MARK: sections
+    // MARK: sidebar (iPad)
 
-    private func locationSection(_ loc: String) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            SectionLabel(text: loc)
-            VStack(spacing: 0) {
-                let rows = model.onHand(in: loc)
-                ForEach(rows) { item in
-                    NavigationLink(value: item) { row(item) }.buttonStyle(.plain)
-                    if item.id != rows.last?.id { Divider().background(NK.hair).padding(.leading, 58) }
+    private var sidebar: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 4) {
+                navRow("🗂️", "All items", counts.all, .all)
+                navRow("⏰", "Use soon", counts.useSoon, .useSoon)
+                navRow("📉", "Running low", counts.runningLow, .runningLow)
+                Rectangle().fill(NK.hair).frame(height: 1).padding(.vertical, 8)
+                ForEach(model.locations, id: \.self) { loc in
+                    navRow(model.locationIcons[loc] ?? "📦", loc, counts.byLoc[loc] ?? 0, .location(loc))
+                }
+                if (counts.byLoc["Other"] ?? 0) > 0 {
+                    navRow("📦", "Other", counts.byLoc["Other"] ?? 0, .location("Other"))
+                }
+                if !model.avoidSet.isEmpty {
+                    Rectangle().fill(NK.hair).frame(height: 1).padding(.vertical, 8)
+                    AllergenKey(avoid: model.avoidSet)
                 }
             }
-            .background(NK.card)
+            .padding(14)
+        }
+    }
+
+    private func navRow(_ icon: String, _ label: String, _ count: Int, _ f: PantryFilter) -> some View {
+        let on = filter == f
+        return Button { filter = f } label: {
+            HStack(spacing: 10) {
+                Text(icon).font(.system(size: 15))
+                Text(label).font(.system(size: 14, weight: on ? .bold : .semibold)).foregroundStyle(on ? NK.ink : NK.ink2)
+                Spacer(minLength: 4)
+                Text("\(count)").font(.system(size: 12, weight: .bold)).foregroundStyle(on ? NK.primaryD : NK.ink3)
+            }
+            .padding(.horizontal, 11).padding(.vertical, 9)
+            .background(on ? NK.primary.opacity(0.12) : .clear)
             .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
-        }
+        }.buttonStyle(.plain)
     }
 
-    private var usedUpSection: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            SectionLabel(text: "Used up")
-            VStack(spacing: 0) {
-                ForEach(model.usedUp) { item in
-                    NavigationLink(value: item) { row(item) }.buttonStyle(.plain).opacity(0.55)
-                    if item.id != model.usedUp.last?.id { Divider().background(NK.hair).padding(.leading, 58) }
-                }
+    // MARK: filter chips (iPhone)
+
+    private var filterChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                chip("All", counts.all, .all)
+                chip("Use soon", counts.useSoon, .useSoon)
+                chip("Low", counts.runningLow, .runningLow)
+                ForEach(model.locations, id: \.self) { loc in chip(loc, counts.byLoc[loc] ?? 0, .location(loc)) }
+                if (counts.byLoc["Other"] ?? 0) > 0 { chip("Other", counts.byLoc["Other"] ?? 0, .location("Other")) }
             }
-            .background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .padding(.horizontal, 16).padding(.bottom, 8)
         }
     }
+    private func chip(_ label: String, _ count: Int, _ f: PantryFilter) -> some View {
+        let on = filter == f
+        return Button { filter = f } label: {
+            HStack(spacing: 5) {
+                Text(label).font(.system(size: 13, weight: .semibold))
+                Text("\(count)").font(.system(size: 11, weight: .bold)).foregroundStyle(on ? NK.primaryD : NK.ink3)
+            }
+            .foregroundStyle(on ? NK.ink : NK.ink2)
+            .padding(.horizontal, 12).padding(.vertical, 7).nkChip(selected: on)
+        }.buttonStyle(.plain)
+    }
 
-    // MARK: a row
+    // MARK: main column
 
-    private func row(_ item: NookAPI.PantryItem) -> some View {
-        HStack(spacing: 12) {
-            thumb(item).frame(width: 38, height: 38)
-                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
-                HStack(spacing: 6) {
-                    if let exp = PantryExpiry.shortLabel(item.expiresOn) { ExpiryBadge(label: exp, days: PantryExpiry.daysUntil(item.expiresOn, tz: sync.householdTz)) }
-                    if model.isLow(item) { Text("Low").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.gold) }
-                    if !model.flagged(item).isEmpty {
-                        Text("⚠ \(model.flagged(item).map(PantryAllergen.label).joined(separator: ", "))")
-                            .font(.system(size: 11, weight: .semibold)).foregroundStyle(Color(hex: 0xC0392B)).lineLimit(1)
+    private var mainScroll: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                mainHead
+                if shown.isEmpty && model.usedUp.isEmpty {
+                    Text(query.isEmpty ? "Nothing here yet. Add what’s on hand." : "Nothing matches your search.")
+                        .font(.system(size: 14)).foregroundStyle(NK.ink3)
+                        .frame(maxWidth: .infinity).padding(.vertical, 30)
+                } else {
+                    LazyVGrid(columns: gridColumns, alignment: .leading, spacing: 12) {
+                        ForEach(shown) { card($0) }
                     }
+                    if !filteredUsed.isEmpty { usedUpSection }
+                }
+                if !isWide && !model.avoidSet.isEmpty {
+                    Rectangle().fill(NK.hair).frame(height: 1).padding(.top, 4)
+                    AllergenKey(avoid: model.avoidSet)
                 }
             }
-            Spacer(minLength: 8)
-            if !item.usedUp { stepper(item) }
-            Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+            .padding(16).padding(.bottom, 110)
         }
-        .padding(12)
-        .contentShape(Rectangle())
+    }
+
+    private var gridColumns: [GridItem] {
+        isWide ? [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)] : [GridItem(.flexible())]
+    }
+
+    private var mainHead: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(filterLabel).font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
+            + Text("  · \(shown.count) item\(shown.count == 1 ? "" : "s")").font(.system(size: 13)).foregroundStyle(NK.ink3)
+            Spacer()
+            Picker("", selection: $sort) {
+                ForEach(PantrySort.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented).fixedSize()
+        }
+    }
+
+    // MARK: a card
+
+    private func card(_ item: NookAPI.PantryItem) -> some View {
+        HStack(spacing: 10) {
+            NavigationLink(value: item) {
+                HStack(spacing: 10) {
+                    thumb(item).frame(width: 40, height: 40)
+                        .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(item.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                        subline(item)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }.buttonStyle(.plain)
+            stepper(item)
+        }
+        .padding(10)
+        .background(NK.card)
+        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
+            .strokeBorder(model.flagged(item).isEmpty ? NK.hair : Color(hex: 0xC0392B).opacity(0.4), lineWidth: 1))
+    }
+
+    private func subline(_ item: NookAPI.PantryItem) -> some View {
+        HStack(spacing: 6) {
+            Text(locOf(item)).font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+            if let a = item.allergens, !a.isEmpty {
+                AllergenBadges(allergens: a, avoid: model.avoidSet, traces: item.traces ?? [])
+            }
+            if let exp = expiryTag(item) {
+                Text("·").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                Text(exp.text).font(.system(size: 12, weight: .semibold)).foregroundStyle(exp.color)
+            }
+            Spacer(minLength: 0)
+        }
     }
 
     @ViewBuilder private func thumb(_ item: NookAPI.PantryItem) -> some View {
         if let s = item.imageUrl, let url = URL(string: s) {
             AsyncImage(url: url) { $0.resizable().scaledToFill() }
-            placeholder: { Text(PantryFood.emoji(for: item.name)).font(.system(size: 20)) }
+            placeholder: { Text(PantryFood.emoji(for: item.name)).font(.system(size: 21)) }
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         } else {
-            Text(PantryFood.emoji(for: item.name)).font(.system(size: 20))
+            Text(PantryFood.emoji(for: item.name)).font(.system(size: 21))
         }
     }
 
-    /// Compact − amount + control. Buttons live outside the NavigationLink's label so
-    /// they get their own taps; stepping below 1 marks the item used up.
     private func stepper(_ item: NookAPI.PantryItem) -> some View {
         HStack(spacing: 8) {
             Button { Task { await model.adjust(item, delta: -1) } } label: { stepGlyph("minus") }.buttonStyle(.plain)
-            Text(amountText(item)).font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink).frame(minWidth: 22)
+            VStack(spacing: -1) {
+                Text(item.amount.isEmpty ? "—" : item.amount).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                if !item.unit.isEmpty { Text(item.unit).font(.system(size: 9, weight: .semibold)).foregroundStyle(NK.ink3) }
+            }
+            .frame(minWidth: 34)
             Button { Task { await model.adjust(item, delta: 1) } } label: { stepGlyph("plus") }.buttonStyle(.plain)
         }
     }
-    private func stepGlyph(_ name: String) -> some View {
-        Image(systemName: name).font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink)
-            .frame(width: 26, height: 26).background(NK.panel).clipShape(Circle())
-    }
-    private func amountText(_ item: NookAPI.PantryItem) -> String {
-        let amt = item.amount.trimmingCharacters(in: .whitespaces)
-        let unit = item.unit.trimmingCharacters(in: .whitespaces)
-        if amt.isEmpty { return unit.isEmpty ? "—" : unit }
-        return unit.isEmpty ? amt : "\(amt)"
+    private func stepGlyph(_ n: String) -> some View {
+        Image(systemName: n).font(.system(size: 11, weight: .bold)).foregroundStyle(NK.primary)
+            .frame(width: 28, height: 28).background(NK.panel).clipShape(Circle())
     }
 
-    // MARK: states
-
-    private var emptyState: some View {
-        VStack(spacing: 12) {
-            Text("🥫").font(.system(size: 48))
-            Text("Your pantry is empty").font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
-            Text("Scan groceries in as you put them away, or add an item by hand.")
-                .font(.system(size: 13)).foregroundStyle(NK.ink2).multilineTextAlignment(.center)
-            Button { showScan = true } label: {
-                Text("Scan items in").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
-                    .padding(.horizontal, 18).padding(.vertical, 11)
-                    .background(NK.primary).clipShape(Capsule())
-            }.buttonStyle(.plain)
+    private var usedUpSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Used up").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3).padding(.top, 6)
+            ForEach(filteredUsed) { item in
+                NavigationLink(value: item) {
+                    HStack(spacing: 10) {
+                        Text(item.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
+                        Text("• Used up").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                        Spacer()
+                    }
+                    .padding(10).background(NK.card).opacity(0.6)
+                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                }.buttonStyle(.plain)
+            }
         }
-        .frame(maxWidth: .infinity).padding(.vertical, 30)
     }
 
     private var errorState: some View {
         VStack(spacing: 10) {
-            Text("Couldn’t load your pantry.").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
+            Text("Pantry isn’t enabled, or couldn’t load.").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
+            Text("Turn it on in Settings → Modules.").font(.system(size: 13)).foregroundStyle(NK.ink3)
             Button { Task { await model.load() } } label: {
                 Text("Try again").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.primary)
             }.buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 30)
     }
-}
 
-/// A small "best by" pill — red when past, amber within 3 days, muted otherwise.
-struct ExpiryBadge: View {
-    let label: String
-    let days: Int?
-    var body: some View {
-        let (fg, text): (Color, String) = {
-            guard let d = days else { return (NK.ink3, "best by \(label)") }
-            if d < 0 { return (Color(hex: 0xC0392B), "Expired") }
-            if d == 0 { return (Color(hex: 0xB8860B), "Today") }
-            if d <= 3 { return (Color(hex: 0xB8860B), "best by \(label)") }
-            return (NK.ink3, "best by \(label)")
-        }()
-        Text(text).font(.system(size: 11, weight: .semibold)).foregroundStyle(fg)
+    // MARK: derived data
+
+    private func locOf(_ i: NookAPI.PantryItem) -> String { model.locations.contains(i.location) ? i.location : "Other" }
+
+    private struct Counts { var all = 0; var useSoon = 0; var runningLow = 0; var byLoc: [String: Int] = [:] }
+    private var counts: Counts {
+        var c = Counts()
+        for i in model.onHand {
+            c.all += 1
+            if model.isSoon(i) { c.useSoon += 1 }
+            if model.isLow(i) { c.runningLow += 1 }
+            c.byLoc[locOf(i), default: 0] += 1
+        }
+        return c
+    }
+
+    private var filterLabel: String {
+        switch filter {
+        case .all: return "All items"
+        case .useSoon: return "Use soon"
+        case .runningLow: return "Running low"
+        case let .location(l): return l
+        }
+    }
+
+    private var shown: [NookAPI.PantryItem] {
+        var out = model.onHand
+        switch filter {
+        case .all: break
+        case .useSoon: out = out.filter(model.isSoon)
+        case .runningLow: out = out.filter(model.isLow)
+        case let .location(l): out = out.filter { locOf($0) == l }
+        }
+        let s = query.trimmingCharacters(in: .whitespaces).lowercased()
+        if !s.isEmpty { out = out.filter { $0.name.lowercased().contains(s) || ($0.brand ?? "").lowercased().contains(s) } }
+        return sorted(out)
+    }
+    private var filteredUsed: [NookAPI.PantryItem] {
+        let s = query.trimmingCharacters(in: .whitespaces).lowercased()
+        return model.usedUp.filter { s.isEmpty || $0.name.lowercased().contains(s) }
+    }
+
+    private func sorted(_ list: [NookAPI.PantryItem]) -> [NookAPI.PantryItem] {
+        switch sort {
+        case .az: return list.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .recent: return list.sorted { ($0.createdAt ?? "") > ($1.createdAt ?? "") }
+        case .expiring:
+            return list.sorted {
+                let a = PantryExpiry.daysUntil($0.expiresOn, tz: .current)
+                let b = PantryExpiry.daysUntil($1.expiresOn, tz: .current)
+                switch (a, b) {
+                case let (x?, y?): return x != y ? x < y : $0.name < $1.name
+                case (_?, nil): return true
+                case (nil, _?): return false
+                default: return $0.name < $1.name
+                }
+            }
+        }
+    }
+
+    private func expiryTag(_ item: NookAPI.PantryItem) -> (text: String, color: Color)? {
+        guard let d = PantryExpiry.daysUntil(item.expiresOn, tz: .current) else { return nil }
+        if d < 0 { return ("Expired", Color(hex: 0xC0392B)) }
+        if d == 0 { return ("Today", Color(hex: 0xB8860B)) }
+        if d <= 3 { return ("\(d) day\(d == 1 ? "" : "s")", Color(hex: 0xB8860B)) }
+        return (item.expiresOn.flatMap(PantryExpiry.shortLabel) ?? "", NK.ink3)
     }
 }

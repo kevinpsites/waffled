@@ -65,11 +65,27 @@ final class BarcodeScannerController: UIViewController, AVCaptureMetadataOutputO
         layer.frame = view.bounds
         view.layer.insertSublayer(layer, at: 0)
         preview = layer
+        applyRotation()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         preview?.frame = view.bounds
+        applyRotation()   // keep the feed upright as the iPad rotates
+    }
+
+    /// Match the preview's video rotation to the current interface orientation —
+    /// otherwise the feed is sideways on an iPad held in landscape.
+    private func applyRotation() {
+        guard let connection = preview?.connection else { return }
+        let angle: CGFloat
+        switch view.window?.windowScene?.interfaceOrientation {
+        case .landscapeLeft: angle = 180
+        case .landscapeRight: angle = 0
+        case .portraitUpsideDown: angle = 270
+        default: angle = 90   // portrait
+        }
+        if connection.isVideoRotationAngleSupported(angle) { connection.videoRotationAngle = angle }
     }
 
     override func viewWillDisappear(_ animated: Bool) {

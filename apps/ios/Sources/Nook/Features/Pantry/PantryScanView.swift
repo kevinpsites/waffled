@@ -162,7 +162,9 @@ struct PantryScanView: View {
 
     private func add(_ body: [String: JSONValue], emoji: String) async {
         do {
-            _ = try await api.pantryCreate(body)
+            // Scan upsert: a re-scan increments the matching on-hand item instead of
+            // duplicating it.
+            _ = try await api.pantryScan(body)
             addedCount += 1
             addedEmojis.append(emoji)
         } catch {
