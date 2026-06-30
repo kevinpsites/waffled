@@ -234,14 +234,14 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 | --- | :---: | :---: | :---: | --- |
 | **Pluggable optional modules** — registry + per-household enable flag; gates Today cards / nav / routes | ✅ | ✅ | ✅ | ✅ Done — iOS now gates the **Chores/Goals/Meals/Lists** nav (phone hub tiles + Meals tab; iPad rail), their Today cards, and the **Rewards** sub-toggle on the shared flag (Today + Calendar never gated) |
 | **Settings → Modules** tab (toggle optional modules on/off) | ✅ | ✅ | ✅ | ✅ Done — iOS `ModulesSettingsView` (admin-gated toggles + Rewards sub-toggle + "coming soon" rows); toggling updates nav/Today live |
-| **Pantry / on-hand inventory** module — items + quantities + locations (fridge/freezer/pantry) | ✅ | 🚧 | 🚧 | ✅ Done (web; build #2) — the first optional module |
-| Pantry: quantity **stepper** + tap-to-type amount, **"used up"** state | ✅ | 🚧 | 🚧 | ✅ Done (web) |
-| Pantry: **drag items between locations**; **Today card** (whole-card tap, mark-used) | ✅ | 🚧 | 🚧 | ✅ Done (web) |
-| Pantry: **redesigned list** (location sidebar + counts, search, sort), **item detail** sheet | ✅ | 🚧 | 🚧 | ✅ Done (web) |
-| Pantry: **Open Food Facts** integration — barcode lookup (cached), nutrition + allergen snapshots | ✅ | 🚧 | 🚧 | ✅ Done (web) |
-| Pantry: **allergen warnings** — household avoid-list ∪ per-person allergens, red flags + "affects X" | ✅ | 🚧 | 🚧 | ✅ Done (web) |
-| Pantry: **running-low threshold** (household default + per-item), **per-location icons** | ✅ | 🚧 | 🚧 | ✅ Done (web) |
-| Pantry: **barcode camera scanner** (zxing) — ⚠️ **requires HTTPS / localhost** (camera is blocked on plain-http LAN; falls back to typing the barcode) | ✅ | 🚧 | 🚧 | ✅ Done (web; needs secure context) |
+| **Pantry / on-hand inventory** module — items + quantities + locations (fridge/freezer/pantry) | ✅ | ✅ | ✅ | ✅ Done — iOS `PantryView` (list grouped by location, add by hand, edit/used-up/delete) |
+| Pantry: quantity **stepper** + tap-to-type amount, **"used up"** state | ✅ | ✅ | ✅ | ✅ Done — iOS: ± stepper on rows/detail/scan (stepping below 1 marks used up) |
+| Pantry: **drag items between locations**; **Today card** (whole-card tap, mark-used) | ✅ | 🟡 | 🟡 | ✅ Done (web); mobile: change location from the editor (no drag); **no Pantry Today card yet** |
+| Pantry: **redesigned list** (location sidebar + counts, search, sort), **item detail** sheet | ✅ | 🟡 | 🟡 | ✅ Done (web); mobile: grouped list + full **item detail** (no sidebar/search/sort yet) |
+| Pantry: **Open Food Facts** integration — barcode lookup (cached), nutrition + allergen snapshots | ✅ | ✅ | ✅ | ✅ Done — iOS scan/type → `GET /api/pantry/lookup` → Found sheet → add; nutrition + allergen snapshot ride onto the item |
+| Pantry: **allergen warnings** — household avoid-list ∪ per-person allergens, red flags + "affects X" | ✅ | ✅ | ✅ | ✅ Done — iOS "Contains" chips, red for flagged + "⚠ Affects {people}" on the detail |
+| Pantry: **running-low threshold** (household default + per-item), **per-location icons** | ✅ | 🟡 | 🟡 | ✅ Done (web); mobile: shows a **Low** badge off the threshold; no per-item/per-location config yet |
+| Pantry: **barcode camera scanner** — point at a barcode | ✅ | ✅ | ✅ | ✅ Done — iOS **native AVFoundation scanner** (EAN/UPC/Code128…) + a "Type instead" fallback for the simulator/denied camera; **no HTTPS constraint** (web uses zxing, needs a secure context) |
 | **Public API keys + scopes** — `nook_…` key, `x-api-key`, `<resource>:read\|write` scopes | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web; build #3) — external-integration surface (pattern B), admin-issued |
 | **Settings → API Keys** tab (generate / scope / reveal-once / revoke) | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web; admin-gated) |
 

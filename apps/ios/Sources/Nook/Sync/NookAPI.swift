@@ -1120,6 +1120,112 @@ struct NookAPI: Sendable {
         return try await sendReturning("PUT", "/api/chores/settings", body: ["rewards": .bool(on)], as: Resp.self).rewards ?? true
     }
 
+    // MARK: - Pantry (on-hand inventory module)
+
+    /// Nutrition snapshot (per the product's serving basis). Snake_case JSON keys are
+    /// mapped to Swift names; every field is optional (OFF reports what it has).
+    struct PantryNutrition: Codable, Hashable, Sendable {
+        var calories: Double?
+        var proteinG: Double?
+        var fatG: Double?
+        var carbsG: Double?
+        var sodiumMg: Double?
+        enum CodingKeys: String, CodingKey {
+            case calories
+            case proteinG = "protein_g"
+            case fatG = "fat_g"
+            case carbsG = "carbs_g"
+            case sodiumMg = "sodium_mg"
+        }
+        var isEmpty: Bool { calories == nil && proteinG == nil && fatG == nil && carbsG == nil && sodiumMg == nil }
+    }
+
+    /// A stored pantry item — its own fields plus the denormalized Open Food Facts
+    /// snapshot (nil for items added manually without a lookup). `amount` is free text.
+    struct PantryItem: Decodable, Identifiable, Hashable, Sendable {
+        let id: String
+        let name: String
+        var amount: String
+        var unit: String
+        var location: String
+        var expiresOn: String?
+        var note: String
+        var usedUp: Bool
+        let barcode: String?
+        let brand: String?
+        let imageUrl: String?
+        let quantityText: String?
+        let servingBasis: String?
+        let nutrition: PantryNutrition?
+        let allergens: [String]?
+        let dietary: [String]?
+        let source: String?
+        let lowAt: Double?
+        let createdAt: String?
+        var isOff: Bool { source == "openfoodfacts" }
+    }
+
+    /// The normalized Open Food Facts product returned by a barcode lookup.
+    struct OffProduct: Decodable, Hashable, Sendable {
+        let barcode: String
+        let name: String?
+        let brand: String?
+        let imageUrl: String?
+        let quantityText: String?
+        let servingBasis: String?
+        let nutrition: PantryNutrition
+        let allergens: [String]
+        let dietary: [String]
+        let nutriscore: String?
+        let nova: Double?
+        let source: String
+    }
+
+    /// GET /api/pantry payload — the items + the household's pantry config (locations,
+    /// the allergen avoid-list and per-person rollup, the running-low threshold).
+    struct PantryList: Decodable, Sendable {
+        let items: [PantryItem]
+        let locations: [String]
+        let showOnToday: Bool
+        let avoidAllergens: [String]
+        let allergenPeople: [String: [String]]
+        let lowThreshold: Double
+    }
+
+    func pantryList() async throws -> PantryList {
+        try await getJSON("/api/pantry", as: PantryList.self)
+    }
+
+    /// Look up a barcode via Open Food Facts (server-cached). Returns the product, or
+    /// nil when OFF has no such barcode (404). Throws on a real failure (502/timeout)
+    /// so the UI can distinguish "not found" from "couldn't reach OFF".
+    func pantryLookup(barcode: String) async throws -> OffProduct? {
+        struct Resp: Decodable { let found: Bool?; let product: OffProduct? }
+        let digits = barcode.filter(\.isNumber)
+        guard !digits.isEmpty else { return nil }
+        do {
+            return try await getJSON("/api/pantry/lookup/\(digits)", as: Resp.self).product
+        } catch let APIError.http(code, _) where code == 404 {
+            return nil
+        }
+    }
+
+    @discardableResult
+    func pantryCreate(_ body: [String: JSONValue]) async throws -> PantryItem {
+        struct Resp: Decodable { let item: PantryItem }
+        return try await sendReturning("POST", "/api/pantry", body: body, as: Resp.self).item
+    }
+
+    @discardableResult
+    func pantryUpdate(id: String, _ body: [String: JSONValue]) async throws -> PantryItem {
+        struct Resp: Decodable { let item: PantryItem }
+        return try await sendReturning("PATCH", "/api/pantry/\(id)", body: body, as: Resp.self).item
+    }
+
+    func pantryDelete(id: String) async throws {
+        try await delete("/api/pantry/\(id)")
+    }
+
     /// The logged-in person, resolved server-side from the token's `sub` via the
     /// identities table. nil if the account hasn't been provisioned yet.
     func currentPersonId() async throws -> String? {

@@ -4,7 +4,7 @@ import SwiftUI
 /// tab's NavigationStack — Lists is built out; the rest are live-summary
 /// placeholders until their screens land.
 enum HubRoute: Hashable {
-    case chores, goals, rewards, lists, photos, settings
+    case chores, goals, rewards, lists, photos, settings, pantry
     case list(NookAPI.ListSummary)   // a specific list pushed from the Lists index
     case goal(NookAPI.Goal)          // a specific goal pushed from the Goals screen
     case person(String)              // a person spotlight pushed from the people row
@@ -41,6 +41,7 @@ struct HubDestination: View {
         case let .list(list):   ListDetailView(list: list, openRecipe: { path.append(.recipe($0)) })
         case let .recipe(r):    RecipeDetailView(summary: r, model: recipes)
         case .chores:           ChoresView()
+        case .pantry:           PantryView()
         case .goals:            GoalsView(path: $path)
         case let .goal(goal):   GoalDetailView(goal: goal, path: $path)
         case let .person(id):   PersonView(personId: id, path: $path)

@@ -59,6 +59,7 @@ struct KioskShell: View {
         case .goals: return sync.module(.goals)
         case .meals: return sync.module(.meals)
         case .lists: return sync.module(.lists)
+        case .pantry: return sync.module(.pantry)
         default: return true
         }
     }
@@ -148,7 +149,7 @@ struct KioskShell: View {
         case .family:   familyPath = []
         case .settings: settingsPath = []
         case .meals:    mealsPath = []
-        case .today, .calendar, .tasks, .lists, .photos: navReset &+= 1
+        case .today, .calendar, .tasks, .lists, .pantry, .photos: navReset &+= 1
         }
     }
 
@@ -201,6 +202,11 @@ struct KioskShell: View {
                 selection = .meals
             })
             .id(navReset)
+        case .pantry:
+            NavigationStack {
+                PantryView()
+            }
+            .id(navReset)
         case .photos:
             NavigationStack {
                 PhotosView()
@@ -217,12 +223,12 @@ struct KioskShell: View {
 /// The rail items, in web order (`apps/web/src/kiosk/nav.ts`). Settings is pinned to
 /// the bottom of the rail, so it's separated out from `primary`.
 enum KioskNav: String, CaseIterable, Identifiable {
-    case today, calendar, tasks, rewards, goals, family, meals, lists, photos, settings
+    case today, calendar, tasks, rewards, goals, family, meals, lists, pantry, photos, settings
     var id: String { rawValue }
 
     /// Everything above the bottom-pinned Settings. Note: web combines Chores + Rewards
     /// into one tab; on iPad we split Rewards into its own rail item (a deliberate divergence).
-    static let primary: [KioskNav] = [.today, .calendar, .tasks, .rewards, .goals, .family, .meals, .lists, .photos]
+    static let primary: [KioskNav] = [.today, .calendar, .tasks, .rewards, .goals, .family, .meals, .lists, .pantry, .photos]
 
     var label: String {
         switch self {
@@ -234,6 +240,7 @@ enum KioskNav: String, CaseIterable, Identifiable {
         case .family: return "Family"
         case .meals: return "Meals"
         case .lists: return "Lists"
+        case .pantry: return "Pantry"
         case .photos: return "Photos"
         case .settings: return "Settings"
         }
@@ -249,6 +256,7 @@ enum KioskNav: String, CaseIterable, Identifiable {
         case .family: return "person.2.fill"
         case .meals: return "fork.knife"
         case .lists: return "list.bullet"
+        case .pantry: return "shippingbox.fill"
         case .photos: return "photo"
         case .settings: return "gearshape.fill"
         }

@@ -61,6 +61,7 @@ struct FamilyView: View {
                     if sync.module(.goals) { tile("🎯", "Goals", hub.goalsSubtitle, Color(hex: 0xE8F0E4), .goals) }
                     if sync.rewardsOn { tile("⭐", "Rewards", hub.rewardsSubtitle, Color(hex: 0xFDF0D6), .rewards, badge: rewardApprovals) }
                     if sync.module(.lists) { tile("📋", "Lists", hub.listsSubtitle, FamilyColor.kevin.tint, .lists) }
+                    if sync.module(.pantry) { tile("🥫", "Pantry", "What’s on hand", Color(hex: 0xF3E8D6), .pantry) }
                     tile("📷", "Photos", hub.photosSubtitle, Color(hex: 0xDFF0EF), .photos)
                     tile("⚙️", "Settings", "People, calendars, AI", NK.panel, .settings)
                 }
@@ -82,6 +83,7 @@ struct FamilyView: View {
         case "goals": return .goals
         case "rewards": return .rewards
         case "lists": return .lists
+        case "pantry": return .pantry
         case "photos": return .photos
         case "settings": return .settings
         case "display": return .settingsDisplay
