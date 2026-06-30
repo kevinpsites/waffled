@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import {
   usePantry, pantryApi, daysUntil, groceryApi, flaggedAllergens, ALLERGEN_LABELS,
-  type PantryItem, type PantryItemInput,
+  type PantryItem, type PantryItemInput, type OffProduct,
 } from '../lib/api'
 import '../styles/pantry.css'
 
@@ -50,6 +50,7 @@ export function Pantry() {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<SortKey>('expiring')
   const [editing, setEditing] = useState<PantryItem | 'new' | null>(null)
+  const [detail, setDetail] = useState<PantryItem | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [editAmt, setEditAmt] = useState<{ id: string; amount: string; unit: string } | null>(null)
 
@@ -187,14 +188,18 @@ export function Pantry() {
               {shown.map((it) => {
                 const flagged = flaggedAllergens(it, avoidAllergens)
                 const exp = expiryText(it.expiresOn)
+                // In cross-location views (All / Use soon / Running low) show where it lives.
+                const crossLoc = view === 'all' || view === 'use_soon' || view === 'running_low'
+                const loc = locations.includes(it.location) ? it.location : 'Other'
                 return (
                   <div key={it.id} className={`pl-item${busy === it.id ? ' busy' : ''}${flagged.length ? ' flagged' : ''}`}>
-                    <button type="button" className="pl-item-face" onClick={() => setEditing(it)}>
+                    <button type="button" className="pl-item-face" onClick={() => setDetail(it)}>
                       <span className="pl-emoji">{it.imageUrl ? <img src={it.imageUrl} alt="" /> : foodEmoji(it.name)}</span>
                       <span className="pl-item-text">
                         <span className="pl-name">{it.name}</span>
                         <span className="pl-sub">
                           {flagged.length > 0 && <span className="pl-warn">⚠ {flagged.map((a) => ALLERGEN_LABELS[a] ?? a).join(', ')}</span>}
+                          {crossLoc && <span className="pl-loc">{loc}</span>}
                           <span className={`pl-exp pl-exp-${exp.tone}`}>{exp.text}</span>
                         </span>
                       </span>
@@ -252,6 +257,16 @@ export function Pantry() {
         </main>
       </div>
 
+      {detail && (
+        <PantryDetail
+          item={detail}
+          avoidAllergens={avoidAllergens}
+          onClose={() => setDetail(null)}
+          onEdit={() => { setEditing(detail); setDetail(null) }}
+          onChanged={refetch}
+        />
+      )}
+
       {editing && (
         <ItemModal
           item={editing === 'new' ? null : editing}
@@ -260,6 +275,92 @@ export function Pantry() {
           onSaved={() => { setEditing(null); refetch() }}
         />
       )}
+    </div>
+  )
+}
+
+// The item detail sheet — Open Food Facts product card: photo/emoji, brand + pack
+// size, CONTAINS allergen chips (avoided ones in red), the nutrition panel, and
+// Edit. (PLAN IT IN / Cook this are deferred with the meal-planning work.)
+function PantryDetail({ item, avoidAllergens, onClose, onEdit, onChanged }: {
+  item: PantryItem
+  avoidAllergens: string[]
+  onClose: () => void
+  onEdit: () => void
+  onChanged: () => void
+}) {
+  const [amt, setAmt] = useState(item.amount)
+  const [busy, setBusy] = useState(false)
+  const flagged = new Set(flaggedAllergens(item, avoidAllergens))
+  const n = item.nutrition
+  const isOff = item.source === 'openfoodfacts'
+
+  async function bump(delta: number) {
+    const cur = parseFloat(amt)
+    const next = Number.isFinite(cur) ? cur + delta : delta > 0 ? 1 : 0
+    if (next <= 0) return
+    setBusy(true)
+    setAmt(String(next))
+    try { await pantryApi.update(item.id, { amount: String(next) }); onChanged() } finally { setBusy(false) }
+  }
+
+  const nutriRows: [string, string][] = []
+  if (n) {
+    if (n.calories != null) nutriRows.push(['Calories', String(n.calories)])
+    if (n.protein_g != null) nutriRows.push(['Protein', `${n.protein_g} g`])
+    if (n.fat_g != null) nutriRows.push(['Total fat', `${n.fat_g} g`])
+    if (n.carbs_g != null) nutriRows.push(['Carbohydrate', `${n.carbs_g} g`])
+    if (n.sodium_mg != null) nutriRows.push(['Sodium', `${n.sodium_mg} mg`])
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card pl-detail" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
+        <div className="pl-detail-hero">
+          {isOff && <span className="pl-off-tag">● Open Food Facts</span>}
+          {item.imageUrl ? <img className="pl-detail-img" src={item.imageUrl} alt="" /> : <span className="pl-detail-emoji">{foodEmoji(item.name)}</span>}
+        </div>
+        <div className="pl-detail-title">{item.name}</div>
+        {(item.brand || item.quantityText) && <div className="pl-detail-sub">{[item.brand, item.quantityText].filter(Boolean).join(' · ')}</div>}
+
+        <div className="pl-detail-rows">
+          <div className="pl-detail-row"><span>Location</span><b>{item.location}</b></div>
+          <div className="pl-detail-row"><span>Best by</span><b>{item.expiresOn ?? '—'}</b></div>
+          <div className="pl-detail-row">
+            <span>Amount</span>
+            <div className="pantry-step">
+              <button type="button" className="pantry-step-btn minus" disabled={busy} onClick={() => bump(-1)}>−</button>
+              <span className="pantry-step-val" style={{ cursor: 'default' }}><span className="pantry-step-num">{amt || '—'}</span>{item.unit && <span className="pantry-step-unit">{item.unit}</span>}</span>
+              <button type="button" className="pantry-step-btn plus" disabled={busy} onClick={() => bump(1)}>+</button>
+            </div>
+          </div>
+        </div>
+
+        {item.allergens && item.allergens.length > 0 && (
+          <div className="pl-detail-contains">
+            <span className="pl-contains-l">Contains</span>
+            {item.allergens.map((a) => (
+              <span key={a} className={`pl-contains-chip${flagged.has(a) ? ' avoid' : ''}`}>{ALLERGEN_LABELS[a] ?? a}</span>
+            ))}
+          </div>
+        )}
+
+        {nutriRows.length > 0 && (
+          <div className="pl-nutri">
+            <div className="pl-nutri-h"><span>Nutrition</span><span className="pl-nutri-basis">{item.servingBasis}</span></div>
+            {nutriRows.map(([k, v]) => (
+              <div key={k} className="pl-nutri-row"><span>{k}</span><b>{v}</b></div>
+            ))}
+          </div>
+        )}
+
+        {isOff && <div className="pl-off-foot">● Nutrition &amp; allergens from Open Food Facts</div>}
+
+        <div className="pl-detail-acts">
+          <button type="button" className="pill" onClick={onEdit}>Edit</button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -278,6 +379,25 @@ function ItemModal({ item, locations, onClose, onSaved }: {
   const [note, setNote] = useState(item?.note ?? '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  // Barcode → Open Food Facts prefill (adding only). `off` holds the looked-up
+  // snapshot to store with the item.
+  const [barcode, setBarcode] = useState('')
+  const [off, setOff] = useState<OffProduct | null>(null)
+  const [lookingUp, setLookingUp] = useState(false)
+  const [lookupMsg, setLookupMsg] = useState<string | null>(null)
+
+  async function lookup() {
+    const code = barcode.replace(/\D/g, '')
+    if (!code || lookingUp) return
+    setLookingUp(true)
+    setLookupMsg(null)
+    const p = await pantryApi.lookup(code)
+    setLookingUp(false)
+    if (!p) { setOff(null); setLookupMsg('Not found in Open Food Facts — enter the details below.'); return }
+    setOff(p)
+    if (p.name) setName(p.name)
+    setLookupMsg(`Found: ${p.name ?? 'product'}${p.brand ? ` · ${p.brand}` : ''}`)
+  }
 
   async function save() {
     if (!name.trim() || saving) return
@@ -286,6 +406,11 @@ function ItemModal({ item, locations, onClose, onSaved }: {
     const input: PantryItemInput = {
       name: name.trim(), amount: amount.trim(), unit: unit.trim(), location,
       expiresOn: expiresOn || null, note: note.trim(),
+      // Carry the OFF snapshot when the item was matched by barcode.
+      ...(off ? {
+        barcode: off.barcode, brand: off.brand, imageUrl: off.imageUrl, quantityText: off.quantityText,
+        servingBasis: off.servingBasis, nutrition: off.nutrition, allergens: off.allergens, dietary: off.dietary, source: off.source,
+      } : {}),
     }
     try {
       if (item) await pantryApi.update(item.id, input)
@@ -307,8 +432,17 @@ function ItemModal({ item, locations, onClose, onSaved }: {
       <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
         <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>{item ? 'Edit item' : 'Add to pantry'}</div>
+        {!item && (
+          <label className="pantry-field"><span>Barcode (optional)</span>
+            <div className="pl-barcode-row">
+              <input value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="Scan or type a barcode" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); lookup() } }} />
+              <button type="button" className="pill" disabled={lookingUp || !barcode.trim()} onClick={lookup}>{lookingUp ? '…' : 'Look up'}</button>
+            </div>
+            {lookupMsg && <span className={`pl-lookup-msg${off ? ' ok' : ''}`}>{lookupMsg}</span>}
+          </label>
+        )}
         <label className="pantry-field"><span>Item</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ground beef" autoFocus />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ground beef" autoFocus={!!item} />
         </label>
         <div className="pantry-field-row">
           <label className="pantry-field"><span>Amount</span>

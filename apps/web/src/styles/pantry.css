@@ -222,3 +222,53 @@
 }
 .pl-allergen-chip:hover { border-color: var(--primary); }
 .pl-allergen-chip.on { background: #fbe3e1; border-color: #f0c0bb; color: #c0392b; }
+
+/* location chip on cross-location cards (All / Use soon / Running low) */
+.pl-loc { font-size: 11.5px; font-weight: 700; color: var(--ink-3); padding: 2px 8px; border-radius: 999px; background: var(--panel); }
+
+/* barcode lookup row in the add modal */
+.pl-barcode-row { display: flex; gap: 8px; }
+.pl-barcode-row input { flex: 1; min-width: 0; }
+.pl-barcode-row .pill { flex: none; cursor: pointer; }
+.pl-lookup-msg { font-size: 12.5px; font-weight: 600; color: var(--ink-3); margin-top: 6px; display: block; }
+.pl-lookup-msg.ok { color: #1c7a44; }
+
+/* ===== item detail sheet ===== */
+.pl-detail { max-width: 460px; }
+.pl-detail-hero {
+  position: relative; height: 150px; margin: -4px -4px 14px; border-radius: var(--r-lg, 16px);
+  background: linear-gradient(135deg, #f6e7d6, #f3d9bf); display: grid; place-items: center; overflow: hidden;
+}
+.pl-off-tag {
+  position: absolute; top: 10px; left: 10px; font-size: 11px; font-weight: 800; letter-spacing: 0.03em;
+  text-transform: uppercase; color: #1c7a44; background: rgba(255, 255, 255, 0.85); padding: 4px 9px; border-radius: 999px;
+}
+.pl-detail-img { width: 100%; height: 100%; object-fit: contain; }
+.pl-detail-emoji { font-size: 64px; }
+.pl-detail-title { font-size: 22px; font-weight: 700; }
+.pl-detail-sub { font-size: 14px; font-weight: 600; color: var(--ink-3); margin-top: 2px; }
+
+.pl-detail-rows { margin: 16px 0; border: 1px solid var(--hair); border-radius: var(--r-lg, 14px); overflow: hidden; }
+.pl-detail-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--hair-2); }
+.pl-detail-row:last-child { border-bottom: 0; }
+.pl-detail-row > span { font-size: 13.5px; font-weight: 600; color: var(--ink-3); }
+.pl-detail-row > b { font-size: 14.5px; font-weight: 700; }
+.pl-detail-row .pantry-step { background: var(--card-2, #faf8f4); }
+
+.pl-detail-contains { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-bottom: 16px; }
+.pl-contains-l { font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
+.pl-contains-chip { font-size: 12.5px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--panel); color: var(--ink-2); }
+.pl-contains-chip.avoid { background: #fbe3e1; color: #c0392b; }
+
+.pl-nutri { border: 1px solid var(--hair); border-radius: var(--r-lg, 14px); padding: 4px 14px; margin-bottom: 14px; }
+.pl-nutri-h { display: flex; align-items: baseline; justify-content: space-between; padding: 12px 0 10px; border-bottom: 2px solid var(--ink); }
+.pl-nutri-h > span:first-child { font-size: 16px; font-weight: 800; }
+.pl-nutri-basis { font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
+.pl-nutri-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--hair-2); font-size: 14px; }
+.pl-nutri-row:last-child { border-bottom: 0; }
+.pl-nutri-row > span { font-weight: 600; color: var(--ink-2); }
+.pl-nutri-row > b { font-weight: 800; }
+
+.pl-off-foot { font-size: 12px; font-weight: 600; color: #1c7a44; margin-bottom: 14px; }
+.pl-detail-acts { display: flex; justify-content: flex-end; gap: 8px; }
+.pl-detail-acts .pill { cursor: pointer; }
