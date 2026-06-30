@@ -79,7 +79,7 @@ export function ScanModal({ locations, avoidAllergens, allergenPeople, onClose, 
     }
     if (found) Object.assign(input, {
       barcode: found.barcode, brand: found.brand, imageUrl: found.imageUrl, quantityText: found.quantityText,
-      servingBasis: found.servingBasis, nutrition: found.nutrition, allergens: found.allergens, dietary: found.dietary, source: found.source,
+      servingBasis: found.servingBasis, nutrition: found.nutrition, allergens: found.allergens, traces: found.traces, dietary: found.dietary, source: found.source,
     })
     else if (code) input.barcode = code
     try {
@@ -164,6 +164,12 @@ export function ScanModal({ locations, avoidAllergens, allergenPeople, onClose, 
                           </>
                         )
                       })()}
+                      {found.traces.length > 0 && (
+                        <div className="pl-scan-allergens">
+                          <span className="pl-contains-l">May contain</span>
+                          {found.traces.map((a) => <span key={a} className="pl-contains-item"><AllergenBadge allergen={a} trace avoid={avoidAllergens.includes(a) || !!allergenPeople[a]} /> {ALLERGEN_LABELS[a] ?? a}</span>)}
+                        </div>
+                      )}
                     </div>
                   </>
                 ) : (

@@ -270,6 +270,17 @@
 }
 .pl-d2-img img { width: 100%; height: 100%; object-fit: contain; }
 .pl-d2-emoji { font-size: 104px; }
+.pl-d2-replace {
+  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 2;
+  font: inherit; font-size: 12.5px; font-weight: 700; padding: 7px 14px; border-radius: 999px; cursor: pointer;
+  background: rgba(255, 255, 255, 0.92); border: 0; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18); color: var(--ink);
+}
+.pl-d2-replace:hover { background: #fff; }
+.pl-d2-replace:disabled { opacity: 0.7; cursor: default; }
+
+/* dietary flags (detail) */
+.pl-diet { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
+.pl-diet-chip { font-size: 12.5px; font-weight: 700; padding: 4px 11px; border-radius: 999px; background: #e6f4ea; color: #1c7a44; }
 .pl-d2-main { flex: 1; min-width: 0; padding: 22px 24px; overflow-y: auto; max-height: 88vh; }
 /* close button: a contrasting chip so it's visible over the image corner */
 .pl-d2-close {

@@ -21,6 +21,7 @@ export interface OffFields {
   servingBasis: string | null
   nutrition: PantryNutrition | null
   allergens: string[] | null
+  traces: string[] | null
   dietary: string[] | null
   source: string | null
 }
@@ -48,6 +49,7 @@ export interface OffProduct {
   servingBasis: string | null
   nutrition: PantryNutrition
   allergens: string[]
+  traces: string[]
   dietary: string[]
   nutriscore: string | null
   nova: number | null
@@ -72,6 +74,7 @@ export type PantryItemInput = {
   servingBasis?: string | null
   nutrition?: PantryNutrition | null
   allergens?: string[] | null
+  traces?: string[] | null
   dietary?: string[] | null
   source?: string | null
 }
@@ -84,6 +87,11 @@ export const ALLERGEN_LABELS: Record<string, string> = {
   tree_nut: 'Tree nut', fish: 'Fish', shellfish: 'Shellfish', sesame: 'Sesame',
 }
 export const ALLERGEN_KEYS = Object.keys(ALLERGEN_LABELS)
+
+// Dietary flags captured from Open Food Facts (ingredients analysis).
+export const DIETARY_LABELS: Record<string, string> = {
+  vegan: 'Vegan', vegetarian: 'Vegetarian', palm_oil_free: 'Palm-oil-free',
+}
 
 export const pantryApi = {
   list: () => apiGet<{ items: PantryItem[]; locations: string[]; showOnToday: boolean; avoidAllergens: string[]; allergenPeople: Record<string, string[]>; lowThreshold: number; locationIcons: Record<string, string> }>('/api/pantry'),

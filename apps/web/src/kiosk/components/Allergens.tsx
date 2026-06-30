@@ -16,13 +16,19 @@ export const ALLERGEN_BADGE: Record<string, { short: string; bg: string; fg: str
   sesame: { short: 'Se', bg: '#CBB079', fg: '#4a3b1a' },
 }
 
-export function AllergenBadge({ allergen, avoid }: { allergen: string; avoid?: boolean }) {
+export function AllergenBadge({ allergen, avoid, trace }: { allergen: string; avoid?: boolean; trace?: boolean }) {
   const def = ALLERGEN_BADGE[allergen]
+  const color = def?.bg ?? '#8a8a8a'
+  // `trace` ("may contain") renders outlined instead of solid, to read lighter than
+  // a definite allergen while keeping the same color + red avoid-ring.
+  const style = trace
+    ? { background: 'transparent', color, border: `1.5px solid ${color}` }
+    : { background: color, color: def?.fg ?? '#fff' }
   return (
     <span
       className={`alg-badge${avoid ? ' avoid' : ''}`}
-      style={{ background: def?.bg ?? '#8a8a8a', color: def?.fg ?? '#fff' }}
-      title={`${ALLERGEN_LABELS[allergen] ?? allergen}${avoid ? ' (avoiding)' : ''}`}
+      style={style}
+      title={`${ALLERGEN_LABELS[allergen] ?? allergen}${trace ? ' (may contain)' : ''}${avoid ? ' — avoiding' : ''}`}
     >
       {def?.short ?? allergen.slice(0, 2).toUpperCase()}
     </span>

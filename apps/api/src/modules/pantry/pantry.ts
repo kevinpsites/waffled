@@ -32,6 +32,7 @@ interface PantryRow {
   serving_basis: string | null
   nutrition: Record<string, number> | null
   allergens: string[] | null
+  traces: string[] | null
   dietary: string[] | null
   source: string | null
   low_at: string | null
@@ -39,7 +40,7 @@ interface PantryRow {
 }
 
 const RETURNING = `id, name, amount, unit, location, expires_on::text as expires_on, note, used_up_at::text as used_up_at,
-  barcode, brand, image_url, quantity_text, serving_basis, nutrition, allergens, dietary, source, low_at, created_at::text as created_at`
+  barcode, brand, image_url, quantity_text, serving_basis, nutrition, allergens, traces, dietary, source, low_at, created_at::text as created_at`
 
 function present(r: PantryRow) {
   return {
@@ -59,6 +60,7 @@ function present(r: PantryRow) {
     servingBasis: r.serving_basis,
     nutrition: r.nutrition,
     allergens: r.allergens,
+    traces: r.traces,
     dietary: r.dietary,
     source: r.source,
     lowAt: r.low_at != null ? Number(r.low_at) : null,
@@ -81,6 +83,7 @@ function offPatches(b: Record<string, unknown>, opts: { includeUnset?: boolean }
   strField('servingBasis', 'serving_basis')
   if ('nutrition' in b) out.push({ col: 'nutrition', val: b.nutrition && typeof b.nutrition === 'object' ? JSON.stringify(b.nutrition) : null })
   if ('allergens' in b) out.push({ col: 'allergens', val: Array.isArray(b.allergens) ? (b.allergens as unknown[]).map(String) : null })
+  if ('traces' in b) out.push({ col: 'traces', val: Array.isArray(b.traces) ? (b.traces as unknown[]).map(String) : null })
   if ('dietary' in b) out.push({ col: 'dietary', val: Array.isArray(b.dietary) ? (b.dietary as unknown[]).map(String) : null })
   strField('source', 'source')
   return out

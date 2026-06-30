@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import {
-  usePantry, pantryApi, daysUntil, groceryApi, flaggedAllergens, ALLERGEN_LABELS,
+  usePantry, pantryApi, daysUntil, groceryApi, flaggedAllergens, uploadImage, ALLERGEN_LABELS, DIETARY_LABELS,
   type PantryItem, type PantryItemInput, type OffProduct,
 } from '../lib/api'
 import { ScanModal } from './components/ScanModal'
@@ -297,12 +297,28 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
 }) {
   const [amt, setAmt] = useState(item.amount)
   const [busy, setBusy] = useState(false)
+  const [img, setImg] = useState(item.imageUrl)
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
   const flaggedList = flaggedAllergens(item, avoidAllergens, allergenPeople)
   const flagged = new Set(flaggedList)
   // Who the flagged allergens affect (for the "affects …" note).
   const affects = Array.from(new Set(flaggedList.flatMap((a) => allergenPeople[a] ?? [])))
+  // "May contain" (traces) the household avoids → flag those too.
+  const traceFlag = new Set((item.traces ?? []).filter((a) => avoidAllergens.includes(a) || allergenPeople[a]))
   const n = item.nutrition
   const isOff = item.source === 'openfoodfacts'
+
+  async function replacePhoto(file: File | undefined) {
+    if (!file) return
+    setPhotoBusy(true)
+    try {
+      const up = await uploadImage(file)
+      setImg(up.url)
+      await pantryApi.update(item.id, { imageUrl: up.url })
+      onChanged()
+    } catch { /* ignore — keep old image */ } finally { setPhotoBusy(false) }
+  }
 
   async function bump(delta: number) {
     const cur = parseFloat(amt)
@@ -328,7 +344,11 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
         <button type="button" className="modal-close pl-d2-close" aria-label="Close" onClick={onClose}>×</button>
         <div className="pl-d2-img">
           {isOff && <span className="pl-off-tag">● Open Food Facts</span>}
-          {item.imageUrl ? <img src={item.imageUrl} alt="" /> : <span className="pl-d2-emoji">{foodEmoji(item.name)}</span>}
+          {img ? <img src={img} alt="" /> : <span className="pl-d2-emoji">{foodEmoji(item.name)}</span>}
+          <button type="button" className="pl-d2-replace" disabled={photoBusy} onClick={() => fileRef.current?.click()}>
+            {photoBusy ? 'Uploading…' : '📷 Replace photo'}
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => replacePhoto(e.target.files?.[0])} />
         </div>
         <div className="pl-d2-main">
         <div className="pl-detail-title">{item.name}</div>
@@ -356,6 +376,21 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
           </div>
         )}
         {affects.length > 0 && <div className="pl-affects">⚠ Affects {affects.join(', ')}</div>}
+
+        {item.traces && item.traces.length > 0 && (
+          <div className="pl-detail-contains">
+            <span className="pl-contains-l">May contain</span>
+            {item.traces.map((a) => (
+              <span key={a} className="pl-contains-item"><AllergenBadge allergen={a} trace avoid={traceFlag.has(a)} /> {ALLERGEN_LABELS[a] ?? a}</span>
+            ))}
+          </div>
+        )}
+
+        {item.dietary && item.dietary.length > 0 && (
+          <div className="pl-diet">
+            {item.dietary.map((d) => <span key={d} className="pl-diet-chip">{DIETARY_LABELS[d] ?? d}</span>)}
+          </div>
+        )}
 
         {nutriRows.length > 0 && (
           <div className="pl-nutri">
@@ -423,7 +458,7 @@ function ItemModal({ item, locations, onClose, onSaved }: {
       // Carry the OFF snapshot when the item was matched by barcode.
       ...(off ? {
         barcode: off.barcode, brand: off.brand, imageUrl: off.imageUrl, quantityText: off.quantityText,
-        servingBasis: off.servingBasis, nutrition: off.nutrition, allergens: off.allergens, dietary: off.dietary, source: off.source,
+        servingBasis: off.servingBasis, nutrition: off.nutrition, allergens: off.allergens, traces: off.traces, dietary: off.dietary, source: off.source,
       } : {}),
     }
     try {
