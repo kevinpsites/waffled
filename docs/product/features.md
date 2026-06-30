@@ -232,8 +232,8 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 
 | Feature | Web / Kiosk | iPhone | iPad | Status |
 | --- | :---: | :---: | :---: | --- |
-| **Pluggable optional modules** — registry + per-household enable flag; gates Today cards / nav / routes | ✅ | 🚧 | 🚧 | ✅ Done (web; build #1) — iOS reads the shared flag but has no module cards yet |
-| **Settings → Modules** tab (toggle optional modules on/off) | ✅ | 🚧 | 🚧 | ✅ Done (web) |
+| **Pluggable optional modules** — registry + per-household enable flag; gates Today cards / nav / routes | ✅ | ✅ | ✅ | ✅ Done — iOS now gates the **Chores/Goals/Meals/Lists** nav (phone hub tiles + Meals tab; iPad rail), their Today cards, and the **Rewards** sub-toggle on the shared flag (Today + Calendar never gated) |
+| **Settings → Modules** tab (toggle optional modules on/off) | ✅ | ✅ | ✅ | ✅ Done — iOS `ModulesSettingsView` (admin-gated toggles + Rewards sub-toggle + "coming soon" rows); toggling updates nav/Today live |
 | **Pantry / on-hand inventory** module — items + quantities + locations (fridge/freezer/pantry) | ✅ | 🚧 | 🚧 | ✅ Done (web; build #2) — the first optional module |
 | Pantry: quantity **stepper** + tap-to-type amount, **"used up"** state | ✅ | 🚧 | 🚧 | ✅ Done (web) |
 | Pantry: **drag items between locations**; **Today card** (whole-card tap, mark-used) | ✅ | 🚧 | 🚧 | ✅ Done (web) |
@@ -255,7 +255,7 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 | **Meals** (meal calendar & meal times) | ✅ | ✅ | ✅ | ✅ Done |
 | **AI & capture** (provider/model selection) | ✅ | ✅ | ✅ | ✅ Done |
 | **Display & Kiosk** (screensaver, photo source, idle, night-dim, preview) | ✅ | ✅ | ✅ | ✅ Done |
-| **Modules** (toggle optional modules; see Modules & extensibility) | ✅ | 🚧 | 🚧 | ✅ Done (web) |
+| **Modules** (toggle optional modules; see Modules & extensibility) | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
 | **API Keys** (per-user keys + scopes for external integrations) | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web; admin-gated) |
 | **Notifications** (reminders) | ❌ N/A | ✅ | ✅ | ✅ Done (mobile) |
 | **Login & security** (OIDC config, password toggle) | ✅ | 🟡 | 🟡 | ✅ Done (web); mobile shows accounts/sign-in, OIDC config is web-only |

@@ -43,10 +43,29 @@ struct KioskShell: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(NK.canvas)
-        .task { await sync.loadIdentity() }
+        .task { await sync.loadIdentity(); correctSelection() }
+        .onChange(of: sync.modulesRev) { _, _ in correctSelection() }
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
         }
+    }
+
+    /// Whether a rail item's optional module is enabled (Today/Calendar/Family/Photos
+    /// are core and never gated). Mirrors the web rail filter.
+    private func moduleEnabled(_ nav: KioskNav) -> Bool {
+        switch nav {
+        case .tasks: return sync.module(.chores)
+        case .rewards: return sync.rewardsOn
+        case .goals: return sync.module(.goals)
+        case .meals: return sync.module(.meals)
+        case .lists: return sync.module(.lists)
+        default: return true
+        }
+    }
+
+    /// If the current selection points at a now-disabled module, fall back to Today.
+    private func correctSelection() {
+        if !moduleEnabled(selection) { selection = .today }
     }
 
     // MARK: nav rail
@@ -54,7 +73,7 @@ struct KioskShell: View {
     private var rail: some View {
         VStack(spacing: 6) {
             Color.clear.frame(height: 12)   // top breathing room (logo removed)
-            ForEach(KioskNav.primary) { railItem($0) }
+            ForEach(KioskNav.primary.filter(moduleEnabled)) { railItem($0) }
             Spacer(minLength: 8)
             captureRailButton
             if let m = currentMember { currentUserChip(m) }

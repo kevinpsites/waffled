@@ -52,6 +52,41 @@ final class SyncManager {
     func loadIdentity() async {
         guard currentPerson == nil else { return }
         currentPerson = try? await api.currentPerson()
+        await reloadModules()
+    }
+
+    // MARK: optional modules
+
+    /// The household's optional-module flags (`settings.modules`) + the rewards
+    /// sub-toggle (`settings.chores.rewards`). Loaded with identity; mirrors
+    /// apps/api/src/platform/modules.ts. Until loaded, `module(_:)` returns the catalog
+    /// defaults, so the default surface (chores/goals/meals/lists on, pantry off) shows
+    /// optimistically rather than flashing empty.
+    private(set) var moduleFlags: [String: Bool] = [:]
+    private(set) var rewardsSubEnabled = true
+    /// Bumped after a module toggle so nav rails / Today re-evaluate live.
+    private(set) var modulesRev = 0
+
+    /// Whether an optional module is enabled for this household — mirrors the server's
+    /// `moduleEnabled()`: available modules read `settings.modules[key]` with the catalog
+    /// default; planned (not-yet-built) modules are always off.
+    func module(_ key: NookModule) -> Bool {
+        guard key.isAvailable else { return false }
+        return moduleFlags[key.rawValue] ?? key.defaultOn
+    }
+
+    /// Rewards is the spend half of the chores economy — on only when chores is on AND
+    /// the `chores.rewards` sub-flag isn't explicitly off.
+    var rewardsOn: Bool { module(.chores) && rewardsSubEnabled }
+
+    /// (Re)load the module flags from the server — at identity load and after a toggle
+    /// in Settings → Modules, so nav/Today reflect the change without a relaunch.
+    func reloadModules() async {
+        if let m = try? await api.householdModules() {
+            moduleFlags = m.modules
+            rewardsSubEnabled = m.rewards
+            modulesRev += 1
+        }
     }
 
     /// Whether the signed-in person holds a capability — mirrors the web `can()`:
@@ -764,6 +799,57 @@ final class SyncManager {
             mapper: { try $0.getStringOptional(name: "timezone") }
         ), let id = tz, let zone = TimeZone(identifier: id) {
             householdTz = zone
+        }
+    }
+}
+
+/// The optional-modules catalog — a hand-mirror of apps/api/src/platform/modules.ts.
+/// `available` modules can be toggled in Settings → Modules; `planned` ones show as
+/// "coming soon" and are always treated as off. `defaultOn` is the fallback when the
+/// household hasn't set a flag (core pages default on; pantry is opt-in).
+enum NookModule: String, CaseIterable, Identifiable {
+    case pantry, chores, goals, meals, lists, fhe, quotes
+    var id: String { rawValue }
+
+    var isAvailable: Bool {
+        switch self {
+        case .fhe, .quotes: return false
+        default: return true
+        }
+    }
+    var defaultOn: Bool { self != .pantry }
+
+    var name: String {
+        switch self {
+        case .pantry: return "Pantry"
+        case .chores: return "Chores & Tasks"
+        case .goals: return "Goals"
+        case .meals: return "Meals & Recipes"
+        case .lists: return "Lists & Groceries"
+        case .fhe: return "Family Home Evening"
+        case .quotes: return "Daily quote"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .pantry: return "🥫"
+        case .chores: return "✅"
+        case .goals: return "🎯"
+        case .meals: return "🍽️"
+        case .lists: return "🛒"
+        case .fhe: return "🏠"
+        case .quotes: return "💬"
+        }
+    }
+    var summary: String {
+        switch self {
+        case .pantry: return "Track what's on hand (freezer/fridge/pantry) and feed meal planning."
+        case .chores: return "The Tasks board — assignable chores, photo proof, approvals, and stars."
+        case .goals: return "Personal and family goals with progress, streaks, and checklists."
+        case .meals: return "Recipe library, weekly meal planning, and meals on the calendar."
+        case .lists: return "Shared lists and the auto-built grocery board."
+        case .fhe: return "A weekly family meeting with a structured agenda and a Today card."
+        case .quotes: return "A daily quote or snippet on the Today tab."
         }
     }
 }

@@ -12,6 +12,7 @@ enum HubRoute: Hashable {
     case rewardShop(String)          // one person's reward shop (from the Rewards overview)
     case settingsAccount             // Settings → Accounts (sign-in & sign out)
     case settingsFamily              // Settings → Family & people
+    case settingsModules             // Settings → Modules (optional features on/off)
     case settingsChoresRewards       // Settings → Chores & rewards (currencies + conversions)
     case settingsCalendars           // Settings → Calendars (Google)
     case settingsAI                  // Settings → AI & capture
@@ -49,6 +50,7 @@ struct HubDestination: View {
         case .settings:         SettingsView(path: $path)
         case .settingsAccount:  AccountSettingsView()
         case .settingsFamily:   FamilyPeopleSettingsView()
+        case .settingsModules: ModulesSettingsView()
         case .settingsChoresRewards: ChoresRewardsSettingsView()
         case .settingsCalendars: CalendarsSettingsView()
         case .settingsAI: AISettingsView()

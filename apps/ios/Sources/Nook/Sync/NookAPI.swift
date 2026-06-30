@@ -1074,6 +1074,52 @@ struct NookAPI: Sendable {
         try await getJSON("/api/household/settings", as: HouseholdSettings.self)
     }
 
+    // MARK: - Optional modules (settings.modules + rewards sub-toggle)
+
+    /// The household's optional-module flags + the rewards sub-toggle, read from the
+    /// settings jsonb on /api/household. Mirrors apps/api/src/platform/modules.ts.
+    struct HouseholdModules: Sendable, Equatable {
+        let modules: [String: Bool]
+        let rewards: Bool
+    }
+    func householdModules() async throws -> HouseholdModules {
+        struct Resp: Decodable {
+            let household: H?
+            struct H: Decodable {
+                let settings: S?
+                struct S: Decodable {
+                    let modules: [String: Bool]?
+                    let chores: C?
+                    struct C: Decodable { let rewards: Bool? }
+                }
+            }
+        }
+        let r = try await getJSON("/api/household", as: Resp.self)
+        return HouseholdModules(modules: r.household?.settings?.modules ?? [:],
+                                rewards: r.household?.settings?.chores?.rewards ?? true)
+    }
+
+    /// Enable/disable optional modules (admins). Body is `{ key: bool }`; the server
+    /// rejects non-catalog and planned keys. Returns the merged flag map.
+    @discardableResult
+    func setModules(_ patch: [String: Bool]) async throws -> [String: Bool] {
+        struct Resp: Decodable { let modules: [String: Bool] }
+        let body: [String: JSONValue] = patch.mapValues { .bool($0) }
+        return try await sendReturning("PATCH", "/api/household/modules", body: body, as: Resp.self).modules
+    }
+
+    /// The rewards sub-toggle (settings.chores.rewards), read via chores settings.
+    func choresRewardsEnabled() async throws -> Bool {
+        struct Resp: Decodable { let rewards: Bool? }
+        return try await getJSON("/api/chores/settings", as: Resp.self).rewards ?? true
+    }
+    /// Set the rewards sub-toggle (admins).
+    @discardableResult
+    func setChoresRewards(_ on: Bool) async throws -> Bool {
+        struct Resp: Decodable { let rewards: Bool? }
+        return try await sendReturning("PUT", "/api/chores/settings", body: ["rewards": .bool(on)], as: Resp.self).rewards ?? true
+    }
+
     /// The logged-in person, resolved server-side from the token's `sub` via the
     /// identities table. nil if the account hasn't been provisioned yet.
     func currentPersonId() async throws -> String? {
