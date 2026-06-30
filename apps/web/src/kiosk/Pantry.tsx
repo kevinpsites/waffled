@@ -208,7 +208,7 @@ export function Pantry() {
                         <span className="pl-sub">
                           <span className="pl-loc">{loc}</span>
                           {itemAllergens.length > 0 && <AllergenBadges allergens={itemAllergens} avoid={avoidSet} />}
-                          <span className={`pl-exp pl-exp-${exp.tone}`}>{exp.text}</span>
+                          {it.expiresOn && <span className={`pl-exp pl-exp-${exp.tone}`}>{exp.text}</span>}
                         </span>
                       </span>
                     </button>
