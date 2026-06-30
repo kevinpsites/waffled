@@ -26,6 +26,10 @@ struct KioskShell: View {
     @State private var showCapture = false
     @State private var dictateOnOpen = false
 
+    /// Bumped to pop a self-contained tab (Today/Calendar/Chores/Lists/Photos) back to its
+    /// root when its rail item is re-tapped — the bound-path tabs clear their path instead.
+    @State private var navReset = 0
+
     /// The signed-in person — drives the rail's "who's logged in" avatar.
     private var currentMember: SyncedMember? {
         sync.members.first { $0.id == sync.currentPersonId }
@@ -115,9 +119,23 @@ struct KioskShell: View {
         }
     }
 
+    /// Rail tap: switch tabs, or — if the tab is already active — return it to its root
+    /// (pop the nav stack), so re-tapping the current tab is a quick "back to top".
+    private func tapRail(_ item: KioskNav) {
+        guard selection == item else { selection = item; return }
+        switch item {
+        case .goals:    goalsPath = []
+        case .rewards:  rewardsPath = []
+        case .family:   familyPath = []
+        case .settings: settingsPath = []
+        case .meals:    mealsPath = []
+        case .today, .calendar, .tasks, .lists, .photos: navReset &+= 1
+        }
+    }
+
     private func railItem(_ item: KioskNav) -> some View {
         let on = selection == item
-        return Button { selection = item } label: {
+        return Button { tapRail(item) } label: {
             VStack(spacing: 5) {
                 Image(systemName: item.icon).font(.system(size: 21, weight: .semibold))
                 Text(item.label).font(.system(size: 11, weight: .semibold))
@@ -138,11 +156,11 @@ struct KioskShell: View {
     @ViewBuilder private var detail: some View {
         switch selection {
         case .today:
-            KioskDashboard(navigate: { selection = $0 })
+            KioskDashboard(navigate: { selection = $0 }).id(navReset)
         case .calendar:
-            KioskCalendarView()
+            KioskCalendarView().id(navReset)
         case .tasks:
-            NavigationStack { ChoresView() }
+            NavigationStack { ChoresView() }.id(navReset)
         case .goals:
             NavigationStack(path: $goalsPath) {
                 GoalsView(path: $goalsPath).hubDestination($goalsPath, recipes)
@@ -163,10 +181,12 @@ struct KioskShell: View {
                 mealsPath = [.recipe(recipe)]
                 selection = .meals
             })
+            .id(navReset)
         case .photos:
             NavigationStack {
                 PhotosView()
             }
+            .id(navReset)
         case .settings:
             NavigationStack(path: $settingsPath) {
                 SettingsView(path: $settingsPath).hubDestination($settingsPath, recipes)

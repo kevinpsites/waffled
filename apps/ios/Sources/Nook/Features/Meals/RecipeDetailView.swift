@@ -274,8 +274,14 @@ struct RecipeDetailView: View {
                         VStack(alignment: .leading, spacing: 7) {
                             Text(step.instruction).font(.system(size: 15)).foregroundStyle(NK.ink)
                                 .fixedSize(horizontal: false, vertical: true)
-                            if !step.ingredients.isEmpty {
+                            if !step.ingredients.isEmpty || (step.timerSeconds ?? 0) > 0 {
                                 ChipFlow(spacing: 6, lineSpacing: 6) {
+                                    if let secs = step.timerSeconds, secs > 0 {
+                                        Text("⏱ \(CookTimer.mmss(secs))").font(.system(size: 12, weight: .semibold))
+                                            .foregroundStyle(NK.primaryD)
+                                            .padding(.horizontal, 9).padding(.vertical, 4)
+                                            .background(NK.primary.opacity(0.12)).clipShape(Capsule())
+                                    }
                                     ForEach(step.ingredients, id: \.self) { ig in
                                         Text(ig).font(.system(size: 12, weight: .medium))
                                             .foregroundStyle(Color(hex: 0x167A4A))

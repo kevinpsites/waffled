@@ -408,6 +408,18 @@ export async function updateChore(
       )
     }
   }
+
+  // A one-off's "On" day lives on its single pending instance, not the chore row — so an
+  // edit that changes the due date must move that instance. Recurring chores (rrule set)
+  // ignore dueOn. Done/awaiting instances are left alone (stars-ledger integrity).
+  if (updated && updated.rrule === null && typeof patch.dueOn === 'string' && patch.dueOn.trim()) {
+    await query(
+      `update chore_instances
+          set due_on = $1
+        where household_id = $2 and chore_id = $3 and deleted_at is null and status = 'pending'`,
+      [patch.dueOn.trim(), householdId, id]
+    )
+  }
   return updated
 }
 

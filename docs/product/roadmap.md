@@ -35,7 +35,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   **recurring events** (RRULE picker, per-occurrence/this-and-following/all edits),
   **two-way Google Calendar sync** (recurrences expanded on inbound), offline calendar
   (PowerSync), AI heads-up + per-event insight.
-- **Chores & stars** — full loop: CRUD, weekly/custom schedules, up-for-grabs claim,
+- **Chores & stars** — full loop: CRUD, weekly/custom schedules, **one-off + carry-over
+  tasks** ("Just once" repeat + due date, unfinished one-offs roll forward with an
+  **overdue · since …** badge, per-chore `rollover` toggle), up-for-grabs claim,
   drag-to-reassign, parent approval, **photo-proof on completion**, streaks, append-only
   stars ledger.
 - **Rewards & economy** — catalog → redeem → approve → debit, multi-currency, conversions
@@ -45,9 +47,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   and recurring events) with learned suggestions.
 - **Lists & groceries** — multi-lists, auto-built aisle board, quantity merge, pantry
   staples, live cross-surface refresh, **item attribution** ("added by …" / "from meal plan").
-- **Meals & recipes** — week/month planners, recipe library, in-app editor, paste-markdown
-  import, overrides, cook mode, substitution-aware grocery build, AI plan-week/month, AI
-  metadata auto-fill.
+- **Meals & recipes** — week/month planners, recipe library, in-app editor (with
+  **ingredient sections** + dividers and cross-section drag-drop), paste-markdown
+  import, overrides, cook mode, **per-step timers** (set in the editor; a floating
+  cook-mode dock that ticks live, jumps to the step on tap, and rings a looping
+  alarm + local-notification fallback), substitution-aware grocery build, AI
+  plan-week/month, AI metadata auto-fill.
 - **Photos** — wall (masonry), real blob upload (single + multi), albums, edit, multi-
   select bulk move/delete, screensaver + per-album screensaver source, crossfade
   slideshow, recipe hero images.
@@ -91,23 +96,21 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   an account's households, plus `add-member` (attach an existing account to a household) and
   `list-accounts`. The only remaining server-side item is the optional, deferred cleanup of the
   legacy `credentials` table (login still verifies against it; `accounts` mirrors it).
-- **Multi-household identity — iOS switcher** (P3 iOS, *mobile owner*) — the native app needs
-  the same post-login affordances the web now has: surface the account's memberships +
-  pending invites (both already returned by `GET /api/household` and the login/exchange
-  responses), a household switcher that calls **`POST /api/auth/switch`** and a
-  pending-invite **Accept** that calls **`POST /api/auth/invites/:id/accept`**. The one
-  iOS-specific touch point is **re-exchanging the PowerSync token after a switch** (the
-  account-scoped access token's household claim changes, so the sync token must be refetched);
-  this already works server-side. Single-membership accounts need no UI change.
+- **Multi-household identity — iOS switcher** (P3 iOS, *mobile owner*) — **SHIPPED.** Settings →
+  Accounts now surfaces the account's memberships + pending invites (from `GET /api/household`):
+  a **"Your households"** switcher (shown only when >1) that calls **`POST /api/auth/switch`**,
+  and an **"Invitations"** card whose **Accept** calls **`POST /api/auth/invites/:id/accept`**.
+  Single-membership accounts see no change. The iOS-specific touch point — re-exchanging the
+  PowerSync token after a switch — reuses the kiosk's `enterClaimedSession` + `reauthenticate`
+  path, but with **`clearLocal: true`** so the previous household's rows can't linger in the
+  shared SQLite mirror (and the switch is blocked while writes are still queued). DTOs decode
+  defensively (`decodeIfPresent`) and were validated against the live payloads.
 - **Notifications tail** — kiosk "due soon" local banner (table not built yet); remote push
   (APNs / web-push) is blocked on a self-host key/relay decision. Recurring-event reminders
   on iOS (only single events fire today) ride along here.
-- **One-off & carry-over chores** — there is no true single-day task today: a new chore
-  defaults to **daily** (or weekly), and the Today list is an exact `due_on = today` match,
-  so an unfinished one-off neither keeps its incomplete state nor resurfaces as overdue —
-  it just re-appears as a fresh checkbox each day. Add a `once` recurrence + materialization
-  path, an "include overdue one-offs (carry until done)" clause on the today query, and an
-  overdue affordance on the chores screen. Cross-surface (web + iOS); mostly server-side.
+- **Recurring-chore rollover** — the shipped `rollover` flag defaults on for *one-offs*;
+  opt-in carry-forward for **recurring** chores still needs collapse-duplicates-to-one +
+  streak handling before it can ship.
 - **Conversational recipe AI** — instruction-driven edits + photo → recipe (needs a vision
   provider).
 - **Shared album import** for Photos (Google Photos / iCloud).

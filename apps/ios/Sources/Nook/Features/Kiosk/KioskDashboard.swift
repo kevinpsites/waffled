@@ -60,12 +60,16 @@ struct KioskDashboard: View {
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 10) {
             banners
             dashColumns
         }
         .padding(.horizontal, 40)
-        .padding(.vertical, 30)
+        // Tight top gap below the header (which already has its own .bottom padding); the
+        // first element — approval bar, review bar, or just the columns — sits right under
+        // it. Generous bottom padding stays for scroll breathing room.
+        .padding(.top, 2)
+        .padding(.bottom, 30)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(NK.canvas)
         .safeAreaInset(edge: .top, spacing: 0) { header }
@@ -423,7 +427,7 @@ struct KioskDashboard: View {
             }
             dateLine
         }
-        .padding(.horizontal, 40).padding(.top, 22).padding(.bottom, 16)
+        .padding(.horizontal, 40).padding(.top, 22).padding(.bottom, 10)
         .frame(maxWidth: .infinity)
         .background(NK.canvas)
     }

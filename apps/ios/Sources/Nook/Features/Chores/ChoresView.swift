@@ -140,6 +140,20 @@ enum ChoreDates {
         }
         return (rel, DateFmt.string(date, "EEEE, MMM d", .current), diff == 0)
     }
+
+    /// Client-side "since …" suffix for an overdue one-off (web parity: Tasks.tsx
+    /// `overdueLabel`) — its `dueOn` is before the day being viewed. nil when not overdue.
+    static func overdueLabel(dueOn: String?, viewing: String) -> String? {
+        guard let dueOn,
+              let due = DateFmt.date(dueOn, "yyyy-MM-dd", .current),
+              let view = DateFmt.date(viewing, "yyyy-MM-dd", .current) else { return nil }
+        let cal = Calendar.current
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: due), to: cal.startOfDay(for: view)).day ?? 0
+        guard days >= 1 else { return nil }
+        if days == 1 { return "since yesterday" }
+        if days < 7 { return "since \(DateFmt.string(due, "EEE", .current))" }
+        return "since \(DateFmt.string(due, "MMM d", .current))"
+    }
 }
 
 /// A person's (or the up-for-grabs) column of chores for the day.
@@ -218,7 +232,13 @@ struct ChoresView: View {
         .task(id: sync.choresRev) { await model.load(); await approvals.load() }
         .task { await sync.loadCurrencies() }
         .sheet(item: $editor) { target in
-            ChoreEditSheet(members: sync.members, target: target,
+            // Snapshot the sync-derived inputs HERE (read `sync` once) instead of letting
+            // the sheet observe SyncManager — see ChoreEditSheet for why that hung the UI.
+            // Managers can assign to anyone; everyone else only to themselves (web parity).
+            let assignable = sync.can("chore.manage")
+                ? sync.members
+                : sync.members.filter { $0.id == sync.currentPersonId }
+            ChoreEditSheet(assignableMembers: assignable, currencies: sync.currencies, target: target,
                 onSave: { choreId, body in await model.save(choreId: choreId, body: body) },
                 onDelete: { choreId in Task { await model.delete(choreId: choreId) } })
         }
@@ -406,7 +426,10 @@ struct ChoresView: View {
             // Capped height + internal scroll, so a long list stays put instead of
             // pushing the columns below it down the page.
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
+                // Lazy: only on-screen rows build their (heavy) drag previews + drop
+                // wiring; an eager VStack rebuilt the whole board's draggable rows on
+                // every ChoresView.body pass (e.g. when a sheet was presented over it).
+                LazyVStack(spacing: 0) {
                     if col.isGrabs && !col.items.isEmpty {
                         Text("Tap to claim it, or drag it into someone’s column.")
                             .font(.system(size: 11.5, weight: .medium)).foregroundStyle(NK.ink3)
@@ -750,6 +773,16 @@ struct ChoresView: View {
                         if inst.streak >= 2 {
                             Text("🔥 \(inst.streak)").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink2)
                         }
+                        // Carried-forward one-off: red "overdue · since …" pill (web parity).
+                        if !isDone, !isAwaiting,
+                           let since = ChoreDates.overdueLabel(dueOn: inst.dueOn, viewing: model.date) {
+                            Text("overdue · \(since)")
+                                .font(.system(size: 10.5, weight: .heavy))
+                                .foregroundStyle(NK.primaryD)
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(NK.primary.opacity(0.12)).clipShape(Capsule())
+                                .lineLimit(1)
+                        }
                     }
                     HStack(spacing: 5) {
                         Text(sync.currencySymbol(inst.rewardCurrency)).font(.system(size: 11))
@@ -856,8 +889,13 @@ struct ChoresView: View {
 /// toggle. Delete when editing. Mirrors the web ChoreModal. NK-styled.
 struct ChoreEditSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(SyncManager.self) private var sync
-    let members: [SyncedMember]
+    /// Snapshotted by the presenter from SyncManager so the sheet does NOT observe the
+    /// whole @Observable sync object — observing it re-evaluated/re-laid-out the sheet's
+    /// body (segmented Picker + chip flows) on every unrelated sync mutation, which on a
+    /// real iPad stacked into a multi-second hang when presented over the chores board.
+    let assignableMembers: [SyncedMember]
+    /// The household's reward currencies, likewise snapshotted (was `sync.currencies`).
+    let currencies: [NookAPI.Currency]
     let target: ChoresView.ChoreEditorTarget
     /// Persist the chore. Returns nil on success, else a user-facing error message
     /// (so the sheet stays open and shows why, instead of dismissing on a silent fail).
@@ -875,8 +913,9 @@ struct ChoreEditSheet: View {
     @State private var stars: Int
     /// Chosen reward currency key; nil = the household default.
     @State private var currencyKey: String?
-    @State private var freq: String        // "daily" | "weekly"
+    @State private var freq: String        // "once" | "daily" | "weekly"
     @State private var days: Set<String>
+    @State private var dueOn: Date         // the "On" date for a one-off ("Just once")
     @State private var requiresApproval: Bool
     @State private var requiresPhoto: Bool
     @State private var confirmDelete = false
@@ -884,9 +923,11 @@ struct ChoreEditSheet: View {
     @State private var saveError: String?
     @FocusState private var titleFocused: Bool
 
-    init(members: [SyncedMember], target: ChoresView.ChoreEditorTarget,
+    init(assignableMembers: [SyncedMember], currencies: [NookAPI.Currency],
+         target: ChoresView.ChoreEditorTarget,
          onSave: @escaping (String?, [String: JSONValue]) async -> String?, onDelete: @escaping (String) -> Void) {
-        self.members = members; self.target = target; self.onSave = onSave; self.onDelete = onDelete
+        self.assignableMembers = assignableMembers; self.currencies = currencies
+        self.target = target; self.onSave = onSave; self.onDelete = onDelete
         switch target {
         case let .new(pid):
             editChoreId = nil
@@ -894,6 +935,7 @@ struct ChoreEditSheet: View {
             _personId = State(initialValue: pid); _stars = State(initialValue: 1)
             _currencyKey = State(initialValue: nil)
             _freq = State(initialValue: "daily"); _days = State(initialValue: [])
+            _dueOn = State(initialValue: Date())
             _requiresApproval = State(initialValue: false)
             _requiresPhoto = State(initialValue: false)
         case let .edit(i):
@@ -903,19 +945,13 @@ struct ChoreEditSheet: View {
             _currencyKey = State(initialValue: i.rewardCurrency)
             let parsed = ChoreEditSheet.parseRrule(i.rrule)
             _freq = State(initialValue: parsed.freq); _days = State(initialValue: Set(parsed.days))
+            _dueOn = State(initialValue: DateFmt.date(i.dueOn ?? "", "yyyy-MM-dd", .current) ?? Date())
             _requiresApproval = State(initialValue: i.requiresApproval)
             _requiresPhoto = State(initialValue: i.requiresPhoto)
         }
     }
 
     private var editing: Bool { editChoreId != nil }
-    /// Who this person may assign a chore to. Managers can pick anyone; everyone else
-    /// may only create one for themselves (or leave it up for grabs) — matching the
-    /// web's `canAssignOthers` carve-out. "Up for grabs" is always offered separately.
-    private var assignableMembers: [SyncedMember] {
-        if sync.can("chore.manage") { return members }
-        return members.filter { $0.id == sync.currentPersonId }
-    }
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty && (freq != "weekly" || !days.isEmpty)
     }
@@ -948,10 +984,25 @@ struct ChoreEditSheet: View {
 
                     VStack(alignment: .leading, spacing: 9) {
                         SectionLabel(text: "Repeats")
-                        Picker("Repeats", selection: $freq.animation()) {
-                            Text("Every day").tag("daily"); Text("Certain days").tag("weekly")
+                        // Plain binding (NOT `$freq.animation()`): an animated binding installs
+                        // an animation transaction on the segmented control's every layout,
+                        // which collides with the keyboard-driven ScrollView resize when the
+                        // title auto-focuses. The animation is scoped to the rows below instead.
+                        Picker("Repeats", selection: $freq) {
+                            Text("Just once").tag("once")
+                            Text("Every day").tag("daily")
+                            Text("Certain days").tag("weekly")
                         }
                         .pickerStyle(.segmented)
+                        // One-off: pick the day it's due (shown for both new and edit — an
+                        // edit moves the chore's single pending instance). No min, so an
+                        // overdue one-off can be re-dated forward or back.
+                        if freq == "once" {
+                            DatePicker("On", selection: $dueOn, displayedComponents: .date)
+                                .font(.system(size: 15, weight: .semibold))
+                                .tint(NK.primary)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
                         if freq == "weekly" {
                             HStack(spacing: 5) {
                                 ForEach(Self.days, id: \.code) { d in
@@ -967,8 +1018,10 @@ struct ChoreEditSheet: View {
                                     .buttonStyle(.plain)
                                 }
                             }
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
+                    .animation(.easeInOut(duration: 0.2), value: freq)
 
                     VStack(alignment: .leading, spacing: 9) {
                         SectionLabel(text: "Who")
@@ -1093,8 +1146,6 @@ struct ChoreEditSheet: View {
         .buttonStyle(.plain)
     }
 
-    /// The household's reward currencies (e.g. Stars, plus any custom ones).
-    private var currencies: [NookAPI.Currency] { sync.currencies }
     /// The selected key, falling back to the household default.
     private var effectiveCurrencyKey: String? {
         currencyKey ?? currencies.first(where: { $0.isDefault })?.key
@@ -1117,7 +1168,8 @@ struct ChoreEditSheet: View {
             "emoji": emoji.trimmingCharacters(in: .whitespaces).isEmpty ? .null : .string(emoji.trimmingCharacters(in: .whitespaces)),
             "personId": personId.map(JSONValue.string) ?? .null,
             "rewardAmount": .int(stars),
-            "rrule": .string(buildRrule()),
+            // One-off ("Just once") sends no rrule (null); recurring sends FREQ=…
+            "rrule": buildRrule().map(JSONValue.string) ?? .null,
             "requiresApproval": .bool(requiresApproval),
             "requiresPhoto": .bool(requiresPhoto),
         ]
@@ -1125,6 +1177,12 @@ struct ChoreEditSheet: View {
         // backend uses its default).
         if currencies.count > 1, let key = effectiveCurrencyKey {
             body["rewardCurrency"] = .string(key)
+        }
+        // The "On" day applies to a one-off (create sets the instance's day; edit moves
+        // it). The server defaults it to household-local today if omitted and ignores it
+        // for recurring chores.
+        if freq == "once" {
+            body["dueOn"] = .string(DateFmt.string(dueOn, "yyyy-MM-dd", .current))
         }
         Task {
             saving = true; saveError = nil
@@ -1134,14 +1192,23 @@ struct ChoreEditSheet: View {
         }
     }
 
-    private func buildRrule() -> String {
-        guard freq == "weekly", !days.isEmpty else { return "FREQ=DAILY" }
-        let ordered = Self.days.map(\.code).filter { days.contains($0) }
-        return "FREQ=WEEKLY;BYDAY=\(ordered.joined(separator: ","))"
+    /// nil = one-off ("Just once"); else the recurrence rule.
+    private func buildRrule() -> String? {
+        switch freq {
+        case "once": return nil
+        case "weekly":
+            guard !days.isEmpty else { return nil }   // canSave already guards this
+            let ordered = Self.days.map(\.code).filter { days.contains($0) }
+            return "FREQ=WEEKLY;BYDAY=\(ordered.joined(separator: ","))"
+        default: return "FREQ=DAILY"
+        }
     }
 
     private static func parseRrule(_ rrule: String?) -> (freq: String, days: [String]) {
-        guard let r = rrule, r.uppercased().contains("FREQ=WEEKLY") else { return ("daily", []) }
+        // A blank/absent rrule is a one-off — NOT a daily chore. (Editing a one-off must
+        // keep "once", or saving would silently convert it to a recurring daily chore.)
+        guard let r = rrule, !r.trimmingCharacters(in: .whitespaces).isEmpty else { return ("once", []) }
+        guard r.uppercased().contains("FREQ=WEEKLY") else { return ("daily", []) }
         guard let range = r.range(of: "BYDAY=", options: .caseInsensitive) else { return ("weekly", []) }
         let rest = r[range.upperBound...].prefix { $0.isLetter || $0 == "," }
         return ("weekly", rest.uppercased().split(separator: ",").map(String.init))
