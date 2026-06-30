@@ -109,10 +109,12 @@ export async function cookableRecipes(householdId: string): Promise<{ ready: Coo
       onHand: required.length - missing.length, missing, usesExpiring, mainItem,
     }
     if (missing.length === 0) { ready.push(entry); continue }
-    // "Have the main": the protein ingredient is on hand (or, untagged, you already
-    // have most of it) AND only a few sides are missing — not a whole shop.
-    const qualifies = !!mainItem || (!r.protein && required.length >= 3 && coverage >= COVERAGE_FALLBACK)
-    if (qualifies && missing.length <= MAX_MISSING_MAIN) haveMain.push(entry)
+    // "Have the main": if you genuinely have the recipe's protein on hand, show it no
+    // matter how many sides are missing — the point is you own the protein and will buy
+    // the sides. The tight "only a few missing" cap applies only to the no-protein
+    // "you already have most of it" fallback.
+    const haveMost = !r.protein && required.length >= 3 && coverage >= COVERAGE_FALLBACK
+    if (mainItem || (haveMost && missing.length <= MAX_MISSING_MAIN)) haveMain.push(entry)
   }
   ready.sort((a, b) => Number(b.usesExpiring) - Number(a.usesExpiring) || a.title.localeCompare(b.title))
   // Have-the-main: fewest missing first (closest to ready), then uses-expiring.
