@@ -8,10 +8,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## The big picture
 
-> **Feature surface complete + self-host packaging shipped.** A fresh `git clone` +
-> `./nook up` comes up with real auth (built-in password / OIDC) and runs with zero
-> external dependencies. Every feature domain (Today, Calendar, Chores, Rewards, Goals,
-> Lists, Meals, Photos, AI capture) is built and usable on the Web/Kiosk.
+> **Feature surface complete + self-host packaging shipped + extensibility layer opened.**
+> A fresh `git clone` + `./nook up` comes up with real auth (built-in password / OIDC) and
+> runs with zero external dependencies. Every feature domain (Today, Calendar, Chores,
+> Rewards, Goals, Lists, Meals, Photos, AI capture) is built and usable on the Web/Kiosk,
+> with a **pluggable optional-module framework** (first module: Pantry) and a **public,
+> scoped API** for external integrations now layered on top.
 
 ## Done ✅
 
@@ -59,6 +61,16 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **AI capture** — pluggable provider (Claude / OpenAI-compatible / Ollama), instant
   heuristic → LLM upgrade, offline fallback.
 - **Weather** — Open-Meteo on the topbar (no key).
+- **Extensibility — optional modules + public API** — a **pluggable optional-module
+  framework** (registry + per-household `settings.modules` toggle, a **Settings → Modules**
+  tab; Today cards / nav / routes gate on it), the first module — **Pantry / on-hand
+  inventory** (items with quantities + locations, quantity stepper, "used up", drag between
+  locations, a Today card) — and **per-user API keys + scopes** (`nook_…` key via `x-api-key`,
+  `<resource>:read|write` over the unchanged capability matrix, **Settings → API Keys** tab).
+  Web today; the module flag is server-shared so iOS can grow native cards later. The two
+  supported patterns (built-in toggle module · external integration via API keys) and the one
+  we don't build (in-process plugins) are written up in
+  [`extensibility.md`](./extensibility.md).
 - **iOS** (mobile) — a **universal app**: the iPhone *personal planner* and the iPad
   *family hub* (nav rail + every page) in one binary. Near-complete feature parity with the
   Web/Kiosk — Today, Calendar (incl. **recurring events** — create, per-occurrence edit/
@@ -111,6 +123,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **Recurring-chore rollover** — the shipped `rollover` flag defaults on for *one-offs*;
   opt-in carry-forward for **recurring** chores still needs collapse-duplicates-to-one +
   streak handling before it can ship.
+- **More optional modules** (on the new framework) — **Family Home Evening** (weekly agenda
+  + per-part assignment/rotation + a Today card; community-tier) and a **daily quote/snippet**
+  card (the cleanest "built-in card also writable via the public API" demo). Plus **iOS native
+  module cards** (the toggle is already server-shared; Pantry et al. need Swift screens), and
+  API-key follow-ups: per-user (non-admin) issuance, an OpenAPI/published contract, and a CORS
+  posture for cross-origin integrations.
 - **Conversational recipe AI** — instruction-driven edits + photo → recipe (needs a vision
   provider).
 - **Shared album import** for Photos (Google Photos / iCloud).

@@ -157,6 +157,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Pantry staples** (kept off the list; Pantry check) | ✅ | ✅ | ✅ | ✅ Done |
 | Check off / add / delete (persists) | ✅ | ✅ | ✅ | ✅ Done |
 | **Item attribution** — "added by {name}" / "🍽 from meal plan" | ✅ | ✅ | ✅ | ✅ Done |
+| **Re-aisle** a grocery item (move it to another aisle section from its editor) | ✅ | 🚧 | 🚧 | ✅ Done (web); mobile uses the auto-classifier only |
 | **Cross-surface live refresh** (Today ↔ Lists ↔ Rewards) | ✅ | ✅ | ✅ | ✅ Done (in-app refresh bus) |
 
 ## Meals & recipes
@@ -222,6 +223,23 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Recurring-event reminders | ❌ N/A | 🚧 | 🚧 | 🚧 Planned (no recurrence in scheduler yet) |
 | **Remote push (APNs / web-push)** | 🚧 | 🚧 | 🚧 | 🚧 Planned (blocked on key/relay) |
 
+## Modules & extensibility
+
+See [`extensibility.md`](./extensibility.md) for the pattern model (A = built-in toggle
+module · B = external integration via API keys · C = in-process plugins, deliberately not
+built). The on/off flag is **server-side + shared** (`households.settings.modules`); each
+client renders its own native UI, so a module with no iOS screen simply doesn't appear there.
+
+| Feature | Web / Kiosk | iPhone | iPad | Status |
+| --- | :---: | :---: | :---: | --- |
+| **Pluggable optional modules** — registry + per-household enable flag; gates Today cards / nav / routes | ✅ | 🚧 | 🚧 | ✅ Done (web; build #1) — iOS reads the shared flag but has no module cards yet |
+| **Settings → Modules** tab (toggle optional modules on/off) | ✅ | 🚧 | 🚧 | ✅ Done (web) |
+| **Pantry / on-hand inventory** module — items + quantities + locations (fridge/freezer/pantry) | ✅ | 🚧 | 🚧 | ✅ Done (web; build #2) — the first optional module |
+| Pantry: quantity **stepper** + tap-to-type amount, **"used up"** state | ✅ | 🚧 | 🚧 | ✅ Done (web) |
+| Pantry: **drag items between locations**; **Today card** (whole-card tap, mark-used) | ✅ | 🚧 | 🚧 | ✅ Done (web) |
+| **Public API keys + scopes** — `nook_…` key, `x-api-key`, `<resource>:read\|write` scopes | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web; build #3) — external-integration surface (pattern B), admin-issued |
+| **Settings → API Keys** tab (generate / scope / reveal-once / revoke) | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web; admin-gated) |
+
 ## Settings
 
 | Feature | Web / Kiosk | iPhone | iPad | Status |
@@ -232,6 +250,8 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Meals** (meal calendar & meal times) | ✅ | ✅ | ✅ | ✅ Done |
 | **AI & capture** (provider/model selection) | ✅ | ✅ | ✅ | ✅ Done |
 | **Display & Kiosk** (screensaver, photo source, idle, night-dim, preview) | ✅ | ✅ | ✅ | ✅ Done |
+| **Modules** (toggle optional modules; see Modules & extensibility) | ✅ | 🚧 | 🚧 | ✅ Done (web) |
+| **API Keys** (per-user keys + scopes for external integrations) | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web; admin-gated) |
 | **Notifications** (reminders) | ❌ N/A | ✅ | ✅ | ✅ Done (mobile) |
 | **Login & security** (OIDC config, password toggle) | ✅ | 🟡 | 🟡 | ✅ Done (web); mobile shows accounts/sign-in, OIDC config is web-only |
 | Household settings (name, week start, timezone, location) | ✅ | ✅ | ✅ | ✅ Done |
