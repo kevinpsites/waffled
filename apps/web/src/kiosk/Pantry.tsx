@@ -194,12 +194,11 @@ export function Pantry() {
           ) : (
             <div className="pl-grid">
               {shown.map((it) => {
-                const flagged = flaggedAllergens(it, avoidAllergens, allergenPeople)
                 const exp = expiryText(it.expiresOn)
                 const loc = locations.includes(it.location) ? it.location : 'Other'
                 const itemAllergens = it.allergens ?? []
                 return (
-                  <div key={it.id} className={`pl-item${busy === it.id ? ' busy' : ''}${flagged.length ? ' flagged' : ''}`}>
+                  <div key={it.id} className={`pl-item${busy === it.id ? ' busy' : ''}`}>
                     <button type="button" className="pl-item-face" onClick={() => setDetail(it)}>
                       <span className="pl-emoji">{it.imageUrl ? <img src={it.imageUrl} alt="" /> : foodEmoji(it.name)}</span>
                       <span className="pl-item-text">
