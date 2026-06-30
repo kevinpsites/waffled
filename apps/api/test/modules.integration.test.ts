@@ -88,6 +88,15 @@ describe('optional-module gating', () => {
     })
   }
 
+  it('the goals module also gates the calendar↔goal bridge', async () => {
+    expect((await call('GET', '/api/goal-calendar/recap', kevin)).statusCode).toBe(200)
+    await setModule('goals', false)
+    const off = await call('GET', '/api/goal-calendar/recap', kevin)
+    expect(off.statusCode).toBe(403)
+    expect(JSON.parse(off.body).message).toMatch(/goals module is not enabled/i)
+    await setModule('goals', true)
+  })
+
   it('disabling one module leaves the others reachable', async () => {
     await setModule('meals', false)
     expect((await call('GET', '/api/recipes', kevin)).statusCode).toBe(403)
