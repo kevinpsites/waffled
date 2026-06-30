@@ -18,6 +18,8 @@ struct PantryItemEditor: View {
     @State private var hasExpiry: Bool
     @State private var expiry: Date
     @State private var note: String
+    @State private var lowAt: String
+    @State private var isMeal: Bool
     @State private var saving = false
 
     init(mode: Mode, locations: [String], onSave: @escaping ([String: JSONValue]) async -> Void) {
@@ -33,6 +35,8 @@ struct PantryItemEditor: View {
             _hasExpiry = State(initialValue: false)
             _expiry = State(initialValue: Date())
             _note = State(initialValue: "")
+            _lowAt = State(initialValue: "")
+            _isMeal = State(initialValue: false)
         case let .edit(it):
             _name = State(initialValue: it.name)
             _amount = State(initialValue: it.amount)
@@ -42,6 +46,8 @@ struct PantryItemEditor: View {
             _hasExpiry = State(initialValue: d != nil)
             _expiry = State(initialValue: d ?? Date())
             _note = State(initialValue: it.note)
+            _lowAt = State(initialValue: it.lowAt.map { formatAmount($0) } ?? "")
+            _isMeal = State(initialValue: it.isMeal ?? false)
         }
     }
 
@@ -75,7 +81,20 @@ struct PantryItemEditor: View {
                                 .labelsHidden().datePickerStyle(.graphical).tint(NK.primary)
                         }
                     }
-                    field("Note") { TextField("optional", text: $note) }
+                    HStack(spacing: 12) {
+                        field("Note") { TextField("leftovers from Tuesday", text: $note) }
+                        field("Warn below") { TextField("default", text: $lowAt).keyboardType(.decimalPad) }
+                    }
+                    Button { isMeal.toggle() } label: {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: isMeal ? "checkmark.square.fill" : "square")
+                                .font(.system(size: 20)).foregroundStyle(isMeal ? NK.primary : NK.ink3)
+                            Text("It’s a meal — ready to eat (leftovers, pre-made, or a protein to use up). Shows in “Cook from your pantry”.")
+                                .font(.system(size: 13)).foregroundStyle(NK.ink2)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 0)
+                        }
+                    }.buttonStyle(.plain).padding(.top, 2)
                 }
                 .padding(20)
             }
@@ -130,6 +149,8 @@ struct PantryItemEditor: View {
             "location": .string(location),
             "note": .string(note.trimmingCharacters(in: .whitespaces)),
             "expiresOn": hasExpiry ? .string(PantryExpiry.string(expiry)) : .null,
+            "lowAt": Double(lowAt.trimmingCharacters(in: .whitespaces)).map(JSONValue.double) ?? .null,
+            "isMeal": .bool(isMeal),
         ]
         Task {
             await onSave(body)

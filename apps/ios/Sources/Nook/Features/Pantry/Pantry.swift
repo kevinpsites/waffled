@@ -45,15 +45,18 @@ enum PantryExpiry {
         f.dateFormat = "yyyy-MM-dd"
         return f
     }()
+    private static let shortFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "MMM d"
+        return f
+    }()
     static func date(_ s: String?) -> Date? { s.flatMap { fmt.date(from: $0) } }
     static func string(_ date: Date) -> String { fmt.string(from: date) }
     /// "best by Jul 22" style short label.
     static func shortLabel(_ s: String?) -> String? {
         guard let d = date(s) else { return nil }
-        let out = DateFormatter()
-        out.locale = Locale(identifier: "en_US_POSIX")
-        out.dateFormat = "MMM d"
-        return out.string(from: d)
+        return shortFmt.string(from: d)
     }
     static func daysUntil(_ s: String?, tz: TimeZone) -> Int? {
         guard let d = date(s) else { return nil }
@@ -103,6 +106,9 @@ final class PantryModel {
     private(set) var loading = true
     private(set) var error = false
     private(set) var loaded = false
+    /// Days-to-expiry per item id, computed once at load — so sort/filter/badges don't
+    /// re-do date math (a `Calendar` alloc + `startOfDay`) on every keystroke.
+    private(set) var daysToExpiry: [String: Int] = [:]
 
     private let api = NookAPI()
 
@@ -116,18 +122,29 @@ final class PantryModel {
             allergenPeople = r.allergenPeople
             lowThreshold = r.lowThreshold
             locationIcons = r.locationIcons ?? [:]
+            recomputeDays()
             error = false
             loaded = true
         } catch { self.error = true }
         loading = false
     }
 
+    private func recomputeDays() {
+        var d: [String: Int] = [:]
+        for i in items where i.expiresOn != nil {
+            if let n = PantryExpiry.daysUntil(i.expiresOn, tz: .current) { d[i.id] = n }
+        }
+        daysToExpiry = d
+    }
+
+    func days(_ item: NookAPI.PantryItem) -> Int? { daysToExpiry[item.id] }
+
     /// The effective avoid-set: household avoid-list ∪ any allergen a member has.
     var avoidSet: Set<String> { Set(avoidAllergens).union(allergenPeople.keys) }
 
     /// "Use soon" — expires within 3 days (or already past).
     func isSoon(_ item: NookAPI.PantryItem) -> Bool {
-        guard let d = PantryExpiry.daysUntil(item.expiresOn, tz: .current) else { return false }
+        guard let d = daysToExpiry[item.id] else { return false }
         return d <= 3
     }
 

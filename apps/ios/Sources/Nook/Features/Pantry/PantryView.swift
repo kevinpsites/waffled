@@ -228,14 +228,9 @@ struct PantryView: View {
         }
     }
 
-    @ViewBuilder private func thumb(_ item: NookAPI.PantryItem) -> some View {
-        if let s = item.imageUrl, let url = URL(string: s) {
-            AsyncImage(url: url) { $0.resizable().scaledToFill() }
-            placeholder: { Text(PantryFood.emoji(for: item.name)).font(.system(size: 21)) }
+    private func thumb(_ item: NookAPI.PantryItem) -> some View {
+        CachedImage(item.imageUrl) { Text(PantryFood.emoji(for: item.name)).font(.system(size: 21)) }
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        } else {
-            Text(PantryFood.emoji(for: item.name)).font(.system(size: 21))
-        }
     }
 
     private func stepper(_ item: NookAPI.PantryItem) -> some View {
@@ -331,8 +326,8 @@ struct PantryView: View {
         case .recent: return list.sorted { ($0.createdAt ?? "") > ($1.createdAt ?? "") }
         case .expiring:
             return list.sorted {
-                let a = PantryExpiry.daysUntil($0.expiresOn, tz: .current)
-                let b = PantryExpiry.daysUntil($1.expiresOn, tz: .current)
+                let a = model.days($0)
+                let b = model.days($1)
                 switch (a, b) {
                 case let (x?, y?): return x != y ? x < y : $0.name < $1.name
                 case (_?, nil): return true
@@ -344,7 +339,7 @@ struct PantryView: View {
     }
 
     private func expiryTag(_ item: NookAPI.PantryItem) -> (text: String, color: Color)? {
-        guard let d = PantryExpiry.daysUntil(item.expiresOn, tz: .current) else { return nil }
+        guard let d = model.days(item) else { return nil }
         if d < 0 { return ("Expired", Color(hex: 0xC0392B)) }
         if d == 0 { return ("Today", Color(hex: 0xB8860B)) }
         if d <= 3 { return ("\(d) day\(d == 1 ? "" : "s")", Color(hex: 0xB8860B)) }

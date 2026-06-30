@@ -82,14 +82,9 @@ struct PantryFoundSheet: View {
         }
     }
 
-    @ViewBuilder private var hero: some View {
-        if let s = product?.imageUrl, let url = URL(string: s) {
-            AsyncImage(url: url) { $0.resizable().scaledToFill() }
-            placeholder: { Text(PantryFood.emoji(for: name)).font(.system(size: 30)) }
+    private var hero: some View {
+        CachedImage(product?.imageUrl) { Text(PantryFood.emoji(for: name.isEmpty ? "x" : name)).font(.system(size: 30)) }
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        } else {
-            Text(PantryFood.emoji(for: name.isEmpty ? "x" : name)).font(.system(size: 30))
-        }
     }
 
     private var subtitle: String? {
