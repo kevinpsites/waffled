@@ -38,11 +38,13 @@ interface PantryRow {
   source: string | null
   low_at: string | null
   is_meal: boolean
+  added_on: string
   created_at: string
 }
 
 const RETURNING = `id, name, amount, unit, location, expires_on::text as expires_on, note, used_up_at::text as used_up_at,
-  barcode, brand, image_url, quantity_text, serving_basis, nutrition, allergens, traces, dietary, source, low_at, is_meal, created_at::text as created_at`
+  barcode, brand, image_url, quantity_text, serving_basis, nutrition, allergens, traces, dietary, source, low_at, is_meal,
+  added_on::text as added_on, created_at::text as created_at`
 
 function present(r: PantryRow) {
   return {
@@ -67,6 +69,7 @@ function present(r: PantryRow) {
     source: r.source,
     lowAt: r.low_at != null ? Number(r.low_at) : null,
     isMeal: r.is_meal,
+    addedOn: r.added_on,
     createdAt: r.created_at,
   }
 }
@@ -107,6 +110,7 @@ async function insertItem(householdId: string, b: Record<string, unknown>): Prom
   ]
   if (b.lowAt != null && b.lowAt !== '' && Number.isFinite(Number(b.lowAt))) { cols.push('low_at'); vals.push(Number(b.lowAt)) }
   if (typeof b.isMeal === 'boolean') { cols.push('is_meal'); vals.push(b.isMeal) }
+  if (b.addedOn && DATE_RE.test(String(b.addedOn))) { cols.push('added_on'); vals.push(String(b.addedOn)) }
   for (const p of offPatches(b)) { cols.push(p.col); vals.push(p.val) }
   const placeholders = vals.map((_, idx) => `$${idx + 1}${cols[idx] === 'nutrition' ? '::jsonb' : ''}`)
   const { rows } = await query<PantryRow>(
@@ -155,6 +159,13 @@ function readLocationIcons(settings: unknown): Record<string, string> {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, string>) : {}
 }
 
+// Household "old item" threshold in months — an item that's been on hand longer than
+// this gets an age warning. Family-customizable; defaults to 6 months.
+function readStaleMonths(settings: unknown): number {
+  const v = (settings as { pantry?: { staleMonths?: unknown } } | null | undefined)?.pantry?.staleMonths
+  return typeof v === 'number' && Number.isFinite(v) && v >= 1 ? v : 6
+}
+
 export function registerPantryRoutes(api: Api): void {
   // List all pantry items + the household's configured locations.
   api.get('/api/pantry', tenantRoute(async (tenant) => {
@@ -184,6 +195,7 @@ export function registerPantryRoutes(api: Api): void {
       allergenPeople,
       lowThreshold: readLowThreshold(settings),
       locationIcons: readLocationIcons(settings),
+      staleMonths: readStaleMonths(settings),
     }
   }))
 
@@ -287,6 +299,7 @@ export function registerPantryRoutes(api: Api): void {
     if ('note' in b) set('note', b.note != null ? String(b.note).trim() : null)
     if ('lowAt' in b) set('low_at', b.lowAt != null && b.lowAt !== '' && Number.isFinite(Number(b.lowAt)) ? Number(b.lowAt) : null)
     if (typeof b.isMeal === 'boolean') set('is_meal', b.isMeal)
+    if (b.addedOn && DATE_RE.test(String(b.addedOn))) set('added_on', String(b.addedOn))
     // OFF snapshot edits (relink a barcode, replace the photo, refresh nutrition).
     for (const p of offPatches(b)) {
       if (p.col === 'nutrition') { cols.push(`nutrition = $${i++}::jsonb`); vals.push(p.val) }
@@ -324,8 +337,11 @@ export function registerPantryRoutes(api: Api): void {
   // and/or whether it shows a Today card. Both live in settings.pantry.
   api.put('/api/pantry/config', tenantRoute(async (tenant, req: Request, res: Response) => {
     await requirePantry(tenant)
-    const b = (req.body ?? {}) as { locations?: unknown; showOnToday?: unknown; avoidAllergens?: unknown; lowThreshold?: unknown; locationIcons?: unknown }
+    const b = (req.body ?? {}) as { locations?: unknown; showOnToday?: unknown; avoidAllergens?: unknown; lowThreshold?: unknown; locationIcons?: unknown; staleMonths?: unknown }
     const merge: Record<string, unknown> = {}
+    if (typeof b.staleMonths === 'number' && Number.isFinite(b.staleMonths) && b.staleMonths >= 1 && b.staleMonths <= 60) {
+      merge.staleMonths = Math.round(b.staleMonths)
+    }
     if (Array.isArray(b.avoidAllergens)) {
       // Keep only known allergen keys, deduped.
       merge.avoidAllergens = Array.from(new Set((b.avoidAllergens as unknown[]).map(String).filter((a) => ALLERGEN_KEYS.includes(a))))
@@ -354,7 +370,7 @@ export function registerPantryRoutes(api: Api): void {
     }
     if (typeof b.showOnToday === 'boolean') merge.showOnToday = b.showOnToday
     if (Object.keys(merge).length === 0) {
-      return res.status(400).json({ error: 'BadRequest', message: 'provide locations, showOnToday, avoidAllergens, lowThreshold, and/or locationIcons' })
+      return res.status(400).json({ error: 'BadRequest', message: 'provide a valid pantry config field' })
     }
     // Nested merge (jsonb_set's 2-level path won't create a missing `pantry` parent):
     // preserve sibling settings + any other pantry keys.
@@ -373,6 +389,7 @@ export function registerPantryRoutes(api: Api): void {
       avoidAllergens: readAvoidAllergens(settings),
       lowThreshold: readLowThreshold(settings),
       locationIcons: readLocationIcons(settings),
+      staleMonths: readStaleMonths(settings),
     }
   }))
 }

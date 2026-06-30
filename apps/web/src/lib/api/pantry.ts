@@ -37,6 +37,7 @@ export interface PantryItem extends OffFields {
   usedUp: boolean
   lowAt: number | null
   isMeal: boolean
+  addedOn: string
   createdAt: string
 }
 
@@ -68,6 +69,7 @@ export type PantryItemInput = {
   usedUp?: boolean
   lowAt?: number | null
   isMeal?: boolean
+  addedOn?: string
   // OFF snapshot — set when adding/editing via a barcode lookup.
   barcode?: string | null
   brand?: string | null
@@ -107,7 +109,7 @@ export const DIETARY_LABELS: Record<string, string> = {
 }
 
 export const pantryApi = {
-  list: () => apiGet<{ items: PantryItem[]; locations: string[]; showOnToday: boolean; avoidAllergens: string[]; allergenPeople: Record<string, string[]>; lowThreshold: number; locationIcons: Record<string, string> }>('/api/pantry'),
+  list: () => apiGet<{ items: PantryItem[]; locations: string[]; showOnToday: boolean; avoidAllergens: string[]; allergenPeople: Record<string, string[]>; lowThreshold: number; locationIcons: Record<string, string>; staleMonths: number }>('/api/pantry'),
   create: (input: PantryItemInput) => apiSend<{ item: PantryItem }>('POST', '/api/pantry', input).then((r) => r.item),
   // Scan upsert: increments a matching on-hand item (by barcode, else name) instead
   // of duplicating. Returns whether it incremented an existing item.
@@ -125,8 +127,8 @@ export const pantryApi = {
   itemRecipes: (id: string) => apiGet<{ recipes: ItemRecipe[] }>(`/api/pantry/${id}/recipes`),
   // Module config: locations, Today-card toggle, avoid-allergens, the running-low
   // threshold, and/or per-location icons.
-  setConfig: (patch: { locations?: string[]; showOnToday?: boolean; avoidAllergens?: string[]; lowThreshold?: number; locationIcons?: Record<string, string> }) =>
-    apiSend<{ locations: string[]; showOnToday: boolean; avoidAllergens: string[]; lowThreshold: number; locationIcons: Record<string, string> }>('PUT', '/api/pantry/config', patch),
+  setConfig: (patch: { locations?: string[]; showOnToday?: boolean; avoidAllergens?: string[]; lowThreshold?: number; locationIcons?: Record<string, string>; staleMonths?: number }) =>
+    apiSend<{ locations: string[]; showOnToday: boolean; avoidAllergens: string[]; lowThreshold: number; locationIcons: Record<string, string>; staleMonths: number }>('PUT', '/api/pantry/config', patch),
 }
 
 export interface PantryState {
@@ -137,6 +139,7 @@ export interface PantryState {
   allergenPeople: Record<string, string[]>
   lowThreshold: number
   locationIcons: Record<string, string>
+  staleMonths: number
   loading: boolean
   error: boolean
   refetch: () => void
@@ -150,6 +153,7 @@ export function usePantry(): PantryState {
   const [allergenPeople, setAllergenPeople] = useState<Record<string, string[]>>({})
   const [lowThreshold, setLowThreshold] = useState(1)
   const [locationIcons, setLocationIcons] = useState<Record<string, string>>({})
+  const [staleMonths, setStaleMonths] = useState(6)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [nonce, setNonce] = useState(0)
@@ -157,13 +161,31 @@ export function usePantry(): PantryState {
     let alive = true
     pantryApi
       .list()
-      .then((d) => alive && (setItems(d.items), setLocations(d.locations), setShowOnToday(d.showOnToday), setAvoidAllergens(d.avoidAllergens ?? []), setAllergenPeople(d.allergenPeople ?? {}), setLowThreshold(d.lowThreshold ?? 1), setLocationIcons(d.locationIcons ?? {}), setLoading(false), setError(false)))
+      .then((d) => alive && (setItems(d.items), setLocations(d.locations), setShowOnToday(d.showOnToday), setAvoidAllergens(d.avoidAllergens ?? []), setAllergenPeople(d.allergenPeople ?? {}), setLowThreshold(d.lowThreshold ?? 1), setLocationIcons(d.locationIcons ?? {}), setStaleMonths(d.staleMonths ?? 6), setLoading(false), setError(false)))
       .catch(() => alive && (setError(true), setLoading(false)))
     return () => {
       alive = false
     }
   }, [nonce])
-  return { items, locations, showOnToday, avoidAllergens, allergenPeople, lowThreshold, locationIcons, loading, error, refetch: () => setNonce((n) => n + 1) }
+  return { items, locations, showOnToday, avoidAllergens, allergenPeople, lowThreshold, locationIcons, staleMonths, loading, error, refetch: () => setNonce((n) => n + 1) }
+}
+
+// Months an item has been on hand (from its added_on date), and a short age label.
+export function monthsOnHand(addedOn: string | null | undefined): number | null {
+  if (!addedOn) return null
+  const d = new Date(`${addedOn}T00:00:00`)
+  if (Number.isNaN(d.getTime())) return null
+  return (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 30.44)
+}
+export function ageLabel(addedOn: string | null | undefined): string {
+  const m = monthsOnHand(addedOn)
+  if (m == null) return ''
+  const days = m * 30.44
+  if (days < 14) return `${Math.max(1, Math.round(days))}d`
+  if (m < 1.5) return `${Math.round(days / 7)}w`
+  if (m < 12) return `${Math.round(m)} mo`
+  const y = m / 12
+  return y < 1.95 ? '1 yr' : `${Math.round(y)} yr`
 }
 
 // Which of an item's allergens are flagged for this household (red warnings) — the

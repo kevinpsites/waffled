@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import {
-  usePantry, pantryApi, daysUntil, groceryApi, flaggedAllergens, uploadImage, ALLERGEN_LABELS, DIETARY_LABELS,
+  usePantry, pantryApi, daysUntil, groceryApi, flaggedAllergens, uploadImage, ageLabel, monthsOnHand, ALLERGEN_LABELS, DIETARY_LABELS,
   type PantryItem, type PantryItemInput, type OffProduct, type ItemRecipe,
 } from '../lib/api'
 import { ScanModal } from './components/ScanModal'
@@ -42,13 +42,13 @@ function foodEmoji(name: string): string {
   return '🥫'
 }
 
-type SortKey = 'expiring' | 'az' | 'recent'
+type SortKey = 'expiring' | 'az' | 'recent' | 'oldest'
 
 // The Pantry screen — on-hand inventory with a location/smart-group sidebar, search,
 // sort, Open Food Facts nutrition/allergens, and avoid-allergen warnings. Gated
 // behind the optional `pantry` module (nav hidden when off; direct nav redirects).
 export function Pantry() {
-  const { items, locations, avoidAllergens, allergenPeople, lowThreshold, locationIcons, loading, error, refetch } = usePantry()
+  const { items, locations, avoidAllergens, allergenPeople, lowThreshold, locationIcons, staleMonths, loading, error, refetch } = usePantry()
   // The effective warning set: household avoid-list ∪ allergens any member has.
   const effectiveAvoid = useMemo(() => Array.from(new Set([...avoidAllergens, ...Object.keys(allergenPeople)])), [avoidAllergens, allergenPeople])
   const avoidSet = useMemo(() => new Set(effectiveAvoid), [effectiveAvoid])
@@ -92,6 +92,8 @@ export function Pantry() {
   const isSoon = (i: PantryItem) => { const d = daysUntil(i.expiresOn); return d != null && d <= 3 }
   // Low when the numeric amount is at/below the item's own threshold, or the household default.
   const isLow = (i: PantryItem) => { const n = parseFloat(i.amount); return Number.isFinite(n) && n <= (i.lowAt ?? lowThreshold) }
+  // Old when it's been on hand longer than the household's age threshold.
+  const isOld = (i: PantryItem) => { const m = monthsOnHand(i.addedOn); return m != null && m >= staleMonths }
 
   const live = useMemo(() => items.filter((i) => !i.usedUp), [items])
   const used = useMemo(() => items.filter((i) => i.usedUp), [items])
@@ -102,14 +104,15 @@ export function Pantry() {
       const loc = locations.includes(i.location) ? i.location : 'Other'
       byLoc[loc] = (byLoc[loc] ?? 0) + 1
     }
-    return { all: live.length, use_soon: live.filter(isSoon).length, running_low: live.filter(isLow).length, byLoc }
-  }, [live, locations, lowThreshold]) // eslint-disable-line react-hooks/exhaustive-deps
+    return { all: live.length, use_soon: live.filter(isSoon).length, running_low: live.filter(isLow).length, aging: live.filter(isOld).length, byLoc }
+  }, [live, locations, lowThreshold, staleMonths]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apply the selected view, the search, then the sort.
   function applyView(list: PantryItem[]): PantryItem[] {
     let out = list
     if (view === 'use_soon') out = out.filter(isSoon)
     else if (view === 'running_low') out = out.filter(isLow)
+    else if (view === 'aging') out = out.filter(isOld)
     else if (view !== 'all') out = out.filter((i) => (locations.includes(i.location) ? i.location : 'Other') === view)
     const s = q.trim().toLowerCase()
     if (s) out = out.filter((i) => i.name.toLowerCase().includes(s) || (i.brand ?? '').toLowerCase().includes(s))
@@ -119,6 +122,7 @@ export function Pantry() {
     const c = [...list]
     if (sort === 'az') c.sort((a, b) => a.name.localeCompare(b.name))
     else if (sort === 'recent') c.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+    else if (sort === 'oldest') c.sort((a, b) => (a.addedOn ?? '').localeCompare(b.addedOn ?? '')) // longest on hand first
     else c.sort((a, b) => { // expiring: dated soonest first, undated last
       const da = daysUntil(a.expiresOn), db = daysUntil(b.expiresOn)
       if (da == null && db == null) return a.name.localeCompare(b.name)
@@ -129,10 +133,10 @@ export function Pantry() {
     return c
   }
 
-  const shown = useMemo(() => sortItems(applyView(live)), [live, view, q, sort, locations, lowThreshold]) // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = useMemo(() => sortItems(applyView(live)), [live, view, q, sort, locations, lowThreshold, staleMonths]) // eslint-disable-line react-hooks/exhaustive-deps
   const shownUsed = useMemo(() => applyView(used), [used, view, q, locations]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const viewLabel = view === 'all' ? 'All items' : view === 'use_soon' ? 'Use soon' : view === 'running_low' ? 'Running low' : view
+  const viewLabel = view === 'all' ? 'All items' : view === 'use_soon' ? 'Use soon' : view === 'running_low' ? 'Running low' : view === 'aging' ? 'Been a while' : view
   const soonInView = shown.filter(isSoon).length
 
   if (loading) return <div className="muted" style={{ padding: 30 }}>Loading…</div>
@@ -142,6 +146,7 @@ export function Pantry() {
     { key: 'all', label: 'All items', icon: '🗂️', count: counts.all },
     { key: 'use_soon', label: 'Use soon', icon: '⏰', count: counts.use_soon },
     { key: 'running_low', label: 'Running low', icon: '📉', count: counts.running_low },
+    { key: 'aging', label: 'Been a while', icon: '🕰️', count: counts.aging },
   ]
 
   return (
@@ -188,6 +193,7 @@ export function Pantry() {
               <button className={sort === 'expiring' ? 'on' : ''} onClick={() => setSort('expiring')}>Expiring</button>
               <button className={sort === 'az' ? 'on' : ''} onClick={() => setSort('az')}>A–Z</button>
               <button className={sort === 'recent' ? 'on' : ''} onClick={() => setSort('recent')}>Recent</button>
+              <button className={sort === 'oldest' ? 'on' : ''} onClick={() => setSort('oldest')}>Oldest</button>
             </div>
           </div>
 
@@ -210,6 +216,7 @@ export function Pantry() {
                           <span className="pl-loc">{loc}</span>
                           {itemAllergens.length > 0 && <AllergenBadges allergens={itemAllergens} avoid={avoidSet} />}
                           {it.expiresOn && <span className={`pl-exp pl-exp-${exp.tone}`}>{exp.text}</span>}
+                          {isOld(it) && <span className="pl-old" title={`In ${loc.toLowerCase()} since ${it.addedOn}`}>🕰️ {ageLabel(it.addedOn)}</span>}
                         </span>
                       </span>
                     </button>
@@ -361,6 +368,7 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
 
         <div className="pl-detail-rows">
           <div className="pl-detail-row"><span>Location</span><b>{item.location}</b></div>
+          <div className="pl-detail-row"><span>Added</span><b>{item.addedOn ?? '—'}{ageLabel(item.addedOn) ? ` · ${ageLabel(item.addedOn)} ago` : ''}</b></div>
           <div className="pl-detail-row"><span>Best by</span><b>{item.expiresOn ?? '—'}</b></div>
           <div className="pl-detail-row">
             <span>Amount</span>
@@ -441,6 +449,7 @@ function ItemModal({ item, locations, onClose, onSaved }: {
   const [unit, setUnit] = useState(item?.unit ?? '')
   const [location, setLocation] = useState(item?.location ?? locations[0] ?? 'Pantry')
   const [expiresOn, setExpiresOn] = useState(item?.expiresOn ?? '')
+  const [addedOn, setAddedOn] = useState(item?.addedOn ?? new Date().toISOString().slice(0, 10))
   const [note, setNote] = useState(item?.note ?? '')
   const [lowAt, setLowAt] = useState(item?.lowAt != null ? String(item.lowAt) : '')
   const [isMeal, setIsMeal] = useState(item?.isMeal ?? false)
@@ -473,6 +482,7 @@ function ItemModal({ item, locations, onClose, onSaved }: {
     const input: PantryItemInput = {
       name: name.trim(), amount: amount.trim(), unit: unit.trim(), location,
       expiresOn: expiresOn || null, note: note.trim(),
+      addedOn: addedOn || undefined,
       lowAt: lowAt.trim() === '' ? null : Number(lowAt),
       isMeal,
       // Carry the OFF snapshot when the item was matched by barcode.
@@ -532,6 +542,9 @@ function ItemModal({ item, locations, onClose, onSaved }: {
             <input type="date" value={expiresOn} onChange={(e) => setExpiresOn(e.target.value)} />
           </label>
         </div>
+        <label className="pantry-field"><span>Added / bought (how long it's been on hand)</span>
+          <input type="date" value={addedOn} onChange={(e) => setAddedOn(e.target.value)} />
+        </label>
         <div className="pantry-field-row">
           <label className="pantry-field"><span>Note (optional)</span>
             <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="leftovers from Tuesday" />

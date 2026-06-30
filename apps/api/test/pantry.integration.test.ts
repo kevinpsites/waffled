@@ -218,6 +218,15 @@ describe('pantry Open Food Facts integration', () => {
     expect(body.avoidAllergens.sort()).toEqual(['gluten', 'milk'])
   })
 
+  it('stores a backdated added_on and round-trips the stale-months threshold', async () => {
+    const it = JSON.parse((await call('POST', '/api/pantry', kevin, { name: 'Old beef', location: 'Freezer', addedOn: '2025-12-01' })).body).item
+    expect(it.addedOn).toBe('2025-12-01')
+    const cfg = await call('PUT', '/api/pantry/config', kevin, { staleMonths: 9 })
+    expect(cfg.statusCode).toBe(200)
+    expect(JSON.parse(cfg.body).staleMonths).toBe(9)
+    expect(JSON.parse((await call('GET', '/api/pantry', kevin)).body).staleMonths).toBe(9)
+  })
+
   it('round-trips the running-low threshold and per-location icons', async () => {
     const res = await call('PUT', '/api/pantry/config', kevin, { lowThreshold: 2, locationIcons: { Freezer: '🧊', Fridge: '' } })
     expect(res.statusCode).toBe(200)

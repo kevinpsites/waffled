@@ -1609,14 +1609,15 @@ function ModulesPanel() {
 // Pantry's own settings (shown when the module is on): the Today-card toggle and
 // the editable location list. Saves immediately; refreshes household so Today reacts.
 function PantrySettings() {
-  const { locations, showOnToday, avoidAllergens, lowThreshold, locationIcons, loading } = usePantry()
+  const { locations, showOnToday, avoidAllergens, lowThreshold, locationIcons, staleMonths, loading } = usePantry()
   const [list, setList] = useState<string[]>([])
   const [adding, setAdding] = useState('')
   const [show, setShow] = useState(true)
   const [avoid, setAvoid] = useState<string[]>([])
   const [low, setLow] = useState('1')
+  const [stale, setStale] = useState('6')
   const [icons, setIcons] = useState<Record<string, string>>({})
-  useEffect(() => { if (!loading) { setList(locations); setShow(showOnToday); setAvoid(avoidAllergens); setLow(String(lowThreshold)); setIcons(locationIcons) } }, [loading, locations, showOnToday, avoidAllergens, lowThreshold, locationIcons])
+  useEffect(() => { if (!loading) { setList(locations); setShow(showOnToday); setAvoid(avoidAllergens); setLow(String(lowThreshold)); setStale(String(staleMonths)); setIcons(locationIcons) } }, [loading, locations, showOnToday, avoidAllergens, lowThreshold, staleMonths, locationIcons])
 
   async function commitLocations(next: string[]) {
     setList(next)
@@ -1635,6 +1636,11 @@ function PantrySettings() {
     const n = Number(v)
     if (!Number.isFinite(n) || n < 0) return
     try { await pantryApi.setConfig({ lowThreshold: n }); emitHouseholdChanged() } catch { /* ignore */ }
+  }
+  async function commitStale(v: string) {
+    const n = Math.round(Number(v))
+    if (!Number.isFinite(n) || n < 1 || n > 60) return
+    try { await pantryApi.setConfig({ staleMonths: n }); emitHouseholdChanged() } catch { /* ignore */ }
   }
   async function commitIcon(loc: string, emoji: string) {
     const next = { ...icons, [loc]: emoji.trim() }
@@ -1658,6 +1664,15 @@ function PantrySettings() {
       </div>
       <div className="set-module-desc" style={{ marginBottom: 4 }}>
         Default for all items; set a per-item override in the item editor’s “Warn below”.
+      </div>
+      <div className="set-module-setrow">
+        <span>Flag items older than (months)</span>
+        <input type="number" min="1" max="60" className="pl-low-input" value={stale}
+          onChange={(e) => setStale(e.target.value)} onBlur={() => commitStale(stale)}
+          onKeyDown={(e) => { if (e.key === 'Enter') commitStale(stale) }} aria-label="Old item threshold (months)" />
+      </div>
+      <div className="set-module-desc" style={{ marginBottom: 4 }}>
+        Items on hand longer than this get a 🕰️ age badge and a “Been a while” group.
       </div>
       <div className="set-module-setlabel">Allergens to avoid</div>
       <div className="set-module-desc" style={{ marginBottom: 8 }}>
