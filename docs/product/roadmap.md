@@ -35,7 +35,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   **recurring events** (RRULE picker, per-occurrence/this-and-following/all edits),
   **two-way Google Calendar sync** (recurrences expanded on inbound), offline calendar
   (PowerSync), AI heads-up + per-event insight.
-- **Chores & stars** — full loop: CRUD, weekly/custom schedules, up-for-grabs claim,
+- **Chores & stars** — full loop: CRUD, weekly/custom schedules, **one-off + carry-over
+  tasks** ("Just once" repeat + due date, unfinished one-offs roll forward with an
+  **overdue · since …** badge, per-chore `rollover` toggle), up-for-grabs claim,
   drag-to-reassign, parent approval, **photo-proof on completion**, streaks, append-only
   stars ledger.
 - **Rewards & economy** — catalog → redeem → approve → debit, multi-currency, conversions
@@ -45,9 +47,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   and recurring events) with learned suggestions.
 - **Lists & groceries** — multi-lists, auto-built aisle board, quantity merge, pantry
   staples, live cross-surface refresh, **item attribution** ("added by …" / "from meal plan").
-- **Meals & recipes** — week/month planners, recipe library, in-app editor, paste-markdown
-  import, overrides, cook mode, substitution-aware grocery build, AI plan-week/month, AI
-  metadata auto-fill.
+- **Meals & recipes** — week/month planners, recipe library, in-app editor (with
+  **ingredient sections** + dividers and cross-section drag-drop), paste-markdown
+  import, overrides, cook mode, **per-step timers** (set in the editor; a floating
+  cook-mode dock that ticks live, jumps to the step on tap, and rings a looping
+  alarm + local-notification fallback), substitution-aware grocery build, AI
+  plan-week/month, AI metadata auto-fill.
 - **Photos** — wall (masonry), real blob upload (single + multi), albums, edit, multi-
   select bulk move/delete, screensaver + per-album screensaver source, crossfade
   slideshow, recipe hero images.
@@ -103,12 +108,9 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **Notifications tail** — kiosk "due soon" local banner (table not built yet); remote push
   (APNs / web-push) is blocked on a self-host key/relay decision. Recurring-event reminders
   on iOS (only single events fire today) ride along here.
-- **One-off & carry-over chores** — there is no true single-day task today: a new chore
-  defaults to **daily** (or weekly), and the Today list is an exact `due_on = today` match,
-  so an unfinished one-off neither keeps its incomplete state nor resurfaces as overdue —
-  it just re-appears as a fresh checkbox each day. Add a `once` recurrence + materialization
-  path, an "include overdue one-offs (carry until done)" clause on the today query, and an
-  overdue affordance on the chores screen. Cross-surface (web + iOS); mostly server-side.
+- **Recurring-chore rollover** — the shipped `rollover` flag defaults on for *one-offs*;
+  opt-in carry-forward for **recurring** chores still needs collapse-duplicates-to-one +
+  streak handling before it can ship.
 - **Conversational recipe AI** — instruction-driven edits + photo → recipe (needs a vision
   provider).
 - **Shared album import** for Photos (Google Photos / iCloud).

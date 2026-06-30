@@ -104,7 +104,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Daily instances + complete → award | ✅ | ✅ | ✅ | ✅ Done |
 | Family-chores **rings** (Today) + Tasks board | ✅ | ✅ | ✅ | ✅ Done (iPad = wrapping Kanban) |
 | **Weekly/custom schedules** (specific weekdays) | ✅ | ✅ | ✅ | ✅ Done |
-| **One-off / carry-over task** (single day, stays until done) | 🚧 | 🚧 | 🚧 | 🚧 Planned (today every chore defaults to daily; Today is `due_on = today`, no overdue carry) |
+| **One-off / carry-over task** (single day, stays until done) | ✅ | ✅ | ✅ | ✅ Done ("Just once" repeat + due date in create/edit; unfinished one-offs roll forward, **overdue · since …** badge; `rollover` toggle) |
 | **Up-for-grabs** claim (unassigned → person) | ✅ | ✅ | ✅ | ✅ Done |
 | **Drag-to-reassign** chores between columns | ✅ | ✅ | ✅ | ✅ Done |
 | **Parent-approval** step (awaiting → approve/reject) | ✅ | ✅ | ✅ | ✅ Done |
@@ -169,11 +169,12 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Full-screen **recipe detail** (hero image, metadata chips, servings scaler) | ✅ | ✅ | ✅ | ✅ Done |
 | **Total time** on the card (prep + cook); prep/cook split on the detail | ✅ | ✅ | ✅ | ✅ Done (mobile) |
 | **Recipes library** (search-all, multi-select filters, sort) | ✅ | ✅ | ✅ | ✅ Done |
-| Create / **edit** recipes in-app (all metadata + ingredients + steps) | ✅ | ✅ | ✅ | ✅ Done (full editor — shared iPhone/iPad; **per-step ingredient amounts**; delete is web-only) |
+| Create / **edit** recipes in-app (all metadata + ingredients + steps) | ✅ | ✅ | ✅ | ✅ Done (full editor — shared iPhone/iPad; **per-step ingredient amounts**; **ingredient sections** with dividers + cross-section drag-drop; delete is web-only) |
 | **Paste-markdown** recipe import (template/example) | ✅ | ✅ | ✅ | ✅ Done (paste → parse → fills the editor for review, then save) |
 | Per-recipe **overrides** (substitutions, notes) | ✅ | 🟡 | 🟡 | ✅ Done (notes; full overrides on web) |
-| **Cook mode** (step-by-step, wake-lock, finish → mark cooked) | ✅ | ✅ | ✅ | ✅ Done (centered, large type; scrolls long steps) |
+| **Cook mode** (step-by-step, wake-lock, finish → mark cooked) | ✅ | ✅ | ✅ | ✅ Done (mobile: left-aligned full-width large type) |
 | Cook-mode **recipe overview** (jump to any step + ingredients) | ✅ | ✅ | ✅ | ✅ Done (mobile; large sheet) |
+| **Per-step timers** — set in the editor; floating dock in cook mode | ✅ | ✅ | ✅ | ✅ Done (mobile: bottom-right dock, live tick, tap → jump to step, looping alarm + local-notif fallback) |
 | Open recipe **full-screen** from Today | ✅ | ✅ | ✅ | ✅ Done (iPad opens full-screen, not a page-sheet) |
 | **Grocery auto-build** honoring substitutions | ✅ | ✅ | ✅ | ✅ Done |
 | AI **Plan my week / month** (library-only, themes, gaps) | ✅ | ✅ | ✅ | ✅ Done |
