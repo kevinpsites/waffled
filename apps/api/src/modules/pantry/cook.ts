@@ -24,20 +24,29 @@ function matches(a: Set<string>, b: Set<string>): boolean {
   return true
 }
 
-export interface CookableRecipe {
+// A recipe you can make right now (nothing to buy). `have` = the non-staple
+// ingredients you have (rendered as checked chips); `expiringItem` flags one that's
+// about to spoil ("uses beef due today").
+export interface CookReady {
   recipeId: string
   title: string
   emoji: string | null
-  total: number
-  onHand: number
-  missing: string[]
-  usesExpiring: boolean
-  mainItem: string | null // the on-hand item that is the recipe's protein/"main", if any
+  have: string[]
+  expiringItem: string | null
 }
 
-// A "main" (protein) you have on hand, with how many recipes in the library use it —
-// clicking jumps to the recipe library filtered to that protein.
-export interface PantryMain { protein: string; count: number }
+// A recipe under a "main" group — you have its protein, need a few more things.
+export interface CookMainRecipe { recipeId: string; title: string; have: number; total: number; missing: string[] }
+
+// A "main" (protein) you have on hand: the on-hand item header (qty + expiry), the
+// total library recipes for it (the whole group taps through to the filtered library),
+// and the top few recipes you're closest to making.
+export interface CookMain {
+  protein: string
+  item: { name: string; amount: string; unit: string; expiresOn: string | null } | null
+  count: number
+  recipes: CookMainRecipe[]
+}
 
 const MAX_RESULTS = 12 // cap the ready-now list so a big library doesn't flood the card
 
@@ -49,17 +58,20 @@ function daysUntil(d: string | null): number | null {
   return Math.round((new Date(`${d}T00:00:00`).getTime() - today.getTime()) / 86_400_000)
 }
 
-interface OnHand { name: string; tokens: Set<string>; expiring: boolean }
+interface OnHand { name: string; amount: string; unit: string; tokens: Set<string>; expiring: boolean; expiresOn: string | null }
 
 async function pantryOnHand(householdId: string): Promise<OnHand[]> {
   // is_meal items are finished meals (a frozen pot pie, leftovers) — not cooking
   // ingredients — so they don't count toward matching a recipe's ingredients/protein.
-  const { rows } = await query<{ name: string; expires_on: string | null }>(
-    `select name, expires_on::text as expires_on from pantry_items
+  const { rows } = await query<{ name: string; amount: string | null; unit: string | null; expires_on: string | null }>(
+    `select name, amount, unit, expires_on::text as expires_on from pantry_items
        where household_id = $1 and used_up_at is null and deleted_at is null and is_meal = false`,
     [householdId]
   )
-  return rows.map((r) => { const d = daysUntil(r.expires_on); return { name: r.name, tokens: tokens(r.name), expiring: d != null && d <= 3 } })
+  return rows.map((r) => {
+    const d = daysUntil(r.expires_on)
+    return { name: r.name, amount: r.amount ?? '', unit: r.unit ?? '', tokens: tokens(r.name), expiring: d != null && d <= 3, expiresOn: r.expires_on }
+  })
 }
 
 // All recipes with their ingredients, in one pass (avoids N+1).
@@ -80,40 +92,55 @@ async function recipeIngredients(householdId: string) {
 // Recipes you can cook right now ("ready" — nothing to buy), plus the "mains" (proteins)
 // you have on hand that the library has recipes for. Rather than list every recipe for a
 // protein you own, we surface the protein as a chip → the recipe library filtered to it.
-export async function cookableRecipes(householdId: string): Promise<{ ready: CookableRecipe[]; mains: PantryMain[] }> {
+export async function cookableRecipes(householdId: string): Promise<{ ready: CookReady[]; mains: CookMain[] }> {
   await ensureDefaultStaples(householdId)
   const staples = new Set((await listPantryStaples(householdId)).map((s) => s.name.trim().toLowerCase()))
   const onHand = await pantryOnHand(householdId)
   const { recipes, byRecipe } = await recipeIngredients(householdId)
 
-  const ready: CookableRecipe[] = []
+  const ready: Array<CookReady & { sortExp: boolean }> = []
   const proteinTotals = new Map<string, number>() // protein → recipes in the library
-  const onHandProteins = new Set<string>() // proteins whose ingredient we actually have
+  const mainAgg = new Map<string, { item: OnHand; recipes: CookMainRecipe[] }>()
   for (const r of recipes) {
     if (r.protein) proteinTotals.set(r.protein, (proteinTotals.get(r.protein) ?? 0) + 1)
     const ings = byRecipe.get(r.id) ?? []
     const required = ings.filter((i) => !i.is_staple && !staples.has(i.name.trim().toLowerCase()))
     if (required.length === 0) continue
     const proteinTok = r.protein ? tokens(r.protein) : null
+    const have: string[] = []
     const missing: string[] = []
-    let usesExpiring = false
-    let mainItem: string | null = null
+    let expiringItem: string | null = null
+    let mainHit: OnHand | null = null
     for (const ing of required) {
       const ingTok = tokens(ing.name)
       const hit = onHand.find((o) => matches(ingTok, o.tokens))
-      if (hit) { if (hit.expiring) usesExpiring = true } else { missing.push(ing.name.trim()); continue }
-      if (proteinTok && proteinTok.size && matches(proteinTok, ingTok)) mainItem = hit.name
+      if (hit) {
+        have.push(ing.name.trim())
+        if (hit.expiring && !expiringItem) expiringItem = hit.name
+        if (proteinTok && proteinTok.size && matches(proteinTok, ingTok)) mainHit = hit
+      } else missing.push(ing.name.trim())
     }
-    if (mainItem && r.protein) onHandProteins.add(r.protein)
     if (missing.length === 0) {
-      ready.push({ recipeId: r.id, title: r.title, emoji: r.emoji, total: required.length, onHand: required.length, missing, usesExpiring, mainItem })
+      ready.push({ recipeId: r.id, title: r.title, emoji: r.emoji, have, expiringItem, sortExp: !!expiringItem })
+    } else if (mainHit && r.protein) {
+      // You have this protein but still need a few things → goes under its "main" group.
+      const agg = mainAgg.get(r.protein) ?? { item: mainHit, recipes: [] }
+      agg.recipes.push({ recipeId: r.id, title: r.title, have: required.length - missing.length, total: required.length, missing })
+      mainAgg.set(r.protein, agg)
     }
   }
-  ready.sort((a, b) => Number(b.usesExpiring) - Number(a.usesExpiring) || a.title.localeCompare(b.title))
-  const mains = [...onHandProteins]
-    .map((protein) => ({ protein, count: proteinTotals.get(protein) ?? 0 }))
-    .sort((a, b) => b.count - a.count || a.protein.localeCompare(b.protein))
-  return { ready: ready.slice(0, MAX_RESULTS), mains }
+  ready.sort((a, b) => Number(b.sortExp) - Number(a.sortExp) || a.title.localeCompare(b.title))
+
+  const expDays = (m: CookMain) => daysUntil(m.item?.expiresOn ?? null) ?? Infinity
+  const mains: CookMain[] = [...mainAgg.entries()].map(([protein, agg]) => ({
+    protein,
+    item: { name: agg.item.name, amount: agg.item.amount, unit: agg.item.unit, expiresOn: agg.item.expiresOn },
+    count: proteinTotals.get(protein) ?? agg.recipes.length,
+    recipes: agg.recipes.sort((a, b) => a.missing.length - b.missing.length || a.title.localeCompare(b.title)).slice(0, 3),
+  }))
+  mains.sort((a, b) => expDays(a) - expDays(b) || b.count - a.count)
+
+  return { ready: ready.slice(0, MAX_RESULTS).map(({ sortExp, ...r }) => r), mains } // eslint-disable-line @typescript-eslint/no-unused-vars
 }
 
 // Recipes whose ingredients include a given item (for the detail "Plan it in").

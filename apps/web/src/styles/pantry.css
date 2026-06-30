@@ -255,42 +255,79 @@
 /* badge + name, used in the detail "Contains" row and the scan panel */
 .pl-contains-item { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
 
-/* ===== Cook from your pantry (sidebar card + modal + detail section) ===== */
+/* ===== Cook from your pantry (sidebar card + redesigned modal) ===== */
 .pl-cook { margin-top: 18px; padding: 14px; border-radius: var(--r-lg, 14px); background: var(--wally-t, #eaf5ee); }
 .pl-cook-h { font-size: 14px; font-weight: 800; color: var(--ink); }
 .pl-cook-sub { font-size: 12px; font-weight: 600; color: var(--ink-2); margin: 5px 0 10px; line-height: 1.4; }
 .pl-cook-btn { width: 100%; justify-content: center; cursor: pointer; }
 
-.pl-cookm { max-width: 460px; width: 92vw; }
-.pl-cookm-title { font-size: 20px; font-weight: 600; margin-bottom: 14px; }
-.pl-cookm-ai { width: 100%; justify-content: center; cursor: pointer; margin-bottom: 16px; }
-.pl-cookm-h { font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); margin: 4px 0 8px; }
-.pl-cookm-empty { font-size: 13px; font-weight: 600; color: var(--ink-3); padding: 4px 0 12px; }
-.pl-cookm-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
-.pl-cookm-row {
-  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; cursor: pointer;
-  border: 1px solid var(--hair); background: var(--card); border-radius: 12px; padding: 9px 12px; font: inherit;
-}
-.pl-cookm-row:hover { border-color: var(--primary); }
-.pl-cookm-row.near { cursor: default; }
-.pl-cookm-row.near:has(.pl-cookm-open):hover { border-color: var(--primary); }
-.pl-cookm-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; border: 0; background: none; cursor: pointer; font: inherit; padding: 0; text-align: left; }
-.pl-cookm-emoji { font-size: 20px; flex: none; }
-.pl-cookm-name { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 700; color: var(--ink); display: flex; flex-direction: column; gap: 2px; }
-.pl-cookm-need { font-size: 12px; font-weight: 600; color: var(--ink-3); }
-.pl-cookm-soon { font-size: 11px; font-weight: 800; color: #b5651d; background: #fdf0e3; padding: 3px 8px; border-radius: 999px; flex: none; }
+.pl-cookm { max-width: 520px; width: 94vw; max-height: 88vh; overflow-y: auto; }
+.pl-cookm-title { font-size: 22px; font-weight: 600; margin-bottom: 14px; }
+.pl-cookm-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
+.pl-cookm-foot .pill, .pl-cookm-add { cursor: pointer; flex: none; }
 .pl-cookm-go { color: var(--ink-3); font-size: 18px; flex: none; }
-.pl-cookm-add { flex: none; cursor: pointer; }
-.pl-cookm-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
-.pl-cookm-chip {
-  display: inline-flex; align-items: center; gap: 7px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
-  padding: 8px 14px; border-radius: 999px; border: 1px solid var(--hair); background: var(--card-2, #faf8f4); color: var(--ink);
-}
-.pl-cookm-chip:hover { border-color: var(--primary); }
-.pl-cookm-chip-n { font-size: 12px; font-weight: 800; color: var(--ink-3); background: var(--card); padding: 1px 7px; border-radius: 999px; }
-.pl-cookm-foot { display: flex; justify-content: flex-end; }
-.pl-cookm-foot .pill { cursor: pointer; }
+.pl-cookm-empty { font-size: 13px; font-weight: 600; color: var(--ink-3); padding: 2px 0 12px; }
 
+/* Plan my week */
+.pl-cookm-plan { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; cursor: pointer; border: 0; background: linear-gradient(135deg, #e0653f, #d2552f); color: #fff; border-radius: 16px; padding: 14px 16px; margin-bottom: 18px; }
+.pl-cookm-plan-ic { font-size: 18px; background: rgba(255, 255, 255, .2); width: 34px; height: 34px; border-radius: 999px; display: grid; place-items: center; flex: none; }
+.pl-cookm-plan-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pl-cookm-plan-t b { font-size: 16px; }
+.pl-cookm-plan-t span { font-size: 12.5px; opacity: .92; }
+.pl-cookm-plan .pl-cookm-go { color: rgba(255, 255, 255, .9); }
+
+/* sections */
+.pl-sec { margin-bottom: 18px; }
+.pl-sec-h { display: flex; align-items: baseline; justify-content: space-between; font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); margin-bottom: 9px; }
+.pl-sec-r { font-weight: 700; }
+
+/* info / ready card */
+.pl-cookm-card { display: flex; gap: 12px; padding: 11px 12px; border: 1px solid var(--hair); border-radius: 14px; margin-bottom: 8px; background: var(--card); }
+.pl-cookm-thumb { flex: none; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; font-size: 20px; background: var(--card-2, #faf8f4); overflow: hidden; border: 0; padding: 0; cursor: default; }
+.pl-cookm-thumb.btn { cursor: pointer; }
+.pl-cookm-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.pl-cookm-cardmain { flex: 1; min-width: 0; }
+.pl-cookm-cardrow { display: flex; align-items: center; gap: 10px; }
+.pl-cookm-cardname { flex: 1; min-width: 0; font-size: 15.5px; font-weight: 700; color: var(--ink); }
+.pl-cookm-cardsub { font-size: 12.5px; font-weight: 600; color: var(--ink-3); margin-top: 3px; }
+.pl-cookm-uses { font-size: 12px; font-weight: 700; color: #c0392b; margin-top: 3px; }
+.pl-cookm-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+.pl-badge { font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; }
+.pl-badge.green { background: #e6f4ea; color: #1c7a44; }
+.pl-badge.amber { background: #fdf0e3; color: #b5651d; }
+.pl-cook-go { flex: none; font: inherit; font-size: 13px; font-weight: 800; color: #fff; background: var(--wally, #25a368); border: 0; border-radius: 999px; padding: 7px 16px; cursor: pointer; }
+.pl-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.pl-chip { font-size: 12px; font-weight: 700; padding: 4px 9px; border-radius: 999px; background: var(--card-2, #faf8f4); color: var(--ink-2); }
+.pl-chip.ok { background: #e6f4ea; color: #1c7a44; }
+
+/* "you have the main" groups */
+.pl-main { border: 1px solid var(--hair); border-radius: 14px; padding: 6px; margin-bottom: 10px; background: var(--card-2, #faf8f4); }
+.pl-main-head { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; border: 0; background: none; cursor: pointer; font: inherit; padding: 8px 8px 10px; }
+.pl-main-emoji { font-size: 18px; flex: none; }
+.pl-main-name { font-size: 15px; font-weight: 800; color: var(--ink); flex: none; }
+.pl-main-meta { font-size: 12px; font-weight: 600; color: var(--ink-3); flex: 1; min-width: 0; }
+.pl-main-meta.soon { color: #c0392b; font-weight: 800; }
+.pl-main-all { font-size: 12px; font-weight: 700; color: var(--ink-3); flex: none; }
+.pl-main-rec { display: flex; align-items: center; gap: 10px; background: var(--card); border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; }
+.pl-main-rec:last-child { margin-bottom: 0; }
+.pl-main-rec-main { flex: 1; min-width: 0; text-align: left; border: 0; background: none; cursor: pointer; font: inherit; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.pl-main-rec-name { font-size: 14.5px; font-weight: 700; color: var(--ink); }
+.pl-main-rec-prog { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--ink-3); }
+.pl-dots { display: inline-flex; gap: 3px; }
+.pl-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--hair); }
+.pl-dot.on { background: var(--wally, #25a368); }
+
+/* use up soon (loose) */
+.pl-loose { display: flex; flex-wrap: wrap; gap: 8px; }
+.pl-loose-chip { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--hair); background: var(--card); color: var(--ink); }
+.pl-loose-exp { font-size: 11px; font-weight: 800; color: #b5651d; }
+
+/* detail "Plan it in" reuses a simple row */
+.pl-cookm-list { display: flex; flex-direction: column; gap: 6px; }
+.pl-cookm-row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; cursor: pointer; border: 1px solid var(--hair); background: var(--card); border-radius: 12px; padding: 9px 12px; font: inherit; }
+.pl-cookm-row:hover { border-color: var(--primary); }
+.pl-cookm-emoji { font-size: 20px; flex: none; }
+.pl-cookm-name { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 700; color: var(--ink); }
 .pl-planin { margin-bottom: 14px; }
 .pl-planin-h { font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); margin-bottom: 8px; }
 .pl-planin .pl-cookm-row { margin-bottom: 6px; }

@@ -177,10 +177,7 @@ export function Pantry() {
               <span className="pl-navitem-ic">📦</span><span className="pl-navitem-l">Other</span><span className="pl-navitem-n">{counts.byLoc.Other}</span>
             </button>
           )}
-          <CookFromPantry
-            eatUp={live.filter((i) => i.isMeal || isSoon(i)).map((i) => ({ name: i.name, expiresOn: i.expiresOn, isMeal: i.isMeal }))}
-            useSoon={live.filter(isSoon).map((i) => i.name)}
-          />
+          <CookFromPantry items={live} />
           <AllergenKey avoid={avoidSet} />
         </aside>
 

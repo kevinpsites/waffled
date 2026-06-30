@@ -90,20 +90,16 @@ export const ALLERGEN_LABELS: Record<string, string> = {
 }
 export const ALLERGEN_KEYS = Object.keys(ALLERGEN_LABELS)
 
-// A recipe matched against what's on hand (from /api/pantry/cookable).
-export interface CookableRecipe {
-  recipeId: string
-  title: string
-  emoji: string | null
-  total: number
-  onHand: number
-  missing: string[]
-  usesExpiring: boolean
-  mainItem: string | null
+// "Cook from your pantry" payload (from /api/pantry/cookable).
+export interface CookReady { recipeId: string; title: string; emoji: string | null; have: string[]; expiringItem: string | null }
+export interface CookMainRecipe { recipeId: string; title: string; have: number; total: number; missing: string[] }
+export interface CookMain {
+  protein: string
+  item: { name: string; amount: string; unit: string; expiresOn: string | null } | null
+  count: number
+  recipes: CookMainRecipe[]
 }
 export interface ItemRecipe { recipeId: string; title: string; emoji: string | null }
-// A protein you have on hand + how many library recipes use it (chip → filtered library).
-export interface PantryMain { protein: string; count: number }
 
 // Dietary flags captured from Open Food Facts (ingredients analysis).
 export const DIETARY_LABELS: Record<string, string> = {
@@ -124,7 +120,7 @@ export const pantryApi = {
       .then((r) => (r.found ? r.product! : null))
       .catch(() => null),
   // "Cook from your pantry": recipes makeable now + nearly (1–2 short).
-  cookable: () => apiGet<{ ready: CookableRecipe[]; mains: PantryMain[] }>('/api/pantry/cookable'),
+  cookable: () => apiGet<{ ready: CookReady[]; mains: CookMain[] }>('/api/pantry/cookable'),
   // Recipes that use a given pantry item (detail "Plan it in").
   itemRecipes: (id: string) => apiGet<{ recipes: ItemRecipe[] }>(`/api/pantry/${id}/recipes`),
   // Module config: locations, Today-card toggle, avoid-allergens, the running-low
