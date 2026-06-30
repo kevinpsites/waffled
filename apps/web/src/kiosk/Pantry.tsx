@@ -4,6 +4,7 @@ import {
   usePantry, pantryApi, daysUntil, groceryApi, flaggedAllergens, ALLERGEN_LABELS,
   type PantryItem, type PantryItemInput, type OffProduct,
 } from '../lib/api'
+import { ScanModal } from './components/ScanModal'
 import '../styles/pantry.css'
 
 // A small expiry badge: red if past, amber within 3 days, muted date otherwise.
@@ -53,6 +54,7 @@ export function Pantry() {
   const [sort, setSort] = useState<SortKey>('expiring')
   const [editing, setEditing] = useState<PantryItem | 'new' | null>(null)
   const [detail, setDetail] = useState<PantryItem | null>(null)
+  const [scanning, setScanning] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [editAmt, setEditAmt] = useState<{ id: string; amount: string; unit: string } | null>(null)
 
@@ -145,7 +147,7 @@ export function Pantry() {
         <div className="nk-serif pl-title">Pantry</div>
         <input className="pl-search" placeholder={`Search all ${counts.all} items…`} value={q} onChange={(e) => setQ(e.target.value)} />
         <div className="pl-head-actions">
-          <button type="button" className="pill" onClick={() => setEditing('new')}>⛶ Scan</button>
+          <button type="button" className="pill" onClick={() => setScanning(true)}>⛶ Scan</button>
           <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} onClick={() => setEditing('new')}>+ Add item</button>
         </div>
       </div>
@@ -263,6 +265,10 @@ export function Pantry() {
           )}
         </main>
       </div>
+
+      {scanning && (
+        <ScanModal locations={locations} onClose={() => setScanning(false)} onAdded={refetch} />
+      )}
 
       {detail && (
         <PantryDetail

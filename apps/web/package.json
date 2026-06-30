@@ -14,6 +14,8 @@
   "dependencies": {
     "@powersync/react": "^1.10.0",
     "@powersync/web": "^1.38.3",
+    "@zxing/browser": "^0.2.0",
+    "@zxing/library": "^0.22.0",
     "js-logger": "^1.6.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

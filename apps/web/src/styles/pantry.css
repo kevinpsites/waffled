@@ -283,3 +283,41 @@
 .pl-off-foot { font-size: 12px; font-weight: 600; color: #1c7a44; margin-bottom: 14px; }
 .pl-detail-acts { display: flex; justify-content: flex-end; gap: 8px; }
 .pl-detail-acts .pill { cursor: pointer; }
+
+/* ===== scan-into-pantry modal ===== */
+.pl-scan { max-width: 820px; width: 92vw; }
+.pl-scan-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.pl-scan-title { font-size: 20px; font-weight: 600; }
+.pl-scan-count { font-size: 13px; font-weight: 800; color: #1c7a44; background: #e6f4ea; padding: 4px 10px; border-radius: 999px; }
+.pl-scan-head .modal-close { margin-left: auto; position: static; }
+.pl-scan-body { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 720px) { .pl-scan-body { grid-template-columns: 1fr; } }
+
+.pl-scan-cam { display: flex; flex-direction: column; gap: 10px; }
+.pl-scan-video, .pl-scan-warn {
+  width: 100%; aspect-ratio: 4 / 3; border-radius: var(--r-lg, 14px); background: #1a1a1a; object-fit: cover;
+}
+.pl-scan-warn { display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 22px; background: var(--card-2, #faf8f4); border: 1px dashed var(--hair); }
+.pl-scan-warn-h { font-size: 15px; font-weight: 800; color: var(--ink); }
+.pl-scan-warn-t { font-size: 13px; font-weight: 600; color: var(--ink-3); line-height: 1.45; }
+.pl-scan-manual { display: flex; gap: 8px; }
+.pl-scan-manual input { flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--hair); background: var(--card-2, #faf8f4); color: var(--ink); }
+.pl-scan-manual .pill { flex: none; cursor: pointer; }
+
+.pl-scan-result { display: flex; flex-direction: column; min-width: 0; }
+.pl-scan-idle { color: var(--ink-3); font-weight: 600; padding: 24px 4px; text-align: center; }
+.pl-scan-prod { position: relative; padding: 8px 0 14px; }
+.pl-scan-prodimg { width: 72px; height: 72px; object-fit: contain; border-radius: 12px; background: var(--card-2, #faf8f4); }
+.pl-scan-prodemoji { font-size: 48px; }
+.pl-scan-prodname { font-size: 18px; font-weight: 700; margin-top: 6px; }
+.pl-scan-prodbrand { font-size: 13px; font-weight: 600; color: var(--ink-3); }
+.pl-scan-allergens { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.pl-scan-nameinput { margin-top: 10px; width: 100%; box-sizing: border-box; font: inherit; font-size: 15px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--hair); background: var(--card-2, #faf8f4); }
+.pl-scan-fields { display: flex; gap: 10px; margin: 8px 0 14px; }
+.pl-scan-fields label { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+.pl-scan-fields span { font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+.pl-scan-fields select, .pl-scan-fields input { font: inherit; font-size: 14px; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--hair); background: var(--card-2, #faf8f4); color: var(--ink); }
+.pl-scan-acts { display: flex; gap: 8px; margin-top: auto; }
+.pl-scan-acts .pill { flex: 1; justify-content: center; cursor: pointer; }
+.pl-scan-foot { display: flex; justify-content: flex-end; margin-top: 16px; }
+.pl-scan-foot .pill { cursor: pointer; }
