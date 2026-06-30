@@ -240,13 +240,30 @@
 }
 .gitem.editing {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
   padding: 9px 12px;
   background: var(--card);
   border-radius: var(--r-lg);
   box-shadow: var(--sh-1);
   margin-bottom: 9px;
+}
+.gedit-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gedit-sec {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  border: 0;
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: var(--ink);
 }
 .gedit-name {
   flex: 1;

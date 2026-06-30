@@ -6,6 +6,9 @@ import { StaplesModal } from './StaplesModal'
 import '../../styles/grocery.css'
 
 const AISLE_ORDER = ['Produce', 'Dairy & Chilled', 'Meat & Seafood', 'Pantry', 'Bakery', 'Frozen', 'Other']
+// Aisles offered in the "move to section" picker. 'Other' is omitted — the board
+// treats an 'Other' category as auto-filed anyway, so "Auto (by name)" covers it.
+const AISLE_PICKER = AISLE_ORDER.filter((a) => a !== 'Other')
 const AISLE_EMOJI: Record<string, string> = {
   Produce: '🥬',
   'Dairy & Chilled': '🧀',
@@ -72,20 +75,31 @@ function ItemRow({
   item: GroceryBoardItem
   colors: string[]
   onToggle: () => void
-  onSave: (patch: { name: string; quantity: string | null }) => void
+  onSave: (patch: { name: string; quantity: string | null; section: string | null }) => void
   onDelete: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(item.name)
   const [qty, setQty] = useState(item.quantity ?? '')
+  // The aisle the item currently sits in (an explicit override, or '' = auto-filed
+  // by name). Picking one writes `section` (category); "Auto" clears it.
+  const [sec, setSec] = useState(item.section ?? '')
 
   if (editing) {
     return (
       <div className="gitem editing">
-        <input className="gedit-name" value={name} autoFocus onChange={(e) => setName(e.target.value)} placeholder="item" />
-        <input className="gedit-qty" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="qty" />
-        <button type="button" className="gact ok" title="Save" onClick={() => { onSave({ name: name.trim() || item.name, quantity: qty.trim() || null }); setEditing(false) }}>✓</button>
-        <button type="button" className="gact" title="Cancel" onClick={() => setEditing(false)}>×</button>
+        <div className="gedit-line">
+          <input className="gedit-name" value={name} autoFocus onChange={(e) => setName(e.target.value)} placeholder="item" />
+          <input className="gedit-qty" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="qty" />
+        </div>
+        <div className="gedit-line">
+          <select className="gedit-sec" value={sec} onChange={(e) => setSec(e.target.value)} aria-label="Aisle">
+            <option value="">Auto (by name)</option>
+            {AISLE_PICKER.map((a) => <option key={a} value={a}>{AISLE_EMOJI[a] ? `${AISLE_EMOJI[a]} ` : ''}{a}</option>)}
+          </select>
+          <button type="button" className="gact ok" title="Save" onClick={() => { onSave({ name: name.trim() || item.name, quantity: qty.trim() || null, section: sec || null }); setEditing(false) }}>✓</button>
+          <button type="button" className="gact" title="Cancel" onClick={() => setEditing(false)}>×</button>
+        </div>
       </div>
     )
   }
@@ -103,7 +117,7 @@ function ItemRow({
       </span>
       {item.quantity && <span className="gqty">{item.quantity}</span>}
       <span className="gitem-acts" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="gact" title="Edit" onClick={() => { setName(item.name); setQty(item.quantity ?? ''); setEditing(true) }}>✎</button>
+        <button type="button" className="gact" title="Edit" onClick={() => { setName(item.name); setQty(item.quantity ?? ''); setSec(item.section ?? ''); setEditing(true) }}>✎</button>
         <button type="button" className="gact" title="Remove" onClick={onDelete}>🗑</button>
       </span>
     </div>
@@ -191,7 +205,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     await groceryApi.patchListItem(item.id, { checked: next })
     refetch()
   }
-  async function saveItem(item: GroceryBoardItem, patch: { name: string; quantity: string | null }) {
+  async function saveItem(item: GroceryBoardItem, patch: { name: string; quantity: string | null; section: string | null }) {
     await groceryApi.patchListItem(item.id, patch)
     refetch()
   }
