@@ -45,7 +45,9 @@ type SortKey = 'expiring' | 'az' | 'recent'
 // sort, Open Food Facts nutrition/allergens, and avoid-allergen warnings. Gated
 // behind the optional `pantry` module (nav hidden when off; direct nav redirects).
 export function Pantry() {
-  const { items, locations, avoidAllergens, lowThreshold, locationIcons, loading, error, refetch } = usePantry()
+  const { items, locations, avoidAllergens, allergenPeople, lowThreshold, locationIcons, loading, error, refetch } = usePantry()
+  // The effective warning set: household avoid-list ∪ allergens any member has.
+  const effectiveAvoid = useMemo(() => Array.from(new Set([...avoidAllergens, ...Object.keys(allergenPeople)])), [avoidAllergens, allergenPeople])
   const [view, setView] = useState<string>('all') // 'all' | 'use_soon' | 'running_low' | <location>
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<SortKey>('expiring')
@@ -187,7 +189,7 @@ export function Pantry() {
           ) : (
             <div className="pl-grid">
               {shown.map((it) => {
-                const flagged = flaggedAllergens(it, avoidAllergens)
+                const flagged = flaggedAllergens(it, avoidAllergens, allergenPeople)
                 const exp = expiryText(it.expiresOn)
                 // In cross-location views (All / Use soon / Running low) show where it lives.
                 const crossLoc = view === 'all' || view === 'use_soon' || view === 'running_low'
@@ -248,10 +250,14 @@ export function Pantry() {
             </div>
           )}
 
-          {avoidAllergens.length > 0 && (
+          {effectiveAvoid.length > 0 && (
             <div className="pl-legend">
               <span className="pl-legend-l">Avoiding:</span>
-              {avoidAllergens.map((a) => <span key={a} className="pl-legend-chip">{ALLERGEN_LABELS[a] ?? a}</span>)}
+              {effectiveAvoid.map((a) => (
+                <span key={a} className="pl-legend-chip" title={allergenPeople[a]?.length ? `Affects ${allergenPeople[a].join(', ')}` : undefined}>
+                  {ALLERGEN_LABELS[a] ?? a}
+                </span>
+              ))}
               <Link to="/settings" className="pl-legend-edit">Edit in Settings</Link>
             </div>
           )}
@@ -262,6 +268,7 @@ export function Pantry() {
         <PantryDetail
           item={detail}
           avoidAllergens={avoidAllergens}
+          allergenPeople={allergenPeople}
           onClose={() => setDetail(null)}
           onEdit={() => { setEditing(detail); setDetail(null) }}
           onChanged={refetch}
@@ -283,16 +290,20 @@ export function Pantry() {
 // The item detail sheet — Open Food Facts product card: photo/emoji, brand + pack
 // size, CONTAINS allergen chips (avoided ones in red), the nutrition panel, and
 // Edit. (PLAN IT IN / Cook this are deferred with the meal-planning work.)
-function PantryDetail({ item, avoidAllergens, onClose, onEdit, onChanged }: {
+function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, onChanged }: {
   item: PantryItem
   avoidAllergens: string[]
+  allergenPeople: Record<string, string[]>
   onClose: () => void
   onEdit: () => void
   onChanged: () => void
 }) {
   const [amt, setAmt] = useState(item.amount)
   const [busy, setBusy] = useState(false)
-  const flagged = new Set(flaggedAllergens(item, avoidAllergens))
+  const flaggedList = flaggedAllergens(item, avoidAllergens, allergenPeople)
+  const flagged = new Set(flaggedList)
+  // Who the flagged allergens affect (for the "affects …" note).
+  const affects = Array.from(new Set(flaggedList.flatMap((a) => allergenPeople[a] ?? [])))
   const n = item.nutrition
   const isOff = item.source === 'openfoodfacts'
 
@@ -346,6 +357,7 @@ function PantryDetail({ item, avoidAllergens, onClose, onEdit, onChanged }: {
             ))}
           </div>
         )}
+        {affects.length > 0 && <div className="pl-affects">⚠ Affects {affects.join(', ')}</div>}
 
         {nutriRows.length > 0 && (
           <div className="pl-nutri">

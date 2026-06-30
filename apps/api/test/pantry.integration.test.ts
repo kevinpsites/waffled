@@ -235,4 +235,13 @@ describe('pantry Open Food Facts integration', () => {
     const patched = JSON.parse((await call('PATCH', `/api/pantry/${created.id}`, kevin, { lowAt: null })).body).item
     expect(patched.lowAt).toBeNull()
   })
+
+  it("rolls a member's allergens into allergenPeople (known keys only)", async () => {
+    const me = JSON.parse((await call('GET', '/api/persons', kevin)).body).persons[0]
+    const upd = await call('PATCH', `/api/persons/${me.id}`, kevin, { allergens: ['gluten', 'bogus'] })
+    expect(upd.statusCode).toBe(200)
+    expect(JSON.parse(upd.body).person.allergens).toEqual(['gluten']) // bogus dropped
+    const body = JSON.parse((await call('GET', '/api/pantry', kevin)).body)
+    expect(body.allergenPeople.gluten).toContain(me.name)
+  })
 })

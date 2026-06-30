@@ -279,6 +279,7 @@
 .pl-nutri-row > span { font-weight: 600; color: var(--ink-2); }
 .pl-nutri-row > b { font-weight: 800; }
 
+.pl-affects { font-size: 13px; font-weight: 800; color: #c0392b; margin: -6px 0 14px; }
 .pl-off-foot { font-size: 12px; font-weight: 600; color: #1c7a44; margin-bottom: 14px; }
 .pl-detail-acts { display: flex; justify-content: flex-end; gap: 8px; }
 .pl-detail-acts .pill { cursor: pointer; }

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { personsApi, kioskApi, type SettingsMember } from '../../lib/api'
+import { personsApi, kioskApi, ALLERGEN_KEYS, ALLERGEN_LABELS, type SettingsMember } from '../../lib/api'
 
 const SWATCHES = ['#2F7FED', '#EC6049', '#25A368', '#8B5CF6', '#E0A500', '#EC4899', '#14B8A6', '#6B7280']
 const MEMBER_TYPES = [
@@ -27,6 +27,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
     birthday: person?.birthday ? String(person.birthday).slice(0, 10) : '',
     isAdmin: person?.isAdmin ?? false,
     showOnKiosk: person?.showOnKiosk ?? true,
+    allergens: person?.allergens ?? [],
   })
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -144,6 +145,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
       birthday: form.birthday || null,
       isAdmin: form.isAdmin,
       showOnKiosk: form.showOnKiosk,
+      allergens: form.allergens,
     }
     try {
       if (editing) await personsApi.updatePerson(person!.id, payload)
@@ -214,6 +216,26 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
             <span>Birthday (optional)</span>
             <input type="date" value={form.birthday} onChange={(e) => set('birthday', e.target.value)} />
           </label>
+
+          <div className="field">
+            <span>Allergens (warns in the pantry)</span>
+            <div className="pl-allergen-pick">
+              {ALLERGEN_KEYS.map((key) => {
+                const on = form.allergens.includes(key)
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`pl-allergen-chip${on ? ' on' : ''}`}
+                    aria-pressed={on}
+                    onClick={() => set('allergens', on ? form.allergens.filter((a) => a !== key) : [...form.allergens, key])}
+                  >
+                    {ALLERGEN_LABELS[key]}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
 
           <div className="set-card" style={{ padding: '2px 16px', marginBottom: 14 }}>
             <div className="set-row" style={{ padding: '12px 0', display: 'flex', alignItems: 'center', gap: 12 }}>

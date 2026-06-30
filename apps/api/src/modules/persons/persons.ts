@@ -4,6 +4,7 @@ import { query } from '../../platform/db'
 import { presentPerson, presentHousehold, type PersonRow, type HouseholdRow } from '../households/households'
 import { tenantRoute, adminRoute } from '../../platform/route-guards'
 import { MODULES, MODULE_KEYS } from '../../platform/modules'
+import { cleanAllergens } from '../../platform/allergens'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -23,6 +24,7 @@ const UPDATABLE: Record<string, string> = {
   paletteSlot: 'palette_slot',
   birthday: 'birthday',
   dietaryNotes: 'dietary_notes',
+  allergens: 'allergens',
   rewardStyle: 'reward_style',
   showOnKiosk: 'show_on_kiosk',
   sortOrder: 'sort_order',
@@ -342,6 +344,7 @@ export function registerPersonRoutes(api: Api): void {
     if (patch.memberType !== undefined && !MEMBER_TYPES.has(String(patch.memberType))) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid memberType' })
     }
+    if ('allergens' in patch) patch.allergens = cleanAllergens(patch.allergens)
     if (!Object.keys(UPDATABLE).some((field) => field in patch)) {
       return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields provided' })
     }

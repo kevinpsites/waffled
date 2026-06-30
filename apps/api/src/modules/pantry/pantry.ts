@@ -9,14 +9,12 @@ import { moduleEnabled } from '../../platform/modules'
 import { AuthError } from '../../platform/auth'
 import type { Tenant } from '../households/households'
 import { lookupBarcode } from './off'
+import { ALLERGEN_KEYS } from '../../platform/allergens'
 
 type Api = ReturnType<typeof createAPI>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const DEFAULT_LOCATIONS = ['Freezer', 'Fridge', 'Pantry']
-// The allergens a household can flag to "avoid" (the GF-rule warning set). The
-// canonical keys match off.ts's normalized allergens.
-const ALLERGEN_KEYS = ['gluten', 'milk', 'soy', 'egg', 'peanut', 'tree_nut', 'fish', 'shellfish', 'sesame']
 
 interface PantryRow {
   id: string
@@ -138,11 +136,22 @@ export function registerPantryRoutes(api: Api): void {
         order by location, (used_up_at is not null), name`,
       [tenant.householdId]
     )
+    // Per-person allergens roll up into the warning set: allergen → who it affects.
+    const people = await query<{ name: string; allergens: string[] }>(
+      `select name, allergens from persons
+        where household_id = $1 and deleted_at is null and array_length(allergens, 1) > 0`,
+      [tenant.householdId]
+    )
+    const allergenPeople: Record<string, string[]> = {}
+    for (const p of people.rows) {
+      for (const a of p.allergens ?? []) (allergenPeople[a] ??= []).push(p.name)
+    }
     return {
       items: rows.map(present),
       locations: readLocations(settings),
       showOnToday: readShowOnToday(settings),
       avoidAllergens: readAvoidAllergens(settings),
+      allergenPeople,
       lowThreshold: readLowThreshold(settings),
       locationIcons: readLocationIcons(settings),
     }

@@ -84,7 +84,7 @@ export const ALLERGEN_LABELS: Record<string, string> = {
 export const ALLERGEN_KEYS = Object.keys(ALLERGEN_LABELS)
 
 export const pantryApi = {
-  list: () => apiGet<{ items: PantryItem[]; locations: string[]; showOnToday: boolean; avoidAllergens: string[]; lowThreshold: number; locationIcons: Record<string, string> }>('/api/pantry'),
+  list: () => apiGet<{ items: PantryItem[]; locations: string[]; showOnToday: boolean; avoidAllergens: string[]; allergenPeople: Record<string, string[]>; lowThreshold: number; locationIcons: Record<string, string> }>('/api/pantry'),
   create: (input: PantryItemInput) => apiSend<{ item: PantryItem }>('POST', '/api/pantry', input).then((r) => r.item),
   update: (id: string, patch: PantryItemInput) => apiSend<{ item: PantryItem }>('PATCH', `/api/pantry/${id}`, patch).then((r) => r.item),
   remove: (id: string) => apiDelete(`/api/pantry/${id}`),
@@ -104,6 +104,7 @@ export interface PantryState {
   locations: string[]
   showOnToday: boolean
   avoidAllergens: string[]
+  allergenPeople: Record<string, string[]>
   lowThreshold: number
   locationIcons: Record<string, string>
   loading: boolean
@@ -116,6 +117,7 @@ export function usePantry(): PantryState {
   const [locations, setLocations] = useState<string[]>([])
   const [showOnToday, setShowOnToday] = useState(true)
   const [avoidAllergens, setAvoidAllergens] = useState<string[]>([])
+  const [allergenPeople, setAllergenPeople] = useState<Record<string, string[]>>({})
   const [lowThreshold, setLowThreshold] = useState(1)
   const [locationIcons, setLocationIcons] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
@@ -125,19 +127,20 @@ export function usePantry(): PantryState {
     let alive = true
     pantryApi
       .list()
-      .then((d) => alive && (setItems(d.items), setLocations(d.locations), setShowOnToday(d.showOnToday), setAvoidAllergens(d.avoidAllergens ?? []), setLowThreshold(d.lowThreshold ?? 1), setLocationIcons(d.locationIcons ?? {}), setLoading(false), setError(false)))
+      .then((d) => alive && (setItems(d.items), setLocations(d.locations), setShowOnToday(d.showOnToday), setAvoidAllergens(d.avoidAllergens ?? []), setAllergenPeople(d.allergenPeople ?? {}), setLowThreshold(d.lowThreshold ?? 1), setLocationIcons(d.locationIcons ?? {}), setLoading(false), setError(false)))
       .catch(() => alive && (setError(true), setLoading(false)))
     return () => {
       alive = false
     }
   }, [nonce])
-  return { items, locations, showOnToday, avoidAllergens, lowThreshold, locationIcons, loading, error, refetch: () => setNonce((n) => n + 1) }
+  return { items, locations, showOnToday, avoidAllergens, allergenPeople, lowThreshold, locationIcons, loading, error, refetch: () => setNonce((n) => n + 1) }
 }
 
-// Which of an item's allergens are on the household's avoid list (for red warnings).
-export function flaggedAllergens(item: { allergens: string[] | null }, avoid: string[]): string[] {
-  if (!item.allergens || !avoid.length) return []
-  const set = new Set(avoid)
+// Which of an item's allergens are flagged for this household (red warnings) — the
+// union of the household avoid-list and any allergen a member has.
+export function flaggedAllergens(item: { allergens: string[] | null }, avoid: string[], allergenPeople: Record<string, string[]> = {}): string[] {
+  if (!item.allergens) return []
+  const set = new Set([...avoid, ...Object.keys(allergenPeople)])
   return item.allergens.filter((a) => set.has(a))
 }
 
