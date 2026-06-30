@@ -197,7 +197,9 @@
 .pl-emoji img { width: 100%; height: 100%; object-fit: cover; }
 .pl-item-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .pl-name { font-weight: 700; font-size: 15px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pl-sub { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; }
+/* Second line: Location · allergies · use-by, with dot separators. */
+.pl-sub { display: flex; align-items: center; flex-wrap: wrap; font-size: 12.5px; font-weight: 600; min-width: 0; }
+.pl-sub > * + *::before { content: '·'; margin: 0 6px; color: var(--ink-3); font-weight: 700; }
 .pl-warn { color: #c0392b; font-weight: 800; }
 .pl-exp-none { color: var(--ink-3); }
 .pl-exp-ok { color: var(--ink-3); }
@@ -233,8 +235,8 @@
   flex: none !important; width: 46px; text-align: center; font-size: 16px;
 }
 
-/* location chip on cross-location cards (All / Use soon / Running low) */
-.pl-loc { font-size: 11.5px; font-weight: 700; color: var(--ink-3); padding: 2px 8px; border-radius: 999px; background: var(--panel); }
+/* location in the card's second line (plain muted text, not a chip) */
+.pl-loc { font-weight: 700; color: var(--ink-3); }
 
 /* barcode lookup row in the add modal */
 .pl-barcode-row { display: flex; gap: 8px; }
@@ -327,6 +329,14 @@
 .pl-scan-video, .pl-scan-warn {
   width: 100%; aspect-ratio: 4 / 3; border-radius: var(--r-lg, 14px); background: #1a1a1a; object-fit: cover;
 }
+/* viewfinder reticle: four corner brackets centered over the camera */
+.pl-scan-viewport { position: relative; display: block; }
+.pl-scan-reticle { position: absolute; inset: 14%; pointer-events: none; }
+.pl-rt { position: absolute; width: 30px; height: 30px; border: 3px solid rgba(255, 255, 255, 0.92); box-shadow: 0 0 4px rgba(0, 0, 0, 0.4); }
+.pl-rt.tl { top: 0; left: 0; border-right: 0; border-bottom: 0; border-radius: 9px 0 0 0; }
+.pl-rt.tr { top: 0; right: 0; border-left: 0; border-bottom: 0; border-radius: 0 9px 0 0; }
+.pl-rt.bl { bottom: 0; left: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 9px; }
+.pl-rt.br { bottom: 0; right: 0; border-left: 0; border-top: 0; border-radius: 0 0 9px 0; }
 .pl-scan-warn { display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 22px; background: var(--card-2, #faf8f4); border: 1px dashed var(--hair); }
 .pl-scan-warn-h { font-size: 15px; font-weight: 800; color: var(--ink); }
 .pl-scan-warn-t { font-size: 13px; font-weight: 600; color: var(--ink-3); line-height: 1.45; }

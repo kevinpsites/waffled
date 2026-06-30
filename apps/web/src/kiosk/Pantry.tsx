@@ -193,8 +193,6 @@ export function Pantry() {
               {shown.map((it) => {
                 const flagged = flaggedAllergens(it, avoidAllergens, allergenPeople)
                 const exp = expiryText(it.expiresOn)
-                // In cross-location views (All / Use soon / Running low) show where it lives.
-                const crossLoc = view === 'all' || view === 'use_soon' || view === 'running_low'
                 const loc = locations.includes(it.location) ? it.location : 'Other'
                 return (
                   <div key={it.id} className={`pl-item${busy === it.id ? ' busy' : ''}${flagged.length ? ' flagged' : ''}`}>
@@ -202,9 +200,10 @@ export function Pantry() {
                       <span className="pl-emoji">{it.imageUrl ? <img src={it.imageUrl} alt="" /> : foodEmoji(it.name)}</span>
                       <span className="pl-item-text">
                         <span className="pl-name">{it.name}</span>
+                        {/* Second line: Location · allergies · use-by */}
                         <span className="pl-sub">
+                          <span className="pl-loc">{loc}</span>
                           {flagged.length > 0 && <span className="pl-warn">⚠ {flagged.map((a) => ALLERGEN_LABELS[a] ?? a).join(', ')}</span>}
-                          {crossLoc && <span className="pl-loc">{loc}</span>}
                           <span className={`pl-exp pl-exp-${exp.tone}`}>{exp.text}</span>
                         </span>
                       </span>
@@ -267,7 +266,7 @@ export function Pantry() {
       </div>
 
       {scanning && (
-        <ScanModal locations={locations} onClose={() => setScanning(false)} onAdded={refetch} />
+        <ScanModal locations={locations} avoidAllergens={avoidAllergens} allergenPeople={allergenPeople} onClose={() => setScanning(false)} onAdded={refetch} />
       )}
 
       {detail && (

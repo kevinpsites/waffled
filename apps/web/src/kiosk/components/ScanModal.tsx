@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
-import { pantryApi, ALLERGEN_LABELS, type OffProduct, type PantryItemInput } from '../../lib/api'
+import { pantryApi, flaggedAllergens, ALLERGEN_LABELS, type OffProduct, type PantryItemInput } from '../../lib/api'
 
 // Barcode scan-into-pantry. Uses the device camera (zxing decoder, which works in
 // Chrome/Edge/Android and Safari/iOS) to read a barcode, looks it up via Open Food
@@ -9,7 +9,13 @@ import { pantryApi, ALLERGEN_LABELS, type OffProduct, type PantryItemInput } fro
 // The camera needs a SECURE CONTEXT (https or localhost). On a plain-http LAN origin
 // window.isSecureContext is false and getUserMedia is blocked, so we surface a clear
 // warning and fall back to typing the barcode. (HTTPS is a documented requirement.)
-export function ScanModal({ locations, onClose, onAdded }: { locations: string[]; onClose: () => void; onAdded: () => void }) {
+export function ScanModal({ locations, avoidAllergens, allergenPeople, onClose, onAdded }: {
+  locations: string[]
+  avoidAllergens: string[]
+  allergenPeople: Record<string, string[]>
+  onClose: () => void
+  onAdded: () => void
+}) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<IScannerControls | null>(null)
   const acceptRef = useRef(true) // gate: stop accepting scans while a result is shown
@@ -113,7 +119,12 @@ export function ScanModal({ locations, onClose, onAdded }: { locations: string[]
                 </div>
               </div>
             ) : (
-              <video ref={videoRef} className="pl-scan-video" muted playsInline />
+              <div className="pl-scan-viewport">
+                <video ref={videoRef} className="pl-scan-video" muted playsInline />
+                <div className="pl-scan-reticle" aria-hidden>
+                  <span className="pl-rt tl" /><span className="pl-rt tr" /><span className="pl-rt bl" /><span className="pl-rt br" />
+                </div>
+              </div>
             )}
             <div className="pl-scan-manual">
               <input value={manual} placeholder="Type a barcode" inputMode="numeric"
@@ -140,9 +151,18 @@ export function ScanModal({ locations, onClose, onAdded }: { locations: string[]
                       {found.imageUrl ? <img className="pl-scan-prodimg" src={found.imageUrl} alt="" /> : <span className="pl-scan-prodemoji">🥫</span>}
                       <div className="pl-scan-prodname">{found.name}</div>
                       {found.brand && <div className="pl-scan-prodbrand">{found.brand}</div>}
-                      {found.allergens.length > 0 && (
-                        <div className="pl-scan-allergens">{found.allergens.map((a) => <span key={a} className="pl-contains-chip">{ALLERGEN_LABELS[a] ?? a}</span>)}</div>
-                      )}
+                      {found.allergens.length > 0 && (() => {
+                        const flag = new Set(flaggedAllergens({ allergens: found.allergens }, avoidAllergens, allergenPeople))
+                        const affects = Array.from(new Set([...flag].flatMap((a) => allergenPeople[a] ?? [])))
+                        return (
+                          <>
+                            <div className="pl-scan-allergens">
+                              {found.allergens.map((a) => <span key={a} className={`pl-contains-chip${flag.has(a) ? ' avoid' : ''}`}>{ALLERGEN_LABELS[a] ?? a}</span>)}
+                            </div>
+                            {flag.size > 0 && <div className="pl-affects">⚠ Contains {[...flag].map((a) => ALLERGEN_LABELS[a] ?? a).join(', ')}{affects.length ? ` — affects ${affects.join(', ')}` : ''}</div>}
+                          </>
+                        )
+                      })()}
                     </div>
                   </>
                 ) : (
