@@ -14,6 +14,7 @@ struct KioskDashboard: View {
 
     @State private var model = KioskTodayModel()
     @State private var recipes = RecipesModel()
+    @State private var countdowns = CountdownsModel()
     @State private var detailEvent: SyncedEvent?
     @State private var recipeTarget: RecipeTarget?
     @State private var showCapture = false
@@ -74,6 +75,7 @@ struct KioskDashboard: View {
         .background(NK.canvas)
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .task { await sync.loadIdentity() }
+        .task { await countdowns.load() }
         // Per-domain reloads: each fires on appear (initial load) and only when its own
         // bus bumps — so a grocery toggle no longer reloads chores + meals + weather.
         .task(id: "\(tz.identifier)|\(sync.choresRev)") { await model.loadChores() }
@@ -215,7 +217,38 @@ struct KioskDashboard: View {
 
     // Each column scrolls its own overflow within the fixed dashboard height, so a long
     // grocery/chore stack stays reachable instead of being clipped off the bottom.
-    private var agendaCol: some View { agendaColumn }
+    private var agendaCol: some View {
+        VStack(spacing: 22) {
+            agendaColumn
+            if !countdowns.items.isEmpty { kioskCountdownsCard }
+        }
+    }
+
+    /// Compact countdowns card under the agenda column (iPad Today). Read-only here —
+    /// adding/removing lives on the phone card + the event editor's countdown toggle.
+    @ViewBuilder private var kioskCountdownsCard: some View {
+        KioskCard {
+            VStack(alignment: .leading, spacing: 12) {
+                cardHeader("Countdowns", chevron: false)
+                ForEach(countdowns.items.prefix(4)) { c in
+                    HStack(spacing: 12) {
+                        Text(c.emoji ?? "📅").font(.system(size: 22))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(c.title).font(.system(size: 18, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                            Text(CountdownFormat.dateLabel(c.date)).font(.system(size: 13)).foregroundStyle(NK.ink3)
+                        }
+                        Spacer(minLength: 8)
+                        Text(CountdownFormat.label(c.daysLeft, sleeps: countdowns.sleeps))
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(c.daysLeft <= 7 ? NK.primaryD : NK.ink2)
+                    }
+                }
+                if countdowns.items.count > 4 {
+                    Text("+\(countdowns.items.count - 4) more").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                }
+            }
+        }
+    }
     private var mealsCol: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 22) { tonightCard; weekDinnersCard }.padding(.bottom, 8)

@@ -44,6 +44,7 @@ struct CalendarsSettingsView: View {
     // filters (web parity)
     @State private var hideReadOnly = true
     @State private var syncedOnly = false
+    @State private var sleeps = false
     @State private var search = ""
     @State private var collapsed: Set<String> = []   // account ids
 
@@ -52,6 +53,7 @@ struct CalendarsSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                countdownsSection
                 if let status {
                     if !status.configured {
                         notice("Google Calendar isn’t set up on this server yet.")
@@ -88,6 +90,35 @@ struct CalendarsSettingsView: View {
             }
         }
         .task { await load() }
+        .task { if let r = try? await api.countdowns() { sleeps = r.sleeps } }
+    }
+
+    /// The household "N sleeps" vs "N days" wording toggle (mirrors the web Countdowns
+    /// settings). Countdowns themselves are managed on the Today card + event editor.
+    private var countdownsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("⏳ Countdowns").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink2)
+            Button { toggleSleeps() } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: sleeps ? "checkmark.square.fill" : "square")
+                        .font(.system(size: 17)).foregroundStyle(sleeps ? NK.primary : NK.ink3)
+                    Text("Count in “sleeps” instead of “days” (kid-friendly)")
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink)
+                    Spacer(minLength: 0)
+                }
+            }.buttonStyle(.plain)
+            Text("Count down to trips, birthdays, and anything you flag on the calendar. Add one from the Today “Countdowns” card, or tick “Show a countdown” when editing an event.")
+                .font(.system(size: 12)).foregroundStyle(NK.ink3)
+        }
+        .padding(14)
+        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    private func toggleSleeps() {
+        sleeps.toggle()
+        let v = sleeps
+        Task { try? await api.setCountdownSleeps(v) }
     }
 
     private var filterControls: some View {

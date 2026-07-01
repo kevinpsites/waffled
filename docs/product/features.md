@@ -95,7 +95,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Recurring events** — per-occurrence **edit scope** (this / following / all) | ✅ | ✅ | ✅ | ✅ Done (scope chooser on edit + delete) |
 | **Recurring events** — **end condition** (never / on a date / after N) | ✅ | ✅ | ✅ | ✅ Done (UNTIL date + COUNT) |
 | **Recurring events** — monthly **nth-weekday ordinal** (first…fifth / last) | ✅ | ✅ | ✅ | ✅ Done (mobile offers any ordinal) |
-| **Countdowns** — "N days until X" from three sources (flag an event · standalone item · auto member birthdays); Today card + month-grid badge; household "N sleeps" toggle | ✅ | 🚧 | 🚧 | ✅ Done (web; core Calendar feature, not gated) |
+| **Countdowns** — "N days until X" from three sources (flag an event · standalone item · auto member birthdays); Today card + month-grid badge; household "N sleeps" toggle | ✅ | ✅ | ✅ | ✅ Done — iOS reads the merged `GET /api/countdowns` for a **Today card** (iPhone `CountdownsCard` + iPad kiosk card; emoji · title · date · N-days/sleeps · standalone × remove · + Add) and **month-grid badges** (iPhone + `KioskCalendarView`); the event editor's **"⏳ Show a countdown"** toggle rides the full `is_countdown` offline path (PowerSync schema + local/REST writes); the **"N sleeps"** toggle is in Settings → Calendars |
 
 ## Tasks & chores
 
