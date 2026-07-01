@@ -332,18 +332,18 @@ final class SyncManager {
     /// is the first participant — the server uses it for calendar routing.
     func createCalendarEvent(title: String, startsAtISO: String, endsAtISO: String?,
                              allDay: Bool, location: String?, personIds: [String],
-                             calendarId: String?) async -> Bool {
+                             calendarId: String?, isCountdown: Bool = false) async -> Bool {
         guard let hh = await householdRowId() else { lastError = "No household synced yet."; return false }
         let id = UUID().uuidString.lowercased()
         do {
             try await db.execute(
                 sql: """
                 INSERT INTO events (id, household_id, title, description, location, starts_at, ends_at,
-                                    all_day, timezone, person_id, calendar_id, origin)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')
+                                    all_day, is_countdown, timezone, person_id, calendar_id, origin)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')
                 """,
                 parameters: [id, hh, title, nil, location, startsAtISO, endsAtISO,
-                             allDay ? 1 : 0, householdTz.identifier, personIds.first, calendarId])
+                             allDay ? 1 : 0, isCountdown ? 1 : 0, householdTz.identifier, personIds.first, calendarId])
             try await replaceParticipants(eventId: id, householdId: hh, personIds: personIds)
             await refreshCounts()
             return true
@@ -352,12 +352,12 @@ final class SyncManager {
 
     /// Update an event + its participants in the local mirror.
     func updateEvent(id: String, title: String, startsAtISO: String, endsAtISO: String?,
-                     allDay: Bool, location: String?, personIds: [String]) async -> Bool {
+                     allDay: Bool, location: String?, personIds: [String], isCountdown: Bool = false) async -> Bool {
         guard let hh = await householdRowId() else { lastError = "No household synced yet."; return false }
         do {
             try await db.execute(
-                sql: "UPDATE events SET title = ?, location = ?, starts_at = ?, ends_at = ?, all_day = ?, person_id = ? WHERE id = ?",
-                parameters: [title, location, startsAtISO, endsAtISO, allDay ? 1 : 0, personIds.first, id])
+                sql: "UPDATE events SET title = ?, location = ?, starts_at = ?, ends_at = ?, all_day = ?, is_countdown = ?, person_id = ? WHERE id = ?",
+                parameters: [title, location, startsAtISO, endsAtISO, allDay ? 1 : 0, isCountdown ? 1 : 0, personIds.first, id])
             try await replaceParticipants(eventId: id, householdId: hh, personIds: personIds)
             await refreshCounts()
             return true
@@ -717,7 +717,7 @@ final class SyncManager {
                 let stream = try db.watch(
                     sql: """
                     SELECT e.id AS id, e.id AS series_id, NULL AS occurrence_start,
-                           e.title, e.starts_at, e.ends_at, e.all_day, e.location, e.person_id,
+                           e.title, e.starts_at, e.ends_at, e.all_day, e.is_countdown, e.location, e.person_id,
                            p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
                            (SELECT group_concat(ep.person_id) FROM event_participants ep
                              WHERE ep.event_id = e.id) AS participant_ids
@@ -726,7 +726,7 @@ final class SyncManager {
                      WHERE e.rrule IS NULL
                     UNION ALL
                     SELECT o.id AS id, m.id AS series_id, o.original_start AS occurrence_start,
-                           coalesce(o.title, m.title) AS title, o.starts_at, o.ends_at, o.all_day,
+                           coalesce(o.title, m.title) AS title, o.starts_at, o.ends_at, o.all_day, m.is_countdown,
                            coalesce(o.location, m.location) AS location, o.person_id,
                            p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
                            (SELECT group_concat(ep.person_id) FROM event_participants ep
@@ -751,6 +751,7 @@ final class SyncManager {
                             colorHex: try cursor.getStringOptional(name: "person_color"),
                             emoji: try cursor.getStringOptional(name: "person_emoji"),
                             endsAt: EventTime.parse(try cursor.getStringOptional(name: "ends_at")),
+                            isCountdown: (try cursor.getIntOptional(name: "is_countdown")) == 1,
                             location: try cursor.getStringOptional(name: "location"),
                             participantIds: pids,
                             // For a single event series_id == id; occurrence_start is NULL.

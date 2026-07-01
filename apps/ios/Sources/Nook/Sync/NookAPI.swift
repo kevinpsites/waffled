@@ -2333,11 +2333,12 @@ struct NookAPI: Sendable {
     func createEvent(title: String, startsAtISO: String, endsAtISO: String?, allDay: Bool,
                      location: String?, personIds: [String], goalId: String?, goalStepId: String?,
                      calendarId: String?, timezone: String?, rrule: String? = nil,
-                     recurrenceEndAt: String? = nil) async throws -> String {
+                     recurrenceEndAt: String? = nil, isCountdown: Bool = false) async throws -> String {
         var body: [String: JSONValue] = [
             "title": .string(title),
             "startsAt": .string(startsAtISO),
             "allDay": .bool(allDay),
+            "isCountdown": .bool(isCountdown),
         ]
         if let e = endsAtISO { body["endsAt"] = .string(e) }
         if let l = location, !l.isEmpty { body["location"] = .string(l) }
@@ -2363,7 +2364,7 @@ struct NookAPI: Sendable {
                      allDay: Bool, location: String?, personIds: [String],
                      goalId: String?, goalStepId: String?,
                      rrule: String? = nil, clearRrule: Bool = false, recurrenceEndAt: String? = nil,
-                     scope: String? = nil, occurrenceStart: String? = nil) async throws {
+                     scope: String? = nil, occurrenceStart: String? = nil, isCountdown: Bool = false) async throws {
         var body: [String: JSONValue] = [
             "title": .string(title),
             "startsAt": .string(startsAtISO),
@@ -2374,6 +2375,7 @@ struct NookAPI: Sendable {
             "participantIds": .array(personIds.map(JSONValue.string)),
             "goalId": goalId.map(JSONValue.string) ?? .null,
             "goalStepId": goalStepId.map(JSONValue.string) ?? .null,
+            "isCountdown": .bool(isCountdown),
         ]
         if let scope { body["scope"] = .string(scope) }
         if let occ = occurrenceStart { body["occurrenceStart"] = .string(occ) }

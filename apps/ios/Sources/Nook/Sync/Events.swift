@@ -11,6 +11,8 @@ struct SyncedEvent: Identifiable, Sendable, Equatable {
     let colorHex: String?
     let emoji: String?
     var endsAt: Date? = nil
+    /// Nook-owned "show a countdown" flag; surfaces in `GET /api/countdowns`.
+    var isCountdown: Bool = false
     var location: String? = nil
     var participantIds: [String] = []
     /// The master/series row this belongs to. For a single (non-recurring) event

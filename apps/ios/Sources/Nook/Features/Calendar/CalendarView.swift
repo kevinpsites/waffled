@@ -561,6 +561,8 @@ struct EventEditSheet: View {
     @State private var start: Date
     @State private var durationMin: Int
     @State private var allDay: Bool
+    /// Nook-owned "show a countdown" flag — surfaces this event in the countdowns list.
+    @State private var isCountdown: Bool
     /// Ordered so the first one picked is the "owner" (drives the calendar list).
     @State private var participants: [String]
     @State private var location: String
@@ -625,6 +627,7 @@ struct EventEditSheet: View {
         _start = State(initialValue: startDate)
         _durationMin = State(initialValue: mins)
         _allDay = State(initialValue: event?.allDay ?? false)
+        _isCountdown = State(initialValue: event?.isCountdown ?? false)
         _participants = State(initialValue: prefillParticipantIds ?? (event?.personId.map { [$0] } ?? []))
         _location = State(initialValue: event?.location ?? "")
         _goalId = State(initialValue: prefillGoalId)
@@ -694,6 +697,16 @@ struct EventEditSheet: View {
                     // All day — boxed grouping like the web, with a toggle.
                     Toggle(isOn: $allDay.animation()) {
                         Text("All day").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                    }
+                    .tint(FamilyColor.wally.solid)
+                    .padding(14).cardBox()
+
+                    // Countdown flag — surfaces this event in the "N days until…" list.
+                    Toggle(isOn: $isCountdown) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("⏳ Show a countdown").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                            Text("Build anticipation with “N days until…”").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                        }
                     }
                     .tint(FamilyColor.wally.solid)
                     .padding(14).cardBox()
@@ -1290,7 +1303,7 @@ struct EventEditSheet: View {
                         goalId: goalId, goalStepId: goalStepId,
                         rrule: isAll ? d.rrule : nil, clearRrule: isAll && d.rrule == nil,
                         recurrenceEndAt: isAll ? d.recurrenceEndAt : nil,
-                        scope: scope, occurrenceStart: event?.occurrenceStart)
+                        scope: scope, occurrenceStart: event?.occurrenceStart, isCountdown: isCountdown)
                     sync.touchGoals()
                 } else if let rrule = d.rrule {
                     // A single event being made recurring — promote in place (no scope),
@@ -1299,18 +1312,20 @@ struct EventEditSheet: View {
                         id: editId, title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
                         allDay: allDay, location: d.loc, personIds: d.ids,
                         goalId: goalId, goalStepId: goalStepId, rrule: rrule,
-                        recurrenceEndAt: d.recurrenceEndAt)
+                        recurrenceEndAt: d.recurrenceEndAt, isCountdown: isCountdown)
                     sync.touchGoals()
                 } else if goalId != nil || prefillGoalId != nil {
                     // A goal link was set, changed, or removed → PATCH the rich REST
                     // route (the local mirror has no goal columns); PowerSync re-syncs.
                     try? await NookAPI().updateEvent(
                         id: editId, title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
-                        allDay: allDay, location: d.loc, personIds: d.ids, goalId: goalId, goalStepId: goalStepId)
+                        allDay: allDay, location: d.loc, personIds: d.ids, goalId: goalId, goalStepId: goalStepId,
+                        isCountdown: isCountdown)
                     sync.touchGoals()
                 } else {
                     _ = await sync.updateEvent(id: editId, title: d.name, startsAtISO: d.startISO,
-                                               endsAtISO: d.endISO, allDay: allDay, location: d.loc, personIds: d.ids)
+                                               endsAtISO: d.endISO, allDay: allDay, location: d.loc, personIds: d.ids,
+                                               isCountdown: isCountdown)
                 }
             } else if d.rrule != nil || goalId != nil {
                 // Recurring and/or goal-linked create goes through the rich REST route
@@ -1319,11 +1334,13 @@ struct EventEditSheet: View {
                 _ = try? await NookAPI().createEvent(
                     title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO, allDay: allDay,
                     location: d.loc, personIds: d.ids, goalId: goalId, goalStepId: goalStepId,
-                    calendarId: d.chosenCal, timezone: tz, rrule: d.rrule, recurrenceEndAt: d.recurrenceEndAt)
+                    calendarId: d.chosenCal, timezone: tz, rrule: d.rrule, recurrenceEndAt: d.recurrenceEndAt,
+                    isCountdown: isCountdown)
                 if goalId != nil { sync.touchGoals() }
             } else {
                 _ = await sync.createCalendarEvent(title: d.name, startsAtISO: d.startISO, endsAtISO: d.endISO,
-                                                   allDay: allDay, location: d.loc, personIds: d.ids, calendarId: d.chosenCal)
+                                                   allDay: allDay, location: d.loc, personIds: d.ids, calendarId: d.chosenCal,
+                                                   isCountdown: isCountdown)
             }
         }
     }

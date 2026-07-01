@@ -29,6 +29,8 @@ enum SyncSchema {
             .text("starts_at"),
             .text("ends_at"),
             .integer("all_day"),
+            // Nook-owned "show a countdown" flag (SQLite has no bool; 0/1).
+            .integer("is_countdown"),
             .text("timezone"),
             .text("status"),
             .text("person_id"),
