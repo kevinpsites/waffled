@@ -15,9 +15,16 @@ struct PantryView: View {
 
     private var isWide: Bool { hSize == .regular }
 
-    enum PantryFilter: Equatable { case all, useSoon, runningLow, location(String) }
-    enum PantrySort: String, CaseIterable { case expiring, az, recent
-        var label: String { self == .expiring ? "Expiring" : self == .az ? "A–Z" : "Recent" }
+    enum PantryFilter: Equatable { case all, useSoon, runningLow, beenAWhile, location(String) }
+    enum PantrySort: String, CaseIterable { case expiring, az, recent, oldest
+        var label: String {
+            switch self {
+            case .expiring: return "Expiring"
+            case .az: return "A–Z"
+            case .recent: return "Recent"
+            case .oldest: return "Oldest"
+            }
+        }
     }
 
     var body: some View {
@@ -92,6 +99,7 @@ struct PantryView: View {
                 navRow("🗂️", "All items", counts.all, .all)
                 navRow("⏰", "Use soon", counts.useSoon, .useSoon)
                 navRow("📉", "Running low", counts.runningLow, .runningLow)
+                if counts.beenAWhile > 0 { navRow("🕰️", "Been a while", counts.beenAWhile, .beenAWhile) }
                 Rectangle().fill(NK.hair).frame(height: 1).padding(.vertical, 8)
                 ForEach(model.locations, id: \.self) { loc in
                     navRow(model.locationIcons[loc] ?? "📦", loc, counts.byLoc[loc] ?? 0, .location(loc))
@@ -131,6 +139,7 @@ struct PantryView: View {
                 chip("All", counts.all, .all)
                 chip("Use soon", counts.useSoon, .useSoon)
                 chip("Low", counts.runningLow, .runningLow)
+                if counts.beenAWhile > 0 { chip("Been a while", counts.beenAWhile, .beenAWhile) }
                 ForEach(model.locations, id: \.self) { loc in chip(loc, counts.byLoc[loc] ?? 0, .location(loc)) }
                 if (counts.byLoc["Other"] ?? 0) > 0 { chip("Other", counts.byLoc["Other"] ?? 0, .location("Other")) }
             }
@@ -224,6 +233,9 @@ struct PantryView: View {
                 Text("·").font(.system(size: 12)).foregroundStyle(NK.ink3)
                 Text(exp.text).font(.system(size: 12, weight: .semibold)).foregroundStyle(exp.color)
             }
+            if model.isOld(item), let d = model.ageDays(item) {
+                AgePill(days: d)
+            }
             Spacer(minLength: 0)
         }
     }
@@ -282,13 +294,14 @@ struct PantryView: View {
 
     private func locOf(_ i: NookAPI.PantryItem) -> String { model.locations.contains(i.location) ? i.location : "Other" }
 
-    private struct Counts { var all = 0; var useSoon = 0; var runningLow = 0; var byLoc: [String: Int] = [:] }
+    private struct Counts { var all = 0; var useSoon = 0; var runningLow = 0; var beenAWhile = 0; var byLoc: [String: Int] = [:] }
     private var counts: Counts {
         var c = Counts()
         for i in model.onHand {
             c.all += 1
             if model.isSoon(i) { c.useSoon += 1 }
             if model.isLow(i) { c.runningLow += 1 }
+            if model.isOld(i) { c.beenAWhile += 1 }
             c.byLoc[locOf(i), default: 0] += 1
         }
         return c
@@ -299,6 +312,7 @@ struct PantryView: View {
         case .all: return "All items"
         case .useSoon: return "Use soon"
         case .runningLow: return "Running low"
+        case .beenAWhile: return "Been a while"
         case let .location(l): return l
         }
     }
@@ -309,6 +323,7 @@ struct PantryView: View {
         case .all: break
         case .useSoon: out = out.filter(model.isSoon)
         case .runningLow: out = out.filter(model.isLow)
+        case .beenAWhile: out = out.filter(model.isOld)
         case let .location(l): out = out.filter { locOf($0) == l }
         }
         let s = query.trimmingCharacters(in: .whitespaces).lowercased()
@@ -324,6 +339,7 @@ struct PantryView: View {
         switch sort {
         case .az: return list.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         case .recent: return list.sorted { ($0.createdAt ?? "") > ($1.createdAt ?? "") }
+        case .oldest: return list.sorted { ($0.addedOn ?? "") < ($1.addedOn ?? "") }
         case .expiring:
             return list.sorted {
                 let a = model.days($0)

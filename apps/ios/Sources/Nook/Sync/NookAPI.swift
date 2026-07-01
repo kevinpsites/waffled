@@ -1164,6 +1164,9 @@ struct NookAPI: Sendable {
         let lowAt: Double?
         let isMeal: Bool?
         let createdAt: String?
+        /// When the item entered the pantry (YYYY-MM-DD), distinct from `createdAt` (the
+        /// row's log time). Drives the "item age" chip + "Been a while" group; backdatable.
+        let addedOn: String?
         var isOff: Bool { source == "openfoodfacts" }
     }
 
@@ -1195,6 +1198,9 @@ struct NookAPI: Sendable {
         let allergenPeople: [String: [String]]
         let lowThreshold: Double
         let locationIcons: [String: String]?
+        /// Household "old" threshold in months (default 6). Items on hand longer get an
+        /// age chip + a "Been a while" group. Read-only on iOS (edited from the web).
+        let staleMonths: Double?
     }
 
     func pantryList() async throws -> PantryList {

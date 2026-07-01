@@ -17,6 +17,7 @@ struct PantryItemEditor: View {
     @State private var location: String
     @State private var hasExpiry: Bool
     @State private var expiry: Date
+    @State private var addedOn: Date
     @State private var note: String
     @State private var lowAt: String
     @State private var isMeal: Bool
@@ -34,6 +35,7 @@ struct PantryItemEditor: View {
             _location = State(initialValue: locations.first ?? "Pantry")
             _hasExpiry = State(initialValue: false)
             _expiry = State(initialValue: Date())
+            _addedOn = State(initialValue: Date())
             _note = State(initialValue: "")
             _lowAt = State(initialValue: "")
             _isMeal = State(initialValue: false)
@@ -45,6 +47,7 @@ struct PantryItemEditor: View {
             let d = PantryExpiry.date(it.expiresOn)
             _hasExpiry = State(initialValue: d != nil)
             _expiry = State(initialValue: d ?? Date())
+            _addedOn = State(initialValue: PantryExpiry.date(it.addedOn) ?? Date())
             _note = State(initialValue: it.note)
             _lowAt = State(initialValue: it.lowAt.map { formatAmount($0) } ?? "")
             _isMeal = State(initialValue: it.isMeal ?? false)
@@ -80,6 +83,15 @@ struct PantryItemEditor: View {
                             DatePicker("", selection: $expiry, displayedComponents: .date)
                                 .labelsHidden().datePickerStyle(.graphical).tint(NK.primary)
                         }
+                    }
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Added / bought").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+                            Text("how long it’s been on hand").font(.system(size: 11)).foregroundStyle(NK.ink3)
+                        }
+                        Spacer()
+                        DatePicker("", selection: $addedOn, in: ...Date(), displayedComponents: .date)
+                            .labelsHidden().tint(NK.primary)
                     }
                     HStack(spacing: 12) {
                         field("Note") { TextField("leftovers from Tuesday", text: $note) }
@@ -149,6 +161,7 @@ struct PantryItemEditor: View {
             "location": .string(location),
             "note": .string(note.trimmingCharacters(in: .whitespaces)),
             "expiresOn": hasExpiry ? .string(PantryExpiry.string(expiry)) : .null,
+            "addedOn": .string(PantryExpiry.string(addedOn)),
             "lowAt": Double(lowAt.trimmingCharacters(in: .whitespaces)).map(JSONValue.double) ?? .null,
             "isMeal": .bool(isMeal),
         ]
