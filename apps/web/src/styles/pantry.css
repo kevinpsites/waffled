@@ -199,6 +199,8 @@
 /* Second line: Location · allergies · use-by, with dot separators. */
 .pl-sub { display: flex; align-items: center; flex-wrap: wrap; font-size: 12.5px; font-weight: 600; min-width: 0; }
 .pl-sub > * + *::before { content: '·'; margin: 0 6px; color: var(--ink-3); font-weight: 700; }
+.pl-sub > .pl-old::before { content: none; }
+.pl-old { margin-left: 8px; }
 .pl-warn { color: #c0392b; font-weight: 800; }
 .pl-exp-none { color: var(--ink-3); }
 .pl-exp-ok { color: var(--ink-3); }
@@ -412,6 +414,8 @@
 .pl-detail-row > span { font-size: 13.5px; font-weight: 600; color: var(--ink-3); }
 .pl-detail-row > b { font-size: 14.5px; font-weight: 700; }
 .pl-detail-row .pantry-step { background: var(--card-2, #faf8f4); }
+.pl-added-val { display: inline-flex; align-items: center; gap: 8px; }
+.pl-age-chip { font-size: 12.5px; font-weight: 800; color: #8a6d3b; background: #f4ecd8; padding: 2px 9px; border-radius: 999px; }
 
 .pl-detail-contains { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-bottom: 16px; }
 .pl-contains-l { font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }

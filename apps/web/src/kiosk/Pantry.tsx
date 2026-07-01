@@ -368,7 +368,7 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
 
         <div className="pl-detail-rows">
           <div className="pl-detail-row"><span>Location</span><b>{item.location}</b></div>
-          <div className="pl-detail-row"><span>Added</span><b>{item.addedOn ?? '—'}{ageLabel(item.addedOn) ? ` · ${ageLabel(item.addedOn)} ago` : ''}</b></div>
+          <div className="pl-detail-row"><span>Added</span><b className="pl-added-val">{item.addedOn ?? '—'}{ageLabel(item.addedOn) ? <span className="pl-age-chip">{ageLabel(item.addedOn)} ago</span> : null}</b></div>
           <div className="pl-detail-row"><span>Best by</span><b>{item.expiresOn ?? '—'}</b></div>
           <div className="pl-detail-row">
             <span>Amount</span>
