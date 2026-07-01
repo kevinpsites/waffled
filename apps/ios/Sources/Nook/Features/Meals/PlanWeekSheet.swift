@@ -15,6 +15,9 @@ struct PlanWeekSheet: View {
     let familySize: Int
     /// The Recipes library, reused by the manual-pick sheet.
     let recipes: RecipesModel
+    /// Pantry "use up soon" names to pre-seed the use-up list (from Cook-from-pantry's
+    /// "Plan my week"). Empty by default; applied once on appear.
+    var seedUseUp: [String] = []
     /// Called after suggestions are applied, so the planner reloads.
     let onApplied: () -> Void
 
@@ -109,6 +112,7 @@ struct PlanWeekSheet: View {
 
     /// Default to weekdays (Mon–Fri), matching the web kiosk.
     private func seedDaysIfNeeded() {
+        if useUp.isEmpty, !seedUseUp.isEmpty { useUp = Array(seedUseUp.prefix(12)) }
         guard selectedDays.isEmpty else { return }
         for d in weekDays where (2...6).contains(cal.component(.weekday, from: d)) {
             selectedDays.insert(ymd(d))

@@ -111,6 +111,8 @@ struct PantryView: View {
                     Rectangle().fill(NK.hair).frame(height: 1).padding(.vertical, 8)
                     AllergenKey(avoid: model.avoidSet)
                 }
+                Rectangle().fill(NK.hair).frame(height: 1).padding(.vertical, 8)
+                CookFromPantryCard(model: model)
             }
             .padding(14)
         }
@@ -163,6 +165,7 @@ struct PantryView: View {
     private var mainScroll: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                if !isWide { CookFromPantryCard(model: model) }
                 mainHead
                 if shown.isEmpty && model.usedUp.isEmpty {
                     Text(query.isEmpty ? "Nothing here yet. Add what’s on hand." : "Nothing matches your search.")

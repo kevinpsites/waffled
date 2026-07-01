@@ -1277,6 +1277,43 @@ struct NookAPI: Sendable {
         return try await sendReturning("POST", "/api/pantry/consume", body: body, as: Resp.self).items
     }
 
+    /// A recipe you can make right now (every non-staple ingredient is on hand).
+    struct CookReady: Decodable, Identifiable, Hashable, Sendable {
+        let recipeId: String
+        let title: String
+        let emoji: String?
+        let have: [String]
+        let expiringItem: String?
+        var id: String { recipeId }
+    }
+    /// One of the top library recipes for an on-hand protein group.
+    struct CookMainRecipe: Decodable, Identifiable, Hashable, Sendable {
+        let recipeId: String
+        let title: String
+        let have: Int
+        let total: Int
+        let missing: [String]
+        var id: String { recipeId }
+    }
+    /// An on-hand protein and the library recipes it unlocks (the group taps through to a
+    /// protein-filtered library; up to 3 near-makeable recipes shown).
+    struct CookMain: Decodable, Identifiable, Hashable, Sendable {
+        struct Item: Decodable, Hashable, Sendable { let name: String; let amount: String; let unit: String; let expiresOn: String? }
+        let protein: String
+        let item: Item?
+        let count: Int
+        let recipes: [CookMainRecipe]
+        var id: String { protein }
+    }
+
+    /// Feeds "Cook from your pantry": recipes makeable now (`ready`) and on-hand proteins
+    /// as "mains" (`mains`). Gated by the pantry module server-side.
+    func pantryCookable() async throws -> (ready: [CookReady], mains: [CookMain]) {
+        struct Resp: Decodable { let ready: [CookReady]; let mains: [CookMain] }
+        let r = try await getJSON("/api/pantry/cookable", as: Resp.self)
+        return (r.ready, r.mains)
+    }
+
     /// The logged-in person, resolved server-side from the token's `sub` via the
     /// identities table. nil if the account hasn't been provisioned yet.
     func currentPersonId() async throws -> String? {
