@@ -501,10 +501,30 @@ create table meal_plan_entries (
 );
 create unique index uq_meal_entry on meal_plan_entries (meal_plan_id, date, meal_type);
 
-create table pantry_items (                          -- household staples assumed on-hand
-  <base>, name text not null, is_default boolean not null default false
+create table pantry_items (                          -- real on-hand inventory (optional `pantry` module)
+  <base>, name text not null,
+  amount text, unit text,                            -- free text ("half", "1.5", "bag")
+  location text not null default 'Pantry',           -- one of settings.pantry.locations
+  expires_on date, note text,
+  added_on date not null default current_date,       -- bought/added date (age, distinct from expiry)
+  used_up_at timestamptz,                            -- soft "ran out" (recoverable, ≠ deleted)
+  low_at numeric,                                     -- per-item running-low override (else settings default)
+  is_meal boolean not null default false,            -- ready-to-eat leftover / orphan protein (not an ingredient)
+  -- Open Food Facts snapshot (null when added manually):
+  barcode text, brand text, image_url text, quantity_text text, serving_basis text,
+  nutrition jsonb, allergens text[], traces text[], dietary text[], source text
+);
+create table products (                              -- global OFF cache keyed by barcode (shared, stays under OFF rate limit)
+  barcode text primary key, data jsonb, fetched_at timestamptz, not_found boolean, ...
 );
 ```
+
+**Pantry ↔ meals loop.** Deterministic staple-aware matching (`modules/pantry/cook.ts`, token-subset,
+no AI) powers "Cook from your pantry" (`GET /api/pantry/cookable`, `/:id/recipes`) and the
+cook→deplete flow: `GET /api/pantry/for-recipe/:recipeId` returns matched items + a suggested action;
+`POST /api/pantry/consume` applies `used_up`/`decrement` (positive remainder kept, ≤0 → `used_up`).
+Marking a recipe cooked also flips today's matching `meal_plan_entries.status` to `cooked`.
+Legacy note: v1 had *no* real inventory (on-hand was AI-estimated); this table replaced that.
 
 **Ingredient parsing (hybrid):** on URL/photo/**markdown** import, an LLM pass parses each raw
 line into `amount`/`unit`/`name`/`prep_note`/`section`, splits instructions into `recipe_steps`,
@@ -515,7 +535,7 @@ per-step references ("continuing sauce", "cheese mixture") fall back to a free-t
 no hard link.
 **Bridges:** entry → calendar `events` (`origin='meal_plan'`, `origin_ref_id=entry.id`,
 `entry.event_id` reverse-links); grocery auto-build reads entries → ingredients → dedup/sum →
-drop `pantry_items` → writes `list_items`. No pantry inventory in v1 (on-hand is AI-estimated).
+drop staples → writes `list_items`.
 
 ---
 

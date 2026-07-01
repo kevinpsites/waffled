@@ -202,11 +202,16 @@ Candidate modules (Kevin's use cases):
   treat), per-part **assignment + rotation** across family members, a **Today card** on the meeting
   day, and history. Deeply integrated (persons, recurrence, Today) → **in-tree optional module**;
   LDS-specific so likely community-tier, not core. (Built on the module framework.)
-- **Food / pantry inventory** — track what's actually on hand (freezer/fridge/pantry) beyond the
-  existing "expected staples," with quantities + locations; **feeds meal planning** ("use this
-  soon," surface leftovers) and ties to grocery (buy → stock, cook → deplete). Broadly useful (not
-  faith-specific) → **in-tree, plausibly core**; benefits from API keys for external input
-  (barcode/scanner scripts).
+- **Food / pantry inventory** — SHIPPED (web) 2026-06-30 → 2026-07-01 (build #2). Track what's on
+  hand (freezer/fridge/pantry) with quantities + locations; **Open Food Facts** barcode
+  lookup/scanner (cached), nutrition + colored **allergen** badges (household ∪ per-person, "may
+  contain" traces, dietary flags), running-low thresholds, per-location icons, item **age** (added
+  date + customizable "old" warning). **Feeds meal planning:** "Cook from your pantry" (makeable
+  now, on-hand proteins as "mains", leftovers, Plan my week) and the **cook → deplete** loop
+  (mark cooked → "Used from your pantry" confirm sheet decrements/uses-up stock; "Ate it" for
+  leftovers). Ties to grocery (add-missing). Benefits from API keys for external input
+  (barcode/scanner scripts). See [`docs/product/features.md`](docs/product/features.md) (Pantry rows).
+  Deferred: iOS native, remote-kiosk HTTPS for the camera, true unit/qty reconciliation.
 - **Daily quote / snippet** — preloadable (bulk import) daily content shown on the Today tab.
   Simplest module: a `quotes` table + a Today card + import. Best as a small **in-tree card** that's
   **also writable via the public API**, so an external source can populate it — the cleanest first

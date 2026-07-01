@@ -238,10 +238,13 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 | Pantry: quantity **stepper** + tap-to-type amount, **"used up"** state | ✅ | 🚧 | 🚧 | ✅ Done (web) |
 | Pantry: **drag items between locations**; **Today card** (whole-card tap, mark-used) | ✅ | 🚧 | 🚧 | ✅ Done (web) |
 | Pantry: **redesigned list** (location sidebar + counts, search, sort), **item detail** sheet | ✅ | 🚧 | 🚧 | ✅ Done (web) |
-| Pantry: **Open Food Facts** integration — barcode lookup (cached), nutrition + allergen snapshots | ✅ | 🚧 | 🚧 | ✅ Done (web) |
-| Pantry: **allergen warnings** — household avoid-list ∪ per-person allergens, red flags + "affects X" | ✅ | 🚧 | 🚧 | ✅ Done (web) |
+| Pantry: **Open Food Facts** integration — barcode lookup (cached), nutrition + allergen snapshots, **"may contain" traces**, **dietary flags** (vegan/vegetarian/palm-oil-free), **replace photo** | ✅ | 🚧 | 🚧 | ✅ Done (web) |
+| Pantry: **allergen warnings** — household avoid-list ∪ per-person allergens, colored letter badges + persistent key, red-ring on avoided, "affects X" | ✅ | 🚧 | 🚧 | ✅ Done (web) |
 | Pantry: **running-low threshold** (household default + per-item), **per-location icons** | ✅ | 🚧 | 🚧 | ✅ Done (web) |
+| Pantry: **item age** — added/bought date (distinct from expiry), household-customizable "old" threshold, "Been a while" group + "Oldest" sort, age chip | ✅ | 🚧 | 🚧 | ✅ Done (web) |
 | Pantry: **barcode camera scanner** (zxing) — ⚠️ **requires HTTPS / localhost** (camera is blocked on plain-http LAN; falls back to typing the barcode) | ✅ | 🚧 | 🚧 | ✅ Done (web; needs secure context) |
+| Pantry ↔ meals: **Cook from your pantry** — recipes makeable now (staple-aware), on-hand **proteins as "mains"** → filtered recipe library, leftovers ("It's a meal"), **Plan my week** seeded with soon-to-expire, per-item **Plan it in** | ✅ | 🚧 | 🚧 | ✅ Done (web) |
+| Pantry ↔ meals: **cook → decrement** — marking a recipe cooked opens a "Used from your pantry" confirm sheet (Used some / Used it up / Didn't use; staples skipped) that decrements or uses-up stock; leftovers get **"Ate it"**; cooking flips today's planned slot to cooked | ✅ | 🚧 | 🚧 | ✅ Done (web; confirm-based, not exact-amount subtraction) |
 | **Public API keys + scopes** — `nook_…` key, `x-api-key`, `<resource>:read\|write` scopes | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web; build #3) — external-integration surface (pattern B), admin-issued |
 | **Settings → API Keys** tab (generate / scope / reveal-once / revoke) | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web; admin-gated) |
 
