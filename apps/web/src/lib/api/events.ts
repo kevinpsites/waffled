@@ -17,6 +17,7 @@ export interface AgendaEvent {
   startsAt: string
   endsAt: string | null
   allDay: boolean
+  isCountdown?: boolean
   location: string | null
   personId: string | null
   goalId?: string | null
@@ -59,6 +60,7 @@ export const eventsApi = {
     startsAt: string
     endsAt?: string | null
     allDay?: boolean
+    isCountdown?: boolean
     personId?: string | null
     participantIds?: string[]
     location?: string | null

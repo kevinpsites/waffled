@@ -27,6 +27,7 @@ import { registerRewardRoutes } from './modules/rewards/rewards'
 import { registerCurrencyRoutes } from './modules/currencies/currencies'
 import { registerMealRoutes } from './modules/meals/meals.routes'
 import { registerEventRoutes } from './modules/events/events'
+import { registerCountdownRoutes } from './modules/countdowns/countdowns'
 import { registerCalendarAiRoutes } from './modules/calendar/calendar-ai'
 import { registerCalendarRoutes } from './modules/calendar/calendars'
 import { registerCalendarSyncRoutes } from './modules/calendar/calendar-sync.routes'
@@ -213,6 +214,9 @@ registerMealRoutes(api)
 
 // Calendar events (/api/events…)
 registerEventRoutes(api)
+
+// Countdowns (/api/countdowns…) — core Calendar feature, not a gated module
+registerCountdownRoutes(api)
 
 // Calendar AI cards (/api/calendar/heads-up, /api/events/:id/insight)
 registerCalendarAiRoutes(api)

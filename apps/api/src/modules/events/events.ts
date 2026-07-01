@@ -33,6 +33,7 @@ const UPDATABLE: Record<string, string> = {
   goalStepId: 'goal_step_id',
   rrule: 'rrule',
   recurrenceEndAt: 'recurrence_end_at',
+  isCountdown: 'is_countdown',
 }
 
 // Patch fields Google owns — a change to one of these is worth pushing back to
@@ -54,6 +55,7 @@ export interface EventRow extends QueryResultRow {
   starts_at: Date
   ends_at: Date | null
   all_day: boolean
+  is_countdown?: boolean
   person_id: string | null
   goal_id?: string | null
   goal_step_id?: string | null
@@ -79,6 +81,8 @@ export interface CreateEventInput {
   startsAt: string
   endsAt?: string | null
   allDay?: boolean
+  // Show a "N days until…" countdown for this event (Nook-owned; never pushed to Google).
+  isCountdown?: boolean
   location?: string | null
   description?: string | null
   personId?: string | null
@@ -136,10 +140,10 @@ export async function createEvent(tenant: Tenant, input: CreateEventInput): Prom
     const ins = await client.query<EventRow>(
       `insert into events
          (household_id, calendar_id, title, description, location, starts_at, ends_at, all_day, timezone,
-          person_id, goal_id, goal_step_id, rrule, rdate, exdate, recurrence_end_at, origin, sync_state)
+          person_id, goal_id, goal_step_id, rrule, rdate, exdate, recurrence_end_at, origin, sync_state, is_countdown)
        values ($1,$2,$3,$4,$5,$6,$7, coalesce($8,false),
                coalesce($9, (select timezone from households where id=$1)), $10, $11, $12,
-               $13, $14::timestamptz[], $15::timestamptz[], $16, 'manual', $17)
+               $13, $14::timestamptz[], $15::timestamptz[], $16, 'manual', $17, coalesce($18,false))
        returning *`,
       [
         tenant.householdId,
@@ -159,6 +163,7 @@ export async function createEvent(tenant: Tenant, input: CreateEventInput): Prom
         input.exdate ?? null,
         input.recurrenceEndAt ?? null,
         target ? 'pending_push' : 'local_only',
+        input.isCountdown ?? false,
       ]
     )
     const event = ins.rows[0]
@@ -198,7 +203,7 @@ function participantsSub(idExpr: string): string {
 
 const SINGLE_SELECT = `
   select e.id as id, e.id as series_id, null::timestamptz as occurrence_start,
-         e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.person_id, e.goal_id, e.goal_step_id,
+         e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.is_countdown, e.person_id, e.goal_id, e.goal_step_id,
          e.rrule, e.sync_state, e.origin, e.origin_ref_id, c.summary as calendar_name,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          ${participantsSub('e.id')}
@@ -211,7 +216,7 @@ const SINGLE_SELECT = `
 const OCC_SELECT = `
   select o.id as id, m.id as series_id, o.original_start as occurrence_start,
          coalesce(o.title, m.title) as title, m.description, coalesce(o.location, m.location) as location,
-         o.starts_at, o.ends_at, o.all_day, o.person_id, m.goal_id, m.goal_step_id,
+         o.starts_at, o.ends_at, o.all_day, m.is_countdown, o.person_id, m.goal_id, m.goal_step_id,
          m.rrule, m.sync_state, m.origin, m.origin_ref_id, c.summary as calendar_name,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          ${participantsSub('m.id')}
@@ -527,6 +532,7 @@ export function presentEvent(e: EventRow) {
     startsAt: e.starts_at,
     endsAt: e.ends_at,
     allDay: e.all_day,
+    isCountdown: e.is_countdown ?? false,
     personId: e.person_id,
     goalId: e.goal_id ?? null,
     goalStepId: e.goal_step_id ?? null,

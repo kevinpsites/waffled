@@ -3,6 +3,7 @@ import { AgendaCard } from './components/AgendaCard'
 import { TonightCardSlot, WeekDinnersCard } from './components/MealsColumn'
 import { ChoresCard } from './components/ChoresCard'
 import { GroceryCard } from './components/GroceryCard'
+import { CountdownsCard } from './components/CountdownsCard'
 import { GoalRecapBar } from './components/GoalRecap'
 import { ApprovalsBar } from './components/Approvals'
 import { CaptureBar } from './components/CaptureBar'
@@ -24,6 +25,7 @@ const CARDS: Record<string, { label: string; node: ReactNode; fill?: boolean }> 
   week: { label: "This week's dinners", node: <WeekDinnersCard /> },
   chores: { label: 'Family Chores', node: <ChoresCard /> },
   grocery: { label: 'Grocery', node: <GroceryCard />, fill: true },
+  countdowns: { label: 'Countdowns', node: <CountdownsCard /> },
   pantry: { label: 'Pantry', node: <PantryCard /> },
 }
 

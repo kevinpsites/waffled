@@ -7,7 +7,7 @@ import { WeekView } from './components/WeekView'
 import { DayView } from './components/DayView'
 import { AgendaView } from './components/AgendaView'
 import { useTopbarRight } from './topbar-slot'
-import { useEventsRange, useHousehold, type AgendaEvent } from '../lib/api'
+import { useEventsRange, useHousehold, useCountdowns, type AgendaEvent, type Countdown } from '../lib/api'
 import { MONTHS, MONTHS_SHORT, DOW_FULL, ymd, addDays, startOfWeek, eventDetailPath } from './components/cal-utils'
 
 type View = 'month' | 'week' | 'day' | 'agenda'
@@ -70,6 +70,14 @@ export function Calendar() {
   const { household } = useHousehold()
   const tz = household?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
+  // Countdown badges on the calendar (all three sources, keyed by target day).
+  const { countdowns } = useCountdowns()
+  const countdownsByDate = useMemo(() => {
+    const m: Record<string, Countdown[]> = {}
+    for (const c of countdowns) (m[c.date] ??= []).push(c)
+    return m
+  }, [countdowns])
+
   function shift(delta: number) {
     setAnchor((a) => (view === 'month' ? addMonths(a, delta) : view === 'day' ? addDays(a, delta) : addDays(a, delta * 7)))
   }
@@ -122,6 +130,7 @@ export function Calendar() {
           month={anchor.getMonth()}
           events={events}
           tz={tz}
+          countdownsByDate={countdownsByDate}
           onOpenEvent={openEvent}
           onCreateOnDay={(date) => setModal({ date })}
           onMore={(date) => jumpToDay(new Date(`${date}T12:00:00`))}

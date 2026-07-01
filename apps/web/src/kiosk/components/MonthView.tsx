@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { AgendaEvent } from '../../lib/api'
+import type { AgendaEvent, Countdown } from '../../lib/api'
 import { DOW, ymd, localDate } from './cal-utils'
 
 // The visible 6-week (42-cell) grid for a month, including leading/trailing days.
@@ -18,6 +18,7 @@ export function MonthView({
   month,
   events,
   tz,
+  countdownsByDate,
   onOpenEvent,
   onCreateOnDay,
   onMore,
@@ -26,6 +27,7 @@ export function MonthView({
   month: number
   events: AgendaEvent[]
   tz: string
+  countdownsByDate?: Record<string, Countdown[]>
   onOpenEvent: (e: AgendaEvent) => void
   onCreateOnDay: (date: string) => void
   onMore: (date: string) => void
@@ -49,6 +51,7 @@ export function MonthView({
         {cells.map((d) => {
           const key = ymd(d)
           const dayEvents = byDate[key] ?? []
+          const cds = countdownsByDate?.[key] ?? []
           const dim = d.getMonth() !== month
           return (
             <div
@@ -57,6 +60,13 @@ export function MonthView({
               onClick={() => onCreateOnDay(key)}
             >
               <div className="dn">{d.getDate()}</div>
+              {cds.length > 0 && (
+                <div className="cal-cd" title={cds.map((c) => c.title).join(' · ')}>
+                  <span className="cal-cd-em">{cds[0].emoji ?? '⏳'}</span>
+                  <span className="cal-cd-d">{cds[0].daysLeft <= 0 ? 'Today!' : `${cds[0].daysLeft}d`}</span>
+                  {cds.length > 1 && <span className="cal-cd-n">+{cds.length - 1}</span>}
+                </div>
+              )}
               {dayEvents.slice(0, 3).map((e) => {
                 const color = e.personColor ?? '#6B6B70'
                 const isMeal = e.origin === 'meal_plan'

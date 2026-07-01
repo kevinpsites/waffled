@@ -67,6 +67,7 @@ export interface LocalEventRow {
   starts_at: string
   ends_at: string | null
   all_day: number // SQLite has no bool; 0/1
+  is_countdown?: number
   person_id: string | null
   goal_id?: string | null
   goal_step_id?: string | null
@@ -123,6 +124,7 @@ export function rowToAgenda(r: LocalEventRow): AgendaEvent {
     startsAt: r.starts_at,
     endsAt: r.ends_at,
     allDay: !!r.all_day,
+    isCountdown: !!r.is_countdown,
     location: r.location,
     description: r.description,
     personId: r.person_id,
@@ -177,7 +179,7 @@ const participantsJson = (idExpr: string) => `
 // Single events (and Google-expanded instances). Also the detail-by-id source.
 const SINGLE_SELECT = `
   select e.id as id, e.id as series_id, null as occurrence_start,
-         e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.person_id, e.goal_id, e.goal_step_id,
+         e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.is_countdown, e.person_id, e.goal_id, e.goal_step_id,
          e.origin, e.origin_ref_id,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          ${participantsJson('e.id')}
@@ -189,7 +191,7 @@ const SINGLE_SELECT = `
 const OCC_SELECT = `
   select o.id as id, m.id as series_id, o.original_start as occurrence_start,
          coalesce(o.title, m.title) as title, m.description, coalesce(o.location, m.location) as location,
-         o.starts_at, o.ends_at, o.all_day, o.person_id, m.goal_id, m.goal_step_id,
+         o.starts_at, o.ends_at, o.all_day, m.is_countdown, o.person_id, m.goal_id, m.goal_step_id,
          m.origin, m.origin_ref_id,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          ${participantsJson('m.id')}
@@ -239,6 +241,7 @@ export interface EventDraft {
   startsAt: string
   endsAt: string | null
   allDay: boolean
+  isCountdown?: boolean
   location: string | null
   personIds: string[]
   goalId?: string | null // calendar→goal link; null = not linked
@@ -263,10 +266,10 @@ export async function createEventLocal(draft: EventDraft): Promise<boolean> {
   // server-owned and not replicated, so they must not appear here.
   await db.execute(
     `insert into events
-       (id, household_id, title, description, location, starts_at, ends_at, all_day, timezone,
+       (id, household_id, title, description, location, starts_at, ends_at, all_day, is_countdown, timezone,
         person_id, goal_id, goal_step_id, calendar_id, origin)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
-    [id, hh, draft.title, null, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, tz, draft.personIds[0] ?? null, draft.goalId ?? null, draft.goalStepId ?? null, draft.calendarId ?? null]
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
+    [id, hh, draft.title, null, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.isCountdown ? 1 : 0, tz, draft.personIds[0] ?? null, draft.goalId ?? null, draft.goalStepId ?? null, draft.calendarId ?? null]
   )
   for (const pid of [...new Set(draft.personIds)]) {
     await db.execute(`insert into event_participants (id, household_id, event_id, person_id) values (?, ?, ?, ?)`, [
@@ -284,8 +287,8 @@ export async function updateEventLocal(id: string, draft: EventDraft): Promise<b
   if (!db) return false
   const hh = await householdRowId()
   const res = await db.execute(
-    `update events set title = ?, location = ?, starts_at = ?, ends_at = ?, all_day = ?, person_id = ?, goal_id = ?, goal_step_id = ? where id = ?`,
-    [draft.title, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.personIds[0] ?? null, draft.goalId ?? null, draft.goalStepId ?? null, id]
+    `update events set title = ?, location = ?, starts_at = ?, ends_at = ?, all_day = ?, is_countdown = ?, person_id = ?, goal_id = ?, goal_step_id = ? where id = ?`,
+    [draft.title, draft.location, draft.startsAt, draft.endsAt, draft.allDay ? 1 : 0, draft.isCountdown ? 1 : 0, draft.personIds[0] ?? null, draft.goalId ?? null, draft.goalStepId ?? null, id]
   )
   // Row not in the local DB yet (PowerSync hasn't synced it) → the update matched
   // nothing and would never upload. Bail so the caller saves via REST instead.

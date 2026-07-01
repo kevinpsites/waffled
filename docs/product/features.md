@@ -95,6 +95,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Recurring events** — per-occurrence **edit scope** (this / following / all) | ✅ | ✅ | ✅ | ✅ Done (scope chooser on edit + delete) |
 | **Recurring events** — **end condition** (never / on a date / after N) | ✅ | ✅ | ✅ | ✅ Done (UNTIL date + COUNT) |
 | **Recurring events** — monthly **nth-weekday ordinal** (first…fifth / last) | ✅ | ✅ | ✅ | ✅ Done (mobile offers any ordinal) |
+| **Countdowns** — "N days until X" from three sources (flag an event · standalone item · auto member birthdays); Today card + month-grid badge; household "N sleeps" toggle | ✅ | 🚧 | 🚧 | ✅ Done (web; core Calendar feature, not gated) |
 
 ## Tasks & chores
 

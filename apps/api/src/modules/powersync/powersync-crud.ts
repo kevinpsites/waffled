@@ -34,14 +34,15 @@ async function applyEventPut(tenant: Tenant, id: string, data: Record<string, un
   const ins = await query<{ inserted: boolean }>(
     `insert into events
        (id, household_id, title, description, location, starts_at, ends_at, all_day, timezone,
-        person_id, goal_id, goal_step_id, origin, sync_state)
+        person_id, goal_id, goal_step_id, is_countdown, origin, sync_state)
      values ($1,$2,$3,$4,$5,$6,$7,$8,
              coalesce($9, (select timezone from households where id = $2)),
-             $10, $11, $12, 'manual', 'local_only')
+             $10, $11, $12, coalesce($13, false), 'manual', 'local_only')
      on conflict (id) do update set
        title = excluded.title, description = excluded.description, location = excluded.location,
        starts_at = excluded.starts_at, ends_at = excluded.ends_at, all_day = excluded.all_day,
-       person_id = excluded.person_id, goal_id = excluded.goal_id, goal_step_id = excluded.goal_step_id
+       person_id = excluded.person_id, goal_id = excluded.goal_id, goal_step_id = excluded.goal_step_id,
+       is_countdown = excluded.is_countdown
      where events.household_id = $2
      returning (xmax::text = '0') as inserted`,
     [
@@ -57,6 +58,7 @@ async function applyEventPut(tenant: Tenant, id: string, data: Record<string, un
       asStr(data.person_id),
       asStr(data.goal_id),
       asStr(data.goal_step_id),
+      asBool(data.is_countdown),
     ]
   )
   // Teach the household matcher when a goal-linked event is first created here —
@@ -92,6 +94,7 @@ async function applyEventPatch(tenant: Tenant, id: string, data: Record<string, 
   if ('starts_at' in data) patch.startsAt = asStr(data.starts_at)
   if ('ends_at' in data) patch.endsAt = asStr(data.ends_at)
   if ('all_day' in data) patch.allDay = asBool(data.all_day)
+  if ('is_countdown' in data) patch.isCountdown = asBool(data.is_countdown)
   if ('person_id' in data) patch.personId = asStr(data.person_id)
   if ('goal_id' in data) patch.goalId = asStr(data.goal_id)
   if ('goal_step_id' in data) patch.goalStepId = asStr(data.goal_step_id)

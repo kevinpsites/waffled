@@ -11,7 +11,7 @@ import { tenantRoute } from '../../platform/route-guards'
 type Api = ReturnType<typeof createAPI>
 
 // The cards that can appear on Today. Order here is the default reading order.
-export const TODAY_CARDS = ['agenda', 'tonight', 'week', 'chores', 'grocery'] as const
+export const TODAY_CARDS = ['agenda', 'countdowns', 'tonight', 'week', 'chores', 'grocery'] as const
 type CardKey = (typeof TODAY_CARDS)[number]
 const CARD_SET = new Set<string>(TODAY_CARDS)
 
@@ -20,7 +20,7 @@ const CARD_SET = new Set<string>(TODAY_CARDS)
 // are allowed and kept, so the structure stays stable across reloads.
 const COLS = 3
 // The built-in default arrangement (mirrors the original fixed grid).
-const DEFAULT_LAYOUT: string[][] = [['agenda'], ['tonight', 'week'], ['chores', 'grocery']]
+const DEFAULT_LAYOUT: string[][] = [['agenda', 'countdowns'], ['tonight', 'week'], ['chores', 'grocery']]
 
 // Coerce arbitrary stored/posted json into a clean 3-column string[][] of known
 // card keys, guaranteeing every card appears exactly once: keep the given order,

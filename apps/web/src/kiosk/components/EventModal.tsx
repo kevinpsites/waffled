@@ -110,6 +110,7 @@ function initialForm(event?: AgendaEvent, date?: string, time?: string, prefill?
       time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
       durationMin,
       allDay: event.allDay,
+      isCountdown: event.isCountdown ?? false,
       participantIds,
       location: event.location ?? '',
       // Editing keeps the event's own link; but when it has none, an incoming
@@ -124,6 +125,7 @@ function initialForm(event?: AgendaEvent, date?: string, time?: string, prefill?
     time: time ?? '17:00',
     durationMin: prefill?.durationMin ?? 60,
     allDay: false,
+    isCountdown: false,
     participantIds: prefill?.participantIds ?? ([] as string[]),
     location: '',
     goalId: prefill?.goalId ?? '',
@@ -426,6 +428,7 @@ export function EventModal({
       startsAt,
       endsAt,
       allDay: form.allDay,
+      isCountdown: form.isCountdown,
       location: form.location.trim() || null,
       personIds: form.participantIds,
       goalId: form.goalId || null,
@@ -613,6 +616,11 @@ export function EventModal({
           <label className="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input type="checkbox" checked={form.allDay} onChange={(e) => set('allDay', e.target.checked)} style={{ width: 'auto' }} />
             <span style={{ margin: 0 }}>All day</span>
+          </label>
+
+          <label className="field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input type="checkbox" checked={form.isCountdown} onChange={(e) => set('isCountdown', e.target.checked)} style={{ width: 'auto' }} />
+            <span style={{ margin: 0 }}>⏳ Show a countdown (build anticipation)</span>
           </label>
 
           {/* One box for the whole repeat rule — frequency, the custom builder, and
