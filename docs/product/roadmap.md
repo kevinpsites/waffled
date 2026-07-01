@@ -98,9 +98,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   allergen warnings incl. "may contain" traces, dietary flags, running-low thresholds,
   location icons, replace-photo) shipped, plus the first meal tie-ins: deterministic
   **"Cook from your pantry"** (recipes makeable now, staple-aware) + per-item **"Plan it in"**
-  + **"Plan my week"** seeded with soon-to-expire items. **Next: cook → decrement pantry** —
-  marking a recipe cooked subtracts its ingredients from on-hand stock (with an "add missing
-  to grocery" path), closing the loop. (Bigger lift: unit/quantity reconciliation.)
+  + **"Plan my week"** seeded with soon-to-expire items. **The loop is now closed:** marking a
+  recipe cooked opens a "Used from your pantry" confirm sheet (matched items, each pre-set to
+  Used some / Used it up / Didn't use; staples skipped) that decrements or uses-up on-hand
+  stock; leftover items get an "Ate it" action; cooking also flips today's planned slot to
+  cooked. We deliberately confirm rather than subtract exact amounts (units don't reconcile
+  cleanly). **Later:** true unit/quantity reconciliation; vegetable-based "mains" + recipe filter.
 
 - **Multi-household identity** — one email/account that belongs to many households (separate
   profile + role per household, switch after login). Design spike written + product decisions
