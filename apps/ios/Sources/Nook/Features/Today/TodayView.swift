@@ -434,7 +434,7 @@ struct TodayView: View {
     // MARK: layout-driven card rendering
 
     static let cardLabels = [
-        "agenda": "Agenda", "tonight": "Tonight's dinner",
+        "agenda": "Agenda", "countdowns": "Countdowns", "tonight": "Tonight's dinner",
         "chores": "Chores", "grocery": "Grocery", "goals": "Goals",
     ]
     private static let smallCards: Set<String> = ["chores", "grocery"]
@@ -478,6 +478,7 @@ struct TodayView: View {
     @ViewBuilder private func cardView(_ key: String) -> some View {
         switch key {
         case "agenda": todayCard
+        case "countdowns": CountdownsCard()
         case "tonight":
             if let summary = dash.tonight?.recipeSummary {
                 Button { path.append(.recipe(summary)) } label: { tonightCard }.buttonStyle(.plain)

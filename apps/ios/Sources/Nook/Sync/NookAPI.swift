@@ -2434,6 +2434,61 @@ struct NookAPI: Sendable {
         return try await getJSON("/api/events/\(id)", as: Resp.self).event
     }
 
+    // MARK: countdowns ("N days until…")
+
+    /// A countdown item, merged server-side from three sources (`source`): a standalone
+    /// `countdowns` row, a calendar event flagged `isCountdown`, or a member's next
+    /// birthday. `daysLeft` is computed in the household timezone; the list is soonest
+    /// first and never includes past items. Only `standalone` items are editable.
+    struct Countdown: Decodable, Identifiable, Hashable, Sendable {
+        let id: String
+        let title: String
+        let date: String            // YYYY-MM-DD
+        let daysLeft: Int
+        let source: String          // standalone | event | birthday
+        let emoji: String?
+        let color: String?
+        let personId: String?
+        var isStandalone: Bool { source == "standalone" }
+    }
+
+    /// GET /api/countdowns → the merged list + the household "sleeps" preference.
+    func countdowns() async throws -> (items: [Countdown], sleeps: Bool) {
+        struct Resp: Decodable { let countdowns: [Countdown]; let sleeps: Bool }
+        let r = try await getJSON("/api/countdowns", as: Resp.self)
+        return (r.countdowns, r.sleeps)
+    }
+
+    /// Create a standalone countdown. `date` must be YYYY-MM-DD. Returns the new id.
+    @discardableResult
+    func createCountdown(title: String, date: String, emoji: String?, color: String? = nil) async throws -> String {
+        var body: [String: JSONValue] = ["title": .string(title), "date": .string(date)]
+        if let e = emoji, !e.isEmpty { body["emoji"] = .string(e) }
+        if let c = color, !c.isEmpty { body["color"] = .string(c) }
+        struct Resp: Decodable { let id: String }
+        return try await sendReturning("POST", "/api/countdowns", body: body, as: Resp.self).id
+    }
+
+    /// Patch a standalone countdown (any subset of title/date/emoji/color).
+    func updateCountdown(id: String, title: String? = nil, date: String? = nil, emoji: String? = nil, color: String? = nil) async throws {
+        var body: [String: JSONValue] = [:]
+        if let t = title { body["title"] = .string(t) }
+        if let d = date { body["date"] = .string(d) }
+        if let e = emoji { body["emoji"] = e.isEmpty ? .null : .string(e) }
+        if let c = color { body["color"] = c.isEmpty ? .null : .string(c) }
+        try await send("PATCH", "/api/countdowns/\(id)", body: body)
+    }
+
+    /// Soft-delete a standalone countdown.
+    func deleteCountdown(id: String) async throws {
+        try await delete("/api/countdowns/\(id)")
+    }
+
+    /// Toggle the household "N sleeps" vs "N days" wording.
+    func setCountdownSleeps(_ sleeps: Bool) async throws {
+        try await send("PUT", "/api/countdowns/config", body: ["sleeps": .bool(sleeps)])
+    }
+
     /// The per-event AI insight card (headline + prep advice + optional "leave by").
     struct EventInsight: Decodable, Sendable {
         let headline: String

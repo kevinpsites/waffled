@@ -17,6 +17,7 @@ struct CalendarView: View {
     @State private var selectedDay = Agenda.todayKey(TimeZone.current)
     @State private var showCapture = false
     @State private var dictateOnOpen = false
+    @State private var countdowns = CountdownsModel()
 
     enum CalMode: String, CaseIterable { case agenda, month, day
         var label: String { rawValue.capitalized }
@@ -86,6 +87,7 @@ struct CalendarView: View {
         }
         // Open the event a tapped reminder routed us to (once it's in the mirror).
         .task { openReminderEvent(openEventId.wrappedValue) }
+        .task { await countdowns.load() }
         .onChange(of: openEventId.wrappedValue) { _, id in openReminderEvent(id) }
         .onChange(of: sync.events) { _, _ in
             if openEventId.wrappedValue != nil { openReminderEvent(openEventId.wrappedValue) }
@@ -245,12 +247,22 @@ struct CalendarView: View {
                 Text("\(cell.day)")
                     .font(.system(size: 14, weight: isToday ? .heavy : .semibold))
                     .foregroundStyle(cell.inMonth ? (isToday ? NK.primary : NK.ink) : NK.ink3.opacity(0.5))
-                HStack(spacing: 2) {
-                    ForEach(Array(dotColors(cell.key).prefix(3).enumerated()), id: \.offset) { _, hex in
-                        Circle().fill(Color(hexString: hex) ?? NK.ink3).frame(width: 5, height: 5)
+                if let cds = countdowns.byDate[cell.key], let first = cds.first {
+                    HStack(spacing: 2) {
+                        Text(first.emoji ?? "⏳").font(.system(size: 8))
+                        Text(CountdownFormat.short(first.daysLeft)).font(.system(size: 8, weight: .heavy)).foregroundStyle(Color(hex: 0x8A6D3B))
+                        if cds.count > 1 { Text("+\(cds.count - 1)").font(.system(size: 8, weight: .bold)).foregroundStyle(NK.ink3) }
                     }
+                    .padding(.horizontal, 3).padding(.vertical, 1)
+                    .background(Color(hex: 0xF4ECD8)).clipShape(Capsule())
+                } else {
+                    HStack(spacing: 2) {
+                        ForEach(Array(dotColors(cell.key).prefix(3).enumerated()), id: \.offset) { _, hex in
+                            Circle().fill(Color(hexString: hex) ?? NK.ink3).frame(width: 5, height: 5)
+                        }
+                    }
+                    .frame(height: 5)
                 }
-                .frame(height: 5)
             }
             .frame(maxWidth: .infinity).frame(height: 44)
             .background(isSelected ? NK.primary.opacity(0.12) : Color.clear)
