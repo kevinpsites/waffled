@@ -1245,6 +1245,38 @@ struct NookAPI: Sendable {
         try await delete("/api/pantry/\(id)")
     }
 
+    /// An on-hand pantry item a just-cooked recipe likely used, with a server-suggested
+    /// action. `suggested` / the consume `mode` are one of "used_up" | "decrement" | "skip"
+    /// ("skip" is never sent to /consume — the sheet filters it out).
+    struct RecipeMatch: Decodable, Identifiable, Hashable, Sendable {
+        let id: String
+        let name: String
+        let amount: String
+        let unit: String
+        let isStaple: Bool
+        let suggested: String
+    }
+
+    /// On-hand items that a just-cooked recipe likely used (matched server-side by name
+    /// tokens), each with a suggested consume action. Empty when the pantry module is off
+    /// or nothing matched — the caller then skips the confirm sheet.
+    func pantryForRecipe(recipeId: String) async throws -> [RecipeMatch] {
+        struct Resp: Decodable { let matches: [RecipeMatch] }
+        return try await getJSON("/api/pantry/for-recipe/\(recipeId)", as: Resp.self).matches
+    }
+
+    /// Apply the confirmed consumption: each `(id, mode)` either marks the item used-up
+    /// (recoverable) or knocks one off a countable amount (a decrement to ≤0 becomes
+    /// used-up). Returns the updated items. Only "used_up"/"decrement" modes are sent.
+    @discardableResult
+    func pantryConsume(_ items: [(id: String, mode: String)]) async throws -> [PantryItem] {
+        struct Resp: Decodable { let items: [PantryItem] }
+        let body: [String: JSONValue] = ["items": .array(items.map {
+            .object(["id": .string($0.id), "mode": .string($0.mode)])
+        })]
+        return try await sendReturning("POST", "/api/pantry/consume", body: body, as: Resp.self).items
+    }
+
     /// The logged-in person, resolved server-side from the token's `sub` via the
     /// identities table. nil if the account hasn't been provisioned yet.
     func currentPersonId() async throws -> String? {

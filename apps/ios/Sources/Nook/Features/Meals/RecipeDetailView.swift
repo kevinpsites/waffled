@@ -20,6 +20,8 @@ struct RecipeDetailView: View {
     @State private var cookMode = false
     @State private var stepNoteEdit: StepNoteEdit?
     @State private var subEdit: SubEdit?
+    @State private var cookMatches: [NookAPI.RecipeMatch] = []
+    @State private var showCookSheet = false
 
     private let api = NookAPI()
 
@@ -83,6 +85,11 @@ struct RecipeDetailView: View {
         .sheet(item: $subEdit) { edit in
             IngredientSubSheet(ingredientName: edit.name, sub: edit.current) { text in
                 saveSub(name: edit.name, value: text)
+            }
+        }
+        .sheet(isPresented: $showCookSheet) {
+            CookConfirmSheet(title: recipe.title, matches: cookMatches) { n in
+                if n > 0 { withAnimation { cookedMessage = "Marked as cooked — pantry updated." } }
             }
         }
     }
@@ -420,6 +427,11 @@ struct RecipeDetailView: View {
             guard let updated = try? await api.markRecipeCooked(id: recipe.id) else { return }
             apply(updated)
             withAnimation { cookedMessage = "Marked as cooked — nice work." }
+            // If the pantry has on-hand items this recipe likely used, offer to update it.
+            if let m = try? await api.pantryForRecipe(recipeId: recipe.id), !m.isEmpty {
+                cookMatches = m
+                showCookSheet = true
+            }
         }
     }
 
