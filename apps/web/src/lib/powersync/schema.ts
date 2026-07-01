@@ -14,6 +14,7 @@ const events = new Table({
   starts_at: column.text,
   ends_at: column.text,
   all_day: column.integer,
+  is_countdown: column.integer,
   timezone: column.text,
   status: column.text,
   person_id: column.text,

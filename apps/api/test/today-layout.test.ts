@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { reconcileLayout, TODAY_CARDS } from '../src/modules/layout/today-layout'
 
-const DEFAULT = [['agenda'], ['tonight', 'week'], ['chores', 'grocery']]
+const DEFAULT = [['agenda', 'countdowns'], ['tonight', 'week'], ['chores', 'grocery']]
 
 describe('reconcileLayout', () => {
   it('falls back to the default for null / garbage / all-unknown input', () => {
@@ -30,6 +30,7 @@ describe('reconcileLayout', () => {
 
   it('merges overflow columns (past the 3rd) into the last column', () => {
     const out = reconcileLayout([['agenda'], ['tonight'], ['week'], ['chores'], ['grocery']])
-    expect(out[2]).toEqual(['week', 'chores', 'grocery'])
+    // cols past the 3rd merge in; 'countdowns' (unplaced) is appended to the last column
+    expect(out[2]).toEqual(['week', 'chores', 'grocery', 'countdowns'])
   })
 })
