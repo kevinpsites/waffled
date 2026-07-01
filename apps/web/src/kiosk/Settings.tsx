@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { personsApi, permissionsApi, healthApi, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
+import { personsApi, permissionsApi, healthApi, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
 import { PersonModal } from './components/PersonModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -1621,6 +1621,7 @@ function ModulesPanel() {
               </div>
               {on && m.hasSettings && m.key === 'pantry' && <PantrySettings />}
               {on && m.hasSettings && m.key === 'chores' && <ChoresModuleSettings />}
+              {on && m.hasSettings && m.key === 'familyNight' && <FamilyNightSettings />}
             </div>
           )
         })}
@@ -1769,6 +1770,82 @@ function ChoresModuleSettings() {
       </div>
       <div className="set-module-desc" style={{ marginTop: 6 }}>
         Kids spend earned stars on a reward shop. Turn off for chores without a points economy.
+      </div>
+    </div>
+  )
+}
+
+// Family Night's own settings (shown when the module is on): when it happens, the
+// agenda parts (rotating roles), and whether it's on the calendar. Admin-only panel.
+const FN_DAYS = [0, 1, 2, 3, 4, 5, 6]
+const slug = (label: string) => label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'part'
+
+function FamilyNightSettings() {
+  const { view, loading } = useFamilyNight()
+  const [parts, setParts] = useState<FamilyNightPart[] | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => { if (view) setParts(view.config.parts) }, [view])
+  if (loading || !view || !parts) return null
+  const config = view.config
+  const onCalendar = !!config.eventId
+
+  async function save(patch: Parameters<typeof familyNightApi.setConfig>[0]) {
+    setSaving(true)
+    try { await familyNightApi.setConfig(patch) } finally { setSaving(false) }
+  }
+
+  function editPart(i: number, patch: Partial<FamilyNightPart>) {
+    setParts((ps) => (ps ? ps.map((p, j) => (j === i ? { ...p, ...patch } : p)) : ps))
+  }
+  function addPart() { setParts((ps) => [...(ps ?? []), { id: `part${Date.now()}`, label: 'New part', emoji: '⭐', rotates: true }]) }
+  function removePart(i: number) { setParts((ps) => (ps ? ps.filter((_, j) => j !== i) : ps)) }
+  async function saveParts() {
+    const clean = (parts ?? []).map((p) => ({ ...p, id: p.id || slug(p.label), label: p.label.trim() || 'Part' })).filter((p) => p.label)
+    if (!clean.length) return
+    await save({ parts: clean })
+  }
+
+  async function toggleCalendar(v: boolean) {
+    setSaving(true)
+    try { if (v) await familyNightApi.schedule(); else await familyNightApi.unschedule() } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="set-module-settings">
+      <div className="set-module-setrow">
+        <span>Happens on</span>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select className="sel" value={config.dayOfWeek} disabled={saving} onChange={(e) => save({ dayOfWeek: Number(e.target.value) })}>
+            {FN_DAYS.map((d) => <option key={d} value={d}>{weekdayName(d)}</option>)}
+          </select>
+          <input className="set-inline-input" type="time" value={config.time} disabled={saving} onChange={(e) => save({ time: e.target.value })} style={{ width: 120 }} />
+        </div>
+      </div>
+
+      <div className="set-module-setrow">
+        <span>Show on the calendar</span>
+        <Switch checked={onCalendar} disabled={saving} onChange={toggleCalendar} ariaLabel="Show Family Night on the calendar" />
+      </div>
+      <div className="set-module-desc" style={{ marginTop: -4, marginBottom: 8 }}>
+        Adds a weekly “🏡 Family Night” event to the family calendar (syncs to Google if that calendar is connected). Changing the day or time re-schedules it.
+      </div>
+
+      <div className="set-row2-t" style={{ marginTop: 6, marginBottom: 4 }}>Agenda parts</div>
+      <div className="set-module-desc" style={{ marginBottom: 8 }}>
+        Roles that rotate among family members each week. Turn off “Rotate” for a part someone always does.
+      </div>
+      {parts.map((p, i) => (
+        <div key={i} className="fn-part-edit">
+          <input className="fn-part-emoji" value={p.emoji} maxLength={4} onChange={(e) => editPart(i, { emoji: e.target.value })} aria-label="Emoji" />
+          <input className="fn-part-label" value={p.label} onChange={(e) => editPart(i, { label: e.target.value })} aria-label="Part name" />
+          <label className="fn-part-rot"><input type="checkbox" checked={p.rotates} onChange={(e) => editPart(i, { rotates: e.target.checked })} /> Rotate</label>
+          <button type="button" className="fn-part-x" aria-label={`Remove ${p.label}`} onClick={() => removePart(i)}>×</button>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button type="button" className="pill" onClick={addPart}>+ Add part</button>
+        <button type="button" className="pill primary" disabled={saving} onClick={saveParts} style={{ marginLeft: 'auto' }}>Save agenda</button>
       </div>
     </div>
   )

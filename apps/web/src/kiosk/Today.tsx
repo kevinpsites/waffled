@@ -4,6 +4,7 @@ import { TonightCardSlot, WeekDinnersCard } from './components/MealsColumn'
 import { ChoresCard } from './components/ChoresCard'
 import { GroceryCard } from './components/GroceryCard'
 import { CountdownsCard } from './components/CountdownsCard'
+import { FamilyNightCard } from './components/FamilyNightCard'
 import { GoalRecapBar } from './components/GoalRecap'
 import { ApprovalsBar } from './components/Approvals'
 import { CaptureBar } from './components/CaptureBar'
@@ -26,6 +27,7 @@ const CARDS: Record<string, { label: string; node: ReactNode; fill?: boolean }> 
   chores: { label: 'Family Chores', node: <ChoresCard /> },
   grocery: { label: 'Grocery', node: <GroceryCard />, fill: true },
   countdowns: { label: 'Countdowns', node: <CountdownsCard /> },
+  familyNight: { label: 'Family Night', node: <FamilyNightCard /> },
   pantry: { label: 'Pantry', node: <PantryCard /> },
 }
 
@@ -91,14 +93,16 @@ export function Today() {
   const showChores = moduleEnabled(household, 'chores')
   const showMeals = moduleEnabled(household, 'meals')
   const showGrocery = moduleEnabled(household, 'lists')
+  const showFamilyNight = moduleEnabled(household, 'familyNight')
   const effectiveResolved = useMemo(() => {
     let l = applyModuleCard(resolved, 'pantry', showPantry)
+    l = applyModuleCard(l, 'familyNight', showFamilyNight)
     l = hideModuleCard(l, 'chores', showChores)
     l = hideModuleCard(l, 'tonight', showMeals)
     l = hideModuleCard(l, 'week', showMeals)
     l = hideModuleCard(l, 'grocery', showGrocery)
     return l
-  }, [resolved, showPantry, showChores, showMeals, showGrocery])
+  }, [resolved, showPantry, showFamilyNight, showChores, showMeals, showGrocery])
   const [editing, setEditing] = useState(false)
   const [layout, setLayout] = useState<string[][]>(effectiveResolved)
   const [saving, setSaving] = useState(false)

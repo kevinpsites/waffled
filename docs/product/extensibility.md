@@ -67,9 +67,10 @@ API keys (B) once that ships.
   with quantities + locations; feeds meal planning ("use this soon," leftovers) and ties to
   grocery (buy → stock, cook → deplete). Broadly useful → likely core-tier. B bonus: update
   from a barcode-scanner script.
-- **Family Home Evening (FHE)** — weekly (default Mon) family meeting with a structured
-  agenda + per-part assignment/rotation + a Today card + history. LDS-specific →
-  community-tier toggle module.
+- **Family Night** (SHIPPED web 2026-07-01) — a recurring (default Mon) family gathering with a
+  fully generic, customizable agenda of "parts" that auto-rotate among members (override per
+  week) + a Today card + an optional weekly calendar event. Kept generic (no faith presets) so
+  it fits any family; renamed from the earlier "Family Home Evening (FHE)" concept.
 - **Daily quote / snippet** — preloadable daily content on the Today tab; smallest module
   (a `quotes` table + a card + import) and the cleanest A+B demo (external source posts the
   day's quote via API key).

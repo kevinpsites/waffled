@@ -902,3 +902,23 @@ button.tick {
 .cd-form input { font: inherit; font-size: 14px; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--hair); background: var(--card-2, #faf8f4); color: var(--ink); }
 .cd-form-row { display: flex; gap: 10px; }
 .cd-card .pill.primary { color: #fff; background: var(--primary, #c0653c); border-color: transparent; }
+
+/* Family Night card */
+.fn-theme { font-size: 15px; font-weight: 700; color: var(--ink-2); margin: 0 4px 8px; }
+.fn-row { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--hair-2); }
+.fn-row:last-child { border-bottom: 0; }
+.fn-emoji { flex: none; width: 36px; height: 36px; display: grid; place-items: center; font-size: 19px; border-radius: 11px; background: var(--panel); }
+.fn-main { flex: 1; min-width: 0; }
+.fn-label { font-size: 15px; font-weight: 600; }
+.fn-pick { flex: none; font: inherit; font-size: 13.5px; font-weight: 700; padding: 6px 30px 6px 12px; border-radius: 999px; border: 0; background-color: var(--panel); color: var(--ink); cursor: pointer;
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%232b2b2b' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat; background-position: right 11px center; }
+.fn-pick.suggested { color: var(--ink-2); font-style: italic; background-color: transparent; box-shadow: inset 0 0 0 1px var(--hair); }
+
+/* Family Night settings — agenda part editor */
+.fn-part-edit { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+.fn-part-emoji { flex: none; width: 46px; text-align: center; font: inherit; font-size: 16px; padding: 7px 6px; border-radius: 9px; border: 1px solid var(--hair); background: var(--card-2, #faf8f4); }
+.fn-part-label { flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 7px 10px; border-radius: 9px; border: 1px solid var(--hair); background: var(--card-2, #faf8f4); color: var(--ink); }
+.fn-part-rot { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+.fn-part-x { flex: none; border: 0; background: none; cursor: pointer; font-size: 19px; line-height: 1; color: var(--ink-3); padding: 2px 4px; }

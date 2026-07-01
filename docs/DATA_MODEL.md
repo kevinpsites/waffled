@@ -633,6 +633,45 @@ from CloudFront/S3 on demand (private bucket, **signed URLs**) and cached on-dev
 
 ---
 
+## Family Night (optional module)
+
+A recurring family gathering with a small, **customizable agenda** of "parts" (roles) that
+**auto-rotate** among members week to week and can be overridden per gathering. The agenda
+definition is config, not rows; only actual gatherings + who was assigned are persisted.
+
+- **Config** in `households.settings.familyNight`: `parts[]` (`{id, label, emoji, rotates}`,
+  default Activity · Treat · Check-in), `dayOfWeek` (0–6), `time` (`HH:MM`), `rotationOrder`
+  (personIds; null = all members in sort order), `eventId` (the linked recurring calendar
+  event, or null — a weekly `🏡 Family Night` event that auto-routes to the owner's ★ default
+  calendar, so it syncs to Google when that calendar is connected).
+
+```sql
+create table family_night_occurrences (            -- one row per actual gathering
+  <base>,
+  date date not null,
+  theme text, notes text,
+  status text not null default 'planned'            -- planned | done | skipped
+);
+create unique index ux_fn_occ_household_date on family_night_occurrences (household_id, date)
+  where deleted_at is null;                          -- one gathering per household per date
+
+create table family_night_assignments (            -- who's on each part for a gathering
+  <base w/o deleted_at>,
+  occurrence_id uuid not null references family_night_occurrences(id) on delete cascade,
+  part_id text not null,                             -- matches a config part id
+  person_id uuid references persons(id) on delete set null
+);
+create unique index ux_fn_assign_occ_part on family_night_assignments (occurrence_id, part_id);
+```
+
+**Rotation.** The upcoming gathering's suggestions are computed at read time: rotation index =
+count of non-deleted occurrences dated before the target; each rotating part `i` gets
+`order[(index + i) % order.length]`. Stored assignments (materialized/overridden) win over
+suggestions; untouched parts stay on rotation (flagged `suggested`). Marking a gathering done
+creates an occurrence row, which shifts the next week's rotation.
+
+---
+
 ## 9. Resolved decisions
 
 | # | Decision |

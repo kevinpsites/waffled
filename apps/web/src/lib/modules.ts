@@ -3,7 +3,7 @@
 // docs/product/extensibility.md.
 import type { Household } from './api'
 
-export type ModuleKey = 'pantry' | 'chores' | 'goals' | 'meals' | 'lists' | 'fhe' | 'quotes'
+export type ModuleKey = 'pantry' | 'chores' | 'goals' | 'meals' | 'lists' | 'familyNight' | 'quotes'
 
 export interface ModuleDef {
   key: ModuleKey
@@ -62,12 +62,13 @@ export const MODULES: ModuleDef[] = [
     defaultOn: true,
   },
   {
-    key: 'fhe',
-    name: 'Family Home Evening',
-    icon: '🏠',
-    description: 'A weekly family meeting with a structured agenda, assignments, and a Today card.',
-    status: 'planned',
+    key: 'familyNight',
+    name: 'Family Night',
+    icon: '🏡',
+    description: 'A recurring family gathering with a customizable agenda whose parts auto-rotate among members. Adds a Today card and can put it on the calendar.',
+    status: 'available',
     defaultOn: false,
+    hasSettings: true,
   },
   {
     key: 'quotes',

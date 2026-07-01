@@ -197,11 +197,15 @@ the default app. Most such modules are **in-tree (pattern A)** — they integrat
 meals — but each should also expose REST endpoints so **external integrations (the API-keys work
 above, pattern B)** can feed them (e.g. push today's quote, update pantry from a barcode scanner).
 Candidate modules (Kevin's use cases):
-- **Family Home Evening (FHE)** — weekly (default Mon) family meeting with a structured agenda
-  (opening prayer · song · spiritual thought/scripture · lesson · activity · optional family council ·
-  treat), per-part **assignment + rotation** across family members, a **Today card** on the meeting
-  day, and history. Deeply integrated (persons, recurrence, Today) → **in-tree optional module**;
-  LDS-specific so likely community-tier, not core. (Built on the module framework.)
+- **Family Night** — SHIPPED (web) 2026-07-01 (build #3). A recurring family gathering (default Mon)
+  with a small, **fully generic customizable agenda** of "parts" (default Activity · Treat · Check-in;
+  add/rename/emoji/rotate per part). Parts **auto-rotate** among members each week and can be
+  **overridden** per gathering. A **Today card** shows the upcoming night with per-part person pickers;
+  Settings → Modules edits the agenda, day/time, and can put a weekly **"🏡 Family Night" event on the
+  family calendar** (auto-routes to the owner's ★ default → syncs to Google when connected). Data: `family_night_occurrences` +
+  `family_night_assignments`; config in `households.settings.familyNight`. (Renamed from the earlier
+  "Family Home Evening (FHE)" stub to stay generic — no faith presets.)
+  Deferred (phase 2): history log, recipe/goal links, an idea bank, iOS native.
 - **Food / pantry inventory** — SHIPPED (web) 2026-06-30 → 2026-07-01 (build #2). Track what's on
   hand (freezer/fridge/pantry) with quantities + locations; **Open Food Facts** barcode
   lookup/scanner (cached), nutrition + colored **allergen** badges (household ∪ per-person, "may

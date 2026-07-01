@@ -135,9 +135,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **Recurring-chore rollover** — the shipped `rollover` flag defaults on for *one-offs*;
   opt-in carry-forward for **recurring** chores still needs collapse-duplicates-to-one +
   streak handling before it can ship.
-- **More optional modules** (on the new framework) — **Family Home Evening** (weekly agenda
-  + per-part assignment/rotation + a Today card; community-tier) and a **daily quote/snippet**
-  card (the cleanest "built-in card also writable via the public API" demo). Plus **iOS native
+- **More optional modules** (on the new framework) — **Family Night SHIPPED (web) 2026-07-01**
+  (generic customizable auto-rotating agenda + Today card + optional weekly calendar event);
+  next up a **daily quote/snippet** card (the cleanest "built-in card also writable via the
+  public API" demo). Plus **iOS native
   module cards** (the toggle is already server-shared; Pantry et al. need Swift screens), and
   API-key follow-ups: per-user (non-admin) issuance, an OpenAPI/published contract, and a CORS
   posture for cross-origin integrations.

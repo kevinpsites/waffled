@@ -11,7 +11,7 @@ import { tenantRoute } from '../../platform/route-guards'
 type Api = ReturnType<typeof createAPI>
 
 // The cards that can appear on Today. Order here is the default reading order.
-export const TODAY_CARDS = ['agenda', 'countdowns', 'tonight', 'week', 'chores', 'grocery'] as const
+export const TODAY_CARDS = ['agenda', 'countdowns', 'tonight', 'week', 'chores', 'grocery', 'familyNight'] as const
 type CardKey = (typeof TODAY_CARDS)[number]
 const CARD_SET = new Set<string>(TODAY_CARDS)
 

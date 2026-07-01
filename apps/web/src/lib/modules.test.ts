@@ -28,7 +28,7 @@ describe('module catalog', () => {
   })
 
   it('planned modules are never enabled', () => {
-    expect(moduleEnabled(hh({ modules: { fhe: true } }), 'fhe')).toBe(false)
+    expect(moduleEnabled(hh({ modules: { quotes: true } }), 'quotes')).toBe(false)
   })
 })
 
