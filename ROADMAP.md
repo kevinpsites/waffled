@@ -251,6 +251,19 @@ Shipped (migration **0058_recipe_step_timer**):
 - **Deferred:** **AI auto-detect** of timers from step text ("...boil 9–11 minutes") to pre-fill
   the field — phase 2, manual marking ships first.
 
+### Calendar countdowns — SHIPPED (web) 2026-07-01
+"N days until X" to build anticipation. A **core Calendar feature** (not a gated module).
+Shipped (migration **0069_countdowns**: `events.is_countdown` + a `countdowns` table):
+- **Three sources, merged soonest-first** via `GET /api/countdowns`: flag any event as a
+  countdown (Nook-owned column, never pushed to Google; synced through the offline path +
+  crud sink), standalone countdown items (REST CRUD), and each member's next **birthday**
+  (derived from `persons.birthday`).
+- **Surfaces:** a **"Countdowns" Today card** (added to the card set; auto-appears via
+  `reconcileLayout`) and a **month-grid badge** on the target day (keyed by date, so
+  non-event sources show too). Household **"N sleeps" vs "days"** toggle (Settings → Calendars).
+- Tests: `countdowns.integration.test.ts` (9) + updated `today-layout` unit tests.
+- **Deferred:** week/day/agenda badges (month only for now); screensaver "N sleeps until…".
+
 ### Tech debt — route auth as middleware — ✅ DONE 2026-06-25
 Almost every API route opened with `const tenant = await requireTenant(req)` (+ an inline
 `requireAdmin`/`requireCapability` for writes), copied across ~20 files. lambda-api has no
