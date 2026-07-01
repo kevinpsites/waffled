@@ -43,10 +43,30 @@ struct KioskShell: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(NK.canvas)
-        .task { await sync.loadIdentity() }
+        .task { await sync.loadIdentity(); correctSelection() }
+        .onChange(of: sync.modulesRev) { _, _ in correctSelection() }
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
         }
+    }
+
+    /// Whether a rail item's optional module is enabled (Today/Calendar/Family/Photos
+    /// are core and never gated). Mirrors the web rail filter.
+    private func moduleEnabled(_ nav: KioskNav) -> Bool {
+        switch nav {
+        case .tasks: return sync.module(.chores)
+        case .rewards: return sync.rewardsOn
+        case .goals: return sync.module(.goals)
+        case .meals: return sync.module(.meals)
+        case .lists: return sync.module(.lists)
+        case .pantry: return sync.module(.pantry)
+        default: return true
+        }
+    }
+
+    /// If the current selection points at a now-disabled module, fall back to Today.
+    private func correctSelection() {
+        if !moduleEnabled(selection) { selection = .today }
     }
 
     // MARK: nav rail
@@ -54,7 +74,7 @@ struct KioskShell: View {
     private var rail: some View {
         VStack(spacing: 6) {
             Color.clear.frame(height: 12)   // top breathing room (logo removed)
-            ForEach(KioskNav.primary) { railItem($0) }
+            ForEach(KioskNav.primary.filter(moduleEnabled)) { railItem($0) }
             Spacer(minLength: 8)
             captureRailButton
             if let m = currentMember { currentUserChip(m) }
@@ -129,7 +149,7 @@ struct KioskShell: View {
         case .family:   familyPath = []
         case .settings: settingsPath = []
         case .meals:    mealsPath = []
-        case .today, .calendar, .tasks, .lists, .photos: navReset &+= 1
+        case .today, .calendar, .tasks, .lists, .pantry, .photos: navReset &+= 1
         }
     }
 
@@ -182,6 +202,11 @@ struct KioskShell: View {
                 selection = .meals
             })
             .id(navReset)
+        case .pantry:
+            NavigationStack {
+                PantryView()
+            }
+            .id(navReset)
         case .photos:
             NavigationStack {
                 PhotosView()
@@ -198,12 +223,12 @@ struct KioskShell: View {
 /// The rail items, in web order (`apps/web/src/kiosk/nav.ts`). Settings is pinned to
 /// the bottom of the rail, so it's separated out from `primary`.
 enum KioskNav: String, CaseIterable, Identifiable {
-    case today, calendar, tasks, rewards, goals, family, meals, lists, photos, settings
+    case today, calendar, tasks, rewards, goals, family, meals, lists, pantry, photos, settings
     var id: String { rawValue }
 
     /// Everything above the bottom-pinned Settings. Note: web combines Chores + Rewards
     /// into one tab; on iPad we split Rewards into its own rail item (a deliberate divergence).
-    static let primary: [KioskNav] = [.today, .calendar, .tasks, .rewards, .goals, .family, .meals, .lists, .photos]
+    static let primary: [KioskNav] = [.today, .calendar, .tasks, .rewards, .goals, .family, .meals, .lists, .pantry, .photos]
 
     var label: String {
         switch self {
@@ -215,6 +240,7 @@ enum KioskNav: String, CaseIterable, Identifiable {
         case .family: return "Family"
         case .meals: return "Meals"
         case .lists: return "Lists"
+        case .pantry: return "Pantry"
         case .photos: return "Photos"
         case .settings: return "Settings"
         }
@@ -230,6 +256,7 @@ enum KioskNav: String, CaseIterable, Identifiable {
         case .family: return "person.2.fill"
         case .meals: return "fork.knife"
         case .lists: return "list.bullet"
+        case .pantry: return "shippingbox.fill"
         case .photos: return "photo"
         case .settings: return "gearshape.fill"
         }

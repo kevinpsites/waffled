@@ -33,8 +33,11 @@ struct AppRoot: View {
     /// Only those who can approve owe approvals — and the badge counts just the items
     /// they can actually action (chore check-offs and/or reward purchases).
     private var approvalCount: Int {
-        (sync.can("chore.approve") ? approvals.chores.count : 0)
-        + (sync.can("reward.approve") ? approvals.redemptions.count : 0)
+        // No chores module ⇒ nothing to approve; keep the badge reactively at 0 even
+        // before the next approvals reload lands.
+        guard sync.module(.chores) else { return 0 }
+        return (sync.can("chore.approve") ? approvals.chores.count : 0)
+            + (sync.can("reward.approve") ? approvals.redemptions.count : 0)
     }
 
     private static var initialTab: Tab {
@@ -56,7 +59,11 @@ struct AppRoot: View {
                 switch tab {
                 case .today:    TodayView(path: $todayPath, openCalendar: { tab = .calendar })
                 case .calendar: CalendarView(openEventId: $calendarOpenEventId)
-                case .meals:    MealsView(path: $mealsPath)
+                case .meals:
+                    // Meals is an optional module: if the household turned it off, the
+                    // tab is hidden — self-correct back to Today if we somehow land here.
+                    if sync.module(.meals) { MealsView(path: $mealsPath) }
+                    else { Color.clear.onAppear { tab = .today } }
                 case .family:   FamilyView(path: $familyPath, approvals: approvals)
                 }
             }
@@ -65,6 +72,7 @@ struct AppRoot: View {
             .safeAreaInset(edge: .top, spacing: 0) { OfflineBanner() }
 
             NookTabBar(tab: $tab, familyBadge: approvalCount,
+                       showMeals: sync.module(.meals),
                        onCapture: { showCapture = true },
                        onReselect: {
                            if $0 == .family { familyPath = [] }
@@ -124,6 +132,7 @@ struct AppRoot: View {
 struct NookTabBar: View {
     @Binding var tab: Tab
     var familyBadge: Int = 0
+    var showMeals: Bool = true
     var onCapture: () -> Void
     var onReselect: (Tab) -> Void = { _ in }
 
@@ -132,7 +141,7 @@ struct NookTabBar: View {
             item(.today, "house.fill", "Today")
             item(.calendar, "calendar", "Calendar")
             captureButton
-            item(.meals, "fork.knife", "Meals")
+            if showMeals { item(.meals, "fork.knife", "Meals") }
             item(.family, "checklist", "Family", badge: familyBadge)
         }
         .padding(.horizontal, 8)

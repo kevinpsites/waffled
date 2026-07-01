@@ -157,7 +157,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Pantry staples** (kept off the list; Pantry check) | ✅ | ✅ | ✅ | ✅ Done |
 | Check off / add / delete (persists) | ✅ | ✅ | ✅ | ✅ Done |
 | **Item attribution** — "added by {name}" / "🍽 from meal plan" | ✅ | ✅ | ✅ | ✅ Done |
-| **Re-aisle** a grocery item (move it to another aisle section from its editor) | ✅ | 🚧 | 🚧 | ✅ Done (web); mobile uses the auto-classifier only |
+| **Re-aisle** a grocery item (move it to another aisle section from its editor) | ✅ | ✅ | ✅ | ✅ Done — mobile: section chips + an **Auto** chip (clear the override → classify by name) in the item Details editor |
 | **Cross-surface live refresh** (Today ↔ Lists ↔ Rewards) | ✅ | ✅ | ✅ | ✅ Done (in-app refresh bus) |
 
 ## Meals & recipes
@@ -172,7 +172,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **Recipes library** (search-all, multi-select filters, sort) | ✅ | ✅ | ✅ | ✅ Done |
 | Create / **edit** recipes in-app (all metadata + ingredients + steps) | ✅ | ✅ | ✅ | ✅ Done (full editor — shared iPhone/iPad; **per-step ingredient amounts**; **ingredient sections** with dividers + cross-section drag-drop; delete is web-only) |
 | **Paste-markdown** recipe import (template/example) | ✅ | ✅ | ✅ | ✅ Done (paste → parse → fills the editor for review, then save) |
-| Per-recipe **overrides** (substitutions, notes) | ✅ | 🟡 | 🟡 | ✅ Done (notes; full overrides on web) |
+| Per-recipe **overrides** (substitutions, notes) | ✅ | ✅ | ✅ | ✅ Done — mobile now edits **ingredient substitutions** (⇄ per row → `overrides.subs`, feeds the substitution-aware grocery build) alongside per-step + recipe notes |
 | **Cook mode** (step-by-step, wake-lock, finish → mark cooked) | ✅ | ✅ | ✅ | ✅ Done (mobile: left-aligned full-width large type) |
 | Cook-mode **recipe overview** (jump to any step + ingredients) | ✅ | ✅ | ✅ | ✅ Done (mobile; large sheet) |
 | **Per-step timers** — set in the editor; floating dock in cook mode | ✅ | ✅ | ✅ | ✅ Done (mobile: bottom-right dock, live tick, tap → jump to step, looping alarm + local-notif fallback) |
@@ -232,19 +232,19 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 
 | Feature | Web / Kiosk | iPhone | iPad | Status |
 | --- | :---: | :---: | :---: | --- |
-| **Pluggable optional modules** — registry + per-household enable flag; gates Today cards / nav / routes | ✅ | 🚧 | 🚧 | ✅ Done (web; build #1) — iOS reads the shared flag but has no module cards yet |
-| **Settings → Modules** tab (toggle optional modules on/off) | ✅ | 🚧 | 🚧 | ✅ Done (web) |
-| **Pantry / on-hand inventory** module — items + quantities + locations (fridge/freezer/pantry) | ✅ | 🚧 | 🚧 | ✅ Done (web; build #2) — the first optional module |
-| Pantry: quantity **stepper** + tap-to-type amount, **"used up"** state | ✅ | 🚧 | 🚧 | ✅ Done (web) |
-| Pantry: **drag items between locations**; **Today card** (whole-card tap, mark-used) | ✅ | 🚧 | 🚧 | ✅ Done (web) |
-| Pantry: **redesigned list** (location sidebar + counts, search, sort), **item detail** sheet | ✅ | 🚧 | 🚧 | ✅ Done (web) |
-| Pantry: **Open Food Facts** integration — barcode lookup (cached), nutrition + allergen snapshots, **"may contain" traces**, **dietary flags** (vegan/vegetarian/palm-oil-free), **replace photo** | ✅ | 🚧 | 🚧 | ✅ Done (web) |
-| Pantry: **allergen warnings** — household avoid-list ∪ per-person allergens, colored letter badges + persistent key, red-ring on avoided, "affects X" | ✅ | 🚧 | 🚧 | ✅ Done (web) |
-| Pantry: **running-low threshold** (household default + per-item), **per-location icons** | ✅ | 🚧 | 🚧 | ✅ Done (web) |
-| Pantry: **item age** — added/bought date (distinct from expiry), household-customizable "old" threshold, "Been a while" group + "Oldest" sort, age chip | ✅ | 🚧 | 🚧 | ✅ Done (web) |
-| Pantry: **barcode camera scanner** (zxing) — ⚠️ **requires HTTPS / localhost** (camera is blocked on plain-http LAN; falls back to typing the barcode) | ✅ | 🚧 | 🚧 | ✅ Done (web; needs secure context) |
-| Pantry ↔ meals: **Cook from your pantry** — recipes makeable now (staple-aware), on-hand **proteins as "mains"** → filtered recipe library, leftovers ("It's a meal"), **Plan my week** seeded with soon-to-expire, per-item **Plan it in** | ✅ | 🚧 | 🚧 | ✅ Done (web) |
-| Pantry ↔ meals: **cook → decrement** — marking a recipe cooked opens a "Used from your pantry" confirm sheet (Used some / Used it up / Didn't use; staples skipped) that decrements or uses-up stock; leftovers get **"Ate it"**; cooking flips today's planned slot to cooked | ✅ | 🚧 | 🚧 | ✅ Done (web; confirm-based, not exact-amount subtraction) |
+| **Pluggable optional modules** — registry + per-household enable flag; gates Today cards / nav / routes | ✅ | ✅ | ✅ | ✅ Done — iOS now gates the **Chores/Goals/Meals/Lists** nav (phone hub tiles + Meals tab; iPad rail), their Today cards, and the **Rewards** sub-toggle on the shared flag (Today + Calendar never gated) |
+| **Settings → Modules** tab (toggle optional modules on/off) | ✅ | ✅ | ✅ | ✅ Done — iOS `ModulesSettingsView` (admin-gated toggles + Rewards sub-toggle + "coming soon" rows); toggling updates nav/Today live |
+| **Pantry / on-hand inventory** module — items + quantities + locations (fridge/freezer/pantry) | ✅ | ✅ | ✅ | ✅ Done — iOS `PantryView` (list grouped by location, add by hand, edit/used-up/delete) |
+| Pantry: quantity **stepper** + tap-to-type amount, **"used up"** state | ✅ | ✅ | ✅ | ✅ Done — iOS: ± stepper on rows/detail/scan (stepping below 1 marks used up) |
+| Pantry: **drag items between locations**; **Today card** (whole-card tap, mark-used) | ✅ | 🟡 | 🟡 | ✅ Done (web); mobile: change location from the editor (no drag); **no Pantry Today card yet** |
+| Pantry: **redesigned list** (location sidebar + counts, search, sort), **item detail** sheet | ✅ | 🟡 | 🟡 | ✅ Done — iOS matches the web: sidebar (chips on iPhone) of All/Use-soon/Running-low + locations, search, Expiring/A–Z/Recent sort, card grid + item detail |
+| Pantry: **Open Food Facts** integration — barcode lookup (cached), nutrition + allergen snapshots, **"may contain" traces**, **dietary flags** (vegan/vegetarian/palm-oil-free), **replace photo** | ✅ | 🟡 | 🟡 | ✅ Done — iOS scan/type → `GET /api/pantry/lookup` → Found sheet → add (nutrition + allergen + traces snapshot ride onto the item; replace-photo on detail); **dietary flags** not surfaced on iOS yet |
+| Pantry: **allergen warnings** — household avoid-list ∪ per-person allergens, colored letter badges + persistent key, red-ring on avoided, "affects X" | ✅ | ✅ | ✅ | ✅ Done — iOS **colored allergen badges** (G/D/S…, red ring when avoided) on cards + a legend; "Contains" / "⚠ Affects {people}" + "may contain" traces on the detail |
+| Pantry: **running-low threshold** (household default + per-item), **per-location icons** | ✅ | 🟡 | 🟡 | ✅ Done (web); mobile: **Low** badge off the threshold + **per-location icons** in the sidebar; no per-item/per-location *config* UI yet |
+| Pantry: **item age** — added/bought date (distinct from expiry), household-customizable "old" threshold, "Been a while" group + "Oldest" sort, age chip | ✅ | 🚧 | 🚧 | ✅ Done (web); iOS parity pending |
+| Pantry: **barcode camera scanner** — point at a barcode | ✅ | ✅ | ✅ | ✅ Done — iOS **native AVFoundation scanner** (EAN/UPC/Code128…) + a "Type instead" fallback for the simulator/denied camera; **no HTTPS constraint** (web uses zxing, needs a secure context) |
+| Pantry ↔ meals: **Cook from your pantry** — recipes makeable now (staple-aware), on-hand **proteins as "mains"** → filtered recipe library, leftovers ("It's a meal"), **Plan my week** seeded with soon-to-expire, per-item **Plan it in** | ✅ | 🚧 | 🚧 | ✅ Done (web); iOS parity pending |
+| Pantry ↔ meals: **cook → decrement** — marking a recipe cooked opens a "Used from your pantry" confirm sheet (Used some / Used it up / Didn't use; staples skipped) that decrements or uses-up stock; leftovers get **"Ate it"**; cooking flips today's planned slot to cooked | ✅ | 🚧 | 🚧 | ✅ Done (web; confirm-based, not exact-amount subtraction); iOS parity pending |
 | **Public API keys + scopes** — `nook_…` key, `x-api-key`, `<resource>:read\|write` scopes | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web; build #3) — external-integration surface (pattern B), admin-issued |
 | **Settings → API Keys** tab (generate / scope / reveal-once / revoke) | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web; admin-gated) |
 
@@ -258,7 +258,7 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 | **Meals** (meal calendar & meal times) | ✅ | ✅ | ✅ | ✅ Done |
 | **AI & capture** (provider/model selection) | ✅ | ✅ | ✅ | ✅ Done |
 | **Display & Kiosk** (screensaver, photo source, idle, night-dim, preview) | ✅ | ✅ | ✅ | ✅ Done |
-| **Modules** (toggle optional modules; see Modules & extensibility) | ✅ | 🚧 | 🚧 | ✅ Done (web) |
+| **Modules** (toggle optional modules; see Modules & extensibility) | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
 | **API Keys** (per-user keys + scopes for external integrations) | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web; admin-gated) |
 | **Notifications** (reminders) | ❌ N/A | ✅ | ✅ | ✅ Done (mobile) |
 | **Login & security** (OIDC config, password toggle) | ✅ | 🟡 | 🟡 | ✅ Done (web); mobile shows accounts/sign-in, OIDC config is web-only |

@@ -56,10 +56,12 @@ struct TodayView: View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    // Parent-only "Needs your OK" banner, pinned above everything.
-                    ApprovalsBanner(model: approvals)
-                    // The review banner is pinned (transient alert), not customizable.
-                    if !reviewRecap.isEmpty || !reviewSuggestions.isEmpty {
+                    // Parent-only "Needs your OK" banner — gated with the chores module
+                    // (no chores ⇒ nothing in the chore/reward approval queues).
+                    if sync.module(.chores) { ApprovalsBanner(model: approvals) }
+                    // The goal-recap review banner (calendar↔goal bridge) — gated with
+                    // the goals module so it can't surface for a disabled feature.
+                    if sync.module(.goals), !reviewRecap.isEmpty || !reviewSuggestions.isEmpty {
                         Button { path.append(.reviewEvents) } label: { reviewCard }.buttonStyle(.plain)
                     }
                     // The rest render in the user's saved order, hidden cards omitted.
@@ -447,8 +449,19 @@ struct TodayView: View {
 
     /// Visible cards in saved order, pairing the two small cards (chores/grocery)
     /// into a 2-up row when they're adjacent — so the default look is preserved.
+    /// A card's optional-module gate (agenda is calendar-backed and never gated).
+    private func moduleAllows(_ key: String) -> Bool {
+        switch key {
+        case "tonight": return sync.module(.meals)
+        case "chores": return sync.module(.chores)
+        case "grocery": return sync.module(.lists)
+        case "goals": return sync.module(.goals)
+        default: return true
+        }
+    }
+
     private var cardRows: [CardRow] {
-        let visible = cardOrder.filter { !hiddenCards.contains($0) }
+        let visible = cardOrder.filter { !hiddenCards.contains($0) && moduleAllows($0) }
         var rows: [CardRow] = []
         var i = 0
         while i < visible.count {

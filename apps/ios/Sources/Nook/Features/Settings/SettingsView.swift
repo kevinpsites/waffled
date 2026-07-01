@@ -37,6 +37,7 @@ struct SettingsView: View {
             // Web order (with Accounts before AI, per the kiosk's pending update).
             VStack(alignment: .leading, spacing: 10) {
                 row("👨‍👩‍👧‍👦", "Family & People", "Members, roles, household") { path.append(.settingsFamily) }
+                row("🧩", "Modules", "Optional features on/off") { path.append(.settingsModules) }
                 row("🔗", "Accounts", "Sign-in & connections") { path.append(.settingsAccount) }
                 row("✨", "AI & Capture", "Provider & model") { path.append(.settingsAI) }
                 row("📅", "Calendars", "Google sync") { path.append(.settingsCalendars) }
@@ -113,6 +114,152 @@ struct SettingsView: View {
             .opacity(enabled ? 1 : 0.6)
         }
         .buttonStyle(.plain).disabled(!enabled)
+    }
+}
+
+// MARK: - Modules (optional features on/off)
+
+/// Settings → Modules — turn optional feature areas on/off for the whole household
+/// (mirrors the web Modules tab). Available modules toggle; planned ones show as
+/// "coming soon". Rewards is a sub-toggle of Chores. Writes are admin-only (server-
+/// gated); non-admins see the state read-only. Toggling reloads `sync` so the phone's
+/// Family grid / Today cards (and the iPad rail) update without a relaunch.
+struct ModulesSettingsView: View {
+    @Environment(SyncManager.self) private var sync
+    @State private var flags: [String: Bool] = [:]
+    @State private var rewards: Bool?            // nil until loaded
+    @State private var loading = true
+    @State private var saving: Set<String> = []  // keys mid-write (incl. "rewards")
+
+    private let api = NookAPI()
+    private var isAdmin: Bool { sync.currentPerson?.isAdmin == true }
+    private func isOn(_ m: NookModule) -> Bool { flags[m.rawValue] ?? m.defaultOn }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Turn off whatever your family doesn’t use — its tab, Today card, and pages disappear everywhere. Today and Calendar always stay on.")
+                    .font(.system(size: 13)).foregroundStyle(NK.ink2)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !isAdmin {
+                    Text("Only an admin can change modules.")
+                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink3)
+                }
+                if loading {
+                    NookLoading(top: 30)
+                } else {
+                    ForEach(NookModule.allCases.filter { $0.isAvailable }) { moduleCard($0) }
+                    let planned = NookModule.allCases.filter { !$0.isAvailable }
+                    if !planned.isEmpty {
+                        SectionLabel(text: "Coming soon").padding(.top, 6)
+                        ForEach(planned) { comingSoonRow($0) }
+                    }
+                }
+            }
+            .padding(16).padding(.bottom, 110)
+        }
+        .background(NK.canvas)
+        .navigationTitle("Modules").navigationBarTitleDisplayMode(.inline)
+        .task { await load() }
+    }
+
+    private func moduleCard(_ m: NookModule) -> some View {
+        VStack(spacing: 0) {
+            toggleRow(icon: m.icon, title: m.name, sub: m.summary,
+                      isOn: isOn(m), busy: saving.contains(m.rawValue)) { setModule(m, $0) }
+            // Rewards rides under Chores (its spend half) — only when Chores is on.
+            if m == .chores, isOn(.chores) {
+                Divider().background(NK.hair).padding(.leading, 52)
+                toggleRow(icon: "⭐", title: "Rewards", sub: "Star shop & redemptions — the spend half of chores.",
+                          isOn: rewards ?? true, busy: saving.contains("rewards"), indented: true) { setRewards($0) }
+            }
+            if m == .pantry {
+                Text("iOS screens are coming soon — for now, manage pantry items on the web.")
+                    .font(.system(size: 11.5)).foregroundStyle(NK.ink3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12).padding(.bottom, 10)
+            }
+        }
+        .background(NK.card)
+        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    private func toggleRow(icon: String, title: String, sub: String, isOn: Bool, busy: Bool,
+                           indented: Bool = false, set: @escaping (Bool) -> Void) -> some View {
+        HStack(spacing: 12) {
+            Text(icon).font(.system(size: 20)).frame(width: 40, height: 40)
+                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                Text(sub).font(.system(size: 12)).foregroundStyle(NK.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Toggle("", isOn: Binding(get: { isOn }, set: { set($0) }))
+                .labelsHidden().tint(NK.primary)
+                .disabled(!isAdmin || busy)
+        }
+        .padding(12).padding(.leading, indented ? 8 : 0)
+    }
+
+    private func comingSoonRow(_ m: NookModule) -> some View {
+        HStack(spacing: 12) {
+            Text(m.icon).font(.system(size: 20)).frame(width: 40, height: 40)
+                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(m.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink2)
+                Text(m.summary).font(.system(size: 12)).foregroundStyle(NK.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Text("Soon").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                .padding(.horizontal, 8).padding(.vertical, 3).background(NK.panel).clipShape(Capsule())
+        }
+        .padding(12).background(NK.card).opacity(0.7)
+        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    private func load() async {
+        if let m = try? await api.householdModules() {
+            flags = m.modules
+            rewards = m.rewards
+        }
+        loading = false
+    }
+
+    /// Optimistic toggle: flip locally, write, adopt the server's merged map, then
+    /// reload `sync` so nav/Today react. Revert on failure.
+    private func setModule(_ m: NookModule, _ on: Bool) {
+        let key = m.rawValue
+        let prev = flags[key]
+        flags[key] = on
+        saving.insert(key)
+        Task {
+            do {
+                flags = try await api.setModules([key: on])
+                await sync.reloadModules()
+            } catch {
+                flags[key] = prev
+            }
+            saving.remove(key)
+        }
+    }
+
+    private func setRewards(_ on: Bool) {
+        let prev = rewards
+        rewards = on
+        saving.insert("rewards")
+        Task {
+            do {
+                rewards = try await api.setChoresRewards(on)
+                await sync.reloadModules()
+            } catch {
+                rewards = prev
+            }
+            saving.remove("rewards")
+        }
     }
 }
 
