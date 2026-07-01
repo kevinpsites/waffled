@@ -47,7 +47,7 @@ export function useCountdowns() {
   useRefetchOn(['countdowns'], refetch)
   useEffect(() => {
     let alive = true
-    countdownsApi.list().then((d) => { if (alive) { setCountdowns(d.countdowns); setSleeps(d.sleeps); setLoading(false) } }).catch(() => { if (alive) setLoading(false) })
+    countdownsApi.list().then((d) => { if (alive) { setCountdowns(d.countdowns ?? []); setSleeps(!!d.sleeps); setLoading(false) } }).catch(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [nonce])
   return { countdowns, sleeps, loading, refetch }
