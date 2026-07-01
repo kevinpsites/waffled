@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
-import { mealsApi, useRecipe } from '../lib/api'
+import { mealsApi, pantryApi, useRecipe, type RecipeMatch } from '../lib/api'
+import { CookConfirm } from './components/CookConfirm'
 import './../styles/cookmode.css'
 
 // A running (or fired) per-step countdown shown in the floating dock.
@@ -32,6 +33,8 @@ export function CookMode() {
   const [i, setI] = useState(0)
   const [showAll, setShowAll] = useState(false)
   const [done, setDone] = useState(false)
+  const [usedMatches, setUsedMatches] = useState<RecipeMatch[]>([])
+  const [sheetOpen, setSheetOpen] = useState(false)
   // Background timers — survive step navigation (the component never remounts) and
   // render in a floating dock above every step + the done screen.
   const [timers, setTimers] = useState<CookTimer[]>([])
@@ -148,7 +151,11 @@ export function CookMode() {
 
   function finish() {
     setDone(true)
-    if (recipe) mealsApi.markCooked(recipe.id).catch(() => {})
+    if (recipe) {
+      mealsApi.markCooked(recipe.id).catch(() => {})
+      // Offer to update the pantry with what this recipe likely used.
+      pantryApi.forRecipe(recipe.id).then((m) => { if (m.length) { setUsedMatches(m); setSheetOpen(true) } }).catch(() => {})
+    }
   }
 
   if (done) {
@@ -159,10 +166,16 @@ export function CookMode() {
         <div className="muted cm-done-sub">“{recipe.title}” is marked as cooked.</div>
         <div className="cm-done-actions">
           <button className="btn btn-ghost" onClick={() => { setDone(false); setI(0) }}>↻ Start over</button>
+          {usedMatches.length > 0 && (
+            <button className="btn btn-ghost" onClick={() => setSheetOpen(true)}>🧺 Update pantry</button>
+          )}
           <button className="btn btn-primary" onClick={exit}>Back to recipe</button>
         </div>
         <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} />
         <TimerAlarm firing={firingTimers} onDismiss={dismissTimer} onSnooze={snoozeTimer} onJump={jumpToTimer} />
+        {sheetOpen && (
+          <CookConfirm title={recipe.title} matches={usedMatches} onClose={() => setSheetOpen(false)} />
+        )}
       </div>
     )
   }

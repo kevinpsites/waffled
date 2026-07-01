@@ -103,6 +103,11 @@ export interface CookMain {
 }
 export interface ItemRecipe { recipeId: string; title: string; emoji: string | null }
 
+// "Used from your pantry" confirm sheet: items a just-cooked recipe likely used, with
+// a suggested action (skip = a staple we don't nag you to restock).
+export type ConsumeMode = 'used_up' | 'decrement' | 'skip'
+export interface RecipeMatch { id: string; name: string; amount: string; unit: string; isStaple: boolean; suggested: ConsumeMode }
+
 // Dietary flags captured from Open Food Facts (ingredients analysis).
 export const DIETARY_LABELS: Record<string, string> = {
   vegan: 'Vegan', vegetarian: 'Vegetarian', palm_oil_free: 'Palm-oil-free',
@@ -125,6 +130,11 @@ export const pantryApi = {
   cookable: () => apiGet<{ ready: CookReady[]; mains: CookMain[] }>('/api/pantry/cookable'),
   // Recipes that use a given pantry item (detail "Plan it in").
   itemRecipes: (id: string) => apiGet<{ recipes: ItemRecipe[] }>(`/api/pantry/${id}/recipes`),
+  // On-hand items a just-cooked recipe likely used (for the confirm sheet).
+  forRecipe: (recipeId: string) => apiGet<{ matches: RecipeMatch[] }>(`/api/pantry/for-recipe/${recipeId}`).then((r) => r.matches),
+  // Apply confirmed consumption; returns the updated items.
+  consume: (items: Array<{ id: string; mode: 'used_up' | 'decrement' }>) =>
+    apiSend<{ items: PantryItem[] }>('POST', '/api/pantry/consume', { items }).then((r) => r.items),
   // Module config: locations, Today-card toggle, avoid-allergens, the running-low
   // threshold, and/or per-location icons.
   setConfig: (patch: { locations?: string[]; showOnToday?: boolean; avoidAllergens?: string[]; lowThreshold?: number; locationIcons?: Record<string, string>; staleMonths?: number }) =>

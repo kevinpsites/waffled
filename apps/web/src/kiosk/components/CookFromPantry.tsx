@@ -34,7 +34,7 @@ function dayLabel(d: string): string {
 }
 const isSoon = (i: PantryItem) => { const d = daysUntil(i.expiresOn); return d != null && d <= 3 }
 
-export function CookFromPantry({ items }: { items: PantryItem[] }) {
+export function CookFromPantry({ items, onChanged }: { items: PantryItem[]; onChanged?: () => void }) {
   const { household } = useHousehold()
   const mealsOn = moduleEnabled(household, 'meals')
   const [cook, setCook] = useState<{ ready: CookReady[]; mains: CookMain[] } | null>(null)
@@ -59,7 +59,7 @@ export function CookFromPantry({ items }: { items: PantryItem[] }) {
         {(meals.length + useSoon.length) > 0 && <><b>{meals.length + useSoon.length}</b> to use up</>}
       </div>
       <button type="button" className="pill pl-cook-btn" onClick={() => setOpen(true)}>Plan from pantry</button>
-      {open && <CookModal items={items} ready={ready} mains={mains} onClose={() => setOpen(false)} />}
+      {open && <CookModal items={items} ready={ready} mains={mains} onClose={() => setOpen(false)} onChanged={onChanged} />}
     </div>
   )
 }
@@ -72,9 +72,16 @@ function Dots({ have, total }: { have: number; total: number }) {
   )
 }
 
-function CookModal({ items, ready, mains, onClose }: { items: PantryItem[]; ready: CookReady[]; mains: CookMain[]; onClose: () => void }) {
+function CookModal({ items, ready, mains, onClose, onChanged }: { items: PantryItem[]; ready: CookReady[]; mains: CookMain[]; onClose: () => void; onChanged?: () => void }) {
   const navigate = useNavigate()
   const [added, setAdded] = useState<Set<string>>(new Set())
+  // Leftovers you've eaten (marked used-up) — hidden immediately, refetched on close.
+  const [eaten, setEaten] = useState<Set<string>>(new Set())
+  async function ateIt(item: PantryItem) {
+    setEaten((s) => new Set(s).add(item.id))
+    try { await pantryApi.consume([{ id: item.id, mode: 'used_up' }]) } catch { /* ignore */ }
+    onChanged?.()
+  }
   // Planning a meal-flagged item into a slot (tonight or another day/meal).
   const today = new Date().toISOString().slice(0, 10)
   const [planFor, setPlanFor] = useState<string | null>(null)
@@ -98,7 +105,7 @@ function CookModal({ items, ready, mains, onClose }: { items: PantryItem[]; read
     setPlanFor(null)
   }
 
-  const meals = items.filter((i) => i.isMeal)
+  const meals = items.filter((i) => i.isMeal && !eaten.has(i.id))
   const useSoonNames = items.filter(isSoon).map((i) => i.name)
   const mainNames = new Set(mains.map((m) => m.item?.name).filter(Boolean) as string[])
   const loose = items.filter((i) => !i.isMeal && isSoon(i) && !mainNames.has(i.name))
@@ -138,9 +145,12 @@ function CookModal({ items, ready, mains, onClose }: { items: PantryItem[]; read
                   <div className="pl-cookm-cardmain">
                     <div className="pl-cookm-cardrow">
                       <span className="pl-cookm-cardname">{m.name}</span>
-                      <button type="button" className={`pl-plan-btn${plannedDate(m) ? ' done' : ''}`} onClick={() => { if (plannedDate(m)) { navigate('/meals'); return } setPlanDate(today); setPlanMeal('dinner'); setPlanFor(planFor === m.id ? null : m.id) }}>
-                        {plannedDate(m) ? `✓ Planned ${dayLabel(plannedDate(m)!)}` : 'Plan'}
-                      </button>
+                      <span className="pl-cookm-cardacts">
+                        <button type="button" className="pl-ate-btn" onClick={() => ateIt(m)}>Ate it</button>
+                        <button type="button" className={`pl-plan-btn${plannedDate(m) ? ' done' : ''}`} onClick={() => { if (plannedDate(m)) { navigate('/meals'); return } setPlanDate(today); setPlanMeal('dinner'); setPlanFor(planFor === m.id ? null : m.id) }}>
+                          {plannedDate(m) ? `✓ Planned ${dayLabel(plannedDate(m)!)}` : 'Plan'}
+                        </button>
+                      </span>
                     </div>
                     <div className="pl-cookm-badges">
                       <span className="pl-badge green">{heat ? 'Heat & serve' : 'Ready to eat'}</span>

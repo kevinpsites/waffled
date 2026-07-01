@@ -9,7 +9,7 @@ import { moduleEnabled } from '../../platform/modules'
 import { AuthError } from '../../platform/auth'
 import type { Tenant } from '../households/households'
 import { lookupBarcode } from './off'
-import { cookableRecipes, recipesUsingItem } from './cook'
+import { cookableRecipes, recipesUsingItem, pantryMatchesForRecipe, type ConsumeMode } from './cook'
 import { ALLERGEN_KEYS } from '../../platform/allergens'
 
 type Api = ReturnType<typeof createAPI>
@@ -233,6 +233,53 @@ export function registerPantryRoutes(api: Api): void {
     )
     if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'item not found' })
     return { recipes: await recipesUsingItem(tenant.householdId, rows[0].name) }
+  }))
+
+  // On-hand items a just-cooked recipe likely used, each with a suggested action —
+  // feeds the "Used from your pantry" confirm sheet.
+  api.get('/api/pantry/for-recipe/:recipeId', tenantRoute(async (tenant, req: Request, res: Response) => {
+    await requirePantry(tenant)
+    const id = req.params.recipeId ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    return { matches: await pantryMatchesForRecipe(tenant.householdId, id) }
+  }))
+
+  // Apply the confirmed consumption: for each item, either mark it used-up (recoverable)
+  // or knock one off a countable amount (a decrement that reaches 0 becomes used-up).
+  api.post('/api/pantry/consume', tenantRoute(async (tenant, req: Request, res: Response) => {
+    await requirePantry(tenant)
+    const raw = (req.body ?? {}) as { items?: unknown }
+    const list = Array.isArray(raw.items) ? raw.items : []
+    const updated: ReturnType<typeof present>[] = []
+    for (const entry of list) {
+      const e = (entry ?? {}) as { id?: unknown; mode?: unknown }
+      const id = typeof e.id === 'string' ? e.id : ''
+      const mode = e.mode as ConsumeMode
+      if (!UUID_RE.test(id) || (mode !== 'used_up' && mode !== 'decrement')) continue
+      const { rows: cur } = await query<{ amount: string | null }>(
+        `select amount from pantry_items where household_id = $1 and id = $2 and deleted_at is null and used_up_at is null`,
+        [tenant.householdId, id]
+      )
+      if (!cur[0]) continue
+      let sql: string
+      const params: unknown[] = [tenant.householdId, id]
+      if (mode === 'decrement') {
+        const n = Number((cur[0].amount ?? '').trim())
+        const next = Number.isFinite(n) ? n - 1 : 0
+        // Any positive remainder is kept (so "1.5 lb" → "0.5 lb", not gone); a result of
+        // 0 or less (or a non-numeric amount) means it's used up.
+        const keep = next > 0
+        sql = keep
+          ? `update pantry_items set amount = $3 where household_id = $1 and id = $2 returning ${RETURNING}`
+          : `update pantry_items set used_up_at = now() where household_id = $1 and id = $2 returning ${RETURNING}`
+        if (keep) params.push(String(next))
+      } else {
+        sql = `update pantry_items set used_up_at = now() where household_id = $1 and id = $2 returning ${RETURNING}`
+      }
+      const { rows } = await query<PantryRow>(sql, params)
+      if (rows[0]) updated.push(present(rows[0]))
+    }
+    return { items: updated }
   }))
 
   // Add an item (any member — collaborative, like lists).

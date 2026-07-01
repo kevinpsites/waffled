@@ -302,6 +302,9 @@
 .pl-plan-btn { flex: none; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink); background: var(--card-2, #faf8f4); border: 1px solid var(--hair); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
 .pl-plan-btn:hover { border-color: var(--primary); }
 .pl-plan-btn.done { color: #1c7a44; background: #e6f4ea; border-color: #cfe9d8; }
+.pl-cookm-cardacts { display: flex; align-items: center; gap: 7px; flex: none; }
+.pl-ate-btn { flex: none; font: inherit; font-size: 13px; font-weight: 700; color: #1c7a44; background: #e6f4ea; border: 1px solid #cfe9d8; border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+.pl-ate-btn:hover { background: #d8eede; }
 .pl-plan-pick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
 .pl-plan-pick select, .pl-plan-pick input { font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--hair); background: var(--card-2, #faf8f4); color: var(--ink); }
 .pl-plan-pick .pill { cursor: pointer; }
@@ -481,3 +484,23 @@
 .pl-scan-acts .pill { flex: 1; justify-content: center; cursor: pointer; }
 .pl-scan-foot { display: flex; justify-content: flex-end; margin-top: 16px; }
 .pl-scan-foot .pill { cursor: pointer; }
+
+/* "Used from your pantry" confirm sheet (after marking a recipe cooked) */
+.cc-modal { max-width: 520px; }
+.cc-head { margin: 2px 34px 14px 2px; }
+.cc-title { font-size: 21px; font-weight: 700; margin: 0; }
+.cc-sub { font-size: 13.5px; font-weight: 600; color: var(--ink-3); margin: 4px 0 0; }
+.cc-rows { display: flex; flex-direction: column; gap: 8px; max-height: 52vh; overflow-y: auto; }
+.cc-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--hair); border-radius: 12px; background: var(--card-2, #faf8f4); }
+.cc-row.staple { opacity: 0.72; }
+.cc-item { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.cc-name { font-size: 15px; font-weight: 700; color: var(--ink); }
+.cc-have { font-size: 12px; font-weight: 600; color: var(--ink-3); }
+.cc-staple { color: var(--ink-3); font-weight: 700; }
+.cc-seg { display: inline-flex; flex: none; border: 1px solid var(--hair); border-radius: 999px; overflow: hidden; background: var(--card); }
+.cc-seg-btn { font: inherit; font-size: 12.5px; font-weight: 700; color: var(--ink-2); background: none; border: 0; padding: 7px 12px; cursor: pointer; border-left: 1px solid var(--hair); }
+.cc-seg-btn:first-child { border-left: 0; }
+.cc-seg-btn.on { background: var(--wally, #25a368); color: #fff; }
+.cc-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.cc-foot .pill { cursor: pointer; }
+.cc-foot .pill.primary { color: #fff; background: var(--wally, #25a368); border-color: transparent; }

@@ -182,7 +182,7 @@ export function Pantry() {
               <span className="pl-navitem-ic">📦</span><span className="pl-navitem-l">Other</span><span className="pl-navitem-n">{counts.byLoc.Other}</span>
             </button>
           )}
-          <CookFromPantry items={live} />
+          <CookFromPantry items={live} onChanged={refetch} />
           <AllergenKey avoid={avoidSet} />
         </aside>
 

@@ -194,6 +194,14 @@ export function registerMealRoutes(api: Api): void {
       [tenant.householdId, id]
     )
     if (!rows[0]) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
+    // Best-effort: if this recipe is on today's plan, reflect reality by marking that
+    // slot cooked. Silent — cooking a recipe you never planned is fine.
+    await query(
+      `update meal_plan_entries set status = 'cooked'
+         where household_id = $1 and recipe_id = $2 and date = current_date
+           and status = 'planned' and deleted_at is null`,
+      [tenant.householdId, id]
+    )
     return { recipe: presentRecipe(rows[0]) }
   }))
 

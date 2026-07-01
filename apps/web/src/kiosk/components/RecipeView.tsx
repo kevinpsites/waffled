@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { groceryApi, mealsApi, useRecipe, type RecipeIngredient, type RecipeOverrides, type RecipeStep } from '../../lib/api'
+import { groceryApi, mealsApi, pantryApi, useRecipe, type RecipeIngredient, type RecipeMatch, type RecipeOverrides, type RecipeStep } from '../../lib/api'
 import { ScheduleModal } from './ScheduleModal'
+import { CookConfirm } from './CookConfirm'
 import '../../styles/recipe.css'
 
 // The one canonical recipe view — hero, metadata chips, scalable ingredients with
@@ -105,6 +106,7 @@ export function RecipeView({ id, onSelect, selectLabel }: { id: string; onSelect
   const [addedNote, setAddedNote] = useState<string | null>(null)
   const [cooked, setCooked] = useState(0)
   const [notes, setNotes] = useState('')
+  const [usedMatches, setUsedMatches] = useState<RecipeMatch[] | null>(null)
 
   useEffect(() => {
     if (recipe) {
@@ -160,6 +162,9 @@ export function RecipeView({ id, onSelect, selectLabel }: { id: string; onSelect
     setCooked((c) => c + 1)
     setAddedNote('Marked as cooked — nice work.')
     mealsApi.markCooked(recipe.id).catch(() => setCooked((c) => Math.max(0, c - 1)))
+    // Offer to update the pantry with what this recipe likely used (skipped silently
+    // when the pantry module is off or nothing on hand matched).
+    pantryApi.forRecipe(recipe.id).then((m) => { if (m.length) setUsedMatches(m) }).catch(() => {})
   }
   const enc = encodeURIComponent
   const chip = (params: string) => navigate(`/meals/recipes?${params}`)
@@ -300,6 +305,14 @@ export function RecipeView({ id, onSelect, selectLabel }: { id: string; onSelect
 
       {scheduling && (
         <ScheduleModal recipe={recipe} onClose={() => setScheduling(false)} onScheduled={(label) => setAddedNote(`Scheduled for ${label}.`)} />
+      )}
+      {usedMatches && (
+        <CookConfirm
+          title={recipe.title}
+          matches={usedMatches}
+          onClose={() => setUsedMatches(null)}
+          onApplied={(n) => n > 0 && setAddedNote(`Pantry updated — ${n} item${n === 1 ? '' : 's'}.`)}
+        />
       )}
     </div>
   )

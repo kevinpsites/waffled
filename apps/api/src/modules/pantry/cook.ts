@@ -143,6 +143,52 @@ export async function cookableRecipes(householdId: string): Promise<{ ready: Coo
   return { ready: ready.slice(0, MAX_RESULTS).map(({ sortExp, ...r }) => r), mains } // eslint-disable-line @typescript-eslint/no-unused-vars
 }
 
+// A pantry item that a just-cooked recipe likely used, with a suggested action:
+//   used_up   → mark the item gone (single unit, non-numeric, or amount ≤ 1)
+//   decrement → knock one off a countable amount (numeric > 1)
+//   skip      → a staple (salt/oil/…) we shouldn't nag you to restock
+export type ConsumeMode = 'used_up' | 'decrement' | 'skip'
+export interface RecipeMatch {
+  id: string
+  name: string
+  amount: string
+  unit: string
+  isStaple: boolean
+  suggested: ConsumeMode
+}
+
+// Which on-hand pantry items match this recipe's ingredients (for the "Used from your
+// pantry" confirm sheet after marking cooked). Same token-subset match as cookable, but
+// keyed to item ids so the client can post back a consume list.
+export async function pantryMatchesForRecipe(householdId: string, recipeId: string): Promise<RecipeMatch[]> {
+  await ensureDefaultStaples(householdId)
+  const staples = new Set((await listPantryStaples(householdId)).map((s) => s.name.trim().toLowerCase()))
+  const { rows: items } = await query<{ id: string; name: string; amount: string | null; unit: string | null }>(
+    `select id, name, amount, unit from pantry_items
+       where household_id = $1 and used_up_at is null and deleted_at is null and is_meal = false`,
+    [householdId]
+  )
+  const { rows: ings } = await query<{ name: string; is_staple: boolean }>(
+    `select name, is_staple from recipe_ingredients where household_id = $1 and recipe_id = $2 and deleted_at is null`,
+    [householdId, recipeId]
+  )
+  const ingToks = ings.map((i) => ({ tok: tokens(i.name), isStaple: i.is_staple || staples.has(i.name.trim().toLowerCase()) }))
+
+  const out: RecipeMatch[] = []
+  for (const it of items) {
+    const itTok = tokens(it.name)
+    const hit = ingToks.find((i) => matches(i.tok, itTok))
+    if (!hit) continue
+    const amountNum = Number((it.amount ?? '').trim())
+    const isStaple = hit.isStaple || staples.has(it.name.trim().toLowerCase())
+    const suggested: ConsumeMode = isStaple ? 'skip' : Number.isFinite(amountNum) && amountNum > 1 ? 'decrement' : 'used_up'
+    out.push({ id: it.id, name: it.name, amount: it.amount ?? '', unit: it.unit ?? '', isStaple, suggested })
+  }
+  // Non-staples first, then alphabetical, so the actionable rows lead.
+  out.sort((a, b) => Number(a.isStaple) - Number(b.isStaple) || a.name.localeCompare(b.name))
+  return out
+}
+
 // Recipes whose ingredients include a given item (for the detail "Plan it in").
 export async function recipesUsingItem(householdId: string, itemName: string): Promise<Array<{ recipeId: string; title: string; emoji: string | null }>> {
   const target = tokens(itemName)

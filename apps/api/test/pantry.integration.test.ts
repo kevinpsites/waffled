@@ -300,4 +300,77 @@ describe('pantry Open Food Facts integration', () => {
     expect(r.statusCode).toBe(200)
     expect(JSON.parse(r.body).recipes.map((x: { title: string }) => x.title)).toContain('Taco Night')
   })
+
+  describe('cook → decrement pantry', () => {
+    let recipeId = ''
+    let steakId = ''
+    let pepperId = ''
+
+    it('for-recipe: matches on-hand items with a suggested action (staples skipped)', async () => {
+      recipeId = JSON.parse((await call('POST', '/api/recipes', kevin, {
+        title: 'Pepper Steak', ingredients: [{ name: 'Chuck steak' }, { name: 'Bell pepper' }, { name: 'Salt' }],
+      })).body).recipe.id
+      steakId = JSON.parse((await call('POST', '/api/pantry', kevin, { name: 'Chuck steak', amount: '3', location: 'Freezer' })).body).item.id
+      pepperId = JSON.parse((await call('POST', '/api/pantry', kevin, { name: 'Bell pepper', amount: '1', location: 'Fridge' })).body).item.id
+      await call('POST', '/api/pantry', kevin, { name: 'Salt', amount: '1', location: 'Pantry' })
+
+      const res = await call('GET', `/api/pantry/for-recipe/${recipeId}`, kevin)
+      expect(res.statusCode).toBe(200)
+      const matches: Array<{ id: string; name: string; suggested: string; isStaple: boolean }> = JSON.parse(res.body).matches
+      const byName = Object.fromEntries(matches.map((m) => [m.name, m]))
+      expect(byName['Chuck steak'].suggested).toBe('decrement') // amount 3 > 1
+      expect(byName['Bell pepper'].suggested).toBe('used_up') // amount 1
+      expect(byName['Salt'].suggested).toBe('skip') // default staple
+      expect(byName['Salt'].isStaple).toBe(true)
+    })
+
+    it('consume: decrements a countable item and uses up a single one', async () => {
+      const res = await call('POST', '/api/pantry/consume', kevin, {
+        items: [{ id: steakId, mode: 'decrement' }, { id: pepperId, mode: 'used_up' }],
+      })
+      expect(res.statusCode).toBe(200)
+      const steak = JSON.parse(res.body).items.find((i: { id: string }) => i.id === steakId)
+      expect(steak.amount).toBe('2') // 3 → 2
+      expect(steak.usedUp).toBe(false)
+
+      const list = JSON.parse((await call('GET', '/api/pantry', kevin)).body).items
+      expect(list.find((i: { id: string }) => i.id === steakId).amount).toBe('2')
+      expect(list.find((i: { id: string }) => i.id === pepperId).usedUp).toBe(true) // used up (recoverable, flagged)
+    })
+
+    it('consume: a decrement that reaches zero becomes used-up', async () => {
+      const id = JSON.parse((await call('POST', '/api/pantry', kevin, { name: 'Last egg', amount: '1', location: 'Fridge' })).body).item.id
+      const res = await call('POST', '/api/pantry/consume', kevin, { items: [{ id, mode: 'decrement' }] })
+      expect(res.statusCode).toBe(200)
+      expect(JSON.parse(res.body).items[0].usedUp).toBe(true)
+    })
+
+    it('consume: a fractional decrement keeps the remainder', async () => {
+      const id = JSON.parse((await call('POST', '/api/pantry', kevin, { name: 'Butter block', amount: '1.5', unit: 'lb', location: 'Fridge' })).body).item.id
+      const res = await call('POST', '/api/pantry/consume', kevin, { items: [{ id, mode: 'decrement' }] })
+      const item = JSON.parse(res.body).items[0]
+      expect(item.amount).toBe('0.5') // 1.5 → 0.5, still on hand
+      expect(item.usedUp).toBe(false)
+    })
+
+    it('marking a recipe cooked flips today\'s planned slot to cooked', async () => {
+      const { query } = await import('../src/platform/db')
+      const planId = (await query<{ id: string }>(
+        `insert into meal_plans (household_id, start_date, end_date, status)
+           values ($1, current_date, current_date, 'active') returning id`,
+        [householdId]
+      )).rows[0].id
+      await query(
+        `insert into meal_plan_entries (household_id, meal_plan_id, date, meal_type, recipe_id, status)
+           values ($1, $2, current_date, 'dinner', $3, 'planned')`,
+        [householdId, planId, recipeId]
+      )
+      await call('POST', `/api/recipes/${recipeId}/cooked`, kevin)
+      const { rows } = await query<{ status: string }>(
+        `select status from meal_plan_entries where household_id = $1 and recipe_id = $2 and date = current_date`,
+        [householdId, recipeId]
+      )
+      expect(rows[0]?.status).toBe('cooked')
+    })
+  })
 })
