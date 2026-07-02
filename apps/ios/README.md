@@ -32,7 +32,7 @@ This is an **XcodeGen** project. The Xcode project file is generated from
 ```
 apps/ios/
   project.yml          # source of truth — edit this, then regenerate
-  Nook.xcodeproj/      # GENERATED (gitignored)
+  Kinnook.xcodeproj/      # GENERATED (gitignored)
   Sources/Nook/
     App/               # @main entry + root tab navigation
     DesignSystem/      # Nook tokens + reusable SwiftUI components
@@ -46,10 +46,10 @@ apps/ios/
 brew install xcodegen           # one-time
 cd apps/ios
 ./Scripts/vendor-powersync.sh   # one-time: fetch + patch the PowerSync SDK (see below)
-xcodegen generate               # regenerate Nook.xcodeproj after any file/yml change
-open Nook.xcodeproj             # or build from the CLI:
+xcodegen generate               # regenerate Kinnook.xcodeproj after any file/yml change
+open Kinnook.xcodeproj             # or build from the CLI:
 
-xcodebuild -project Nook.xcodeproj -scheme Nook \
+xcodebuild -project Kinnook.xcodeproj -scheme Kinnook \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 ```
 
@@ -63,7 +63,7 @@ timestamp parsing, timezone day-bucketing, agenda ordering, the CRUD-upload
 shape, hex parsing. SwiftUI views are exercised manually on the sim.
 
 ```bash
-xcodebuild test -project Nook.xcodeproj -scheme Nook \
+xcodebuild test -project Kinnook.xcodeproj -scheme Kinnook \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
