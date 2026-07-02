@@ -14,7 +14,7 @@ export default defineConfig({
 			tagline: 'Self-hosted family hub',
 			logo: { src: './src/assets/kinnook-logo.png', alt: 'Kinnook' },
 			favicon: '/favicon.png',
-			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/OWNER/nook' }],
+			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/kevinpsites/nook' }],
 			sidebar: [
 				{
 					label: 'Getting started',

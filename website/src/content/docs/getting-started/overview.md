@@ -51,4 +51,4 @@ feature matrix); iOS is a separate native client (the "Mobile" column).
 - New to running it? → [Quick start](/getting-started/quick-start/)
 - Want the full capability list? → [Feature matrix](/reference/features/)
 - Curious how it grows? → [Extensibility & modules](/concepts/extensibility/)
-- Tracking progress? → the [roadmap status](https://github.com/OWNER/nook/blob/main/docs/product/roadmap.md)
+- Tracking progress? → the [roadmap status](https://github.com/kevinpsites/nook/blob/main/docs/product/roadmap.md)

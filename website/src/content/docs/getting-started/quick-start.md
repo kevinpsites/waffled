@@ -129,9 +129,9 @@ The stack builds `api` + `caddy` from source by default. To pull from GHCR inste
 the overrides in `infra/compose/.env` and pull:
 
 ```bash
-NOOK_API_IMAGE=ghcr.io/<owner>/nook-api:latest
-NOOK_CADDY_IMAGE=ghcr.io/<owner>/nook-caddy:latest
-NOOK_BACKUP_IMAGE=ghcr.io/<owner>/nook-backup:latest
+NOOK_API_IMAGE=ghcr.io/kevinpsites/nook-api:latest
+NOOK_CADDY_IMAGE=ghcr.io/kevinpsites/nook-caddy:latest
+NOOK_BACKUP_IMAGE=ghcr.io/kevinpsites/nook-backup:latest
 ```
 
 Images are multi-arch (amd64 + arm64), so they run on x86 or an ARM SBC (e.g. Raspberry

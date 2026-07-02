@@ -70,8 +70,8 @@ registry instead, point the image overrides at the published GHCR tags and pull:
 
 ```bash
 # in infra/compose/.env
-NOOK_API_IMAGE=ghcr.io/<owner>/nook-api:latest
-NOOK_CADDY_IMAGE=ghcr.io/<owner>/nook-caddy:latest
+NOOK_API_IMAGE=ghcr.io/kevinpsites/nook-api:latest
+NOOK_CADDY_IMAGE=ghcr.io/kevinpsites/nook-caddy:latest
 ```
 
 ```bash

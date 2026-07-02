@@ -51,9 +51,9 @@ git pull                 # fetch the new source
    they point where you expect):
 
    ```bash
-   NOOK_API_IMAGE=ghcr.io/<owner>/nook-api:vX.Y.Z
-   NOOK_CADDY_IMAGE=ghcr.io/<owner>/nook-caddy:vX.Y.Z
-   NOOK_BACKUP_IMAGE=ghcr.io/<owner>/nook-backup:vX.Y.Z
+   NOOK_API_IMAGE=ghcr.io/kevinpsites/nook-api:vX.Y.Z
+   NOOK_CADDY_IMAGE=ghcr.io/kevinpsites/nook-caddy:vX.Y.Z
+   NOOK_BACKUP_IMAGE=ghcr.io/kevinpsites/nook-backup:vX.Y.Z
    ```
 
 3. Pull the new images, then start:

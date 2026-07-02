@@ -89,4 +89,4 @@ as a maybe so the rationale isn't lost, not as a commitment.
 ---
 
 See the [feature matrix](/reference/features/) for per-surface support and
-[`ROADMAP.md`](https://github.com/OWNER/nook/blob/main/ROADMAP.md) (item 3.4) for the engineering history.
+[`ROADMAP.md`](https://github.com/kevinpsites/nook/blob/main/ROADMAP.md) (item 3.4) for the engineering history.

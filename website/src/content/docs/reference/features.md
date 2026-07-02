@@ -12,7 +12,7 @@ Every Kinnook feature and whether it's supported on each surface.
 - **iPad** — the **same** universal app's *family-hub* experience (`KioskRoot` → a left nav
   rail + every page, re-laid-out big; runs on the counter). One binary, one App Store
   listing — the device picks the experience by idiom (`DeviceExperience`).
-- **Status** — where the feature sits on the [roadmap](https://github.com/OWNER/nook/blob/main/docs/product/roadmap.md).
+- **Status** — where the feature sits on the [roadmap](https://github.com/kevinpsites/nook/blob/main/docs/product/roadmap.md).
 
 Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 
@@ -24,7 +24,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 > The **shared-kiosk profile picker** (pairing + per-profile PIN) now ships on **iPad** as
 > an opt-in (single persistent login stays the default); it's ❌ N/A on iPhone, which is
 > never a kiosk. See
-> [`apps/ios/IPAD_ROADMAP.md`](https://github.com/OWNER/nook/blob/main/apps/ios/IPAD_ROADMAP.md) for the mobile build plan.
+> [`apps/ios/IPAD_ROADMAP.md`](https://github.com/kevinpsites/nook/blob/main/apps/ios/IPAD_ROADMAP.md) for the mobile build plan.
 
 ---
 
@@ -311,7 +311,7 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 
 ## Mobile backlog (planned, not yet built)
 
-Tracked in [`apps/ios/IPAD_ROADMAP.md`](https://github.com/OWNER/nook/blob/main/apps/ios/IPAD_ROADMAP.md). Highlights:
+Tracked in [`apps/ios/IPAD_ROADMAP.md`](https://github.com/kevinpsites/nook/blob/main/apps/ios/IPAD_ROADMAP.md). Highlights:
 
 - **Chore reminders** on iOS — blocked on chores landing in PowerSync.
 - **Recurring-event reminders** — the local scheduler doesn't expand recurrences yet.
@@ -323,4 +323,4 @@ Tracked in [`apps/ios/IPAD_ROADMAP.md`](https://github.com/OWNER/nook/blob/main/
   server display config + web to carry a `photoMotion` field).
 - **Remote push** (APNs) for reminders when the app is closed.
 
-See [roadmap status](https://github.com/OWNER/nook/blob/main/docs/product/roadmap.md) for the cross-surface planned/partial items in context.
+See [roadmap status](https://github.com/kevinpsites/nook/blob/main/docs/product/roadmap.md) for the cross-surface planned/partial items in context.

@@ -128,7 +128,7 @@ services:
       # release of UPDATE_CHECK_REPO ("owner/name"); unset → no check. Operator
       # kill-switch: UPDATE_CHECK_ENABLED=false (no outbound call at all).
       UPDATE_CHECK_ENABLED: ${UPDATE_CHECK_ENABLED:-true}
-      UPDATE_CHECK_REPO: ${UPDATE_CHECK_REPO:-}
+      UPDATE_CHECK_REPO: ${UPDATE_CHECK_REPO:-kevinpsites/nook}
       # --- switch to Auth0 (RS256): set these, then restart the api ---
       # AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       # AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}

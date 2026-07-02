@@ -1,6 +1,6 @@
 {
   "name": "@nook/web",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Nook web app + counter-kiosk (Vite + React + TS). Static SPA served by Caddy/CloudFront.",
