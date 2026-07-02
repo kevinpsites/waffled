@@ -171,7 +171,7 @@ struct CalendarsSettingsView: View {
     private var connectCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Connect a Google account").font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
-            Text("Bring your family’s Google calendars into Nook — you’ll pick which ones sync and who each belongs to.")
+            Text("Bring your family’s Google calendars into Kinnook — you’ll pick which ones sync and who each belongs to.")
                 .font(.system(size: 13)).foregroundStyle(NK.ink3).fixedSize(horizontal: false, vertical: true)
             connectButton
         }

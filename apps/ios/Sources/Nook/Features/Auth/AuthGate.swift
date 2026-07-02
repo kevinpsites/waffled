@@ -98,7 +98,7 @@ struct LoginView: View {
     private var header: some View {
         VStack(spacing: 10) {
             Text("🪺").font(.system(size: isKiosk ? 76 : 56))
-            Text(isKiosk ? "Set up your Nook display" : "Welcome to Nook")
+            Text(isKiosk ? "Set up your Kinnook display" : "Welcome to Kinnook")
                 .font(.system(size: isKiosk ? 34 : 26, weight: .bold)).foregroundStyle(NK.ink)
             Text(isKiosk ? "Sign in to show your family's hub on this iPad."
                          : "Sign in to your family's household.")
@@ -159,7 +159,7 @@ struct LoginView: View {
 
     private var setupNotice: some View {
         VStack(spacing: 10) {
-            Text("This Nook isn't set up yet.")
+            Text("This Kinnook isn't set up yet.")
                 .font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
             Text("Finish first-run setup on the web, then sign in here with that admin account.")
                 .font(.system(size: 14)).foregroundStyle(NK.ink3).multilineTextAlignment(.center)

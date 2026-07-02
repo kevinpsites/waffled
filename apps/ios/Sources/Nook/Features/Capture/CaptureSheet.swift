@@ -139,7 +139,7 @@ struct CaptureSheet: View {
             .onChange(of: dictation.transcript) { _, t in if !t.isEmpty { text = t } }
 
             NookPrimaryCTA(
-                label: phase == .parsing ? "Thinking…" : "Tell Nook",
+                label: phase == .parsing ? "Thinking…" : "Tell Kinnook",
                 tint: NK.ai,
                 isBusy: phase == .parsing,
                 isDisabled: !canParse,

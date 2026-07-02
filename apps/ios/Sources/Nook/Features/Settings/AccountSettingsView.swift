@@ -345,7 +345,7 @@ struct PairKioskSheet: View {
                 Text(copied ? "Copied ✓" : "Copy code").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.primary)
             }
             .buttonStyle(.plain)
-            Text("On the tablet: open this Nook’s address → “Set up this device as a kiosk” → enter the code. It’s one-time and expires in about 10 minutes.")
+            Text("On the tablet: open this Kinnook’s address → “Set up this device as a kiosk” → enter the code. It’s one-time and expires in about 10 minutes.")
                 .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 7) {

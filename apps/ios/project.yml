@@ -41,7 +41,7 @@ targets:
     info:
       path: Nook-Info.plist
       properties:
-        CFBundleDisplayName: Nook
+        CFBundleDisplayName: Kinnook
         UILaunchScreen: {}
         # Custom scheme for the Google-calendar OAuth callback (ASWebAuthenticationSession).
         CFBundleURLTypes:
@@ -59,10 +59,10 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown
         # Voice dictation in the AI capture bar (Speech framework).
-        NSMicrophoneUsageDescription: Nook uses the microphone so you can speak an event into the capture bar.
+        NSMicrophoneUsageDescription: Kinnook uses the microphone so you can speak an event into the capture bar.
         # Camera: chore photo-proof + pantry barcode scanning (Open Food Facts lookup).
-        NSCameraUsageDescription: Nook uses the camera to snap chore photo-proof and to scan grocery barcodes into your pantry.
-        NSSpeechRecognitionUsageDescription: Nook transcribes your speech on-device to add events by voice.
+        NSCameraUsageDescription: Kinnook uses the camera to snap chore photo-proof and to scan grocery barcodes into your pantry.
+        NSSpeechRecognitionUsageDescription: Kinnook transcribes your speech on-device to add events by voice.
         # Dev only: allow plain-HTTP to localhost/the tailnet (no TLS in local stack).
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true

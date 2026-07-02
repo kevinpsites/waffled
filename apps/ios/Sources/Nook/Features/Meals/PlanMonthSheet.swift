@@ -124,7 +124,7 @@ struct PlanMonthSheet: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    Text("Nook drafts a dinner rotation for the month from your recipe library, then you tweak it.")
+                    Text("Kinnook drafts a dinner rotation for the month from your recipe library, then you tweak it.")
                         .font(.system(size: 14)).foregroundStyle(NK.ink3).fixedSize(horizontal: false, vertical: true)
 
                     NookFieldCard(title: "Which days?") {

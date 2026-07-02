@@ -86,7 +86,7 @@ struct NotificationsSettingsView: View {
     private var permissionNotice: some View {
         card {
             VStack(alignment: .leading, spacing: 10) {
-                rowLabel("Notifications are turned off", "Allow Nook to send notifications in iOS Settings to get reminders.")
+                rowLabel("Notifications are turned off", "Allow Kinnook to send notifications in iOS Settings to get reminders.")
                 Button {
                     if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
                 } label: {

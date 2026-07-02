@@ -42,7 +42,7 @@ struct AboutSettingsView: View {
                 Text("🪺").font(.system(size: 32)).frame(width: 56, height: 56)
                     .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Nook").font(NK.serif(22)).foregroundStyle(NK.ink)
+                    Text("Kinnook").font(NK.serif(22)).foregroundStyle(NK.ink)
                     Text("Version \(Self.version) (\(Self.build))")
                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
                 }
@@ -57,11 +57,11 @@ struct AboutSettingsView: View {
         NookCard {
             VStack(alignment: .leading, spacing: 12) {
                 SectionLabel(text: "Server")
-                Text("The address of your Nook server — the Caddy origin that serves the app and your photos. Use http://localhost:8080 in the simulator, or http://<your-mac-ip>:8080 on a device. The api’s own port (:3000) won’t serve photos.")
+                Text("The address of your Kinnook server — the Caddy origin that serves the app and your photos. Use http://localhost:8080 in the simulator, or http://<your-mac-ip>:8080 on a device. The api’s own port (:3000) won’t serve photos.")
                     .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Label("Your sign-in is tied to one server. Pointing at a different Nook won’t carry your account over — even if someone else hosts Nook, you’ll need an account there, and may see nothing until you sign in again.", systemImage: "exclamationmark.triangle.fill")
+                Label("Your sign-in is tied to one server. Pointing at a different Kinnook won’t carry your account over — even if someone else hosts Kinnook, you’ll need an account there, and may see nothing until you sign in again.", systemImage: "exclamationmark.triangle.fill")
                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.gold)
                     .fixedSize(horizontal: false, vertical: true)
 

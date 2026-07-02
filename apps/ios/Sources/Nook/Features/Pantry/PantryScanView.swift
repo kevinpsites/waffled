@@ -114,7 +114,7 @@ struct PantryScanView: View {
                  : "No camera on this device")
                 .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
             if cam == .denied {
-                Text("Enable camera for Nook in Settings, or type the barcode.")
+                Text("Enable camera for Kinnook in Settings, or type the barcode.")
                     .font(.system(size: 13)).foregroundStyle(.white.opacity(0.7)).multilineTextAlignment(.center)
             }
             if cam != .checking {

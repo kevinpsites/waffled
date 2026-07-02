@@ -125,7 +125,7 @@ struct PlanWeekSheet: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    Text("Tell Nook the guardrails — it drafts the meals and the grocery list in one go.")
+                    Text("Tell Kinnook the guardrails — it drafts the meals and the grocery list in one go.")
                         .font(.system(size: 14)).foregroundStyle(NK.ink3)
                         .fixedSize(horizontal: false, vertical: true)
 

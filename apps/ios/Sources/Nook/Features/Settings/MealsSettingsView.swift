@@ -52,7 +52,7 @@ struct MealsSettingsView: View {
         NookCard(padding: 4) {
             VStack(spacing: 0) {
                 toggleRow("📅", "Add planned meals to the calendar",
-                          "Each meal you plan shows on the Nook calendar, linked to its recipe.",
+                          "Each meal you plan shows on the Kinnook calendar, linked to its recipe.",
                           isOn: Binding(get: { addToCalendar }, set: { addToCalendar = $0; mark() }))
                 Divider().background(NK.hair)
                 toggleRow("🔄", "Sync them to Google Calendar",

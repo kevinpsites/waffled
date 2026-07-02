@@ -290,7 +290,7 @@ struct EventDetailView: View {
     // MARK: derived
 
     private var calendarStatus: String {
-        guard let name = detail?.calendarName, !name.isEmpty else { return "Nook only" }
+        guard let name = detail?.calendarName, !name.isEmpty else { return "Kinnook only" }
         switch detail?.syncState {
         case "synced": return "\(name) · synced from Google"
         case "pending": return "\(name) · pending sync"

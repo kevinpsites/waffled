@@ -36,7 +36,7 @@ struct KioskCodeEntrySheet: View {
                         tint: NK.primary, isDisabled: !canSubmit,
                         action: { Task { await submit() } }
                     )
-                    Text("Ask an adult to open Nook → Settings → Display & Kiosk → “Pair a kiosk” to get a code. It’s one-time and expires in about 10 minutes.")
+                    Text("Ask an adult to open Kinnook → Settings → Display & Kiosk → “Pair a kiosk” to get a code. It’s one-time and expires in about 10 minutes.")
                         .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
                         .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                 }
