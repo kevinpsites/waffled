@@ -110,7 +110,8 @@ agenda + range), kiosk agenda card + Calendar month-grid screen. Part 2 below is
   all-local **`observability` compose profile** (`grafana/otel-lgtm`, Grafana :3001) toggled by
   **`./nook observability up|down`**; **`./nook doctor`** (in-container health report, non-zero on
   degraded); and a **Settings → System Health** admin panel (live cards, polls `/api/health`).
-  *Still open:* scheduled restore drills (pairs with the parked Phase 4 S3 backup).
+  Backup/restore **shipped 2026-07-01** (see "Operational maturity"). *Still open:* automated
+  scheduled restore *drills* (periodic test-restore into throwaway PG + row-count assert).
 
 ---
 
@@ -128,8 +129,8 @@ and a cross-surface live-refresh bus. Still **zero external dependencies**.
 **What's left** *(reconciled to the self-host pivot — the old Terraform/AWS/Auth0/GCP
 infra milestone is abandoned, not pending; identity shipped via built-in auth + OIDC,
 backups moved to Phase 4)*:
-- **Self-host infra:** **Phase 4 — optional S3 backup** (the only remaining packaging
-  piece; supersedes 2.4) — *parked*.
+- **Self-host infra:** ~~Phase 4 — optional S3 backup~~ **SHIPPED 2026-07-01** (backup/restore,
+  local default + S3 offsite + media + health/doctor; supersedes 2.4). See "Operational maturity".
 - **Needs a 3rd party / hardware:** APNs/web-push delivery for notifications
   (6.7 tail), Apple/Google **store verification** (7.2), public ingress when going
   beyond the LAN (7.3).
@@ -464,11 +465,11 @@ leftovers. Already-planned nights show in the review (editable). Drag-to-swap on
 month grid, week grid, and planner review (optimistic, pointer events). "Eating out"
 + "Leftovers" are always-available picker options. `POST /api/meals/plan-month`.
 
-## Self-hosted (Immich-style) — auth, onboarding, deployment — Phases 1–3 DONE, Phase 4 parked
+## Self-hosted (Immich-style) — auth, onboarding, deployment — Phases 1–4 DONE
 **This section is the current spine of the project** (replaces M0–M1's cloud/Auth0 plan).
 Status: Phase 1 built-in auth · Phase 2 OIDC · member management · Phase 3 packaging +
-GHCR — all **shipped**; iOS native login/OIDC **merged**. Only **Phase 4 (optional S3
-backup)** remains, and it's parked.
+GHCR — all **shipped**; iOS native login/OIDC **merged**. **Phase 4 (backup/restore, local +
+S3) shipped 2026-07-01** — see "Operational maturity" at the end of this file.
 
 **Pivot (2026-06-20):** drop the Terraform/Auth0/cloud-zero path. Ship a self-hosted
 app you `git clone` + `docker compose up` and run; the operator chooses auth (built-in
@@ -616,7 +617,8 @@ steps**. Shipped:
 Build-from-source stays the zero-config default; pulling published images is a pure
 env change (`NOOK_*_IMAGE` → the GHCR tags).
 
-**Next:** Phase 4 optional S3 backup.
+**Next:** ~~Phase 4 optional S3 backup~~ — **SHIPPED 2026-07-01** (local default + S3/B2/R2/MinIO
+offsite + media + health/doctor integration; see "Operational maturity" at the end of this file).
 
 ### Multi-household accounts (one human, many homes) — web + backend SHIPPED 2026-06-29
 A single person can belong to **several households** and switch between them without
@@ -652,3 +654,46 @@ Shipped:
 - [ ] **iOS "Getting started" onboarding** — the iOS analog of the web checklist, reading the
   same server-side `households.settings.onboarding` state so first-run guidance is consistent
   across surfaces (today it's web/kiosk only).
+
+## Operational maturity — reach (and beat) Immich-level stability
+Benchmarked our self-host operational posture against Immich (2026-07-01). We're already
+**ahead on observability** (deep `/api/health` + `./nook doctor` + System Health panel + OTEL
+vs. their shallow `/ping`), at **parity on setup/upgrade** (`./nook up` auto-bootstraps secrets +
+runs migrations; `docker compose pull` upgrades). The real gaps were backup, release discipline,
+and CI. Prioritized backlog (P0 = the "trust it with my family's data" floor):
+
+**P0 — SHIPPED 2026-07-01:**
+- [x] **Backup & restore (local + S3) — exceeds Immich.** New `backup` sidecar
+  (`infra/compose/backup/`, image = `postgres:16` + awscli + a dependency-free bash scheduler):
+  nightly `pg_dump | gzip` into the `nook_backups` volume (**on by default, zero-config**),
+  pruned after `BACKUP_RETENTION_DAYS`. Beats Immich on three axes it lacks: **env-declarative**
+  (not UI-only), **offsite** (`BACKUP_S3_*` → S3 / B2 / R2 / MinIO), and **media** included
+  (`BACKUP_INCLUDE_MEDIA`). `BACKUP_HOST_PATH` writes dumps to an operator-chosen folder. Every
+  run is recorded in **`backup_runs`** (migration 0071) so `/api/health` + `./nook doctor` +
+  Settings → System Health show "last backup: ok/failed, N h ago" (degraded when failed or
+  >48 h stale). CLI: `./nook backup [list]` runs one now; `./nook restore <file>` does a
+  confirmed, app-stopped, single-transaction restore. **Verified live**: backup → recorded →
+  doctor green; restore round-trip → api+powersync healthy, data intact, PowerSync self-healed
+  its replication slot. (Supersedes the old "Phase 4 — optional S3 backup" — now done + broader.)
+- [x] **Test CI.** `.github/workflows/ci.yml` runs api (Testcontainers) + web (vitest) suites +
+  typechecks on every PR and push to `main`. Closes the "rich tests, never run in CI" gap.
+- [ ] **Cut the first release.** Adopt SemVer + a one-line breaking-change policy; tag `v0.1.0`
+  → the existing `publish-images.yml` builds the GHCR images + a GitHub Release. (CHANGELOG ready.)
+
+**P1 — operator polish:**
+- [x] **CHANGELOG + release process** — `CHANGELOG.md` (Keep a Changelog), commit-prefix→category
+  mapping, rolling `[Unreleased]`. Cut-a-release steps documented.
+- [ ] **Serve compose/env from the release** (`releases/latest/download/{docker-compose.yml,example.env}`)
+  so upgraders always get a matched pair, Immich-style.
+- [ ] **Caddy (+ lgtm) healthcheck** so `docker compose ps` is all-green.
+- [ ] **In-app update notifier** — System Health already shows the running SHA; compare against the
+  latest GitHub release tag and show a "new version available" chip (admin only).
+- [ ] **Docs: UPGRADING.md + TROUBLESHOOTING.md** — the two categories we lack vs their spine
+  (`./nook doctor` output already *is* our troubleshooting content — document it).
+
+**P2 — reputation surface:**
+- [ ] **Publish a docs site** (Docusaurus / Astro Starlight over the existing `docs/`) — packaging,
+  content largely exists.
+- [ ] **SECURITY.md + disclosure policy** — trivial, and Immich doesn't have one → a maturity leapfrog.
+- [ ] **CONTRIBUTING.md + Code of Conduct** (if/when open-sourced).
+- [ ] **Android** (Immich has native iOS + Android; we have iOS only).
