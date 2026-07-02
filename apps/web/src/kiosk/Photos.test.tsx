@@ -3,6 +3,16 @@ import { MemoryRouter } from 'react-router'
 import { Photos } from './Photos'
 import { TopbarSlotProvider, useTopbarSlots } from './topbar-slot'
 
+// The real Screensaver runs slideshow/clock setIntervals; under a CPU-constrained CI
+// runner those thrash this file (30–60× slower → timeouts). It has its own coverage
+// (Screensaver.test.tsx), so here we stub it with the same accessible surface these
+// tests assert against — Photos only needs to open it and wake on tap.
+vi.mock('./components/Screensaver', () => ({
+  Screensaver: ({ onWake }: { onWake: () => void }) => (
+    <div role="button" aria-label="Wake screensaver" onClick={onWake}>Tap anywhere to wake</div>
+  ),
+}))
+
 // Render the topbar's right slot so the screen's "Play screensaver" / "Add
 // photos" buttons (injected via useTopbarRight) are testable, the way KioskLayout
 // wires them in the real app.
@@ -158,10 +168,11 @@ describe('Photos home (family wall)', () => {
     mockApi({ photos: [beach, cake] })
     renderHome()
 
-    fireEvent.click(await screen.findByRole('button', { name: /🖼️ Play/ }))
-    // The full-screen screensaver is a heavy mount; on slow CI it can exceed findBy's
-    // 1s default, so wait longer (resolves as soon as it appears).
-    const saver = await screen.findByRole('button', { name: /Wake screensaver/ }, { timeout: 8000 })
+    fireEvent.click(await screen.findByRole('button', { name: /🖼️ Play/ }, { timeout: 8000 }))
+    // The full-screen screensaver is a heavy mount (running slideshow timers); on a
+    // CPU-starved CI runner it can take several seconds, so wait generously — it
+    // resolves as soon as it appears.
+    const saver = await screen.findByRole('button', { name: /Wake screensaver/ }, { timeout: 12000 })
     expect(within(saver).getByText('Tap anywhere to wake')).toBeInTheDocument()
     fireEvent.click(saver)
     await waitFor(() => expect(screen.queryByText('Tap anywhere to wake')).not.toBeInTheDocument())
@@ -227,7 +238,7 @@ describe('Photos home (family wall)', () => {
     fireEvent.click(screen.getByText('Beach day'))
     fireEvent.click(screen.getByText('Dad’s birthday'))
     // the select-mode toolbar re-renders async on slow CI — wait for the count
-    expect(await screen.findByText('2 selected')).toBeInTheDocument()
+    expect(await screen.findByText('2 selected', undefined, { timeout: 8000 })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }))
     expect(await screen.findByText('Delete 2 photos?')).toBeInTheDocument()
@@ -244,7 +255,7 @@ describe('Photos home (family wall)', () => {
     fireEvent.click(await screen.findByRole('button', { name: /^Select$/ }))
     fireEvent.click(screen.getByText('Beach day'))
     fireEvent.click(screen.getByText('Dad’s birthday'))
-    fireEvent.click(await screen.findByRole('button', { name: /Move to album/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Move to album/ }, { timeout: 8000 }))
 
     // pick a new album in the move modal, then Move
     const select = await screen.findByRole('combobox')

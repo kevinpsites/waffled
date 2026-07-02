@@ -56,5 +56,9 @@ export default defineConfig({
     fileParallelism: false,
     // Extra headroom for the heavier interaction tests on slow CI.
     testTimeout: 15000,
+    // CI-only safety net: GitHub's shared 2-core runners occasionally stall a whole
+    // file (GC / scheduler) despite the fixes above. Retry on CI so a transient load
+    // stall doesn't red-X the build; keep 0 locally so real failures fail fast.
+    retry: process.env.CI ? 2 : 0,
   },
 })
