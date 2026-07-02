@@ -75,7 +75,11 @@ struct KioskBootCover: View {
 
     private var loadingBody: some View {
         VStack(spacing: 18) {
-            Text("🪺").font(.system(size: 72))
+            Image("KinnookMark").resizable().scaledToFit().padding(16)
+                .frame(width: 116, height: 116)
+                .background(NK.card)
+                .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
                 .scaleEffect(pulse ? 1.08 : 0.94)
                 .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulse)
             Text("Setting up your family hub…")
@@ -85,7 +89,12 @@ struct KioskBootCover: View {
 
     private var stalledBody: some View {
         VStack(spacing: 16) {
-            Text("🪺").font(.system(size: 64)).opacity(0.7)
+            Image("KinnookMark").resizable().scaledToFit().padding(13)
+                .frame(width: 96, height: 96)
+                .background(NK.card)
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                .opacity(0.7)
             Text("Couldn’t reach your hub")
                 .font(.system(size: 20, weight: .bold)).foregroundStyle(NK.ink)
             Text("Still connecting to sync. Check this device’s Server address and your network — or sign out and back in.")
