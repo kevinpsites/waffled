@@ -10,16 +10,30 @@ struct NookApp: App {
     @State private var session = Session()
     @State private var notifications = NotificationManager()
     @State private var kiosk = KioskMode()
+    /// Cold-launch splash (bouncing logo on cream). Shown once per launch, then faded.
+    @State private var showSplash = true
 
     var body: some Scene {
         WindowGroup {
-            // KioskGate wraps the auth gate: a shared-kiosk iPad with nobody claimed in
-            // shows the profile picker INSTEAD of the login screen. On iPhone (and a
-            // single-login iPad) it's a transparent passthrough.
-            KioskGate {
-                AuthGate {
-                    RootView()
-                        .task { await sync.start() }   // connect PowerSync once signed in
+            ZStack {
+                // KioskGate wraps the auth gate: a shared-kiosk iPad with nobody claimed in
+                // shows the profile picker INSTEAD of the login screen. On iPhone (and a
+                // single-login iPad) it's a transparent passthrough.
+                KioskGate {
+                    AuthGate {
+                        RootView()
+                            .task { await sync.start() }   // connect PowerSync once signed in
+                    }
+                }
+                if showSplash {
+                    SplashView()
+                        .transition(.opacity)
+                        .zIndex(1)
+                        // Guarantee the bounce is seen even if bootstrap is instant, then fade.
+                        .task {
+                            try? await Task.sleep(for: .seconds(1.35))
+                            withAnimation(.easeOut(duration: 0.45)) { showSplash = false }
+                        }
                 }
             }
             .environment(sync)

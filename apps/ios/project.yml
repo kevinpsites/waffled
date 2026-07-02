@@ -42,7 +42,11 @@ targets:
       path: Nook-Info.plist
       properties:
         CFBundleDisplayName: Kinnook
-        UILaunchScreen: {}
+        # Static launch screen: just the warm-white canvas (no white flash). The
+        # bouncing logo is drawn by SplashView once SwiftUI takes over — the cream
+        # matches so the hand-off is seamless. (Launch screens can't animate.)
+        UILaunchScreen:
+          UIColorName: LaunchBackground
         # Custom scheme for the Google-calendar OAuth callback (ASWebAuthenticationSession).
         CFBundleURLTypes:
           - CFBundleURLName: com.kevinsites.nook.oauth

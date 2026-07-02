@@ -18,15 +18,29 @@ struct AuthGate<Content: View>: View {
     }
 }
 
-/// The warm-white launch screen shown for the moment it takes to read the Keychain
-/// and probe `/auth/status`.
+/// The warm-white launch screen: the Kinnook house mark bouncing on cream. Shown as
+/// the cold-launch overlay (`NookApp`) and again for the moment `AuthGate` spends
+/// reading the Keychain / probing `/auth/status`. The static launch screen paints the
+/// same cream (`project.yml` → `UILaunchScreen.UIColorName`) so the hand-off has no
+/// flash; the logo just pops in and bobs. (Launch screens themselves can't animate.)
 struct SplashView: View {
+    @State private var poppedIn = false   // springy scale-in with overshoot
+    @State private var bobbing = false    // soft, endless bounce
+
     var body: some View {
         ZStack {
             NK.canvas.ignoresSafeArea()
-            VStack(spacing: 14) {
-                Text("🪺").font(.system(size: 52))
-                ProgressView().tint(NK.ink3)
+            Image("KinnookMark")
+                .resizable().scaledToFit()
+                .frame(width: 128, height: 128)
+                .scaleEffect(poppedIn ? 1 : 0.72)
+                .offset(y: bobbing ? -18 : 0)
+                .shadow(color: .black.opacity(0.07), radius: 16, y: 10)
+        }
+        .onAppear {
+            withAnimation(.interpolatingSpring(stiffness: 170, damping: 11)) { poppedIn = true }
+            withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true).delay(0.18)) {
+                bobbing = true
             }
         }
     }
