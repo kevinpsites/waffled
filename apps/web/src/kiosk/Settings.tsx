@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
@@ -9,22 +9,31 @@ import '../styles/settings.css'
 
 // `admin` tabs are only shown to admins — non-admins can't change those settings,
 // so we don't show options they can't use (they still get About + Sign out).
+// Grouped into three tiers: Account (you) · Family (shared config an admin sets) ·
+// System (the self-host/deployment). Order = who you are → the features you use →
+// account/operator. Account is thin today; it grows with per-member self-service later.
 const NAV = [
-  { key: 'family', icon: '👨‍👩‍👧‍👦', label: 'Family & People', admin: true },
-  { key: 'ai', icon: '✨', label: 'AI & Capture', admin: true },
-  { key: 'security', icon: '🔐', label: 'Sign-in & Security', admin: true },
-  { key: 'calendars', icon: '📅', label: 'Calendars', admin: true },
-  { key: 'chores', icon: '⭐', label: 'Chores & Rewards', admin: true },
-  { key: 'meals', icon: '🍽️', label: 'Meals', admin: true },
-  { key: 'lists', icon: '📝', label: 'Lists', admin: true },
-  { key: 'display', icon: '🖥️', label: 'Display & Kiosk', admin: true },
-  { key: 'notifications', icon: '🔔', label: 'Notifications', admin: true },
-  { key: 'modules', icon: '🧩', label: 'Modules', admin: true },
-  { key: 'health', icon: '🩺', label: 'System Health', admin: true },
-  { key: 'apikeys', icon: '🔑', label: 'API Keys', admin: true },
-  { key: 'households', icon: '🏠', label: 'Households' },
-  { key: 'about', icon: 'ℹ️', label: 'About' },
+  // Account — you
+  { key: 'households', icon: '🏠', label: 'Households', group: 'account' },
+  // Family — shared household configuration (admin)
+  { key: 'family', icon: '👨‍👩‍👧‍👦', label: 'Family & People', admin: true, group: 'family' },
+  { key: 'calendars', icon: '📅', label: 'Calendars', admin: true, group: 'family' },
+  { key: 'chores', icon: '⭐', label: 'Chores & Rewards', admin: true, group: 'family' },
+  { key: 'meals', icon: '🍽️', label: 'Meals', admin: true, group: 'family' },
+  { key: 'lists', icon: '📝', label: 'Lists', admin: true, group: 'family' },
+  { key: 'modules', icon: '🧩', label: 'Modules', admin: true, group: 'family' },
+  { key: 'display', icon: '🖥️', label: 'Display & Kiosk', admin: true, group: 'family' },
+  { key: 'notifications', icon: '🔔', label: 'Notifications', admin: true, group: 'family' },
+  // System — the self-hosted deployment (admin/operator)
+  { key: 'security', icon: '🔐', label: 'Sign-in & Security', admin: true, group: 'system' },
+  { key: 'ai', icon: '✨', label: 'AI & Capture', admin: true, group: 'system' },
+  { key: 'apikeys', icon: '🔑', label: 'API Keys', admin: true, group: 'system' },
+  { key: 'health', icon: '🩺', label: 'System Health', admin: true, group: 'system' },
+  // About sits on its own at the end
+  { key: 'about', icon: 'ℹ️', label: 'About', group: 'about' },
 ]
+
+const NAV_GROUP_LABELS: Record<string, string> = { account: 'Account', family: 'Family', system: 'System' }
 
 const TIMEZONES = [
   'America/New_York',
@@ -2555,12 +2564,18 @@ export function Settings() {
     <div className="settings-screen">
       <div className="set-nav">
         <div className="flabel" style={{ margin: '2px 2px 8px' }}>SETTINGS</div>
-        {nav.map((n) => (
-          <button type="button" key={n.key} className={`set-navitem ${activeTab === n.key ? 'on' : ''}`} onClick={() => setTab(n.key)}>
-            <span className="set-navic">{n.icon}</span>
-            {n.label}
-          </button>
-        ))}
+        {nav.map((n, i) => {
+          const header = NAV_GROUP_LABELS[n.group] && n.group !== nav[i - 1]?.group ? NAV_GROUP_LABELS[n.group] : null
+          return (
+            <Fragment key={n.key}>
+              {header && <div className="set-navgroup">{header}</div>}
+              <button type="button" className={`set-navitem ${activeTab === n.key ? 'on' : ''}`} onClick={() => setTab(n.key)}>
+                <span className="set-navic">{n.icon}</span>
+                {n.label}
+              </button>
+            </Fragment>
+          )
+        })}
         <div className="set-nav-foot">
           <SignOutButton className="set-navitem set-signout" />
         </div>
