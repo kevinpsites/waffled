@@ -15,6 +15,7 @@ struct KioskDashboard: View {
     @State private var model = KioskTodayModel()
     @State private var recipes = RecipesModel()
     @State private var countdowns = CountdownsModel()
+    @State private var addCountdown = false
     @State private var detailEvent: SyncedEvent?
     @State private var recipeTarget: RecipeTarget?
     @State private var showCapture = false
@@ -220,31 +221,52 @@ struct KioskDashboard: View {
     private var agendaCol: some View {
         VStack(spacing: 22) {
             agendaColumn
-            if !countdowns.items.isEmpty { kioskCountdownsCard }
+            if countdowns.loaded { kioskCountdownsCard }
         }
     }
 
-    /// Compact countdowns card under the agenda column (iPad Today). Read-only here —
-    /// adding/removing lives on the phone card + the event editor's countdown toggle.
+    /// Compact countdowns card under the agenda column (iPad Today). Standalone items can
+    /// be added (header "+ Add") and removed (row ✕) right here; events/birthdays are
+    /// managed at their source (the event editor's countdown toggle · a member's birthday).
     @ViewBuilder private var kioskCountdownsCard: some View {
         KioskCard {
             VStack(alignment: .leading, spacing: 12) {
-                cardHeader("Countdowns", chevron: false)
-                ForEach(countdowns.items.prefix(4)) { c in
-                    HStack(spacing: 12) {
-                        Text(c.emoji ?? "📅").font(.system(size: 22))
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(c.title).font(.system(size: 18, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
-                            Text(CountdownFormat.dateLabel(c.date)).font(.system(size: 13)).foregroundStyle(NK.ink3)
-                        }
-                        Spacer(minLength: 8)
-                        Text(CountdownFormat.label(c.daysLeft, sleeps: countdowns.sleeps))
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(c.daysLeft <= 7 ? NK.primaryD : NK.ink2)
-                    }
+                HStack(spacing: 8) {
+                    Text("Countdowns").font(.system(size: 16, weight: .heavy)).foregroundStyle(NK.ink)
+                    Spacer(minLength: 6)
+                    Button { addCountdown = true } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus").font(.system(size: 12, weight: .bold))
+                            Text("Add").font(.system(size: 14, weight: .semibold))
+                        }.foregroundStyle(NK.ai)
+                    }.buttonStyle(.plain)
                 }
-                if countdowns.items.count > 4 {
-                    Text("+\(countdowns.items.count - 4) more").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                if countdowns.items.isEmpty {
+                    Text("Nothing to count down to yet — add a trip; birthdays are automatic.")
+                        .font(.system(size: 15)).foregroundStyle(NK.ink3)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
+                } else {
+                    ForEach(countdowns.items.prefix(4)) { c in
+                        HStack(spacing: 12) {
+                            Text(c.emoji ?? "📅").font(.system(size: 22))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(c.title).font(.system(size: 18, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                                Text(CountdownFormat.dateLabel(c.date)).font(.system(size: 13)).foregroundStyle(NK.ink3)
+                            }
+                            Spacer(minLength: 8)
+                            Text(CountdownFormat.label(c.daysLeft, sleeps: countdowns.sleeps))
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(c.daysLeft <= 7 ? NK.primaryD : NK.ink2)
+                            if c.isStandalone {
+                                Button { Task { await countdowns.remove(c) } } label: {
+                                    Image(systemName: "xmark.circle.fill").font(.system(size: 18)).foregroundStyle(NK.ink3)
+                                }.buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    if countdowns.items.count > 4 {
+                        Text("+\(countdowns.items.count - 4) more").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                    }
                 }
             }
         }
