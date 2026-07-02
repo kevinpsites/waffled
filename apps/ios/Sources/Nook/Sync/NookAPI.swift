@@ -1164,6 +1164,9 @@ struct NookAPI: Sendable {
         let lowAt: Double?
         let isMeal: Bool?
         let createdAt: String?
+        /// When the item entered the pantry (YYYY-MM-DD), distinct from `createdAt` (the
+        /// row's log time). Drives the "item age" chip + "Been a while" group; backdatable.
+        let addedOn: String?
         var isOff: Bool { source == "openfoodfacts" }
     }
 
@@ -1195,6 +1198,9 @@ struct NookAPI: Sendable {
         let allergenPeople: [String: [String]]
         let lowThreshold: Double
         let locationIcons: [String: String]?
+        /// Household "old" threshold in months (default 6). Items on hand longer get an
+        /// age chip + a "Been a while" group. Read-only on iOS (edited from the web).
+        let staleMonths: Double?
     }
 
     func pantryList() async throws -> PantryList {
@@ -1237,6 +1243,75 @@ struct NookAPI: Sendable {
 
     func pantryDelete(id: String) async throws {
         try await delete("/api/pantry/\(id)")
+    }
+
+    /// An on-hand pantry item a just-cooked recipe likely used, with a server-suggested
+    /// action. `suggested` / the consume `mode` are one of "used_up" | "decrement" | "skip"
+    /// ("skip" is never sent to /consume — the sheet filters it out).
+    struct RecipeMatch: Decodable, Identifiable, Hashable, Sendable {
+        let id: String
+        let name: String
+        let amount: String
+        let unit: String
+        let isStaple: Bool
+        let suggested: String
+    }
+
+    /// On-hand items that a just-cooked recipe likely used (matched server-side by name
+    /// tokens), each with a suggested consume action. Empty when the pantry module is off
+    /// or nothing matched — the caller then skips the confirm sheet.
+    func pantryForRecipe(recipeId: String) async throws -> [RecipeMatch] {
+        struct Resp: Decodable { let matches: [RecipeMatch] }
+        return try await getJSON("/api/pantry/for-recipe/\(recipeId)", as: Resp.self).matches
+    }
+
+    /// Apply the confirmed consumption: each `(id, mode)` either marks the item used-up
+    /// (recoverable) or knocks one off a countable amount (a decrement to ≤0 becomes
+    /// used-up). Returns the updated items. Only "used_up"/"decrement" modes are sent.
+    @discardableResult
+    func pantryConsume(_ items: [(id: String, mode: String)]) async throws -> [PantryItem] {
+        struct Resp: Decodable { let items: [PantryItem] }
+        let body: [String: JSONValue] = ["items": .array(items.map {
+            .object(["id": .string($0.id), "mode": .string($0.mode)])
+        })]
+        return try await sendReturning("POST", "/api/pantry/consume", body: body, as: Resp.self).items
+    }
+
+    /// A recipe you can make right now (every non-staple ingredient is on hand).
+    struct CookReady: Decodable, Identifiable, Hashable, Sendable {
+        let recipeId: String
+        let title: String
+        let emoji: String?
+        let have: [String]
+        let expiringItem: String?
+        var id: String { recipeId }
+    }
+    /// One of the top library recipes for an on-hand protein group.
+    struct CookMainRecipe: Decodable, Identifiable, Hashable, Sendable {
+        let recipeId: String
+        let title: String
+        let have: Int
+        let total: Int
+        let missing: [String]
+        var id: String { recipeId }
+    }
+    /// An on-hand protein and the library recipes it unlocks (the group taps through to a
+    /// protein-filtered library; up to 3 near-makeable recipes shown).
+    struct CookMain: Decodable, Identifiable, Hashable, Sendable {
+        struct Item: Decodable, Hashable, Sendable { let name: String; let amount: String; let unit: String; let expiresOn: String? }
+        let protein: String
+        let item: Item?
+        let count: Int
+        let recipes: [CookMainRecipe]
+        var id: String { protein }
+    }
+
+    /// Feeds "Cook from your pantry": recipes makeable now (`ready`) and on-hand proteins
+    /// as "mains" (`mains`). Gated by the pantry module server-side.
+    func pantryCookable() async throws -> (ready: [CookReady], mains: [CookMain]) {
+        struct Resp: Decodable { let ready: [CookReady]; let mains: [CookMain] }
+        let r = try await getJSON("/api/pantry/cookable", as: Resp.self)
+        return (r.ready, r.mains)
     }
 
     /// The logged-in person, resolved server-side from the token's `sub` via the
@@ -2258,11 +2333,12 @@ struct NookAPI: Sendable {
     func createEvent(title: String, startsAtISO: String, endsAtISO: String?, allDay: Bool,
                      location: String?, personIds: [String], goalId: String?, goalStepId: String?,
                      calendarId: String?, timezone: String?, rrule: String? = nil,
-                     recurrenceEndAt: String? = nil) async throws -> String {
+                     recurrenceEndAt: String? = nil, isCountdown: Bool = false) async throws -> String {
         var body: [String: JSONValue] = [
             "title": .string(title),
             "startsAt": .string(startsAtISO),
             "allDay": .bool(allDay),
+            "isCountdown": .bool(isCountdown),
         ]
         if let e = endsAtISO { body["endsAt"] = .string(e) }
         if let l = location, !l.isEmpty { body["location"] = .string(l) }
@@ -2288,7 +2364,7 @@ struct NookAPI: Sendable {
                      allDay: Bool, location: String?, personIds: [String],
                      goalId: String?, goalStepId: String?,
                      rrule: String? = nil, clearRrule: Bool = false, recurrenceEndAt: String? = nil,
-                     scope: String? = nil, occurrenceStart: String? = nil) async throws {
+                     scope: String? = nil, occurrenceStart: String? = nil, isCountdown: Bool = false) async throws {
         var body: [String: JSONValue] = [
             "title": .string(title),
             "startsAt": .string(startsAtISO),
@@ -2299,6 +2375,7 @@ struct NookAPI: Sendable {
             "participantIds": .array(personIds.map(JSONValue.string)),
             "goalId": goalId.map(JSONValue.string) ?? .null,
             "goalStepId": goalStepId.map(JSONValue.string) ?? .null,
+            "isCountdown": .bool(isCountdown),
         ]
         if let scope { body["scope"] = .string(scope) }
         if let occ = occurrenceStart { body["occurrenceStart"] = .string(occ) }
@@ -2357,6 +2434,61 @@ struct NookAPI: Sendable {
     func eventDetail(id: String) async throws -> EventDetailDTO {
         struct Resp: Decodable { let event: EventDetailDTO }
         return try await getJSON("/api/events/\(id)", as: Resp.self).event
+    }
+
+    // MARK: countdowns ("N days until…")
+
+    /// A countdown item, merged server-side from three sources (`source`): a standalone
+    /// `countdowns` row, a calendar event flagged `isCountdown`, or a member's next
+    /// birthday. `daysLeft` is computed in the household timezone; the list is soonest
+    /// first and never includes past items. Only `standalone` items are editable.
+    struct Countdown: Decodable, Identifiable, Hashable, Sendable {
+        let id: String
+        let title: String
+        let date: String            // YYYY-MM-DD
+        let daysLeft: Int
+        let source: String          // standalone | event | birthday
+        let emoji: String?
+        let color: String?
+        let personId: String?
+        var isStandalone: Bool { source == "standalone" }
+    }
+
+    /// GET /api/countdowns → the merged list + the household "sleeps" preference.
+    func countdowns() async throws -> (items: [Countdown], sleeps: Bool) {
+        struct Resp: Decodable { let countdowns: [Countdown]; let sleeps: Bool }
+        let r = try await getJSON("/api/countdowns", as: Resp.self)
+        return (r.countdowns, r.sleeps)
+    }
+
+    /// Create a standalone countdown. `date` must be YYYY-MM-DD. Returns the new id.
+    @discardableResult
+    func createCountdown(title: String, date: String, emoji: String?, color: String? = nil) async throws -> String {
+        var body: [String: JSONValue] = ["title": .string(title), "date": .string(date)]
+        if let e = emoji, !e.isEmpty { body["emoji"] = .string(e) }
+        if let c = color, !c.isEmpty { body["color"] = .string(c) }
+        struct Resp: Decodable { let id: String }
+        return try await sendReturning("POST", "/api/countdowns", body: body, as: Resp.self).id
+    }
+
+    /// Patch a standalone countdown (any subset of title/date/emoji/color).
+    func updateCountdown(id: String, title: String? = nil, date: String? = nil, emoji: String? = nil, color: String? = nil) async throws {
+        var body: [String: JSONValue] = [:]
+        if let t = title { body["title"] = .string(t) }
+        if let d = date { body["date"] = .string(d) }
+        if let e = emoji { body["emoji"] = e.isEmpty ? .null : .string(e) }
+        if let c = color { body["color"] = c.isEmpty ? .null : .string(c) }
+        try await send("PATCH", "/api/countdowns/\(id)", body: body)
+    }
+
+    /// Soft-delete a standalone countdown.
+    func deleteCountdown(id: String) async throws {
+        try await delete("/api/countdowns/\(id)")
+    }
+
+    /// Toggle the household "N sleeps" vs "N days" wording.
+    func setCountdownSleeps(_ sleeps: Bool) async throws {
+        try await send("PUT", "/api/countdowns/config", body: ["sleeps": .bool(sleeps)])
     }
 
     /// The per-event AI insight card (headline + prep advice + optional "leave by").

@@ -434,7 +434,7 @@ struct TodayView: View {
     // MARK: layout-driven card rendering
 
     static let cardLabels = [
-        "agenda": "Agenda", "tonight": "Tonight's dinner",
+        "agenda": "Agenda", "countdowns": "Countdowns", "tonight": "Tonight's dinner",
         "chores": "Chores", "grocery": "Grocery", "goals": "Goals",
     ]
     private static let smallCards: Set<String> = ["chores", "grocery"]
@@ -478,6 +478,7 @@ struct TodayView: View {
     @ViewBuilder private func cardView(_ key: String) -> some View {
         switch key {
         case "agenda": todayCard
+        case "countdowns": CountdownsCard()
         case "tonight":
             if let summary = dash.tonight?.recipeSummary {
                 Button { path.append(.recipe(summary)) } label: { tonightCard }.buttonStyle(.plain)
@@ -493,7 +494,14 @@ struct TodayView: View {
 
     private func loadLayout() async {
         guard let resp = try? await NookAPI().mobileTodayLayout() else { return }
-        cardOrder = resp.resolved.order
+        var order = resp.resolved.order
+        // Fallback for a server whose mobile card set predates countdowns: surface the
+        // card right after the agenda so it appears regardless. (A current server already
+        // includes it, so the guard avoids a duplicate.)
+        if !order.contains("countdowns"), !resp.resolved.hidden.contains("countdowns") {
+            order.insert("countdowns", at: (order.firstIndex(of: "agenda").map { $0 + 1 }) ?? 0)
+        }
+        cardOrder = order
         hiddenCards = Set(resp.resolved.hidden)
         canEditFamily = resp.canEditFamily
     }

@@ -14,6 +14,8 @@ struct KioskDashboard: View {
 
     @State private var model = KioskTodayModel()
     @State private var recipes = RecipesModel()
+    @State private var countdowns = CountdownsModel()
+    @State private var addCountdown = false
     @State private var detailEvent: SyncedEvent?
     @State private var recipeTarget: RecipeTarget?
     @State private var showCapture = false
@@ -74,6 +76,7 @@ struct KioskDashboard: View {
         .background(NK.canvas)
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .task { await sync.loadIdentity() }
+        .task { await countdowns.load() }
         // Per-domain reloads: each fires on appear (initial load) and only when its own
         // bus bumps — so a grocery toggle no longer reloads chores + meals + weather.
         .task(id: "\(tz.identifier)|\(sync.choresRev)") { await model.loadChores() }
@@ -117,6 +120,9 @@ struct KioskDashboard: View {
         }
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $addCountdown) {
+            AddCountdownSheet { title, date, emoji in await countdowns.add(title: title, date: date, emoji: emoji) }
         }
         .sheet(isPresented: $showApprovals) {
             NavigationStack { ApprovalsView() }.modifier(KioskSheetPresentation(kiosk: isKiosk))
@@ -215,7 +221,59 @@ struct KioskDashboard: View {
 
     // Each column scrolls its own overflow within the fixed dashboard height, so a long
     // grocery/chore stack stays reachable instead of being clipped off the bottom.
-    private var agendaCol: some View { agendaColumn }
+    private var agendaCol: some View {
+        VStack(spacing: 22) {
+            agendaColumn
+            if countdowns.loaded { kioskCountdownsCard }
+        }
+    }
+
+    /// Compact countdowns card under the agenda column (iPad Today). Standalone items can
+    /// be added (header "+ Add") and removed (row ✕) right here; events/birthdays are
+    /// managed at their source (the event editor's countdown toggle · a member's birthday).
+    @ViewBuilder private var kioskCountdownsCard: some View {
+        KioskCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Text("Countdowns").font(.system(size: 16, weight: .heavy)).foregroundStyle(NK.ink)
+                    Spacer(minLength: 6)
+                    Button { addCountdown = true } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus").font(.system(size: 12, weight: .bold))
+                            Text("Add").font(.system(size: 14, weight: .semibold))
+                        }.foregroundStyle(NK.ai)
+                    }.buttonStyle(.plain)
+                }
+                if countdowns.items.isEmpty {
+                    Text("Nothing to count down to yet — add a trip; birthdays are automatic.")
+                        .font(.system(size: 15)).foregroundStyle(NK.ink3)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
+                } else {
+                    ForEach(countdowns.items.prefix(4)) { c in
+                        HStack(spacing: 12) {
+                            Text(c.emoji ?? "📅").font(.system(size: 22))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(c.title).font(.system(size: 18, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                                Text(CountdownFormat.dateLabel(c.date)).font(.system(size: 13)).foregroundStyle(NK.ink3)
+                            }
+                            Spacer(minLength: 8)
+                            Text(CountdownFormat.label(c.daysLeft, sleeps: countdowns.sleeps))
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(c.daysLeft <= 7 ? NK.primaryD : NK.ink2)
+                            if c.isStandalone {
+                                Button { Task { await countdowns.remove(c) } } label: {
+                                    Image(systemName: "xmark.circle.fill").font(.system(size: 18)).foregroundStyle(NK.ink3)
+                                }.buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    if countdowns.items.count > 4 {
+                        Text("+\(countdowns.items.count - 4) more").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                    }
+                }
+            }
+        }
+    }
     private var mealsCol: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 22) { tonightCard; weekDinnersCard }.padding(.bottom, 8)

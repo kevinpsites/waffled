@@ -129,6 +129,17 @@ struct PantryItemDetailView: View {
                 else { Text("—").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink3) }
             }
             Divider().background(NK.hair)
+            factRow("Added") {
+                if let d = model.ageDays(item) {
+                    HStack(spacing: 8) {
+                        Text(PantryExpiry.shortLabel(item.addedOn) ?? "—").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                        AgePill(days: d, icon: false, trailing: " ago", size: 12.5)
+                    }
+                } else {
+                    Text("—").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink3)
+                }
+            }
+            Divider().background(NK.hair)
             factRow("Amount") {
                 if item.usedUp {
                     Text("Used up").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)

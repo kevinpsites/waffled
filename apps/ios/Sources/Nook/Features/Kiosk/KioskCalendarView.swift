@@ -20,6 +20,7 @@ struct KioskCalendarView: View {
     @State private var editing: CalendarView.EventEditTarget?
     @State private var detailEvent: SyncedEvent?
     @State private var headsUp: NookAPI.HeadsUp?
+    @State private var countdowns = CountdownsModel()
 
     private var tz: TimeZone { sync.householdTz }
 
@@ -46,6 +47,7 @@ struct KioskCalendarView: View {
             }
         }
         .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
+        .task { await countdowns.load() }
         .task {
             guard DemoHooks.kioskOpenEvent || DemoHooks.kioskOpenEdit else { return }
             for _ in 0..<40 { if !sync.events.isEmpty { break }; try? await Task.sleep(nanoseconds: 150_000_000) }
@@ -236,13 +238,21 @@ struct KioskCalendarView: View {
         let isToday = cell.key == today
         return Button { withAnimation { selectedDay = cell.key } } label: {
             VStack(alignment: .leading, spacing: 3) {
-                HStack {
+                HStack(spacing: 4) {
                     Text("\(cell.day)")
                         .font(.system(size: 14, weight: isToday ? .heavy : .semibold))
                         .foregroundStyle(cell.inMonth ? (isToday ? .white : NK.ink) : NK.ink3.opacity(0.5))
                         .frame(width: 24, height: 24)
                         .background(isToday ? NK.primary : Color.clear).clipShape(Circle())
                     Spacer(minLength: 0)
+                    if let cds = countdowns.byDate[cell.key], let first = cds.first {
+                        HStack(spacing: 2) {
+                            Text(first.emoji ?? "⏳").font(.system(size: 9))
+                            Text(CountdownFormat.short(first.daysLeft)).font(.system(size: 9, weight: .heavy)).foregroundStyle(Color(hex: 0x8A6D3B))
+                        }
+                        .padding(.horizontal, 4).padding(.vertical, 1)
+                        .background(Color(hex: 0xF4ECD8)).clipShape(Capsule())
+                    }
                 }
                 ForEach(items.prefix(3)) { ev in eventChip(ev) }
                 if items.count > 3 {

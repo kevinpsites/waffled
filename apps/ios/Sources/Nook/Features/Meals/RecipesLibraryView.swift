@@ -63,6 +63,14 @@ struct RecipesLibraryView: View {
     @State private var creating = false
     @FocusState private var searchFocused: Bool
 
+    /// Seed `initialProtein` to open the library pre-filtered to one protein (the
+    /// "Cook from your pantry" mains deep-link). Preserves the memberwise call sites.
+    init(model: RecipesModel, initialProtein: String? = nil, onPick: ((NookAPI.RecipeSummary) -> Void)? = nil) {
+        self.model = model
+        self.onPick = onPick
+        _selProtein = State(initialValue: initialProtein.map { [$0] } ?? [])
+    }
+
     // iPhone: 2 fixed columns. iPad: adaptive — as many ~240pt cards as fit the width.
     private var cols: [GridItem] {
         DeviceExperience.current == .kiosk

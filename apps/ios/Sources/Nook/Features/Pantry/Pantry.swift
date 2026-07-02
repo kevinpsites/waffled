@@ -65,6 +65,22 @@ enum PantryExpiry {
         let start = cal.startOfDay(for: Date())
         return cal.dateComponents([.day], from: start, to: cal.startOfDay(for: d)).day
     }
+    /// Days since a YYYY-MM-DD date (today − date; positive for past dates), or nil.
+    static func daysSince(_ s: String?, tz: TimeZone) -> Int? {
+        guard let u = daysUntil(s, tz: tz) else { return nil }
+        return -u
+    }
+    /// A compact "on hand for" label from a day count, mirroring the web `ageLabel`:
+    /// <14d → "Nd", <1.5 mo → "Nw", <12 mo → "N mo", else years ("1 yr" under ~2y).
+    static func ageLabel(daysSince days: Int) -> String {
+        let d = Double(max(0, days))
+        let m = d / 30.44
+        if d < 14 { return "\(max(1, Int(d.rounded())))d" }
+        if m < 1.5 { return "\(Int((d / 7).rounded()))w" }
+        if m < 12 { return "\(Int(m.rounded())) mo" }
+        let y = m / 12
+        return y < 1.95 ? "1 yr" : "\(Int(y.rounded())) yr"
+    }
 }
 
 // MARK: - OFF snapshot → request body
@@ -103,12 +119,16 @@ final class PantryModel {
     private(set) var allergenPeople: [String: [String]] = [:]
     private(set) var lowThreshold: Double = 1
     private(set) var locationIcons: [String: String] = [:]
+    /// Household "old" threshold in months (default 6); items on hand longer are flagged.
+    private(set) var staleMonths: Double = 6
     private(set) var loading = true
     private(set) var error = false
     private(set) var loaded = false
     /// Days-to-expiry per item id, computed once at load — so sort/filter/badges don't
     /// re-do date math (a `Calendar` alloc + `startOfDay`) on every keystroke.
     private(set) var daysToExpiry: [String: Int] = [:]
+    /// Days on hand per item id (today − addedOn), likewise precomputed once at load.
+    private(set) var daysOnHand: [String: Int] = [:]
 
     private let api = NookAPI()
 
@@ -122,6 +142,7 @@ final class PantryModel {
             allergenPeople = r.allergenPeople
             lowThreshold = r.lowThreshold
             locationIcons = r.locationIcons ?? [:]
+            staleMonths = r.staleMonths ?? 6
             recomputeDays()
             error = false
             loaded = true
@@ -131,13 +152,23 @@ final class PantryModel {
 
     private func recomputeDays() {
         var d: [String: Int] = [:]
-        for i in items where i.expiresOn != nil {
-            if let n = PantryExpiry.daysUntil(i.expiresOn, tz: .current) { d[i.id] = n }
+        var age: [String: Int] = [:]
+        for i in items {
+            if i.expiresOn != nil, let n = PantryExpiry.daysUntil(i.expiresOn, tz: .current) { d[i.id] = n }
+            if let n = PantryExpiry.daysSince(i.addedOn, tz: .current) { age[i.id] = n }
         }
         daysToExpiry = d
+        daysOnHand = age
     }
 
     func days(_ item: NookAPI.PantryItem) -> Int? { daysToExpiry[item.id] }
+    /// Days this item has been on hand (nil if it has no added-date). O(1) lookup.
+    func ageDays(_ item: NookAPI.PantryItem) -> Int? { daysOnHand[item.id] }
+    /// "Been a while" — on hand at least the household's stale threshold (default 6 mo).
+    func isOld(_ item: NookAPI.PantryItem) -> Bool {
+        guard let d = daysOnHand[item.id] else { return false }
+        return Double(d) >= staleMonths * 30.44
+    }
 
     /// The effective avoid-set: household avoid-list ∪ any allergen a member has.
     var avoidSet: Set<String> { Set(avoidAllergens).union(allergenPeople.keys) }
@@ -212,6 +243,23 @@ final class PantryModel {
         items.removeAll { $0.id == item.id }
         do { try await api.pantryDelete(id: item.id) }
         catch { items = snapshot }
+    }
+}
+
+/// The amber "been a while" age chip — 🕰️ + a compact age label (e.g. "8 mo"), used on
+/// list rows (old items only) and the item detail. `trailing` appends " ago" for the
+/// detail's Added row, matching the web.
+struct AgePill: View {
+    let days: Int
+    var icon: Bool = true
+    var trailing: String = ""
+    var size: CGFloat = 10.5
+    var body: some View {
+        Text("\(icon ? "🕰️ " : "")\(PantryExpiry.ageLabel(daysSince: days))\(trailing)")
+            .font(.system(size: size, weight: .bold))
+            .foregroundStyle(Color(hex: 0x8A6D3B))
+            .padding(.horizontal, 7).padding(.vertical, 2)
+            .background(Color(hex: 0xF4ECD8)).clipShape(Capsule())
     }
 }
 
