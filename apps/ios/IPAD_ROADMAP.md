@@ -4,13 +4,22 @@ A living checklist for bringing Nook to iPad as a **full, interactive, web-like 
 app**. Check items off as we land them; keep the rationale notes so we don't lose context
 about *why* a decision was made or *what's deferred and why it's safe to defer*.
 
-> **Status (updated 2026-06-25, post-merge to `main`):** Phases 0–3 done — universal app,
-> single-profile login, Today dashboard, and the **full nav rail + every page** (Today,
-> Calendar, Chores, Rewards, Goals, Family, Meals, Lists, Photos, Settings), all
-> interactive. Phase 5 (**screensaver**) shipped early after all — idle photo slideshow
-> with crossfade + Ken-Burns, clock · weather · next event, night-dim, "Play" from Photos,
-> and a settings "Preview". Remaining: Phase 4 polish (icon/launch/App-Store), the shared
-> top-bar capture, the two iPad-Today banners, and the deferred multi-profile picker.
+> **Status (updated 2026-07-02):** Phases 0–3 done — universal app, single-profile login,
+> Today dashboard, and the **full nav rail + every page**, all interactive. Phase 5
+> (**screensaver**) shipped. **Phase 4 branding shipped** — the **Kinnook** app icon + a
+> cold-launch **bouncing-logo splash** on the cream canvas (product renamed Nook → Kinnook
+> across the UI). The multi-profile picker, top-bar capture, and the two iPad-Today banners
+> shipped too. **Remaining: App Store submission.**
+>
+> **Since the 06-25 status (iPad + iPhone):** Calendar **Countdowns** (Today card + month
+> badges); the **Pantry** module to web parity (item age, cook→decrement, Cook-from-pantry,
+> dietary chips, and a **Settings → Pantry** editor — locations, per-location icons,
+> thresholds, allergen avoid-list); the **Family Night** module (Today card + agenda
+> editor); a **customizable nav rail** — a per-device picker (Today + Calendar pinned,
+> choose up to 5 more) with the rest falling into a new **"More"** hub; and a Settings
+> reorg into **Account · Family · System** tiers (mirroring web) — "Accounts" renamed
+> **Households**, **Display & Kiosk** split into "This iPad" (device-local) vs "Family
+> displays" (household-wide), and the Family list ordered to match Settings → Modules.
 >
 > Cross-cutting features that landed alongside the iPad work (both iPhone + iPad): role-based
 > **permission gating** + the **permissions matrix editor**, **chore photo-proof**

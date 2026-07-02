@@ -79,7 +79,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   gating** + the permissions matrix editor, native sign-in (password + OIDC), offline-first
   calendar over PowerSync, and local event notifications (Snooze/View). The iPad also has the
   **family-display screensaver** (idle
-  photo slideshow · clock · weather · next event · night-dim). Per-surface (iPhone / iPad)
+  photo slideshow · clock · weather · next event · night-dim). The newer modules reached
+  parity too — **Pantry** (Open Food Facts lookup, cook→decrement, Cook-from-pantry, and a
+  Settings → Pantry editor), **Calendar Countdowns**, and **Family Night** — plus a
+  **customizable iPad nav rail** (a per-device pick + a "More" overflow hub) and a
+  three-tier **Settings** reorg (Account · Family · System). The app is now branded
+  **Kinnook**. Per-surface (iPhone / iPad)
   status — and the remaining mobile gaps — live in the [feature matrix](./features.md).
 
 ## Partial / in progress 🟡
