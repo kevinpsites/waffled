@@ -39,8 +39,9 @@ struct AboutSettingsView: View {
     private var appCard: some View {
         NookCard {
             HStack(spacing: 14) {
-                Text("🪺").font(.system(size: 32)).frame(width: 56, height: 56)
-                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                Image("KinnookMark").resizable().scaledToFit().padding(6).frame(width: 56, height: 56)
+                    .background(NK.card).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Kinnook").font(NK.serif(22)).foregroundStyle(NK.ink)
                     Text("Version \(Self.version) (\(Self.build))")
