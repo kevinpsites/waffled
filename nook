@@ -9,9 +9,11 @@
 #   ./nook rebuild [svc]   force a rebuild + recreate (all, or one)
 #   ./nook logs [svc]      follow logs (all, or one)
 #   ./nook migrate   re-apply DB migrations from the host (also run automatically on up)
+#   ./nook backup [list]   run a DB backup now (or list existing dumps)
+#   ./nook restore <file>  restore a dump (DESTRUCTIVE — stops the app, overwrites the DB)
 #   ./nook psql      open a psql shell on the database
 #   ./nook token [sub]     mint a dev JWT for localStorage (default sub: dev|demo)
-#   ./nook doctor    deep health check (db, migrations, jobs, calendar, storage)
+#   ./nook doctor    deep health check (db, migrations, jobs, calendar, storage, backup)
 #   ./nook admin [cmd]     operator/break-glass commands (reset-password, list-members,
 #                    make-admin, prune-sessions, …); run './nook admin help' for the list
 #   ./nook observability up|down   run a local Grafana/OTEL stack + point the api at it
@@ -27,7 +29,7 @@ ENV_FILE="$ROOT/infra/compose/.env"
 DC=(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE")
 
 # Services we expect to be running, in startup order.
-SERVICES=(postgres api powersync caddy)
+SERVICES=(postgres api powersync caddy backup)
 
 c_reset=$'\033[0m'; c_red=$'\033[31m'; c_grn=$'\033[32m'; c_ylw=$'\033[33m'; c_dim=$'\033[2m'
 
@@ -114,6 +116,48 @@ case "$cmd" in
     pg_db="$(env_val POSTGRES_DB)"; pg_port="$(env_val POSTGRES_PORT)"; pg_port="${pg_port:-5432}"
     echo "${c_dim}Applying migrations…${c_reset}"
     ( cd "$ROOT/apps/api" && DATABASE_URL="postgres://$pg_user:$pg_pass@localhost:$pg_port/$pg_db" npm run migrate )
+    ;;
+  backup)
+    # Run a backup right now (or list dumps) via the backup sidecar. It has pg_dump,
+    # the /backups target, and DATABASE_URL already — no flags to remember.
+    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^nook-backup$'; then
+      echo "${c_red}nook-backup is not running — start it with ./nook up${c_reset}"; exit 2
+    fi
+    if [ "${1:-}" = "list" ]; then
+      docker exec nook-backup sh -c 'ls -lh /backups/nook-*.sql.gz 2>/dev/null || echo "no backups yet"'
+    else
+      echo "${c_dim}Running a backup now…${c_reset}"
+      docker exec nook-backup nook-backup
+    fi
+    ;;
+  restore)
+    file="${1:-}"
+    if [ -z "$file" ]; then
+      echo "usage: ./nook restore <file>   (see ./nook backup list for names, e.g. nook-20260701-020000.sql.gz)"; exit 1
+    fi
+    file="$(basename "$file")"   # accept a bare name or a path; the file lives in /backups
+    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^nook-backup$'; then
+      echo "${c_red}nook-backup is not running — start it with ./nook up${c_reset}"; exit 2
+    fi
+    if ! docker exec nook-backup test -f "/backups/$file"; then
+      echo "${c_red}/backups/$file not found. Run './nook backup list'.${c_reset}"; exit 1
+    fi
+    echo "${c_ylw}This OVERWRITES the current database with $file — all current data is replaced.${c_reset}"
+    if [ -t 0 ]; then
+      read -r -p "Type 'restore' to continue: " ans
+      [ "$ans" = "restore" ] || { echo "aborted"; exit 1; }
+    fi
+    echo "${c_dim}Stopping app services (api, powersync, caddy) so nothing writes during the restore…${c_reset}"
+    "${DC[@]}" stop api powersync caddy || true
+    echo "${c_dim}Restoring…${c_reset}"
+    # Plain-SQL dump: the --clean/--if-exists header drops+recreates objects, so piping
+    # it back through psql restores in place. --single-transaction → all-or-nothing.
+    docker exec nook-backup sh -c \
+      "gunzip -c /backups/$file | psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 --single-transaction"
+    echo "${c_dim}Restarting the stack (migrations re-run to catch up an older dump)…${c_reset}"
+    export_build_meta; "${DC[@]}" up -d
+    echo; status || true
+    echo "${c_grn}Restore complete.${c_reset}"
     ;;
   psql)
     docker exec -it nook-postgres psql -U "$(env_val POSTGRES_USER)" -d "$(env_val POSTGRES_DB)" ;;

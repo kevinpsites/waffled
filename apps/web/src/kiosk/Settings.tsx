@@ -169,6 +169,7 @@ const HEALTH_TITLE: Record<string, string> = {
   schedulers: 'Background jobs',
   calendar: 'Calendar sync',
   storage: 'Media storage',
+  backup: 'Backups',
 }
 
 // One health check rendered as a card: status badge + its non-status fields as

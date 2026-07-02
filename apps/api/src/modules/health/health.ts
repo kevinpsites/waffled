@@ -130,6 +130,65 @@ function checkStorage(): { status: Status } & Record<string, unknown> {
   }
 }
 
+// Last automatic backup — degraded if the most recent run failed, or if the newest
+// successful dump is older than ~2 daily cycles (48h). Off cleanly when BACKUP_ENABLED
+// is false, or before the first run / migration (never a false alarm).
+async function checkBackup(): Promise<{ status: Status } & Record<string, unknown>> {
+  if ((process.env.BACKUP_ENABLED ?? 'true') === 'false') {
+    return { status: 'ok', enabled: false, note: 'Automatic backups are disabled (BACKUP_ENABLED=false).' }
+  }
+  try {
+    const { rows } = await query<{
+      status: string
+      finished_at: string | null
+      file_name: string | null
+      size_bytes: string | null
+      error: string | null
+      age_hours: number | null
+    }>(
+      `select status, finished_at, file_name, size_bytes, error,
+              extract(epoch from (now() - finished_at)) / 3600 as age_hours
+         from backup_runs
+        where status in ('success','failed')
+        order by finished_at desc nulls last
+        limit 1`
+    )
+    if (rows.length === 0) {
+      return {
+        status: 'ok',
+        enabled: true,
+        lastBackupAt: null,
+        note: 'No backup has run yet — the first runs on schedule (BACKUP_TIME). Run one now: `./nook backup`.',
+      }
+    }
+    const last = rows[0]
+    if (last.status === 'failed') {
+      return {
+        status: 'degraded',
+        enabled: true,
+        lastStatus: 'failed',
+        lastBackupAt: last.finished_at,
+        error: last.error ?? undefined,
+        hint: 'The last backup failed. Check `./nook logs backup` (disk space, or BACKUP_S3_* credentials/endpoint).',
+      }
+    }
+    const ageHours = last.age_hours == null ? null : Math.round(last.age_hours)
+    const stale = ageHours != null && ageHours > 48
+    return {
+      status: stale ? 'degraded' : 'ok',
+      enabled: true,
+      lastStatus: 'success',
+      lastBackupAt: last.finished_at,
+      lastFile: last.file_name ?? undefined,
+      lastSizeBytes: last.size_bytes != null ? Number(last.size_bytes) : undefined,
+      ...(stale ? { hint: `Last successful backup was ${ageHours}h ago (a daily backup is expected). Check \`./nook logs backup\`.` } : {}),
+    }
+  } catch {
+    // backup_runs missing (pre-0071) or unreadable — don't false-alarm the operator.
+    return { status: 'ok', enabled: true, note: 'backup_runs not found yet — run `./nook migrate`.' }
+  }
+}
+
 function aggregate(checks: HealthReport['checks']): Status {
   const states = Object.values(checks).map((c) => c.status)
   if (states.includes('down')) return 'down'
@@ -138,13 +197,19 @@ function aggregate(checks: HealthReport['checks']): Status {
 }
 
 export async function buildHealthReport(): Promise<HealthReport> {
-  const [db, migrations, calendar] = await Promise.all([checkDb(), checkMigrations(), checkCalendar()])
+  const [db, migrations, calendar, backup] = await Promise.all([
+    checkDb(),
+    checkMigrations(),
+    checkCalendar(),
+    checkBackup(),
+  ])
   const checks: HealthReport['checks'] = {
     db,
     migrations,
     schedulers: checkSchedulers(),
     calendar,
     storage: checkStorage(),
+    backup,
   }
   return { status: aggregate(checks), version, generatedAt: new Date().toISOString(), checks }
 }

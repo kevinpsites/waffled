@@ -121,6 +121,9 @@ services:
       # Structured logs: LOG_FORMAT=json (default) | pretty; LOG_LEVEL=info default.
       LOG_FORMAT: ${LOG_FORMAT:-json}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Lets /api/health + `./nook doctor` expect a recent backup and flag a stale/failed
+      # one. Set BACKUP_ENABLED=false if you remove the `backup` service so it won't nag.
+      BACKUP_ENABLED: ${BACKUP_ENABLED:-true}
       # --- switch to Auth0 (RS256): set these, then restart the api ---
       # AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       # AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
@@ -192,6 +195,45 @@ services:
       - caddy_config:/config
     restart: unless-stopped
 
+  # Nightly database (and optional media) backups. On by default, zero-config: dumps
+  # land in the `nook_backups` volume (see BACKUP_HOST_PATH to write to a folder you
+  # choose instead, e.g. a mounted drive), pruned after BACKUP_RETENTION_DAYS. Set the
+  # BACKUP_S3_* vars to ALSO push each dump offsite to S3 / B2 / R2 / MinIO. Every run
+  # is recorded in backup_runs so Settings → System Health + `./nook doctor` show it.
+  #   ./nook backup            run one now      ./nook backup list   list dumps
+  #   ./nook restore <file>    restore a dump (destructive; stops the app first)
+  backup:
+    image: ${NOOK_BACKUP_IMAGE:-nook-backup:local}
+    build:
+      context: ./backup
+    container_name: nook-backup
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully   # needs the backup_runs table (0071)
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      BACKUP_DIR: /backups
+      TZ: ${TZ:-UTC}
+      BACKUP_TIME: ${BACKUP_TIME:-02:00}                    # daily HH:MM (container TZ)
+      BACKUP_ON_START: ${BACKUP_ON_START:-false}            # also back up right after start
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}   # local prune age
+      BACKUP_INCLUDE_MEDIA: ${BACKUP_INCLUDE_MEDIA:-false}  # also archive uploaded media
+      MEDIA_DIR: /data/media
+      # Optional offsite copy. Leave BACKUP_S3_BUCKET empty for local-only.
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}               # e.g. s3://my-bucket/nook
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}           # set for B2/R2/MinIO; empty=AWS
+      AWS_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${BACKUP_S3_REGION:-us-east-1}
+    volumes:
+      # Default: the nook_backups named volume. Set BACKUP_HOST_PATH=/some/dir to write
+      # dumps to a host folder of your choice instead (compose treats a path as a bind).
+      - ${BACKUP_HOST_PATH:-nook_backups}:/backups
+      - nook_media:/data/media:ro
+    restart: unless-stopped
+
   # Optional all-in-one local OpenTelemetry backend — Grafana + Prometheus/Mimir +
   # Tempo + Loki in one container. Started only with the `observability` profile
   # (`./nook observability up`); receives OTLP from the api and gives you Grafana
@@ -211,6 +253,7 @@ services:
 volumes:
   pgdata:
   nook_media:        # uploaded media blobs — NEVER WIPE (like pgdata)
+  nook_backups:      # nightly DB/media dumps (default target; override via BACKUP_HOST_PATH)
   caddy_data:
   caddy_config:
   lgtm_data:         # Grafana/Prometheus/Tempo/Loki state (observability profile)

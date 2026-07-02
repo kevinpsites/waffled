@@ -236,6 +236,17 @@ user-facing features first within each.
   scheduler) and baked **build provenance** (git sha + build time).
 - **OpenTelemetry** traces + metrics (OTLP, off by default) and an all-local
   Grafana/OTEL stack via `./nook observability up`.
+- **Automatic backups (local + offsite) & restore.** A `backup` sidecar dumps the
+  database nightly (`BACKUP_TIME`) into the `nook_backups` volume — on by default,
+  zero-config — pruned after `BACKUP_RETENTION_DAYS`. Optional offsite copy to any
+  S3-compatible store (`BACKUP_S3_*` — AWS S3 / Backblaze B2 / Cloudflare R2 / MinIO),
+  optional media archive (`BACKUP_INCLUDE_MEDIA`), and a custom target folder
+  (`BACKUP_HOST_PATH`). `./nook backup [list]` runs one on demand; `./nook restore
+  <file>` does a confirmed, app-stopped, single-transaction restore. Each run is recorded
+  in `backup_runs` and surfaced by the `backup` health check (degraded when a run failed
+  or the last success is >48 h old). See `docs/BACKUP.md`.
+- **CI runs the test suites.** GitHub Actions runs the api (Testcontainers) + web
+  (vitest) suites and typechecks on every PR and push to `main`.
 
 ### Changed
 - **Route authorization refactored** into composable per-route guard wrappers

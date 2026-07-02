@@ -111,3 +111,85 @@ describe('GET /api/health', () => {
     }
   })
 })
+
+describe('GET /api/health — backup check', () => {
+  async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
+    const c = new Client({ connectionString: url })
+    await c.connect()
+    try {
+      return await fn(c)
+    } finally {
+      await c.end()
+    }
+  }
+  async function backupCheck() {
+    const res = await call('GET', '/api/health', kevin)
+    return JSON.parse(res.body)
+  }
+
+  it('is ok with no backup yet (enabled, nothing recorded)', async () => {
+    await withClient((c) => c.query('delete from backup_runs'))
+    const body = await backupCheck()
+    expect(body.checks.backup.status).toBe('ok')
+    expect(body.checks.backup.enabled).toBe(true)
+    expect(body.checks.backup.lastBackupAt).toBeNull()
+  })
+
+  it('reports the last successful run and stays ok when recent', async () => {
+    await withClient((c) =>
+      c.query(
+        `insert into backup_runs (status, finished_at, file_name, size_bytes)
+         values ('success', now(), 'nook-test.sql.gz', 1234)`
+      )
+    )
+    const body = await backupCheck()
+    expect(body.checks.backup.status).toBe('ok')
+    expect(body.checks.backup.lastStatus).toBe('success')
+    expect(body.checks.backup.lastSizeBytes).toBe(1234)
+  })
+
+  it('degrades when the last run failed', async () => {
+    await withClient(async (c) => {
+      await c.query('delete from backup_runs')
+      await c.query(
+        `insert into backup_runs (status, finished_at, error) values ('failed', now(), 'S3 upload failed')`
+      )
+    })
+    const body = await backupCheck()
+    expect(body.checks.backup.status).toBe('degraded')
+    expect(body.checks.backup.error).toContain('S3')
+    expect(body.status).toBe('degraded')
+  })
+
+  it('degrades when the last successful backup is stale (>48h)', async () => {
+    await withClient(async (c) => {
+      await c.query('delete from backup_runs')
+      await c.query(
+        `insert into backup_runs (status, finished_at, file_name) values ('success', now() - interval '3 days', 'old.sql.gz')`
+      )
+    })
+    const body = await backupCheck()
+    expect(body.checks.backup.status).toBe('degraded')
+    expect(body.checks.backup.hint).toMatch(/ago/)
+  })
+
+  it('is ok and marked disabled when BACKUP_ENABLED=false', async () => {
+    const saved = process.env.BACKUP_ENABLED
+    process.env.BACKUP_ENABLED = 'false'
+    try {
+      // A failed row exists from the prior test, but disabled must win.
+      const body = await backupCheck()
+      expect(body.checks.backup.status).toBe('ok')
+      expect(body.checks.backup.enabled).toBe(false)
+    } finally {
+      if (saved === undefined) delete process.env.BACKUP_ENABLED
+      else process.env.BACKUP_ENABLED = saved
+    }
+  })
+
+  it('cleans up so later runs start fresh', async () => {
+    await withClient((c) => c.query('delete from backup_runs'))
+    const body = await backupCheck()
+    expect(body.checks.backup.status).toBe('ok')
+  })
+})
