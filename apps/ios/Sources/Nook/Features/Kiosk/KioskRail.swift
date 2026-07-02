@@ -83,117 +83,142 @@ enum KioskRail {
     }
 }
 
-/// The Display & Kiosk picker for the iPad rail: check which destinations pin to the
-/// rail (up to `KioskRail.maxItems`), drag to reorder the pinned ones. Writes back to
-/// `@AppStorage(KioskRail.storageKey)`, so the live rail + More grid update at once.
+/// The Display & Kiosk picker for the iPad rail. Two sections: **On the rail** — the
+/// pinned destinations, every row drag-to-reorder + remove; and **Add to the rail** —
+/// the unpinned enabled pages, tap ⊕ to pin (up to `KioskRail.maxItems`). Writes back
+/// to `@AppStorage(KioskRail.storageKey)`, so the live rail + More grid update at once.
+///
+/// Two lists (not one with `moveDisabled`): mixing movable + non-movable rows in a
+/// single `List` renders drag handles unreliably when pins change, so the pinned block
+/// is its own all-movable list.
 struct KioskRailPickerCard: View {
     @Environment(SyncManager.self) private var sync
     @AppStorage(KioskRail.storageKey) private var railItemsRaw = KioskRail.defaultRaw
 
-    /// The current pins, in stored order (module-gated dropped items are simply not shown).
-    private var pinned: [KioskNav] { KioskRail.parse(railItemsRaw) }
-
-    /// The choosable destinations whose module is enabled — the rows we render.
-    private var rows: [KioskNav] {
-        KioskRail.choosable.filter { KioskRail.moduleEnabled($0, sync: sync) }
+    /// The pinned destinations in stored order, filtered to enabled modules.
+    private var pinned: [KioskNav] {
+        KioskRail.parse(railItemsRaw).filter { KioskRail.moduleEnabled($0, sync: sync) }
     }
-
-    /// Pinned items in order first, then the rest (so reorder targets the pinned block).
-    private var ordered: [KioskNav] {
-        let pins = pinned.filter(rows.contains)
-        let rest = rows.filter { !pins.contains($0) }
-        return pins + rest
+    /// Enabled choosable pages that aren't pinned — the "add" list.
+    private var available: [KioskNav] {
+        let pins = Set(pinned)
+        return KioskRail.choosable.filter { !pins.contains($0) && KioskRail.moduleEnabled($0, sync: sync) }
     }
-
-    private var pinnedCount: Int { pinned.filter(rows.contains).count }
-    private var atCap: Bool { pinnedCount >= KioskRail.maxItems }
+    private var atCap: Bool { pinned.count >= KioskRail.maxItems }
 
     var body: some View {
-        NookCard(padding: 0) {
-            VStack(spacing: 0) {
-                header
-                Rectangle().fill(NK.hair).frame(height: 1)
-                if rows.isEmpty {
-                    Text("No optional pages are enabled. Turn on modules in Settings → Modules to pin them here.")
-                        .font(.system(size: 13)).foregroundStyle(NK.ink3)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(16)
-                } else {
-                    // Fixed-height, scroll-disabled List so drag-to-reorder works while
-                    // living inside the settings ScrollView.
-                    List {
-                        ForEach(ordered) { row($0) }
-                            .onMove(perform: move)
+        VStack(spacing: 14) {
+            NookCard(padding: 0) {
+                VStack(spacing: 0) {
+                    sectionHeader("On the rail", trailing: "\(pinned.count) of \(KioskRail.maxItems)",
+                                  tint: atCap ? NK.primary : NK.ink3)
+                    Rectangle().fill(NK.hair).frame(height: 1)
+                    if pinned.isEmpty {
+                        infoRow("Nothing pinned yet — Today and Calendar are always on the rail; add pages below.")
+                    } else {
+                        // Fixed-height, scroll-disabled List so drag-to-reorder + swipe/
+                        // edit-remove work while nested in the settings ScrollView. Every
+                        // row is movable, so every row gets a drag handle.
+                        List {
+                            ForEach(pinned) { pinnedRow($0) }
+                                .onMove(perform: move)
+                                .onDelete(perform: delete)
+                        }
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                        .scrollDisabled(true)
+                        .environment(\.editMode, .constant(.active))
+                        .frame(height: CGFloat(pinned.count) * 56 + 6)
                     }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
-                    .scrollDisabled(true)
-                    .environment(\.editMode, .constant(.active))
-                    .frame(height: CGFloat(ordered.count) * 56 + 6)
                 }
+            }
+
+            if !available.isEmpty {
+                NookCard(padding: 0) {
+                    VStack(spacing: 0) {
+                        sectionHeader("Add to the rail", trailing: atCap ? "Rail full" : nil,
+                                      tint: NK.ink3)
+                        Rectangle().fill(NK.hair).frame(height: 1)
+                        ForEach(Array(available.enumerated()), id: \.element) { idx, nav in
+                            if idx > 0 { Rectangle().fill(NK.hair).frame(height: 1).padding(.leading, 54) }
+                            availableRow(nav)
+                        }
+                    }
+                }
+            } else if pinned.isEmpty {
+                Text("No optional pages are enabled. Turn on modules in Settings → Modules to pin them here.")
+                    .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
 
-    private var header: some View {
+    private func sectionHeader(_ title: String, trailing: String?, tint: Color) -> some View {
         HStack {
-            Text("On the rail").font(.system(size: 13, weight: .heavy))
-                .tracking(0.4).foregroundStyle(NK.ink2)
+            Text(title).font(.system(size: 13, weight: .heavy)).tracking(0.4).foregroundStyle(NK.ink2)
             Spacer()
-            Text("\(pinnedCount) of \(KioskRail.maxItems)")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(atCap ? NK.primary : NK.ink3)
+            if let trailing { Text(trailing).font(.system(size: 13, weight: .bold)).foregroundStyle(tint) }
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
     }
 
-    private func row(_ nav: KioskNav) -> some View {
-        let isPinned = pinned.contains(nav)
-        // A pinned item can always be unpinned; an unpinned one only when below the cap.
-        let selectable = isPinned || !atCap
-        return Button {
-            toggle(nav)
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: nav.icon).font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(isPinned ? NK.primary : NK.ink3).frame(width: 26)
-                Text(nav.label).font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(selectable ? NK.ink : NK.ink3)
-                Spacer()
-                Image(systemName: isPinned ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 20))
-                    .foregroundStyle(isPinned ? NK.primary : NK.hair)
-            }
-            .contentShape(Rectangle())
-            .opacity(selectable ? 1 : 0.5)
+    private func infoRow(_ text: String) -> some View {
+        Text(text).font(.system(size: 13)).foregroundStyle(NK.ink3)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(16)
+    }
+
+    /// A pinned row — the system supplies the drag handle (edit mode) + swipe/edit remove.
+    private func pinnedRow(_ nav: KioskNav) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: nav.icon).font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(NK.primary).frame(width: 26)
+            Text(nav.label).font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
+            Spacer()
         }
-        .buttonStyle(.plain)
-        .disabled(!selectable)
+        .contentShape(Rectangle())
         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
         .listRowBackground(Color.clear)
         .listRowSeparatorTint(NK.hair)
-        .moveDisabled(!isPinned)
     }
 
-    private func toggle(_ nav: KioskNav) {
-        var pins = pinned.filter(rows.contains)
-        if let i = pins.firstIndex(of: nav) {
-            pins.remove(at: i)
-        } else if pins.count < KioskRail.maxItems {
-            pins.append(nav)
+    /// An unpinned row — tap ⊕ (or the row) to pin, disabled at the cap.
+    private func availableRow(_ nav: KioskNav) -> some View {
+        Button { pin(nav) } label: {
+            HStack(spacing: 12) {
+                Image(systemName: nav.icon).font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(NK.ink3).frame(width: 26)
+                Text(nav.label).font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(atCap ? NK.ink3 : NK.ink)
+                Spacer()
+                Image(systemName: "plus.circle.fill").font(.system(size: 20))
+                    .foregroundStyle(atCap ? NK.hair : NK.primary)
+            }
+            .contentShape(Rectangle())
+            .opacity(atCap ? 0.5 : 1)
+            .padding(.horizontal, 16).padding(.vertical, 13)
         }
+        .buttonStyle(.plain).disabled(atCap)
+    }
+
+    // MARK: mutations (write the pinned order back to @AppStorage)
+
+    private func move(from source: IndexSet, to destination: Int) {
+        var pins = pinned
+        pins.move(fromOffsets: source, toOffset: destination)
         railItemsRaw = KioskRail.serialize(pins)
     }
 
-    /// Reorder within the pinned block. `ordered` is pins + unpinned rest, so only
-    /// moves that stay inside the pinned prefix change the stored order.
-    private func move(from source: IndexSet, to destination: Int) {
-        var pins = pinned.filter(rows.contains)
-        let count = pins.count
-        // Clamp the drop so an item never lands past the pinned block.
-        guard let first = source.first, first < count else { return }
-        let dest = min(destination, count)
-        pins.move(fromOffsets: source, toOffset: dest)
+    private func delete(at offsets: IndexSet) {
+        var pins = pinned
+        pins.remove(atOffsets: offsets)
+        railItemsRaw = KioskRail.serialize(pins)
+    }
+
+    private func pin(_ nav: KioskNav) {
+        guard !atCap else { return }
+        var pins = pinned
+        guard !pins.contains(nav) else { return }
+        pins.append(nav)
         railItemsRaw = KioskRail.serialize(pins)
     }
 }
