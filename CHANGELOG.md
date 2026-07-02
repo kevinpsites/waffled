@@ -229,6 +229,21 @@ user-facing features first within each.
   matrix editor (admin).
 - Shared iOS design-system primitives (loading, badges, tiles, CTAs, field cards) for
   UI consistency across screens.
+- **Calendar Countdowns** — a Today card + month-grid badges counting down to flagged
+  events, standalone items, and members' birthdays, with a "N sleeps" wording toggle.
+- **Pantry module** — on-hand inventory (locations, quantities, "used up"), Open Food
+  Facts barcode/type lookup (nutrition + allergen + dietary snapshots), allergen warnings,
+  item age, **cook → decrement**, and **Cook-from-pantry** (recipes makeable now); a
+  **Settings → Pantry** editor (locations, per-location icons, running-low / item-age
+  thresholds, allergen avoid-list) and a Pantry Today card (honors "show on Today").
+- **Family Night module** — a Today card (per-part person pickers over an auto-rotating
+  agenda) + a **Settings → Family Night** editor (weekday · time · calendar toggle · parts).
+- **Customizable iPad nav rail** — a per-device picker (Today + Calendar pinned, choose up
+  to 5 more) with everything else in a new **"More"** hub.
+- **Settings reorganized** into **Account · Family · System** tiers (mirroring web);
+  "Accounts" → **Households**; **Display & Kiosk** split into "This iPad" (device-local)
+  vs "Family displays" (household-wide); the Family list ordered to match Modules.
+- **Kinnook app icon** + a cold-launch bouncing-logo splash on the warm-white canvas.
 
 #### Observability & operations
 - **Structured JSON logging** + per-request access log with a request id.
