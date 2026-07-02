@@ -48,19 +48,22 @@ struct SettingsView: View {
                 row("🔔", "Notifications", "Your event reminders") { path.append(.settingsNotifications) }
 
                 if isAdmin {
-                    // Family — shared household configuration
+                    // Family — shared household configuration. The feature rows follow the
+                    // same order as Settings → Modules (chores · goals · meals · lists ·
+                    // pantry · family night) so the two screens line up; Goals has no
+                    // settings screen of its own, so it's simply absent here.
                     SectionLabel(text: "Family").padding(.top, 8)
                     row("👨‍👩‍👧‍👦", "Family & People", "Members, roles, household") { path.append(.settingsFamily) }
                     row("📅", "Calendars", "Google sync") { path.append(.settingsCalendars) }
                     row("⭐", "Chores & Rewards", "Currencies & conversions") { path.append(.settingsChoresRewards) }
                     row("🍽️", "Meals", "Calendar & meal times") { path.append(.settingsMeals) }
-                    if sync.module(.familyNight) {
-                        row("🏡", "Family Night", "Agenda, day & time") { path.append(.settingsFamilyNight) }
-                    }
+                    row("📋", "Lists", "Grocery & lists")
                     if sync.module(.pantry) {
                         row("🥫", "Pantry", "Today card & thresholds") { path.append(.settingsPantry) }
                     }
-                    row("📋", "Lists", "Grocery & lists")
+                    if sync.module(.familyNight) {
+                        row("🏡", "Family Night", "Agenda, day & time") { path.append(.settingsFamilyNight) }
+                    }
                     row("🧩", "Modules", "Optional features on/off") { path.append(.settingsModules) }
                     row("🖥️", "Display & Kiosk", "Screensaver & idle") { path.append(.settingsDisplay) }
 

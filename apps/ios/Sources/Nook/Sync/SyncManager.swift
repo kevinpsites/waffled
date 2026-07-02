@@ -809,7 +809,9 @@ final class SyncManager {
 /// "coming soon" and are always treated as off. `defaultOn` is the fallback when the
 /// household hasn't set a flag (core pages default on; pantry is opt-in).
 enum NookModule: String, CaseIterable, Identifiable {
-    case pantry, chores, goals, meals, lists, familyNight, quotes
+    // Declaration order drives the Settings → Modules list; keep it in step with the
+    // Settings → Family feature rows so the two screens read the same.
+    case chores, goals, meals, lists, pantry, familyNight, quotes
     var id: String { rawValue }
 
     var isAvailable: Bool {
