@@ -12,27 +12,19 @@ struct KioskMoreView: View {
     /// Switch the shell's nav rail to the tapped destination (injected by `KioskShell`).
     var navigate: (KioskNav) -> Void = { _ in }
 
+    /// The per-device rail pins — More shows every choosable destination that is NOT
+    /// pinned to the rail, so it updates live as the picker (Display & Kiosk) changes.
+    @AppStorage(KioskRail.storageKey) private var railItemsRaw = KioskRail.defaultRaw
+
     private let cols = [
         GridItem(.flexible(), spacing: 16),
         GridItem(.flexible(), spacing: 16),
         GridItem(.flexible(), spacing: 16),
     ]
 
-    /// The overflow destinations that are currently reachable (module-gated). Photos is
-    /// core and always shown; the rest follow their module toggle — mirrors the rail's
-    /// `moduleEnabled` in `KioskShell`.
-    private func enabled(_ nav: KioskNav) -> Bool {
-        switch nav {
-        case .tasks: return sync.module(.chores)
-        case .rewards: return sync.rewardsOn
-        case .goals: return sync.module(.goals)
-        case .lists: return sync.module(.lists)
-        case .pantry: return sync.module(.pantry)
-        default: return true   // .photos
-        }
-    }
-
-    private var visible: [KioskNav] { KioskShell.moreDestinations.filter(enabled) }
+    /// The overflow destinations: enabled, choosable, and not currently pinned to the
+    /// rail — see `KioskRail.overflow`.
+    private var visible: [KioskNav] { KioskRail.overflow(raw: railItemsRaw, sync: sync) }
 
     var body: some View {
         ScrollView {
@@ -84,6 +76,8 @@ struct KioskMoreView: View {
         case .lists:   return ("📋", "Lists", "Groceries, packing & to-dos", FamilyColor.kevin.tint)
         case .pantry:  return ("🥫", "Pantry", "What's on hand", Color(hex: 0xF3E8D6))
         case .photos:  return ("📷", "Photos", "The family album", Color(hex: 0xDFF0EF))
+        case .meals:   return ("🍽️", "Meals", "This week's plan & recipes", Color(hex: 0xF6E7DE))
+        case .family:  return ("👪", "Family", "People, spotlights & more", Color(hex: 0xEDE7F3))
         default:       return ("•", nav.label, "", NK.panel)
         }
     }

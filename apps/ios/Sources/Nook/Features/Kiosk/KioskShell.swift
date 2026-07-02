@@ -12,6 +12,11 @@ struct KioskShell: View {
     @Environment(KioskMode.self) private var kiosk
     @State private var selection: KioskNav = KioskNav(rawValue: DemoHooks.kioskPage ?? "") ?? .today
 
+    /// Per-device list of user-pinned rail destinations (comma-joined `KioskNav`
+    /// rawValues) — see `KioskRail`. Editing it in Display & Kiosk re-renders the rail
+    /// and the More grid live via `@AppStorage`'s own invalidation.
+    @AppStorage(KioskRail.storageKey) private var railItemsRaw = KioskRail.defaultRaw
+
     // Shared models / per-page nav stacks for the reused feature views.
     @State private var recipes = RecipesModel()
     @State private var goalsPath: [HubRoute] = []
@@ -51,23 +56,16 @@ struct KioskShell: View {
     }
 
     /// Whether a rail item's optional module is enabled (Today/Calendar/Family/Photos
-    /// are core and never gated). Mirrors the web rail filter.
+    /// are core and never gated). Mirrors the web rail filter — see `KioskRail`.
     private func moduleEnabled(_ nav: KioskNav) -> Bool {
-        switch nav {
-        case .tasks: return sync.module(.chores)
-        case .rewards: return sync.rewardsOn
-        case .goals: return sync.module(.goals)
-        case .meals: return sync.module(.meals)
-        case .lists: return sync.module(.lists)
-        case .pantry: return sync.module(.pantry)
-        default: return true
-        }
+        KioskRail.moduleEnabled(nav, sync: sync)
     }
 
-    /// The overflow destinations that live behind the rail's "More" hub, each gated
-    /// by its module (the rail itself only shows a handful of primaries). Shared with
-    /// `KioskMoreView` so the tile grid and the shell agree on what's reachable.
-    static let moreDestinations: [KioskNav] = [.tasks, .rewards, .goals, .lists, .pantry, .photos]
+    /// The user-pinned rail destinations (between Today/Calendar and More/Settings),
+    /// module-filtered — see `KioskRail`.
+    private var pinnedRailItems: [KioskNav] {
+        KioskRail.pinned(raw: railItemsRaw, sync: sync)
+    }
 
     /// If the current selection points at a now-disabled module, fall back to Today.
     private func correctSelection() {
@@ -79,7 +77,12 @@ struct KioskShell: View {
     private var rail: some View {
         VStack(spacing: 6) {
             Color.clear.frame(height: 12)   // top breathing room (logo removed)
-            ForEach(KioskNav.primary.filter(moduleEnabled)) { railItem($0) }
+            // Today & Calendar are always pinned at the top, then the user's picks,
+            // then the "More" hub (holds everything choosable-but-unpinned).
+            railItem(.today)
+            railItem(.calendar)
+            ForEach(pinnedRailItems) { railItem($0) }
+            railItem(.more)
             Spacer(minLength: 8)
             captureRailButton
             if let m = currentMember { currentUserChip(m) }
@@ -227,17 +230,12 @@ struct KioskShell: View {
     }
 }
 
-/// The rail items, in web order (`apps/web/src/kiosk/nav.ts`). Settings is pinned to
-/// the bottom of the rail, so it's separated out from `primary`.
+/// The rail items, in web order (`apps/web/src/kiosk/nav.ts`). Today/Calendar are
+/// always pinned at the top and More/Settings at the bottom; the middle is
+/// user-customizable per device — see `KioskRail`.
 enum KioskNav: String, CaseIterable, Identifiable {
     case today, calendar, tasks, rewards, goals, family, meals, lists, pantry, photos, more, settings
     var id: String { rawValue }
-
-    /// The rail's top section (above the bottom-pinned Settings). Deliberately short to
-    /// keep the rail uncluttered as optional modules pile on: the few high-traffic tabs
-    /// plus a "More" hub (`KioskMoreView`) that holds the overflow destinations — Chores,
-    /// Rewards, Goals, Lists, Pantry, Photos. Meals is still module-gated on the rail.
-    static let primary: [KioskNav] = [.today, .calendar, .meals, .family, .more]
 
     var label: String {
         switch self {

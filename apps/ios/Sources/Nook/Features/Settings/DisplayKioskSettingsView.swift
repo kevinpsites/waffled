@@ -33,6 +33,9 @@ struct DisplayKioskSettingsView: View {
     /// and only a parent can flip it.
     private var showsDeviceCard: Bool { DeviceExperience.current == .kiosk && sync.isParent }
 
+    /// The nav-rail picker (below) is iPad-only — the rail only exists in the kiosk shell.
+    private var isIPad: Bool { DeviceExperience.current == .kiosk }
+
     /// The soonest upcoming event, for the preview's "Next:" line.
     private var nextEvent: SyncedEvent? {
         let now = Date()
@@ -51,6 +54,7 @@ struct DisplayKioskSettingsView: View {
             VStack(alignment: .leading, spacing: 22) {
                 intro
                 if showsDeviceCard { deviceCard }
+                if isIPad { railSection }
                 if loadFailed {
                     errorCard
                 } else if cfg != nil {
@@ -169,6 +173,20 @@ struct DisplayKioskSettingsView: View {
         deviceBusy = true; deviceError = nil
         deviceError = await kiosk.enableViaPromote(label: nil, sync: sync)
         deviceBusy = false
+    }
+
+    // MARK: nav-rail picker (iPad only)
+
+    /// "Sidebar / navigation" — pick which destinations pin to the iPad rail. Stored
+    /// per device (`KioskRail`); Today/Calendar/More/Settings are fixed and not shown.
+    private var railSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(text: "Sidebar / navigation")
+            KioskRailPickerCard()
+            Text("Today and Calendar are always at the top; “More” holds anything you leave off. Saved on this iPad.")
+                .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var readOnlyNotice: some View {
