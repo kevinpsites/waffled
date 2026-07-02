@@ -809,16 +809,17 @@ final class SyncManager {
 /// "coming soon" and are always treated as off. `defaultOn` is the fallback when the
 /// household hasn't set a flag (core pages default on; pantry is opt-in).
 enum NookModule: String, CaseIterable, Identifiable {
-    case pantry, chores, goals, meals, lists, fhe, quotes
+    case pantry, chores, goals, meals, lists, familyNight, quotes
     var id: String { rawValue }
 
     var isAvailable: Bool {
         switch self {
-        case .fhe, .quotes: return false
+        case .quotes: return false
         default: return true
         }
     }
-    var defaultOn: Bool { self != .pantry }
+    /// Opt-in modules default off (pantry, familyNight); the rest default on.
+    var defaultOn: Bool { self != .pantry && self != .familyNight }
 
     var name: String {
         switch self {
@@ -827,7 +828,7 @@ enum NookModule: String, CaseIterable, Identifiable {
         case .goals: return "Goals"
         case .meals: return "Meals & Recipes"
         case .lists: return "Lists & Groceries"
-        case .fhe: return "Family Home Evening"
+        case .familyNight: return "Family Night"
         case .quotes: return "Daily quote"
         }
     }
@@ -838,7 +839,7 @@ enum NookModule: String, CaseIterable, Identifiable {
         case .goals: return "🎯"
         case .meals: return "🍽️"
         case .lists: return "🛒"
-        case .fhe: return "🏠"
+        case .familyNight: return "🏡"
         case .quotes: return "💬"
         }
     }
@@ -849,7 +850,7 @@ enum NookModule: String, CaseIterable, Identifiable {
         case .goals: return "Personal and family goals with progress, streaks, and checklists."
         case .meals: return "Recipe library, weekly meal planning, and meals on the calendar."
         case .lists: return "Shared lists and the auto-built grocery board."
-        case .fhe: return "A weekly family meeting with a structured agenda and a Today card."
+        case .familyNight: return "A weekly family gathering with a rotating agenda and a Today card."
         case .quotes: return "A daily quote or snippet on the Today tab."
         }
     }

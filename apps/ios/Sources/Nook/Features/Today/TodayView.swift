@@ -436,6 +436,7 @@ struct TodayView: View {
     static let cardLabels = [
         "agenda": "Agenda", "countdowns": "Countdowns", "tonight": "Tonight's dinner",
         "chores": "Chores", "grocery": "Grocery", "goals": "Goals", "pantry": "Pantry",
+        "familyNight": "Family Night",
     ]
     private static let smallCards: Set<String> = ["chores", "grocery"]
 
@@ -457,6 +458,7 @@ struct TodayView: View {
         case "grocery": return sync.module(.lists)
         case "goals": return sync.module(.goals)
         case "pantry": return sync.module(.pantry)
+        case "familyNight": return sync.module(.familyNight)
         default: return true
         }
     }
@@ -489,6 +491,7 @@ struct TodayView: View {
         case "chores": Button { path.append(.chores) } label: { choresCard }.buttonStyle(.plain)
         case "grocery": Button { path.append(.list(grocerySummary)) } label: { groceryCard }.buttonStyle(.plain)
         case "pantry": PantryTodayCard { path.append(.pantry) }
+        case "familyNight": FamilyNightCard()
         case "goals": goalsCard
         default: EmptyView()
         }
@@ -507,6 +510,10 @@ struct TodayView: View {
         // surface it after grocery so it appears regardless of the server's card set.
         if !order.contains("pantry"), !resp.resolved.hidden.contains("pantry") {
             order.insert("pantry", at: (order.firstIndex(of: "grocery").map { $0 + 1 }) ?? order.count)
+        }
+        // Same fallback for Family Night (a server predating the mobile card omits it).
+        if !order.contains("familyNight"), !resp.resolved.hidden.contains("familyNight") {
+            order.append("familyNight")
         }
         cardOrder = order
         hiddenCards = Set(resp.resolved.hidden)

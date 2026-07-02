@@ -43,6 +43,9 @@ struct SettingsView: View {
                 row("📅", "Calendars", "Google sync") { path.append(.settingsCalendars) }
                 row("⭐", "Chores & Rewards", "Currencies & conversions") { path.append(.settingsChoresRewards) }
                 row("🍽️", "Meals", "Calendar & meal times") { path.append(.settingsMeals) }
+                if sync.module(.familyNight) {
+                    row("🏡", "Family Night", "Agenda, day & time") { path.append(.settingsFamilyNight) }
+                }
                 if sync.module(.pantry) {
                     row("🥫", "Pantry", "Today card & thresholds") { path.append(.settingsPantry) }
                 }

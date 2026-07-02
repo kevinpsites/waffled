@@ -18,6 +18,7 @@ enum HubRoute: Hashable {
     case settingsAI                  // Settings → AI & capture
     case settingsMeals               // Settings → Meals (calendar)
     case settingsPantry              // Settings → Pantry (thresholds + Today card)
+    case settingsFamilyNight         // Settings → Family Night (agenda, day/time, calendar)
     case settingsDisplay             // Settings → Display & Kiosk (family-display screensaver)
     case settingsNotifications       // Settings → Notifications (local event reminders)
     case settingsAbout               // Settings → About (version + server address)
@@ -58,6 +59,7 @@ struct HubDestination: View {
         case .settingsAI: AISettingsView()
         case .settingsMeals: MealsSettingsView()
         case .settingsPantry: PantrySettingsView()
+        case .settingsFamilyNight: FamilyNightSettingsView()
         case .settingsDisplay: DisplayKioskSettingsView()
         case .settingsNotifications: NotificationsSettingsView()
         case .settingsAbout: AboutSettingsView()

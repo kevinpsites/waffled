@@ -2518,6 +2518,108 @@ struct NookAPI: Sendable {
         try await send("PUT", "/api/countdowns/config", body: ["sleeps": .bool(sleeps)])
     }
 
+    // MARK: - Family Night (weekly gathering with a rotating agenda)
+
+    /// One agenda "part" (e.g. Activity, Treat). `rotates` = auto-rotate a person
+    /// through this part each week. Mirrors the web `FamilyNightPart` (camelCase 1:1).
+    struct FamilyNightPart: Codable, Identifiable, Hashable, Sendable {
+        var id: String
+        var label: String
+        var emoji: String
+        var rotates: Bool
+    }
+
+    /// The stored agenda config (`settings.familyNight`).
+    struct FamilyNightConfig: Codable, Sendable {
+        var parts: [FamilyNightPart]
+        var dayOfWeek: Int          // 0=Sun … 6=Sat
+        var time: String            // "HH:MM" 24h, household-local
+        var rotationOrder: [String]?
+        var eventId: String?        // linked calendar event (nil = not on the calendar)
+    }
+
+    struct FamilyNightMember: Codable, Identifiable, Sendable {
+        let id: String
+        let name: String
+        let color: String?
+        let emoji: String?
+    }
+
+    /// A resolved per-part assignment for the upcoming gathering. `suggested` = the
+    /// rotation's pick (not yet persisted); false = a stored override.
+    struct FamilyNightAssignment: Codable, Identifiable, Sendable {
+        let partId: String
+        let label: String
+        let emoji: String
+        let personId: String?
+        let personName: String?
+        let suggested: Bool
+        var id: String { partId }
+    }
+
+    /// The upcoming gathering (lazily materialized — `occurrenceId` is nil until saved).
+    struct FamilyNightNext: Codable, Sendable {
+        let date: String            // YYYY-MM-DD (household tz)
+        let occurrenceId: String?
+        let theme: String?
+        let notes: String?
+        let status: String          // planned | done | skipped
+        let assignments: [FamilyNightAssignment]
+    }
+
+    /// The whole card/settings read from `GET /api/family-night`.
+    struct FamilyNightView: Codable, Sendable {
+        let config: FamilyNightConfig
+        let members: [FamilyNightMember]
+        let next: FamilyNightNext
+    }
+
+    /// The card + settings read: config, members, and the next gathering with its
+    /// rotation-resolved per-part assignments.
+    func familyNight() async throws -> FamilyNightView {
+        try await getJSON("/api/family-night", as: FamilyNightView.self)
+    }
+
+    /// Update the agenda structure (admin). Partial — only provided keys are merged.
+    @discardableResult
+    func setFamilyNightConfig(_ patch: [String: JSONValue]) async throws -> FamilyNightConfig {
+        struct Resp: Decodable { let config: FamilyNightConfig }
+        return try await sendReturning("PUT", "/api/family-night/config", body: patch, as: Resp.self).config
+    }
+
+    /// Persist assignments / theme / notes / status for a gathering. `assignments` is
+    /// partial — only the parts you pass are written (a nil `personId` clears a part).
+    /// Returns the occurrence id.
+    @discardableResult
+    func saveFamilyNightOccurrence(date: String, theme: String? = nil, notes: String? = nil,
+                                   status: String? = nil,
+                                   assignments: [(partId: String, personId: String?)]? = nil) async throws -> String {
+        struct Resp: Decodable { let id: String }
+        var body: [String: JSONValue] = ["date": .string(date)]
+        if let theme { body["theme"] = .string(theme) }
+        if let notes { body["notes"] = .string(notes) }
+        if let status { body["status"] = .string(status) }
+        if let assignments {
+            body["assignments"] = .array(assignments.map {
+                .object(["partId": .string($0.partId),
+                         "personId": $0.personId.map(JSONValue.string) ?? .null])
+            })
+        }
+        return try await sendReturning("POST", "/api/family-night/occurrence", body: body, as: Resp.self).id
+    }
+
+    /// Put Family Night on the calendar (create/refresh the weekly event). Returns eventId.
+    @discardableResult
+    func scheduleFamilyNight() async throws -> String {
+        struct Resp: Decodable { let eventId: String }
+        return try await sendReturning("POST", "/api/family-night/schedule", body: [:], as: Resp.self).eventId
+    }
+
+    /// Remove Family Night from the calendar.
+    func unscheduleFamilyNight() async throws {
+        try await delete("/api/family-night/schedule")
+    }
+
     /// The per-event AI insight card (headline + prep advice + optional "leave by").
     struct EventInsight: Decodable, Sendable {
         let headline: String

@@ -14,7 +14,7 @@ type Api = ReturnType<typeof createAPI>
 
 // The cards that can appear on the mobile Today screen, in default order. (The
 // transient "review events" banner isn't here — it's pinned and auto-shown.)
-export const MOBILE_TODAY_CARDS = ['agenda', 'countdowns', 'tonight', 'chores', 'grocery', 'pantry', 'goals'] as const
+export const MOBILE_TODAY_CARDS = ['agenda', 'countdowns', 'tonight', 'chores', 'grocery', 'pantry', 'goals', 'familyNight'] as const
 const CARD_SET = new Set<string>(MOBILE_TODAY_CARDS)
 
 export interface MobileLayout {
