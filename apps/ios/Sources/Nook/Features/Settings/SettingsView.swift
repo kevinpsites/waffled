@@ -31,28 +31,47 @@ struct SettingsView: View {
     @Environment(NotificationManager.self) private var notifications
     @State private var confirmSignOut = false
     @State private var busy = false
+    private var isAdmin: Bool { sync.currentPerson?.isAdmin == true }
 
     var body: some View {
         ScrollView {
             // Web order (with Accounts before AI, per the kiosk's pending update).
+            // Three tiers mirroring the web (Account · Family · System): who you are →
+            // the shared features an admin configures → the deployment. Family + System
+            // are admin-only, so a non-admin cleanly sees just Account + About. Mobile
+            // adaptations: "Accounts" holds your households + sign-in (web splits those
+            // into Households/Security); Notifications is personal, so it stays in Account.
             VStack(alignment: .leading, spacing: 10) {
-                row("👨‍👩‍👧‍👦", "Family & People", "Members, roles, household") { path.append(.settingsFamily) }
-                row("🧩", "Modules", "Optional features on/off") { path.append(.settingsModules) }
-                row("🔗", "Accounts", "Sign-in & connections") { path.append(.settingsAccount) }
-                row("✨", "AI & Capture", "Provider & model") { path.append(.settingsAI) }
-                row("📅", "Calendars", "Google sync") { path.append(.settingsCalendars) }
-                row("⭐", "Chores & Rewards", "Currencies & conversions") { path.append(.settingsChoresRewards) }
-                row("🍽️", "Meals", "Calendar & meal times") { path.append(.settingsMeals) }
-                if sync.module(.familyNight) {
-                    row("🏡", "Family Night", "Agenda, day & time") { path.append(.settingsFamilyNight) }
+                // Account — you (personal; always visible)
+                SectionLabel(text: "Account")
+                row("🔗", "Accounts", "Sign-in, your households & pairing") { path.append(.settingsAccount) }
+                row("🔔", "Notifications", "Your event reminders") { path.append(.settingsNotifications) }
+
+                if isAdmin {
+                    // Family — shared household configuration
+                    SectionLabel(text: "Family").padding(.top, 8)
+                    row("👨‍👩‍👧‍👦", "Family & People", "Members, roles, household") { path.append(.settingsFamily) }
+                    row("📅", "Calendars", "Google sync") { path.append(.settingsCalendars) }
+                    row("⭐", "Chores & Rewards", "Currencies & conversions") { path.append(.settingsChoresRewards) }
+                    row("🍽️", "Meals", "Calendar & meal times") { path.append(.settingsMeals) }
+                    if sync.module(.familyNight) {
+                        row("🏡", "Family Night", "Agenda, day & time") { path.append(.settingsFamilyNight) }
+                    }
+                    if sync.module(.pantry) {
+                        row("🥫", "Pantry", "Today card & thresholds") { path.append(.settingsPantry) }
+                    }
+                    row("📋", "Lists", "Grocery & lists")
+                    row("🧩", "Modules", "Optional features on/off") { path.append(.settingsModules) }
+                    row("🖥️", "Display & Kiosk", "Screensaver & idle") { path.append(.settingsDisplay) }
+
+                    // System — deployment / operator config
+                    SectionLabel(text: "System").padding(.top, 8)
+                    row("✨", "AI & Capture", "Provider & model") { path.append(.settingsAI) }
                 }
-                if sync.module(.pantry) {
-                    row("🥫", "Pantry", "Today card & thresholds") { path.append(.settingsPantry) }
-                }
-                row("📋", "Lists", "Grocery & lists")
-                row("🖥️", "Display & Kiosk", "Screensaver & idle") { path.append(.settingsDisplay) }
-                row("🔔", "Notifications", "Event reminders") { path.append(.settingsNotifications) }
+
+                // About + sign out (ungrouped, always visible)
                 row("ℹ️", "About", "Version & server") { path.append(.settingsAbout) }
+                    .padding(.top, 8)
                 signOutFooter
             }
             .padding(16).padding(.bottom, 110)
