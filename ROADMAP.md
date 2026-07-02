@@ -680,20 +680,27 @@ and CI. Prioritized backlog (P0 = the "trust it with my family's data" floor):
 - [ ] **Cut the first release.** Adopt SemVer + a one-line breaking-change policy; tag `v0.1.0`
   → the existing `publish-images.yml` builds the GHCR images + a GitHub Release. (CHANGELOG ready.)
 
-**P1 — operator polish:**
+**P1 — operator polish — SHIPPED 2026-07-01:**
 - [x] **CHANGELOG + release process** — `CHANGELOG.md` (Keep a Changelog), commit-prefix→category
   mapping, rolling `[Unreleased]`. Cut-a-release steps documented.
-- [ ] **Serve compose/env from the release** (`releases/latest/download/{docker-compose.yml,example.env}`)
-  so upgraders always get a matched pair, Immich-style.
-- [ ] **Caddy (+ lgtm) healthcheck** so `docker compose ps` is all-green.
-- [ ] **In-app update notifier** — System Health already shows the running SHA; compare against the
-  latest GitHub release tag and show a "new version available" chip (admin only).
-- [ ] **Docs: UPGRADING.md + TROUBLESHOOTING.md** — the two categories we lack vs their spine
-  (`./nook doctor` output already *is* our troubleshooting content — document it).
+- [x] **Caddy (+ lgtm) healthcheck** so `docker compose ps` is all-green (verified caddy → healthy).
+- [x] **In-app update notifier** — `GET /api/updates` (admin) checks the latest GitHub release
+  (`UPDATE_CHECK_REPO`, cached 6h); System Health shows an "update available / up to date / off"
+  banner + toggle. Operator kill-switch `UPDATE_CHECK_ENABLED`; per-household admin toggle.
+- [x] **Docs: UPGRADING.md + TROUBLESHOOTING.md** added under `docs/`.
+- [~] **Release-served compose/env** — reframed for Nook's architecture: the publish workflow now
+  cuts a **GitHub Release** (auto notes + `example.env`) and builds all three images (api/caddy/
+  **backup**). A standalone download-and-run compose is N/A because Nook mounts host config
+  (Caddyfile/powersync/postgres-init) — the runnable matched pair is `git checkout <tag>`.
 
 **P2 — reputation surface:**
-- [ ] **Publish a docs site** (Docusaurus / Astro Starlight over the existing `docs/`) — packaging,
-  content largely exists.
-- [ ] **SECURITY.md + disclosure policy** — trivial, and Immich doesn't have one → a maturity leapfrog.
-- [ ] **CONTRIBUTING.md + Code of Conduct** (if/when open-sourced).
-- [ ] **Android** (Immich has native iOS + Android; we have iOS only).
+- [x] **AGPL-3.0 LICENSE** (matches the self-hosted ethos; README + CONTRIBUTING reference it).
+- [x] **SECURITY.md + disclosure policy** (GitHub private vuln reporting) — Immich has none → leapfrog.
+- [x] **CONTRIBUTING.md + CODE_OF_CONDUCT.md** (Contributor Covenant).
+- [ ] **Publish a docs site** — *deferred by choice 2026-07-01* (keep in-repo markdown for now;
+  revisit with Astro Starlight over `docs/`).
+- [ ] **Android** — *deferred as its own dedicated project* (native app, weeks of work; not
+  batchable with operational polish. iOS shipped; Android is the parallel effort when scheduled).
+
+**Only remaining before cutting v0.1.0:** tag the release (adopt SemVer; bump `apps/api`
+`package.json` version to match the tag so the update notifier compares correctly).

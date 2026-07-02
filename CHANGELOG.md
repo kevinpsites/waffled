@@ -247,8 +247,17 @@ user-facing features first within each.
   or the last success is >48 h old). See `docs/BACKUP.md`.
 - **CI runs the test suites.** GitHub Actions runs the api (Testcontainers) + web
   (vitest) suites and typechecks on every PR and push to `main`.
+- **In-app update notifier.** Settings → System Health shows whether a newer GitHub
+  release is available (`UPDATE_CHECK_REPO`, cached 6 h), with an admin toggle and an
+  `UPDATE_CHECK_ENABLED` operator kill-switch (no outbound call when off).
+- **Healthchecks on every default service** — added caddy + lgtm, so `docker compose ps`
+  (and `./nook status`) is all-green.
+- **Release automation.** A version tag (`v*`) now cuts a GitHub Release (auto notes +
+  `example.env`) and publishes all three images (api, caddy, backup) to GHCR.
 
 ### Changed
+- **Licensed under AGPL-3.0** (`LICENSE`); added `SECURITY.md`, `CONTRIBUTING.md`,
+  `CODE_OF_CONDUCT.md`, and `docs/UPGRADING.md` + `docs/TROUBLESHOOTING.md`.
 - **Route authorization refactored** into composable per-route guard wrappers
   (`tenantRoute` / `adminRoute` / `capRoute`), replacing ~135 routes' copied
   `requireTenant` + inline capability boilerplate (net −160 lines); handlers now
