@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # nook — one-touch control for the local stack (postgres, api, powersync, caddy).
 #
-#   ./nook up        start everything (creates .env on first run, builds images,
-#                    runs migrations via the one-shot migrate service), then status
+#   ./nook up        start everything (checks prereqs, creates .env on first run, builds
+#                    images, runs migrations), then status + what-to-do-next
+#   ./nook setup     guided: how devices reach this server (localhost / LAN IP / hostname)
 #   ./nook status    show each container's state + health (✓/✗)
 #   ./nook down      stop & remove the stack
 #   ./nook restart [svc]   restart all (or one) service
@@ -98,17 +99,89 @@ status() {
   return "$any_fail"
 }
 
+# Best-effort primary LAN IPv4 (for "reach it from a tablet"). Empty if undetectable.
+detect_lan_ip() {
+  local ip=""
+  if command -v ipconfig >/dev/null 2>&1; then            # macOS
+    for ifc in en0 en1 en2 en3; do
+      ip="$(ipconfig getifaddr "$ifc" 2>/dev/null || true)"; [ -n "$ip" ] && { echo "$ip"; return; }
+    done
+  fi
+  if command -v ip >/dev/null 2>&1; then                   # Linux
+    ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1)"
+    [ -n "$ip" ] && { echo "$ip"; return; }
+  fi
+  if command -v hostname >/dev/null 2>&1; then
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"; [ -n "$ip" ] && { echo "$ip"; return; }
+  fi
+  echo ""
+}
+
+# Preflight for `up`/`rebuild`: hard-fail with a friendly fix on the things that make
+# `docker compose` blow up cryptically; warn (don't block) on the softer stuff.
+preflight() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "${c_red}✗ Docker isn't installed.${c_reset} Get it: https://docs.docker.com/get-docker/"; return 1
+  fi
+  if ! docker info >/dev/null 2>&1; then
+    echo "${c_red}✗ Docker is installed but the daemon isn't running.${c_reset} Start Docker Desktop (or 'sudo systemctl start docker') and retry."; return 1
+  fi
+  if ! docker compose version >/dev/null 2>&1; then
+    echo "${c_red}✗ 'docker compose' (v2) not found.${c_reset} The legacy 'docker-compose' won't work — install the Compose v2 plugin: https://docs.docker.com/compose/install/"; return 1
+  fi
+  if [ ! -f "$ENV_FILE" ] && ! command -v openssl >/dev/null 2>&1; then
+    echo "${c_ylw}⚠ openssl not found — secrets can't be auto-generated; set them in infra/compose/.env after first run.${c_reset}"
+  fi
+  # Port conflicts — only on a cold start (skip if our stack already holds them).
+  if command -v lsof >/dev/null 2>&1 && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^nook-'; then
+    for pv in "HTTP_PORT:8080:kiosk" "API_PORT:3000:api" "POWERSYNC_PORT:8090:powersync" "POSTGRES_PORT:5432:postgres"; do
+      local var="${pv%%:*}" rest="${pv#*:}" def label port
+      def="${rest%%:*}"; label="${rest#*:}"
+      port="$(env_val "$var")"; port="${port:-$def}"
+      if lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+        echo "${c_ylw}⚠ Port $port ($label) looks busy — set $var in infra/compose/.env if startup fails.${c_reset}"
+      fi
+    done
+  fi
+  return 0
+}
+
+# "You're up — here's what to do next" printed after `up`. Derives the address to open.
+next_steps() {
+  local http_port site pbu url
+  http_port="$(env_val HTTP_PORT)"; http_port="${http_port:-8080}"
+  site="$(env_val CADDY_SITE_ADDRESS)"
+  pbu="$(env_val PUBLIC_BASE_URL)"
+  if [ -n "$site" ] && [ "$site" != ":80" ]; then
+    url="https://${site#:}"                 # hostname mode (Caddy auto-TLS)
+  elif [ -n "$pbu" ]; then
+    url="$pbu"                              # explicit public origin (e.g. LAN, set by ./nook setup)
+  else
+    url="http://localhost:$http_port"
+  fi
+  echo
+  echo "${c_grn}✅ Nook is up.${c_reset} Open ${c_grn}${url}${c_reset} to finish setup (create your household + admin)."
+  if [ "$url" = "http://localhost:$http_port" ]; then
+    local ip; ip="$(detect_lan_ip)"
+    if [ -n "$ip" ]; then
+      echo "   Using it from a tablet/phone on your network? Run ${c_dim}./nook setup${c_reset} (this machine looks like ${ip})."
+    fi
+  fi
+}
+
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   up)
+    preflight || exit 1
     ensure_env; export_build_meta
     echo "${c_dim}Starting stack (building as needed, applying migrations)…${c_reset}"
     "${DC[@]}" up -d --build "$@"
     echo; status || true
+    next_steps
     ;;
   down)    "${DC[@]}" down "$@" ;;
   restart) "${DC[@]}" restart "$@"; echo; status || true ;;
-  rebuild) ensure_env; export_build_meta; "${DC[@]}" up -d --build --force-recreate "$@"; echo; status || true ;;
+  rebuild) preflight || exit 1; ensure_env; export_build_meta; "${DC[@]}" up -d --build --force-recreate "$@"; echo; status || true ;;
   logs)    "${DC[@]}" logs -f --tail=120 "$@" ;;
   status|st|ps) status || true ;;
   migrate)
@@ -158,6 +231,57 @@ case "$cmd" in
     export_build_meta; "${DC[@]}" up -d
     echo; status || true
     echo "${c_grn}Restore complete.${c_reset}"
+    ;;
+  setup)
+    # Guided setup for the one thing that isn't auto-derivable and silently breaks the
+    # tablet/iOS app if wrong: how devices reach this server. (A localhost
+    # POWERSYNC_PUBLIC_URL makes every non-local client show "Offline".) Everything else
+    # — Google, AI, OIDC — is configured in the app's Settings, not here.
+    ensure_env
+    if [ ! -t 0 ]; then
+      echo "${c_ylw}./nook setup is interactive — run it in a terminal.${c_reset}"; exit 1
+    fi
+    http_port="$(env_val HTTP_PORT)"; http_port="${http_port:-8080}"
+    ps_port="$(env_val POWERSYNC_PORT)"; ps_port="${ps_port:-8090}"
+    ip="$(detect_lan_ip)"
+    echo "How will devices (tablets, phones, other computers) reach this Nook server?"
+    echo "  1) Just this computer (localhost)"
+    if [ -n "$ip" ]; then
+      echo "  2) Other devices on my network      (detected: ${c_grn}$ip${c_reset})"
+    else
+      echo "  2) Other devices on my network      (you'll enter the IP)"
+    fi
+    echo "  3) A hostname with automatic HTTPS  (e.g. nook.example.com)"
+    printf "Choose [1/2/3]: "; read -r choice
+    case "$choice" in
+      1)
+        set_env_var PUBLIC_BASE_URL ""
+        set_env_var POWERSYNC_PUBLIC_URL "http://localhost:$ps_port"
+        set_env_var CADDY_SITE_ADDRESS ":80"
+        echo "${c_grn}Set for localhost.${c_reset} Run ${c_dim}./nook up${c_reset}, then open http://localhost:$http_port"
+        ;;
+      2)
+        addr="$ip"
+        printf "IP address of this machine [%s]: " "${ip:-none}"; read -r entered
+        [ -n "$entered" ] && addr="$entered"
+        [ -n "$addr" ] || { echo "${c_red}No address given — aborting.${c_reset}"; exit 1; }
+        set_env_var PUBLIC_BASE_URL "http://$addr:$http_port"
+        set_env_var POWERSYNC_PUBLIC_URL "http://$addr:$ps_port"
+        set_env_var CADDY_SITE_ADDRESS ":80"
+        echo "${c_grn}Set for your network ($addr).${c_reset} Run ${c_dim}./nook up${c_reset}, then open http://$addr:$http_port on any device."
+        echo "${c_dim}Tip: reserve a static IP for this machine in your router so the address doesn't drift.${c_reset}"
+        ;;
+      3)
+        printf "Hostname (e.g. nook.example.com): "; read -r host
+        [ -n "$host" ] || { echo "${c_red}No hostname given — aborting.${c_reset}"; exit 1; }
+        set_env_var CADDY_SITE_ADDRESS "$host"
+        set_env_var PUBLIC_BASE_URL "https://$host"
+        set_env_var POWERSYNC_PUBLIC_URL "https://$host:$ps_port"
+        echo "${c_grn}Set for https://$host.${c_reset} Enable the 443 mapping in infra/compose/docker-compose.yml, point DNS at this machine, then run ${c_dim}./nook up${c_reset}."
+        echo "${c_ylw}Note: PowerSync serves on :$ps_port — for public HTTPS you'll also need to expose/proxy that port with TLS (see docs/TROUBLESHOOTING.md).${c_reset}"
+        ;;
+      *) echo "${c_red}Unknown choice — run ./nook setup again.${c_reset}"; exit 1 ;;
+    esac
     ;;
   psql)
     docker exec -it nook-postgres psql -U "$(env_val POSTGRES_USER)" -d "$(env_val POSTGRES_DB)" ;;

@@ -36,6 +36,11 @@ user-facing features first within each.
   the whole stack (Postgres, API, PowerSync, Caddy) via Docker Compose — no host
   toolchain and no manual steps. First run auto-generates `infra/compose/.env` with
   fresh secrets.
+- **Guided setup.** `./nook up` now runs a **preflight** (Docker present + running,
+  Compose v2, free ports) with fix-it messages, and prints the exact URL to open when
+  it's up. `./nook setup` configures how devices reach the server (localhost / auto-
+  detected LAN IP / hostname) and writes the address vars — avoiding the "shows Offline
+  on the tablet" `localhost`-sync-URL trap.
 - **In-container migrations** as a one-shot compose service (the API and PowerSync
   gate on it), so the schema and PowerSync publication exist before anything starts;
   idempotent on every `up`.

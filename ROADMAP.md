@@ -693,6 +693,14 @@ and CI. Prioritized backlog (P0 = the "trust it with my family's data" floor):
   **backup**). A standalone download-and-run compose is N/A because Nook mounts host config
   (Caddyfile/powersync/postgres-init) — the runnable matched pair is `git checkout <tag>`.
 
+**Setup experience — SHIPPED 2026-07-01** (benchmarked vs Immich's quick-start): we
+already required *zero* env edits vs their two, so instead of a big env questionnaire we
+added `./nook up` **preflight** (Docker/daemon/Compose-v2/ports, friendly fixes) + a
+"here's the URL to open" summary, and **`./nook setup`** — one question (localhost / auto-
+detected LAN IP / hostname) that writes the address vars coherently (kills the localhost-
+`POWERSYNC_PUBLIC_URL` "Offline on the tablet" trap). Quick-start doc refreshed. Integrations
+(Google/AI/OIDC) stay in in-app Settings by design, not a CLI wizard.
+
 **P2 — reputation surface:**
 - [x] **AGPL-3.0 LICENSE** (matches the self-hosted ethos; README + CONTRIBUTING reference it).
 - [x] **SECURITY.md + disclosure policy** (GitHub private vuln reporting) — Immich has none → leapfrog.

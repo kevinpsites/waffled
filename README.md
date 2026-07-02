@@ -42,9 +42,15 @@ step. On first run `./nook up`:
    replication publication exists before it starts), then
 4. starts everything and prints a health table.
 
-Open the kiosk at `http://localhost:8080`. On first load you'll get a **setup wizard**:
-enter a household name + timezone and create your **admin account** (name, email,
-password). That's it — you're in.
+`./nook up` runs a **preflight** first (Docker present + running, Compose v2, free ports)
+and, once up, prints the exact URL to open. Open the kiosk at `http://localhost:8080`. On
+first load you'll get a **setup wizard**: enter a household name + timezone and create
+your **admin account** (name, email, password). That's it — you're in.
+
+> **Using it from a tablet or the iOS app?** Run `./nook setup` before `./nook up` — one
+> question (localhost / your LAN IP / a hostname), auto-detects your IP, and writes the
+> address settings so off-device sync works (a `localhost` sync URL is the usual "shows
+> Offline on the tablet" trap).
 
 ### `.env`
 

@@ -6,14 +6,17 @@ SSO later (optional).
 
 ## Requirements
 
-- Docker + Docker Compose
+- **Docker** with the **Compose v2** plugin (`docker compose`, not the legacy
+  `docker-compose`). ~4 GB RAM is comfortable.
 - That's it — no host toolchain (Node, etc.). Migrations and builds run in containers.
+- `./nook up` runs a **preflight** first and tells you (with fix links) if Docker is
+  missing, the daemon is off, Compose v2 isn't installed, or a required port is busy.
 
 ## Install
 
 ```bash
 git clone <this-repo> nook && cd nook
-./nook up    # creates .env (with generated secrets), builds images, migrates, starts the stack
+./nook up    # checks prereqs, creates .env (generated secrets), builds, migrates, starts
 ```
 
 That single command is the whole install. On first run, `./nook up`:
@@ -23,9 +26,16 @@ That single command is the whole install. On first run, `./nook up`:
 2. Builds the `api` + `caddy` images and pulls Postgres + PowerSync.
 3. Runs a one-shot **migrate** service to apply the database schema (so PowerSync's
    replication publication exists before it starts).
-4. Starts everything and prints a health table.
+4. Starts everything, prints a health table, and tells you **which URL to open**.
 
-Open the kiosk/web app at **http://localhost:8080**.
+Open the kiosk/web app at the URL it prints — **http://localhost:8080** by default.
+
+> **Going to use it from a tablet, phone, or another computer?** (Nook's whole point is
+> an always-on tablet + the iOS app.) Run **`./nook setup`** *before* `./nook up` — it
+> asks one question ("how will devices reach this server?"), auto-detects your machine's
+> LAN IP, and writes the address settings so sync works off-device. Skipping this is the
+> #1 cause of "everything shows Offline on the tablet" (a `localhost` sync URL other
+> devices can't reach). See [Accessing it from other devices](#accessing-it-from-other-devices).
 
 ## First-run setup
 
@@ -81,11 +91,34 @@ matches a family member's login email.
 5. Toggle **Single sign-on** on → **Save**. Optionally disable password login to force SSO
    (guarded so you can't lock yourself out; `AUTH_FORCE_PASSWORD=1` is a break-glass override).
 
-## Running somewhere other than localhost
+## Accessing it from other devices
 
-Set `PUBLIC_BASE_URL=https://your.host` so calendar/OIDC redirect URLs are generated
-correctly. For exposing beyond the LAN, Caddy can do auto-TLS (`CADDY_SITE_ADDRESS`) or
-put a Cloudflare Tunnel in front.
+The easiest path is **`./nook setup`** — it asks how devices will reach the server and
+writes the address settings for you:
+
+- **Just this computer (localhost)** — the default; nothing to do.
+- **Other devices on my network** — a tablet/phone/laptop on your LAN. `setup` detects
+  this machine's IP and sets `POWERSYNC_PUBLIC_URL` + `PUBLIC_BASE_URL` to it, so the
+  kiosk and iOS app can sync. Open `http://<ip>:8080` on the device. *(Reserve a static
+  IP for this machine in your router so the address doesn't drift.)*
+- **A hostname with automatic HTTPS** — `setup` sets `CADDY_SITE_ADDRESS` (Caddy
+  auto-TLS) + `PUBLIC_BASE_URL`. Enable the `443` mapping in
+  `infra/compose/docker-compose.yml`, point DNS at the machine, and (for remote sync)
+  expose/proxy PowerSync's port with TLS too.
+
+Prefer to edit by hand? The same three vars in `infra/compose/.env` do it:
+`POWERSYNC_PUBLIC_URL` (the sync endpoint clients connect to — the common trap),
+`PUBLIC_BASE_URL` (public origin for calendar/OIDC redirects), and `CADDY_SITE_ADDRESS`
+(hostname for auto-TLS). Run `./nook up` after changing them.
+
+## Health, backups, and upgrades
+
+- **Check it's healthy:** `./nook doctor` (db, migrations, jobs, calendar, storage,
+  backup) — or **Settings → System Health** in the app. Both show the same report.
+- **Backups** run nightly out of the box; see [BACKUP.md](../BACKUP.md) to point them at
+  a folder or S3, and to restore.
+- **Upgrading:** [UPGRADING.md](../UPGRADING.md). **Stuck?**
+  [TROUBLESHOOTING.md](../TROUBLESHOOTING.md).
 
 ## Pre-built images (optional)
 
@@ -95,6 +128,7 @@ the overrides in `infra/compose/.env` and pull:
 ```bash
 NOOK_API_IMAGE=ghcr.io/<owner>/nook-api:latest
 NOOK_CADDY_IMAGE=ghcr.io/<owner>/nook-caddy:latest
+NOOK_BACKUP_IMAGE=ghcr.io/<owner>/nook-backup:latest
 ```
 
 Images are multi-arch (amd64 + arm64), so they run on x86 or an ARM SBC (e.g. Raspberry
