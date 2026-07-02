@@ -23,7 +23,7 @@ import {
   hashPassword,
   verifyPassword,
 } from '../auth/auth'
-import { requireTenant, requireAdmin, findTenantBySub, presentPerson, type PersonRow } from '../households/households'
+import { requireTenant, requireAdmin, resolveTenant, presentPerson, type PersonRow } from '../households/households'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -90,9 +90,11 @@ export async function requireDevice(req: Request): Promise<DevicePrincipal> {
 // The kiosk display wrapper runs both before a profile is claimed (device token) and
 // after (profile token) — resolve the household from whichever is present.
 async function resolveHouseholdId(req: Request): Promise<string> {
-  const sub = req.principal?.sub
-  if (sub) {
-    const tenant = await findTenantBySub(sub)
+  // Resolve the household like every other route — resolveTenant handles the modern
+  // account-scoped token (sub = account id + household claim), not just the legacy
+  // sub → identity lookup. Then fall back to a pre-claim device token (the picker).
+  if (req.principal) {
+    const tenant = await resolveTenant(req.principal)
     if (tenant) return tenant.householdId
   }
   return (await requireDevice(req)).householdId
