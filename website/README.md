@@ -1,49 +1,40 @@
-# Starlight Starter Kit: Basics
+# Kinnook docs site
 
-[![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
+The Kinnook documentation site — [Astro Starlight](https://starlight.astro.build).
+User/operator docs live in `src/content/docs/`; engineering docs stay in the repo's
+top-level `docs/`.
 
-```
-npm create astro@latest -- --template starlight
-```
+## Local
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
-
-## 🚀 Project Structure
-
-Inside of your Astro + Starlight project, you'll see the following folders and files:
-
-```
-.
-├── public/
-├── src/
-│   ├── assets/
-│   ├── content/
-│   │   └── docs/
-│   └── content.config.ts
-├── astro.config.mjs
-├── package.json
-└── tsconfig.json
+```bash
+cd website
+npm install
+npm run dev      # http://localhost:4321
+npm run build    # → ./dist  (static site)
 ```
 
-Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. Each file is exposed as a route based on its file name.
+## Hosting — Cloudflare Pages
 
-Images can be added to `src/assets/` and embedded in Markdown with a relative link.
+Deployed via **Cloudflare Pages** (free, serves at the root so no base-path fiddling).
 
-Static assets, like favicons, can be placed in the `public/` directory.
+**One-time setup** (Cloudflare dashboard → Workers & Pages → Create → **Pages** → Connect to Git):
 
-## 🧞 Commands
+| Setting | Value |
+| --- | --- |
+| Repository | this repo |
+| Production branch | `main` |
+| Framework preset | **Astro** |
+| **Root directory** | `website` |
+| Build command | `npm run build` |
+| Build output directory | `dist` |
 
-All commands are run from the root of the project, from a terminal:
+That's it — every push to `main` that touches `website/` rebuilds and deploys to a free
+`*.pages.dev` URL with HTTPS.
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
+**Custom domain (later):** Pages project → **Custom domains → Set up a domain** → add
+e.g. `docs.<yourdomain>` and follow the one DNS record. Free SSL. The site serves at the
+root either way, so no config change is needed. (Optionally set a `DOCS_SITE` env var in
+Cloudflare to your final URL so the sitemap/canonical links are absolute — purely optional.)
 
-## 👀 Want to learn more?
-
-Check out [Starlight’s docs](https://starlight.astro.build/), read [the Astro documentation](https://docs.astro.build), or jump into the [Astro Discord server](https://astro.build/chat).
+> The old GitHub Actions Pages workflow (`.github/workflows/docs.yml`) was removed in
+> favor of Cloudflare Pages, which builds independently of GitHub Actions.

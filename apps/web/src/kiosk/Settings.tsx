@@ -724,7 +724,7 @@ function MyAccountPanel() {
             </label>
             <label className="field" style={{ marginBottom: 10 }}>
               <span>Current password</span>
-              <input type="password" autoComplete="current-password" value={emailPw} onChange={(e) => { setEmailPw(e.target.value); setEmailOk(false) }} placeholder="••••••••" />
+              <input type="password" autoComplete="current-password" value={emailPw} onChange={(e) => { setEmailPw(e.target.value); setEmailOk(false) }} placeholder="Enter your current password" />
             </label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <button type="button" className="btn btn-primary" onClick={saveEmail} disabled={emailBusy || !email.trim() || !emailPw || email.trim() === (info.email ?? '')}>
@@ -739,7 +739,7 @@ function MyAccountPanel() {
             <div className="set-row2-t" style={{ marginBottom: 12 }}>Change password</div>
             <label className="field" style={{ marginBottom: 10 }}>
               <span>Current password</span>
-              <input type="password" autoComplete="current-password" value={curPw} onChange={(e) => { setCurPw(e.target.value); setPwOk(false) }} placeholder="••••••••" />
+              <input type="password" autoComplete="current-password" value={curPw} onChange={(e) => { setCurPw(e.target.value); setPwOk(false) }} placeholder="Enter your current password" />
             </label>
             <label className="field" style={{ marginBottom: 10 }}>
               <span>New password</span>
@@ -759,6 +759,59 @@ function MyAccountPanel() {
           </div>
         </>
       )}
+
+      <KioskPinCard personId={info.personId} hasPin={info.hasPin} />
+    </div>
+  )
+}
+
+// The kiosk PIN opens your profile on the shared tablet's picker — separate from your
+// email/password sign-in, and available even to SSO members. Self-service (the API
+// route is self-or-admin). 4–8 digits.
+function KioskPinCard({ personId, hasPin }: { personId: string; hasPin: boolean }) {
+  const [pinSet, setPinSet] = useState(hasPin)
+  const [pin, setPin] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [ok, setOk] = useState(false)
+  const [err, setErr] = useState('')
+  const valid = /^\d{4,8}$/.test(pin)
+  async function save() {
+    setBusy(true); setErr(''); setOk(false)
+    try { await accountApi.setPin(personId, pin); setPin(''); setPinSet(true); setOk(true) }
+    catch (e) { setErr(accountErrMsg(e, 'Could not set your PIN — please try again.')) }
+    finally { setBusy(false) }
+  }
+  async function remove() {
+    setBusy(true); setErr(''); setOk(false)
+    try { await accountApi.removePin(personId); setPinSet(false); setPin(''); setOk(true) }
+    catch (e) { setErr(accountErrMsg(e, 'Could not remove your PIN — please try again.')) }
+    finally { setBusy(false) }
+  }
+  return (
+    <div className="set-card" style={{ padding: 18, marginTop: 16 }}>
+      <div className="set-row2-t" style={{ marginBottom: 4 }}>Kiosk PIN</div>
+      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 12 }}>
+        An optional 4–8 digit PIN to open your profile on the shared kiosk. {pinSet ? 'A PIN is set.' : 'No PIN set.'}
+      </div>
+      <label className="field" style={{ marginBottom: 10 }}>
+        <span>{pinSet ? 'New PIN' : 'PIN'}</span>
+        <input
+          type="password"
+          inputMode="numeric"
+          autoComplete="off"
+          value={pin}
+          onChange={(e) => { setPin(e.target.value.replace(/\D/g, '').slice(0, 8)); setOk(false) }}
+          placeholder="4–8 digits"
+        />
+      </label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button type="button" className="btn btn-primary" onClick={save} disabled={busy || !valid}>
+          {busy ? 'Saving…' : pinSet ? 'Update PIN' : 'Set PIN'}
+        </button>
+        {pinSet && <button type="button" className="btn btn-ghost" onClick={remove} disabled={busy}>Remove PIN</button>}
+        {ok && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+      </div>
+      {err && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10 }}>{err}</div>}
     </div>
   )
 }

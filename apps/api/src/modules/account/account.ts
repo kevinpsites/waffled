@@ -62,8 +62,10 @@ export function registerAccountRoutes(api: Api): void {
       birthday: string | null
       is_admin: boolean
       member_type: string
+      has_pin: boolean
     }>(
-      `select name, avatar_emoji, color_hex, birthday, is_admin, member_type
+      `select name, avatar_emoji, color_hex, birthday, is_admin, member_type,
+              (pin_hash is not null) as has_pin
          from persons where id = $1 and household_id = $2 and deleted_at is null`,
       [tenant.personId, tenant.householdId]
     )
@@ -84,6 +86,7 @@ export function registerAccountRoutes(api: Api): void {
       isAdmin: person.is_admin,
       memberType: person.member_type,
       hasAccount,
+      hasPin: person.has_pin,
       email: acct.email,
       hasPassword,
       provider,
