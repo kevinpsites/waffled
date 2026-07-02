@@ -60,7 +60,7 @@ final class Session {
     /// user-facing error string, or nil on success.
     func loginWithOIDC() async -> String? {
         let launcher = OAuthLauncher()
-        guard let callback = await launcher.authorize(url: api.oidcStartURL(), scheme: "nook") else {
+        guard let callback = await launcher.authorize(url: api.oidcStartURL(), scheme: "kinnook") else {
             return nil   // user cancelled the sheet — no error
         }
         let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems

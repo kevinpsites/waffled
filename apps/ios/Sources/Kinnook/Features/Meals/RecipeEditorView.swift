@@ -980,7 +980,7 @@ struct SectionInput: View {
 /// unreliable). A custom UTType — declared in Nook-Info.plist, conforming to `public.data`
 /// (NOT `public.text`) — means only the row/section drop targets accept it.
 extension UTType {
-    static let nookIngredientRow = UTType(exportedAs: "com.kevinsites.nook.ingredient-row")
+    static let nookIngredientRow = UTType(exportedAs: "com.kevinsites.kinnook.ingredient-row")
 }
 
 struct IngredientRowDrag: Transferable, Codable {

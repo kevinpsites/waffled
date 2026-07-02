@@ -24,7 +24,7 @@ final class BarcodeScannerController: UIViewController, AVCaptureMetadataOutputO
     var onCode: ((String) -> Void)?
 
     private let session = AVCaptureSession()
-    private let sessionQueue = DispatchQueue(label: "com.kevinsites.nook.pantry.scanner")
+    private let sessionQueue = DispatchQueue(label: "com.kevinsites.kinnook.pantry.scanner")
     private var preview: AVCaptureVideoPreviewLayer?
 
     private static let codeTypes: [AVMetadataObject.ObjectType] = [

@@ -2,7 +2,7 @@ import SwiftUI
 import AuthenticationServices
 
 /// Drives the Google-calendar OAuth consent in a system web session and resolves
-/// when the server redirects back to the `nook://` callback.
+/// when the server redirects back to the `kinnook://` callback.
 @MainActor
 final class OAuthLauncher: NSObject, ASWebAuthenticationPresentationContextProviding {
     private var session: ASWebAuthenticationSession?
@@ -366,9 +366,9 @@ struct CalendarsSettingsView: View {
         connecting = true; message = nil
         defer { connecting = false }
         do {
-            let urlStr = try await api.connectCalendarURL(redirectTo: "nook://calendar-connected")
+            let urlStr = try await api.connectCalendarURL(redirectTo: "kinnook://calendar-connected")
             guard let url = URL(string: urlStr) else { return }
-            let ok = await launcher.start(url: url, scheme: "nook")
+            let ok = await launcher.start(url: url, scheme: "kinnook")
             if ok { await load() }
         } catch {
             message = "Couldn’t start the Google connection."

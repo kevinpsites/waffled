@@ -89,7 +89,7 @@ struct NookAPI: Sendable {
     }
 
     /// The deep link the OIDC flow returns to (intercepted by ASWebAuthenticationSession).
-    static let oidcRedirect = "nook://auth/callback"
+    static let oidcRedirect = "kinnook://auth/callback"
 
     /// The URL that kicks off backend-mediated OIDC, carrying our deep-link redirect.
     func oidcStartURL() -> URL {

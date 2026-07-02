@@ -1,8 +1,8 @@
 # XcodeGen project definition — the source of truth for the Xcode project.
 # Edit this file (not the generated .xcodeproj), then run `xcodegen generate`.
-# See README.md. The generated Nook.xcodeproj + Nook-Info.plist are gitignored.
+# See README.md. The generated Kinnook.xcodeproj + Kinnook-Info.plist are gitignored.
 
-name: Nook
+name: Kinnook
 
 options:
   bundleIdPrefix: com.kevinsites
@@ -30,7 +30,7 @@ packages:
     path: Vendor/powersync-swift
 
 targets:
-  Nook:
+  Kinnook:
     type: application
     platform: iOS
     sources:
@@ -39,7 +39,7 @@ targets:
       - package: PowerSync
         product: PowerSync
     info:
-      path: Nook-Info.plist
+      path: Kinnook-Info.plist
       properties:
         CFBundleDisplayName: Kinnook
         # Static launch screen: just the warm-white canvas (no white flash). The
@@ -49,9 +49,9 @@ targets:
           UIColorName: LaunchBackground
         # Custom scheme for the Google-calendar OAuth callback (ASWebAuthenticationSession).
         CFBundleURLTypes:
-          - CFBundleURLName: com.kevinsites.nook.oauth
+          - CFBundleURLName: com.kevinsites.kinnook.oauth
             CFBundleURLSchemes:
-              - nook
+              - kinnook
         UIApplicationSupportsIndirectInputEvents: true
         # Phone stays portrait-only (personal planner). The iPad family display is
         # wall/counter-mounted, so it allows landscape (natural) + portrait.
@@ -73,32 +73,32 @@ targets:
         # Custom drag type for reordering recipe ingredient rows. Conforms to public.data
         # (NOT public.text) so the rows' text fields don't intercept the drop as text.
         UTExportedTypeDeclarations:
-          - UTTypeIdentifier: com.kevinsites.nook.ingredient-row
-            UTTypeDescription: Nook recipe ingredient row
+          - UTTypeIdentifier: com.kevinsites.kinnook.ingredient-row
+            UTTypeDescription: Kinnook recipe ingredient row
             UTTypeConformsTo:
               - public.data
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.kevinsites.nook
+        PRODUCT_BUNDLE_IDENTIFIER: com.kevinsites.kinnook
         TARGETED_DEVICE_FAMILY: "1,2"        # 1=iPhone (planner) + 2=iPad (family-display kiosk)
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        ENABLE_TESTABILITY: YES              # @testable import Nook from the tests
+        ENABLE_TESTABILITY: YES              # @testable import Kinnook from the tests
     scheme:
       testTargets:
-        - NookTests
+        - KinnookTests
       gatherCoverageData: true
 
-  NookTests:
+  KinnookTests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - path: Tests
     dependencies:
-      - target: Nook
+      - target: Kinnook
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.kevinsites.nook.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.kevinsites.kinnook.tests
         GENERATE_INFOPLIST_FILE: YES
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Nook.app/Nook"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Kinnook.app/Kinnook"
         BUNDLE_LOADER: "$(TEST_HOST)"

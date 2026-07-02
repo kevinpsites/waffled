@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import SwiftUI
-@testable import Nook
+@testable import Kinnook
 
 // Unit tests for the pure sync logic — the parts that are easy to get subtly
 // wrong (mixed timestamp formats, timezone day boundaries, agenda ordering, the

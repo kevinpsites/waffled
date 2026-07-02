@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import Nook
+@testable import Kinnook
 
 // Mirror of the web's `apps/web/src/kiosk/components/recurrence.test.ts` — the picker's
 // RRULE build / parse / describe logic must stay byte-identical to the web's so an event

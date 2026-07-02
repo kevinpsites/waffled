@@ -5,7 +5,7 @@ import Security
 /// Reads/writes are blocking but fast, so callers can treat them like UserDefaults.
 enum Keychain {
     /// One service namespace for all of Nook's items (per the app's bundle).
-    private static let service = "com.kevinsites.nook.auth"
+    private static let service = "com.kevinsites.kinnook.auth"
 
     static func get(_ key: String) -> String? {
         let query: [String: Any] = [
