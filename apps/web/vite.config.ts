@@ -49,5 +49,8 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    // CI runners render jsdom ~6× slower than a dev laptop, so the default 5s test /
+    // 1s findBy windows are too tight for the heavier interaction tests. Give headroom.
+    testTimeout: 15000,
   },
 })
