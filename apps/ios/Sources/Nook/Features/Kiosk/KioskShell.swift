@@ -64,6 +64,11 @@ struct KioskShell: View {
         }
     }
 
+    /// The overflow destinations that live behind the rail's "More" hub, each gated
+    /// by its module (the rail itself only shows a handful of primaries). Shared with
+    /// `KioskMoreView` so the tile grid and the shell agree on what's reachable.
+    static let moreDestinations: [KioskNav] = [.tasks, .rewards, .goals, .lists, .pantry, .photos]
+
     /// If the current selection points at a now-disabled module, fall back to Today.
     private func correctSelection() {
         if !moduleEnabled(selection) { selection = .today }
@@ -149,7 +154,7 @@ struct KioskShell: View {
         case .family:   familyPath = []
         case .settings: settingsPath = []
         case .meals:    mealsPath = []
-        case .today, .calendar, .tasks, .lists, .pantry, .photos: navReset &+= 1
+        case .today, .calendar, .tasks, .lists, .pantry, .photos, .more: navReset &+= 1
         }
     }
 
@@ -177,6 +182,8 @@ struct KioskShell: View {
         switch selection {
         case .today:
             KioskDashboard(navigate: { selection = $0 }).id(navReset)
+        case .more:
+            KioskMoreView(navigate: { selection = $0 }).id(navReset)
         case .calendar:
             KioskCalendarView().id(navReset)
         case .tasks:
@@ -223,12 +230,14 @@ struct KioskShell: View {
 /// The rail items, in web order (`apps/web/src/kiosk/nav.ts`). Settings is pinned to
 /// the bottom of the rail, so it's separated out from `primary`.
 enum KioskNav: String, CaseIterable, Identifiable {
-    case today, calendar, tasks, rewards, goals, family, meals, lists, pantry, photos, settings
+    case today, calendar, tasks, rewards, goals, family, meals, lists, pantry, photos, more, settings
     var id: String { rawValue }
 
-    /// Everything above the bottom-pinned Settings. Note: web combines Chores + Rewards
-    /// into one tab; on iPad we split Rewards into its own rail item (a deliberate divergence).
-    static let primary: [KioskNav] = [.today, .calendar, .tasks, .rewards, .goals, .family, .meals, .lists, .pantry, .photos]
+    /// The rail's top section (above the bottom-pinned Settings). Deliberately short to
+    /// keep the rail uncluttered as optional modules pile on: the few high-traffic tabs
+    /// plus a "More" hub (`KioskMoreView`) that holds the overflow destinations — Chores,
+    /// Rewards, Goals, Lists, Pantry, Photos. Meals is still module-gated on the rail.
+    static let primary: [KioskNav] = [.today, .calendar, .meals, .family, .more]
 
     var label: String {
         switch self {
@@ -242,6 +251,7 @@ enum KioskNav: String, CaseIterable, Identifiable {
         case .lists: return "Lists"
         case .pantry: return "Pantry"
         case .photos: return "Photos"
+        case .more: return "More"
         case .settings: return "Settings"
         }
     }
@@ -258,6 +268,7 @@ enum KioskNav: String, CaseIterable, Identifiable {
         case .lists: return "list.bullet"
         case .pantry: return "shippingbox.fill"
         case .photos: return "photo"
+        case .more: return "square.grid.2x2"
         case .settings: return "gearshape.fill"
         }
     }
