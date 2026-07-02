@@ -39,13 +39,15 @@ function removeCard(layout: string[][], card: string): string[][] {
 // Reconcile an optional module's card with the saved layout: drop it when the
 // module is off/hidden; inject it (into the shortest column) when it's on but the
 // saved layout doesn't have it yet. Preserves a user-placed position once saved.
-function applyModuleCard(layout: string[][], card: string, show: boolean): string[][] {
+function applyModuleCard(layout: string[][], card: string, show: boolean, preferCol?: number): string[][] {
   const present = layout.some((col) => col.includes(card))
   if (show && !present) {
     const cols = layout.map((c) => [...c])
-    let shortest = 0
-    for (let i = 1; i < cols.length; i++) if (cols[i].length < cols[shortest].length) shortest = i
-    cols[shortest] = [...cols[shortest], card]
+    // Prefer a specific column when asked (e.g. pantry defaults to the middle),
+    // otherwise fall back to the shortest column.
+    let target = preferCol != null && preferCol >= 0 && preferCol < cols.length ? preferCol : 0
+    if (preferCol == null) for (let i = 1; i < cols.length; i++) if (cols[i].length < cols[target].length) target = i
+    cols[target] = [...cols[target], card]
     return cols
   }
   if (!show && present) return removeCard(layout, card)
@@ -93,9 +95,9 @@ export function Today() {
   const showChores = moduleEnabled(household, 'chores')
   const showMeals = moduleEnabled(household, 'meals')
   const showGrocery = moduleEnabled(household, 'lists')
-  const showFamilyNight = moduleEnabled(household, 'familyNight')
+  const showFamilyNight = moduleEnabled(household, 'familyNight') && household?.settings?.familyNight?.showOnToday !== false
   const effectiveResolved = useMemo(() => {
-    let l = applyModuleCard(resolved, 'pantry', showPantry)
+    let l = applyModuleCard(resolved, 'pantry', showPantry, 1) // pantry → middle column by default
     l = applyModuleCard(l, 'familyNight', showFamilyNight)
     l = hideModuleCard(l, 'chores', showChores)
     l = hideModuleCard(l, 'tonight', showMeals)

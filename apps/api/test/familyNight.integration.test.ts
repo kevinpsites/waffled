@@ -134,6 +134,16 @@ describe('family night', () => {
     expect(dow(view.next.date)).toBe(0)
   })
 
+  it('toggles showOnToday (defaults true)', async () => {
+    const before = JSON.parse((await call('GET', '/api/family-night', kevin)).body)
+    expect(before.config.showOnToday).toBe(true)
+    expect((await call('PUT', '/api/family-night/config', kevin, { showOnToday: false })).statusCode).toBe(200)
+    const after = JSON.parse((await call('GET', '/api/family-night', kevin)).body)
+    expect(after.config.showOnToday).toBe(false)
+    // restore
+    await call('PUT', '/api/family-night/config', kevin, { showOnToday: true })
+  })
+
   it('rejects an empty parts list (400)', async () => {
     expect((await call('PUT', '/api/family-night/config', kevin, { parts: [] })).statusCode).toBe(400)
   })

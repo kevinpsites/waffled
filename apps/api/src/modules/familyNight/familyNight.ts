@@ -24,6 +24,9 @@ export interface FamilyNightConfig {
   // Linked recurring calendar event (so Family Night shows on the calendar). null
   // ⇒ not on the calendar.
   eventId: string | null
+  // Show the Family Night card on the Today dashboard (independent of the module
+  // being enabled). Defaults to true.
+  showOnToday: boolean
 }
 
 export const DEFAULT_PARTS: FamilyNightPart[] = [
@@ -38,6 +41,7 @@ const DEFAULT_CONFIG: FamilyNightConfig = {
   time: '19:00',
   rotationOrder: null,
   eventId: null,
+  showOnToday: true,
 }
 
 export interface Member {
@@ -85,6 +89,7 @@ export async function getConfig(householdId: string): Promise<FamilyNightConfig>
     time: typeof c.time === 'string' && /^\d{2}:\d{2}$/.test(c.time) ? c.time : DEFAULT_CONFIG.time,
     rotationOrder: Array.isArray(c.rotationOrder) ? c.rotationOrder.filter((x) => typeof x === 'string') : null,
     eventId: typeof c.eventId === 'string' ? c.eventId : null,
+    showOnToday: typeof c.showOnToday === 'boolean' ? c.showOnToday : DEFAULT_CONFIG.showOnToday,
   }
 }
 

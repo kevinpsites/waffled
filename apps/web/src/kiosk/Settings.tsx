@@ -1885,6 +1885,11 @@ function FamilyNightSettings() {
       </div>
 
       <div className="set-module-setrow">
+        <span>Show on the Today page</span>
+        <Switch checked={config.showOnToday !== false} disabled={saving} onChange={(v) => save({ showOnToday: v })} ariaLabel="Show Family Night on Today" />
+      </div>
+
+      <div className="set-module-setrow">
         <span>Show on the calendar</span>
         <Switch checked={onCalendar} disabled={saving} onChange={toggleCalendar} ariaLabel="Show Family Night on the calendar" />
       </div>

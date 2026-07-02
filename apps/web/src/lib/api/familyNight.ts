@@ -18,6 +18,7 @@ export interface FamilyNightConfig {
   time: string
   rotationOrder: string[] | null
   eventId: string | null
+  showOnToday: boolean
 }
 
 export interface FamilyNightMember {

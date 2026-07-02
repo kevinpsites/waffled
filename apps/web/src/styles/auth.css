@@ -35,7 +35,8 @@
   height: 88px;
   border-radius: 20px;
   object-fit: contain;
-  margin-bottom: 14px;
+  display: block;
+  margin: 0 auto 14px;
 }
 .auth-title {
   font-size: 26px;

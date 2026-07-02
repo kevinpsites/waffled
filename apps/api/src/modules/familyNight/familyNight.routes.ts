@@ -44,6 +44,7 @@ export function registerFamilyNightRoutes(api: Api): void {
     if (typeof body.dayOfWeek === 'number') patch.dayOfWeek = body.dayOfWeek
     if (typeof body.time === 'string' && /^\d{2}:\d{2}$/.test(body.time)) patch.time = body.time
     if (body.rotationOrder === null || Array.isArray(body.rotationOrder)) patch.rotationOrder = body.rotationOrder
+    if (typeof body.showOnToday === 'boolean') patch.showOnToday = body.showOnToday
     const config = await setConfig(tenant.householdId, patch)
     return { config }
   }))

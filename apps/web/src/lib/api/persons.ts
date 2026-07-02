@@ -50,6 +50,7 @@ export interface Household {
     modules?: Record<string, boolean>
     pantry?: { locations?: string[]; showOnToday?: boolean }
     chores?: { rewards?: boolean; proofTtlDays?: number }
+    familyNight?: { showOnToday?: boolean }
   } & Record<string, unknown>
 }
 
