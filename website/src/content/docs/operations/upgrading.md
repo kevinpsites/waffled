@@ -1,9 +1,9 @@
 ---
 title: Upgrading
-description: Move a self-hosted Nook to a newer version safely.
+description: Move a self-hosted Kinnook to a newer version safely.
 ---
 
-How to move a self-hosted Nook to a newer version safely. Nook runs via `docker
+How to move a self-hosted Kinnook to a newer version safely. Kinnook runs via `docker
 compose`, driven by the root `./nook` CLI. There are two ways to run it, and the
 upgrade steps differ slightly — pick the one that matches your setup.
 

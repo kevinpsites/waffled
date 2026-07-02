@@ -1,4 +1,4 @@
-# Nook — Data Model
+# Kinnook — Data Model
 
 The system-of-record schema (Postgres). This is the design source of truth; tables are
 implemented incrementally per the roadmap (migrations), but the whole picture lives here so
@@ -254,7 +254,7 @@ window forward nightly. Clients (kiosk/iOS) never run an RRULE engine.
 
 **Participants ↔ Google attendees:** inbound, match attendee email → person via
 `identities`/`connected_accounts`; unmatched → `external_*`. Outbound, push **adult** emails as
-attendees; **kids are Nook-only participants** (no email, not sent to Google). `events.person_id`
+attendees; **kids are Kinnook-only participants** (no email, not sent to Google). `events.person_id`
 remains the color/owner; participants is the broader involvement set.
 
 ---
@@ -623,7 +623,7 @@ from CloudFront/S3 on demand (private bucket, **signed URLs**) and cached on-dev
 
 **Conflict policy**
 - **Calendar:** Google authoritative for **google-origin** events on the *Google-owned* columns
-  (inbound upsert touches only those); **Nook authoritative** for Nook-owned columns
+  (inbound upsert touches only those); **Kinnook authoritative** for Kinnook-owned columns
   (`person_id`, `origin*`) always. Concurrent edits to the same field → last-write-wins by
   `google_updated` vs `updated_at`.
 - **Everything else:** server-reconciled last-write-wins; offline optimistic values may be
@@ -680,7 +680,7 @@ creates an occurrence row, which shifts the next week's rotation.
 | Identity | One person ↔ many `identities` (google/apple/password); auto-link only on verified email |
 | Permissions | `member_type` (adult/teen/kid) **decoupled** from `is_admin` (multi-admin); one `owner_person_id` |
 | Avatars | emoji **or** uploaded image (`avatar_type`/`avatar_url`); may seed from Google picture |
-| Participants | `event_participants` table; kids are Nook-only (no Google attendee) |
+| Participants | `event_participants` table; kids are Kinnook-only (no Google attendee) |
 | Reminders | `jsonb`, 1:1 with Google `reminders.overrides` |
 | Meals↔calendar | entry generates an event via `origin`/`origin_ref_id`; `entry.event_id` reverse-links |
 | Economy | one `ledger_entries` (stars/marbles/xp); balances/levels/streaks derived; stickers deferred |

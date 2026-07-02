@@ -274,7 +274,7 @@ function ApiKeysPanel() {
       {keys == null ? (
         <div className="tiny muted" style={{ fontWeight: 600, padding: 8 }}>Loading…</div>
       ) : keys.length === 0 ? (
-        <div className="tiny muted" style={{ fontWeight: 600, padding: '14px 2px' }}>No API keys yet. Create one to let an outside app reach Nook.</div>
+        <div className="tiny muted" style={{ fontWeight: 600, padding: '14px 2px' }}>No API keys yet. Create one to let an outside app reach Kinnook.</div>
       ) : (
         <div className="apikey-list">
           {keys.map((k) => (
@@ -486,7 +486,7 @@ function UpdateBanner({ upd, onToggle, toggling }: { upd: UpdateInfo; onToggle: 
             <>
               <div className="card-h" style={{ margin: 0 }}>Update checks off</div>
               <div className="tiny muted" style={{ fontWeight: 600 }}>
-                {envOff ? 'Disabled by the operator (UPDATE_CHECK_ENABLED).' : "Nook won't check GitHub for new releases."}
+                {envOff ? 'Disabled by the operator (UPDATE_CHECK_ENABLED).' : "Kinnook won't check GitHub for new releases."}
               </div>
             </>
           )}
@@ -622,7 +622,7 @@ function LearnedMatches() {
     <div className="set-card" style={{ marginTop: 18 }}>
       <div className="set-row2-t" style={{ marginBottom: 4 }}>Smart matching</div>
       <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 12 }}>
-        Words Nook has learned to link to a goal, from the events you’ve linked. Remove any that look wrong.
+        Words Kinnook has learned to link to a goal, from the events you’ve linked. Remove any that look wrong.
       </div>
       {groups.length === 0 ? (
         <div className="tiny muted" style={{ fontWeight: 600 }}>
@@ -882,7 +882,7 @@ function MealsPanel() {
       </div>
 
       <div className="set-card">
-        <SettingRow icon="📅" title="Add planned meals to the calendar" sub="Each meal you plan shows on the Nook calendar, linked to its recipe.">
+        <SettingRow icon="📅" title="Add planned meals to the calendar" sub="Each meal you plan shows on the Kinnook calendar, linked to its recipe.">
           <input type="checkbox" className="set-check" checked={cfg.addToCalendar} onChange={(e) => update({ addToCalendar: e.target.checked })} />
         </SettingRow>
         <SettingRow icon="🔄" title="Sync them to Google Calendar" sub="Also push meal events to the calendar below, so they show on everyone’s phones.">
@@ -947,7 +947,7 @@ function isReadOnly(accessRole: string | null): boolean {
 }
 
 // Calendars: connect Google accounts, map each calendar to a person (color/owner),
-// toggle which ones Nook syncs, and pull events on demand. Connect navigates to
+// toggle which ones Kinnook syncs, and pull events on demand. Connect navigates to
 // Google's consent screen; the api callback redirects back here when it's done.
 function CalendarsPanel() {
   const [status, setStatus] = useState<CalendarStatus | null>(null)
@@ -1074,7 +1074,7 @@ function CalendarsPanel() {
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
-        <label className="cal-sync" title="Sync this calendar into Nook">
+        <label className="cal-sync" title="Sync this calendar into Kinnook">
           <input type="checkbox" checked={cal.selected} onChange={() => toggleSelected(cal)} />
           Sync
         </label>
@@ -1114,7 +1114,7 @@ function CalendarsPanel() {
         <div className="set-card" style={{ padding: 22 }}>
           <div className="set-row2-t" style={{ marginBottom: 6 }}>Connect a Google account</div>
           <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 16 }}>
-            Bring your family’s Google calendars into Nook. You’ll pick which ones sync and who each one belongs to.
+            Bring your family’s Google calendars into Kinnook. You’ll pick which ones sync and who each one belongs to.
           </div>
           <button type="button" className="btn btn-primary" onClick={connect} disabled={connecting}>
             {connecting ? 'Opening Google…' : 'Connect Google Calendar'}
@@ -1370,7 +1370,7 @@ function ChoreProofCard() {
     <div className="set-card" style={{ padding: 18, marginTop: 14 }}>
       <div className="card-h" style={{ marginBottom: 4 }}>Photo proof</div>
       <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
-        Some chores require a photo to complete. These are quick proof shots, not memories — Nook deletes them automatically after the chore is settled (a note that a photo was attached stays). Rejected chores’ photos are removed right away.
+        Some chores require a photo to complete. These are quick proof shots, not memories — Kinnook deletes them automatically after the chore is settled (a note that a photo was attached stays). Rejected chores’ photos are removed right away.
       </div>
       <SettingRow icon="📸" title="Keep proof photos for" sub={sub}>
         <select className="sel" value={ttl ?? 3} disabled={ttl === null || saving}
@@ -1619,7 +1619,7 @@ function SignOutButton({ className }: { className?: string }) {
   )
 }
 
-// About / account — what this Nook is, plus the sign-out control. Replaces the old
+// About / account — what this Kinnook is, plus the sign-out control. Replaces the old
 // placeholder now that real auth exists.
 // A pill toggle switch (replaces the bare checkbox for on/off settings).
 function Switch({ checked, disabled, onChange, ariaLabel }: { checked: boolean; disabled?: boolean; onChange: (v: boolean) => void; ariaLabel: string }) {
@@ -1918,7 +1918,7 @@ function AboutPanel() {
     <div className="set-panel">
       <div className="set-head"><div className="nk-serif set-head-t">About</div></div>
       <div className="set-card" style={{ padding: 22 }}>
-        <div className="set-row2-t" style={{ marginBottom: 4 }}>Nook — Family Hub</div>
+        <div className="set-row2-t" style={{ marginBottom: 4 }}>Kinnook — Family Hub</div>
         <div className="tiny muted" style={{ fontWeight: 600 }}>
           Self-hosted{household?.name ? ` · ${household.name}` : ''}. Version and storage info land here.
         </div>
@@ -1972,7 +1972,7 @@ function HouseholdsPanel() {
         <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 16 }}>
           {soloAndNoInvites
             ? 'You belong to one household. Invitations to join others will show up here.'
-            : 'Switch between the households you belong to. Switching reloads Nook for that family.'}
+            : 'Switch between the households you belong to. Switching reloads Kinnook for that family.'}
         </div>
         {memberships.map((m) => {
           const current = m.householdId === household?.id
@@ -2258,7 +2258,7 @@ function KioskDevicesSection() {
             <span className="tiny muted" style={{ fontWeight: 600 }}>Waiting for a device to pair…</span>
           </div>
           <div className="tiny muted" style={{ fontWeight: 600, marginTop: 8 }}>
-            On the new tablet: open this Nook’s address → “Set up this device as a kiosk” → enter this code. One-time, expires in ~10 minutes.
+            On the new tablet: open this Kinnook’s address → “Set up this device as a kiosk” → enter this code. One-time, expires in ~10 minutes.
           </div>
         </div>
       )}

@@ -1,6 +1,6 @@
 /* ===== Lists screen — multi-list, sectioned items (handoff KIOSK_lists) =====
    Layout mirrors the mock: a 236px list rail (YOUR LISTS) + a main column with
-   the list header, an add bar, "Nook suggests" chips, and a two-column grid of
+   the list header, an add bar, "Kinnook suggests" chips, and a two-column grid of
    sectioned items. Most atoms (.list-item, .litem, .ai-bar, .sug-chip, .av,
    .pill, .seg) come from nook.css; this file only adds the page scaffolding. */
 

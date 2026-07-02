@@ -10,8 +10,10 @@ export default defineConfig({
 	base: process.env.DOCS_BASE || '/',
 	integrations: [
 		starlight({
-			title: 'Nook',
+			title: 'Kinnook',
 			tagline: 'Self-hosted family hub',
+			logo: { src: './src/assets/kinnook-logo.png', alt: 'Kinnook' },
+			favicon: '/favicon.png',
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/OWNER/nook' }],
 			sidebar: [
 				{

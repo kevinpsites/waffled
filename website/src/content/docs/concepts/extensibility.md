@@ -1,9 +1,9 @@
 ---
 title: Extensibility & modules
-description: How Nook grows — built-in toggle modules and external integrations.
+description: How Kinnook grows — built-in toggle modules and external integrations.
 ---
 
-How features get added to Nook beyond the core app, and how self-hosters / the
+How features get added to Kinnook beyond the core app, and how self-hosters / the
 community can build on top of it. Two supported patterns; a third we deliberately
 avoid.
 
@@ -11,31 +11,31 @@ avoid.
 
 | | **A — built-in toggle module** | **B — external integration** | **(C) true in-process plugin** |
 |---|---|---|---|
-| Where the code runs | *Inside* Nook (ships in the image) | A *separate* program / container | Loaded into the running Nook server |
-| Who writes it | Contributed to Nook's source (PR or fork) | Anyone, independently | A third party, no fork |
-| Its UI | Renders **inside** Nook (Today card, a tab) | Its **own** separate window/app (or headless) | Inside Nook |
+| Where the code runs | *Inside* Kinnook (ships in the image) | A *separate* program / container | Loaded into the running Kinnook server |
+| Who writes it | Contributed to Kinnook's source (PR or fork) | Anyone, independently | A third party, no fork |
+| Its UI | Renders **inside** Kinnook (Today card, a tab) | Its **own** separate window/app (or headless) | Inside Kinnook |
 | How a household "gets" it | Toggle it on in Settings → Modules | Run the program + paste an API key | (n/a) |
 | Status | **Supported** | **Supported** (needs API keys, below) | **Not pursued** |
 
 **Key constraint that decides everything:** an external program (B) can never render
-UI *inside* Nook's own screens. It has its own UI or runs headless, and talks to Nook
+UI *inside* Kinnook's own screens. It has its own UI or runs headless, and talks to Kinnook
 only through the REST API. (This is exactly how Immich works — immich-frame, immich-go,
 Home-Assistant integrations, etc. are all *external apps using an API key*; Immich has
 **no** in-process plugin system. So "Immich plugins" == pattern B.)
 
-**Decision rule for any new feature:** *Does it need to appear inside Nook's own
-interface (a Today card, a tab) or reach into other Nook features (meals, persons)?*
+**Decision rule for any new feature:** *Does it need to appear inside Kinnook's own
+interface (a Today card, a tab) or reach into other Kinnook features (meals, persons)?*
 - **Yes → built-in toggle module (A).** To share it with others, contribute it to the
   repo (ships off-by-default; each household toggles it on). "Contribute" ≠ "must be
   officially blessed" — it just has to be in the codebase people run (official or a fork).
 - **No (it can stand on its own UI or run headless) → external integration (B).** Publish
-  your standalone app/script; others point it at their Nook with an API key.
+  your standalone app/script; others point it at their Kinnook with an API key.
 
 We do **not** build (C), a runtime plugin loader (dynamic third-party code inside the
 server). It needs sandboxing/versioning/security machinery that's overkill and risky for
 a family hub — and Immich itself doesn't attempt it. A + B cover the same ground.
 
-## Nook's strategy
+## Kinnook's strategy
 
 1. **Pluggable optional modules + a "Modules" settings tab (pattern A).** Core stays lean;
    optional/personal/community features ship in the app but are **opt-in per household**.
@@ -58,11 +58,11 @@ add its tables to the **PowerSync** sync rules; otherwise iOS uses the **REST** 
 (online-only), like chores do today.
 
 So the framework gives: **one shared toggle + shared API/data + per-client native UI** —
-which matches how Nook is already built (the API is the contract; web and iOS are
+which matches how Kinnook is already built (the API is the contract; web and iOS are
 independent consumers).
 
 ## First modules (Kevin's use cases)
-All three want to live *inside* Nook (Today card / tabs / meal-plan integration), so all
+All three want to live *inside* Kinnook (Today card / tabs / meal-plan integration), so all
 three are **pattern A** (built-in, toggle-able). External companions can *feed* them via
 API keys (B) once that ships.
 

@@ -480,7 +480,7 @@ export function GettingStartedBar() {
       <div className="ob-bar">
         <div className="ob-bar-main">
           <div className="ob-bar-title">Getting started</div>
-          <div className="ob-bar-sub">{doneCount} of {steps.length} done — finish setting up your Nook.</div>
+          <div className="ob-bar-sub">{doneCount} of {steps.length} done — finish setting up your Kinnook.</div>
           <div className="ob-bar-steps">
             {steps.map((s) => (
               <span key={s.key} className={`ob-chip${statuses[s.key] ? ' done' : ''}`}>

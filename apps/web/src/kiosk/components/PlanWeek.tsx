@@ -181,7 +181,7 @@ export function PlanWeek({ startStr, days, onClose, onApplied, initialUseUp }: {
       {/* Left: the guardrails (headed by the screen title, per the mock) */}
       <div className="plan-config">
         <div className="plan-title nk-serif">Plan my week</div>
-        <div className="tiny muted plan-sub">Tell Nook the guardrails — it drafts the meals and the grocery list in one go.</div>
+        <div className="tiny muted plan-sub">Tell Kinnook the guardrails — it drafts the meals and the grocery list in one go.</div>
         <div className="flabel">Plan which meal?</div>
         <div className="seg seg-plantype">
           {MEAL_TYPES.map((m) => (

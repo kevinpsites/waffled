@@ -30,6 +30,13 @@
   place-items: center;
   margin-bottom: 16px;
 }
+.auth-logo-img {
+  width: 88px;
+  height: 88px;
+  border-radius: 20px;
+  object-fit: contain;
+  margin-bottom: 14px;
+}
 .auth-title {
   font-size: 26px;
   font-weight: 600;

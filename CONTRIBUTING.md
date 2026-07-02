@@ -1,12 +1,12 @@
-# Contributing to Nook
+# Contributing to Kinnook
 
-Thanks for your interest in Nook — a self-hosted family hub. This guide covers
+Thanks for your interest in Kinnook — a self-hosted family hub. This guide covers
 how to get set up, run the checks, and open a good PR. Keep it practical; when in
 doubt, match the surrounding code.
 
 ## Local setup
 
-Nook runs as a docker compose stack driven by a root `./nook` bash CLI.
+Kinnook runs as a docker compose stack driven by a root `./nook` bash CLI.
 
 ```bash
 git clone <repo-url> nook

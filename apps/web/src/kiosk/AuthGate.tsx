@@ -87,7 +87,7 @@ function AuthShell({ title, sub, children }: { title: string; sub: string; child
   return (
     <div className="auth-screen">
       <div className="auth-card">
-        <div className="auth-logo nk-serif">N</div>
+        <img className="auth-logo-img" src="/logo.png" alt="Kinnook" width={96} height={96} />
         <div className="auth-title nk-serif">{title}</div>
         <div className="auth-sub">{sub}</div>
         {children}
@@ -124,7 +124,7 @@ function LoginScreen({ status, oidcError }: { status: AuthStatus | null; oidcErr
   }
 
   return (
-    <AuthShell title="Welcome back" sub="Sign in to your family's Nook.">
+    <AuthShell title="Welcome back" sub="Sign in to your family's Kinnook.">
       {error && <div className="auth-error" style={{ marginBottom: 12 }}>{error}</div>}
       {showOidc && (
         <button type="button" className="btn auth-submit auth-sso" style={{ marginTop: 0 }} onClick={() => authApi.startOidc()}>
@@ -221,7 +221,7 @@ function SetupWizard() {
   }
 
   return (
-    <AuthShell title="Welcome to Nook" sub="Let's set up your household and your admin account.">
+    <AuthShell title="Welcome to Kinnook" sub="Let's set up your household and your admin account.">
       <form onSubmit={submit} className="auth-form">
         <div className="auth-section">Your household</div>
         <label className="auth-label">Household name</label>

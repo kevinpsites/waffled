@@ -3,7 +3,7 @@ title: Backup & restore
 description: Automatic nightly database backups, offsite copies, and restore.
 ---
 
-Nook backs up your database automatically. The `backup` service (part of the default
+Kinnook backs up your database automatically. The `backup` service (part of the default
 stack) dumps Postgres on a nightly schedule; you can optionally push each dump offsite
 to S3-compatible storage and include uploaded media. Every run is recorded so
 **Settings → System Health** and `./nook doctor` show you the last backup at a glance.

@@ -3,7 +3,7 @@ title: Permissions
 description: The family-hub permission & attribution model — gate, attribute, or leave open.
 ---
 
-Nook is a *family* hub, not an enterprise tool. The goal is a warm shared space where
+Kinnook is a *family* hub, not an enterprise tool. The goal is a warm shared space where
 everyone — including kids — can participate, with just enough control where it actually
 matters. So we deliberately **do not** gate every action behind a role. Instead we sort
 every write by what it actually does.

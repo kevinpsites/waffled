@@ -1,4 +1,4 @@
-# Nook — repo conventions & gotchas
+# Kinnook — repo conventions & gotchas
 
 High-signal notes for anyone (human or AI) working in this repo. This file is
 auto-loaded by Claude Code in every session. Add a bullet when a mistake bites

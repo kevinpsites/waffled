@@ -1,9 +1,9 @@
 ---
 title: Troubleshooting
-description: Symptom → diagnosis → fix for common self-hosted Nook issues.
+description: Symptom → diagnosis → fix for common self-hosted Kinnook issues.
 ---
 
-Practical fixes for a self-hosted Nook. Each entry is **symptom → diagnosis → fix**.
+Practical fixes for a self-hosted Kinnook. Each entry is **symptom → diagnosis → fix**.
 
 ## Run `./nook doctor` first
 

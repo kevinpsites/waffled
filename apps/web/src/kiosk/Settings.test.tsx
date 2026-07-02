@@ -189,7 +189,7 @@ describe('Settings screen', () => {
     }) as unknown as typeof fetch
     renderSettings()
 
-    expect(await screen.findByText('Nook — Family Hub')).toBeInTheDocument() // About panel content
+    expect(await screen.findByText('Kinnook — Family Hub')).toBeInTheDocument() // About panel content
     expect(screen.getByText('About', { selector: '.set-navitem' })).toBeInTheDocument()
     expect(screen.getByText(/Sign out/, { selector: '.set-signout' })).toBeInTheDocument()
     expect(screen.queryByText('Family & People')).not.toBeInTheDocument()

@@ -325,7 +325,7 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
       {/* Left: the guardrails */}
       <div className="plan-config">
         <div className="plan-title nk-serif">Plan {monthLabel}</div>
-        <div className="tiny muted plan-sub">Nook drafts a rotation of your recipes and spreads it across the month — then builds your grocery list.</div>
+        <div className="tiny muted plan-sub">Kinnook drafts a rotation of your recipes and spreads it across the month — then builds your grocery list.</div>
 
         {libShort && (
           <div className="plan-lib-hint tiny">

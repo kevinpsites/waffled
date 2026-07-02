@@ -181,7 +181,7 @@ export function EventDetail() {
   const calStatus =
     view.calendarName
       ? `${view.calendarName}${view.syncState === 'synced' ? ' · synced from Google' : ' · pending sync'}`
-      : 'Nook only'
+      : 'Kinnook only'
 
   // Smart suggestion for an untagged, non-meal, single event that looks like a
   // goal. "Link" opens the editor pre-linked so the human confirms (and can pick

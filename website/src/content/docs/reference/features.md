@@ -1,9 +1,9 @@
 ---
 title: Feature matrix
-description: Every Nook feature and whether it's supported on each surface.
+description: Every Kinnook feature and whether it's supported on each surface.
 ---
 
-Every Nook feature and whether it's supported on each surface.
+Every Kinnook feature and whether it's supported on each surface.
 
 - **Web / Kiosk** — the React app (same build powers the desktop browser and the kitchen
   tablet kiosk).

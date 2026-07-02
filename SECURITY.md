@@ -1,6 +1,6 @@
 # Security Policy
 
-Thanks for helping keep Nook and its users safe. Nook is a small, self-hosted
+Thanks for helping keep Kinnook and its users safe. Kinnook is a small, self-hosted
 family hub, maintained on a best-effort basis — we take security seriously and
 appreciate responsible disclosure.
 
@@ -37,7 +37,7 @@ If you can't use GitHub advisories, email the maintainer at
 
 - **Do not open a public GitHub issue or PR that describes the vulnerability.**
 - **Do not run automated scanners, brute-force, or exploit tooling against
-  instances you don't own.** Nook is self-hosted — every instance belongs to a
+  instances you don't own.** Kinnook is self-hosted — every instance belongs to a
   family. Test only against your own local deployment.
 - Don't access, modify, or exfiltrate data that isn't yours.
 
@@ -50,13 +50,13 @@ anonymous.
 
 ## Supported versions
 
-Nook is **pre-1.0**. There is **no LTS release**. Security fixes land on the
+Kinnook is **pre-1.0**. There is **no LTS release**. Security fixes land on the
 **latest release and `main`**; there is no back-porting to older tags. Operators
 should track the latest release and keep their images up to date.
 
 ## Operator responsibility (self-hosted)
 
-Nook is self-hosted, so **you** — the operator — are responsible for the security
+Kinnook is self-hosted, so **you** — the operator — are responsible for the security
 of your deployment. At minimum:
 
 - **Serve over HTTPS.** The bundled Caddy config terminates TLS; don't expose the

@@ -15,7 +15,7 @@ import {
 import { useTopbarRight } from './topbar-slot'
 import '../styles/lists.css'
 
-// "Nook suggests" chips are static in the handoff (no suggestion engine yet) —
+// "Kinnook suggests" chips are static in the handoff (no suggestion engine yet) —
 // they add their label to the list when tapped. Called out in the summary.
 const SUGGESTIONS = ['Bug spray', 'Phone chargers', 'Snacks for the drive', 'Trash bags']
 
@@ -419,7 +419,7 @@ export function Lists() {
             </form>
 
             <div className="lists-suggest">
-              <span className="tiny lists-suggest-label">Nook suggests:</span>
+              <span className="tiny lists-suggest-label">Kinnook suggests:</span>
               {SUGGESTIONS.map((s) => (
                 <button key={s} type="button" className="sug-chip" onClick={() => addItem(s)}>
                   <svg viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: '<path d="M12 5v14M5 12h14"/>' }} />

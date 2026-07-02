@@ -381,7 +381,7 @@ export function EventModal({
   }, [isMeal, event?.originRefId])
 
   // Calendar picker (create only): which Google calendar the event is written to.
-  // '' = Nook only. Defaults to the owner's ★ calendar and follows the owner until
+  // '' = Kinnook only. Defaults to the owner's ★ calendar and follows the owner until
   // the user picks manually. Editing keeps the event on its existing calendar.
   const [writableCals, setWritableCals] = useState<CalendarLink[]>([])
   const [calendarId, setCalendarId] = useState('')

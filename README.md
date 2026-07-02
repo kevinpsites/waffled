@@ -1,4 +1,4 @@
-# Nook — Family Hub
+# Kinnook — Family Hub
 
 A shared family operating system rendered across three surfaces:
 
@@ -23,7 +23,7 @@ docs/          ARCHITECTURE.md, DATA_MODEL.md, TESTING.md, product/ (user docs)
 
 ## Self-hosting (quickstart)
 
-Nook runs as a small Docker Compose stack (Postgres · PowerSync · api · Caddy). Auth
+Kinnook runs as a small Docker Compose stack (Postgres · PowerSync · api · Caddy). Auth
 is **built in** — no Auth0 or external identity provider required. You can optionally
 attach your own SSO later (see below).
 
@@ -97,7 +97,7 @@ password). Email-only members can sign in via SSO once OIDC is configured.
 
 ### Single sign-on (OIDC) — optional
 
-Nook supports backend-mediated OIDC (auth-code + PKCE) against any OpenID-Connect
+Kinnook supports backend-mediated OIDC (auth-code + PKCE) against any OpenID-Connect
 provider (Authentik, Keycloak, Google, …). It's **invite-gated**: a person can only
 sign in via SSO if the provider's *verified email* already matches a family member's
 login email. Configure it in **Settings → Login & security** (admin only):
@@ -105,7 +105,7 @@ login email. Configure it in **Settings → Login & security** (admin only):
 1. Ensure `TOKEN_ENCRYPTION_KEY` is set (the client secret is encrypted at rest).
 2. **Issuer URL** — your provider's discovery base, e.g.
    `https://accounts.google.com` or `https://auth.example.com/application/o/nook/`.
-   Click **Test** to confirm Nook can reach its discovery document.
+   Click **Test** to confirm Kinnook can reach its discovery document.
 3. **Client ID** + **Client secret** from an OIDC app you register at the provider.
 4. Register this **redirect URI** at the provider:
    `https://your.host/api/auth/oidc/callback` (use `http://localhost:8080/...` locally).
@@ -126,7 +126,7 @@ client's *Authorized redirect URIs* (alongside the calendar one), set the issuer
 deep link itself; the app intercepts it via `ASWebAuthenticationSession`). The "Sign in
 with …" button appears in the app automatically whenever `GET /api/auth/status` reports
 OIDC is ready. Two things to get right:
-- The redirect URI Nook sends to the IdP is derived from the host the request arrives
+- The redirect URI Kinnook sends to the IdP is derived from the host the request arrives
   on, so the address your **device** uses to reach the API must have a matching
   `/api/auth/oidc/callback` in the provider's *Authorized redirect URIs*. The simulator
   reaches `localhost:8080` (already covered); a physical phone reaches your LAN IP or
@@ -187,14 +187,14 @@ non-interactively (e.g. over plain SSH).
 
 Self-hosted Docker Compose · Postgres system-of-record · PowerSync for iOS (and the
 kiosk's calendar) offline · **built-in email/password auth + optional OIDC SSO** (no
-Auth0) · Google Calendar authoritative for Google-origin events, Nook authoritative for
+Auth0) · Google Calendar authoritative for Google-origin events, Kinnook authoritative for
 native fields · ~5-min in-process calendar sync (no separate worker) · Caddy serves the
 SPA + `/media` and can do public ingress (auto-TLS or a Cloudflare Tunnel) · everything
 in this one repo.
 
 ## License
 
-Nook is licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0). See
+Kinnook is licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0). See
 [LICENSE](LICENSE). In short: you're free to self-host, study, modify, and share it — but
 if you run a modified version as a network service, you must make your source available to
 its users under the same license.

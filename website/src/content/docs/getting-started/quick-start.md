@@ -1,9 +1,9 @@
 ---
 title: Quick start
-description: Install and run Nook as a small Docker Compose stack.
+description: Install and run Kinnook as a small Docker Compose stack.
 ---
 
-Nook runs as a small Docker Compose stack — **Postgres · PowerSync · api · Caddy**. Auth
+Kinnook runs as a small Docker Compose stack — **Postgres · PowerSync · api · Caddy**. Auth
 is built in; no Auth0 or external identity provider is required. You can attach your own
 SSO later (optional).
 
@@ -33,7 +33,7 @@ That single command is the whole install. On first run, `./nook up`:
 
 Open the kiosk/web app at the URL it prints — **http://localhost:8080** by default.
 
-> **Going to use it from a tablet, phone, or another computer?** (Nook's whole point is
+> **Going to use it from a tablet, phone, or another computer?** (Kinnook's whole point is
 > an always-on tablet + the iOS app.) Run **`./nook setup`** *before* `./nook up` — it
 > asks one question ("how will devices reach this server?"), auto-detects your machine's
 > LAN IP, and writes the address settings so sync works off-device. Skipping this is the
@@ -76,8 +76,8 @@ nothing set, capture still works via an on-device heuristic.
 ## Optional: two-way Google Calendar sync
 
 Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_CALENDAR_REDIRECT_URI` in the
-env, then connect per person in **Settings → Calendars** ("Connect your calendar"). Nook
-pulls events on a ~5-minute poll and pushes Nook-authored events back.
+env, then connect per person in **Settings → Calendars** ("Connect your calendar"). Kinnook
+pulls events on a ~5-minute poll and pushes Kinnook-authored events back.
 
 ## Optional: single sign-on (OIDC)
 

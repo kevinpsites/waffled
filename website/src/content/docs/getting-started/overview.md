@@ -1,11 +1,11 @@
 ---
 title: Overview
-description: What Nook is, its three surfaces, and the core ideas behind it.
+description: What Kinnook is, its three surfaces, and the core ideas behind it.
 ---
 
-## What Nook is
+## What Kinnook is
 
-Nook is a **self-hosted family operating system**. One household, one source of truth for
+Kinnook is a **self-hosted family operating system**. One household, one source of truth for
 everything a family coordinates day to day:
 
 - 📅 **Calendar** with optional two-way Google Calendar sync
