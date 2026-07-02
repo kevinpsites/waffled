@@ -58,7 +58,7 @@ export function ProfilePicker() {
   return (
     <div className="kp-screen">
       <div className="kp-head">
-        <div className="kp-logo nk-serif">N</div>
+        <img className="kp-logo" src="/logo.png" alt="Kinnook" />
         <div className="kp-title nk-serif">Who’s using Kinnook?</div>
         <div className="kp-sub">Tap your profile to continue.</div>
       </div>

@@ -14,7 +14,7 @@
 // reflects the change — SWR returns the page a stale copy and only refreshes its
 // own cache, which made "mutate then refetch" show old data.
 
-const VERSION = 'nook-v3'
+const VERSION = 'nook-v4'
 const SHELL = `${VERSION}-shell`
 const ASSETS = `${VERSION}-assets`
 const API = `${VERSION}-api`
