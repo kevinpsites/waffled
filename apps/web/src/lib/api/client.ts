@@ -273,6 +273,21 @@ export function invalidateGetCache(prefix: string): void {
   for (const k of [...getCache.keys()]) if (k.startsWith(prefix)) getCache.delete(k)
 }
 
+// Thrown by apiSend on a non-2xx. Keeps the same `${method} ${path} -> ${status}`
+// message (so existing `.catch(() => …)` callers are unaffected), and additionally
+// carries the HTTP status + parsed JSON body so callers that want to surface the
+// server's `{ error, message }` can read `err.status` / `err.body`.
+export class ApiSendError extends Error {
+  status: number
+  body: { error?: string; message?: string } & Record<string, unknown>
+  constructor(method: string, path: string, status: number, body: Record<string, unknown>) {
+    super(`${method} ${path} -> ${status}`)
+    this.name = 'ApiSendError'
+    this.status = status
+    this.body = body
+  }
+}
+
 export async function apiSend<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const res = await authFetch(path, {
     method,
@@ -280,7 +295,10 @@ export async function apiSend<T>(method: string, path: string, body?: unknown, s
     body: body !== undefined ? JSON.stringify(body) : undefined,
     signal,
   })
-  if (!res.ok) throw new Error(`${method} ${path} -> ${res.status}`)
+  if (!res.ok) {
+    const errBody = (await res.json().catch(() => ({}))) as Record<string, unknown>
+    throw new ApiSendError(method, path, res.status, errBody)
+  }
   return res.json() as Promise<T>
 }
 

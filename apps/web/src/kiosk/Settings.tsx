@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
+import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
 import { PersonModal } from './components/PersonModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -14,6 +14,8 @@ import '../styles/settings.css'
 // account/operator. Account is thin today; it grows with per-member self-service later.
 const NAV = [
   // Account — you
+  { key: 'profile', icon: '🙂', label: 'My Profile', group: 'account' },
+  { key: 'account', icon: '🔒', label: 'My Account', group: 'account' },
   { key: 'households', icon: '🏠', label: 'Households', group: 'account' },
   // Family — shared household configuration (admin)
   { key: 'family', icon: '👨‍👩‍👧‍👦', label: 'Family & People', admin: true, group: 'family' },
@@ -502,6 +504,261 @@ function UpdateBanner({ upd, onToggle, toggling }: { upd: UpdateInfo; onToggle: 
         </div>
         {!envOff && <Switch checked={upd.enabled} disabled={toggling} onChange={onToggle} ariaLabel="Check for updates" />}
       </div>
+    </div>
+  )
+}
+
+// Same swatch palette the Family & People person editor uses, so a member's
+// self-service color picker matches what an admin sees.
+const ACCOUNT_SWATCHES = ['#2F7FED', '#EC6049', '#25A368', '#8B5CF6', '#E0A500', '#EC4899', '#14B8A6', '#6B7280']
+
+// Pull the server's `{ error, message }` message off a caught apiSend error
+// (ApiSendError carries `.body`), falling back to a friendly default.
+function accountErrMsg(e: unknown, fallback: string): string {
+  const body = (e as { body?: { message?: string } })?.body
+  return body?.message || fallback
+}
+
+// ── My Profile ────────────────────────────────────────────────────────────────
+// A signed-in member edits their OWN name, avatar, color, and birthday. Everything
+// else about the person (role, login, kiosk visibility) stays admin-managed.
+function MyProfilePanel() {
+  const [info, setInfo] = useState<AccountInfo | null>(null)
+  const [error, setError] = useState(false)
+  const [name, setName] = useState('')
+  const [avatarEmoji, setAvatarEmoji] = useState('')
+  const [colorHex, setColorHex] = useState(ACCOUNT_SWATCHES[0])
+  const [birthday, setBirthday] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [saveErr, setSaveErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    accountApi.get()
+      .then((a) => {
+        if (!alive) return
+        setInfo(a)
+        setName(a.name)
+        setAvatarEmoji(a.avatarEmoji ?? '🙂')
+        setColorHex(a.colorHex ?? ACCOUNT_SWATCHES[0])
+        setBirthday(a.birthday ? String(a.birthday).slice(0, 10) : '')
+      })
+      .catch(() => alive && setError(true))
+    return () => { alive = false }
+  }, [])
+
+  if (error) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Couldn't load your profile — try reloading or signing in again.</div></div>
+  if (!info) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
+
+  const dirty =
+    name.trim() !== info.name ||
+    (avatarEmoji.trim() || null) !== (info.avatarEmoji ?? null) ||
+    colorHex !== (info.colorHex ?? ACCOUNT_SWATCHES[0]) ||
+    (birthday || null) !== (info.birthday ? String(info.birthday).slice(0, 10) : null)
+
+  async function save() {
+    if (!name.trim() || saving) return
+    setSaving(true); setSaved(false); setSaveErr(null)
+    try {
+      await accountApi.updateProfile({
+        name: name.trim(),
+        avatarEmoji: avatarEmoji.trim() || '🙂',
+        colorHex,
+        birthday: birthday || null,
+      })
+      // Reflect the saved values back so `dirty` resets.
+      setInfo((i) => (i ? { ...i, name: name.trim(), avatarEmoji: avatarEmoji.trim() || null, colorHex, birthday: birthday || null } : i))
+      emitHouseholdChanged() // refresh topbar avatar/name immediately
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1800)
+    } catch (e) {
+      setSaveErr(accountErrMsg(e, 'Could not save your profile — please try again.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="set-panel">
+      <div className="set-head">
+        <div className="nk-serif set-head-t">My Profile</div>
+        <div className="tiny muted" style={{ fontWeight: 600 }}>How you appear on the kiosk</div>
+      </div>
+
+      <div className="set-card" style={{ padding: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
+          <div className="av md" style={{ background: `${colorHex}22`, fontSize: 26 }}>{avatarEmoji || '🙂'}</div>
+          <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+            <span>Name</span>
+            <input value={name} onChange={(e) => { setName(e.target.value); setSaved(false) }} placeholder="Your name" />
+          </div>
+          <div className="field" style={{ width: 80, marginBottom: 0 }}>
+            <span>Avatar</span>
+            <input value={avatarEmoji} onChange={(e) => { setAvatarEmoji(e.target.value); setSaved(false) }} placeholder="🙂" maxLength={4} />
+          </div>
+        </div>
+
+        <div className="field">
+          <span>Color</span>
+          <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
+            {ACCOUNT_SWATCHES.map((c) => (
+              <button
+                type="button"
+                key={c}
+                aria-label={`color ${c}`}
+                onClick={() => { setColorHex(c); setSaved(false) }}
+                style={{ width: 30, height: 30, borderRadius: 999, background: c, border: colorHex === c ? '3px solid var(--ink)' : '2px solid #fff', boxShadow: '0 0 0 1px var(--hair)', cursor: 'pointer' }}
+              />
+            ))}
+          </div>
+        </div>
+
+        <label className="field">
+          <span>Birthday (optional)</span>
+          <input type="date" value={birthday} onChange={(e) => { setBirthday(e.target.value); setSaved(false) }} />
+        </label>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 6 }}>
+          <button type="button" className="btn btn-primary" onClick={save} disabled={!dirty || !name.trim() || saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+        </div>
+        {saveErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10 }}>{saveErr}</div>}
+      </div>
+    </div>
+  )
+}
+
+// ── My Account ────────────────────────────────────────────────────────────────
+// Login & security for the signed-in member: change email and password. OIDC
+// members can't change either here — those live with their SSO provider.
+function MyAccountPanel() {
+  const [info, setInfo] = useState<AccountInfo | null>(null)
+  const [error, setError] = useState(false)
+
+  // Change email
+  const [email, setEmail] = useState('')
+  const [emailPw, setEmailPw] = useState('')
+  const [emailBusy, setEmailBusy] = useState(false)
+  const [emailOk, setEmailOk] = useState(false)
+  const [emailErr, setEmailErr] = useState<string | null>(null)
+
+  // Change password
+  const [curPw, setCurPw] = useState('')
+  const [newPw, setNewPw] = useState('')
+  const [confirmPw, setConfirmPw] = useState('')
+  const [pwBusy, setPwBusy] = useState(false)
+  const [pwOk, setPwOk] = useState(false)
+  const [pwErr, setPwErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    accountApi.get()
+      .then((a) => { if (!alive) return; setInfo(a); setEmail(a.email ?? '') })
+      .catch(() => alive && setError(true))
+    return () => { alive = false }
+  }, [])
+
+  if (error) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Couldn't load your account — try reloading or signing in again.</div></div>
+  if (!info) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
+
+  async function saveEmail() {
+    if (!info || emailBusy) return
+    setEmailBusy(true); setEmailOk(false); setEmailErr(null)
+    try {
+      await accountApi.changeEmail({ email: email.trim(), currentPassword: emailPw })
+      setInfo((i) => (i ? { ...i, email: email.trim() } : i))
+      setEmailPw('')
+      setEmailOk(true)
+      setTimeout(() => setEmailOk(false), 2500)
+    } catch (e) {
+      setEmailErr(accountErrMsg(e, 'Could not change your email — please try again.'))
+    } finally {
+      setEmailBusy(false)
+    }
+  }
+
+  async function savePassword() {
+    if (pwBusy) return
+    if (newPw.length < 8) { setPwErr('New password must be at least 8 characters.'); return }
+    if (newPw !== confirmPw) { setPwErr('Those passwords don’t match.'); return }
+    setPwBusy(true); setPwOk(false); setPwErr(null)
+    try {
+      await accountApi.changePassword({ currentPassword: curPw, newPassword: newPw })
+      setCurPw(''); setNewPw(''); setConfirmPw('')
+      setPwOk(true)
+      setTimeout(() => setPwOk(false), 2500)
+    } catch (e) {
+      setPwErr(accountErrMsg(e, 'Could not change your password — please try again.'))
+    } finally {
+      setPwBusy(false)
+    }
+  }
+
+  const oidc = info.provider === 'oidc'
+
+  return (
+    <div className="set-panel">
+      <div className="set-head">
+        <div className="nk-serif set-head-t">My Account</div>
+        <div className="tiny muted" style={{ fontWeight: 600 }}>Login &amp; security</div>
+      </div>
+
+      {oidc ? (
+        <div className="set-card" style={{ padding: 18 }}>
+          <div className="set-row2-t" style={{ marginBottom: 4 }}>Email</div>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>{info.email}</div>
+          <div className="tiny muted" style={{ fontWeight: 600, marginTop: 8 }}>
+            Managed by your SSO provider — change it there.
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="set-card" style={{ padding: 18 }}>
+            <div className="set-row2-t" style={{ marginBottom: 12 }}>Change email</div>
+            <label className="field" style={{ marginBottom: 10 }}>
+              <span>Email</span>
+              <input type="email" autoComplete="off" value={email} onChange={(e) => { setEmail(e.target.value); setEmailOk(false) }} placeholder="name@example.com" />
+            </label>
+            <label className="field" style={{ marginBottom: 10 }}>
+              <span>Current password</span>
+              <input type="password" autoComplete="current-password" value={emailPw} onChange={(e) => { setEmailPw(e.target.value); setEmailOk(false) }} placeholder="••••••••" />
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button type="button" className="btn btn-primary" onClick={saveEmail} disabled={emailBusy || !email.trim() || !emailPw || email.trim() === (info.email ?? '')}>
+                {emailBusy ? 'Saving…' : 'Update email'}
+              </button>
+              {emailOk && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+            </div>
+            {emailErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10 }}>{emailErr}</div>}
+          </div>
+
+          <div className="set-card" style={{ padding: 18, marginTop: 16 }}>
+            <div className="set-row2-t" style={{ marginBottom: 12 }}>Change password</div>
+            <label className="field" style={{ marginBottom: 10 }}>
+              <span>Current password</span>
+              <input type="password" autoComplete="current-password" value={curPw} onChange={(e) => { setCurPw(e.target.value); setPwOk(false) }} placeholder="••••••••" />
+            </label>
+            <label className="field" style={{ marginBottom: 10 }}>
+              <span>New password</span>
+              <input type="password" autoComplete="new-password" value={newPw} onChange={(e) => { setNewPw(e.target.value); setPwOk(false) }} placeholder="At least 8 characters" />
+            </label>
+            <label className="field" style={{ marginBottom: 10 }}>
+              <span>Confirm new password</span>
+              <input type="password" autoComplete="new-password" value={confirmPw} onChange={(e) => { setConfirmPw(e.target.value); setPwOk(false) }} placeholder="Re-enter new password" />
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button type="button" className="btn btn-primary" onClick={savePassword} disabled={pwBusy || !curPw || !newPw || !confirmPw}>
+                {pwBusy ? 'Saving…' : 'Update password'}
+              </button>
+              {pwOk && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+            </div>
+            {pwErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10 }}>{pwErr}</div>}
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -2548,6 +2805,17 @@ export function Settings() {
   const tab = params.get('tab') ?? 'family'
   const setTab = (key: string) => setParams({ tab: key }, { replace: true })
 
+  // Your own account, for the self-service Account panels. Only a real personal
+  // login has one (hasAccount) — the shared kiosk and login-less members don't, so
+  // the My Profile / My Account items stay hidden for them. Fetched once, like
+  // memberships; while it loads the items are simply absent (then appear).
+  const [account, setAccount] = useState<AccountInfo | null>(null)
+  useEffect(() => {
+    let alive = true
+    accountApi.get().then((a) => alive && setAccount(a)).catch(() => alive && setAccount(null))
+    return () => { alive = false }
+  }, [])
+
   // Wait until we know who's signed in, so admins don't flash the trimmed nav.
   if (!household) return <div className="settings-screen"><div className="set-content"><div className="muted" style={{ padding: 20 }}>Loading…</div></div></div>
 
@@ -2557,7 +2825,10 @@ export function Settings() {
   // The households tab only appears when there's something to act on (another
   // membership to switch to, or a pending invite). Not admin-gated.
   const showHouseholds = memberships.length > 1 || pendingInvites.length > 0
-  const nav = NAV.filter((n) => (!n.admin || isAdmin) && (n.key !== 'households' || showHouseholds))
+  // The self-service Account items appear only for a real personal login — never on
+  // the shared kiosk, never for a login-less member.
+  const showAccount = !isKioskMode() && !!account?.hasAccount
+  const nav = NAV.filter((n) => (!n.admin || isAdmin) && (n.key !== 'households' || showHouseholds) && ((n.key !== 'profile' && n.key !== 'account') || showAccount))
   const activeTab = nav.some((n) => n.key === tab) ? tab : (nav[0]?.key ?? 'about')
 
   return (
@@ -2581,7 +2852,7 @@ export function Settings() {
         </div>
       </div>
       <div className="set-content">
-        {activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <><CalendarsPanel /><CountdownsSettings /></> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'modules' ? <ModulesPanel /> : activeTab === 'apikeys' ? <ApiKeysPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
+        {activeTab === 'profile' ? <MyProfilePanel /> : activeTab === 'account' ? <MyAccountPanel /> : activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <><CalendarsPanel /><CountdownsSettings /></> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'modules' ? <ModulesPanel /> : activeTab === 'apikeys' ? <ApiKeysPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
       </div>
     </div>
   )
