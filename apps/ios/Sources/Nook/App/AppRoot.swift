@@ -1,9 +1,36 @@
 import SwiftUI
 
 /// The five surfaces of the phone app, mirroring the handoff tab bar:
-/// Today · Calendar · (✨ capture) · Meals · Family.
+/// Today · Calendar · (✨ capture) · [flex module] · Family.
 enum Tab: Hashable {
-    case today, calendar, meals, family
+    case today, calendar, flex, family
+}
+
+/// The 4th bottom-bar slot is a *flex module slot*: Meals when that module is on,
+/// otherwise it backfills with the first enabled of Goals → Chores → Lists → Pantry.
+/// Keeping the bar at five slots means the raised ✨ capture button stays centered —
+/// dropping a slot used to shove it off to one side. Icon + label follow the module.
+enum FlexSlot: Hashable {
+    case meals, goals, chores, lists, pantry
+
+    var icon: String {
+        switch self {
+        case .meals:  return "fork.knife"
+        case .goals:  return "target"
+        case .chores: return "checkmark.circle.fill"
+        case .lists:  return "list.bullet"
+        case .pantry: return "archivebox.fill"
+        }
+    }
+    var label: String {
+        switch self {
+        case .meals:  return "Meals"
+        case .goals:  return "Goals"
+        case .chores: return "Chores"
+        case .lists:  return "Lists"
+        case .pantry: return "Pantry"
+        }
+    }
 }
 
 /// Root navigation: the current screen filling the canvas, with a custom bottom
@@ -26,6 +53,10 @@ struct AppRoot: View {
     /// grocery) and the greeting avatar push here (as `HubRoute`s), lifted so
     /// re-tapping Today pops back to the dashboard.
     @State private var todayPath: [HubRoute] = []
+    /// The flex slot's own nav stack + a recipes model — used when the 4th tab backfills
+    /// to a hub module (Goals/Chores/Lists/Pantry) because Meals is turned off.
+    @State private var modulePath: [HubRoute] = []
+    @State private var recipes = RecipesModel()
     /// Household-wide pending approvals, driving the app-icon + Family-tab badge so a
     /// parent sees there's something to OK without opening the app.
     @State private var approvals = ApprovalsModel()
@@ -40,10 +71,22 @@ struct AppRoot: View {
             + (sync.can("reward.approve") ? approvals.redemptions.count : 0)
     }
 
+    /// What the 4th ("flex") tab currently is: Meals if that module is on, else the
+    /// first enabled backfill module, else nil (hide the slot — only happens when
+    /// Meals + Goals + Chores + Lists + Pantry are *all* off).
+    private var flexSlot: FlexSlot? {
+        if sync.module(.meals) { return .meals }
+        if sync.module(.goals) { return .goals }
+        if sync.module(.chores) { return .chores }
+        if sync.module(.lists) { return .lists }
+        if sync.module(.pantry) { return .pantry }
+        return nil
+    }
+
     private static var initialTab: Tab {
         switch DemoHooks.startTab {
         case "calendar": return .calendar
-        case "meals": return .meals
+        case "meals": return .flex
         case "family": return .family
         default: return .today
         }
@@ -59,11 +102,15 @@ struct AppRoot: View {
                 switch tab {
                 case .today:    TodayView(path: $todayPath, openCalendar: { tab = .calendar })
                 case .calendar: CalendarView(openEventId: $calendarOpenEventId)
-                case .meals:
-                    // Meals is an optional module: if the household turned it off, the
-                    // tab is hidden — self-correct back to Today if we somehow land here.
-                    if sync.module(.meals) { MealsView(path: $mealsPath) }
-                    else { Color.clear.onAppear { tab = .today } }
+                case .flex:
+                    // The 4th slot follows the household's modules: Meals if on, else a
+                    // backfill (Goals/Chores/Lists/Pantry). If every candidate is off
+                    // there's nothing to show — self-correct back to Today.
+                    switch flexSlot {
+                    case .meals:          MealsView(path: $mealsPath)
+                    case .some(let slot): FlexModuleView(slot: slot, path: $modulePath, recipes: recipes)
+                    case .none:           Color.clear.onAppear { tab = .today }
+                    }
                 case .family:   FamilyView(path: $familyPath, approvals: approvals)
                 }
             }
@@ -72,11 +119,11 @@ struct AppRoot: View {
             .safeAreaInset(edge: .top, spacing: 0) { OfflineBanner() }
 
             NookTabBar(tab: $tab, familyBadge: approvalCount,
-                       showMeals: sync.module(.meals),
+                       flexSlot: flexSlot,
                        onCapture: { showCapture = true },
                        onReselect: {
                            if $0 == .family { familyPath = [] }
-                           if $0 == .meals { mealsPath = [] }
+                           if $0 == .flex { mealsPath = []; modulePath = [] }
                            if $0 == .today { todayPath = [] }
                        })
         }
@@ -132,7 +179,7 @@ struct AppRoot: View {
 struct NookTabBar: View {
     @Binding var tab: Tab
     var familyBadge: Int = 0
-    var showMeals: Bool = true
+    var flexSlot: FlexSlot? = .meals
     var onCapture: () -> Void
     var onReselect: (Tab) -> Void = { _ in }
 
@@ -141,7 +188,7 @@ struct NookTabBar: View {
             item(.today, "house.fill", "Today")
             item(.calendar, "calendar", "Calendar")
             captureButton
-            if showMeals { item(.meals, "fork.knife", "Meals") }
+            if let slot = flexSlot { item(.flex, slot.icon, slot.label) }
             item(.family, "checklist", "Family", badge: familyBadge)
         }
         .padding(.horizontal, 8)
@@ -195,6 +242,35 @@ struct NookTabBar: View {
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)
         .offset(y: -18)
+    }
+}
+
+/// Hosts the flex tab's backfill module (Goals/Chores/Lists/Pantry) in its own
+/// navigation stack, reusing the shared `HubDestination` routing so drill-ins (a goal,
+/// a list, a recipe) push here and Back returns to the module root — the same wiring
+/// the Family hub uses.
+private struct FlexModuleView: View {
+    let slot: FlexSlot
+    @Binding var path: [HubRoute]
+    let recipes: RecipesModel
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            root
+                .navigationDestination(for: HubRoute.self) { route in
+                    HubDestination(route: route, path: $path, recipes: recipes)
+                }
+        }
+    }
+
+    @ViewBuilder private var root: some View {
+        switch slot {
+        case .goals:  GoalsView(path: $path)
+        case .chores: ChoresView()
+        case .lists:  ListsIndexView(path: $path)
+        case .pantry: PantryView()
+        case .meals:  EmptyView()   // Meals renders via MealsView on its own path
+        }
     }
 }
 
