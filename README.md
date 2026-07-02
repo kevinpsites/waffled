@@ -176,7 +176,7 @@ non-interactively (e.g. over plain SSH).
 
 1. Run it — the [Self-hosting quickstart](#self-hosting-quickstart) above (`./nook up`).
 2. Read `docs/ARCHITECTURE.md` — the decisions and why.
-3. Browse `docs/product/` — the user-facing docs and the [feature support matrix](docs/product/features.md).
+3. Read the docs site (built from `website/`, Astro Starlight) — the user-facing docs and the feature matrix (source: `website/src/content/docs/reference/features.md`).
 4. Follow `ROADMAP.md` — bite-sized, committable chunks, in order.
 
 > Only setting up Google Calendar sync or OIDC? `BOOTSTRAP.md` has the Google Cloud

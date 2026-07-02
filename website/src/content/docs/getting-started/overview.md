@@ -1,4 +1,7 @@
-# Overview
+---
+title: Overview
+description: What Nook is, its three surfaces, and the core ideas behind it.
+---
 
 ## What Nook is
 
@@ -26,7 +29,7 @@ is opt-in via configuration.
 | **iOS** | Native Swift/SwiftUI capture companion | Offline-first read + write over PowerSync; native sign-in + local notifications |
 
 The Kiosk and Web are the **same application** (this is the "Web / Kiosk" column in the
-[feature matrix](./features.md)); iOS is a separate native client (the "Mobile" column).
+feature matrix); iOS is a separate native client (the "Mobile" column).
 
 ## Core ideas
 
@@ -45,6 +48,7 @@ The Kiosk and Web are the **same application** (this is the "Web / Kiosk" column
 
 ## Where to go next
 
-- New to running it? → [Quick start](./quick-start.md)
-- Want the full capability list? → [Feature support matrix](./features.md)
-- Tracking progress? → [Roadmap status](./roadmap.md)
+- New to running it? → [Quick start](/getting-started/quick-start/)
+- Want the full capability list? → [Feature matrix](/reference/features/)
+- Curious how it grows? → [Extensibility & modules](/concepts/extensibility/)
+- Tracking progress? → the [roadmap status](https://github.com/OWNER/nook/blob/main/docs/product/roadmap.md)

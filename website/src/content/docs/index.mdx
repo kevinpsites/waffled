@@ -1,0 +1,36 @@
+---
+title: Nook
+description: Self-hosted family hub — one household, one source of truth.
+template: splash
+hero:
+  tagline: Self-hosted family hub — one household, one source of truth.
+  image:
+    file: ../../assets/houston.webp
+  actions:
+    - text: Overview
+      link: /getting-started/overview/
+      icon: right-arrow
+    - text: Quick start
+      link: /getting-started/quick-start/
+      icon: rocket
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Explore the docs
+
+<CardGrid stagger>
+	<Card title="Overview" icon="open-book">
+		What Nook is, the three surfaces, and the core ideas behind it.
+	</Card>
+	<Card title="Quick start" icon="rocket">
+		`git clone` + `./nook up` — the whole install in one command.
+	</Card>
+	<Card title="Backup & restore" icon="download">
+		Nightly automatic backups, offsite S3 copies, and destructive restore.
+	</Card>
+	<Card title="Troubleshooting" icon="warning">
+		Symptom → diagnosis → fix for the common self-hosting snags.
+	</Card>
+</CardGrid>

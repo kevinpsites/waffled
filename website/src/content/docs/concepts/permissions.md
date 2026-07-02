@@ -1,4 +1,7 @@
-# Permissions & attribution — the family-hub model
+---
+title: Permissions
+description: The family-hub permission & attribution model — gate, attribute, or leave open.
+---
 
 Nook is a *family* hub, not an enterprise tool. The goal is a warm shared space where
 everyone — including kids — can participate, with just enough control where it actually
@@ -85,5 +88,5 @@ as a maybe so the rationale isn't lost, not as a commitment.
 
 ---
 
-See the [feature matrix](./features.md) for per-surface support and
-[`ROADMAP.md`](../../ROADMAP.md) (item 3.4) for the engineering history.
+See the [feature matrix](/reference/features/) for per-surface support and
+[`ROADMAP.md`](https://github.com/OWNER/nook/blob/main/ROADMAP.md) (item 3.4) for the engineering history.

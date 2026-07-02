@@ -1,4 +1,7 @@
-# Extensibility — modules & integrations (how Nook grows)
+---
+title: Extensibility & modules
+description: How Nook grows — built-in toggle modules and external integrations.
+---
 
 How features get added to Nook beyond the core app, and how self-hosters / the
 community can build on top of it. Two supported patterns; a third we deliberately

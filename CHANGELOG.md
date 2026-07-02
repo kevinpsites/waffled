@@ -249,7 +249,7 @@ user-facing features first within each.
   (`BACKUP_HOST_PATH`). `./nook backup [list]` runs one on demand; `./nook restore
   <file>` does a confirmed, app-stopped, single-transaction restore. Each run is recorded
   in `backup_runs` and surfaced by the `backup` health check (degraded when a run failed
-  or the last success is >48 h old). See `docs/BACKUP.md`.
+  or the last success is >48 h old). See the Backup & restore docs.
 - **CI runs the test suites.** GitHub Actions runs the api (Testcontainers) + web
   (vitest) suites and typechecks on every PR and push to `main`.
 - **In-app update notifier.** Settings → System Health shows whether a newer GitHub
@@ -262,7 +262,10 @@ user-facing features first within each.
 
 ### Changed
 - **Licensed under AGPL-3.0** (`LICENSE`); added `SECURITY.md`, `CONTRIBUTING.md`,
-  `CODE_OF_CONDUCT.md`, and `docs/UPGRADING.md` + `docs/TROUBLESHOOTING.md`.
+  `CODE_OF_CONDUCT.md`, and upgrading/troubleshooting guides.
+- **Documentation site** — user/operator docs now live in a searchable Astro Starlight
+  site under `website/` (moved out of `docs/`; engineering docs stay in `docs/`), deployed
+  to GitHub Pages by `.github/workflows/docs.yml`.
 - **Route authorization refactored** into composable per-route guard wrappers
   (`tenantRoute` / `adminRoute` / `capRoute`), replacing ~135 routes' copied
   `requireTenant` + inline capability boilerplate (net −160 lines); handlers now

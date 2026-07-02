@@ -1,4 +1,7 @@
-# Quick start
+---
+title: Quick start
+description: Install and run Nook as a small Docker Compose stack.
+---
 
 Nook runs as a small Docker Compose stack — **Postgres · PowerSync · api · Caddy**. Auth
 is built in; no Auth0 or external identity provider is required. You can attach your own
@@ -115,10 +118,10 @@ Prefer to edit by hand? The same three vars in `infra/compose/.env` do it:
 
 - **Check it's healthy:** `./nook doctor` (db, migrations, jobs, calendar, storage,
   backup) — or **Settings → System Health** in the app. Both show the same report.
-- **Backups** run nightly out of the box; see [BACKUP.md](../BACKUP.md) to point them at
-  a folder or S3, and to restore.
-- **Upgrading:** [UPGRADING.md](../UPGRADING.md). **Stuck?**
-  [TROUBLESHOOTING.md](../TROUBLESHOOTING.md).
+- **Backups** run nightly out of the box; see [Backup & restore](/operations/backup/) to
+  point them at a folder or S3, and to restore.
+- **Upgrading:** see the [upgrading guide](/operations/upgrading/). **Stuck?**
+  [Troubleshooting](/operations/troubleshooting/).
 
 ## Pre-built images (optional)
 

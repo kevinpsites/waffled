@@ -1,4 +1,7 @@
-# Backup & restore
+---
+title: Backup & restore
+description: Automatic nightly database backups, offsite copies, and restore.
+---
 
 Nook backs up your database automatically. The `backup` service (part of the default
 stack) dumps Postgres on a nightly schedule; you can optionally push each dump offsite

@@ -1,4 +1,7 @@
-# Troubleshooting
+---
+title: Troubleshooting
+description: Symptom → diagnosis → fix for common self-hosted Nook issues.
+---
 
 Practical fixes for a self-hosted Nook. Each entry is **symptom → diagnosis → fix**.
 
@@ -39,9 +42,9 @@ or a bad shutdown.
 
 **Fix:** wait for the health check to pass; if it's crash-looping, read the postgres
 logs. `./nook restart postgres` (then `api`, `powersync`). **Never** `docker volume
-rm pgdata` — that destroys all data (see the never-wipe warning in
-[UPGRADING.md](./UPGRADING.md)). If the volume is genuinely corrupt, restore from a
-backup ([BACKUP.md](./BACKUP.md)).
+rm pgdata` — that destroys all data (see the never-wipe warning in the
+[upgrading guide](/operations/upgrading/)). If the volume is genuinely corrupt, restore from a
+backup (see [Backup & restore](/operations/backup/)).
 
 ### Migrations pending
 
@@ -125,7 +128,7 @@ success is older than ~48 h).
 
 **Fix:** free disk space, or fix the S3 creds/endpoint in `infra/compose/.env`, then
 `./nook up` to recreate the backup service. Run `./nook backup` to confirm a manual
-run succeeds. Full config in [BACKUP.md](./BACKUP.md).
+run succeeds. Full config in [Backup & restore](/operations/backup/).
 
 ### Can't reach the app / TLS
 

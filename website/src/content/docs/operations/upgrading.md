@@ -1,4 +1,7 @@
-# Upgrading Nook
+---
+title: Upgrading
+description: Move a self-hosted Nook to a newer version safely.
+---
 
 How to move a self-hosted Nook to a newer version safely. Nook runs via `docker
 compose`, driven by the root `./nook` CLI. There are two ways to run it, and the
@@ -14,7 +17,7 @@ upgrade steps differ slightly — pick the one that matches your setup.
 
 1. **Back up first.** `./nook backup` (or `./nook backup && ./nook backup list` to
    confirm the dump landed). This is your rollback path — see
-   [BACKUP.md](./BACKUP.md). Do this *before* pulling any new code or images.
+   [Backup & restore](/operations/backup/). Do this *before* pulling any new code or images.
 2. **Read the release notes / `CHANGELOG.md`** for the version you're moving to.
    Note any env vars you're expected to add and any one-time steps called out.
 
@@ -96,11 +99,11 @@ earlier version you must also restore the database as it was *before* the upgrad
    ```
 
    This is destructive (overwrites the current DB) — details in
-   [BACKUP.md](./BACKUP.md). This is exactly why step 0 is non-negotiable: if you
+   [Backup & restore](/operations/backup/). This is exactly why step 0 is non-negotiable: if you
    skipped the backup, you cannot cleanly roll back a schema change.
 
 3. `./nook doctor` to confirm the rolled-back stack is healthy.
 
 ## Something broke?
 
-See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md). Start with `./nook doctor`.
+See [Troubleshooting](/operations/troubleshooting/). Start with `./nook doctor`.
