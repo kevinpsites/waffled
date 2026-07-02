@@ -49,8 +49,12 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
-    // CI runners render jsdom ~6× slower than a dev laptop, so the default 5s test /
-    // 1s findBy windows are too tight for the heavier interaction tests. Give headroom.
+    // Run test files sequentially (like apps/api). Vitest otherwise spawns a worker per
+    // *host* core, ignoring the cgroup CPU limit — on a 2-core CI runner that oversubscribes
+    // and starves jsdom renders ~60×, making interaction tests time out. Sequential keeps
+    // each file at full speed and reliable. (Slightly slower wall-clock; worth it in CI.)
+    fileParallelism: false,
+    // Extra headroom for the heavier interaction tests on slow CI.
     testTimeout: 15000,
   },
 })

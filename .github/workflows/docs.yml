@@ -1,16 +1,18 @@
 # Builds the Astro Starlight docs site (website/) and deploys it to GitHub Pages.
-# Runs on push to main (docs changes only) and on manual dispatch.
+#
+# ONE-TIME SETUP: enable Pages first — repo Settings → Pages → Source = "GitHub Actions".
+# (The default GITHUB_TOKEN can't enable Pages itself, so it can't be automated.) Until
+# then this is manual-only (Actions tab → Docs → "Run workflow") so it doesn't red-X on
+# every push. Once Pages is on, add a push trigger back for auto-deploy:
+#     on:
+#       push: { branches: [main], paths: ['website/**', '.github/workflows/docs.yml'] }
+#       workflow_dispatch:
 #
 # Custom domain? Add a `website/public/CNAME` file with your domain and set the base
 # to '/' (a user/apex domain serves from the root, so no subpath prefix is needed).
 name: Docs
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'website/**'
-      - '.github/workflows/docs.yml'
   workflow_dispatch:
 
 permissions:
@@ -43,10 +45,6 @@ jobs:
       - name: Configure Pages
         id: pages
         uses: actions/configure-pages@v5
-        with:
-          # Auto-enable Pages (build type = GitHub Actions) on first run, so the deploy
-          # doesn't 404 before someone flips it on in repo Settings → Pages.
-          enablement: true
 
       - name: Install dependencies
         run: npm ci
