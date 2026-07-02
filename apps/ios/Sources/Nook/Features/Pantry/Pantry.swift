@@ -119,6 +119,8 @@ final class PantryModel {
     private(set) var allergenPeople: [String: [String]] = [:]
     private(set) var lowThreshold: Double = 1
     private(set) var locationIcons: [String: String] = [:]
+    /// Household "show the Pantry card on Today" toggle — respected by the Today cards.
+    private(set) var showOnToday = true
     /// Household "old" threshold in months (default 6); items on hand longer are flagged.
     private(set) var staleMonths: Double = 6
     private(set) var loading = true
@@ -143,6 +145,7 @@ final class PantryModel {
             lowThreshold = r.lowThreshold
             locationIcons = r.locationIcons ?? [:]
             staleMonths = r.staleMonths ?? 6
+            showOnToday = r.showOnToday
             recomputeDays()
             error = false
             loaded = true

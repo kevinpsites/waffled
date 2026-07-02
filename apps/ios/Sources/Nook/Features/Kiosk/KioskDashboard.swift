@@ -81,8 +81,11 @@ struct KioskDashboard: View {
         .task { await countdowns.load() }
         // Pantry card data (only when the module's on; no dedicated sync bus, so a
         // single load on appear — same as countdowns).
-        .task { if sync.module(.pantry) { await pantry.load() } }
-        .task { if sync.module(.familyNight) { await familyNight.load() } }
+        // Key these to modulesRev: the flags often load *after* first appear, so a plain
+        // .task would read the module as off and never fetch. Re-running on modulesRev
+        // means they load as soon as the household's module state is known.
+        .task(id: sync.modulesRev) { if sync.module(.pantry) { await pantry.load() } }
+        .task(id: sync.modulesRev) { if sync.module(.familyNight) { await familyNight.load() } }
         // Per-domain reloads: each fires on appear (initial load) and only when its own
         // bus bumps — so a grocery toggle no longer reloads chores + meals + weather.
         .task(id: "\(tz.identifier)|\(sync.choresRev)") { await model.loadChores() }
@@ -231,7 +234,9 @@ struct KioskDashboard: View {
         VStack(spacing: 22) {
             agendaColumn
             if countdowns.loaded { kioskCountdownsCard }
-            if sync.module(.familyNight), let v = familyNight.view { kioskFamilyNightCard(v) }
+            // Pantry rides here (content-sized cards), gated by the household "show on
+            // Today" toggle — so turning it off in Settings → Pantry hides it, matching web.
+            if sync.module(.pantry), pantry.loaded, pantry.showOnToday { kioskPantryCard }
         }
     }
 
@@ -337,19 +342,25 @@ struct KioskDashboard: View {
             }
         }
     }
+    // Center column: tonight + this week's dinners, then Family Night (the evening
+    // gathering pairs with the meal plan). Scrolls its own overflow.
     private var mealsCol: some View {
         ScrollView(showsIndicators: false) {
-            VStack(spacing: 22) { tonightCard; weekDinnersCard }.padding(.bottom, 8)
+            VStack(spacing: 22) {
+                tonightCard
+                weekDinnersCard
+                if sync.module(.familyNight), let v = familyNight.view { kioskFamilyNightCard(v) }
+            }
+            .padding(.bottom, 8)
         }
     }
     // Chores sized to content; the grocery card fills the rest and scrolls its own
-    // (full) list internally so it stays reachable without an outer page scroll. The
-    // pantry card (module-gated) rides under grocery — it pairs with the shopping flow.
+    // (full) list internally so it stays reachable. Grocery must be the *last* fill
+    // element here — the pantry card lives in the agenda column so it can't crush it.
     private var choreGroceryCol: some View {
         VStack(spacing: 22) {
             choresCard
             groceryCard
-            if sync.module(.pantry), pantry.loaded { kioskPantryCard }
         }
     }
 

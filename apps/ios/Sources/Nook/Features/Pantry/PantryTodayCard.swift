@@ -23,6 +23,19 @@ struct PantryTodayCard: View {
     }
 
     var body: some View {
+        Group {
+            // Household turned the Pantry Today card off (Settings → Pantry) — hide it,
+            // matching the web. `showOnToday` defaults true, so nothing flashes off.
+            if model.loaded && !model.showOnToday {
+                EmptyView()
+            } else {
+                card
+            }
+        }
+        .task { await model.load() }
+    }
+
+    private var card: some View {
         Button(action: onOpen) {
             NookCard(padding: 15) {
                 VStack(alignment: .leading, spacing: 10) {
@@ -54,7 +67,6 @@ struct PantryTodayCard: View {
             }
         }
         .buttonStyle(.plain)
-        .task { await model.load() }
     }
 
     private var headerCount: String {
