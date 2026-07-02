@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { personsApi, permissionsApi, healthApi, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
+import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
 import { PersonModal } from './components/PersonModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -396,14 +396,28 @@ function NewApiKeyModal({ catalog, onClose, onCreated }: {
 function SystemHealthPanel() {
   const [report, setReport] = useState<HealthReport | null>(null)
   const [error, setError] = useState(false)
+  const [upd, setUpd] = useState<UpdateInfo | null>(null)
+  const [togglingUpd, setTogglingUpd] = useState(false)
   useEffect(() => {
     let alive = true
     const load = () =>
       healthApi.get().then((d) => alive && setReport(d)).catch(() => alive && setError(true))
     load()
     const t = setInterval(load, 10000)
+    // Update check is a slow outbound call (cached server-side) — fetch once, not on the loop.
+    updatesApi.get().then((d) => alive && setUpd(d)).catch(() => {})
     return () => { alive = false; clearInterval(t) }
   }, [])
+
+  async function toggleUpd(v: boolean) {
+    setTogglingUpd(true)
+    try {
+      await updatesApi.setEnabled(v)
+      setUpd(await updatesApi.get())
+    } finally {
+      setTogglingUpd(false)
+    }
+  }
 
   if (error) return null
   return (
@@ -419,6 +433,7 @@ function SystemHealthPanel() {
       <div className="tiny muted" style={{ fontWeight: 600, margin: '-6px 2px 14px' }}>
         Live status of the self-hosted stack. Same data as <code>./nook doctor</code> in a terminal.
       </div>
+      {upd && <UpdateBanner upd={upd} onToggle={toggleUpd} toggling={togglingUpd} />}
       {!report ? (
         <div className="tiny muted" style={{ fontWeight: 600, padding: 8 }}>Loading…</div>
       ) : (
@@ -433,6 +448,51 @@ function SystemHealthPanel() {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+// Update notifier row inside System Health: "update available / up to date / off",
+// with an admin toggle. Hidden entirely when the operator disabled it via env.
+function UpdateBanner({ upd, onToggle, toggling }: { upd: UpdateInfo; onToggle: (v: boolean) => void; toggling: boolean }) {
+  const envOff = !upd.enabled && upd.reason === 'env'
+  return (
+    <div className="set-card" style={{ padding: 14, marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ flex: 1 }}>
+          {upd.updateAvailable && upd.latest ? (
+            <>
+              <div className="card-h" style={{ margin: 0 }}>⬆ Update available — {upd.latest.tag}</div>
+              <div className="tiny muted" style={{ fontWeight: 600 }}>
+                You're on {upd.current.version} ({upd.current.sha}).{' '}
+                <a href={upd.latest.url} target="_blank" rel="noreferrer">View release ↗</a>
+              </div>
+            </>
+          ) : upd.enabled && upd.latest ? (
+            <>
+              <div className="card-h" style={{ margin: 0 }}>✓ Up to date</div>
+              <div className="tiny muted" style={{ fontWeight: 600 }}>
+                Running {upd.current.version} ({upd.current.sha}) · latest is {upd.latest.tag}
+              </div>
+            </>
+          ) : upd.enabled ? (
+            <>
+              <div className="card-h" style={{ margin: 0 }}>Update check</div>
+              <div className="tiny muted" style={{ fontWeight: 600 }}>
+                Running {upd.current.version} ({upd.current.sha}){upd.error ? ` · ${upd.error}` : ''}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="card-h" style={{ margin: 0 }}>Update checks off</div>
+              <div className="tiny muted" style={{ fontWeight: 600 }}>
+                {envOff ? 'Disabled by the operator (UPDATE_CHECK_ENABLED).' : "Nook won't check GitHub for new releases."}
+              </div>
+            </>
+          )}
+        </div>
+        {!envOff && <Switch checked={upd.enabled} disabled={toggling} onChange={onToggle} ariaLabel="Check for updates" />}
+      </div>
     </div>
   )
 }

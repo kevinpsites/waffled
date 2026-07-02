@@ -8,6 +8,7 @@ import { log } from './platform/logger'
 import { version } from './platform/version'
 import { recordHttpRequest } from './platform/telemetry'
 import { registerHealthRoutes } from './modules/health/health'
+import { registerUpdateRoutes } from './modules/updates/updates'
 import {
   resolveTenant,
   requireTenant,
@@ -281,6 +282,9 @@ registerApiKeyRoutes(api)
 
 // Deep health report (/api/health, admin) + the System Health panel's data source.
 registerHealthRoutes(api)
+
+// In-app update notifier (/api/updates, admin) — checks the latest GitHub release.
+registerUpdateRoutes(api)
 
 // One structured access-log line per request, after the response is sent. status &
 // duration are read here because lambda-api's next() doesn't return a promise.

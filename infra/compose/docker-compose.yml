@@ -124,6 +124,11 @@ services:
       # Lets /api/health + `./nook doctor` expect a recent backup and flag a stale/failed
       # one. Set BACKUP_ENABLED=false if you remove the `backup` service so it won't nag.
       BACKUP_ENABLED: ${BACKUP_ENABLED:-true}
+      # In-app update notifier (Settings → System Health). Checks the latest GitHub
+      # release of UPDATE_CHECK_REPO ("owner/name"); unset → no check. Operator
+      # kill-switch: UPDATE_CHECK_ENABLED=false (no outbound call at all).
+      UPDATE_CHECK_ENABLED: ${UPDATE_CHECK_ENABLED:-true}
+      UPDATE_CHECK_REPO: ${UPDATE_CHECK_REPO:-}
       # --- switch to Auth0 (RS256): set these, then restart the api ---
       # AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       # AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
