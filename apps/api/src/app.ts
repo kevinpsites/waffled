@@ -39,6 +39,7 @@ import { registerOverviewRoutes } from './modules/overview/overview'
 import { registerPermissionRoutes } from './modules/permissions/permissions.routes'
 import { resolveCapabilities } from './platform/permissions'
 import { registerAuthRoutes } from './modules/auth/auth'
+import { registerAccountRoutes } from './modules/account/account'
 import { listMemberships, pendingInvitesForEmail } from './modules/auth/accounts'
 import { registerInviteRoutes } from './modules/auth/invites'
 import { registerOidcRoutes } from './modules/auth/oidc'
@@ -240,6 +241,8 @@ registerGoalCalendarRoutes(api)
 
 // Built-in auth: setup / login / refresh / logout (/api/auth/*)
 registerAuthRoutes(api)
+// Self-service account: my profile / email / password (/api/account…)
+registerAccountRoutes(api)
 // Invite-and-accept across households (/api/households/invites, /api/auth/invites)
 registerInviteRoutes(api)
 registerOidcRoutes(api)
