@@ -17,7 +17,12 @@ we don't break the running stack or invalidate sessions before the repo rename.
 - [x] `index.html` — `<title>`, `apple-mobile-web-app-title`, icon/favicon links, theme-color (#F5EFE1)
 - [x] `public/manifest.webmanifest` — `name`, `short_name`, icons
 - [x] New icon assets from the logo: `public/{logo.png, icon-512.png, icon-192.png, apple-touch-icon.png, favicon-32.png, favicon-16.png}` (removed the old `icon.svg`)
-- [x] In-app logo image on the auth/setup screen (`kiosk/AuthGate.tsx` `AuthShell` → `<img class="auth-logo-img" src="/logo.png">`, styled in `styles/auth.css`)
+- [x] In-app logo image (replaced every "N" glyph logo): `AuthGate.tsx` `AuthShell`,
+      nav `components/Rail.tsx` (`.rail-logo`), `ProfilePicker.tsx` (`.kp-logo`),
+      `PairDevice.tsx` ×2 (`.auth-logo-img`) — all `<img src="/logo.png">`, CSS in
+      `styles/{auth,nook,kiosk-profiles}.css`
+- [x] Service worker cache `VERSION` bumped (`public/sw.js` v3→v4) so clients re-fetch the
+      new shell + favicon instead of the stale cached copy
 - [x] UI copy strings "Nook" → "Kinnook": `Settings.tsx`, `AuthGate.tsx`, `Lists.tsx`,
       `ProfilePicker.tsx`, `EventDetail.tsx`, `onboarding/GettingStarted.tsx`,
       `components/PlanWeek.tsx`, `components/PlanMonth.tsx`, `components/EventModal.tsx`, `Photos.tsx`, `styles/lists.css`
