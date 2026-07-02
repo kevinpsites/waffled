@@ -193,6 +193,13 @@ services:
       - nook_media:/data/media:ro                   # serve uploaded blobs directly (read-only)
       - caddy_data:/data
       - caddy_config:/config
+    healthcheck:
+      # Caddy answers /healthz with 200 (or a 3xx→HTTPS redirect when CADDY_SITE_ADDRESS
+      # is a hostname); -sf treats both as success, so this works in local and TLS modes.
+      test: ["CMD", "curl", "-sf", "-o", "/dev/null", "http://localhost:80/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   # Nightly database (and optional media) backups. On by default, zero-config: dumps
@@ -248,6 +255,13 @@ services:
       - "${OTLP_HTTP_PORT:-4318}:4318" # OTLP HTTP/protobuf
     volumes:
       - lgtm_data:/data
+    healthcheck:
+      # Grafana (bundled in otel-lgtm) answers /api/health with 200 once the stack is up.
+      test: ["CMD", "curl", "-sf", "-o", "/dev/null", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     restart: unless-stopped
 
 volumes:
