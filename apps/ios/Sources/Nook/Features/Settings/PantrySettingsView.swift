@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// Settings → Pantry: the per-household pantry config the web surfaces — whether the
-/// pantry shows a Today card, the default running-low threshold, and the "old" item
-/// threshold (in months) that drives the 🕰️ age badge + "Been a while" group. Writes
-/// go to `PUT /api/pantry/config` (a partial merge; the server clamps the numbers).
-/// Locations / allergen-avoid / icons stay on the web for now — see the note in the
-/// hand-off. Mirrors the web `PantrySettings`.
+/// Settings → Pantry: the per-household pantry config the web surfaces. Mirrors the web
+/// `PantrySettings` (Settings.tsx) — whether the pantry shows a Today card, the default
+/// running-low threshold, the "old" item threshold (in months), the allergen avoid-list,
+/// the storage locations (with a per-location emoji icon), all editable. Writes go to
+/// `PUT /api/pantry/config` — a partial merge; the server clamps the numbers, dedupes the
+/// locations case-insensitively, and keeps only known allergen keys. Collaborative (any
+/// member), like the web — no admin gate.
 struct PantrySettingsView: View {
     @State private var loaded = false
     @State private var failed = false
@@ -18,7 +19,13 @@ struct PantrySettingsView: View {
     @State private var lowThreshold: Double = 1
     @State private var staleMonths = 6
 
-    private enum Field { case low, stale }
+    // locations + per-location icons + allergen avoid-list
+    @State private var locations: [String] = []
+    @State private var locationIcons: [String: String] = [:]
+    @State private var avoid: Set<String> = []
+    @State private var addingLocation = ""
+
+    private enum Field: Hashable { case low, stale, addLoc, locName(Int), locIcon(Int) }
     @FocusState private var focus: Field?
 
     private let api = NookAPI()
@@ -29,10 +36,8 @@ struct PantrySettingsView: View {
                 if loaded {
                     todayCard
                     thresholdsCard
-                    Text("Locations, per-location icons, and the allergen avoid-list are still edited on the web.")
-                        .font(.system(size: 12)).foregroundStyle(NK.ink3)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 4)
+                    allergenCard
+                    locationsCard
                 } else if failed {
                     Text("Couldn’t load pantry settings.").font(.system(size: 14)).foregroundStyle(NK.ink3).padding(.vertical, 30)
                 } else {
@@ -49,10 +54,15 @@ struct PantrySettingsView: View {
                 Button("Done") { focus = nil }.fontWeight(.semibold)
             }
         }
-        // Commit whichever numeric field just lost focus (decimal-pad has no return key).
+        // Commit whichever field just lost focus (decimal-pad has no return key, and
+        // a location rename/icon commits on blur to match the web).
         .onChange(of: focus) { old, _ in
-            if old == .low { commitLow() }
-            if old == .stale { commitStale() }
+            switch old {
+            case .low: commitLow()
+            case .stale: commitStale()
+            case .locName, .locIcon: commitLocations()
+            default: break
+            }
         }
         .task { await load() }
     }
@@ -88,6 +98,109 @@ struct PantrySettingsView: View {
         }
     }
 
+    // Allergens to avoid — a chip multi-select over the 9 canonical keys, committed on
+    // each tap. Mirrors the web `.pl-allergen-pick`; avoided ones fill in NK.primary.
+    private var allergenCard: some View {
+        NookCard {
+            VStack(alignment: .leading, spacing: 10) {
+                SectionLabel(text: "Allergens to avoid")
+                Text("Items containing these (from Open Food Facts) get a red warning — e.g. a gluten-free home.")
+                    .font(.system(size: 12)).foregroundStyle(NK.ink3).fixedSize(horizontal: false, vertical: true)
+                ChipFlow(spacing: 8, lineSpacing: 8) {
+                    ForEach(PantryAllergen.keys, id: \.self) { key in allergenChip(key) }
+                }
+            }
+        }
+    }
+
+    private func allergenChip(_ key: String) -> some View {
+        let on = avoid.contains(key)
+        return Button { toggleAvoid(key) } label: {
+            HStack(spacing: 6) {
+                AllergenBadge(allergen: key, avoid: on)
+                Text(PantryAllergen.label(key))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(on ? .white : NK.ink2)
+            }
+            .padding(.horizontal, 11).padding(.vertical, 7)
+            .background(on ? NK.primary : NK.panel)
+            .clipShape(Capsule())
+        }.buttonStyle(.plain)
+    }
+
+    // Storage locations — each row is an emoji-icon field + a rename field + reorder/remove.
+    // Reorder writes the new order; the icon key is the (current) location name, matching
+    // how the pantry sidebar looks it up (`model.locationIcons[loc]`).
+    private var locationsCard: some View {
+        NookCard {
+            VStack(alignment: .leading, spacing: 10) {
+                SectionLabel(text: "Locations")
+                Text("Where items live — the sidebar groups by these. Add an emoji to show next to each.")
+                    .font(.system(size: 12)).foregroundStyle(NK.ink3).fixedSize(horizontal: false, vertical: true)
+                VStack(spacing: 8) {
+                    ForEach(Array(locations.enumerated()), id: \.offset) { idx, _ in locationRow(idx) }
+                }
+                addLocationRow
+            }
+        }
+    }
+
+    private func locationRow(_ idx: Int) -> some View {
+        HStack(spacing: 8) {
+            TextField("📦", text: iconBinding(idx))
+                .multilineTextAlignment(.center)
+                .frame(width: 44).padding(.vertical, 10)
+                .nkField(fill: NK.panel)
+                .focused($focus, equals: .locIcon(idx))
+                .onChange(of: iconBinding(idx).wrappedValue) { _, v in
+                    // The server slices to 4 chars; keep it short client-side too.
+                    if v.count > 4 { setIcon(idx, String(v.prefix(4))) }
+                }
+            TextField("Location", text: nameBinding(idx))
+                .font(.system(size: 15, weight: .semibold))
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .frame(maxWidth: .infinity)
+                .nkField(fill: NK.panel)
+                .focused($focus, equals: .locName(idx))
+                .submitLabel(.done)
+                .onSubmit { commitLocations() }
+            Button { move(idx, by: -1) } label: {
+                Image(systemName: "chevron.up").font(.system(size: 13, weight: .bold)).foregroundStyle(idx == 0 ? NK.ink3.opacity(0.4) : NK.ink3)
+                    .frame(width: 30, height: 30)
+            }.buttonStyle(.plain).disabled(idx == 0)
+            Button { move(idx, by: 1) } label: {
+                Image(systemName: "chevron.down").font(.system(size: 13, weight: .bold)).foregroundStyle(idx == locations.count - 1 ? NK.ink3.opacity(0.4) : NK.ink3)
+                    .frame(width: 30, height: 30)
+            }.buttonStyle(.plain).disabled(idx == locations.count - 1)
+            Button { removeLocation(idx) } label: {
+                Image(systemName: "minus.circle.fill").font(.system(size: 18)).foregroundStyle(NK.ink3)
+                    .frame(width: 30, height: 30)
+            }.buttonStyle(.plain)
+        }
+    }
+
+    private var addLocationRow: some View {
+        HStack(spacing: 8) {
+            TextField("Add a location…", text: $addingLocation)
+                .font(.system(size: 15))
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .frame(maxWidth: .infinity)
+                .nkField(fill: NK.panel)
+                .focused($focus, equals: .addLoc)
+                .submitLabel(.done)
+                .onSubmit(addLocation)
+            Button(action: addLocation) {
+                Text("Add").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(addingLocation.trimmingCharacters(in: .whitespaces).isEmpty ? NK.ink3 : NK.primary)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(addingLocation.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        .padding(.top, 2)
+    }
+
     // MARK: small views
 
     private func settingRow<T: View>(_ icon: String, _ title: String, _ sub: String, @ViewBuilder _ control: () -> T) -> some View {
@@ -113,6 +226,23 @@ struct PantrySettingsView: View {
             .focused($focus, equals: field)
     }
 
+    // MARK: bindings into the arrays/maps (bounds-checked so a mid-edit remove is safe)
+
+    private func nameBinding(_ idx: Int) -> Binding<String> {
+        Binding(get: { idx < locations.count ? locations[idx] : "" },
+                set: { if idx < locations.count { locations[idx] = $0 } })
+    }
+    private func iconBinding(_ idx: Int) -> Binding<String> {
+        Binding(get: { idx < locations.count ? (locationIcons[locations[idx]] ?? "") : "" },
+                set: { setIcon(idx, $0) })
+    }
+    private func setIcon(_ idx: Int, _ v: String) {
+        guard idx < locations.count else { return }
+        let loc = locations[idx]
+        let trimmed = v.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { locationIcons[loc] = nil } else { locationIcons[loc] = trimmed }
+    }
+
     // MARK: logic
 
     private func setShowOnToday(_ on: Bool) {
@@ -120,6 +250,66 @@ struct PantrySettingsView: View {
         showOnToday = on
         Task {
             if (try? await api.setPantryConfig(["showOnToday": .bool(on)])) == nil { showOnToday = prev }
+        }
+    }
+
+    private func toggleAvoid(_ key: String) {
+        let prev = avoid
+        if avoid.contains(key) { avoid.remove(key) } else { avoid.insert(key) }
+        // Persist in the canonical order the catalog uses.
+        let next = PantryAllergen.keys.filter { avoid.contains($0) }
+        Task {
+            if let c = try? await api.setPantryConfig(["avoidAllergens": .array(next.map(JSONValue.string))]) { adopt(c) }
+            else { avoid = prev }
+        }
+    }
+
+    private func addLocation() {
+        let name = addingLocation.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        // Ignore a case-insensitive dup (the server would drop it anyway).
+        if locations.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) { addingLocation = ""; return }
+        locations.append(name)
+        addingLocation = ""
+        commitLocations()
+    }
+
+    private func removeLocation(_ idx: Int) {
+        guard idx < locations.count else { return }
+        let loc = locations.remove(at: idx)
+        locationIcons[loc] = nil
+        commitLocations()
+    }
+
+    private func move(_ idx: Int, by delta: Int) {
+        let dest = idx + delta
+        guard idx < locations.count, dest >= 0, dest < locations.count else { return }
+        locations.swapAt(idx, dest)
+        commitLocations()
+    }
+
+    /// Persist the current locations + icons together (the server merges both keys and
+    /// re-derives the config). Prunes icon entries whose location no longer exists.
+    private func commitLocations() {
+        // Drop blank names, then dedupe case-insensitively (keeping order) — mirroring
+        // the server so the optimistic state matches what comes back.
+        var seen = Set<String>()
+        var clean: [String] = []
+        for raw in locations {
+            let s = raw.trimmingCharacters(in: .whitespaces)
+            let key = s.lowercased()
+            if s.isEmpty || seen.contains(key) { continue }
+            seen.insert(key)
+            clean.append(s)
+        }
+        let names = Set(clean)
+        let icons = locationIcons.filter { names.contains($0.key) && !$0.value.isEmpty }
+        let iconObj: [String: JSONValue] = icons.mapValues { .string($0) }
+        Task {
+            if let c = try? await api.setPantryConfig([
+                "locations": .array(clean.map(JSONValue.string)),
+                "locationIcons": .object(iconObj),
+            ]) { adopt(c) }
         }
     }
 
@@ -154,6 +344,9 @@ struct PantrySettingsView: View {
         lowText = formatAmount(c.lowThreshold)
         staleMonths = Int((c.staleMonths ?? 6).rounded())
         staleText = "\(staleMonths)"
+        locations = c.locations
+        locationIcons = c.locationIcons ?? [:]
+        avoid = Set(c.avoidAllergens)
     }
 
     private func load() async {
