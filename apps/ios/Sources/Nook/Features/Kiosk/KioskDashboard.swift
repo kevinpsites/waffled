@@ -121,6 +121,9 @@ struct KioskDashboard: View {
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $addCountdown) {
+            AddCountdownSheet { title, date, emoji in await countdowns.add(title: title, date: date, emoji: emoji) }
+        }
         .sheet(isPresented: $showApprovals) {
             NavigationStack { ApprovalsView() }.modifier(KioskSheetPresentation(kiosk: isKiosk))
         }
