@@ -1,0 +1,113 @@
+# Run the test suites + typechecks on every PR and on push to main.
+#
+# The repo is NOT an npm-workspaces monorepo — apps/api and apps/web each have
+# their own package.json + package-lock.json (npm). So each job installs with
+# `npm ci` in its own app dir and caches on that app's lockfile.
+#
+# Node 20 to match the runtime (apps/api/Dockerfile + caddy web stage use
+# node:20-alpine).
+#
+# Jobs are independent so the fast ones (typecheck, web tests) fail fast without
+# waiting on the slow api job. The api integration/e2e tests use Testcontainers
+# (ephemeral Postgres + wiremock, and api.e2e.test.ts builds the Dockerfile),
+# which needs Docker — available out of the box on ubuntu-latest.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same ref (e.g. rapid pushes to a PR branch).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    name: Typecheck (api + web)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: |
+            apps/api/package-lock.json
+            apps/web/package-lock.json
+
+      - name: Install api deps
+        working-directory: apps/api
+        run: npm ci
+
+      - name: Typecheck api
+        working-directory: apps/api
+        run: npm run typecheck        # tsc --noEmit
+
+      - name: Install web deps
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Typecheck web
+        working-directory: apps/web
+        run: npm run typecheck        # tsc -b --noEmit
+
+  web-tests:
+    name: Web tests (vitest / jsdom)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install web deps
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Run web tests
+        working-directory: apps/web
+        run: npm test                 # vitest run
+
+  api-tests:
+    name: API tests (vitest + Testcontainers)
+    runs-on: ubuntu-latest
+    # The api suite runs files sequentially (vitest fileParallelism:false, to
+    # avoid Docker/port contention) with 120s test / 180s hook timeouts, and
+    # api.e2e.test.ts builds the Dockerfile via Testcontainers — so it is slow.
+    # Generous headroom so a cold container pull / image build never times out.
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+
+      - name: Install api deps
+        working-directory: apps/api
+        run: npm ci
+
+      # ubuntu-latest ships with Docker running, which is all Testcontainers
+      # needs (ephemeral Postgres, wiremock JWKS, and the e2e Dockerfile build).
+      - name: Run api tests
+        working-directory: apps/api
+        run: npm test                 # vitest run (full suite: unit + integration + e2e)
