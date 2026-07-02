@@ -435,7 +435,7 @@ struct TodayView: View {
 
     static let cardLabels = [
         "agenda": "Agenda", "countdowns": "Countdowns", "tonight": "Tonight's dinner",
-        "chores": "Chores", "grocery": "Grocery", "goals": "Goals",
+        "chores": "Chores", "grocery": "Grocery", "goals": "Goals", "pantry": "Pantry",
     ]
     private static let smallCards: Set<String> = ["chores", "grocery"]
 
@@ -456,6 +456,7 @@ struct TodayView: View {
         case "chores": return sync.module(.chores)
         case "grocery": return sync.module(.lists)
         case "goals": return sync.module(.goals)
+        case "pantry": return sync.module(.pantry)
         default: return true
         }
     }
@@ -487,6 +488,7 @@ struct TodayView: View {
             }
         case "chores": Button { path.append(.chores) } label: { choresCard }.buttonStyle(.plain)
         case "grocery": Button { path.append(.list(grocerySummary)) } label: { groceryCard }.buttonStyle(.plain)
+        case "pantry": PantryTodayCard { path.append(.pantry) }
         case "goals": goalsCard
         default: EmptyView()
         }
@@ -500,6 +502,11 @@ struct TodayView: View {
         // includes it, so the guard avoids a duplicate.)
         if !order.contains("countdowns"), !resp.resolved.hidden.contains("countdowns") {
             order.insert("countdowns", at: (order.firstIndex(of: "agenda").map { $0 + 1 }) ?? 0)
+        }
+        // Same fallback for pantry (a server predating the mobile pantry card omits it):
+        // surface it after grocery so it appears regardless of the server's card set.
+        if !order.contains("pantry"), !resp.resolved.hidden.contains("pantry") {
+            order.insert("pantry", at: (order.firstIndex(of: "grocery").map { $0 + 1 }) ?? order.count)
         }
         cardOrder = order
         hiddenCards = Set(resp.resolved.hidden)

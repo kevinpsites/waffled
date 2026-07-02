@@ -15,6 +15,7 @@ struct KioskDashboard: View {
     @State private var model = KioskTodayModel()
     @State private var recipes = RecipesModel()
     @State private var countdowns = CountdownsModel()
+    @State private var pantry = PantryModel()
     @State private var addCountdown = false
     @State private var detailEvent: SyncedEvent?
     @State private var recipeTarget: RecipeTarget?
@@ -77,6 +78,9 @@ struct KioskDashboard: View {
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .task { await sync.loadIdentity() }
         .task { await countdowns.load() }
+        // Pantry card data (only when the module's on; no dedicated sync bus, so a
+        // single load on appear — same as countdowns).
+        .task { if sync.module(.pantry) { await pantry.load() } }
         // Per-domain reloads: each fires on appear (initial load) and only when its own
         // bus bumps — so a grocery toggle no longer reloads chores + meals + weather.
         .task(id: "\(tz.identifier)|\(sync.choresRev)") { await model.loadChores() }
@@ -280,9 +284,75 @@ struct KioskDashboard: View {
         }
     }
     // Chores sized to content; the grocery card fills the rest and scrolls its own
-    // (full) list internally so it stays reachable without an outer page scroll.
+    // (full) list internally so it stays reachable without an outer page scroll. The
+    // pantry card (module-gated) rides under grocery — it pairs with the shopping flow.
     private var choreGroceryCol: some View {
-        VStack(spacing: 22) { choresCard; groceryCard }
+        VStack(spacing: 22) {
+            choresCard
+            groceryCard
+            if sync.module(.pantry), pantry.loaded { kioskPantryCard }
+        }
+    }
+
+    /// Compact pantry card under the chores/grocery column (iPad Today). Surfaces the
+    /// items needing attention — use-soon (expiring ≤ 3 days / past) first, then merely
+    /// running-low. Taps into the Pantry page. Mirrors the phone `PantryTodayCard`.
+    @ViewBuilder private var kioskPantryCard: some View {
+        let soon = pantry.onHand.filter { pantry.isSoon($0) }
+            .sorted { (pantry.days($0) ?? .max) < (pantry.days($1) ?? .max) }
+        let low = pantry.onHand.filter { pantry.isLow($0) && !pantry.isSoon($0) }.sorted { $0.name < $1.name }
+        let attention = soon + low
+        Button { navigate(.pantry) } label: {
+            KioskCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 8) {
+                        Text("🥫 Pantry").font(.system(size: 16, weight: .heavy)).foregroundStyle(NK.ink)
+                        Spacer(minLength: 6)
+                        Text(soon.isEmpty ? "\(pantry.onHand.count) on hand" : "\(pantry.onHand.count) on hand · \(soon.count) soon")
+                            .font(.system(size: 13)).foregroundStyle(NK.ink3)
+                        Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+                    }
+                    if pantry.onHand.isEmpty {
+                        pantryEmpty("Nothing logged yet — add what’s on hand.")
+                    } else if attention.isEmpty {
+                        pantryEmpty("All fresh — nothing to use up soon.")
+                    } else {
+                        ForEach(attention.prefix(5)) { kioskPantryRow($0) }
+                        if attention.count > 5 {
+                            Text("+\(attention.count - 5) more").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                        }
+                    }
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func pantryEmpty(_ text: String) -> some View {
+        Text(text).font(.system(size: 15)).foregroundStyle(NK.ink3)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
+    }
+
+    private func kioskPantryRow(_ item: NookAPI.PantryItem) -> some View {
+        HStack(spacing: 12) {
+            Text(PantryFood.emoji(for: item.name)).font(.system(size: 22))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.name).font(.system(size: 18, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                let qty = [item.amount, item.unit].map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
+                if !qty.isEmpty { Text(qty).font(.system(size: 13)).foregroundStyle(NK.ink3) }
+            }
+            Spacer(minLength: 8)
+            if pantry.isSoon(item), let d = pantry.days(item) {
+                Text(d < 0 ? "Expired" : d == 0 ? "Today" : "\(d) day\(d == 1 ? "" : "s")")
+                    .font(.system(size: 14, weight: .bold)).foregroundStyle(Color(hex: 0xB8860B))
+                    .padding(.horizontal, 9).padding(.vertical, 3)
+                    .background(Color(hex: 0xFBF0D5)).clipShape(Capsule())
+            } else {
+                Text("Low").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.primaryD)
+                    .padding(.horizontal, 9).padding(.vertical, 3)
+                    .background(NK.primaryD.opacity(0.12)).clipShape(Capsule())
+            }
+        }
     }
 
     // Concrete columns per layout (no AnyView — type erasure would stop SwiftUI from

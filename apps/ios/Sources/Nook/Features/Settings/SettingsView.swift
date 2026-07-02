@@ -43,6 +43,9 @@ struct SettingsView: View {
                 row("📅", "Calendars", "Google sync") { path.append(.settingsCalendars) }
                 row("⭐", "Chores & Rewards", "Currencies & conversions") { path.append(.settingsChoresRewards) }
                 row("🍽️", "Meals", "Calendar & meal times") { path.append(.settingsMeals) }
+                if sync.module(.pantry) {
+                    row("🥫", "Pantry", "Today card & thresholds") { path.append(.settingsPantry) }
+                }
                 row("📋", "Lists", "Grocery & lists")
                 row("🖥️", "Display & Kiosk", "Screensaver & idle") { path.append(.settingsDisplay) }
                 row("🔔", "Notifications", "Event reminders") { path.append(.settingsNotifications) }
@@ -172,12 +175,6 @@ struct ModulesSettingsView: View {
                 Divider().background(NK.hair).padding(.leading, 52)
                 toggleRow(icon: "⭐", title: "Rewards", sub: "Star shop & redemptions — the spend half of chores.",
                           isOn: rewards ?? true, busy: saving.contains("rewards"), indented: true) { setRewards($0) }
-            }
-            if m == .pantry {
-                Text("iOS screens are coming soon — for now, manage pantry items on the web.")
-                    .font(.system(size: 11.5)).foregroundStyle(NK.ink3)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12).padding(.bottom, 10)
             }
         }
         .background(NK.card)

@@ -31,6 +31,44 @@ enum PantryAllergen {
     }
 }
 
+/// Dietary flags captured from the Open Food Facts ingredients analysis (read-only —
+/// they come from the OFF snapshot). Mirrors the web `DIETARY_LABELS`.
+enum PantryDietary {
+    static let labels: [String: String] = [
+        "vegan": "Vegan", "vegetarian": "Vegetarian", "palm_oil_free": "Palm-oil-free",
+    ]
+    /// Canonical order (matches the web).
+    static let keys = ["vegan", "vegetarian", "palm_oil_free"]
+    static func label(_ key: String) -> String {
+        labels[key] ?? key.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+}
+
+/// A small green "Vegan / Vegetarian / Palm-oil-free" chip (read-only OFF flag),
+/// matching the web `.pl-diet-chip` (green fill, green ink).
+struct DietaryChip: View {
+    let key: String
+    var body: some View {
+        Text(PantryDietary.label(key))
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(Color(hex: 0x1C7A44))
+            .padding(.horizontal, 10).padding(.vertical, 4)
+            .background(Color(hex: 0xE6F4EA)).clipShape(Capsule())
+    }
+}
+
+/// A wrapping row of an item's dietary chips (nil/empty → renders nothing).
+struct DietaryChips: View {
+    let dietary: [String]?
+    var body: some View {
+        if let dietary, !dietary.isEmpty {
+            ChipFlow(spacing: 7, lineSpacing: 7) {
+                ForEach(dietary, id: \.self) { DietaryChip(key: $0) }
+            }
+        }
+    }
+}
+
 private let avoidRed = Color(hex: 0xC0392B)
 
 /// One colored allergen letter-badge. `avoid` adds a red ring; `trace` renders it

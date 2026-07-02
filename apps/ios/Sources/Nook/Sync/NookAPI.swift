@@ -1207,6 +1207,33 @@ struct NookAPI: Sendable {
         try await getJSON("/api/pantry", as: PantryList.self)
     }
 
+    /// The pantry module's per-household config (no items) — returned by both the
+    /// list endpoint and `PUT /api/pantry/config`. Editable from Settings → Pantry.
+    struct PantryConfig: Decodable, Sendable {
+        let locations: [String]
+        let showOnToday: Bool
+        let avoidAllergens: [String]
+        let lowThreshold: Double
+        let locationIcons: [String: String]?
+        let staleMonths: Double?
+    }
+
+    /// Read just the pantry config (reuses the list endpoint, which returns it inline).
+    func pantryConfig() async throws -> PantryConfig {
+        let r = try await pantryList()
+        return PantryConfig(locations: r.locations, showOnToday: r.showOnToday,
+                            avoidAllergens: r.avoidAllergens, lowThreshold: r.lowThreshold,
+                            locationIcons: r.locationIcons, staleMonths: r.staleMonths)
+    }
+
+    /// Patch the pantry config (any member). `PUT /api/pantry/config` does a partial
+    /// merge — send only the fields you're changing — and returns the merged config.
+    /// The server clamps: `lowThreshold` ≥ 0; `staleMonths` a 1…60 integer.
+    @discardableResult
+    func setPantryConfig(_ body: [String: JSONValue]) async throws -> PantryConfig {
+        try await sendReturning("PUT", "/api/pantry/config", body: body, as: PantryConfig.self)
+    }
+
     /// Look up a barcode via Open Food Facts (server-cached). Returns the product, or
     /// nil when OFF has no such barcode (404). Throws on a real failure (502/timeout)
     /// so the UI can distinguish "not found" from "couldn't reach OFF".

@@ -102,6 +102,7 @@ struct PantryItemDetailView: View {
                 Text("May contain \(traces.map(PantryAllergen.label).joined(separator: ", "))")
                     .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
             }
+            if let dietary = item.dietary, !dietary.isEmpty { DietaryChips(dietary: dietary) }
             if let n = item.nutrition, !n.isEmpty { nutritionCard(item, n) }
             if item.isOff {
                 HStack(spacing: 6) {
