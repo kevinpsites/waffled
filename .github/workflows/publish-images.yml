@@ -84,3 +84,27 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  # On a version tag, cut a GitHub Release: auto-generated notes + the env template so
+  # operators have a canonical, version-matched starting point. Nook mounts host config
+  # (Caddyfile, powersync, postgres/init), so the runnable "matched pair" is the tagged
+  # repo itself (`git checkout <tag>` → the compose, configs, and ./nook that match these
+  # images) — hence we attach example.env, not a standalone compose.
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # create the Release + upload assets
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stage release assets
+        run: cp infra/compose/.env.example example.env
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: example.env

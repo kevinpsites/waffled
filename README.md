@@ -185,3 +185,10 @@ Auth0) · Google Calendar authoritative for Google-origin events, Nook authorita
 native fields · ~5-min in-process calendar sync (no separate worker) · Caddy serves the
 SPA + `/media` and can do public ingress (auto-TLS or a Cloudflare Tunnel) · everything
 in this one repo.
+
+## License
+
+Nook is licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0). See
+[LICENSE](LICENSE). In short: you're free to self-host, study, modify, and share it — but
+if you run a modified version as a network service, you must make your source available to
+its users under the same license.
