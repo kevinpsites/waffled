@@ -1,18 +1,15 @@
 import SwiftUI
 import UIKit
 
-/// Accounts panel: who this device is signed in as, the household it's joined to, and
-/// (for admins) kiosk device pairing — mirrors the web's Sign-in & security. Sign out
-/// lives on the Settings landing.
+/// Households panel: who this device is signed in as, and the households the account
+/// belongs to — switch between them, accept invites. (Kiosk-device pairing moved to
+/// Display & Kiosk.) Sign out lives on the Settings landing.
 struct AccountSettingsView: View {
     @Environment(Session.self) private var session
     @Environment(SyncManager.self) private var sync
 
     @State private var settings: NookAPI.HouseholdSettings?
     @State private var currentId: String?
-    @State private var devices: [NookAPI.KioskDevice] = []
-    @State private var showPair = false
-    @State private var confirmRevoke: String?
 
     // Multi-household: the account's memberships + pending invites (the switcher).
     @State private var overview: NookAPI.HouseholdOverview?
@@ -26,7 +23,6 @@ struct AccountSettingsView: View {
         guard let currentId else { return nil }
         return settings?.members.first { $0.id == currentId }
     }
-    private var isAdmin: Bool { me?.isAdmin ?? false }
 
     var body: some View {
         ScrollView {
@@ -34,17 +30,12 @@ struct AccountSettingsView: View {
                 identityCard
                 householdCard
                 if let overview { householdSwitcher(overview); pendingInvitesSection(overview) }
-                if isAdmin { kioskSection }
             }
             .padding(16).padding(.bottom, 110)
         }
         .background(NK.canvas)
-        .navigationTitle("Accounts").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("Households").navigationBarTitleDisplayMode(.inline)
         .task { await load() }
-        .refreshable { await loadDevices() }
-        .sheet(isPresented: $showPair, onDismiss: { Task { await loadDevices() } }) {
-            PairKioskSheet { await loadDevices() }
-        }
     }
 
     private var identityCard: some View {
@@ -207,63 +198,6 @@ struct AccountSettingsView: View {
         }
     }
 
-    // MARK: kiosk devices
-
-    private var kioskSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(text: "Kiosk devices").padding(.top, 6)
-            Text("Pair a shared tablet to this household so it shows a profile picker instead of a single login.")
-                .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
-                .fixedSize(horizontal: false, vertical: true)
-
-            ForEach(devices) { d in deviceRow(d) }
-
-            Button { showPair = true } label: {
-                HStack(spacing: 7) {
-                    Image(systemName: "plus").font(.system(size: 13, weight: .bold))
-                    Text("Pair a new device").font(.system(size: 14, weight: .semibold))
-                }
-                .foregroundStyle(NK.ink2).frame(maxWidth: .infinity).padding(.vertical, 12)
-                .background(NK.card2)
-                .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundStyle(NK.hair))
-                .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            }
-            .buttonStyle(.plain).padding(.top, 2)
-        }
-    }
-
-    private func deviceRow(_ d: NookAPI.KioskDevice) -> some View {
-        HStack(spacing: 12) {
-            Text("🖥️").font(.system(size: 20)).frame(width: 40, height: 40)
-                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(d.label).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                Text(lastSeen(d.lastSeenAt)).font(.system(size: 12)).foregroundStyle(NK.ink3)
-            }
-            Spacer(minLength: 0)
-            Button {
-                if confirmRevoke == d.id { Task { await revoke(d.id) } } else { confirmRevoke = d.id }
-            } label: {
-                Text(confirmRevoke == d.id ? "Tap again" : "Unpair")
-                    .font(.system(size: 12.5, weight: .bold))
-                    .foregroundStyle(confirmRevoke == d.id ? NK.primary : NK.ink3)
-                    .padding(.horizontal, 10).padding(.vertical, 7)
-                    .background(NK.panel).clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(12).background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
-    }
-
-    private func lastSeen(_ iso: String?) -> String {
-        guard let iso, let d = EventTime.parse(iso) else { return "Never connected" }
-        let f = RelativeDateTimeFormatter(); f.unitsStyle = .short
-        return "Last seen \(f.localizedString(for: d, relativeTo: Date()))"
-    }
-
     private func tag(_ t: String, _ color: Color) -> some View {
         NookStatusBadge(text: t, color: color)
     }
@@ -275,17 +209,6 @@ struct AccountSettingsView: View {
         settings = await s
         currentId = await id ?? nil
         overview = await o ?? nil
-        if isAdmin { await loadDevices() }
-    }
-
-    private func loadDevices() async {
-        devices = (try? await api.kioskDevices()) ?? []
-    }
-
-    private func revoke(_ id: String) async {
-        confirmRevoke = nil
-        try? await api.revokeKioskDevice(id: id)
-        await loadDevices()
     }
 }
 

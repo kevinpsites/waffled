@@ -44,7 +44,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 10) {
                 // Account — you (personal; always visible)
                 SectionLabel(text: "Account")
-                row("🔗", "Accounts", "Sign-in, your households & pairing") { path.append(.settingsAccount) }
+                row("🏠", "Households", "Your households & sign-in") { path.append(.settingsAccount) }
                 row("🔔", "Notifications", "Your event reminders") { path.append(.settingsNotifications) }
 
                 if isAdmin {

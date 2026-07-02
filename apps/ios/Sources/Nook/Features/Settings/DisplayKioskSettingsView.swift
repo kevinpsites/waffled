@@ -26,6 +26,11 @@ struct DisplayKioskSettingsView: View {
     @State private var confirmUnpair = false
     @State private var deviceBusy = false
     @State private var deviceError: String?
+    // Household kiosk-device roster (moved here from the Households screen): the paired
+    // tablets + "pair a new device". Admin-only.
+    @State private var devices: [NookAPI.KioskDevice] = []
+    @State private var showPair = false
+    @State private var confirmRevoke: String?
 
     private let api = NookAPI()
 
@@ -51,20 +56,33 @@ struct DisplayKioskSettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                intro
-                if showsDeviceCard { deviceCard }
-                if isIPad { railSection }
-                if loadFailed {
-                    errorCard
-                } else if cfg != nil {
-                    if !sync.isParent { readOnlyNotice }
-                    screensaverCard
-                    idleCard
-                    nightDimCard
-                    footnote
-                } else {
-                    NookLoading()
+            VStack(alignment: .leading, spacing: 26) {
+                // This iPad — device-local settings (only exist on the iPad kiosk shell).
+                if isIPad {
+                    VStack(alignment: .leading, spacing: 12) {
+                        SectionLabel(text: "This iPad")
+                        Text("Only this iPad — these don’t change your other displays.")
+                            .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                        if showsDeviceCard { deviceCard }
+                        railSection
+                    }
+                }
+                // Family displays — household-wide config + the roster of paired tablets.
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionLabel(text: "Family displays")
+                    intro
+                    if loadFailed {
+                        errorCard
+                    } else if cfg != nil {
+                        if !sync.isParent { readOnlyNotice }
+                        screensaverCard
+                        idleCard
+                        nightDimCard
+                        if sync.isParent { kioskDevicesSection }
+                        footnote
+                    } else {
+                        NookLoading()
+                    }
                 }
             }
             .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 110)
@@ -81,6 +99,9 @@ struct DisplayKioskSettingsView: View {
         }
         .task { await load() }
         .sheet(isPresented: $showCodeSheet) { KioskCodeEntrySheet() }
+        .sheet(isPresented: $showPair, onDismiss: { Task { await loadDevices() } }) {
+            PairKioskSheet { await loadDevices() }
+        }
         .confirmationDialog("Turn this iPad into a shared kiosk?", isPresented: $confirmPromote, titleVisibility: .visible) {
             Button("Turn on shared kiosk") { Task { await promote() } }
             Button("Cancel", role: .cancel) {}
@@ -187,6 +208,63 @@ struct DisplayKioskSettingsView: View {
                 .font(.system(size: 12)).foregroundStyle(NK.ink3)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    // MARK: kiosk devices (household — the paired tablets)
+
+    private var kioskDevicesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionLabel(text: "Kiosk devices").padding(.top, 6)
+            Text("Shared tablets paired to this household — each shows a profile picker instead of a single login.")
+                .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(devices) { d in deviceRow(d) }
+
+            Button { showPair = true } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "plus").font(.system(size: 13, weight: .bold))
+                    Text("Pair a new device").font(.system(size: 14, weight: .semibold))
+                }
+                .foregroundStyle(NK.ink2).frame(maxWidth: .infinity).padding(.vertical, 12)
+                .background(NK.card2)
+                .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundStyle(NK.hair))
+                .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            }
+            .buttonStyle(.plain).padding(.top, 2)
+        }
+    }
+
+    private func deviceRow(_ d: NookAPI.KioskDevice) -> some View {
+        HStack(spacing: 12) {
+            Text("🖥️").font(.system(size: 20)).frame(width: 40, height: 40)
+                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(d.label).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                Text(lastSeen(d.lastSeenAt)).font(.system(size: 12)).foregroundStyle(NK.ink3)
+            }
+            Spacer(minLength: 0)
+            Button {
+                if confirmRevoke == d.id { Task { await revoke(d.id) } } else { confirmRevoke = d.id }
+            } label: {
+                Text(confirmRevoke == d.id ? "Tap again" : "Unpair")
+                    .font(.system(size: 12.5, weight: .bold))
+                    .foregroundStyle(confirmRevoke == d.id ? NK.primary : NK.ink3)
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .background(NK.panel).clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12).background(NK.card)
+        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+    }
+
+    private func lastSeen(_ iso: String?) -> String {
+        guard let iso, let d = EventTime.parse(iso) else { return "Never connected" }
+        let f = RelativeDateTimeFormatter(); f.unitsStyle = .short
+        return "Last seen \(f.localizedString(for: d, relativeTo: Date()))"
     }
 
     private var readOnlyNotice: some View {
@@ -379,6 +457,17 @@ struct DisplayKioskSettingsView: View {
         catch { loadFailed = true }
         previewWeather = try? await wxF
         previewPhotos = (try? await photosF) ?? []
+        if sync.isParent { await loadDevices() }
+    }
+
+    private func loadDevices() async {
+        devices = (try? await api.kioskDevices()) ?? []
+    }
+
+    private func revoke(_ id: String) async {
+        confirmRevoke = nil
+        try? await api.revokeKioskDevice(id: id)
+        await loadDevices()
     }
 
     private func save(_ snapshot: NookAPI.DisplayConfig) async {
