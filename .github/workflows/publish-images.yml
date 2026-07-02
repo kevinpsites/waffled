@@ -1,13 +1,15 @@
 # Build & publish the Nook runtime images to GitHub Container Registry (GHCR).
 #
-# Produces two multi-arch (amd64 + arm64) images that the compose stack can pull
+# Produces three multi-arch (amd64 + arm64) images that the compose stack can pull
 # instead of building from source:
 #   ghcr.io/<owner>/nook-api     (apps/api/Dockerfile)
 #   ghcr.io/<owner>/nook-caddy   (infra/compose/caddy/Dockerfile — bakes the web SPA)
+#   ghcr.io/<owner>/nook-backup  (infra/compose/backup/Dockerfile — backup sidecar)
 #
 # To run from these instead of building locally, set in infra/compose/.env:
 #   NOOK_API_IMAGE=ghcr.io/<owner>/nook-api:latest
 #   NOOK_CADDY_IMAGE=ghcr.io/<owner>/nook-caddy:latest
+#   NOOK_BACKUP_IMAGE=ghcr.io/<owner>/nook-backup:latest
 # then `docker compose pull && ./nook up`.
 #
 # Runs ONLY on a version tag (e.g. `git tag v0.1.0 && git push --tags`) or a manual
@@ -37,6 +39,9 @@ jobs:
           - name: caddy
             context: .                     # repo root: the caddy image needs apps/web in context
             dockerfile: infra/compose/caddy/Dockerfile
+          - name: backup
+            context: infra/compose/backup
+            dockerfile: infra/compose/backup/Dockerfile
     steps:
       - name: Checkout
         uses: actions/checkout@v4
