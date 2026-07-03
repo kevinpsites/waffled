@@ -12,7 +12,7 @@ more than once; keep it terse.
    and re-decodes every time a cell is recreated — which happens on *every search
    keystroke and every scroll* — and saturates the main thread (felt as
    multi-second lag just tapping a search field). Use the decoded-image cache
-   **`CachedImage`** (`Sources/Nook/Features/Pantry/CachedImage.swift`):
+   **`CachedImage`** (`Sources/Waffled/Features/Pantry/CachedImage.swift`):
    `NSCache`-backed, resolves OFF (absolute) + uploaded (relative) URLs via
    `MediaURL`, and serves a cache hit **synchronously at `init`** so a re-render
    doesn't reload. (`ScreensaverView` has its own `ScreensaverImageCache`.)

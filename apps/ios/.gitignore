@@ -1,6 +1,6 @@
 # XcodeGen generates these from project.yml — never commit them.
-Nook.xcodeproj/
-Nook-Info.plist
+Waffled.xcodeproj/
+Waffled-Info.plist
 
 # Xcode / build artifacts
 build/

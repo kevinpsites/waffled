@@ -1,11 +1,11 @@
 import Foundation
 import Testing
 import SwiftUI
-@testable import Kinnook
+@testable import Waffled
 
 // Unit tests for the pure sync logic — the parts that are easy to get subtly
 // wrong (mixed timestamp formats, timezone day boundaries, agenda ordering, the
-// CRUD upload contract). Run: xcodebuild test -scheme Nook -destination '…'.
+// CRUD upload contract). Run: xcodebuild test -scheme Waffled -destination '…'.
 
 private let denver = TimeZone(identifier: "America/Denver")!
 private let utc = TimeZone(identifier: "UTC")!
@@ -192,7 +192,7 @@ private final class Counter { var n = 0 }
     }
 
     @Test func recipeEntryDrivesTitleAndMeta() {
-        let entry = NookAPI.WeekEntryDTO(
+        let entry = WaffledAPI.WeekEntryDTO(
             id: "1", date: "2026-06-16", mealType: "dinner", title: nil, recipeId: "r1",
             recipe: .init(title: "Tacos", emoji: "🌮", category: nil, prepTimeMinutes: nil,
                           cookTimeMinutes: 25, servings: 4, imageUrl: nil),
@@ -208,7 +208,7 @@ private final class Counter { var n = 0 }
     }
 
     @Test func eatingOutEntryShowsEatingOut() {
-        let entry = NookAPI.WeekEntryDTO(
+        let entry = WaffledAPI.WeekEntryDTO(
             id: "2", date: "2026-06-16", mealType: "dinner", title: "Takeout night",
             recipeId: nil, recipe: nil, cook: nil
         )
@@ -220,8 +220,8 @@ private final class Counter { var n = 0 }
 }
 
 @Suite struct ListGroupingTests {
-    private func item(_ id: String, section: String?) -> NookAPI.ListItemDTO {
-        NookAPI.ListItemDTO(id: id, name: id, quantity: nil, checked: false, section: section, assignee: nil)
+    private func item(_ id: String, section: String?) -> WaffledAPI.ListItemDTO {
+        WaffledAPI.ListItemDTO(id: id, name: id, quantity: nil, checked: false, section: section, assignee: nil)
     }
 
     @Test func groupsAlphabeticallyByDefaultPreservingItemOrder() {
@@ -269,11 +269,11 @@ private final class Counter { var n = 0 }
 }
 
 @Suite struct MealGroupingTests {
-    private func gItem(_ id: String, recipes: [String]) -> NookAPI.ListItemDTO {
-        NookAPI.ListItemDTO(id: id, name: id, quantity: nil, checked: false, section: nil,
+    private func gItem(_ id: String, recipes: [String]) -> WaffledAPI.ListItemDTO {
+        WaffledAPI.ListItemDTO(id: id, name: id, quantity: nil, checked: false, section: nil,
                             assignee: nil, aisle: nil, sourceRecipeIds: recipes)
     }
-    private func meal(_ recipeId: String?, _ title: String, date: String) -> NookAPI.GroceryBoardDTO.Meal {
+    private func meal(_ recipeId: String?, _ title: String, date: String) -> WaffledAPI.GroceryBoardDTO.Meal {
         .init(recipeId: recipeId, title: title, emoji: nil, color: "#000000", date: date, mealType: "dinner")
     }
 

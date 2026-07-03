@@ -1,6 +1,6 @@
-# Nook iOS — the universal app
+# Waffled iOS — the universal app
 
-Native **SwiftUI** app for Nook (the family hub), shipped as **one universal binary**:
+Native **SwiftUI** app for Waffled (the family hub), shipped as **one universal binary**:
 
 - **iPhone** — the *personal planner*: check your day, capture anything, manage your stuff.
 - **iPad** — the *family hub*: a left nav rail + every page (Today, Calendar, Chores,
@@ -32,10 +32,10 @@ This is an **XcodeGen** project. The Xcode project file is generated from
 ```
 apps/ios/
   project.yml          # source of truth — edit this, then regenerate
-  Kinnook.xcodeproj/      # GENERATED (gitignored)
-  Sources/Nook/
+  Waffled.xcodeproj/      # GENERATED (gitignored)
+  Sources/Waffled/
     App/               # @main entry + root tab navigation
-    DesignSystem/      # Nook tokens + reusable SwiftUI components
+    DesignSystem/      # Waffled tokens + reusable SwiftUI components
     Features/          # one folder per tab/screen
     Support/           # sample data, helpers
 ```
@@ -46,10 +46,10 @@ apps/ios/
 brew install xcodegen           # one-time
 cd apps/ios
 ./Scripts/vendor-powersync.sh   # one-time: fetch + patch the PowerSync SDK (see below)
-xcodegen generate               # regenerate Kinnook.xcodeproj after any file/yml change
-open Kinnook.xcodeproj             # or build from the CLI:
+xcodegen generate               # regenerate Waffled.xcodeproj after any file/yml change
+open Waffled.xcodeproj             # or build from the CLI:
 
-xcodebuild -project Kinnook.xcodeproj -scheme Kinnook \
+xcodebuild -project Waffled.xcodeproj -scheme Waffled \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 ```
 
@@ -63,7 +63,7 @@ timestamp parsing, timezone day-bucketing, agenda ordering, the CRUD-upload
 shape, hex parsing. SwiftUI views are exercised manually on the sim.
 
 ```bash
-xcodebuild test -project Kinnook.xcodeproj -scheme Kinnook \
+xcodebuild test -project Waffled.xcodeproj -scheme Waffled \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
@@ -82,19 +82,19 @@ Config comes from the launch environment (or the in-app Sync → Connection pane
 
 ```bash
 TOKEN=$(…/mint-token.js --sub 'dev|demo')
-SIMCTL_CHILD_NOOK_API_URL=http://localhost:3000 \
-SIMCTL_CHILD_NOOK_DEV_TOKEN="$TOKEN" \
-  xcrun simctl launch booted com.kevinsites.nook
+SIMCTL_CHILD_WAFFLED_API_URL=http://localhost:3000 \
+SIMCTL_CHILD_WAFFLED_DEV_TOKEN="$TOKEN" \
+  xcrun simctl launch booted app.waffled
 ```
 
 The iOS simulator reaches the host Mac on `localhost`. Open **Family → ↻ (Sync)**
 to see connection state, mirrored row counts, the pending-upload queue, and an
 "Add offline test event" button. Optional headless demo switches:
-`NOOK_START_TAB=family`, `NOOK_OPEN_SYNC=1`, `NOOK_DEMO_ADD_EVENT=1`.
+`WAFFLED_START_TAB=family`, `WAFFLED_OPEN_SYNC=1`, `WAFFLED_DEMO_ADD_EVENT=1`.
 
 ## Status
 
-- **Phase 0 — scaffold:** app shell, Nook design system, 5-tab navigation,
+- **Phase 0 — scaffold:** app shell, Waffled design system, 5-tab navigation,
   static Today screen. ✅
 - **Phase 1 — sync de-risk (roadmap M4.2):** PowerSync Swift SDK + dev-token auth,
   `persons`/`events` mirrored to local SQLite, Family people-row from the mirror,
@@ -102,7 +102,7 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
   Pro sim against the live stack. ✅
 - **Phase 2 — capture:** the "Add anything" sheet wired to `POST /api/capture`;
   the client commits all five intents the way the web kiosk does — events to the
-  local PowerSync mirror, grocery/task/meal/list over REST. The "Nook understood"
+  local PowerSync mirror, grocery/task/meal/list over REST. The "Waffled understood"
   preview leads with a **confident one-tap glance** (icon · kind · what it heard ·
   who · a single Add button) — you confirm without ever seeing a form. A second
   **Edit** tap opens the full **editable + re-classifiable** card: an inline name
@@ -213,7 +213,7 @@ to see connection state, mirrored row counts, the pending-upload queue, and an
     (email · N-of-M syncing · Disconnect), each calendar with a color dot,
     primary/access-role/last-synced line, a **Sync** toggle, a **person** assign
     menu, and the **★ write-target** star; a **Sync now** action; and **Connect**
-    via `ASWebAuthenticationSession` (a `nook://` OAuth callback). Over
+    via `ASWebAuthenticationSession` (a `waffled://` OAuth callback). Over
     `GET /api/calendar/google/status`, `PATCH …/calendars/:id`,
     `DELETE …/accounts/:id`, `POST /api/calendar/sync` + `…/google/connect`. ✅
   - The person spotlight's wallet card gains a **⇄ Trade** button → a TradeSheet

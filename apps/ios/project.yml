@@ -1,11 +1,11 @@
 # XcodeGen project definition — the source of truth for the Xcode project.
 # Edit this file (not the generated .xcodeproj), then run `xcodegen generate`.
-# See README.md. The generated Kinnook.xcodeproj + Kinnook-Info.plist are gitignored.
+# See README.md. The generated Waffled.xcodeproj + Waffled-Info.plist are gitignored.
 
-name: Kinnook
+name: Waffled
 
 options:
-  bundleIdPrefix: com.kevinsites
+  bundleIdPrefix: app.waffled
   deploymentTarget:
     iOS: "18.0"          # SwiftData needs 17+; we run on the iPhone 17 Pro / iOS 26.1 sim
   developmentLanguage: en
@@ -30,7 +30,7 @@ packages:
     path: Vendor/powersync-swift
 
 targets:
-  Kinnook:
+  Waffled:
     type: application
     platform: iOS
     sources:
@@ -39,9 +39,9 @@ targets:
       - package: PowerSync
         product: PowerSync
     info:
-      path: Kinnook-Info.plist
+      path: Waffled-Info.plist
       properties:
-        CFBundleDisplayName: Kinnook
+        CFBundleDisplayName: Waffled
         # Static launch screen: just the warm-white canvas (no white flash). The
         # bouncing logo is drawn by SplashView once SwiftUI takes over — the cream
         # matches so the hand-off is seamless. (Launch screens can't animate.)
@@ -49,9 +49,9 @@ targets:
           UIColorName: LaunchBackground
         # Custom scheme for the Google-calendar OAuth callback (ASWebAuthenticationSession).
         CFBundleURLTypes:
-          - CFBundleURLName: com.kevinsites.kinnook.oauth
+          - CFBundleURLName: app.waffled.oauth
             CFBundleURLSchemes:
-              - kinnook
+              - waffled
         UIApplicationSupportsIndirectInputEvents: true
         # Phone stays portrait-only (personal planner). The iPad family display is
         # wall/counter-mounted, so it allows landscape (natural) + portrait.
@@ -63,42 +63,42 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown
         # Voice dictation in the AI capture bar (Speech framework).
-        NSMicrophoneUsageDescription: Kinnook uses the microphone so you can speak an event into the capture bar.
+        NSMicrophoneUsageDescription: Waffled uses the microphone so you can speak an event into the capture bar.
         # Camera: chore photo-proof + pantry barcode scanning (Open Food Facts lookup).
-        NSCameraUsageDescription: Kinnook uses the camera to snap chore photo-proof and to scan grocery barcodes into your pantry.
-        NSSpeechRecognitionUsageDescription: Kinnook transcribes your speech on-device to add events by voice.
+        NSCameraUsageDescription: Waffled uses the camera to snap chore photo-proof and to scan grocery barcodes into your pantry.
+        NSSpeechRecognitionUsageDescription: Waffled transcribes your speech on-device to add events by voice.
         # Dev only: allow plain-HTTP to localhost/the tailnet (no TLS in local stack).
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         # Custom drag type for reordering recipe ingredient rows. Conforms to public.data
         # (NOT public.text) so the rows' text fields don't intercept the drop as text.
         UTExportedTypeDeclarations:
-          - UTTypeIdentifier: com.kevinsites.kinnook.ingredient-row
-            UTTypeDescription: Kinnook recipe ingredient row
+          - UTTypeIdentifier: app.waffled.ingredient-row
+            UTTypeDescription: Waffled recipe ingredient row
             UTTypeConformsTo:
               - public.data
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.kevinsites.kinnook
+        PRODUCT_BUNDLE_IDENTIFIER: app.waffled
         TARGETED_DEVICE_FAMILY: "1,2"        # 1=iPhone (planner) + 2=iPad (family-display kiosk)
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        ENABLE_TESTABILITY: YES              # @testable import Kinnook from the tests
+        ENABLE_TESTABILITY: YES              # @testable import Waffled from the tests
     scheme:
       testTargets:
-        - KinnookTests
+        - WaffledTests
       gatherCoverageData: true
 
-  KinnookTests:
+  WaffledTests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - path: Tests
     dependencies:
-      - target: Kinnook
+      - target: Waffled
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.kevinsites.kinnook.tests
+        PRODUCT_BUNDLE_IDENTIFIER: app.waffled.tests
         GENERATE_INFOPLIST_FILE: YES
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Kinnook.app/Kinnook"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Waffled.app/Waffled"
         BUNDLE_LOADER: "$(TEST_HOST)"

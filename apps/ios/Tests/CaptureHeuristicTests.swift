@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import Kinnook
+@testable import Waffled
 
 /// Mirrors the web `apps/web/src/lib/capture/parse.test.ts` — keep these in sync with the
 /// parser (`CaptureHeuristic.swift` ↔ `parse.ts`).
