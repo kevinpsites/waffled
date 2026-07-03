@@ -92,11 +92,8 @@ struct KioskProfilePickerView: View {
 
     private var header: some View {
         VStack(spacing: 8) {
-            Image("WaffledMark").resizable().scaledToFit().padding(11)
+            Image("WaffledMark").resizable().scaledToFit()
                 .frame(width: 80, height: 80)
-                .background(NK.card)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
             Text(deviceLabel ?? "Family hub")
                 .font(NK.serif(34, .bold)).foregroundStyle(NK.ink)
             Text("Who’s using the iPad?")

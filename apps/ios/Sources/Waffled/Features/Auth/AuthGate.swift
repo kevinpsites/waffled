@@ -111,12 +111,9 @@ struct LoginView: View {
 
     private var header: some View {
         VStack(spacing: 10) {
+            // Transparent mark floats directly on the cream canvas — no white card.
             Image("WaffledMark").resizable().scaledToFit()
-                .padding(isKiosk ? 12 : 9)
                 .frame(width: isKiosk ? 104 : 76, height: isKiosk ? 104 : 76)
-                .background(NK.card)
-                .clipShape(RoundedRectangle(cornerRadius: isKiosk ? 24 : 18, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: isKiosk ? 24 : 18, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
             Text(isKiosk ? "Set up your Waffled display" : "Welcome to Waffled")
                 .font(.system(size: isKiosk ? 34 : 26, weight: .bold)).foregroundStyle(NK.ink)
             Text(isKiosk ? "Sign in to show your family's hub on this iPad."
