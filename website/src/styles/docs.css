@@ -29,6 +29,7 @@
   --sl-color-accent-low:  #401007;
   --sl-color-accent:      #e15a46;
   --sl-color-accent-high: #ffcabf;
+  --sl-color-text-accent: #f2937f; /* readable coral for links on the dark canvas */
 
   /* Warm the dark canvas so it reads as "Waffled at night" rather than slate */
   --sl-color-bg:         #1b1917;
@@ -66,4 +67,26 @@ main :is(h1, h2, h3) {
 /* The site-title text stays ink-colored (the logo carries the brand mark) */
 .site-title {
   color: var(--sl-color-text);
+}
+
+/* Hero primary CTA → the app's coral pill (solid coral, white text) instead of
+   Starlight's pale accent-tint button. Targets the classic + LinkButton markup. */
+.hero a.action.primary,
+.hero a.sl-link-button.primary,
+.hero a[class~="primary"] {
+  background: var(--wf-coral);
+  border-color: var(--wf-coral);
+  color: #fff;
+}
+.hero a.action.primary:hover,
+.hero a.sl-link-button.primary:hover,
+.hero a[class~="primary"]:hover {
+  background: var(--wf-coral-d);
+  border-color: var(--wf-coral-d);
+}
+
+/* Give the hero logo a little breathing room and let it float (no card/box) */
+.hero > img,
+.hero .hero-html img {
+  filter: drop-shadow(0 12px 30px rgba(40, 33, 24, 0.18));
 }
