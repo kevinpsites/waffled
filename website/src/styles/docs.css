@@ -85,8 +85,24 @@ main :is(h1, h2, h3) {
   border-color: var(--wf-coral-d);
 }
 
-/* Give the hero logo a little breathing room and let it float (no card/box) */
-.hero > img,
-.hero .hero-html img {
-  filter: drop-shadow(0 12px 30px rgba(40, 33, 24, 0.18));
+/* Hero image as a polished, rounded app-icon tile (soft shadow + faint ring)
+   rather than a hard cutout floating on the canvas. Reads as "our app icon". */
+.hero img {
+  border-radius: 22%;
+  box-shadow: 0 18px 44px rgba(40, 33, 24, 0.34);
+  outline: 1px solid var(--sl-color-hairline-light);
+  outline-offset: -1px;
+}
+
+/* Card grid: replace Starlight's default rainbow icon tiles with the app's
+   solid-coral chip + white glyph (same language as the "Add event" button),
+   and warm the card surface a touch. */
+.card {
+  border-radius: 14px;
+  border-color: var(--sl-color-hairline);
+}
+.card .icon {
+  background-color: var(--wf-coral) !important;
+  border: none !important;
+  color: #fff !important;
 }
