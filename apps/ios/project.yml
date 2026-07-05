@@ -42,6 +42,11 @@ targets:
       path: Waffled-Info.plist
       properties:
         CFBundleDisplayName: Waffled
+        # Export compliance: we use only STANDARD encryption (HTTPS/TLS, Keychain,
+        # JWT auth) — exempt — so declare it here to skip the "App Encryption
+        # Documentation" prompt on every upload. Critical for automated Xcode Cloud
+        # → TestFlight builds, which would otherwise stall waiting for a manual answer.
+        ITSAppUsesNonExemptEncryption: false
         # Static launch screen: just the warm-white canvas (no white flash). The
         # bouncing logo is drawn by SplashView once SwiftUI takes over — the cream
         # matches so the hand-off is seamless. (Launch screens can't animate.)
