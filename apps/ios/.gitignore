@@ -1,5 +1,11 @@
-# XcodeGen generates these from project.yml — never commit them.
-Waffled.xcodeproj/
+# XcodeGen generates the project from project.yml — don't commit its contents,
+# EXCEPT the shared scheme: Xcode Cloud discovers schemes from the repo, so it must
+# be tracked. Everything else is regenerated on the runner by
+# ci_scripts/ci_post_clone.sh (and locally by `xcodegen generate`).
+Waffled.xcodeproj/*
+!Waffled.xcodeproj/xcshareddata
+Waffled.xcodeproj/xcshareddata/*
+!Waffled.xcodeproj/xcshareddata/xcschemes
 Waffled-Info.plist
 
 # Xcode / build artifacts

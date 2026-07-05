@@ -74,6 +74,33 @@ hard error). `Scripts/vendor-powersync.sh` clones the SDK into `Vendor/`
 (gitignored) and applies a two-line patch; `project.yml` points the SPM
 dependency at that local copy. Revert to the remote pin once upstream fixes it.
 
+## Publishing (Xcode Cloud → TestFlight)
+
+CI/CD is **Xcode Cloud**, chosen so **no signing secrets ever live in the repo** —
+Apple manages the certificates and provisioning profiles. It builds **only when iOS
+files change** and uploads to TestFlight automatically.
+
+The repo already carries what Xcode Cloud needs:
+
+- **`apps/ios/ci_scripts/ci_post_clone.sh`** — runs on every build after clone. Our
+  `.xcodeproj` is XcodeGen-generated and PowerSync is vendored (both gitignored), so
+  this hook installs XcodeGen, runs `Scripts/vendor-powersync.sh`, and
+  `xcodegen generate` *before* Xcode Cloud archives.
+- **The shared `Waffled` scheme is committed** (`.gitignore` tracks
+  `Waffled.xcodeproj/xcshareddata/xcschemes/` while ignoring the rest of the project)
+  because Xcode Cloud discovers schemes from the repo.
+
+**One-time setup (Xcode UI — can't be scripted):**
+
+1. In Xcode: **Product → Xcode Cloud → Create Workflow**. Pick the `Waffled` scheme
+   and sign in with the App Store Connect account that owns bundle id `app.waffled`.
+2. **Start Condition → Branch Changes** on `main`; under **Files and Folders** limit
+   it to `apps/ios/` so web/server commits don't trigger a build.
+3. **Archive** action → **Deploy to TestFlight (Internal Testing)**.
+4. Let Xcode enable **automatic signing** (Apple-managed — you never handle a `.p12`).
+5. First run validates `ci_post_clone.sh`; subsequent iOS pushes build + ship on their
+   own.
+
 ## Run the Phase 1 sync demo
 
 Bring up the backend (`docker compose … up -d` / `just up`), mint a dev token
