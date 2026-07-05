@@ -87,7 +87,7 @@ struct ScreensaverView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Clock + date · weather, top-left.
             VStack(alignment: .leading, spacing: 4) {
-                Text(timeString).font(NK.serif(112)).foregroundStyle(.white)
+                Text(timeString).font(WF.serif(112)).foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.4), radius: 16, y: 2)
                 Text(dateLine).font(.system(size: 24, weight: .semibold)).foregroundStyle(.white.opacity(0.95))
                     .shadow(color: .black.opacity(0.4), radius: 12, y: 1)
@@ -96,7 +96,7 @@ struct ScreensaverView: View {
             // Album (left) + next event / wake hint (right) along the bottom.
             HStack(alignment: .bottom) {
                 if let label = albumLabel {
-                    Text(label).font(NK.serif(30)).foregroundStyle(.white)
+                    Text(label).font(WF.serif(30)).foregroundStyle(.white)
                         .shadow(color: .black.opacity(0.45), radius: 14, y: 1).lineLimit(1)
                 }
                 Spacer(minLength: 16)

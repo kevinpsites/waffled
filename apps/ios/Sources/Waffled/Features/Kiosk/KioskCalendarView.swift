@@ -39,7 +39,7 @@ struct KioskCalendarView: View {
                 .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded(handleSwipe))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(NK.canvas)
+        .background(WF.canvas)
         .sheet(item: $editing) { target in
             switch target {
             case let .new(date): EventEditSheet(event: nil, initialDate: date)
@@ -84,15 +84,15 @@ struct KioskCalendarView: View {
     private var header: some View {
         VStack(spacing: 12) {
             HStack(spacing: 14) {
-                Text(navTitle).font(NK.serif(34)).foregroundStyle(NK.ink).lineLimit(1)
+                Text(navTitle).font(WF.serif(34)).foregroundStyle(WF.ink).lineLimit(1)
                 if mode != .agenda {
                     Button { step(-1) } label: { chevron("chevron.left") }
                     Button { step(1) } label: { chevron("chevron.right") }
                     Button { withAnimation { monthAnchor = Date(); selectedDay = Agenda.todayKey(tz) } } label: {
-                        Text("Today").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+                        Text("Today").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink2)
                             .padding(.horizontal, 14).padding(.vertical, 8)
-                            .background(NK.card).clipShape(Capsule())
-                            .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+                            .background(WF.card).clipShape(Capsule())
+                            .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                 }
@@ -107,7 +107,7 @@ struct KioskCalendarView: View {
                         Text("Add event").font(.system(size: 15, weight: .bold))
                     }
                     .foregroundStyle(.white).padding(.horizontal, 16).padding(.vertical, 11)
-                    .background(NK.primary).clipShape(Capsule())
+                    .background(WF.primary).clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
@@ -158,9 +158,9 @@ struct KioskCalendarView: View {
     }
 
     private func chevron(_ s: String) -> some View {
-        Image(systemName: s).font(.system(size: 14, weight: .heavy)).foregroundStyle(NK.ink2)
-            .frame(width: 36, height: 36).background(NK.card).clipShape(Circle())
-            .overlay(Circle().strokeBorder(NK.hair, lineWidth: 1))
+        Image(systemName: s).font(.system(size: 14, weight: .heavy)).foregroundStyle(WF.ink2)
+            .frame(width: 36, height: 36).background(WF.card).clipShape(Circle())
+            .overlay(Circle().strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private var personFilter: some View {
@@ -183,15 +183,15 @@ struct KioskCalendarView: View {
                     Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 22)
                 } else {
                     Image(systemName: "person.2.fill").font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(on ? .white : NK.ink2)
+                        .foregroundStyle(on ? .white : WF.ink2)
                         .frame(width: 22, height: 22)
-                        .background(on ? Color.white.opacity(0.22) : NK.panel).clipShape(Circle())
+                        .background(on ? Color.white.opacity(0.22) : WF.panel).clipShape(Circle())
                 }
-                Text(label).font(.system(size: 13, weight: .bold)).foregroundStyle(on ? .white : NK.ink2)
+                Text(label).font(.system(size: 13, weight: .bold)).foregroundStyle(on ? .white : WF.ink2)
             }
             .padding(.leading, 6).padding(.trailing, 13).padding(.vertical, 6)
-            .background(on ? NK.ink : NK.card)
-            .overlay(Capsule().strokeBorder(on ? Color.clear : NK.hair, lineWidth: 1))
+            .background(on ? WF.ink : WF.card)
+            .overlay(Capsule().strokeBorder(on ? Color.clear : WF.hair, lineWidth: 1))
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -208,7 +208,7 @@ struct KioskCalendarView: View {
         return VStack(spacing: 6) {
             HStack(spacing: 6) {
                 ForEach(Array(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].enumerated()), id: \.offset) { _, d in
-                    Text(d).font(.system(size: 12, weight: .heavy)).foregroundStyle(NK.ink3).frame(maxWidth: .infinity)
+                    Text(d).font(.system(size: 12, weight: .heavy)).foregroundStyle(WF.ink3).frame(maxWidth: .infinity)
                 }
             }
             ForEach(0..<6, id: \.self) { row in
@@ -241,9 +241,9 @@ struct KioskCalendarView: View {
                 HStack(spacing: 4) {
                     Text("\(cell.day)")
                         .font(.system(size: 14, weight: isToday ? .heavy : .semibold))
-                        .foregroundStyle(cell.inMonth ? (isToday ? .white : NK.ink) : NK.ink3.opacity(0.5))
+                        .foregroundStyle(cell.inMonth ? (isToday ? .white : WF.ink) : WF.ink3.opacity(0.5))
                         .frame(width: 24, height: 24)
-                        .background(isToday ? NK.primary : Color.clear).clipShape(Circle())
+                        .background(isToday ? WF.primary : Color.clear).clipShape(Circle())
                     Spacer(minLength: 0)
                     if let cds = countdowns.byDate[cell.key], let first = cds.first {
                         HStack(spacing: 2) {
@@ -256,25 +256,25 @@ struct KioskCalendarView: View {
                 }
                 ForEach(items.prefix(3)) { ev in eventChip(ev) }
                 if items.count > 3 {
-                    Text("+\(items.count - 3) more").font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
+                    Text("+\(items.count - 3) more").font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 0)
             }
             .padding(7)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(isSelected ? NK.primary.opacity(0.08) : (cell.inMonth ? NK.card : NK.panel.opacity(0.4)))
+            .background(isSelected ? WF.primary.opacity(0.08) : (cell.inMonth ? WF.card : WF.panel.opacity(0.4)))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(isSelected ? NK.primary : NK.hair, lineWidth: isSelected ? 1.5 : 1))
+                .strokeBorder(isSelected ? WF.primary : WF.hair, lineWidth: isSelected ? 1.5 : 1))
         }
         .buttonStyle(.plain)
     }
 
     private func eventChip(_ ev: SyncedEvent) -> some View {
-        let color = Color(hexString: ev.colorHex) ?? NK.ink3
+        let color = Color(hexString: ev.colorHex) ?? WF.ink3
         return HStack(spacing: 5) {
             RoundedRectangle(cornerRadius: 99).fill(color).frame(width: 3, height: 13)
-            Text(chipLabel(ev)).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+            Text(chipLabel(ev)).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 5).padding(.vertical, 2)
@@ -291,17 +291,17 @@ struct KioskCalendarView: View {
     private var dayPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Text(relativeLabel(selectedDay)).font(NK.serif(24)).foregroundStyle(NK.ink)
-                Text(dateLabel(selectedDay)).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
+                Text(relativeLabel(selectedDay)).font(WF.serif(24)).foregroundStyle(WF.ink)
+                Text(dateLabel(selectedDay)).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
                 Spacer()
             }
             .padding(.bottom, 14)
             if selectedItems.isEmpty {
                 Button { editing = .new(dayKeyToDate(selectedDay) ?? Date()) } label: {
                     VStack(spacing: 10) {
-                        Image(systemName: "calendar.badge.plus").font(.system(size: 30)).foregroundStyle(NK.ink3)
-                        Text("Nothing scheduled").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink2)
-                        Text("Tap to add an event").font(.system(size: 13)).foregroundStyle(NK.ink3)
+                        Image(systemName: "calendar.badge.plus").font(.system(size: 30)).foregroundStyle(WF.ink3)
+                        Text("Nothing scheduled").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink2)
+                        Text("Tap to add an event").font(.system(size: 13)).foregroundStyle(WF.ink3)
                     }
                     .frame(maxWidth: .infinity).padding(.vertical, 40)
                 }
@@ -317,8 +317,8 @@ struct KioskCalendarView: View {
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .padding(18)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     // MARK: agenda (upcoming list + mini-month + heads-up + busy bars)
@@ -327,16 +327,16 @@ struct KioskCalendarView: View {
         HStack(alignment: .top, spacing: 20) {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
-                    Text("What's coming up").font(NK.serif(28)).foregroundStyle(NK.ink)
+                    Text("What's coming up").font(WF.serif(28)).foregroundStyle(WF.ink)
                     let groups = Agenda.upcoming(filtered, from: Agenda.todayKey(tz), tz: tz)
                     if groups.isEmpty {
-                        Text("Nothing upcoming.").font(.system(size: 16)).foregroundStyle(NK.ink3).padding(.vertical, 14)
+                        Text("Nothing upcoming.").font(.system(size: 16)).foregroundStyle(WF.ink3).padding(.vertical, 14)
                     } else {
                         ForEach(groups, id: \.day) { g in
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack(spacing: 8) {
-                                    Text(relativeLabel(g.day)).font(NK.serif(20)).foregroundStyle(NK.ink)
-                                    Text(agendaDateLabel(g.day)).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                                    Text(relativeLabel(g.day)).font(WF.serif(20)).foregroundStyle(WF.ink)
+                                    Text(agendaDateLabel(g.day)).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                                 }
                                 ForEach(g.items) { ev in EventCard(event: ev, tz: tz) { detailEvent = ev } }
                             }
@@ -367,14 +367,14 @@ struct KioskCalendarView: View {
         let today = Agenda.todayKey(tz)
         return VStack(spacing: 8) {
             HStack {
-                Text(DateFmt.string(miniAnchor, "MMMM", tz)).font(NK.serif(20)).foregroundStyle(NK.ink)
+                Text(DateFmt.string(miniAnchor, "MMMM", tz)).font(WF.serif(20)).foregroundStyle(WF.ink)
                 Spacer()
                 Button { stepMini(-1) } label: { miniChevron("chevron.left") }
                 Button { stepMini(1) } label: { miniChevron("chevron.right") }
             }
             HStack(spacing: 0) {
                 ForEach(Array(["S", "M", "T", "W", "T", "F", "S"].enumerated()), id: \.offset) { _, d in
-                    Text(d).font(.system(size: 11, weight: .heavy)).foregroundStyle(NK.ink3).frame(maxWidth: .infinity)
+                    Text(d).font(.system(size: 11, weight: .heavy)).foregroundStyle(WF.ink3).frame(maxWidth: .infinity)
                 }
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7), spacing: 4) {
@@ -384,8 +384,8 @@ struct KioskCalendarView: View {
             }
         }
         .padding(16)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private func miniCell(_ cell: CalendarView.MonthCell, events: [SyncedEvent], today: String) -> some View {
@@ -395,12 +395,12 @@ struct KioskCalendarView: View {
             VStack(spacing: 2) {
                 Text("\(cell.day)")
                     .font(.system(size: 13, weight: isToday ? .heavy : .semibold))
-                    .foregroundStyle(cell.inMonth ? (isToday ? .white : NK.ink) : NK.ink3.opacity(0.5))
+                    .foregroundStyle(cell.inMonth ? (isToday ? .white : WF.ink) : WF.ink3.opacity(0.5))
                     .frame(width: 26, height: 26)
-                    .background(isToday ? NK.primary : Color.clear).clipShape(Circle())
+                    .background(isToday ? WF.primary : Color.clear).clipShape(Circle())
                 HStack(spacing: 2) {
                     ForEach(Array(colors.prefix(3).enumerated()), id: \.offset) { _, hex in
-                        Circle().fill(Color(hexString: hex) ?? NK.ink3).frame(width: 4, height: 4)
+                        Circle().fill(Color(hexString: hex) ?? WF.ink3).frame(width: 4, height: 4)
                     }
                 }
                 .frame(height: 4)
@@ -412,16 +412,16 @@ struct KioskCalendarView: View {
 
     private var headsUpCard: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "sparkles").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ai)
-                .frame(width: 32, height: 32).background(NK.ai.opacity(0.12)).clipShape(Circle())
+            Image(systemName: "sparkles").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ai)
+                .frame(width: 32, height: 32).background(WF.ai.opacity(0.12)).clipShape(Circle())
             VStack(alignment: .leading, spacing: 4) {
-                Text(headsUp?.headline ?? "Heads up this week").font(.system(size: 15, weight: .heavy)).foregroundStyle(NK.ink)
+                Text(headsUp?.headline ?? "Heads up this week").font(.system(size: 15, weight: .heavy)).foregroundStyle(WF.ink)
                 if let h = headsUp {
-                    Text(h.body).font(.system(size: 13)).foregroundStyle(NK.ink2).fixedSize(horizontal: false, vertical: true)
+                    Text(h.body).font(.system(size: 13)).foregroundStyle(WF.ink2).fixedSize(horizontal: false, vertical: true)
                 } else {
                     HStack(spacing: 6) {
-                        Text("Thinking…").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
-                        ProgressView().controlSize(.small).tint(NK.ai)
+                        Text("Thinking…").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
+                        ProgressView().controlSize(.small).tint(WF.ai)
                     }
                 }
             }
@@ -429,8 +429,8 @@ struct KioskCalendarView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(NK.ai.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.ai.opacity(0.2), lineWidth: 1))
+        .background(WF.ai.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.ai.opacity(0.2), lineWidth: 1))
     }
 
     @ViewBuilder private var busyCard: some View {
@@ -438,28 +438,28 @@ struct KioskCalendarView: View {
         if !rows.isEmpty {
             let maxCount = rows.map(\.count).max() ?? 1
             VStack(alignment: .leading, spacing: 12) {
-                Text("Whose week is busy?").font(.system(size: 16, weight: .heavy)).foregroundStyle(NK.ink)
+                Text("Whose week is busy?").font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
                 ForEach(rows, id: \.member.id) { row in
                     HStack(spacing: 10) {
                         Avatar(colorHex: row.member.colorHex, emoji: row.member.emoji ?? "🙂", size: 28)
-                        Text(row.member.name).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                        Text(row.member.name).font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink)
                             .frame(width: 66, alignment: .leading).lineLimit(1)
                         GeometryReader { g in
-                            let tint = Color(hexString: row.member.colorHex) ?? NK.ink3
+                            let tint = Color(hexString: row.member.colorHex) ?? WF.ink3
                             ZStack(alignment: .leading) {
                                 Capsule().fill(tint.opacity(0.18))
                                 Capsule().fill(tint).frame(width: g.size.width * CGFloat(row.count) / CGFloat(maxCount))
                             }
                         }
                         .frame(height: 10)
-                        Text("\(row.count)").font(.system(size: 14, weight: .heavy)).foregroundStyle(NK.ink2)
+                        Text("\(row.count)").font(.system(size: 14, weight: .heavy)).foregroundStyle(WF.ink2)
                     }
                 }
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
         }
     }
 
@@ -492,8 +492,8 @@ struct KioskCalendarView: View {
     }
 
     private func miniChevron(_ s: String) -> some View {
-        Image(systemName: s).font(.system(size: 11, weight: .heavy)).foregroundStyle(NK.ink2)
-            .frame(width: 28, height: 28).background(NK.panel).clipShape(Circle())
+        Image(systemName: s).font(.system(size: 11, weight: .heavy)).foregroundStyle(WF.ink2)
+            .frame(width: 28, height: 28).background(WF.panel).clipShape(Circle())
     }
 
     private func loadHeadsUp() async {
@@ -593,7 +593,7 @@ struct CalTimeGrid: View {
                                         // (week view), drawn as a sibling of the event blocks
                                         // so it shares their resolved column height.
                                         if days.count > 1 && idx > 0 {
-                                            Rectangle().fill(NK.ink.opacity(0.12))
+                                            Rectangle().fill(WF.ink.opacity(0.12))
                                                 .frame(width: 1, height: 24 * hourHeight)
                                                 .offset(x: -2)   // centered in the 4pt column gap
                                                 .allowsHitTesting(false)
@@ -613,9 +613,9 @@ struct CalTimeGrid: View {
                     }
                     .frame(height: 24 * hourHeight)
                 }
-                .background(NK.card)
-                .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                .background(WF.card)
+                .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                 .task { try? await Task.sleep(for: .milliseconds(150)); proxy.scrollTo(7, anchor: .top) }
             }
         }
@@ -631,19 +631,19 @@ struct CalTimeGrid: View {
                 let isToday = key == Agenda.todayKey(tz)
                 Button { onPickDay(key) } label: {
                     VStack(spacing: 2) {
-                        Text(weekdayShort(key)).font(.system(size: 12, weight: .heavy)).foregroundStyle(NK.ink3)
+                        Text(weekdayShort(key)).font(.system(size: 12, weight: .heavy)).foregroundStyle(WF.ink3)
                         Text(dayNumber(key))
                             .font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(isToday ? .white : NK.ink)
+                            .foregroundStyle(isToday ? .white : WF.ink)
                             .frame(width: 30, height: 30)
-                            .background(isToday ? NK.primary : Color.clear).clipShape(Circle())
+                            .background(isToday ? WF.primary : Color.clear).clipShape(Circle())
                     }
                     .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.plain)
                 .overlay(alignment: .leading) {
                     if days.count > 1 && idx > 0 {
-                        Rectangle().fill(NK.ink.opacity(0.12)).frame(width: 1, height: 40)
+                        Rectangle().fill(WF.ink.opacity(0.12)).frame(width: 1, height: 40)
                             .offset(x: -2).allowsHitTesting(false)
                     }
                 }
@@ -655,7 +655,7 @@ struct CalTimeGrid: View {
 
     private var allDayRow: some View {
         HStack(alignment: .top, spacing: 4) {
-            Text("all-day").font(.system(size: 10, weight: .heavy)).foregroundStyle(NK.ink3)
+            Text("all-day").font(.system(size: 10, weight: .heavy)).foregroundStyle(WF.ink3)
                 .frame(width: gutter, alignment: .trailing).padding(.trailing, 6)
             ForEach(Array(days.enumerated()), id: \.element) { idx, key in
                 VStack(spacing: 3) {
@@ -666,7 +666,7 @@ struct CalTimeGrid: View {
                 .frame(maxWidth: .infinity, alignment: .top)
                 .overlay(alignment: .topLeading) {
                     if days.count > 1 && idx > 0 {
-                        Rectangle().fill(NK.ink.opacity(0.12))
+                        Rectangle().fill(WF.ink.opacity(0.12))
                             .frame(width: 1, height: allDayContentHeight)
                             .offset(x: -2).allowsHitTesting(false)
                     }
@@ -683,8 +683,8 @@ struct CalTimeGrid: View {
     }
 
     private func miniChip(_ ev: SyncedEvent) -> some View {
-        let color = Color(hexString: ev.colorHex) ?? NK.ink3
-        return Text(ev.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+        let color = Color(hexString: ev.colorHex) ?? WF.ink3
+        return Text(ev.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
             .padding(.horizontal, 6).padding(.vertical, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(color.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -714,9 +714,9 @@ struct CalTimeGrid: View {
 
     private func hourRow(_ h: Int) -> some View {
         HStack(alignment: .top, spacing: 6) {
-            Text(hourLabel(h)).font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
+            Text(hourLabel(h)).font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
                 .frame(width: gutter - 8, alignment: .trailing)
-            Rectangle().fill(NK.hair).frame(height: 1)
+            Rectangle().fill(WF.hair).frame(height: 1)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
@@ -767,15 +767,15 @@ struct CalTimeGrid: View {
             let durMin = ev.endsAt.map { max(30, $0.timeIntervalSince(start) / 60) } ?? 60
             let height = max(26, CGFloat(durMin) / 60 * hourHeight - 3)
             let laneW = colWidth / CGFloat(placed.lanes)
-            let color = Color(hexString: ev.colorHex) ?? NK.ink3
+            let color = Color(hexString: ev.colorHex) ?? WF.ink3
             Button { onTapEvent(ev) } label: {
                 HStack(spacing: 5) {
                     RoundedRectangle(cornerRadius: 99).fill(color).frame(width: 3)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(ev.title).font(.system(size: placed.lanes > 1 ? 12 : 13, weight: .bold))
-                            .foregroundStyle(NK.ink).lineLimit(placed.lanes > 2 ? 1 : 2)
+                            .foregroundStyle(WF.ink).lineLimit(placed.lanes > 2 ? 1 : 2)
                         if height > 38, placed.lanes < 3 {
-                            Text(EventTime.timeLabel(start, tz)).font(.system(size: 11, weight: .medium)).foregroundStyle(NK.ink3)
+                            Text(EventTime.timeLabel(start, tz)).font(.system(size: 11, weight: .medium)).foregroundStyle(WF.ink3)
                         }
                     }
                     Spacer(minLength: 0)
@@ -784,7 +784,7 @@ struct CalTimeGrid: View {
                 .frame(width: max(0, laneW - 3), height: height, alignment: .topLeading)
                 .background(color.opacity(0.14))
                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(NK.card, lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(WF.card, lineWidth: 1))
             }
             .buttonStyle(.plain)
             .offset(x: laneW * CGFloat(placed.lane) + 1, y: y)

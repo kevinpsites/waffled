@@ -31,7 +31,7 @@ enum AppConfig {
             ?? defaultBaseURL
     }
 
-    /// Local HS256 session token (mint via `just token` / `nook token`). The API's
+    /// Local HS256 session token (mint via `just token` / `waffled token`). The API's
     /// `requireTenant` validates it and `/api/powersync/token` exchanges it for a
     /// short-lived PowerSync RS256 token.
     ///

@@ -2,12 +2,12 @@ import SwiftUI
 import Observation
 
 /// The Today → "Review events" screen. Two queues from the goal-calendar bridge:
-///   • CONFIRMED (purple, NK.ai): events the household agreed tie to a goal, now
+///   • CONFIRMED (purple, WF.ai): events the household agreed tie to a goal, now
 ///     ended — confirm to log progress (editable amount + who), or skip.
-///   • SUGGESTED (orange, NK.gold): untagged events the matcher thinks might count
+///   • SUGGESTED (orange, WF.gold): untagged events the matcher thinks might count
 ///     — link to the goal, or dismiss.
 /// Colour encodes confidence: purple = a sure link, orange = a maybe. Action
-/// buttons stay coral (NK.primary). Mirrors the web ReviewDrawer.
+/// buttons stay coral (WF.primary). Mirrors the web ReviewDrawer.
 @MainActor
 @Observable
 final class ReviewEventsModel {
@@ -104,7 +104,7 @@ struct ReviewEventsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Confirm linked events that have happened, and link any that look like they count.")
-                    .font(.system(size: 14, weight: .medium)).foregroundStyle(NK.ink2)
+                    .font(.system(size: 14, weight: .medium)).foregroundStyle(WF.ink2)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if model.recap.isEmpty && model.suggestions.isEmpty {
@@ -123,7 +123,7 @@ struct ReviewEventsView: View {
         }
         // Bounce even when there's nothing to review, so pull-to-refresh still triggers.
         .scrollBounceBehavior(.always)
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle("Review events")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: sync.goalsRev) { await model.load() }
@@ -140,7 +140,7 @@ struct ReviewEventsView: View {
 
     private var recapSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionHeader(icon: NK.ai, tint: NK.ai, title: "Did these happen?",
+            sectionHeader(icon: WF.ai, tint: WF.ai, title: "Did these happen?",
                           sub: "Confirm each to log its progress — or mark it skipped.",
                           count: model.recap.count)
             ForEach(model.recap) { it in recapCard(it) }
@@ -154,9 +154,9 @@ struct ReviewEventsView: View {
             HStack(alignment: .top, spacing: 12) {
                 emojiBox(it.goalEmoji ?? "🎯")
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(it.title).font(.system(size: 15.5, weight: .bold)).foregroundStyle(NK.ink)
+                    Text(it.title).font(.system(size: 15.5, weight: .bold)).foregroundStyle(WF.ink)
                     Text(eventWhen(it.startsAt, allDay: it.allDay))
-                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink3)
                     goalChip(it)
                 }
                 Spacer(minLength: 0)
@@ -166,7 +166,7 @@ struct ReviewEventsView: View {
                 if it.isAmountBased {
                     stepper(it, amount: d.amount)
                     Text(unitLabel(it.unit, d.amount))
-                        .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink2)
+                        .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
                 }
                 Spacer(minLength: 0)
                 Button { editingPeople = it } label: { peopleLabel(it, d.people) }
@@ -175,9 +175,9 @@ struct ReviewEventsView: View {
 
             HStack(spacing: 10) {
                 Button { Task { await model.skip(it, sync) } } label: {
-                    Text("Skip").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+                    Text("Skip").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink2)
                         .frame(maxWidth: .infinity).padding(.vertical, 11)
-                        .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+                        .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
                 }
                 .buttonStyle(.plain).disabled(busy)
                 Button { Task { await model.confirm(it, sync) } } label: {
@@ -187,17 +187,17 @@ struct ReviewEventsView: View {
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 11)
-                    .background(canConfirm(it, d) ? NK.primary : NK.ink3)
+                    .background(canConfirm(it, d) ? WF.primary : WF.ink3)
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain).disabled(busy || !canConfirm(it, d))
             }
         }
         .padding(14)
-        .background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-            .strokeBorder(NK.ai.opacity(0.22), lineWidth: 1))
+        .background(WF.card)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+            .strokeBorder(WF.ai.opacity(0.22), lineWidth: 1))
     }
 
     private func canConfirm(_ it: WaffledAPI.GoalRecapItem, _ d: ReviewEventsModel.Draft) -> Bool {
@@ -208,7 +208,7 @@ struct ReviewEventsView: View {
 
     private var suggestionSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionHeader(icon: NK.gold, tint: NK.gold, title: "Might count toward a goal",
+            sectionHeader(icon: WF.gold, tint: WF.gold, title: "Might count toward a goal",
                           sub: "Link the ones that fit — or dismiss them.",
                           count: model.suggestions.count)
             ForEach(model.suggestions) { s in suggestionCard(s) }
@@ -221,18 +221,18 @@ struct ReviewEventsView: View {
             HStack(alignment: .top, spacing: 12) {
                 emojiBox(s.goalEmoji ?? "🎯")
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(s.title).font(.system(size: 15.5, weight: .bold)).foregroundStyle(NK.ink)
+                    Text(s.title).font(.system(size: 15.5, weight: .bold)).foregroundStyle(WF.ink)
                     Text(eventWhen(s.startsAt, allDay: s.allDay))
-                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink3)
-                    chip(emoji: s.goalEmoji, text: s.goalTitle, dot: NK.gold)
+                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink3)
+                    chip(emoji: s.goalEmoji, text: s.goalTitle, dot: WF.gold)
                 }
                 Spacer(minLength: 0)
             }
             HStack(spacing: 10) {
                 Button { Task { await model.dismiss(s, sync) } } label: {
-                    Text("Dismiss").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+                    Text("Dismiss").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink2)
                         .frame(maxWidth: .infinity).padding(.vertical, 11)
-                        .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+                        .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
                 }
                 .buttonStyle(.plain).disabled(busy)
                 Button { Task { await model.link(s, sync) } } label: {
@@ -242,16 +242,16 @@ struct ReviewEventsView: View {
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 11)
-                    .background(NK.primary).clipShape(Capsule())
+                    .background(WF.primary).clipShape(Capsule())
                 }
                 .buttonStyle(.plain).disabled(busy)
             }
         }
         .padding(14)
-        .background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-            .strokeBorder(NK.gold.opacity(0.40), lineWidth: 1))
+        .background(WF.card)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+            .strokeBorder(WF.gold.opacity(0.40), lineWidth: 1))
     }
 
     // MARK: shared pieces -----------------------------------------------------
@@ -263,8 +263,8 @@ struct ReviewEventsView: View {
                 .background(LinearGradient(colors: [tint.opacity(0.8), tint], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 16, weight: .heavy)).foregroundStyle(NK.ink)
-                Text(sub).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink3)
+                Text(title).font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
+                Text(sub).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink3)
             }
             Spacer(minLength: 6)
             Text("\(count)").font(.system(size: 13, weight: .heavy)).foregroundStyle(tint)
@@ -276,16 +276,16 @@ struct ReviewEventsView: View {
     private func emojiBox(_ emoji: String) -> some View {
         Text(emoji).font(.system(size: 21))
             .frame(width: 42, height: 42)
-            .background(NK.card2)
+            .background(WF.card2)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     @ViewBuilder private func goalChip(_ it: WaffledAPI.GoalRecapItem) -> some View {
         if let step = it.stepLabel, it.goalType == "checklist" {
-            chip(emoji: "✓", text: step, dot: NK.ai)
+            chip(emoji: "✓", text: step, dot: WF.ai)
         } else {
-            chip(emoji: it.goalEmoji, text: it.goalTitle, dot: NK.ai)
+            chip(emoji: it.goalEmoji, text: it.goalTitle, dot: WF.ai)
         }
     }
 
@@ -293,30 +293,30 @@ struct ReviewEventsView: View {
         HStack(spacing: 5) {
             Circle().fill(dot).frame(width: 6, height: 6)
             Text("\(emoji.map { "\($0) " } ?? "")\(text)")
-                .font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2).lineLimit(1)
+                .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2).lineLimit(1)
         }
         .padding(.horizontal, 9).padding(.vertical, 5)
-        .background(NK.panel).clipShape(Capsule())
+        .background(WF.panel).clipShape(Capsule())
     }
 
     private func stepper(_ it: WaffledAPI.GoalRecapItem, amount: Double) -> some View {
         let s = stepSize(it.unit)
         return HStack(spacing: 4) {
             stepButton("minus", enabled: amount > 0) { model.setAmount(it, amount - s) }
-            Text(fmtAmount(amount)).font(.system(size: 15, weight: .heavy)).foregroundStyle(NK.ink)
+            Text(fmtAmount(amount)).font(.system(size: 15, weight: .heavy)).foregroundStyle(WF.ink)
                 .frame(minWidth: 34)
             stepButton("plus", enabled: true) { model.setAmount(it, amount + s) }
         }
         .padding(.horizontal, 5).padding(.vertical, 4)
-        .background(NK.card2)
+        .background(WF.card2)
         .clipShape(Capsule())
-        .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+        .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private func stepButton(_ icon: String, enabled: Bool, _ tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
-            Image(systemName: icon).font(.system(size: 12, weight: .heavy)).foregroundStyle(enabled ? NK.ink : NK.ink3)
-                .frame(width: 28, height: 28).background(NK.card).clipShape(Circle())
+            Image(systemName: icon).font(.system(size: 12, weight: .heavy)).foregroundStyle(enabled ? WF.ink : WF.ink3)
+                .frame(width: 28, height: 28).background(WF.card).clipShape(Circle())
         }
         .buttonStyle(.plain).disabled(!enabled)
     }
@@ -325,16 +325,16 @@ struct ReviewEventsView: View {
         let members = people.compactMap { id in sync.members.first { $0.id == id } }
         let suffix = people.count > 1 ? (it.trackingMode == "shared_total" ? " · split" : " · each") : ""
         return HStack(spacing: 6) {
-            Text("to").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+            Text("to").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
             HStack(spacing: -6) {
                 ForEach(members.prefix(3)) { m in
                     Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 22)
-                        .overlay(Circle().strokeBorder(NK.card, lineWidth: 1.5))
+                        .overlay(Circle().strokeBorder(WF.card, lineWidth: 1.5))
                 }
             }
             Text(peopleNames(members) + suffix)
-                .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink2).lineLimit(1)
-            Image(systemName: "chevron.down").font(.system(size: 9, weight: .heavy)).foregroundStyle(NK.ink3)
+                .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2).lineLimit(1)
+            Image(systemName: "chevron.down").font(.system(size: 9, weight: .heavy)).foregroundStyle(WF.ink3)
         }
     }
 
@@ -403,23 +403,23 @@ private struct ReviewPeopleSheet: View {
                         } label: {
                             HStack(spacing: 11) {
                                 Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 30)
-                                Text(m.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                                Text(m.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                                 Spacer()
                                 Image(systemName: on ? "checkmark.circle.fill" : "circle")
-                                    .font(.system(size: 20)).foregroundStyle(on ? NK.primary : NK.ink3)
+                                    .font(.system(size: 20)).foregroundStyle(on ? WF.primary : WF.ink3)
                             }
                             .padding(13)
-                            .background(NK.card)
-                            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-                                .strokeBorder(on ? NK.primary.opacity(0.5) : NK.hair, lineWidth: 1))
+                            .background(WF.card)
+                            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                                .strokeBorder(on ? WF.primary.opacity(0.5) : WF.hair, lineWidth: 1))
                         }
                         .buttonStyle(.plain)
                     }
                 }
                 .padding(16)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Who gets credit?")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

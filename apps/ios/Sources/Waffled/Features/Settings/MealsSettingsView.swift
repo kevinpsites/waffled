@@ -34,14 +34,14 @@ struct MealsSettingsView: View {
                     timesCard
                     saveRow
                 } else if failed {
-                    Text("Couldn’t load meal settings.").font(.system(size: 14)).foregroundStyle(NK.ink3).padding(.vertical, 30)
+                    Text("Couldn’t load meal settings.").font(.system(size: 14)).foregroundStyle(WF.ink3).padding(.vertical, 30)
                 } else {
                     WaffledLoading(top: 40)
                 }
             }
             .padding(16).padding(.bottom, 110)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle("Meals").navigationBarTitleDisplayMode(.inline)
         .task { await load() }
     }
@@ -54,12 +54,12 @@ struct MealsSettingsView: View {
                 toggleRow("📅", "Add planned meals to the calendar",
                           "Each meal you plan shows on the Waffled calendar, linked to its recipe.",
                           isOn: Binding(get: { addToCalendar }, set: { addToCalendar = $0; mark() }))
-                Divider().background(NK.hair)
+                Divider().background(WF.hair)
                 toggleRow("🔄", "Sync them to Google Calendar",
                           "Also push meal events so they show on everyone’s phones.",
                           isOn: Binding(get: { addToCalendar && pushToGoogle }, set: { pushToGoogle = $0; mark() }),
                           enabled: addToCalendar)
-                Divider().background(NK.hair)
+                Divider().background(WF.hair)
                 settingRow("👤", "Add to this person’s calendar", "Uses their color + Google write-target.") {
                     Menu {
                         Button("Unassigned") { calendarPersonId = nil; mark() }
@@ -75,9 +75,9 @@ struct MealsSettingsView: View {
         WaffledCard(padding: 14) {
             VStack(alignment: .leading, spacing: 11) {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Who’s invited").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                    Text("Who’s invited").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
                     Text(participantIds == nil ? "The whole family" : "\(participantIds?.count ?? 0) selected")
-                        .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 12)).foregroundStyle(WF.ink3)
                 }
                 ChipFlow(spacing: 8, lineSpacing: 8) {
                     chip("Whole family", on: participantIds == nil) { participantIds = nil; mark() }
@@ -97,15 +97,15 @@ struct MealsSettingsView: View {
         WaffledCard(padding: 4) {
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Meal times").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
-                    Text("When each meal lands on the calendar.").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                    Text("Meal times").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink)
+                    Text("When each meal lands on the calendar.").font(.system(size: 12)).foregroundStyle(WF.ink3)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 11).padding(.top, 11).padding(.bottom, 6)
                 ForEach(Array(Self.mealRows.enumerated()), id: \.element.key) { i, m in
-                    if i > 0 { Divider().background(NK.hair) }
+                    if i > 0 { Divider().background(WF.hair) }
                     HStack(spacing: 10) {
                         Text(m.icon).font(.system(size: 17))
-                        Text(m.label).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                        Text(m.label).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                         Spacer()
                         DatePicker("", selection: timeBinding(m.key), displayedComponents: .hourAndMinute)
                             .labelsHidden().disabled(!addToCalendar)
@@ -121,8 +121,8 @@ struct MealsSettingsView: View {
             Button { Task { await save() } } label: {
                 Text(saving ? "Saving…" : "Save").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
                     .padding(.horizontal, 28).padding(.vertical, 12)
-                    .background(dirty ? NK.primary : NK.ink3)
-                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    .background(dirty ? WF.primary : WF.ink3)
+                    .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
             }
             .buttonStyle(.plain).disabled(!dirty || saving)
             if saved {
@@ -136,17 +136,17 @@ struct MealsSettingsView: View {
 
     private func toggleRow(_ icon: String, _ title: String, _ sub: String, isOn: Binding<Bool>, enabled: Bool = true) -> some View {
         settingRow(icon, title, sub) {
-            Toggle("", isOn: isOn).labelsHidden().tint(NK.primary).disabled(!enabled)
+            Toggle("", isOn: isOn).labelsHidden().tint(WF.primary).disabled(!enabled)
         }
     }
 
     private func settingRow<T: View>(_ icon: String, _ title: String, _ sub: String, @ViewBuilder _ control: () -> T) -> some View {
         HStack(spacing: 11) {
             Text(icon).font(.system(size: 17)).frame(width: 34, height: 34)
-                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 14.5, weight: .semibold)).foregroundStyle(NK.ink)
-                Text(sub).font(.system(size: 12)).foregroundStyle(NK.ink3).fixedSize(horizontal: false, vertical: true)
+                Text(title).font(.system(size: 14.5, weight: .semibold)).foregroundStyle(WF.ink)
+                Text(sub).font(.system(size: 12)).foregroundStyle(WF.ink3).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
             control()
@@ -157,9 +157,9 @@ struct MealsSettingsView: View {
     private func chip(_ label: String, on: Bool, tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
             Text(label).font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(on ? .white : NK.ink2)
+                .foregroundStyle(on ? .white : WF.ink2)
                 .padding(.horizontal, 12).padding(.vertical, 7)
-                .background(on ? NK.primary : NK.panel).clipShape(Capsule())
+                .background(on ? WF.primary : WF.panel).clipShape(Capsule())
         }
         .buttonStyle(.plain)
     }

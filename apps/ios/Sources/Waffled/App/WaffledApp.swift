@@ -40,7 +40,7 @@ struct WaffledApp: App {
             .environment(session)
             .environment(notifications)
             .environment(kiosk)
-            .tint(NK.primary)
+            .tint(WF.primary)
             .preferredColorScheme(.light)          // warm-white canvas is a light theme
             .task { await session.bootstrap() }    // read the Keychain / probe auth status
         }

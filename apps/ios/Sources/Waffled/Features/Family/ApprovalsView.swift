@@ -45,20 +45,20 @@ struct ApprovalsBanner: View {
         HStack(spacing: 13) {
             Image(systemName: "checkmark.seal.fill").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
                 .frame(width: 40, height: 40)
-                .background(NK.gold)
+                .background(WF.gold)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
                 Text(model.total == 1 ? "1 to approve" : "\(model.total) to approve")
-                    .font(.system(size: 16, weight: .heavy)).foregroundStyle(NK.ink)
-                Text(preview).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink3).lineLimit(1)
+                    .font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
+                Text(preview).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
             }
             Spacer(minLength: 6)
-            Image(systemName: "chevron.right").font(.system(size: 14, weight: .heavy)).foregroundStyle(NK.gold)
+            Image(systemName: "chevron.right").font(.system(size: 14, weight: .heavy)).foregroundStyle(WF.gold)
         }
         .padding(14)
-        .background(NK.gold.opacity(0.10))
-        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.gold.opacity(0.30), lineWidth: 1))
+        .background(WF.gold.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.gold.opacity(0.30), lineWidth: 1))
     }
 
     private var preview: String {
@@ -108,7 +108,7 @@ struct ApprovalsView: View {
             .scrollBounceBehavior(.always)
             .refreshable { await model.load() }
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle("Needs your OK").navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }
         .sheet(item: $reviewing) { c in
@@ -159,13 +159,13 @@ struct ApprovalsView: View {
         HStack(spacing: 10) {
             Avatar(colorHex: color, emoji: emoji ?? "🙂", size: 36)
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(who ?? "Someone") \(verb)").font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                Text("\(who ?? "Someone") \(verb)").font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                 HStack(spacing: 6) {
-                    Text(wants).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                    Text(wants).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                     if let coin {
-                        Text(coin).font(.system(size: 12.5, weight: .heavy)).foregroundStyle(NK.gold)
+                        Text(coin).font(.system(size: 12.5, weight: .heavy)).foregroundStyle(WF.gold)
                             .padding(.horizontal, 7).padding(.vertical, 2)
-                            .background(NK.gold.opacity(0.14)).clipShape(Capsule())
+                            .background(WF.gold.opacity(0.14)).clipShape(Capsule())
                     }
                 }
             }
@@ -177,14 +177,14 @@ struct ApprovalsView: View {
     private func actions(denyLabel: String, deny: @escaping () -> Void, approve: @escaping () -> Void) -> some View {
         HStack(spacing: 8) {
             Button(action: deny) {
-                Text(denyLabel).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+                Text(denyLabel).font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink2)
                     .frame(maxWidth: .infinity).padding(.vertical, 9)
-                    .background(NK.panel).clipShape(Capsule())
+                    .background(WF.panel).clipShape(Capsule())
             }.buttonStyle(.plain)
             Button(action: approve) {
                 Text("Approve").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 9)
-                    .background(NK.primary).clipShape(Capsule())
+                    .background(WF.primary).clipShape(Capsule())
             }.buttonStyle(.plain)
         }
     }

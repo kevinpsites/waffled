@@ -38,14 +38,14 @@ struct PantryFoundSheet: View {
                     statusBadge
                     heroRow
                     if let a = product?.allergens, !a.isEmpty { containsRow(a) }
-                    Divider().background(NK.hair)
+                    Divider().background(WF.hair)
                     whereRow
                     amountRow
                     bestByRow
                 }
                 .padding(20).padding(.bottom, 90)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .safeAreaInset(edge: .bottom) { addBar }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
@@ -64,19 +64,19 @@ struct PantryFoundSheet: View {
             Text(found ? "Found · \(result.barcode)" : "Not in Open Food Facts · \(result.barcode)")
                 .font(.system(size: 12.5, weight: .bold))
         }
-        .foregroundStyle(found ? Color(hex: 0x167A4A) : NK.ink3)
+        .foregroundStyle(found ? Color(hex: 0x167A4A) : WF.ink3)
         .padding(.horizontal, 11).padding(.vertical, 6)
-        .background((found ? Color(hex: 0x167A4A) : NK.ink3).opacity(0.12)).clipShape(Capsule())
+        .background((found ? Color(hex: 0x167A4A) : WF.ink3).opacity(0.12)).clipShape(Capsule())
     }
 
     private var heroRow: some View {
         HStack(spacing: 14) {
             hero.frame(width: 64, height: 64)
-                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             VStack(alignment: .leading, spacing: 6) {
                 TextField("Item name", text: $name)
-                    .font(NK.serif(20, .bold)).foregroundStyle(NK.ink)
-                if let sub = subtitle { Text(sub).font(.system(size: 13)).foregroundStyle(NK.ink3).lineLimit(1) }
+                    .font(WF.serif(20, .bold)).foregroundStyle(WF.ink)
+                if let sub = subtitle { Text(sub).font(.system(size: 13)).foregroundStyle(WF.ink3).lineLimit(1) }
             }
             Spacer(minLength: 0)
         }
@@ -94,10 +94,10 @@ struct PantryFoundSheet: View {
 
     private func containsRow(_ allergens: [String]) -> some View {
         HStack(spacing: 6) {
-            Text("Contains").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+            Text("Contains").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
             ForEach(allergens, id: \.self) { a in
-                Text(PantryAllergen.label(a)).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink2)
-                    .padding(.horizontal, 9).padding(.vertical, 4).background(NK.panel).clipShape(Capsule())
+                Text(PantryAllergen.label(a)).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink2)
+                    .padding(.horizontal, 9).padding(.vertical, 4).background(WF.panel).clipShape(Capsule())
             }
             Spacer(minLength: 0)
         }
@@ -112,8 +112,8 @@ struct PantryFoundSheet: View {
                         let on = loc.caseInsensitiveCompare(location) == .orderedSame
                         Button { location = loc } label: {
                             Text(loc).font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(on ? NK.ink : NK.ink2)
-                                .padding(.horizontal, 12).padding(.vertical, 7).nkChip(selected: on)
+                                .foregroundStyle(on ? WF.ink : WF.ink2)
+                                .padding(.horizontal, 12).padding(.vertical, 7).wfChip(selected: on)
                         }.buttonStyle(.plain)
                     }
                 }.padding(.vertical, 1)
@@ -127,12 +127,12 @@ struct PantryFoundSheet: View {
             Spacer()
             HStack(spacing: 10) {
                 Button { step(-1) } label: { stepGlyph("minus") }.buttonStyle(.plain)
-                Text(amount.isEmpty ? "0" : amount).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink).frame(minWidth: 24)
+                Text(amount.isEmpty ? "0" : amount).font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink).frame(minWidth: 24)
                 Button { step(1) } label: { stepGlyph("plus") }.buttonStyle(.plain)
                 TextField("unit", text: $unit)
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
                     .textInputAutocapitalization(.never).frame(width: 64)
-                    .padding(.horizontal, 10).padding(.vertical, 8).nkField()
+                    .padding(.horizontal, 10).padding(.vertical, 8).wfField()
             }
         }
     }
@@ -142,14 +142,14 @@ struct PantryFoundSheet: View {
             SectionLabel(text: "Best by")
             Spacer()
             if hasExpiry {
-                DatePicker("", selection: $expiry, displayedComponents: .date).labelsHidden().tint(NK.primary)
+                DatePicker("", selection: $expiry, displayedComponents: .date).labelsHidden().tint(WF.primary)
                 Button { hasExpiry = false } label: {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 16)).foregroundStyle(NK.ink3)
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 16)).foregroundStyle(WF.ink3)
                 }.buttonStyle(.plain)
             } else {
                 Button { hasExpiry = true } label: {
-                    Text("Add date").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.primary)
-                        .padding(.horizontal, 12).padding(.vertical, 7).background(NK.panel).clipShape(Capsule())
+                    Text("Add date").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.primary)
+                        .padding(.horizontal, 12).padding(.vertical, 7).background(WF.panel).clipShape(Capsule())
                 }.buttonStyle(.plain)
             }
         }
@@ -163,7 +163,7 @@ struct PantryFoundSheet: View {
             }
             .font(.system(size: 16)).foregroundStyle(.white)
             .frame(maxWidth: .infinity).padding(.vertical, 15)
-            .background(NK.primary)
+            .background(WF.primary)
         }
         .buttonStyle(.plain)
         .disabled(saving || name.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -171,8 +171,8 @@ struct PantryFoundSheet: View {
     }
 
     private func stepGlyph(_ n: String) -> some View {
-        Image(systemName: n).font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink)
-            .frame(width: 30, height: 30).background(NK.panel).clipShape(Circle())
+        Image(systemName: n).font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink)
+            .frame(width: 30, height: 30).background(WF.panel).clipShape(Circle())
     }
 
     private func step(_ delta: Double) {

@@ -70,24 +70,24 @@ struct CountdownsCard: View {
         WaffledCard(padding: 15) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("Countdowns").font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ink2)
+                    Text("Countdowns").font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
                     Spacer()
                     Button { adding = true } label: {
                         HStack(spacing: 3) {
                             Image(systemName: "plus").font(.system(size: 10, weight: .bold))
                             Text("Add").font(.system(size: 12, weight: .semibold))
-                        }.foregroundStyle(NK.ai)
+                        }.foregroundStyle(WF.ai)
                     }.buttonStyle(.plain)
                 }
                 if model.items.isEmpty {
                     Text(model.loaded ? "Nothing to count down to yet — add a trip; birthdays are automatic."
                                       : "Loading…")
-                        .font(.system(size: 13)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 13)).foregroundStyle(WF.ink3)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     ForEach(model.items.prefix(cap)) { row($0) }
                     if model.items.count > cap {
-                        Text("+\(model.items.count - cap) more").font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
+                        Text("+\(model.items.count - cap) more").font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
                     }
                 }
             }
@@ -103,19 +103,19 @@ struct CountdownsCard: View {
         return HStack(spacing: 10) {
             Text(c.emoji ?? "📅").font(.system(size: 17))
                 .frame(width: 32, height: 32)
-                .background((c.color.flatMap { Color(hexString: $0) } ?? NK.panel).opacity(c.color == nil ? 1 : 0.16))
+                .background((c.color.flatMap { Color(hexString: $0) } ?? WF.panel).opacity(c.color == nil ? 1 : 0.16))
                 .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
             VStack(alignment: .leading, spacing: 1) {
-                Text(c.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
-                Text(CountdownFormat.dateLabel(c.date)).font(.system(size: 11)).foregroundStyle(NK.ink3)
+                Text(c.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+                Text(CountdownFormat.dateLabel(c.date)).font(.system(size: 11)).foregroundStyle(WF.ink3)
             }
             Spacer(minLength: 6)
             Text(CountdownFormat.label(c.daysLeft, sleeps: model.sleeps))
                 .font(.system(size: 12.5, weight: .bold))
-                .foregroundStyle(soon ? NK.primaryD : NK.ink2)
+                .foregroundStyle(soon ? WF.primaryD : WF.ink2)
             if c.isStandalone {
                 Button { Task { await model.remove(c) } } label: {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(NK.ink3)
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(WF.ink3)
                 }.buttonStyle(.plain)
             }
         }
@@ -148,13 +148,13 @@ struct AddCountdownSheet: View {
                         VStack(alignment: .leading, spacing: 9) {
                             SectionLabel(text: "Date")
                             DatePicker("", selection: $date, in: Date()..., displayedComponents: .date)
-                                .labelsHidden().datePickerStyle(.compact).tint(NK.primary)
+                                .labelsHidden().datePickerStyle(.compact).tint(WF.primary)
                         }
                     }
                 }
                 .padding(20)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Add countdown").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -172,7 +172,7 @@ struct AddCountdownSheet: View {
             content()
                 .font(.system(size: 16, weight: .semibold))
                 .padding(.horizontal, 15).padding(.vertical, 13)
-                .frame(maxWidth: .infinity, alignment: .leading).nkField()
+                .frame(maxWidth: .infinity, alignment: .leading).wfField()
         }
     }
 

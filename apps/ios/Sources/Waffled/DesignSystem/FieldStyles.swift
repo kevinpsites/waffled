@@ -7,18 +7,18 @@ import SwiftUI
 extension View {
     /// Boxed field chrome: a fill (card by default) with a hairline border, rounded.
     /// Replaces the per-file `cardField()` / `cardBox()` / `innerField()` / `innerInput()`.
-    func nkField(radius: CGFloat = NK.rMD, fill: Color = NK.card) -> some View {
+    func wfField(radius: CGFloat = WF.rMD, fill: Color = WF.card) -> some View {
         background(fill)
             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     /// Selectable-chip treatment: a tinted fill + colored border when selected, a
     /// card fill + hairline when not. The single source for every picker chip
     /// (people, categories, sections, filters). Padding/label stay at the call site.
-    func nkChip(selected: Bool, tint: Color = NK.primary) -> some View {
-        background(selected ? tint.opacity(0.12) : NK.card)
-            .overlay(Capsule().strokeBorder(selected ? tint : NK.hair, lineWidth: selected ? 1.5 : 1))
+    func wfChip(selected: Bool, tint: Color = WF.primary) -> some View {
+        background(selected ? tint.opacity(0.12) : WF.card)
+            .overlay(Capsule().strokeBorder(selected ? tint : WF.hair, lineWidth: selected ? 1.5 : 1))
             .clipShape(Capsule())
     }
 }

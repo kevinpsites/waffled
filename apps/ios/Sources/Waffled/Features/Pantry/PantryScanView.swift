@@ -102,7 +102,7 @@ struct PantryScanView: View {
         RoundedRectangle(cornerRadius: 18, style: .continuous)
             .strokeBorder(.white.opacity(0.85), lineWidth: 3)
             .frame(width: 250, height: 160)
-            .overlay(Rectangle().fill(NK.primary).frame(height: 2).opacity(0.9))
+            .overlay(Rectangle().fill(WF.primary).frame(height: 2).opacity(0.9))
     }
 
     private var fallbackBody: some View {
@@ -210,15 +210,15 @@ struct ManualBarcodeSheet: View {
                 SectionLabel(text: "Barcode number")
                 TextField("e.g. 0049000028200", text: $text)
                     .keyboardType(.numberPad).focused($focused)
-                    .font(.system(size: 18, weight: .semibold)).foregroundStyle(NK.ink)
-                    .padding(14).background(NK.card2)
-                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
-                Text("We’ll look it up on Open Food Facts.").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.ink)
+                    .padding(14).background(WF.card2)
+                    .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+                Text("We’ll look it up on Open Food Facts.").font(.system(size: 12)).foregroundStyle(WF.ink3)
                 Spacer()
             }
             .onAppear { focused = true }
-            .padding(20).background(NK.canvas)
+            .padding(20).background(WF.canvas)
             .navigationTitle("Type a barcode").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

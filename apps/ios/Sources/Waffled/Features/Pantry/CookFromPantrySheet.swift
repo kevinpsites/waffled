@@ -37,17 +37,17 @@ struct CookFromPantryCard: View {
 
     private var card: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("🍳 Cook from your pantry").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
-            Text(summary).font(.system(size: 12)).foregroundStyle(NK.ink3)
+            Text("🍳 Cook from your pantry").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink)
+            Text(summary).font(.system(size: 12)).foregroundStyle(WF.ink3)
             Button { open = true } label: {
                 Text("Plan from pantry").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 9)
-                    .background(NK.primary).clipShape(Capsule())
+                    .background(WF.primary).clipShape(Capsule())
             }.buttonStyle(.plain).padding(.top, 2)
         }
         .padding(12)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private var summary: String {
@@ -102,13 +102,13 @@ struct CookFromPantrySheet: View {
                     if !loose.isEmpty { useSoonSection }
                     if leftovers.isEmpty && ready.isEmpty && mains.isEmpty && loose.isEmpty {
                         Text("Nothing to cook from just yet. Add what’s on hand.")
-                            .font(.system(size: 14)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 14)).foregroundStyle(WF.ink3)
                             .frame(maxWidth: .infinity).padding(.vertical, 30)
                     }
                 }
                 .padding(18).padding(.bottom, 30)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Cook from your pantry").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
             .navigationDestination(for: RecipeNav.self) { RecipeDetailView(summary: $0.summary, model: model, autoCook: $0.cook) }
@@ -144,17 +144,17 @@ struct CookFromPantrySheet: View {
             HStack(spacing: 12) {
                 Text("✨").font(.system(size: 22))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Plan my week").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                    Text("Plan my week").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
                     Text(useSoonNames.isEmpty ? "Build your dinners with AI"
                          : "Builds your week & uses up \(useSoonNames.count) before they spoil")
-                        .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                 }
                 Spacer()
-                Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+                Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
             }
             .padding(14)
-            .background(NK.ai.opacity(0.10)).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.ai.opacity(0.25), lineWidth: 1))
+            .background(WF.ai.opacity(0.10)).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.ai.opacity(0.25), lineWidth: 1))
         }.buttonStyle(.plain)
     }
 
@@ -171,12 +171,12 @@ struct CookFromPantrySheet: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 CachedImage(m.imageUrl) { Text("🍱").font(.system(size: 22)) }
-                    .frame(width: 40, height: 40).background(NK.panel)
+                    .frame(width: 40, height: 40).background(WF.panel)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(m.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                    Text(m.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                     HStack(spacing: 6) {
-                        badge(heat ? "Heat & serve" : "Ready to eat", NK.primary)
+                        badge(heat ? "Heat & serve" : "Ready to eat", WF.primary)
                         if let e = expiryNote(m) { badge(e, Color(hex: 0xB8860B)) }
                     }
                 }
@@ -189,20 +189,20 @@ struct CookFromPantrySheet: View {
             if planFor == m.id { planPicker(m) }
         }
         .padding(11)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private func planPicker(_ m: WaffledAPI.PantryItem) -> some View {
         HStack(spacing: 8) {
             Picker("", selection: $planMeal) {
                 ForEach(Self.mealTypes, id: \.self) { Text($0.capitalized).tag($0) }
-            }.pickerStyle(.menu).tint(NK.ink)
-            DatePicker("", selection: $planDate, in: Date()..., displayedComponents: .date).labelsHidden().tint(NK.primary)
+            }.pickerStyle(.menu).tint(WF.ink)
+            DatePicker("", selection: $planDate, in: Date()..., displayedComponents: .date).labelsHidden().tint(WF.primary)
             Spacer()
             Button { Task { await planItem(m) } } label: {
                 Text("Add").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
-                    .padding(.horizontal, 14).padding(.vertical, 7).background(NK.primary).clipShape(Capsule())
+                    .padding(.horizontal, 14).padding(.vertical, 7).background(WF.primary).clipShape(Capsule())
             }.buttonStyle(.plain)
         }
         .padding(.top, 2)
@@ -221,14 +221,14 @@ struct CookFromPantrySheet: View {
             HStack(spacing: 10) {
                 Button { push(r.recipeId, r.title, r.emoji, cook: false) } label: {
                     Text(r.emoji ?? "🍽️").font(.system(size: 22))
-                        .frame(width: 40, height: 40).background(NK.panel)
+                        .frame(width: 40, height: 40).background(WF.panel)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }.buttonStyle(.plain)
-                Text(r.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                Text(r.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                 Spacer(minLength: 0)
                 Button { push(r.recipeId, r.title, r.emoji, cook: true) } label: {
                     Text("Cook").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
-                        .padding(.horizontal, 14).padding(.vertical, 7).background(NK.primary).clipShape(Capsule())
+                        .padding(.horizontal, 14).padding(.vertical, 7).background(WF.primary).clipShape(Capsule())
                 }.buttonStyle(.plain)
             }
             if let e = r.expiringItem { Text("Uses \(e) due soon").font(.system(size: 12)).foregroundStyle(Color(hex: 0xB8860B)) }
@@ -243,8 +243,8 @@ struct CookFromPantrySheet: View {
             }
         }
         .padding(11)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     // MARK: (4) You have the main
@@ -259,18 +259,18 @@ struct CookFromPantrySheet: View {
         VStack(alignment: .leading, spacing: 8) {
             Button { path.append(ProteinFilter(protein: m.protein)) } label: {
                 HStack(spacing: 8) {
-                    Text(m.item?.name ?? m.protein.capitalized).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                    Text(m.item?.name ?? m.protein.capitalized).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
                     Spacer()
-                    Text("\(m.count) recipe\(m.count == 1 ? "" : "s") ›").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.primary)
+                    Text("\(m.count) recipe\(m.count == 1 ? "" : "s") ›").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.primary)
                 }
             }.buttonStyle(.plain)
             ForEach(m.recipes) { rec in
                 HStack(spacing: 8) {
                     Button { push(rec.recipeId, rec.title, nil, cook: false) } label: {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(rec.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                            Text(rec.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                             Text("Have \(rec.have) of \(rec.total) · need \(rec.missing.count <= 1 ? (rec.missing.first ?? "—") : "\(rec.missing.count)")")
-                                .font(.system(size: 11.5)).foregroundStyle(NK.ink3).lineLimit(1)
+                                .font(.system(size: 11.5)).foregroundStyle(WF.ink3).lineLimit(1)
                         }
                         Spacer(minLength: 0)
                     }.buttonStyle(.plain)
@@ -281,8 +281,8 @@ struct CookFromPantrySheet: View {
             }
         }
         .padding(11)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     // MARK: (5) Use up soon
@@ -292,10 +292,10 @@ struct CookFromPantrySheet: View {
             ChipFlow(spacing: 8, lineSpacing: 8) {
                 ForEach(loose) { i in
                     HStack(spacing: 5) {
-                        Text(i.name).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink2)
+                        Text(i.name).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink2)
                         if let e = expiryNote(i) { Text(e).font(.system(size: 11, weight: .bold)).foregroundStyle(Color(hex: 0xB8860B)) }
                     }
-                    .padding(.horizontal, 10).padding(.vertical, 6).background(NK.panel).clipShape(Capsule())
+                    .padding(.horizontal, 10).padding(.vertical, 6).background(WF.panel).clipShape(Capsule())
                 }
             }
         }
@@ -306,9 +306,9 @@ struct CookFromPantrySheet: View {
     private func section<C: View>(_ title: String, _ trailing: String, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(title).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                Text(title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
                 Spacer()
-                Text(trailing).font(.system(size: 12)).foregroundStyle(NK.ink3)
+                Text(trailing).font(.system(size: 12)).foregroundStyle(WF.ink3)
             }
             content()
         }
@@ -320,9 +320,9 @@ struct CookFromPantrySheet: View {
     }
     private func pill(_ text: String, filled: Bool) -> some View {
         Text(text).font(.system(size: 12.5, weight: .bold))
-            .foregroundStyle(filled ? .white : NK.ink2)
+            .foregroundStyle(filled ? .white : WF.ink2)
             .padding(.horizontal, 12).padding(.vertical, 6)
-            .background(filled ? NK.primary : NK.panel).clipShape(Capsule())
+            .background(filled ? WF.primary : WF.panel).clipShape(Capsule())
     }
 
     // MARK: actions

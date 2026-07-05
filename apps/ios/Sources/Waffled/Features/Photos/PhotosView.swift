@@ -34,7 +34,7 @@ struct PhotosView: View {
         Group {
             if isKiosk { kioskContent } else { phoneContent }
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle("Photos")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(isKiosk ? .hidden : .visible, for: .navigationBar)
@@ -175,8 +175,8 @@ struct PhotosView: View {
                         PhotoTile(photo: photo, height: tileHeight)
                             .overlay {
                                 if selecting && picked {
-                                    RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-                                        .strokeBorder(NK.primary, lineWidth: 3)
+                                    RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                                        .strokeBorder(WF.primary, lineWidth: 3)
                                 }
                             }
                             .overlay(alignment: .topLeading) {
@@ -209,9 +209,9 @@ struct PhotosView: View {
         let on = selectedAlbum == value
         return Button { selectedAlbum = value } label: {
             Text(label).font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(on ? NK.ink : NK.ink2)
+                .foregroundStyle(on ? WF.ink : WF.ink2)
                 .padding(.horizontal, 13).padding(.vertical, 7)
-                .nkChip(selected: on)
+                .wfChip(selected: on)
         }
         .buttonStyle(.plain)
     }
@@ -232,12 +232,12 @@ struct PhotosView: View {
             Spacer(minLength: 8)
             if busy { ProgressView() }
             Text(selection.isEmpty ? "Select photos" : "\(selection.count) selected")
-                .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
         }
         .padding(.horizontal, 20).padding(.vertical, 13)
         .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(NK.ink3.opacity(0.18)))
-        .nkShadow1()
+        .overlay(Capsule().strokeBorder(WF.ink3.opacity(0.18)))
+        .wfShadow1()
         .padding(.horizontal, isKiosk ? 28 : 16)
         .padding(.bottom, isKiosk ? 18 : 94)   // clear the iPhone tab bar
     }
@@ -245,7 +245,7 @@ struct PhotosView: View {
     private func selectBadge(on: Bool) -> some View {
         Image(systemName: on ? "checkmark.circle.fill" : "circle")
             .font(.system(size: 22, weight: .semibold))
-            .foregroundStyle(on ? .white : .white.opacity(0.95), on ? NK.primary : .clear)
+            .foregroundStyle(on ? .white : .white.opacity(0.95), on ? WF.primary : .clear)
             .background(Circle().fill(on ? Color.white : Color.black.opacity(0.28)).padding(3))
             .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
     }
@@ -328,8 +328,8 @@ struct PhotoTile: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: height)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .nkShadow1()
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .wfShadow1()
     }
 
     @ViewBuilder
@@ -358,7 +358,7 @@ struct PhotoTile: View {
         }
     }
 
-    /// Emoji-on-gradient fallback using the photo's colorHex (fallback NK.panel).
+    /// Emoji-on-gradient fallback using the photo's colorHex (fallback WF.panel).
     private var emojiTile: some View {
         ZStack {
             LinearGradient(colors: [tintSolid, tintSolid.opacity(0.7)],
@@ -369,6 +369,6 @@ struct PhotoTile: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var tintSolid: Color { Color(hexString: photo.colorHex) ?? NK.panel }
+    private var tintSolid: Color { Color(hexString: photo.colorHex) ?? WF.panel }
     private var tint: Color { tintSolid }
 }

@@ -48,16 +48,16 @@ struct PhotoAddSheet: View {
                             Text(rows.isEmpty ? "Choose photos" : "Add more")
                                 .font(.system(size: 15, weight: .bold))
                         }
-                        .foregroundStyle(NK.primary)
+                        .foregroundStyle(WF.primary)
                         .frame(maxWidth: .infinity).padding(.vertical, 13)
-                        .background(NK.primary.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                        .background(WF.primary.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     }
 
                     if !rows.isEmpty {
                         WaffledFieldCard(title: "Album for all (optional)") {
                             TextField("e.g. Summer trip", text: $sharedAlbum)
-                                .padding(.horizontal, 13).padding(.vertical, 11).nkField(fill: NK.panel)
+                                .padding(.horizontal, 13).padding(.vertical, 11).wfField(fill: WF.panel)
                                 .onChange(of: sharedAlbum) { _, new in
                                     // Seed empty rows with the shared album.
                                     for i in rows.indices where rows[i].album.isEmpty { rows[i].album = new }
@@ -77,7 +77,7 @@ struct PhotoAddSheet: View {
                     ForEach($rows) { $row in rowCard($row) }
 
                     if let errorText {
-                        Text(errorText).font(.system(size: 13)).foregroundStyle(NK.primaryD)
+                        Text(errorText).font(.system(size: 13)).foregroundStyle(WF.primaryD)
                     }
 
                     if !rows.isEmpty {
@@ -90,7 +90,7 @@ struct PhotoAddSheet: View {
                 .padding(isKiosk ? 24 : 16)
                 .padding(.bottom, 40)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Add photos")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -109,7 +109,7 @@ struct PhotoAddSheet: View {
         WaffledCard {
             HStack(alignment: .top, spacing: 12) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous).fill(NK.panel)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous).fill(WF.panel)
                     if let img = row.wrappedValue.image {
                         Image(uiImage: img).resizable().scaledToFill()
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -126,20 +126,20 @@ struct PhotoAddSheet: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("Caption", text: row.caption)
-                        .padding(.horizontal, 13).padding(.vertical, 11).nkField(fill: NK.panel)
+                        .padding(.horizontal, 13).padding(.vertical, 11).wfField(fill: WF.panel)
                     HStack(spacing: 8) {
                         TextField("Album", text: row.album)
-                            .padding(.horizontal, 13).padding(.vertical, 11).nkField(fill: NK.panel)
+                            .padding(.horizontal, 13).padding(.vertical, 11).wfField(fill: WF.panel)
                         Button { row.wrappedValue.isFavorite.toggle() } label: {
                             Text(row.wrappedValue.isFavorite ? "❤️" : "🤍").font(.system(size: 20))
                                 .frame(width: 44, height: 44)
-                                .background(NK.panel)
+                                .background(WF.panel)
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     }
                     if case let .failed(msg) = row.wrappedValue.status {
-                        Text(msg).font(.system(size: 12)).foregroundStyle(NK.primaryD)
+                        Text(msg).font(.system(size: 12)).foregroundStyle(WF.primaryD)
                     }
                 }
             }

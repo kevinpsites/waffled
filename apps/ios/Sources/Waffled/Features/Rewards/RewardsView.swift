@@ -52,7 +52,7 @@ struct CoinChip: View {
     let amount: Int
 
     var body: some View {
-        let tint = Color(hexString: colorHex) ?? NK.gold
+        let tint = Color(hexString: colorHex) ?? WF.gold
         HStack(spacing: 4) {
             Text(symbol).font(.system(size: 12.5))
             Text("\(amount)").font(.system(size: 13.5, weight: .bold)).foregroundStyle(tint)
@@ -80,7 +80,7 @@ struct JarView: View {
             }
             .frame(width: 48, height: 60)
             .overlay(Text("\(Int(f))%").font(.system(size: 13, weight: .heavy))
-                .foregroundStyle(f > 55 ? .white : NK.ink))
+                .foregroundStyle(f > 55 ? .white : WF.ink))
             .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .strokeBorder(Color(white: 0.88), lineWidth: 2.5))
@@ -108,7 +108,7 @@ struct SavingTowardCard: View {
     }
 
     private func hero(_ s: WaffledAPI.PersonOverview.SavingToward) -> some View {
-        let tint = Color(hexString: colorHex) ?? NK.gold   // orange when the currency has no color
+        let tint = Color(hexString: colorHex) ?? WF.gold   // orange when the currency has no color
         let ready = s.have >= s.cost
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -122,7 +122,7 @@ struct SavingTowardCard: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 9) {
                         Text(s.emoji ?? "🎁").font(.system(size: 22))
-                        Text(s.title).font(NK.serif(20)).foregroundStyle(.white).lineLimit(2)
+                        Text(s.title).font(WF.serif(20)).foregroundStyle(.white).lineLimit(2)
                     }
                     if !jar {
                         GeometryReader { geo in
@@ -141,7 +141,7 @@ struct SavingTowardCard: View {
                 Spacer(minLength: 0)
                 VStack(spacing: 7) {
                     if ready {
-                        Button(action: onRedeem) { pill("Redeem", bg: NK.primary, outline: false) }
+                        Button(action: onRedeem) { pill("Redeem", bg: WF.primary, outline: false) }
                             .buttonStyle(.plain)
                     }
                     Button(action: onChange) { pill("Change", bg: .white.opacity(0.18), outline: true) }
@@ -153,7 +153,7 @@ struct SavingTowardCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(LinearGradient(colors: [tint.opacity(0.92), tint],
                                    startPoint: .topLeading, endPoint: .bottomTrailing))
-        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
     }
 
     private func pill(_ t: String, bg: Color, outline: Bool) -> some View {
@@ -183,21 +183,21 @@ struct SavingTowardCard: View {
 
     private var prompt: some View {
         HStack(spacing: 11) {
-            Image(systemName: "target").font(.system(size: 18)).foregroundStyle(NK.ai)
+            Image(systemName: "target").font(.system(size: 18)).foregroundStyle(WF.ai)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Pick something to save toward")
-                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                Text("Track progress to a reward").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                Text("Track progress to a reward").font(.system(size: 12)).foregroundStyle(WF.ink3)
             }
             Spacer(minLength: 0)
-            Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+            Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
         }
         .padding(16)
         .frame(maxWidth: .infinity)
-        .background(NK.ai.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous)
-            .strokeBorder(NK.ai.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
+        .background(WF.ai.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous)
+            .strokeBorder(WF.ai.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
     }
 }
 
@@ -250,7 +250,7 @@ struct RewardsView: View {
             .padding(16).padding(.bottom, 110)
         }
         .scrollBounceBehavior(.always)
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle("Rewards").navigationBarTitleDisplayMode(.inline)
         .toolbar(isKiosk ? .hidden : .visible, for: .navigationBar)
         .task { await model.load() }
@@ -278,7 +278,7 @@ struct RewardsView: View {
                             Image(systemName: "plus").font(.system(size: 12, weight: .bold))
                             Text("Add").font(.system(size: 13, weight: .semibold))
                         }
-                        .foregroundStyle(NK.primary)
+                        .foregroundStyle(WF.primary)
                     }
                     .buttonStyle(.plain)
                 }
@@ -287,7 +287,7 @@ struct RewardsView: View {
 
             if model.rewards.isEmpty {
                 Text("No rewards yet — tap Add to create one.")
-                    .font(.system(size: 13)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 13)).foregroundStyle(WF.ink3)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
             } else {
                 ForEach(model.rewards) { r in catalogRow(r) }
@@ -300,7 +300,7 @@ struct RewardsView: View {
                             .font(.system(size: 11, weight: .bold))
                         Text("Archived (\(model.archived.count))").font(.system(size: 13, weight: .semibold))
                     }
-                    .foregroundStyle(NK.ink3)
+                    .foregroundStyle(WF.ink3)
                 }
                 .buttonStyle(.plain).padding(.top, 2)
                 if showArchived { ForEach(model.archived) { r in archivedRow(r) } }
@@ -315,16 +315,16 @@ struct RewardsView: View {
         return Button { if canManage { editor = .edit(r) } } label: {
             HStack(spacing: 12) {
                 WaffledEmojiTile(emoji: r.emoji ?? "🎁")
-                Text(r.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                Text(r.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                 Spacer(minLength: 8)
                 coin(r.currency, r.cost)
                 if canManage {
-                    Image(systemName: "pencil").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                    Image(systemName: "pencil").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
             }
             .padding(12)
-            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
         }
         .buttonStyle(.plain).disabled(!canManage)
     }
@@ -332,10 +332,10 @@ struct RewardsView: View {
     private func archivedRow(_ r: WaffledAPI.Reward) -> some View {
         HStack(spacing: 12) {
             WaffledEmojiTile(emoji: r.emoji ?? "🎁", size: 18, frame: 34, cornerRadius: 9, emojiOpacity: 0.6)
-            Text(r.title).font(.system(size: 14, weight: .medium)).foregroundStyle(NK.ink2).lineLimit(1)
+            Text(r.title).font(.system(size: 14, weight: .medium)).foregroundStyle(WF.ink2).lineLimit(1)
             Spacer(minLength: 8)
             Button { Task { _ = await sync.restoreReward(id: r.id); await model.load() } } label: {
-                Text("Restore").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ai)
+                Text("Restore").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ai)
             }
             .buttonStyle(.plain)
         }
@@ -348,11 +348,11 @@ struct RewardsView: View {
         WaffledCard(padding: 14) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 6) {
-                    Text("Needs your OK").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
-                    WaffledStatusBadge(text: "\(model.pending.count)", color: NK.primary, size: 12, weight: .heavy)
+                    Text("Needs your OK").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
+                    WaffledStatusBadge(text: "\(model.pending.count)", color: WF.primary, size: 12, weight: .heavy)
                 }
                 ForEach(Array(model.pending.enumerated()), id: \.element.id) { idx, r in
-                    if idx > 0 { Divider().background(NK.hair) }
+                    if idx > 0 { Divider().background(WF.hair) }
                     approvalRow(r)
                 }
             }
@@ -394,10 +394,10 @@ struct RewardsView: View {
     private func approvalText(_ r: WaffledAPI.RewardRedemption) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("\(r.personName ?? "Someone") wants")
-                .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                .font(.system(size: 12.5)).foregroundStyle(WF.ink3)
             HStack(spacing: 6) {
                 Text("\(r.emoji ?? "🎁") \(r.title)")
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                 coin(r.currency, r.cost)
             }
         }
@@ -409,14 +409,14 @@ struct RewardsView: View {
         Button { path.append(.rewardShop(p.personId)) } label: {
             HStack(spacing: 12) {
                 Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 44)
-                Text(p.name ?? "—").font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
+                Text(p.name ?? "—").font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink)
                 Spacer(minLength: 8)
                 HStack(spacing: 6) { ForEach(p.balances) { b in coin(b.currency, b.balance) } }
-                Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+                Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
             }
             .padding(14)
-            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
@@ -465,7 +465,7 @@ struct RewardShopView: View {
                     let shop = overview?.rewardShop ?? []
                     if shop.isEmpty {
                         Text("No rewards yet — a parent can add them.")
-                            .font(.system(size: 14)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 14)).foregroundStyle(WF.ink3)
                             .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 30)
                     } else {
                         LazyVGrid(columns: cols, spacing: 12) {
@@ -479,7 +479,7 @@ struct RewardShopView: View {
             .padding(16).padding(.bottom, 110)
         }
         .scrollBounceBehavior(.always)
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle(model.person(personId)?.name ?? "Reward shop")
         .navigationBarTitleDisplayMode(.inline)
         .task { await reload() }
@@ -518,7 +518,7 @@ struct RewardShopView: View {
         HStack(spacing: 14) {
             Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 58)
             VStack(alignment: .leading, spacing: 6) {
-                Text(p.name ?? "—").font(NK.serif(26)).foregroundStyle(NK.ink)
+                Text(p.name ?? "—").font(WF.serif(26)).foregroundStyle(WF.ink)
                 HStack(spacing: 8) {
                     ForEach(displayBalances(p)) { b in
                         let c = model.currency(b.currency)
@@ -533,9 +533,9 @@ struct RewardShopView: View {
                         Image(systemName: "arrow.left.arrow.right").font(.system(size: 12, weight: .bold))
                         Text("Trade").font(.system(size: 13, weight: .bold))
                     }
-                    .foregroundStyle(NK.ai)
+                    .foregroundStyle(WF.ai)
                     .padding(.horizontal, 11).padding(.vertical, 7)
-                    .background(NK.ai.opacity(0.12)).clipShape(Capsule())
+                    .background(WF.ai.opacity(0.12)).clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
@@ -557,9 +557,9 @@ struct RewardShopView: View {
 
     private var shopHead: some View {
         HStack {
-            Text("Reward shop").font(.system(size: 18, weight: .bold)).foregroundStyle(NK.ink)
+            Text("Reward shop").font(.system(size: 18, weight: .bold)).foregroundStyle(WF.ink)
             Spacer()
-            Text("Set by parents").font(.system(size: 13)).foregroundStyle(NK.ink3)
+            Text("Set by parents").font(.system(size: 13)).foregroundStyle(WF.ink3)
         }
     }
 
@@ -576,10 +576,10 @@ struct RewardShopView: View {
         let canAfford = r.have >= r.cost   // server-computed have/toGo
         return VStack(spacing: 9) {
             Text(r.emoji ?? "🎁").font(.system(size: 40)).frame(height: 54)
-            Text(r.title).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
+            Text(r.title).font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink)
                 .multilineTextAlignment(.center).lineLimit(2)
             Text("\(r.cost) \(cur?.label.lowercased() ?? "")")
-                .font(.system(size: 13)).foregroundStyle(NK.ink3)
+                .font(.system(size: 13)).foregroundStyle(WF.ink3)
             Spacer(minLength: 0)
             if canAfford {
                 Button { confirm = r } label: {
@@ -588,21 +588,21 @@ struct RewardShopView: View {
                         Text("\(cur?.symbol ?? "⭐") \(r.cost)").font(.system(size: 15, weight: .bold))
                     }
                     .foregroundStyle(.white).frame(maxWidth: .infinity).padding(.vertical, 11)
-                    .background(NK.primary).clipShape(Capsule())
+                    .background(WF.primary).clipShape(Capsule())
                 }
                 .buttonStyle(.plain).disabled(giving)
             } else {
                 Text("\(r.toGo) to go")
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
                     .frame(maxWidth: .infinity).padding(.vertical, 11)
-                    .background(NK.panel).clipShape(Capsule())
+                    .background(WF.panel).clipShape(Capsule())
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 196)
-        .background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-        .nkShadow1()
+        .background(WF.card)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+        .wfShadow1()
     }
 
     private func give(_ r: WaffledAPI.PersonOverview.ShopReward) async {
@@ -667,12 +667,12 @@ struct RewardEditorSheet: View {
                         TextField("🎁", text: $emoji)
                             .font(.system(size: 34)).multilineTextAlignment(.center)
                             .frame(width: 70, height: 70)
-                            .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             .onChange(of: emoji) { _, v in if v.count > 2 { emoji = String(v.prefix(2)) } }
                         TextField("Movie night, 30 min screen time…", text: $title)
                             .font(.system(size: 17, weight: .semibold)).focused($titleFocused)
                             .padding(.horizontal, 14).padding(.vertical, 14)
-                            .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                            .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     }
 
                     if currencies.count > 1 {
@@ -684,11 +684,11 @@ struct RewardEditorSheet: View {
                                     Button { currencyKey = c.key } label: {
                                         Text("\(c.symbol) \(c.label)")
                                             .font(.system(size: 14, weight: on ? .bold : .medium))
-                                            .foregroundStyle(on ? NK.ink : NK.ink2)
+                                            .foregroundStyle(on ? WF.ink : WF.ink2)
                                             .padding(.horizontal, 13).padding(.vertical, 8)
-                                            .background(on ? (Color(hexString: c.color) ?? NK.gold).opacity(0.16) : NK.panel)
+                                            .background(on ? (Color(hexString: c.color) ?? WF.gold).opacity(0.16) : WF.panel)
                                             .clipShape(Capsule())
-                                            .overlay(Capsule().strokeBorder(on ? (Color(hexString: c.color) ?? NK.gold).opacity(0.5) : .clear, lineWidth: 1))
+                                            .overlay(Capsule().strokeBorder(on ? (Color(hexString: c.color) ?? WF.gold).opacity(0.5) : .clear, lineWidth: 1))
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -699,7 +699,7 @@ struct RewardEditorSheet: View {
 
                     WaffledCard(padding: 14) {
                         HStack {
-                            Text("Cost").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                            Text("Cost").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                             Spacer()
                             Text(selectedCur?.symbol ?? "⭐").font(.system(size: 16))
                             TextField("0", value: $cost, format: .number)
@@ -712,13 +712,13 @@ struct RewardEditorSheet: View {
                     WaffledCard(padding: 14) {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                Text("Needs a parent’s OK").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                                Text("Needs a parent’s OK").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                                 Spacer()
-                                Toggle("", isOn: $requiresApproval).labelsHidden().tint(NK.primary)
+                                Toggle("", isOn: $requiresApproval).labelsHidden().tint(WF.primary)
                             }
                             Text(requiresApproval ? "Redeeming waits for a parent to approve."
                                                   : "Redeems instantly if they can afford it.")
-                                .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                                .font(.system(size: 12)).foregroundStyle(WF.ink3)
                         }
                     }
 
@@ -726,8 +726,8 @@ struct RewardEditorSheet: View {
                         Text(busy ? "Saving…" : (editing == nil ? "Add reward" : "Save"))
                             .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
                             .frame(maxWidth: .infinity).padding(.vertical, 14)
-                            .background(title.trimmingCharacters(in: .whitespaces).isEmpty ? NK.ink3 : NK.primary)
-                            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                            .background(title.trimmingCharacters(in: .whitespaces).isEmpty ? WF.ink3 : WF.primary)
+                            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .disabled(busy || title.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -738,17 +738,17 @@ struct RewardEditorSheet: View {
                         } label: {
                             Text(confirmArchive ? "Tap again to archive" : "Archive reward")
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(confirmArchive ? NK.primary : NK.ink3)
+                                .foregroundStyle(confirmArchive ? WF.primary : WF.ink3)
                         }
                         .buttonStyle(.plain)
                         Text("Archived rewards keep their redemption history and can be restored.")
-                            .font(.system(size: 11)).foregroundStyle(NK.ink3).multilineTextAlignment(.center)
+                            .font(.system(size: 11)).foregroundStyle(WF.ink3).multilineTextAlignment(.center)
                             .padding(.horizontal, 30)
                     }
                 }
                 .padding(20)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle(editing == nil ? "New reward" : "Edit reward")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }

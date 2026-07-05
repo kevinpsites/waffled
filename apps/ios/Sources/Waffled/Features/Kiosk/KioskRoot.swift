@@ -67,7 +67,7 @@ struct KioskBootCover: View {
 
     var body: some View {
         ZStack {
-            NK.canvas.ignoresSafeArea()
+            WF.canvas.ignoresSafeArea()
             if stalled { stalledBody } else { loadingBody }
         }
         .onAppear { pulse = true }
@@ -80,7 +80,7 @@ struct KioskBootCover: View {
                 .scaleEffect(pulse ? 1.08 : 0.94)
                 .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulse)
             Text("Setting up your family hub…")
-                .font(.system(size: 17, weight: .semibold)).foregroundStyle(NK.ink3)
+                .font(.system(size: 17, weight: .semibold)).foregroundStyle(WF.ink3)
         }
     }
 
@@ -90,27 +90,27 @@ struct KioskBootCover: View {
                 .frame(width: 96, height: 96)
                 .opacity(0.7)
             Text("Couldn’t reach your hub")
-                .font(.system(size: 20, weight: .bold)).foregroundStyle(NK.ink)
+                .font(.system(size: 20, weight: .bold)).foregroundStyle(WF.ink)
             Text("Still connecting to sync. Check this device’s Server address and your network — or sign out and back in.")
-                .font(.system(size: 14)).foregroundStyle(NK.ink3)
+                .font(.system(size: 14)).foregroundStyle(WF.ink3)
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: 420)
             if let detail, !detail.isEmpty {
-                Text(detail).font(.system(size: 11, design: .monospaced)).foregroundStyle(NK.ink3.opacity(0.7))
+                Text(detail).font(.system(size: 11, design: .monospaced)).foregroundStyle(WF.ink3.opacity(0.7))
                     .multilineTextAlignment(.center).lineLimit(3).frame(maxWidth: 420)
             }
             HStack(spacing: 12) {
                 Button { onRetry?() } label: {
-                    Text("Retry").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink2)
+                    Text("Retry").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink2)
                         .padding(.horizontal, 22).padding(.vertical, 12)
-                        .background(NK.card).clipShape(Capsule())
-                        .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+                        .background(WF.card).clipShape(Capsule())
+                        .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 Button { onSignOut?() } label: {
                     Text("Sign out").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
                         .padding(.horizontal, 22).padding(.vertical, 12)
-                        .background(NK.primary).clipShape(Capsule())
+                        .background(WF.primary).clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }

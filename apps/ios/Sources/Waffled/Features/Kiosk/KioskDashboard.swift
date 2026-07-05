@@ -75,7 +75,7 @@ struct KioskDashboard: View {
         .padding(.top, 2)
         .padding(.bottom, 30)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(NK.canvas)
+        .background(WF.canvas)
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .task { await sync.loadIdentity() }
         .task { await countdowns.load() }
@@ -121,7 +121,7 @@ struct KioskDashboard: View {
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
                             Button { recipeTarget = nil } label: {
-                                Image(systemName: "xmark").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink2)
+                                Image(systemName: "xmark").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink2)
                             }
                         }
                     }
@@ -169,22 +169,22 @@ struct KioskDashboard: View {
         let preview = (red + ch).prefix(3).joined(separator: " · ")
         return HStack(spacing: 14) {
             Image(systemName: "checkmark.seal.fill").font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
-                .frame(width: 44, height: 44).background(NK.gold)
+                .frame(width: 44, height: 44).background(WF.gold)
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
                 Text(approvals.total == 1 ? "1 thing waiting for your OK" : "\(approvals.total) things waiting for your OK")
-                    .font(.system(size: 18, weight: .heavy)).foregroundStyle(NK.ink)
+                    .font(.system(size: 18, weight: .heavy)).foregroundStyle(WF.ink)
                 Text(preview.isEmpty ? "Your OK awards the stars." : "\(preview) — your OK awards the stars.")
-                    .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(NK.ink3).lineLimit(1)
+                    .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
             }
             Spacer(minLength: 10)
-            bannerCTA("Review", tint: NK.primary)
+            bannerCTA("Review", tint: WF.primary)
         }
         .padding(16)
-        .background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.gold.opacity(0.35), lineWidth: 1))
-        .nkShadow1()
+        .background(WF.card)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.gold.opacity(0.35), lineWidth: 1))
+        .wfShadow1()
     }
 
     private var reviewBanner: some View {
@@ -194,21 +194,21 @@ struct KioskDashboard: View {
         return HStack(spacing: 14) {
             Image(systemName: "sparkles").font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
                 .frame(width: 44, height: 44)
-                .background(LinearGradient(colors: [NK.ai2, NK.ai], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .background(LinearGradient(colors: [WF.ai2, WF.ai], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text(reviewTitle(nR, nS)).font(.system(size: 18, weight: .heavy)).foregroundStyle(NK.ink)
+                Text(reviewTitle(nR, nS)).font(.system(size: 18, weight: .heavy)).foregroundStyle(WF.ink)
                 Text(preview.isEmpty ? "Each ties to a goal." : "\(preview) — each ties to a goal.")
-                    .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(NK.ink3).lineLimit(1)
+                    .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
             }
             Spacer(minLength: 10)
-            bannerCTA("Review & log", tint: NK.primary)
+            bannerCTA("Review & log", tint: WF.primary)
         }
         .padding(16)
-        .background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.ai.opacity(0.3), lineWidth: 1))
-        .nkShadow1()
+        .background(WF.card)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.ai.opacity(0.3), lineWidth: 1))
+        .wfShadow1()
     }
 
     private func bannerCTA(_ label: String, tint: Color) -> some View {
@@ -247,20 +247,20 @@ struct KioskDashboard: View {
         KioskCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
-                    Text("🏡 Family Night").font(.system(size: 16, weight: .heavy)).foregroundStyle(NK.ink)
+                    Text("🏡 Family Night").font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
                     Spacer(minLength: 6)
                     Text(FamilyNightFormat.dateLabel(v.next.date))
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
                 if v.members.isEmpty {
                     Text("Add family members to start rotating the agenda.")
-                        .font(.system(size: 15)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 15)).foregroundStyle(WF.ink3)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
                 } else {
                     ForEach(v.next.assignments) { a in
                         HStack(spacing: 12) {
                             Text(a.emoji).font(.system(size: 22))
-                            Text(a.label).font(.system(size: 18, weight: .semibold)).foregroundStyle(NK.ink)
+                            Text(a.label).font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.ink)
                             Spacer(minLength: 8)
                             Menu {
                                 ForEach(v.members) { m in
@@ -283,10 +283,10 @@ struct KioskDashboard: View {
                                             Avatar(colorHex: m.color, emoji: m.emoji ?? "🙂", size: 26)
                                         }
                                         Text(name).font(.system(size: 15, weight: .semibold))
-                                            .foregroundStyle(a.suggested ? NK.ink3 : NK.ink)
+                                            .foregroundStyle(a.suggested ? WF.ink3 : WF.ink)
                                     }
                                 } else {
-                                    Text("Pick").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ai)
+                                    Text("Pick").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ai)
                                 }
                             }
                         }
@@ -303,40 +303,40 @@ struct KioskDashboard: View {
         KioskCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
-                    Text("Countdowns").font(.system(size: 16, weight: .heavy)).foregroundStyle(NK.ink)
+                    Text("Countdowns").font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
                     Spacer(minLength: 6)
                     Button { addCountdown = true } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "plus").font(.system(size: 12, weight: .bold))
                             Text("Add").font(.system(size: 14, weight: .semibold))
-                        }.foregroundStyle(NK.ai)
+                        }.foregroundStyle(WF.ai)
                     }.buttonStyle(.plain)
                 }
                 if countdowns.items.isEmpty {
                     Text("Nothing to count down to yet — add a trip; birthdays are automatic.")
-                        .font(.system(size: 15)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 15)).foregroundStyle(WF.ink3)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
                 } else {
                     ForEach(countdowns.items.prefix(4)) { c in
                         HStack(spacing: 12) {
                             Text(c.emoji ?? "📅").font(.system(size: 22))
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(c.title).font(.system(size: 18, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
-                                Text(CountdownFormat.dateLabel(c.date)).font(.system(size: 13)).foregroundStyle(NK.ink3)
+                                Text(c.title).font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+                                Text(CountdownFormat.dateLabel(c.date)).font(.system(size: 13)).foregroundStyle(WF.ink3)
                             }
                             Spacer(minLength: 8)
                             Text(CountdownFormat.label(c.daysLeft, sleeps: countdowns.sleeps))
                                 .font(.system(size: 15, weight: .bold))
-                                .foregroundStyle(c.daysLeft <= 7 ? NK.primaryD : NK.ink2)
+                                .foregroundStyle(c.daysLeft <= 7 ? WF.primaryD : WF.ink2)
                             if c.isStandalone {
                                 Button { Task { await countdowns.remove(c) } } label: {
-                                    Image(systemName: "xmark.circle.fill").font(.system(size: 18)).foregroundStyle(NK.ink3)
+                                    Image(systemName: "xmark.circle.fill").font(.system(size: 18)).foregroundStyle(WF.ink3)
                                 }.buttonStyle(.plain)
                             }
                         }
                     }
                     if countdowns.items.count > 4 {
-                        Text("+\(countdowns.items.count - 4) more").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                        Text("+\(countdowns.items.count - 4) more").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                     }
                 }
             }
@@ -376,11 +376,11 @@ struct KioskDashboard: View {
             KioskCard {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 8) {
-                        Text("🥫 Pantry").font(.system(size: 16, weight: .heavy)).foregroundStyle(NK.ink)
+                        Text("🥫 Pantry").font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
                         Spacer(minLength: 6)
                         Text(soon.isEmpty ? "\(pantry.onHand.count) on hand" : "\(pantry.onHand.count) on hand · \(soon.count) soon")
-                            .font(.system(size: 13)).foregroundStyle(NK.ink3)
-                        Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 13)).foregroundStyle(WF.ink3)
+                        Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
                     }
                     if pantry.onHand.isEmpty {
                         pantryEmpty("Nothing logged yet — add what’s on hand.")
@@ -389,7 +389,7 @@ struct KioskDashboard: View {
                     } else {
                         ForEach(attention.prefix(5)) { kioskPantryRow($0) }
                         if attention.count > 5 {
-                            Text("+\(attention.count - 5) more").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                            Text("+\(attention.count - 5) more").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                         }
                     }
                 }
@@ -399,7 +399,7 @@ struct KioskDashboard: View {
     }
 
     private func pantryEmpty(_ text: String) -> some View {
-        Text(text).font(.system(size: 15)).foregroundStyle(NK.ink3)
+        Text(text).font(.system(size: 15)).foregroundStyle(WF.ink3)
             .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
     }
 
@@ -407,9 +407,9 @@ struct KioskDashboard: View {
         HStack(spacing: 12) {
             Text(PantryFood.emoji(for: item.name)).font(.system(size: 22))
             VStack(alignment: .leading, spacing: 1) {
-                Text(item.name).font(.system(size: 18, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                Text(item.name).font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                 let qty = [item.amount, item.unit].map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
-                if !qty.isEmpty { Text(qty).font(.system(size: 13)).foregroundStyle(NK.ink3) }
+                if !qty.isEmpty { Text(qty).font(.system(size: 13)).foregroundStyle(WF.ink3) }
             }
             Spacer(minLength: 8)
             if pantry.isSoon(item), let d = pantry.days(item) {
@@ -418,9 +418,9 @@ struct KioskDashboard: View {
                     .padding(.horizontal, 9).padding(.vertical, 3)
                     .background(Color(hex: 0xFBF0D5)).clipShape(Capsule())
             } else {
-                Text("Low").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.primaryD)
+                Text("Low").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.primaryD)
                     .padding(.horizontal, 9).padding(.vertical, 3)
-                    .background(NK.primaryD.opacity(0.12)).clipShape(Capsule())
+                    .background(WF.primaryD.opacity(0.12)).clipShape(Capsule())
             }
         }
     }
@@ -493,14 +493,14 @@ struct KioskDashboard: View {
             .padding(22)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Self.heroGreen)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-            .nkShadow1()
+            .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+            .wfShadow1()
         } else {
             KioskCard {
                 VStack(alignment: .leading, spacing: 18) {
                     cardHeader("Family Goal", chevron: true) { navigate(.goals) }
                     Text(model.loaded ? "No goals yet — add one on the Goals page." : "Loading…")
-                        .font(.system(size: 17)).foregroundStyle(NK.ink3).padding(.vertical, 12)
+                        .font(.system(size: 17)).foregroundStyle(WF.ink3).padding(.vertical, 12)
                 }
             }
         }
@@ -529,7 +529,7 @@ struct KioskDashboard: View {
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     Text("\(g.emoji ?? "🎯") \(g.title)")
-                        .font(NK.serif(26)).foregroundStyle(.white).lineLimit(3).minimumScaleFactor(0.7)
+                        .font(WF.serif(26)).foregroundStyle(.white).lineLimit(3).minimumScaleFactor(0.7)
                     if g.streakDays > 0 {
                         Text("🔥 \(g.streakDays)-day streak")
                             .font(.system(size: 15, weight: .bold)).foregroundStyle(.white.opacity(0.9))
@@ -620,7 +620,7 @@ struct KioskDashboard: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 14) {
-                Text(greetingPhrase).font(NK.serif(40)).foregroundStyle(NK.ink)
+                Text(greetingPhrase).font(WF.serif(40)).foregroundStyle(WF.ink)
                 Spacer(minLength: 12)
                 layoutMenu
                 AICaptureBar(onTap: { dictateOnOpen = false; showCapture = true },
@@ -631,7 +631,7 @@ struct KioskDashboard: View {
         }
         .padding(.horizontal, 40).padding(.top, 22).padding(.bottom, 10)
         .frame(maxWidth: .infinity)
-        .background(NK.canvas)
+        .background(WF.canvas)
     }
 
     /// Date · time · weather on one line, ticking on the minute.
@@ -639,20 +639,20 @@ struct KioskDashboard: View {
         TimelineView(.periodic(from: .now, by: 30)) { ctx in
             HStack(spacing: 10) {
                 Text(DateFmt.string(Date(), "EEEE, MMMM d", tz))
-                    .font(.system(size: 18, weight: .semibold)).foregroundStyle(NK.ink2)
+                    .font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.ink2)
                 dot
                 Text(DateFmt.string(ctx.date, "h:mm a", tz))
-                    .font(.system(size: 18, weight: .semibold)).foregroundStyle(NK.ink2)
+                    .font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.ink2)
                 if let w = model.weather, w.configured, let t = w.tempF {
                     dot
                     Text("\(w.emoji ?? "") \(Int(t.rounded()))°")
-                        .font(.system(size: 18, weight: .semibold)).foregroundStyle(NK.ink2)
+                        .font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.ink2)
                 }
             }
         }
     }
 
-    private var dot: some View { Text("·").font(.system(size: 18, weight: .bold)).foregroundStyle(NK.ink3) }
+    private var dot: some View { Text("·").font(.system(size: 18, weight: .bold)).foregroundStyle(WF.ink3) }
 
     /// The Today-layout switcher (Balanced / Agenda / Meals).
     private var layoutMenu: some View {
@@ -668,10 +668,10 @@ struct KioskDashboard: View {
                 Text(layout.label).font(.system(size: 14, weight: .bold))
                 Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold))
             }
-            .foregroundStyle(NK.ink2)
+            .foregroundStyle(WF.ink2)
             .padding(.horizontal, 13).padding(.vertical, 9)
-            .background(NK.card).clipShape(Capsule())
-            .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+            .background(WF.card).clipShape(Capsule())
+            .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
         }
     }
 
@@ -685,14 +685,14 @@ struct KioskDashboard: View {
                 cardHeader("This week", chevron: true) { navigate(.calendar) }
                     .padding(.bottom, 4)
                 if week.isEmpty {
-                    Text("Nothing scheduled.").font(.system(size: 18)).foregroundStyle(NK.ink3).padding(.vertical, 20)
+                    Text("Nothing scheduled.").font(.system(size: 18)).foregroundStyle(WF.ink3).padding(.vertical, 20)
                 } else {
                     ScrollView(showsIndicators: false) {
                         LazyVStack(alignment: .leading, spacing: 18) {
                             ForEach(week, id: \.day) { group in
                                 VStack(alignment: .leading, spacing: 10) {
                                     Text(dayLabel(group.day))
-                                        .font(.system(size: 14, weight: .heavy)).tracking(0.6).foregroundStyle(NK.ink3)
+                                        .font(.system(size: 14, weight: .heavy)).tracking(0.6).foregroundStyle(WF.ink3)
                                     ForEach(group.items) { ev in
                                         Button { detailEvent = ev } label: { kioskEventRow(ev) }.buttonStyle(.plain)
                                     }
@@ -708,10 +708,10 @@ struct KioskDashboard: View {
 
     private func kioskEventRow(_ ev: SyncedEvent) -> some View {
         HStack(spacing: 14) {
-            RoundedRectangle(cornerRadius: 99).fill(Color(hexString: ev.colorHex) ?? NK.ink3).frame(width: 5, height: 40)
+            RoundedRectangle(cornerRadius: 99).fill(Color(hexString: ev.colorHex) ?? WF.ink3).frame(width: 5, height: 40)
             VStack(alignment: .leading, spacing: 2) {
-                Text(ev.title).font(.system(size: 21, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
-                Text(timeText(ev)).font(.system(size: 15)).foregroundStyle(NK.ink3)
+                Text(ev.title).font(.system(size: 21, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+                Text(timeText(ev)).font(.system(size: 15)).foregroundStyle(WF.ink3)
             }
             Spacer(minLength: 8)
             if let emoji = ev.emoji { Avatar(colorHex: ev.colorHex, emoji: emoji, size: 38) }
@@ -740,7 +740,7 @@ struct KioskDashboard: View {
                 cardHeader("Tonight's dinner", chevron: false)
                 if let meal = model.tonight {
                     HStack(spacing: 16) {
-                        RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
+                        RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
                             .fill(LinearGradient(colors: meal.eatingOut
                                                     ? [Color(hex: 0xD9E7F6), Color(hex: 0xBCD0E9)]
                                                     : [Color(hex: 0xF6D9C6), Color(hex: 0xE9B596)],
@@ -748,9 +748,9 @@ struct KioskDashboard: View {
                             .frame(width: 84, height: 84)
                             .overlay(Text(meal.emoji).font(.system(size: 40)))
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(meal.title).font(NK.serif(26)).foregroundStyle(NK.ink).lineLimit(2)
+                            Text(meal.title).font(WF.serif(26)).foregroundStyle(WF.ink).lineLimit(2)
                             if let sub = mealSubtitle(meal) {
-                                Text(sub).font(.system(size: 15)).foregroundStyle(NK.ink3)
+                                Text(sub).font(.system(size: 15)).foregroundStyle(WF.ink3)
                             }
                         }
                         Spacer(minLength: 0)
@@ -763,7 +763,7 @@ struct KioskDashboard: View {
                     }
                 } else {
                     Text(model.loaded ? "No dinner planned" : "Loading…")
-                        .font(.system(size: 18, weight: .semibold)).foregroundStyle(NK.ink3).padding(.vertical, 14)
+                        .font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.ink3).padding(.vertical, 14)
                 }
             }
         }
@@ -790,7 +790,7 @@ struct KioskDashboard: View {
                         ForEach(Array(model.weekDinners.prefix(6).enumerated()), id: \.element.id) { idx, entry in
                             Button { navigate(.meals) } label: { dinnerRow(entry) }.buttonStyle(.plain)
                             if idx < min(model.weekDinners.count, 6) - 1 {
-                                Rectangle().fill(NK.hair2).frame(height: 1)
+                                Rectangle().fill(WF.hair2).frame(height: 1)
                             }
                         }
                     }
@@ -802,11 +802,11 @@ struct KioskDashboard: View {
     private func dinnerRow(_ e: WaffledAPI.WeekEntryDTO) -> some View {
         HStack(spacing: 12) {
             Text(Self.dayShort(e.date, tz)).font(.system(size: 14, weight: .heavy))
-                .foregroundStyle(NK.ink3).frame(width: 42, alignment: .leading)
+                .foregroundStyle(WF.ink3).frame(width: 42, alignment: .leading)
             Text(e.recipe?.emoji ?? "🍽️").font(.system(size: 22))
-            Text(e.displayTitle).font(.system(size: 17, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+            Text(e.displayTitle).font(.system(size: 17, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
             Spacer(minLength: 6)
-            Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+            Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
         }
         .padding(.vertical, 11).contentShape(Rectangle())
     }
@@ -819,7 +819,7 @@ struct KioskDashboard: View {
                 cardHeader("Family Chores", trailing: "Today", chevron: true) { navigate(.tasks) }
                 if model.chores.isEmpty {
                     Text(model.loaded ? "No chores today" : "Loading…")
-                        .font(.system(size: 16)).foregroundStyle(NK.ink3).padding(.vertical, 8)
+                        .font(.system(size: 16)).foregroundStyle(WF.ink3).padding(.vertical, 8)
                 } else {
                     VStack(spacing: 16) {
                         // Each person row opens the Chores page too, not just the header —
@@ -835,7 +835,7 @@ struct KioskDashboard: View {
     }
 
     private func personChoreRow(_ p: WaffledAPI.PersonChoresDTO) -> some View {
-        let tint = Color(hexString: p.colorHex) ?? NK.primary
+        let tint = Color(hexString: p.colorHex) ?? WF.primary
         let frac = p.total > 0 ? Double(p.done) / Double(p.total) : 0
         return HStack(spacing: 14) {
             ZStack {
@@ -846,11 +846,11 @@ struct KioskDashboard: View {
                 Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 36)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(p.name).font(.system(size: 18, weight: .bold)).foregroundStyle(NK.ink)
-                Text("\(p.done) of \(p.total) done").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
+                Text(p.name).font(.system(size: 18, weight: .bold)).foregroundStyle(WF.ink)
+                Text("\(p.done) of \(p.total) done").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
             }
             Spacer(minLength: 6)
-            Text("★ \(p.stars)").font(.system(size: 17, weight: .heavy)).foregroundStyle(NK.gold)
+            Text("★ \(p.stars)").font(.system(size: 17, weight: .heavy)).foregroundStyle(WF.gold)
         }
         .contentShape(Rectangle())   // the whole row (incl. the spacer gap) is tappable
     }
@@ -863,7 +863,7 @@ struct KioskDashboard: View {
                 cardHeader("Grocery", trailing: "\(model.groceryActive.count) to buy", chevron: true) { navigate(.lists) }
                 if model.groceryActive.isEmpty {
                     Text(model.loaded ? "All bought ✓" : "Loading…")
-                        .font(.system(size: 16)).foregroundStyle(NK.ink3).padding(.vertical, 8)
+                        .font(.system(size: 16)).foregroundStyle(WF.ink3).padding(.vertical, 8)
                     Spacer(minLength: 0)
                 } else {
                     // The full list scrolls within the card; the add row below stays pinned.
@@ -872,7 +872,7 @@ struct KioskDashboard: View {
                             ForEach(Array(model.groceryActive.enumerated()), id: \.element.id) { idx, item in
                                 groceryRow(item)
                                 if idx < model.groceryActive.count - 1 {
-                                    Rectangle().fill(NK.hair2).frame(height: 1)
+                                    Rectangle().fill(WF.hair2).frame(height: 1)
                                 }
                             }
                         }
@@ -888,20 +888,20 @@ struct KioskDashboard: View {
     private var groceryAddRow: some View {
         HStack(spacing: 12) {
             Image(systemName: "plus.circle.fill").font(.system(size: 22))
-                .foregroundStyle(groceryDraft.isEmpty ? NK.ink3 : NK.primary)
+                .foregroundStyle(groceryDraft.isEmpty ? WF.ink3 : WF.primary)
             TextField("Add an item", text: $groceryDraft)
-                .font(.system(size: 17)).foregroundStyle(NK.ink)
+                .font(.system(size: 17)).foregroundStyle(WF.ink)
                 .focused($groceryFocused)
                 .submitLabel(.done)
                 .onSubmit(addGroceryItem)
             if !groceryDraft.isEmpty {
                 Button("Add", action: addGroceryItem)
-                    .font(.system(size: 15, weight: .bold)).foregroundStyle(NK.primary)
+                    .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.primary)
                     .buttonStyle(.plain)
             }
         }
         .padding(.vertical, 11)
-        .overlay(alignment: .top) { Rectangle().fill(NK.hair2).frame(height: 1) }
+        .overlay(alignment: .top) { Rectangle().fill(WF.hair2).frame(height: 1) }
     }
 
     private func addGroceryItem() {
@@ -917,12 +917,12 @@ struct KioskDashboard: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: item.checked ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 22)).foregroundStyle(item.checked ? NK.primary : NK.ink3)
-                Text(item.name).font(.system(size: 17)).foregroundStyle(item.checked ? NK.ink3 : NK.ink)
-                    .strikethrough(item.checked, color: NK.ink3).lineLimit(1)
+                    .font(.system(size: 22)).foregroundStyle(item.checked ? WF.primary : WF.ink3)
+                Text(item.name).font(.system(size: 17)).foregroundStyle(item.checked ? WF.ink3 : WF.ink)
+                    .strikethrough(item.checked, color: WF.ink3).lineLimit(1)
                 Spacer(minLength: 6)
                 if let q = item.quantity, !q.isEmpty {
-                    Text(q).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
+                    Text(q).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
             }
             .padding(.vertical, 11).contentShape(Rectangle())
@@ -937,10 +937,10 @@ struct KioskDashboard: View {
     @ViewBuilder
     private func cardHeader(_ title: String, trailing: String? = nil, chevron: Bool, action: (() -> Void)? = nil) -> some View {
         let content = HStack(spacing: 8) {
-            Text(title).font(.system(size: 16, weight: .heavy)).foregroundStyle(NK.ink)
+            Text(title).font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
             Spacer(minLength: 6)
-            if let trailing { Text(trailing).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3) }
-            if chevron { Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3) }
+            if let trailing { Text(trailing).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3) }
+            if chevron { Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3) }
         }
         .contentShape(Rectangle())
         if let action {
@@ -954,16 +954,16 @@ struct KioskDashboard: View {
         Button(action: action) {
             Text(label).font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
                 .frame(maxWidth: .infinity).padding(.vertical, 13)
-                .background(NK.primary).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                .background(WF.primary).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         }
         .buttonStyle(.plain)
     }
 
     private func secondaryButton(_ label: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(label).font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
+            Text(label).font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink)
                 .frame(maxWidth: .infinity).padding(.vertical, 13)
-                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -1113,10 +1113,10 @@ struct KioskCard<Content: View>: View {
         content()
             .padding(22)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
-            .nkShadow1()
+            .background(WF.card)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+            .wfShadow1()
     }
 }
 

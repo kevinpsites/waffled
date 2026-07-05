@@ -33,7 +33,7 @@ struct AccountSettingsView: View {
             }
             .padding(16).padding(.bottom, 110)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle("Households").navigationBarTitleDisplayMode(.inline)
         .task { await load() }
     }
@@ -45,11 +45,11 @@ struct AccountSettingsView: View {
                 HStack(spacing: 12) {
                     Avatar(colorHex: me?.colorHex, emoji: me?.avatarEmoji ?? "🙂", size: 44)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(me?.name ?? "—").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
+                        Text(me?.name ?? "—").font(.system(size: 17, weight: .bold)).foregroundStyle(WF.ink)
                         HStack(spacing: 6) {
-                            if me?.isOwner == true { tag("Owner", NK.gold) }
-                            else if me?.isAdmin == true { tag("Admin", NK.primary) }
-                            tag(me?.memberType.capitalized ?? "Member", NK.ink3)
+                            if me?.isOwner == true { tag("Owner", WF.gold) }
+                            else if me?.isAdmin == true { tag("Admin", WF.primary) }
+                            tag(me?.memberType.capitalized ?? "Member", WF.ink3)
                         }
                     }
                     Spacer(minLength: 0)
@@ -62,10 +62,10 @@ struct AccountSettingsView: View {
         WaffledCard {
             HStack(spacing: 12) {
                 Text("🏡").font(.system(size: 22)).frame(width: 40, height: 40)
-                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(settings?.household.name ?? "Household").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                    Text(settings?.household.timezone ?? "").font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                    Text(settings?.household.name ?? "Household").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                    Text(settings?.household.timezone ?? "").font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 0)
             }
@@ -83,11 +83,11 @@ struct AccountSettingsView: View {
             VStack(alignment: .leading, spacing: 10) {
                 SectionLabel(text: "Your households").padding(.top, 6)
                 Text("Switch which household this device is showing. Your other households stay signed in.")
-                    .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                     .fixedSize(horizontal: false, vertical: true)
                 ForEach(o.memberships) { membershipRow($0, activeId: o.household?.id) }
                 if let actionError {
-                    Text(actionError).font(.system(size: 12.5, weight: .medium)).foregroundStyle(NK.primary)
+                    Text(actionError).font(.system(size: 12.5, weight: .medium)).foregroundStyle(WF.primary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -102,21 +102,21 @@ struct AccountSettingsView: View {
         } label: {
             HStack(spacing: 12) {
                 Text("🏡").font(.system(size: 20)).frame(width: 40, height: 40)
-                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(m.householdName).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                    Text(m.householdName).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                     Text(m.isAdmin ? "Admin" : m.memberType.capitalized)
-                        .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 12)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 0)
-                if isCurrent { tag("Current", NK.primary) }
-                else if busy { ProgressView().controlSize(.small).tint(NK.ink3) }
-                else { Image(systemName: "arrow.left.arrow.right").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink3) }
+                if isCurrent { tag("Current", WF.primary) }
+                else if busy { ProgressView().controlSize(.small).tint(WF.ink3) }
+                else { Image(systemName: "arrow.left.arrow.right").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink3) }
             }
-            .padding(12).background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-                .strokeBorder(isCurrent ? NK.primary.opacity(0.4) : NK.hair, lineWidth: 1))
+            .padding(12).background(WF.card)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                .strokeBorder(isCurrent ? WF.primary.opacity(0.4) : WF.hair, lineWidth: 1))
         }
         .buttonStyle(.plain)
         .disabled(isCurrent || switchingTo != nil)
@@ -137,27 +137,27 @@ struct AccountSettingsView: View {
     private func inviteRow(_ inv: WaffledAPI.PendingInvite) -> some View {
         HStack(spacing: 12) {
             Text("✉️").font(.system(size: 20)).frame(width: 40, height: 40)
-                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text(inv.householdName).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                Text(inv.householdName).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                 Text("Invited as \(inv.isAdmin ? "Admin" : inv.memberType.capitalized)")
-                    .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 12)).foregroundStyle(WF.ink3)
             }
             Spacer(minLength: 0)
             Button { Task { await accept(inv) } } label: {
                 if acceptingId == inv.id {
-                    ProgressView().controlSize(.small).tint(NK.primary)
+                    ProgressView().controlSize(.small).tint(WF.primary)
                 } else {
                     Text("Accept").font(.system(size: 12.5, weight: .bold)).foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 7)
-                        .background(NK.primary).clipShape(Capsule())
+                        .background(WF.primary).clipShape(Capsule())
                 }
             }
             .buttonStyle(.plain).disabled(acceptingId != nil)
         }
-        .padding(12).background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .padding(12).background(WF.card)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     /// Switch the active household: mint a token for it, adopt the session, then clear +
@@ -235,14 +235,14 @@ struct PairKioskSheet: View {
                     } else if let code {
                         codeCard(code)
                     } else if let error {
-                        Text(error).font(.system(size: 14, weight: .medium)).foregroundStyle(NK.primary).padding(.top, 40)
+                        Text(error).font(.system(size: 14, weight: .medium)).foregroundStyle(WF.primary).padding(.top, 40)
                     } else {
-                        ProgressView().tint(NK.ink3).padding(.top, 48)
+                        ProgressView().tint(WF.ink3).padding(.top, 48)
                     }
                 }
                 .padding(24)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Pair a kiosk").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button(pairedLabel == nil ? "Cancel" : "Done") { dismiss() } }
@@ -254,26 +254,26 @@ struct PairKioskSheet: View {
     private func codeCard(_ c: WaffledAPI.PairingCode) -> some View {
         VStack(spacing: 16) {
             Text("Enter this code on the new tablet")
-                .font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink2)
+                .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink2)
                 .multilineTextAlignment(.center)
             Text(c.code)
                 .font(.system(size: 44, weight: .heavy, design: .monospaced))
-                .tracking(6).foregroundStyle(NK.ink)
+                .tracking(6).foregroundStyle(WF.ink)
                 .padding(.vertical, 18).frame(maxWidth: .infinity)
-                .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
             Button {
                 UIPasteboard.general.string = c.code; copied = true
             } label: {
-                Text(copied ? "Copied ✓" : "Copy code").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.primary)
+                Text(copied ? "Copied ✓" : "Copy code").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.primary)
             }
             .buttonStyle(.plain)
             Text("On the tablet: open this Waffled’s address → “Set up this device as a kiosk” → enter the code. It’s one-time and expires in about 10 minutes.")
-                .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                .font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 7) {
-                ProgressView().controlSize(.small).tint(NK.ink3)
-                Text("Waiting for a device to pair…").font(.system(size: 12.5, weight: .medium)).foregroundStyle(NK.ink3)
+                ProgressView().controlSize(.small).tint(WF.ink3)
+                Text("Waiting for a device to pair…").font(.system(size: 12.5, weight: .medium)).foregroundStyle(WF.ink3)
             }
             .padding(.top, 4)
         }
@@ -282,12 +282,12 @@ struct PairKioskSheet: View {
     private func success(_ label: String) -> some View {
         VStack(spacing: 12) {
             Text("✅").font(.system(size: 48))
-            Text("A device just paired").font(.system(size: 18, weight: .bold)).foregroundStyle(NK.ink)
-            Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink2)
+            Text("A device just paired").font(.system(size: 18, weight: .bold)).foregroundStyle(WF.ink)
+            Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink2)
                 .padding(.horizontal, 12).padding(.vertical, 5)
-                .background(NK.panel).clipShape(Capsule())
+                .background(WF.panel).clipShape(Capsule())
             Text("If you’re still naming it on the tablet, the name updates here. Tap Done when you’re finished.")
-                .font(.system(size: 13)).foregroundStyle(NK.ink3).multilineTextAlignment(.center)
+                .font(.system(size: 13)).foregroundStyle(WF.ink3).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.top, 40)

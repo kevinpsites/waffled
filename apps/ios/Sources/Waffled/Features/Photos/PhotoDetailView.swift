@@ -50,14 +50,14 @@ struct PhotoDetailView: View {
                         detailsCard
                     }
                     if let errorText {
-                        Text(errorText).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.primaryD)
+                        Text(errorText).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.primaryD)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .padding(isKiosk ? 24 : 16)
                 .padding(.bottom, 40)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Photo")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -106,7 +106,7 @@ struct PhotoDetailView: View {
         }
         .frame(maxWidth: .infinity)
         .background(tint)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
     }
 
     private var emojiStage: some View {
@@ -117,7 +117,7 @@ struct PhotoDetailView: View {
         .frame(height: 280).frame(maxWidth: .infinity)
     }
 
-    private var tint: Color { Color(hexString: photo.colorHex) ?? NK.panel }
+    private var tint: Color { Color(hexString: photo.colorHex) ?? WF.panel }
 
     // MARK: details (read mode)
 
@@ -128,20 +128,20 @@ struct PhotoDetailView: View {
         return WaffledCard {
             VStack(alignment: .leading, spacing: 0) {
                 if !caption.isEmpty {
-                    Text(caption).font(NK.serif(22)).foregroundStyle(NK.ink)
+                    Text(caption).font(WF.serif(22)).foregroundStyle(WF.ink)
                         .padding(.bottom, 12)
                 }
                 favoriteRow
-                Divider().overlay(NK.hair)
+                Divider().overlay(WF.hair)
                 infoRow("Album", value: trimmedAlbum.isEmpty ? "—" : trimmedAlbum)
-                Divider().overlay(NK.hair)
+                Divider().overlay(WF.hair)
                 addedByRow
-                Divider().overlay(NK.hair)
+                Divider().overlay(WF.hair)
                 infoRow("Date", value: dateLabel)
                 if !trimmedAlbum.isEmpty, memoryCount > 1 {
-                    Divider().overlay(NK.hair)
+                    Divider().overlay(WF.hair)
                     Text("\(memoryCount) photos in “\(trimmedAlbum)”")
-                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                         .padding(.top, 11)
                 }
             }
@@ -151,7 +151,7 @@ struct PhotoDetailView: View {
     private var favoriteRow: some View {
         Button { Task { await toggleFavorite() } } label: {
             HStack {
-                Text("Favorite").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                Text("Favorite").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                 Spacer()
                 if busy { ProgressView().controlSize(.small) }
                 Text(isFavorite ? "❤️" : "🤍").font(.system(size: 20))
@@ -163,9 +163,9 @@ struct PhotoDetailView: View {
 
     private func infoRow(_ label: String, value: String) -> some View {
         HStack {
-            Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+            Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
             Spacer()
-            Text(value).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
+            Text(value).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
                 .multilineTextAlignment(.trailing)
         }
         .padding(.vertical, 11)
@@ -173,15 +173,15 @@ struct PhotoDetailView: View {
 
     private var addedByRow: some View {
         HStack {
-            Text("Added by").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+            Text("Added by").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
             Spacer()
             if let by = photo.uploadedBy {
                 HStack(spacing: 7) {
                     Avatar(colorHex: by.colorHex, emoji: by.avatarEmoji ?? "🙂", size: 26)
-                    Text(by.name ?? "—").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
+                    Text(by.name ?? "—").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
                 }
             } else {
-                Text("—").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
+                Text("—").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
             }
         }
         .padding(.vertical, 9)
@@ -194,7 +194,7 @@ struct PhotoDetailView: View {
     @ViewBuilder
     private func field<V: View>(label: String, @ViewBuilder _ content: () -> V) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(label).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
+            Text(label).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
             content()
         }
     }
@@ -207,13 +207,13 @@ struct PhotoDetailView: View {
                         .font(.system(size: 16))
                         .textInputAutocapitalization(.sentences)
                         .padding(.horizontal, 13).padding(.vertical, 12)
-                        .nkField(fill: NK.panel)
+                        .wfField(fill: WF.panel)
                 }
                 field(label: "ALBUM") {
                     TextField("Album (optional)", text: $album)
                         .font(.system(size: 16))
                         .padding(.horizontal, 13).padding(.vertical, 12)
-                        .nkField(fill: NK.panel)
+                        .wfField(fill: WF.panel)
                     if !albums.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
@@ -229,21 +229,21 @@ struct PhotoDetailView: View {
                         .labelsHidden()
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 13).padding(.vertical, 8)
-                        .nkField(fill: NK.panel)
+                        .wfField(fill: WF.panel)
                 }
                 // Save sits right under the fields (in addition to the toolbar), so the
                 // primary action is obvious without hunting for the top-right button.
                 HStack(spacing: 10) {
                     Button { cancelEdit() } label: {
-                        Text("Cancel").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+                        Text("Cancel").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink2)
                             .frame(maxWidth: .infinity).padding(.vertical, 11)
-                            .background(NK.panel).clipShape(Capsule())
+                            .background(WF.panel).clipShape(Capsule())
                     }
                     .buttonStyle(.plain).disabled(saving)
                     Button { Task { await save() } } label: {
                         Text(saving ? "Saving…" : "Save changes").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
                             .frame(maxWidth: .infinity).padding(.vertical, 11)
-                            .background(NK.primary).clipShape(Capsule())
+                            .background(WF.primary).clipShape(Capsule())
                     }
                     .buttonStyle(.plain).disabled(saving)
                 }

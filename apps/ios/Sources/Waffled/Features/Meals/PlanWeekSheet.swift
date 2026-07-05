@@ -55,7 +55,7 @@ struct PlanWeekSheet: View {
     var body: some View {
         NavigationStack {
             content
-                .background(NK.canvas)
+                .background(WF.canvas)
                 .navigationTitle("Plan my week").navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -97,9 +97,9 @@ struct PlanWeekSheet: View {
         case .config:
             VStack(spacing: 12) {
                 Text("✨").font(.system(size: 40))
-                Text("Draft your week").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
+                Text("Draft your week").font(.system(size: 17, weight: .bold)).foregroundStyle(WF.ink)
                 Text("Set the meal, days, and any notes on the left, then tap Plan my week.")
-                    .font(.system(size: 13)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 13)).foregroundStyle(WF.ink3)
                     .multilineTextAlignment(.center).padding(.horizontal, 40)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -126,7 +126,7 @@ struct PlanWeekSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Tell Waffled the guardrails — it drafts the meals and the grocery list in one go.")
-                        .font(.system(size: 14)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 14)).foregroundStyle(WF.ink3)
                         .fixedSize(horizontal: false, vertical: true)
 
                     // Plan which meal?
@@ -136,19 +136,19 @@ struct PlanWeekSheet: View {
                                 Button { mealType = m } label: {
                                     Text(m.capitalized)
                                         .font(.system(size: 14, weight: mealType == m ? .bold : .medium))
-                                        .foregroundStyle(mealType == m ? NK.ink : NK.ink3)
+                                        .foregroundStyle(mealType == m ? WF.ink : WF.ink3)
                                         .frame(maxWidth: .infinity).padding(.vertical, 9)
                                         .background(
                                             mealType == m
-                                                ? AnyView(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).fill(NK.card)
+                                                ? AnyView(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).fill(WF.card)
                                                     .shadow(color: .black.opacity(0.06), radius: 3, y: 1))
                                                 : AnyView(Color.clear))
                                 }
                                 .buttonStyle(.plain)
                             }
                         }
-                        .padding(3).background(NK.panel)
-                        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                        .padding(3).background(WF.panel)
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     }
 
                     // Which days?
@@ -161,7 +161,7 @@ struct PlanWeekSheet: View {
                     // Cooking for
                     WaffledCard(padding: 14) {
                         HStack {
-                            Text("Cooking for").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                            Text("Cooking for").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                             Spacer()
                             Menu {
                                 Button { cookingFor = 0 } label: { Text("\(familySize) · whole family") }
@@ -183,7 +183,7 @@ struct PlanWeekSheet: View {
                                   text: $keepInMind, axis: .vertical)
                             .font(.system(size: 14)).lineLimit(2...4)
                             .padding(.horizontal, 12).padding(.vertical, 10)
-                            .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                            .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                     }
                 }
                 .padding(20)
@@ -194,17 +194,17 @@ struct PlanWeekSheet: View {
 
     private var suggestBar: some View {
         VStack(spacing: 0) {
-            Divider().background(NK.hair)
+            Divider().background(WF.hair)
             Button { Task { await suggest() } } label: {
                 Text("✨ Plan my week").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 14)
-                    .background(selectedDays.isEmpty ? NK.ink3 : NK.ai)
-                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    .background(selectedDays.isEmpty ? WF.ink3 : WF.ai)
+                    .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
             }
             .buttonStyle(.plain).disabled(selectedDays.isEmpty)
             .padding(.horizontal, 16).padding(.vertical, 12)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
     }
 
     private func dayChip(_ d: Date) -> some View {
@@ -242,9 +242,9 @@ struct PlanWeekSheet: View {
                 VStack(spacing: 10) {
                     HStack {
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("Here’s your week").font(NK.serif(17, .bold)).foregroundStyle(NK.ink)
+                            Text("Here’s your week").font(WF.serif(17, .bold)).foregroundStyle(WF.ink)
                             if let via { Text("Drafted via \(MealPlanText.viaLabel(via))")
-                                .font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3) }
+                                .font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3) }
                         }
                         Spacer()
                         PlanReshuffleButton(isBusy: redrafting && draftingDates.count > 1,
@@ -257,10 +257,10 @@ struct PlanWeekSheet: View {
                             Image(systemName: "info.circle.fill").font(.system(size: 12))
                             Text(notice).font(.system(size: 12, weight: .medium))
                         }
-                        .foregroundStyle(NK.primary)
+                        .foregroundStyle(WF.primary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 12).padding(.vertical, 9)
-                        .background(NK.primary.opacity(0.10)).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                        .background(WF.primary.opacity(0.10)).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                     }
                     if isKiosk {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 300, maximum: 460), spacing: 12, alignment: .top)],
@@ -271,7 +271,7 @@ struct PlanWeekSheet: View {
                         ForEach(suggestions) { card in suggestionCard(card) }
                     }
                     Text("Lock the nights you love, swap or pick the rest.")
-                        .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 12)).foregroundStyle(WF.ink3)
                         .frame(maxWidth: .infinity, alignment: .center).padding(.top, 2)
                 }
                 .padding(16)

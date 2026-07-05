@@ -41,11 +41,11 @@ struct FamilyPeopleSettingsView: View {
                         Image(systemName: "plus").font(.system(size: 13, weight: .bold))
                         Text("Add a person").font(.system(size: 14, weight: .semibold))
                     }
-                    .foregroundStyle(NK.ink2).frame(maxWidth: .infinity).padding(.vertical, 12)
-                    .background(NK.card2)
-                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-                        .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundStyle(NK.hair))
-                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    .foregroundStyle(WF.ink2).frame(maxWidth: .infinity).padding(.vertical, 12)
+                    .background(WF.card2)
+                    .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                        .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundStyle(WF.hair))
+                    .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                 }
                 .buttonStyle(.plain).padding(.top, 2)
 
@@ -57,7 +57,7 @@ struct FamilyPeopleSettingsView: View {
             }
             .padding(16).padding(.bottom, 110)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle("Family & People").navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .sheet(item: $editor) { e in
@@ -72,25 +72,25 @@ struct FamilyPeopleSettingsView: View {
             HStack(spacing: 12) {
                 Avatar(colorHex: m.colorHex, emoji: m.avatarEmoji ?? "🙂", size: 44)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(m.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                    Text(roleLine(m)).font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                    Text(m.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                    Text(roleLine(m)).font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 0)
                 // Quick badges for who can sign in / has a kiosk PIN.
                 if m.hasLogin { glyph("key.fill") }
                 if m.hasPin { glyph("lock.fill") }
-                Image(systemName: "pencil").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                Image(systemName: "pencil").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
             }
-            .padding(12).background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .padding(12).background(WF.card)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
 
     private func glyph(_ name: String) -> some View {
-        Image(systemName: name).font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
-            .frame(width: 22, height: 22).background(NK.panel).clipShape(Circle())
+        Image(systemName: name).font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
+            .frame(width: 22, height: 22).background(WF.panel).clipShape(Circle())
     }
 
     private func roleLine(_ m: WaffledAPI.HouseholdSettings.Member) -> String {
@@ -112,14 +112,14 @@ struct FamilyPeopleSettingsView: View {
                         .submitLabel(.done)
                         .onSubmit { commit(["name": .string(hName.trimmingCharacters(in: .whitespaces))]) }
                 }
-                Divider().background(NK.hair)
+                Divider().background(WF.hair)
                 fieldRow("🗓️", "Week starts") {
                     Menu {
                         Button("Sunday") { commit(["weekStart": .string("sunday")]) }
                         Button("Monday") { commit(["weekStart": .string("monday")]) }
                     } label: { WaffledSettingsMenuLabel(value: h.weekStart.capitalized) }
                 }
-                Divider().background(NK.hair)
+                Divider().background(WF.hair)
                 fieldRow("🌐", "Time zone") {
                     Menu {
                         ForEach(zoneOptions(h.timezone), id: \.0) { z in
@@ -127,7 +127,7 @@ struct FamilyPeopleSettingsView: View {
                         }
                     } label: { WaffledSettingsMenuLabel(value: zoneLabel(h.timezone)) }
                 }
-                Divider().background(NK.hair)
+                Divider().background(WF.hair)
                 fieldRow("📍", "Location") {
                     TextField("City, State", text: $hLocation)
                         .multilineTextAlignment(.trailing).font(.system(size: 15))
@@ -136,15 +136,15 @@ struct FamilyPeopleSettingsView: View {
                 }
             }
             .padding(.horizontal, 14)
-            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
         }
     }
 
     private func fieldRow<T: View>(_ emoji: String, _ label: String, @ViewBuilder _ control: () -> T) -> some View {
         HStack(spacing: 10) {
             Text(emoji).font(.system(size: 16))
-            Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+            Text(label).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
             Spacer(minLength: 12)
             control()
         }
@@ -203,7 +203,7 @@ struct PermissionsCard: View {
         VStack(alignment: .leading, spacing: 12) {
             SectionLabel(text: "Permissions").padding(.top, 14)
             Text("Choose what each role can do. Admins can always do everything, and everyone can always finish their own chores and redeem their own rewards.")
-                .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                .font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                 .fixedSize(horizontal: false, vertical: true)
             if let matrix {
                 ForEach(Self.roles, id: \.self) { role in roleCard(role, matrix[role] ?? [:]) }
@@ -217,27 +217,27 @@ struct PermissionsCard: View {
     private func roleCard(_ role: String, _ row: [String: Bool]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(Self.roleLabel[role] ?? role.capitalized)
-                .font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                .font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 12).padding(.bottom, 4)
             ForEach(Array(Self.caps.enumerated()), id: \.element) { i, cap in
-                if i > 0 { Divider().background(NK.hair) }
+                if i > 0 { Divider().background(WF.hair) }
                 Toggle(isOn: Binding(
                     get: { row[cap] ?? false },
                     set: { _ in toggle(role, cap) })) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(Self.capLabel[cap] ?? cap)
-                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink)
+                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
                         Text(Self.capSub[cap] ?? "")
-                            .font(.system(size: 11.5)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 11.5)).foregroundStyle(WF.ink3)
                     }
                 }
-                .tint(NK.primary).disabled(saving).padding(.vertical, 9)
+                .tint(WF.primary).disabled(saving).padding(.vertical, 9)
             }
         }
         .padding(.horizontal, 14).padding(.bottom, 6)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     /// Flip one cell optimistically and save the whole matrix; revert on failure.
@@ -337,7 +337,7 @@ struct PersonEditorSheet: View {
                 }
                 .padding(20)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle(editing == nil ? "New person" : "Edit \(editing?.name ?? "person")")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
@@ -350,16 +350,16 @@ struct PersonEditorSheet: View {
                 Button { tab = t } label: {
                     Text(t == .general ? "General" : "Sign-in")
                         .font(.system(size: 14, weight: tab == t ? .bold : .medium))
-                        .foregroundStyle(tab == t ? NK.ink : NK.ink3)
+                        .foregroundStyle(tab == t ? WF.ink : WF.ink3)
                         .frame(maxWidth: .infinity).padding(.vertical, 9)
                         .background(tab == t
-                            ? AnyView(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).fill(NK.card))
+                            ? AnyView(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).fill(WF.card))
                             : AnyView(Color.clear))
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(3).background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .padding(3).background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
     }
 
     // MARK: general (profile)
@@ -368,13 +368,13 @@ struct PersonEditorSheet: View {
         HStack(spacing: 14) {
             TextField("🙂", text: $emoji)
                 .font(.system(size: 30)).multilineTextAlignment(.center)
-                .frame(width: 64, height: 64).background(NK.panel)
+                .frame(width: 64, height: 64).background(WF.panel)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .onChange(of: emoji) { _, v in if v.count > 3 { emoji = String(v.prefix(3)) } }
             TextField("Name", text: $name)
                 .font(.system(size: 17, weight: .semibold))
                 .padding(.horizontal, 14).padding(.vertical, 14)
-                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         }
 
         VStack(alignment: .leading, spacing: 9) {
@@ -384,16 +384,16 @@ struct PersonEditorSheet: View {
                     Button { memberType = t } label: {
                         Text(t.capitalized)
                             .font(.system(size: 14, weight: memberType == t ? .bold : .medium))
-                            .foregroundStyle(memberType == t ? NK.ink : NK.ink3)
+                            .foregroundStyle(memberType == t ? WF.ink : WF.ink3)
                             .frame(maxWidth: .infinity).padding(.vertical, 9)
                             .background(memberType == t
-                                ? AnyView(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).fill(NK.card))
+                                ? AnyView(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).fill(WF.card))
                                 : AnyView(Color.clear))
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(3).background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .padding(3).background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         }
 
         VStack(alignment: .leading, spacing: 9) {
@@ -402,8 +402,8 @@ struct PersonEditorSheet: View {
         }
 
         Toggle(isOn: $hasBirthday) {
-            Text("Birthday").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-        }.tint(NK.primary)
+            Text("Birthday").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+        }.tint(WF.primary)
         if hasBirthday {
             DatePicker("", selection: $birthday, displayedComponents: .date)
                 .datePickerStyle(.compact).labelsHidden()
@@ -412,25 +412,25 @@ struct PersonEditorSheet: View {
 
         Toggle(isOn: $isAdmin) {
             VStack(alignment: .leading, spacing: 1) {
-                Text("Admin").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                Text("Can add people & change settings").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                Text("Admin").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                Text("Can add people & change settings").font(.system(size: 12)).foregroundStyle(WF.ink3)
             }
-        }.tint(NK.primary)
+        }.tint(WF.primary)
         Toggle(isOn: $showOnKiosk) {
             VStack(alignment: .leading, spacing: 1) {
-                Text("Show on kiosk").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                Text("Appears on the family display").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                Text("Show on kiosk").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                Text("Appears on the family display").font(.system(size: 12)).foregroundStyle(WF.ink3)
             }
-        }.tint(NK.primary)
+        }.tint(WF.primary)
 
-        if let error { Text(error).font(.system(size: 13, weight: .medium)).foregroundStyle(NK.primary) }
+        if let error { Text(error).font(.system(size: 13, weight: .medium)).foregroundStyle(WF.primary) }
 
         Button { Task { await save() } } label: {
             Text(busy ? "Saving…" : (editing == nil ? "Add person" : "Save"))
                 .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
                 .frame(maxWidth: .infinity).padding(.vertical, 14)
-                .background(name.trimmingCharacters(in: .whitespaces).isEmpty ? NK.ink3 : NK.primary)
-                .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                .background(name.trimmingCharacters(in: .whitespaces).isEmpty ? WF.ink3 : WF.primary)
+                .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         }
         .buttonStyle(.plain).disabled(busy || name.trimmingCharacters(in: .whitespaces).isEmpty)
 
@@ -440,12 +440,12 @@ struct PersonEditorSheet: View {
             } label: {
                 Text(confirmDelete ? "Tap again to remove" : "Remove person")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(confirmDelete ? NK.primary : NK.ink3).frame(maxWidth: .infinity)
+                    .foregroundStyle(confirmDelete ? WF.primary : WF.ink3).frame(maxWidth: .infinity)
             }
             .buttonStyle(.plain)
         } else if editing?.isOwner == true {
             Text("The household owner can’t be removed.")
-                .font(.system(size: 12)).foregroundStyle(NK.ink3).frame(maxWidth: .infinity)
+                .font(.system(size: 12)).foregroundStyle(WF.ink3).frame(maxWidth: .infinity)
         }
     }
 
@@ -460,24 +460,24 @@ struct PersonEditorSheet: View {
         WaffledCard {
             VStack(alignment: .leading, spacing: 12) {
                 SectionLabel(text: "🔑  Login")
-                Text(loginStatus).font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                Text(loginStatus).font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                     .fixedSize(horizontal: false, vertical: true)
                 TextField("Email", text: $email)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .keyboardType(.emailAddress).textContentType(.username)
-                    .padding(12).background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                    .padding(12).background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                 SecureField(hasPassword ? "New password (leave blank to keep)" : "Password (optional — blank invites SSO)", text: $password)
                     .textContentType(.newPassword)
-                    .padding(12).background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
-                if let loginError { Text(loginError).font(.system(size: 12.5, weight: .medium)).foregroundStyle(NK.primary) }
+                    .padding(12).background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                if let loginError { Text(loginError).font(.system(size: 12.5, weight: .medium)).foregroundStyle(WF.primary) }
                 else if let loginNote { Text(loginNote).font(.system(size: 12.5, weight: .medium)).foregroundStyle(Color(hex: 0x25A368)) }
 
                 Button { Task { await saveLogin() } } label: {
                     Text(loginBusy ? "Saving…" : (hasLogin ? "Update login" : "Give a login"))
                         .font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
                         .frame(maxWidth: .infinity).padding(.vertical, 12)
-                        .background(canSaveLogin ? NK.primary : NK.ink3)
-                        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                        .background(canSaveLogin ? WF.primary : WF.ink3)
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                 }
                 .buttonStyle(.plain).disabled(!canSaveLogin || loginBusy)
 
@@ -487,7 +487,7 @@ struct PersonEditorSheet: View {
                     } label: {
                         Text(confirmRemoveLogin ? "Tap again to remove login" : "Remove login")
                             .font(.system(size: 13.5, weight: .semibold))
-                            .foregroundStyle(confirmRemoveLogin ? NK.primary : NK.ink3).frame(maxWidth: .infinity)
+                            .foregroundStyle(confirmRemoveLogin ? WF.primary : WF.ink3).frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.plain)
                 }
@@ -501,21 +501,21 @@ struct PersonEditorSheet: View {
                 SectionLabel(text: "🔒  Kiosk PIN")
                 Text(hasPin ? "Set — required to open this profile on the kiosk."
                             : "Optional — set one to protect this profile on a shared kiosk.")
-                    .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                     .fixedSize(horizontal: false, vertical: true)
                 SecureField("4–8 digits", text: $pin)
                     .keyboardType(.numberPad).textContentType(.oneTimeCode)
                     .onChange(of: pin) { _, v in pin = String(v.filter(\.isNumber).prefix(8)) }
-                    .padding(12).background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
-                if let pinError { Text(pinError).font(.system(size: 12.5, weight: .medium)).foregroundStyle(NK.primary) }
+                    .padding(12).background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                if let pinError { Text(pinError).font(.system(size: 12.5, weight: .medium)).foregroundStyle(WF.primary) }
                 else if let pinNote { Text(pinNote).font(.system(size: 12.5, weight: .medium)).foregroundStyle(Color(hex: 0x25A368)) }
 
                 Button { Task { await savePin() } } label: {
                     Text(pinBusy ? "Saving…" : (hasPin ? "Update PIN" : "Set PIN"))
                         .font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
                         .frame(maxWidth: .infinity).padding(.vertical, 12)
-                        .background(validPin ? NK.primary : NK.ink3)
-                        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                        .background(validPin ? WF.primary : WF.ink3)
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                 }
                 .buttonStyle(.plain).disabled(!validPin || pinBusy)
 
@@ -525,7 +525,7 @@ struct PersonEditorSheet: View {
                     } label: {
                         Text(confirmRemovePin ? "Tap again to remove PIN" : "Remove PIN")
                             .font(.system(size: 13.5, weight: .semibold))
-                            .foregroundStyle(confirmRemovePin ? NK.primary : NK.ink3).frame(maxWidth: .infinity)
+                            .foregroundStyle(confirmRemovePin ? WF.primary : WF.ink3).frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.plain)
                 }

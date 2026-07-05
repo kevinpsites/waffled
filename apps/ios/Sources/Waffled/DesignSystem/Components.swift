@@ -1,22 +1,22 @@
 import SwiftUI
 
-// Reusable Waffled building blocks — the SwiftUI equivalents of nook.css's
+// Reusable Waffled building blocks — the SwiftUI equivalents of waffled.css's
 // `.card`, `.pill`, `.av`, section labels and the AI capture bar.
 
 /// A white rounded surface (`.card`). Pass the content; padding/insets are the
 /// caller's choice so it works for both list cards and split media cards.
 struct WaffledCard<Content: View>: View {
     var padding: CGFloat = 16
-    var radius: CGFloat = NK.rLG
+    var radius: CGFloat = WF.rLG
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         content()
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(NK.card)
+            .background(WF.card)
             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-            .nkShadow1()
+            .wfShadow1()
     }
 }
 
@@ -27,7 +27,7 @@ struct SectionLabel: View {
         Text(text.uppercased())
             .font(.system(size: 12.5, weight: .heavy))
             .tracking(0.6)
-            .foregroundStyle(NK.ink3)
+            .foregroundStyle(WF.ink3)
     }
 }
 
@@ -38,21 +38,21 @@ struct Pill: View {
         Text(text)
             .font(.system(size: 12, weight: .semibold))
             .padding(.horizontal, 12).padding(.vertical, 5)
-            .background(NK.panel)
-            .foregroundStyle(NK.ink2)
+            .background(WF.panel)
+            .foregroundStyle(WF.ink2)
             .clipShape(Capsule())
     }
 }
 
 /// The canonical full-width primary call-to-action — modeled on `PlanApplyBar`'s
-/// button (size-16 bold white label, `.vertical` 14 padding, `NK.rMD` corners).
+/// button (size-16 bold white label, `.vertical` 14 padding, `WF.rMD` corners).
 ///
-/// `tint` is SEMANTIC: pass `NK.ai` for AI actions, `NK.primary` for normal ones.
+/// `tint` is SEMANTIC: pass `WF.ai` for AI actions, `WF.primary` for normal ones.
 /// `isBusy` shows a small white spinner before the label; `isDisabled` greys the
-/// fill to `NK.ink3`. Both busy and disabled block the tap.
+/// fill to `WF.ink3`. Both busy and disabled block the tap.
 struct WaffledPrimaryCTA: View {
     var label: String
-    var tint: Color = NK.primary
+    var tint: Color = WF.primary
     var isBusy: Bool = false
     var isDisabled: Bool = false
     var action: () -> Void
@@ -65,8 +65,8 @@ struct WaffledPrimaryCTA: View {
                     .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
             }
             .frame(maxWidth: .infinity).padding(.vertical, 14)
-            .background(isDisabled ? NK.ink3 : tint)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .background(isDisabled ? WF.ink3 : tint)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         }
         .buttonStyle(.plain).disabled(isDisabled || isBusy)
     }
@@ -93,7 +93,7 @@ struct Avatar: View {
 
     /// Synced member: derive a soft tint from the stored hex (falls back to panel).
     init(colorHex: String?, emoji: String, size: CGFloat = 34) {
-        self.tint = Color(hexString: colorHex)?.opacity(0.16) ?? NK.panel
+        self.tint = Color(hexString: colorHex)?.opacity(0.16) ?? WF.panel
         self.emoji = emoji
         self.size = size
     }
@@ -114,7 +114,7 @@ struct WaffledLoading: View {
     var top: CGFloat = 48
     var body: some View {
         ProgressView()
-            .tint(NK.ink3)
+            .tint(WF.ink3)
             .frame(maxWidth: .infinity)
             .padding(.top, top)
     }
@@ -132,10 +132,10 @@ struct WaffledEmptyState: View {
     var body: some View {
         VStack(spacing: 12) {
             Text(emoji).font(.system(size: 48))
-            Text(title).font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
+            Text(title).font(.system(size: 17, weight: .bold)).foregroundStyle(WF.ink)
             if let message {
                 Text(message)
-                    .font(.system(size: 13)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 13)).foregroundStyle(WF.ink3)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -156,7 +156,7 @@ struct AICaptureBar: View {
     var body: some View {
         HStack(spacing: 11) {
             ZStack {
-                Circle().fill(NK.ai)
+                Circle().fill(WF.ai)
                 Image(systemName: "sparkles")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(.white)
@@ -165,21 +165,21 @@ struct AICaptureBar: View {
 
             Text(placeholder)
                 .font(.system(size: 16))
-                .foregroundStyle(NK.ink3)
+                .foregroundStyle(WF.ink3)
             Spacer(minLength: 0)
 
             Button(action: onMic) {
                 Image(systemName: "mic.fill")
                     .font(.system(size: 15))
-                    .foregroundStyle(NK.ink3)
+                    .foregroundStyle(WF.ink3)
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 12).padding(.vertical, 11)
-        .background(NK.card)
+        .background(WF.card)
         .clipShape(Capsule())
-        .overlay(Capsule().stroke(NK.hair, lineWidth: 1))
-        .nkShadow1()
+        .overlay(Capsule().stroke(WF.hair, lineWidth: 1))
+        .wfShadow1()
         .contentShape(Capsule())
         .onTapGesture(perform: onTap)
     }
@@ -196,7 +196,7 @@ struct WaffledFieldCard<Content: View>: View {
     var body: some View {
         WaffledCard(padding: padding) {
             VStack(alignment: .leading, spacing: spacing) {
-                Text(title).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                Text(title).font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink)
                 content()
             }
         }
@@ -205,13 +205,13 @@ struct WaffledFieldCard<Content: View>: View {
 
 /// A rounded square holding an emoji — the list-row / picker glyph tile used across
 /// Settings, Rewards, Lists, Goals, Family and the capture sheets. Canonical look is a
-/// 42pt square, 22pt emoji, 12pt corner on `NK.panel`; pass params for the intentional
+/// 42pt square, 22pt emoji, 12pt corner on `WF.panel`; pass params for the intentional
 /// variants (muted archived rows, tinted person rows). Stateless.
 struct WaffledEmojiTile: View {
     var emoji: String
     var size: CGFloat = 22          // emoji font size
     var frame: CGFloat = 42         // square side
-    var background: Color = NK.panel
+    var background: Color = WF.panel
     var cornerRadius: CGFloat = 12
     var emojiOpacity: Double = 1
 
@@ -250,7 +250,7 @@ struct DisclosureChevron: View {
     var isOpen: Bool
     var size: CGFloat = 11
     var weight: Font.Weight = .heavy
-    var color: Color = NK.ink3
+    var color: Color = WF.ink3
 
     var body: some View {
         Image(systemName: "chevron.right")
@@ -267,10 +267,10 @@ struct WaffledMenuPill: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Text(text).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
-            Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+            Text(text).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
+            Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
         }
-        .padding(.horizontal, 14).padding(.vertical, 9).background(NK.panel).clipShape(Capsule())
+        .padding(.horizontal, 14).padding(.vertical, 9).background(WF.panel).clipShape(Capsule())
     }
 }
 
@@ -281,8 +281,8 @@ struct WaffledSettingsMenuLabel: View {
     var value: String
     var body: some View {
         HStack(spacing: 5) {
-            Text(value).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-            Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+            Text(value).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+            Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
         }
     }
 }
@@ -301,25 +301,25 @@ struct ApprovalActionPair: View {
         if isKiosk {
             HStack(spacing: 8) {
                 Button(action: onDeny) {
-                    Text(denyLabel).font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink2)
-                        .padding(.horizontal, 16).padding(.vertical, 8).background(NK.panel).clipShape(Capsule())
+                    Text(denyLabel).font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
+                        .padding(.horizontal, 16).padding(.vertical, 8).background(WF.panel).clipShape(Capsule())
                 }.buttonStyle(.plain)
                 Button(action: onApprove) {
                     Text("Approve").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
-                        .padding(.horizontal, 18).padding(.vertical, 8).background(NK.primary).clipShape(Capsule())
+                        .padding(.horizontal, 18).padding(.vertical, 8).background(WF.primary).clipShape(Capsule())
                 }.buttonStyle(.plain)
             }
         } else {
             HStack(spacing: 8) {
                 Button(action: onDeny) {
-                    Text(denyLabel).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+                    Text(denyLabel).font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink2)
                         .frame(maxWidth: .infinity).padding(.vertical, 9)
-                        .background(NK.panel).clipShape(Capsule())
+                        .background(WF.panel).clipShape(Capsule())
                 }.buttonStyle(.plain)
                 Button(action: onApprove) {
                     Text("Approve").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
                         .frame(maxWidth: .infinity).padding(.vertical, 9)
-                        .background(NK.primary).clipShape(Capsule())
+                        .background(WF.primary).clipShape(Capsule())
                 }.buttonStyle(.plain)
             }
         }
@@ -335,13 +335,13 @@ struct WeekdayToggleChip: View {
 
     var body: some View {
         Button(action: action) {
-            Text(label).font(.system(size: 14, weight: .heavy)).foregroundStyle(isOn ? .white : NK.ink2)
+            Text(label).font(.system(size: 14, weight: .heavy)).foregroundStyle(isOn ? .white : WF.ink2)
                 .lineLimit(1).minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity).frame(height: 44)
-                .background(isOn ? NK.primary : NK.card)
+                .background(isOn ? WF.primary : WF.card)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(isOn ? .clear : NK.hair, lineWidth: 1))
+                    .strokeBorder(isOn ? .clear : WF.hair, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }

@@ -218,7 +218,7 @@ struct ChoresView: View {
         Group {
             if isKiosk { kioskContent } else { phoneContent }
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle("Chores")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(isKiosk ? .hidden : .visible, for: .navigationBar)
@@ -408,21 +408,21 @@ struct ChoresView: View {
             HStack(spacing: 9) {
                 if col.isGrabs {
                     Text("🙌").font(.system(size: 16)).frame(width: 32, height: 32)
-                        .background(NK.gold.opacity(0.15)).clipShape(Circle())
+                        .background(WF.gold.opacity(0.15)).clipShape(Circle())
                 } else {
                     Avatar(colorHex: col.colorHex, emoji: col.emoji ?? "🙂", size: 32)
                 }
-                Text(col.name).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink).lineLimit(1)
+                Text(col.name).font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
                 Spacer(minLength: 4)
                 let allDone = !col.items.isEmpty && col.done == col.items.count
                 HStack(spacing: 3) {
                     Image(systemName: allDone ? "checkmark.circle.fill" : "checkmark.circle")
-                        .font(.system(size: 12)).foregroundStyle(allDone ? FamilyColor.wally.solid : NK.ink3)
-                    Text("\(col.done)/\(col.items.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
+                        .font(.system(size: 12)).foregroundStyle(allDone ? FamilyColor.wally.solid : WF.ink3)
+                    Text("\(col.done)/\(col.items.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
                 }
             }
             .padding(.bottom, 10)
-            Rectangle().fill(NK.hair).frame(height: 1)
+            Rectangle().fill(WF.hair).frame(height: 1)
             // Capped height + internal scroll, so a long list stays put instead of
             // pushing the columns below it down the page.
             ScrollView(showsIndicators: false) {
@@ -432,16 +432,16 @@ struct ChoresView: View {
                 LazyVStack(spacing: 0) {
                     if col.isGrabs && !col.items.isEmpty {
                         Text("Tap to claim it, or drag it into someone’s column.")
-                            .font(.system(size: 11.5, weight: .medium)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 11.5, weight: .medium)).foregroundStyle(WF.ink3)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8).padding(.bottom, 2)
                     }
                     ForEach(Array(col.items.enumerated()), id: \.element.id) { i, inst in
                         draggableRow(choreRow(inst, isGrabs: col.isGrabs), inst: inst)
-                        if i < col.items.count - 1 { Divider().background(NK.hair) }
+                        if i < col.items.count - 1 { Divider().background(WF.hair) }
                     }
                     if col.items.isEmpty {
                         Text(col.isGrabs ? "Nothing up for grabs." : "Nothing for \(col.name).")
-                            .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 10)
                     }
                     // Assigning a chore to someone else is manage-only; anyone can still
@@ -452,7 +452,7 @@ struct ChoresView: View {
                                 Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
                                 Text("Add chore").font(.system(size: 13, weight: .semibold))
                             }
-                            .foregroundStyle(NK.ink3).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
+                            .foregroundStyle(WF.ink3).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
                         }
                         .buttonStyle(.plain)
                     }
@@ -463,11 +463,11 @@ struct ChoresView: View {
         .padding(14)
         .frame(maxWidth: .infinity)
         .frame(height: 460)
-        .background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-            .strokeBorder(dropTarget == col.id ? NK.primary
-                          : (col.isGrabs ? NK.gold.opacity(0.4) : NK.hair),
+        .background(WF.card)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+            .strokeBorder(dropTarget == col.id ? WF.primary
+                          : (col.isGrabs ? WF.gold.opacity(0.4) : WF.hair),
                           lineWidth: dropTarget == col.id ? 2 : 1))
         .dropDestination(for: String.self) { ids, _ in
             guard let id = ids.first else { return false }
@@ -489,17 +489,17 @@ struct ChoresView: View {
         if let msg = model.proofError {
             HStack(spacing: 10) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 15)).foregroundStyle(NK.primary)
-                Text(msg).font(.system(size: 13.5, weight: .semibold)).foregroundStyle(NK.ink)
+                    .font(.system(size: 15)).foregroundStyle(WF.primary)
+                Text(msg).font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink)
                 Spacer(minLength: 6)
                 Button { withAnimation { model.proofError = nil } } label: {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 16)).foregroundStyle(NK.ink3)
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 16)).foregroundStyle(WF.ink3)
                 }.buttonStyle(.plain)
             }
             .padding(12)
-            .background(NK.primary.opacity(0.10))
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.primary.opacity(0.3), lineWidth: 1))
+            .background(WF.primary.opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.primary.opacity(0.3), lineWidth: 1))
         }
     }
 
@@ -515,13 +515,13 @@ struct ChoresView: View {
             WaffledCard(padding: 14) {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 6) {
-                        Text("Needs your OK").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
-                        Text("\(approvals.chores.count)").font(.system(size: 12, weight: .heavy)).foregroundStyle(NK.primary)
+                        Text("Needs your OK").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
+                        Text("\(approvals.chores.count)").font(.system(size: 12, weight: .heavy)).foregroundStyle(WF.primary)
                             .padding(.horizontal, 7).padding(.vertical, 2)
-                            .background(NK.primary.opacity(0.12)).clipShape(Capsule())
+                            .background(WF.primary.opacity(0.12)).clipShape(Capsule())
                     }
                     ForEach(Array(approvals.chores.enumerated()), id: \.element.id) { idx, c in
-                        if idx > 0 { Divider().background(NK.hair) }
+                        if idx > 0 { Divider().background(WF.hair) }
                         approvalRow(c)
                     }
                 }
@@ -565,15 +565,15 @@ struct ChoresView: View {
     private func approvalText(_ c: WaffledAPI.ChoreInstanceDTO) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("\(c.personName ?? "Someone") finished")
-                .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                .font(.system(size: 12.5)).foregroundStyle(WF.ink3)
             HStack(spacing: 6) {
                 Text("\(c.emoji ?? "🧹") \(c.choreTitle)")
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                 if c.rewardAmount > 0 {
                     Text("\(c.rewardAmount)\(sync.currencySymbol(c.rewardCurrency))")
-                        .font(.system(size: 12.5, weight: .heavy)).foregroundStyle(NK.gold)
+                        .font(.system(size: 12.5, weight: .heavy)).foregroundStyle(WF.gold)
                         .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(NK.gold.opacity(0.14)).clipShape(Capsule())
+                        .background(WF.gold.opacity(0.14)).clipShape(Capsule())
                 }
             }
         }
@@ -619,17 +619,17 @@ struct ChoresView: View {
             HStack(spacing: 12) {
                 Button { Task { await model.shift(-1) } } label: { navArrow("chevron.left") }
                 VStack(spacing: 1) {
-                    Text(meta.full).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
-                    Text(meta.rel).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                    Text(meta.full).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
+                    Text(meta.rel).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
                 .frame(maxWidth: .infinity)
                 Button { Task { await model.shift(1) } } label: { navArrow("chevron.right") }
             }
             if !meta.isToday {
                 Button { Task { await model.goToday() } } label: {
-                    Text("Jump to today").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.primary)
+                    Text("Jump to today").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.primary)
                         .padding(.horizontal, 12).padding(.vertical, 5)
-                        .background(NK.primary.opacity(0.1)).clipShape(Capsule())
+                        .background(WF.primary.opacity(0.1)).clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
@@ -637,8 +637,8 @@ struct ChoresView: View {
     }
 
     private func navArrow(_ system: String) -> some View {
-        Image(systemName: system).font(.system(size: 14, weight: .heavy)).foregroundStyle(NK.ink2)
-            .frame(width: 38, height: 38).background(NK.panel).clipShape(Circle())
+        Image(systemName: system).font(.system(size: 14, weight: .heavy)).foregroundStyle(WF.ink2)
+            .frame(width: 38, height: 38).background(WF.panel).clipShape(Circle())
     }
 
     private func columnCard(_ col: ChoreColumn) -> some View {
@@ -652,17 +652,17 @@ struct ChoresView: View {
                 HStack(spacing: 9) {
                     if col.isGrabs {
                         Text("🙌").font(.system(size: 16)).frame(width: 30, height: 30)
-                            .background(NK.gold.opacity(0.15)).clipShape(Circle())
+                            .background(WF.gold.opacity(0.15)).clipShape(Circle())
                     } else {
                         Avatar(colorHex: col.colorHex, emoji: col.emoji ?? "🙂", size: 30)
                     }
-                    Text(col.name).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                    Text(col.name).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
                     Spacer()
                     let allDone = !col.items.isEmpty && col.done == col.items.count
                     HStack(spacing: 3) {
                         Image(systemName: allDone ? "checkmark.circle.fill" : "checkmark.circle")
-                            .font(.system(size: 12)).foregroundStyle(allDone ? FamilyColor.wally.solid : NK.ink3)
-                        Text("\(col.done)/\(col.items.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
+                            .font(.system(size: 12)).foregroundStyle(allDone ? FamilyColor.wally.solid : WF.ink3)
+                        Text("\(col.done)/\(col.items.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
                     }
                     DisclosureChevron(isOpen: !isCollapsed)
                 }
@@ -673,20 +673,20 @@ struct ChoresView: View {
             if !isCollapsed {
                 if col.isGrabs && !col.items.isEmpty {
                     Text("Tap to claim it, or drag it into someone’s column to assign it.")
-                        .font(.system(size: 11.5, weight: .medium)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 11.5, weight: .medium)).foregroundStyle(WF.ink3)
                         .padding(.top, 4).padding(.bottom, 2)
                 }
                 VStack(spacing: 0) {
                     ForEach(Array(col.items.enumerated()), id: \.element.id) { i, inst in
                         draggableRow(choreRow(inst, isGrabs: col.isGrabs), inst: inst)
-                        if i < col.items.count - 1 { Divider().background(NK.hair) }
+                        if i < col.items.count - 1 { Divider().background(WF.hair) }
                     }
                 }
                 .padding(.top, 4)
                 if col.items.isEmpty {
                     Text(col.isGrabs ? "Nothing up for grabs — add one anyone can claim."
                                      : "Nothing for \(col.name) \(ChoreDates.meta(model.date).isToday ? "today" : "this day").")
-                        .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3).padding(.vertical, 6)
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3).padding(.vertical, 6)
                 }
                 if col.isGrabs || sync.can("chore.manage") {
                     Button { editor = .new(personId: col.isGrabs ? nil : col.id) } label: {
@@ -694,18 +694,18 @@ struct ChoresView: View {
                             Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
                             Text("Add chore").font(.system(size: 13, weight: .semibold))
                         }
-                        .foregroundStyle(NK.ink3).padding(.top, 8)
+                        .foregroundStyle(WF.ink3).padding(.top, 8)
                     }
                     .buttonStyle(.plain)
                 }
             }
         }
         .padding(14)
-        .background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-            .strokeBorder(dropTarget == col.id ? NK.primary
-                          : (col.isGrabs ? NK.gold.opacity(0.4) : NK.hair),
+        .background(WF.card)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+            .strokeBorder(dropTarget == col.id ? WF.primary
+                          : (col.isGrabs ? WF.gold.opacity(0.4) : WF.hair),
                           lineWidth: dropTarget == col.id ? 2 : 1))
         // Drop a chore here to (re)assign it to this person, or onto "Up for grabs"
         // to unassign it.
@@ -734,12 +734,12 @@ struct ChoresView: View {
             row.contentShape(Rectangle()).draggable(inst.id) {
                 HStack(spacing: 6) {
                     Text(inst.emoji ?? "🧹").font(.system(size: 14))
-                    Text(inst.choreTitle).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                    Text(inst.choreTitle).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 8)
-                .background(NK.card)
+                .background(WF.card)
                 .clipShape(Capsule())
-                .overlay(Capsule().strokeBorder(NK.gold.opacity(0.5), lineWidth: 1))
+                .overlay(Capsule().strokeBorder(WF.gold.opacity(0.5), lineWidth: 1))
             }
         } else {
             row
@@ -768,30 +768,30 @@ struct ChoresView: View {
                     HStack(spacing: 6) {
                         Text("\(inst.emoji.map { "\($0) " } ?? "")\(inst.choreTitle)")
                             .font(.system(size: 15, weight: .semibold))
-                            .strikethrough(isDone, color: NK.ink3)
-                            .foregroundStyle(isDone ? NK.ink3 : NK.ink).lineLimit(1)
+                            .strikethrough(isDone, color: WF.ink3)
+                            .foregroundStyle(isDone ? WF.ink3 : WF.ink).lineLimit(1)
                         if inst.streak >= 2 {
-                            Text("🔥 \(inst.streak)").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink2)
+                            Text("🔥 \(inst.streak)").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink2)
                         }
                         // Carried-forward one-off: red "overdue · since …" pill (web parity).
                         if !isDone, !isAwaiting,
                            let since = ChoreDates.overdueLabel(dueOn: inst.dueOn, viewing: model.date) {
                             Text("overdue · \(since)")
                                 .font(.system(size: 10.5, weight: .heavy))
-                                .foregroundStyle(NK.primaryD)
+                                .foregroundStyle(WF.primaryD)
                                 .padding(.horizontal, 7).padding(.vertical, 2)
-                                .background(NK.primary.opacity(0.12)).clipShape(Capsule())
+                                .background(WF.primary.opacity(0.12)).clipShape(Capsule())
                                 .lineLimit(1)
                         }
                     }
                     HStack(spacing: 5) {
                         Text(sync.currencySymbol(inst.rewardCurrency)).font(.system(size: 11))
-                        Text("\(inst.rewardAmount)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                        Text("\(inst.rewardAmount)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
                         if isAwaiting {
                             Text("Needs OK").font(.system(size: 10, weight: .heavy))
-                                .foregroundStyle(NK.primary)
+                                .foregroundStyle(WF.primary)
                                 .padding(.horizontal, 6).padding(.vertical, 1)
-                                .background(NK.primary.opacity(0.12)).clipShape(Capsule())
+                                .background(WF.primary.opacity(0.12)).clipShape(Capsule())
                         }
                     }
                 }
@@ -830,9 +830,9 @@ struct ChoresView: View {
         // row's primary action rather than two small trailing pills.
         HStack(spacing: 10) {
             Button { Task { await model.reject(inst.id); sync.bumpChores() } } label: {
-                Text("Reject").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+                Text("Reject").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink2)
                     .frame(maxWidth: .infinity).padding(.vertical, 10)
-                    .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1.5))
+                    .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1.5))
             }.buttonStyle(.plain)
             Button { Task { await model.approve(inst.id); sync.bumpChores() } } label: {
                 Text("Approve").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
@@ -851,10 +851,10 @@ struct ChoresView: View {
             } else if needsPhoto && !isGrabs {
                 // 📷 affordance, matching web: a photo-required chore shows the camera
                 // on its incomplete tick so it's clear a snapshot is needed to finish.
-                Image(systemName: "camera.circle").font(.system(size: 22)).foregroundStyle(NK.primary)
+                Image(systemName: "camera.circle").font(.system(size: 22)).foregroundStyle(WF.primary)
             } else {
                 Image(systemName: isGrabs ? "hand.raised.circle" : "circle").font(.system(size: 22))
-                    .foregroundStyle(isGrabs ? NK.gold : NK.ink3)
+                    .foregroundStyle(isGrabs ? WF.gold : WF.ink3)
             }
         }
         .frame(width: 30, height: 30).contentShape(Rectangle())
@@ -862,7 +862,7 @@ struct ChoresView: View {
 
     private func claimPicker(_ inst: WaffledAPI.ChoreInstanceDTO) -> some View {
         HStack(spacing: 8) {
-            Text("Who did it?").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
+            Text("Who did it?").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
             ForEach(sync.members) { m in
                 Button {
                     claiming = nil
@@ -877,7 +877,7 @@ struct ChoresView: View {
             }
             Spacer(minLength: 0)
             Button { withAnimation { claiming = nil } } label: {
-                Image(systemName: "xmark.circle.fill").font(.system(size: 18)).foregroundStyle(NK.ink3)
+                Image(systemName: "xmark.circle.fill").font(.system(size: 18)).foregroundStyle(WF.ink3)
             }.buttonStyle(.plain)
         }
         .padding(.vertical, 8).padding(.horizontal, 4)
@@ -886,7 +886,7 @@ struct ChoresView: View {
 
 /// Create or edit a chore definition — title, emoji, repeat schedule (every day /
 /// certain weekdays), who (or up-for-grabs), star reward, and a parent-approval
-/// toggle. Delete when editing. Mirrors the web ChoreModal. NK-styled.
+/// toggle. Delete when editing. Mirrors the web ChoreModal. WF-styled.
 struct ChoreEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     /// Snapshotted by the presenter from SyncManager so the sheet does NOT observe the
@@ -962,11 +962,11 @@ struct ChoreEditSheet: View {
                 VStack(alignment: .leading, spacing: 20) {
                     if let saveError {
                         Text(saveError)
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.primaryD)
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.primaryD)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(12)
-                            .background(NK.primary.opacity(0.1))
-                            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                            .background(WF.primary.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     }
                     HStack(spacing: 12) {
                         labeled("Title") {
@@ -1000,7 +1000,7 @@ struct ChoreEditSheet: View {
                         if freq == "once" {
                             DatePicker("On", selection: $dueOn, displayedComponents: .date)
                                 .font(.system(size: 15, weight: .semibold))
-                                .tint(NK.primary)
+                                .tint(WF.primary)
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                         if freq == "weekly" {
@@ -1009,11 +1009,11 @@ struct ChoreEditSheet: View {
                                     let on = days.contains(d.code)
                                     Button { if on { days.remove(d.code) } else { days.insert(d.code) } } label: {
                                         Text(d.label).font(.system(size: 12, weight: .bold))
-                                            .foregroundStyle(on ? .white : NK.ink2)
+                                            .foregroundStyle(on ? .white : WF.ink2)
                                             .frame(maxWidth: .infinity).padding(.vertical, 9)
-                                            .background(on ? NK.primary : NK.card)
-                                            .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(on ? Color.clear : NK.hair, lineWidth: 1))
-                                            .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                                            .background(on ? WF.primary : WF.card)
+                                            .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(on ? Color.clear : WF.hair, lineWidth: 1))
+                                            .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -1038,13 +1038,13 @@ struct ChoreEditSheet: View {
                                 ChipFlow(spacing: 8, lineSpacing: 8) {
                                     ForEach(currencies) { c in
                                         let on = c.key == effectiveCurrencyKey
-                                        let tint = Color(hexString: c.color) ?? NK.gold
+                                        let tint = Color(hexString: c.color) ?? WF.gold
                                         Button { currencyKey = c.key } label: {
                                             Text("\(c.symbol) \(c.label)")
                                                 .font(.system(size: 14, weight: on ? .bold : .medium))
-                                                .foregroundStyle(on ? NK.ink : NK.ink2)
+                                                .foregroundStyle(on ? WF.ink : WF.ink2)
                                                 .padding(.horizontal, 13).padding(.vertical, 8)
-                                                .background(on ? tint.opacity(0.16) : NK.panel)
+                                                .background(on ? tint.opacity(0.16) : WF.panel)
                                                 .clipShape(Capsule())
                                                 .overlay(Capsule().strokeBorder(on ? tint.opacity(0.5) : .clear, lineWidth: 1))
                                         }
@@ -1058,14 +1058,14 @@ struct ChoreEditSheet: View {
                             Spacer()
                             HStack(spacing: 14) {
                                 Button { if stars > 0 { stars -= 1 } } label: {
-                                    Image(systemName: "minus.circle.fill").font(.system(size: 24)).foregroundStyle(stars > 0 ? NK.ink2 : NK.hair)
+                                    Image(systemName: "minus.circle.fill").font(.system(size: 24)).foregroundStyle(stars > 0 ? WF.ink2 : WF.hair)
                                 }.buttonStyle(.plain).disabled(stars == 0)
                                 HStack(spacing: 3) {
                                     rewardSymbol
-                                    Text("\(stars)").font(.system(size: 17, weight: .heavy)).foregroundStyle(NK.ink).frame(minWidth: 20)
+                                    Text("\(stars)").font(.system(size: 17, weight: .heavy)).foregroundStyle(WF.ink).frame(minWidth: 20)
                                 }
                                 Button { stars += 1 } label: {
-                                    Image(systemName: "plus.circle.fill").font(.system(size: 24)).foregroundStyle(NK.primary)
+                                    Image(systemName: "plus.circle.fill").font(.system(size: 24)).foregroundStyle(WF.primary)
                                 }.buttonStyle(.plain)
                             }
                         }
@@ -1073,9 +1073,9 @@ struct ChoreEditSheet: View {
 
                     Toggle(isOn: $requiresApproval) {
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("Needs a parent’s OK").font(.system(size: 14.5, weight: .bold)).foregroundStyle(NK.ink)
+                            Text("Needs a parent’s OK").font(.system(size: 14.5, weight: .bold)).foregroundStyle(WF.ink)
                             Text("The reward is awarded only after a parent approves.")
-                                .font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                                .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                         }
                     }
                     .tint(FamilyColor.wally.solid)
@@ -1083,9 +1083,9 @@ struct ChoreEditSheet: View {
 
                     Toggle(isOn: $requiresPhoto) {
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("Needs a photo").font(.system(size: 14.5, weight: .bold)).foregroundStyle(NK.ink)
+                            Text("Needs a photo").font(.system(size: 14.5, weight: .bold)).foregroundStyle(WF.ink)
                             Text("A snapshot of the finished job is needed to complete it.")
-                                .font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                                .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                         }
                     }
                     .tint(FamilyColor.wally.solid)
@@ -1097,7 +1097,7 @@ struct ChoreEditSheet: View {
                     if requiresPhoto && !requiresApproval {
                         Label("Turn on “Needs a parent’s OK” too if you want to see the photo in your approvals before it counts.",
                               systemImage: "info.circle.fill")
-                            .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(WF.ink3)
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.horizontal, 4)
                     }
@@ -1108,14 +1108,14 @@ struct ChoreEditSheet: View {
                             else { withAnimation { confirmDelete = true } }
                         } label: {
                             Text(confirmDelete ? "Tap again to delete this chore" : "Delete chore")
-                                .font(.system(size: 14, weight: .bold)).foregroundStyle(NK.primary)
+                                .font(.system(size: 14, weight: .bold)).foregroundStyle(WF.primary)
                         }
                         .buttonStyle(.plain).padding(.top, 2)
                     }
                 }
                 .padding(20)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle(editing ? "Edit chore" : "New chore")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1139,9 +1139,9 @@ struct ChoreEditSheet: View {
         let on = personId == id
         return Button { personId = id } label: {
             Text(label).font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(on ? NK.ink : NK.ink2)
+                .foregroundStyle(on ? WF.ink : WF.ink2)
                 .padding(.horizontal, 12).padding(.vertical, 7)
-                .nkChip(selected: on)
+                .wfChip(selected: on)
         }
         .buttonStyle(.plain)
     }
@@ -1158,7 +1158,7 @@ struct ChoreEditSheet: View {
         if let c = selectedCurrency {
             Text(c.symbol).font(.system(size: 14))
         } else {
-            Image(systemName: "star.fill").font(.system(size: 13)).foregroundStyle(NK.gold)
+            Image(systemName: "star.fill").font(.system(size: 13)).foregroundStyle(WF.gold)
         }
     }
 
@@ -1216,8 +1216,8 @@ struct ChoreEditSheet: View {
 }
 
 private extension View {
-    /// The shared NK card-field chrome (white, hairline border, rounded).
+    /// The shared WF card-field chrome (white, hairline border, rounded).
     func cardField() -> some View {
-        frame(maxWidth: .infinity, alignment: .leading).nkField()
+        frame(maxWidth: .infinity, alignment: .leading).wfField()
     }
 }

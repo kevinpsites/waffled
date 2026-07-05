@@ -25,8 +25,8 @@ struct SyncStatusView: View {
                             .font(.system(size: 15, weight: .semibold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 13)
-                            .background(NK.primary).foregroundStyle(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                            .background(WF.primary).foregroundStyle(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     }
                     .buttonStyle(.plain)
 
@@ -38,7 +38,7 @@ struct SyncStatusView: View {
                 }
                 .padding(18)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Sync")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
@@ -51,13 +51,13 @@ struct SyncStatusView: View {
                 Circle().fill(statusColor).frame(width: 12, height: 12)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(sync.status.rawValue.capitalized)
-                        .font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
-                    Text(lastSyncedText).font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 17, weight: .bold)).foregroundStyle(WF.ink)
+                    Text(lastSyncedText).font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                 }
                 Spacer()
                 if sync.pendingUploads > 0 {
                     Text("↑ \(sync.pendingUploads)")
-                        .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.gold)
+                        .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.gold)
                 }
             }
         }
@@ -74,9 +74,9 @@ struct SyncStatusView: View {
     private func stat(_ label: String, _ value: Int, _ icon: String) -> some View {
         WaffledCard(padding: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Image(systemName: icon).font(.system(size: 14)).foregroundStyle(NK.ink3)
-                Text("\(value)").font(.system(size: 24, weight: .bold)).foregroundStyle(NK.ink)
-                Text(label).font(.system(size: 12)).foregroundStyle(NK.ink3)
+                Image(systemName: icon).font(.system(size: 14)).foregroundStyle(WF.ink3)
+                Text("\(value)").font(.system(size: 24, weight: .bold)).foregroundStyle(WF.ink)
+                Text(label).font(.system(size: 12)).foregroundStyle(WF.ink3)
             }
         }
     }
@@ -86,15 +86,15 @@ struct SyncStatusView: View {
             VStack(alignment: .leading, spacing: 10) {
                 SectionLabel(text: "Family · from local SQLite")
                 if sync.members.isEmpty {
-                    Text("No members synced yet.").font(.system(size: 13)).foregroundStyle(NK.ink3)
+                    Text("No members synced yet.").font(.system(size: 13)).foregroundStyle(WF.ink3)
                 } else {
                     ForEach(sync.members) { m in
                         HStack(spacing: 10) {
                             Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 30)
-                            Text(m.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                            Text(m.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                             Spacer()
                             if let t = m.memberType {
-                                Text(t).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                                Text(t).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                             }
                         }
                     }
@@ -117,8 +117,8 @@ struct SyncStatusView: View {
                     Text("Save & reconnect")
                         .font(.system(size: 14, weight: .semibold))
                         .frame(maxWidth: .infinity).padding(.vertical, 11)
-                        .background(NK.panel).foregroundStyle(NK.ink)
-                        .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                        .background(WF.panel).foregroundStyle(WF.ink)
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
@@ -128,23 +128,23 @@ struct SyncStatusView: View {
     @ViewBuilder
     private func field(_ label: String, text: Binding<String>, secure: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink2)
+            Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink2)
             Group {
                 if secure { SecureField("", text: text) } else { TextField("", text: text) }
             }
             .font(.system(size: 13, design: .monospaced))
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
-            .padding(10).background(NK.panel)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rXS, style: .continuous))
+            .padding(10).background(WF.panel)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rXS, style: .continuous))
         }
     }
 
     private var statusColor: Color {
         switch sync.status {
         case .connected: return FamilyColor.wally.solid
-        case .connecting: return NK.gold
-        case .offline, .idle: return NK.ink3
+        case .connecting: return WF.gold
+        case .offline, .idle: return WF.ink3
         }
     }
 

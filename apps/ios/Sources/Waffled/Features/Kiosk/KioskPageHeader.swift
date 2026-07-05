@@ -18,8 +18,8 @@ struct KioskPageHeader<Trailing: View>: View {
     var body: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(NK.serif(34)).foregroundStyle(NK.ink)
-                Text(subtitle).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
+                Text(title).font(WF.serif(34)).foregroundStyle(WF.ink)
+                Text(subtitle).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
             }
             Spacer(minLength: 12)
             trailing()
@@ -41,7 +41,7 @@ struct KioskHeaderButton: View {
             }
             .foregroundStyle(.white)
             .padding(.horizontal, 16).padding(.vertical, 10)
-            .background(NK.primary).clipShape(Capsule())
+            .background(WF.primary).clipShape(Capsule())
         }
         .buttonStyle(.plain)
     }

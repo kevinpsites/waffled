@@ -85,7 +85,7 @@ struct RecipesLibraryView: View {
             if anyFilter { filterBar }
             content
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .refreshable { await model.load() }
         .fullScreenCover(isPresented: $creating) {
             RecipeEditorView(mode: .create) { _ in Task { await model.load() } }
@@ -101,28 +101,28 @@ struct RecipesLibraryView: View {
     /// tab's principal segmented control suppresses the nav-bar search drawer.
     private var searchField: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").font(.system(size: 14)).foregroundStyle(NK.ink3)
+            Image(systemName: "magnifyingglass").font(.system(size: 14)).foregroundStyle(WF.ink3)
             TextField("Search recipes, cuisine, a veggie…", text: $query)
                 .font(.system(size: 15)).textInputAutocapitalization(.never).autocorrectionDisabled()
                 .submitLabel(.search)
                 .focused($searchFocused)
             if !query.isEmpty {
                 Button { query = "" } label: {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(NK.ink3)
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(WF.ink3)
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 13).padding(.vertical, 10)
-        .background(NK.panel).clipShape(Capsule())
-        .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.panel).clipShape(Capsule())
+        .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
         .padding(.horizontal, 16).padding(.top, 10)
     }
 
     @ViewBuilder private var content: some View {
         let list = filtered
         if model.loading && model.recipes.isEmpty {
-            ProgressView().tint(NK.ink3).padding(.top, 60)
+            ProgressView().tint(WF.ink3).padding(.top, 60)
         } else if model.recipes.isEmpty {
             empty(model.error ? "Couldn’t load your recipes." : "No recipes yet. Import some with `just import-recipes`.")
         } else if list.isEmpty {
@@ -143,7 +143,7 @@ struct RecipesLibraryView: View {
     }
 
     private func empty(_ text: String) -> some View {
-        Text(text).font(.system(size: 14)).foregroundStyle(NK.ink3)
+        Text(text).font(.system(size: 14)).foregroundStyle(WF.ink3)
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity).padding(.horizontal, 30).padding(.top, 70)
     }
@@ -229,10 +229,10 @@ struct RecipesLibraryView: View {
             Image(systemName: systemImage).font(.system(size: 13, weight: .semibold))
             Text(text).font(.system(size: 13, weight: .semibold))
         }
-        .foregroundStyle(active ? NK.primary : NK.ink2)
+        .foregroundStyle(active ? WF.primary : WF.ink2)
         .padding(.horizontal, 12).padding(.vertical, 7)
-        .background(active ? NK.primary.opacity(0.1) : NK.card)
-        .overlay(Capsule().strokeBorder(active ? NK.primary.opacity(0.4) : NK.hair, lineWidth: 1))
+        .background(active ? WF.primary.opacity(0.1) : WF.card)
+        .overlay(Capsule().strokeBorder(active ? WF.primary.opacity(0.4) : WF.hair, lineWidth: 1))
         .clipShape(Capsule())
     }
 
@@ -264,7 +264,7 @@ struct RecipesLibraryView: View {
                 Button {
                     withAnimation { onlyFavorites = false; selCuisine = []; selProtein = []; selDietary = [] }
                 } label: {
-                    Text("Clear").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink2)
+                    Text("Clear").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
                         .padding(.horizontal, 12).padding(.vertical, 7)
                 }
             }
@@ -275,12 +275,12 @@ struct RecipesLibraryView: View {
     private func activeChip(_ text: String, remove: @escaping () -> Void) -> some View {
         Button(action: { withAnimation { remove() } }) {
             HStack(spacing: 5) {
-                Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink)
-                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(NK.ink3)
+                Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink)
+                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(WF.ink3)
             }
             .padding(.horizontal, 12).padding(.vertical, 7)
-            .background(NK.primary.opacity(0.12))
-            .overlay(Capsule().strokeBorder(NK.primary.opacity(0.5), lineWidth: 1))
+            .background(WF.primary.opacity(0.12))
+            .overlay(Capsule().strokeBorder(WF.primary.opacity(0.5), lineWidth: 1))
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -305,17 +305,17 @@ struct RecipeCard: View {
             VStack(alignment: .leading, spacing: 5) {
                 // Fixed 2-line title + an always-present meta + collection line, so every
                 // card is the same height regardless of how many tags a recipe has.
-                Text(recipe.title).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                Text(recipe.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
                     .lineLimit(2).multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40, alignment: .topLeading)
                 metaLine
                 Text(recipe.collection.map { "📁 \($0)" } ?? " ")
-                    .font(.system(size: 11, weight: .medium)).foregroundStyle(NK.ink3).lineLimit(1)
+                    .font(.system(size: 11, weight: .medium)).foregroundStyle(WF.ink3).lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .padding(.horizontal, 11).padding(.top, 9).padding(.bottom, 12)
         }
-        .nkField()
+        .wfField()
     }
 
     private var metaLine: some View {
@@ -330,7 +330,7 @@ struct RecipeCard: View {
     }
 
     private func meta(_ icon: String, _ text: String) -> some View {
-        Text("\(icon) \(text)").font(.system(size: 11, weight: .medium)).foregroundStyle(NK.ink2)
+        Text("\(icon) \(text)").font(.system(size: 11, weight: .medium)).foregroundStyle(WF.ink2)
     }
 }
 

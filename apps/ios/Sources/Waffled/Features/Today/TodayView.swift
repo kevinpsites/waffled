@@ -86,7 +86,7 @@ struct TodayView: View {
             } action: { _, isScrolled in
                 withAnimation(.easeOut(duration: 0.2)) { scrolled = isScrolled }
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             // Greeting + capture bar stay pinned; the cards scroll under them.
             .safeAreaInset(edge: .top, spacing: 0) { stickyHeader }
             .toolbar(.hidden, for: .navigationBar)   // Today draws its own greeting header
@@ -142,7 +142,7 @@ struct TodayView: View {
         .padding(.top, 8)
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity)
-        .background(NK.canvas)
+        .background(WF.canvas)
         .shadow(color: .black.opacity(scrolled ? 0.06 : 0), radius: 6, y: 4)
     }
 
@@ -153,23 +153,23 @@ struct TodayView: View {
                 HStack(spacing: 8) {
                     Text(greetingDate)
                         .font(.system(size: 12.5, weight: .semibold))
-                        .foregroundStyle(NK.ink2)
+                        .foregroundStyle(WF.ink2)
                     if let w = weather, w.configured, let t = w.tempF {
                         Text("\(w.emoji ?? "") \(Int(t.rounded()))°")
                             .font(.system(size: 12.5, weight: .semibold))
-                            .foregroundStyle(NK.ink3)
+                            .foregroundStyle(WF.ink3)
                     }
                 }
                 Text(greetingPhrase)
-                    .font(NK.serif(30))
-                    .foregroundStyle(NK.ink)
+                    .font(WF.serif(30))
+                    .foregroundStyle(WF.ink)
             }
             Spacer()
             Button { showCustomize = true } label: {
                 Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink3)
                     .frame(width: 40, height: 40)
-                    .background(NK.panel).clipShape(Circle())
+                    .background(WF.panel).clipShape(Circle())
             }
             .buttonStyle(.plain)
             if let m = greetingMember {
@@ -192,19 +192,19 @@ struct TodayView: View {
         return HStack(spacing: 13) {
             Image(systemName: "sparkles").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
                 .frame(width: 40, height: 40)
-                .background(LinearGradient(colors: [NK.ai2, NK.ai], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .background(LinearGradient(colors: [WF.ai2, WF.ai], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text(reviewTitle(nR, nS)).font(.system(size: 16, weight: .heavy)).foregroundStyle(NK.ink)
-                Text(reviewSubtitle).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink3).lineLimit(1)
+                Text(reviewTitle(nR, nS)).font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
+                Text(reviewSubtitle).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
             }
             Spacer(minLength: 6)
-            Image(systemName: "chevron.right").font(.system(size: 14, weight: .heavy)).foregroundStyle(NK.ai)
+            Image(systemName: "chevron.right").font(.system(size: 14, weight: .heavy)).foregroundStyle(WF.ai)
         }
         .padding(14)
-        .background(NK.ai.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.ai.opacity(0.22), lineWidth: 1))
+        .background(WF.ai.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.ai.opacity(0.22), lineWidth: 1))
     }
 
     private func reviewTitle(_ nR: Int, _ nS: Int) -> String {
@@ -225,11 +225,11 @@ struct TodayView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Button(action: openCalendar) {
                     HStack(spacing: 6) {
-                        Text("Today").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
+                        Text("Today").font(.system(size: 17, weight: .bold)).foregroundStyle(WF.ink)
                         Spacer()
                         Text("\(todays.count) event\(todays.count == 1 ? "" : "s")")
-                            .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
-                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 12.5)).foregroundStyle(WF.ink3)
+                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                     }
                     .contentShape(Rectangle())
                 }
@@ -239,7 +239,7 @@ struct TodayView: View {
                 if todays.isEmpty {
                     Button(action: openCalendar) {
                         Text("Nothing scheduled today.")
-                            .font(.system(size: 14)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 14)).foregroundStyle(WF.ink3)
                             .padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -251,7 +251,7 @@ struct TodayView: View {
                         }
                         .buttonStyle(.plain)
                         if idx < todays.count - 1 {
-                            Rectangle().fill(NK.hair2).frame(height: 1)
+                            Rectangle().fill(WF.hair2).frame(height: 1)
                         }
                     }
                 }
@@ -274,24 +274,24 @@ struct TodayView: View {
                         .font(.system(size: 11, weight: .heavy)).tracking(0.5)
                         .foregroundStyle(FamilyColor.lottie.solid)
                     Text(meal.title)
-                        .font(NK.serif(18)).foregroundStyle(NK.ink)
+                        .font(WF.serif(18)).foregroundStyle(WF.ink)
                     if let sub = mealSubtitle(meal) {
-                        Text(sub).font(.system(size: 12)).foregroundStyle(NK.ink3)
+                        Text(sub).font(.system(size: 12)).foregroundStyle(WF.ink3)
                     }
                 }
                 .padding(.horizontal, 15).padding(.vertical, 13)
                 Spacer(minLength: 0)
             }
-            .background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-            .nkShadow1()
+            .background(WF.card)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+            .wfShadow1()
         } else if dash.loaded {
             WaffledCard(padding: 15) {
                 HStack(spacing: 12) {
                     Text("🍽️").font(.system(size: 28))
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("No dinner planned").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
-                        Text("Add one from the capture bar").font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                        Text("No dinner planned").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
+                        Text("Add one from the capture bar").font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                     }
                     Spacer(minLength: 0)
                 }
@@ -356,7 +356,7 @@ struct TodayView: View {
         WaffledCard(padding: 15) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    Text("Goals").font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ink2)
+                    Text("Goals").font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
                     scopeMenu
                     Spacer()
                     Button { path.append(.goals) } label: {
@@ -364,7 +364,7 @@ struct TodayView: View {
                             Text("See all").font(.system(size: 12, weight: .semibold))
                             Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
                         }
-                        .foregroundStyle(NK.ai)
+                        .foregroundStyle(WF.ai)
                     }
                     .buttonStyle(.plain)
                 }
@@ -373,7 +373,7 @@ struct TodayView: View {
                 } else {
                     Button { path.append(.goals) } label: {
                         Text(dash.loaded ? "Set a family goal →" : "Loading…")
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(.plain)
@@ -398,9 +398,9 @@ struct TodayView: View {
                     Text(goalScope == "family" ? "Family" : "Mine").font(.system(size: 11, weight: .bold))
                     Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
                 }
-                .foregroundStyle(NK.ink3)
+                .foregroundStyle(WF.ink3)
                 .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(NK.panel)
+                .background(WF.panel)
                 .clipShape(Capsule())
             }
         }
@@ -411,20 +411,20 @@ struct TodayView: View {
         return VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
                 Text(g.emoji ?? "🎯").font(.system(size: 20))
-                Text(g.title).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink).lineLimit(1)
+                Text(g.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
                 if g.isFeatured { Text("⭐").font(.system(size: 11)) }
                 Spacer(minLength: 6)
                 if g.streakDays >= 2 {
-                    Text("🔥 \(g.streakDays)").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink2)
+                    Text("🔥 \(g.streakDays)").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink2)
                 }
             }
             if let target = g.target, target > 0 {
                 ProgressBar(value: frac, tint: Self.goalGreen, track: Self.goalGreen.opacity(0.18))
-                (Text("\(goalFmt(g.totalProgress)) ").foregroundStyle(NK.ink).bold()
-                 + Text("of \(goalFmt(target))\(g.unit.map { " \($0)" } ?? "")").foregroundStyle(NK.ink3))
+                (Text("\(goalFmt(g.totalProgress)) ").foregroundStyle(WF.ink).bold()
+                 + Text("of \(goalFmt(target))\(g.unit.map { " \($0)" } ?? "")").foregroundStyle(WF.ink3))
                     .font(.system(size: 12))
             } else if g.streakDays > 0 {
-                Text("\(g.streakDays)-day streak").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                Text("\(g.streakDays)-day streak").font(.system(size: 12)).foregroundStyle(WF.ink3)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -523,7 +523,7 @@ struct TodayView: View {
     private var choresCard: some View {
         WaffledCard(padding: 15) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Family chores").font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ink2)
+                Text("Family chores").font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
                 HStack(spacing: -8) {
                     ForEach(dash.chores.prefix(3)) { p in
                         Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 30)
@@ -535,13 +535,13 @@ struct TodayView: View {
                 }
                 if dash.choreTotal > 0 {
                     ProgressBar(value: Double(dash.choreDone) / Double(dash.choreTotal),
-                                tint: NK.primary, track: NK.primary.opacity(0.18))
-                    (Text("\(dash.choreDone) of \(dash.choreTotal) · ").foregroundStyle(NK.ink3)
-                     + Text("★ \(dash.choreStars)").foregroundStyle(NK.gold).bold())
+                                tint: WF.primary, track: WF.primary.opacity(0.18))
+                    (Text("\(dash.choreDone) of \(dash.choreTotal) · ").foregroundStyle(WF.ink3)
+                     + Text("★ \(dash.choreStars)").foregroundStyle(WF.gold).bold())
                         .font(.system(size: 12.5))
                 } else {
                     Text(dash.loaded ? "No chores today" : "Loading…")
-                        .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -551,10 +551,10 @@ struct TodayView: View {
     private var groceryCard: some View {
         WaffledCard(padding: 15) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Grocery").font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ink2)
-                Text("\(dash.groceryRemaining)").font(.system(size: 26, weight: .bold)).foregroundStyle(NK.ink)
+                Text("Grocery").font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
+                Text("\(dash.groceryRemaining)").font(.system(size: 26, weight: .bold)).foregroundStyle(WF.ink)
                 Text(dash.groceryRemaining == 1 ? "item to buy" : "items to buy")
-                    .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 12)).foregroundStyle(WF.ink3)
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -622,14 +622,14 @@ struct CustomizeTodaySheet: View {
                 Section("Drag to reorder · toggle to show or hide") {
                     ForEach(order, id: \.self) { key in
                         HStack(spacing: 10) {
-                            Text(labels[key] ?? key).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                            Text(labels[key] ?? key).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                             Spacer()
                             Toggle("", isOn: Binding(
                                 get: { !hidden.contains(key) },
                                 set: { on in if on { hidden.remove(key) } else { hidden.insert(key) } }
                             ))
                             .labelsHidden()
-                            .tint(NK.primary)
+                            .tint(WF.primary)
                         }
                     }
                     .onMove { idx, dest in order.move(fromOffsets: idx, toOffset: dest) }

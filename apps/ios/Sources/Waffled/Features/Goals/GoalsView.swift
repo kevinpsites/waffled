@@ -85,8 +85,8 @@ enum GoalStyle {
         case "intellectual": return FamilyColor.kevin.solid
         case "spiritual":    return FamilyColor.lottie.solid
         case "creative":     return FamilyColor.kelly.solid
-        case "social":       return NK.gold
-        default:             return NK.primary
+        case "social":       return WF.gold
+        default:             return WF.primary
         }
     }
     static func emoji(_ key: String?) -> String {
@@ -152,7 +152,7 @@ struct AvatarStack: View {
         HStack(spacing: -size * 0.34) {
             ForEach(Array(members.prefix(4).enumerated()), id: \.offset) { _, m in
                 Avatar(colorHex: m.colorHex, emoji: m.avatarEmoji ?? "🙂", size: size)
-                    .overlay(Circle().strokeBorder(NK.canvas, lineWidth: 2))
+                    .overlay(Circle().strokeBorder(WF.canvas, lineWidth: 2))
             }
         }
     }
@@ -213,7 +213,7 @@ struct GoalsView: View {
         }
         // Bounce even when the list is short/empty, so pull-to-refresh still triggers.
         .scrollBounceBehavior(.always)
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle("Goals")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(isKiosk ? .hidden : .visible, for: .navigationBar)
@@ -261,15 +261,15 @@ struct GoalsView: View {
                         HStack(spacing: 8) {
                             AvatarStack(members: list.members, size: 22)
                             Text(list.name).font(.system(size: 13.5, weight: .bold))
-                                .foregroundStyle(on ? NK.ink : NK.ink2).lineLimit(1)
+                                .foregroundStyle(on ? WF.ink : WF.ink2).lineLimit(1)
                             Text("\(list.goalCount)").font(.system(size: 11, weight: .heavy))
-                                .foregroundStyle(NK.ink3)
+                                .foregroundStyle(WF.ink3)
                                 .padding(.horizontal, 6).padding(.vertical, 1)
-                                .background(NK.panel).clipShape(Capsule())
+                                .background(WF.panel).clipShape(Capsule())
                         }
                         .padding(.leading, 8).padding(.trailing, 10).padding(.vertical, 7)
-                        .background(on ? NK.card : NK.card2)
-                        .overlay(Capsule().strokeBorder(on ? NK.ink.opacity(0.22) : NK.hair, lineWidth: on ? 1.5 : 1))
+                        .background(on ? WF.card : WF.card2)
+                        .overlay(Capsule().strokeBorder(on ? WF.ink.opacity(0.22) : WF.hair, lineWidth: on ? 1.5 : 1))
                         .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
@@ -279,9 +279,9 @@ struct GoalsView: View {
                         Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
                         Text("New group").font(.system(size: 13, weight: .bold))
                     }
-                    .foregroundStyle(NK.ink3)
+                    .foregroundStyle(WF.ink3)
                     .padding(.horizontal, 12).padding(.vertical, 7)
-                    .overlay(Capsule().strokeBorder(NK.hair, style: StrokeStyle(lineWidth: 1.5, dash: [4])))
+                    .overlay(Capsule().strokeBorder(WF.hair, style: StrokeStyle(lineWidth: 1.5, dash: [4])))
                 }
                 .buttonStyle(.plain)
             }
@@ -293,9 +293,9 @@ struct GoalsView: View {
         HStack(spacing: 11) {
             AvatarStack(members: list.members, size: 30)
             VStack(alignment: .leading, spacing: 1) {
-                Text(list.name).font(NK.serif(20)).foregroundStyle(NK.ink)
+                Text(list.name).font(WF.serif(20)).foregroundStyle(WF.ink)
                 Text("\(list.goalCount) goals · \(listSub(list))")
-                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
             }
             Spacer()
         }
@@ -339,7 +339,7 @@ struct GoalsView: View {
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     heroPill("⭐ Featured · shared total")
-                    Text(g.title).font(NK.serif(26)).foregroundStyle(.white).lineLimit(2)
+                    Text(g.title).font(WF.serif(26)).foregroundStyle(.white).lineLimit(2)
                         .minimumScaleFactor(0.7)
                     Text("Everyone contributes to one pool\(g.deadline.map { " · by \(fmtDeadline($0))" } ?? "")")
                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).lineLimit(2)
@@ -354,7 +354,7 @@ struct GoalsView: View {
         }
         .padding(16)
         .background(Self.heroGreen)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
         .contentShape(Rectangle())
         .onTapGesture { path.append(.goal(g)) }
     }
@@ -369,7 +369,7 @@ struct GoalsView: View {
                     .background(.white.opacity(0.18)).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 VStack(alignment: .leading, spacing: 6) {
                     heroPill("⭐ Featured · each tracks their own")
-                    Text(g.title).font(NK.serif(26)).foregroundStyle(.white).lineLimit(2)
+                    Text(g.title).font(WF.serif(26)).foregroundStyle(.white).lineLimit(2)
                         .minimumScaleFactor(0.7)
                     Text(g.target.map { "\(goalFmt($0)) \(g.unit ?? "")".trimmingCharacters(in: .whitespaces) + " each" } ?? "Everyone tracks their own")
                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
@@ -392,7 +392,7 @@ struct GoalsView: View {
         }
         .padding(16)
         .background(Self.heroOrange)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
         .contentShape(Rectangle())
         .onTapGesture { path.append(.goal(g)) }
     }
@@ -432,7 +432,7 @@ struct GoalsView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 11)
             .background(.white)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -449,29 +449,29 @@ struct GoalsView: View {
                         .frame(width: 42, height: 42)
                         .background(c.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(g.title).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink).lineLimit(1)
-                        Text(goalDescriptor(g)).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3).lineLimit(1)
+                        Text(g.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
+                        Text(goalDescriptor(g)).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
                     }
                     Spacer(minLength: 6)
                     HStack(alignment: .firstTextBaseline, spacing: 1) {
-                        Text(goalFmt(g.totalProgress)).font(.system(size: 16, weight: .heavy)).foregroundStyle(NK.ink)
-                        Text("/\(goalFmt(g.target))").font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
+                        Text(goalFmt(g.totalProgress)).font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
+                        Text("/\(goalFmt(g.target))").font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
                     }
                 }
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(NK.hair)
+                        Capsule().fill(WF.hair)
                         Capsule().fill(c).frame(width: geo.size.width * frac)
                     }
                 }
                 .frame(height: 7)
                 if g.streakDays > 0 {
                     Text("🔥 \(g.streakDays)-day streak")
-                        .font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink2)
+                        .font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink2)
                 }
             }
             .padding(14)
-            .nkField()
+            .wfField()
         }
         .buttonStyle(.plain)
     }
@@ -483,7 +483,7 @@ struct GoalsView: View {
 }
 
 /// Log progress — quick-amount chips, multi-select "Who", optional note. One log is
-/// written per selected person (so per-person sums roll up to the pool). NK-styled.
+/// written per selected person (so per-person sums roll up to the pool). WF-styled.
 struct GoalLogSheet: View {
     @Environment(\.dismiss) private var dismiss
     let goal: WaffledAPI.Goal
@@ -530,16 +530,16 @@ struct GoalLogSheet: View {
                         SectionLabel(text: isHours ? "How long?" : "How much?")
                         chipRow
                         HStack(spacing: 8) {
-                            Text("or").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                            Text("or").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                             TextField("amount", text: $amountText)
                                 .keyboardType(.decimalPad)
                                 .font(.system(size: 16, weight: .semibold))
                                 .padding(.horizontal, 13).padding(.vertical, 10)
-                                .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                                .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                                 .frame(width: 110)
                                 .onChange(of: amountText) { _, new in if let v = Double(new) { amount = v } }
-                            if let u = goal.unit { Text(u).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3) }
+                            if let u = goal.unit { Text(u).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3) }
                         }
                     }
 
@@ -554,7 +554,7 @@ struct GoalLogSheet: View {
                                 SectionLabel(text: "Who?")
                                 if whoMissing {
                                     Text("pick at least one")
-                                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.primary)
+                                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.primary)
                                 }
                             }
                             whoRow
@@ -566,14 +566,14 @@ struct GoalLogSheet: View {
                         TextField("Creek hike + fort building", text: $note)
                             .font(.system(size: 16, weight: .semibold))
                             .padding(.horizontal, 13).padding(.vertical, 12)
-                            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                         ChipFlow(spacing: 8, lineSpacing: 8) {
                             ForEach(Self.activityChips, id: \.self) { a in
                                 Button { note = a } label: {
-                                    Text(a).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink2)
+                                    Text(a).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
                                         .padding(.horizontal, 11).padding(.vertical, 7)
-                                        .background(NK.card2).overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+                                        .background(WF.card2).overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
                                         .clipShape(Capsule())
                                 }
                                 .buttonStyle(.plain)
@@ -583,7 +583,7 @@ struct GoalLogSheet: View {
                 }
                 .padding(20)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Log progress")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -608,11 +608,11 @@ struct GoalLogSheet: View {
                 let on = amount == c.value
                 Button { amount = c.value; amountText = goalFmt(c.value) } label: {
                     Text(c.label).font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(on ? .white : NK.ink2)
+                        .foregroundStyle(on ? .white : WF.ink2)
                         .frame(maxWidth: .infinity).padding(.vertical, 11)
-                        .background(on ? NK.primary : NK.card)
-                        .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(on ? Color.clear : NK.hair, lineWidth: 1))
-                        .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                        .background(on ? WF.primary : WF.card)
+                        .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(on ? Color.clear : WF.hair, lineWidth: 1))
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
@@ -638,10 +638,10 @@ struct GoalLogSheet: View {
         let on = Calendar.current.isDate(loggedOn, inSameDayAs: date)
         return Button { loggedOn = date } label: {
             Text(label).font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(on ? .white : NK.ink2)
+                .foregroundStyle(on ? .white : WF.ink2)
                 .padding(.horizontal, 14).padding(.vertical, 9)
-                .background(on ? NK.primary : NK.card)
-                .overlay(Capsule().strokeBorder(on ? Color.clear : NK.hair, lineWidth: 1))
+                .background(on ? WF.primary : WF.card)
+                .overlay(Capsule().strokeBorder(on ? Color.clear : WF.hair, lineWidth: 1))
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -658,14 +658,14 @@ struct GoalLogSheet: View {
                         HStack(spacing: 7) {
                             Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 24)
                             Text(goalFirstName(p.name)).font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(on ? NK.ink : NK.ink2)
+                                .foregroundStyle(on ? WF.ink : WF.ink2)
                             if on {
                                 Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 14)).foregroundStyle(NK.primary)
+                                    .font(.system(size: 14)).foregroundStyle(WF.primary)
                             }
                         }
                         .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
-                        .nkChip(selected: on)
+                        .wfChip(selected: on)
                     }
                     .buttonStyle(.plain)
                 }
@@ -677,7 +677,7 @@ struct GoalLogSheet: View {
 
 /// New goal — title, who-it's-for (goal list), shared/each, type + measure,
 /// category, feature + rewards toggles with an inline milestone editor. Mirrors the
-/// web GoalCreate, folded into one scrollable sheet. NK-styled.
+/// web GoalCreate, folded into one scrollable sheet. WF-styled.
 struct GoalCreateSheet: View {
     @Environment(\.dismiss) private var dismiss
     let lists: [WaffledAPI.GoalList]
@@ -776,11 +776,11 @@ struct GoalCreateSheet: View {
                 VStack(alignment: .leading, spacing: 22) {
                     section("What’s the goal?") {
                         TextField("1,000 Hours Outside", text: $title)
-                            .font(NK.serif(20)).textInputAutocapitalization(.words)
+                            .font(WF.serif(20)).textInputAutocapitalization(.words)
                             .focused($titleFocused)
                             .padding(.horizontal, 15).padding(.vertical, 13)
-                            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                     }
 
                     section("Who’s it for?") {
@@ -790,9 +790,9 @@ struct GoalCreateSheet: View {
                                 Button { goalListId = l.id } label: {
                                     Text("\(l.members.first?.avatarEmoji ?? l.emoji ?? "👥") \(l.name)")
                                         .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(on ? NK.ink : NK.ink2)
+                                        .foregroundStyle(on ? WF.ink : WF.ink2)
                                         .padding(.horizontal, 12).padding(.vertical, 7)
-                                        .nkChip(selected: on)
+                                        .wfChip(selected: on)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -801,9 +801,9 @@ struct GoalCreateSheet: View {
                                     Image(systemName: "plus").font(.system(size: 10, weight: .heavy))
                                     Text("New group").font(.system(size: 13, weight: .semibold))
                                 }
-                                .foregroundStyle(NK.ink3)
+                                .foregroundStyle(WF.ink3)
                                 .padding(.horizontal, 12).padding(.vertical, 7)
-                                .overlay(Capsule().strokeBorder(NK.hair, style: StrokeStyle(lineWidth: 1.5, dash: [4])))
+                                .overlay(Capsule().strokeBorder(WF.hair, style: StrokeStyle(lineWidth: 1.5, dash: [4])))
                             }
                             .buttonStyle(.plain)
                         }
@@ -832,9 +832,9 @@ struct GoalCreateSheet: View {
                                 Button { category = k } label: {
                                     Text("\(GoalStyle.emoji(k)) \(Self.categoryLabel[k] ?? k)")
                                         .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(on ? c : NK.ink2)
+                                        .foregroundStyle(on ? c : WF.ink2)
                                         .padding(.horizontal, 12).padding(.vertical, 7)
-                                        .nkChip(selected: on, tint: c)
+                                        .wfChip(selected: on, tint: c)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -846,12 +846,12 @@ struct GoalCreateSheet: View {
                     if !isChecklist {
                         section("How is progress logged?") {
                             Text("You can always log it yourself, anytime. Optionally let the calendar count too:")
-                                .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                                .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
                                 .fixedSize(horizontal: false, vertical: true)
                             toggleRow("📅", "Also auto-count from calendar ✦", "Matching calendar events add progress automatically", $autoFromCalendar)
                             if autoFromCalendar {
                                 Text("✦ Calendar events you link to this goal show up on Today to confirm — and you can schedule time for it right from the goal.")
-                                    .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                                    .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
@@ -861,12 +861,12 @@ struct GoalCreateSheet: View {
                     if hasRewards { milestoneEditor }
 
                     Text("Rewards are off by default — goals stay about growth, not points. Turn them on per goal when a little extra motivation helps.")
-                        .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(20)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle(editGoal == nil ? "New goal" : "Edit goal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -905,16 +905,16 @@ struct GoalCreateSheet: View {
             HStack(spacing: 12) {
                 WaffledEmojiTile(emoji: t.emoji)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(t.title).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
-                    Text(t.desc).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                    Text(t.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
+                    Text(t.desc).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
                 Spacer()
-                if on { Image(systemName: "checkmark.circle.fill").font(.system(size: 18)).foregroundStyle(NK.primary) }
+                if on { Image(systemName: "checkmark.circle.fill").font(.system(size: 18)).foregroundStyle(WF.primary) }
             }
             .padding(12)
-            .background(on ? NK.primary.opacity(0.08) : NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(on ? NK.primary : NK.hair, lineWidth: on ? 1.5 : 1))
+            .background(on ? WF.primary.opacity(0.08) : WF.card)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(on ? WF.primary : WF.hair, lineWidth: on ? 1.5 : 1))
         }
         .buttonStyle(.plain)
     }
@@ -927,11 +927,11 @@ struct GoalCreateSheet: View {
                 HStack(spacing: 10) {
                     if isHabit {
                         numField($habitPer, width: 70)
-                        Text("× a").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
+                        Text("× a").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
                         Picker("Period", selection: $habitPeriod) {
                             Text("day").tag("day"); Text("week").tag("week"); Text("month").tag("month")
                         }
-                        .pickerStyle(.menu).tint(NK.ink)
+                        .pickerStyle(.menu).tint(WF.ink)
                         Spacer()
                     } else {
                         numField($target, width: 90)
@@ -941,7 +941,7 @@ struct GoalCreateSheet: View {
             }
             Toggle(isOn: $hasDeadline.animation()) {
                 Text(isChecklist ? "Finish by a date" : (isHabit ? "Keep it up until" : "Set a deadline"))
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
             }
             .tint(FamilyColor.wally.solid)
             if hasDeadline {
@@ -956,24 +956,24 @@ struct GoalCreateSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(steps.enumerated()), id: \.element.id) { idx, _ in
                 HStack(spacing: 8) {
-                    Text("\(idx + 1)").font(.system(size: 13, weight: .heavy)).foregroundStyle(NK.ink3)
-                        .frame(width: 26, height: 38).background(NK.panel)
-                        .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                    Text("\(idx + 1)").font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.ink3)
+                        .frame(width: 26, height: 38).background(WF.panel)
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                     TextField("Step \(idx + 1)", text: $steps[idx].label)
                         .font(.system(size: 15, weight: .semibold))
-                        .padding(.horizontal, 12).padding(.vertical, 10).background(NK.card)
-                        .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                        .padding(.horizontal, 12).padding(.vertical, 10).background(WF.card)
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                     if steps.count > 1 {
                         Button { steps.remove(at: idx) } label: {
-                            Image(systemName: "minus.circle.fill").font(.system(size: 18)).foregroundStyle(NK.ink3)
+                            Image(systemName: "minus.circle.fill").font(.system(size: 18)).foregroundStyle(WF.ink3)
                         }
                         .buttonStyle(.plain)
                     }
                 }
             }
             Button { steps.append(.init(existingId: nil, label: "")) } label: {
-                Label("Add step", systemImage: "plus").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ai)
+                Label("Add step", systemImage: "plus").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ai)
             }
             .buttonStyle(.plain).padding(.top, 2)
         }
@@ -983,31 +983,31 @@ struct GoalCreateSheet: View {
         TextField("", text: text).keyboardType(.numberPad)
             .font(.system(size: 16, weight: .semibold)).multilineTextAlignment(.center)
             .frame(width: width).padding(.vertical, 11)
-            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private func plainField(_ placeholder: String, text: Binding<String>) -> some View {
         TextField(placeholder, text: text)
             .font(.system(size: 16, weight: .semibold))
             .padding(.horizontal, 13).padding(.vertical, 11)
-            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private func toggleRow(_ icon: String, _ title: String, _ sub: String, _ on: Binding<Bool>) -> some View {
         HStack(spacing: 12) {
             Text(icon).font(.system(size: 22)).frame(width: 38)
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 14.5, weight: .bold)).foregroundStyle(NK.ink)
-                Text(sub).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                Text(title).font(.system(size: 14.5, weight: .bold)).foregroundStyle(WF.ink)
+                Text(sub).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
             }
             Spacer()
             Toggle("", isOn: on.animation()).labelsHidden().tint(FamilyColor.wally.solid)
         }
         .padding(13)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     /// What a milestone's "number" means for the current goal type (mirrors the web).
@@ -1029,31 +1029,31 @@ struct GoalCreateSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             SectionLabel(text: "Milestones & rewards")
             Text(milestoneHint)
-                .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
                 .fixedSize(horizontal: false, vertical: true)
             ForEach($milestones) { $m in
                 HStack(spacing: 8) {
                     TextField("🎯", text: $m.emoji).frame(width: 38).multilineTextAlignment(.center)
-                        .padding(.vertical, 9).background(NK.card)
-                        .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                        .padding(.vertical, 9).background(WF.card)
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                     TextField("0", text: $m.threshold).keyboardType(.numberPad).frame(width: 64)
                         .multilineTextAlignment(.center).font(.system(size: 14, weight: .semibold))
-                        .padding(.vertical, 9).background(NK.card)
-                        .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                        .padding(.vertical, 9).background(WF.card)
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                     TextField("reward", text: $m.reward).font(.system(size: 14, weight: .semibold))
-                        .padding(.horizontal, 11).padding(.vertical, 9).background(NK.card)
-                        .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                        .padding(.horizontal, 11).padding(.vertical, 9).background(WF.card)
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                     Button { milestones.removeAll { $0.id == m.id } } label: {
-                        Image(systemName: "minus.circle.fill").font(.system(size: 18)).foregroundStyle(NK.ink3)
+                        Image(systemName: "minus.circle.fill").font(.system(size: 18)).foregroundStyle(WF.ink3)
                     }
                     .buttonStyle(.plain)
                 }
             }
             Button { milestones.append(.init(emoji: "🎯", threshold: "0", reward: "")) } label: {
-                Label("Add milestone", systemImage: "plus").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ai)
+                Label("Add milestone", systemImage: "plus").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ai)
             }
             .buttonStyle(.plain).padding(.top, 2)
         }
@@ -1255,7 +1255,7 @@ struct GoalDetailView: View {
             }
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 110)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle(goal.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -1314,7 +1314,7 @@ struct GoalDetailView: View {
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity).padding(.vertical, 13)
             .background(Self.heroGreen)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -1329,11 +1329,11 @@ struct GoalDetailView: View {
                 Text(hourly ? "Plan time on the calendar" : "Schedule on the calendar")
                     .font(.system(size: 14.5, weight: .bold))
             }
-            .foregroundStyle(NK.ai)
+            .foregroundStyle(WF.ai)
             .frame(maxWidth: .infinity).padding(.vertical, 13)
-            .background(NK.ai.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.ai.opacity(0.25), lineWidth: 1))
+            .background(WF.ai.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.ai.opacity(0.25), lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
@@ -1356,7 +1356,7 @@ struct GoalDetailView: View {
                     .font(.system(size: 10.5, weight: .heavy)).foregroundStyle(.white)
                     .padding(.horizontal, 9).padding(.vertical, 4)
                     .background(.white.opacity(0.2)).clipShape(Capsule())
-                Text(goal.title).font(NK.serif(20)).foregroundStyle(.white).lineLimit(3)
+                Text(goal.title).font(WF.serif(20)).foregroundStyle(.white).lineLimit(3)
                 Text(heroSub).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
                 Spacer(minLength: 0)
                 HStack(spacing: 4) {
@@ -1369,7 +1369,7 @@ struct GoalDetailView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Self.heroGreen)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
     }
 
     private var heroSub: String {
@@ -1387,29 +1387,29 @@ struct GoalDetailView: View {
     private func milestoneCard(_ ms: [WaffledAPI.GoalDetail.Milestone]) -> some View {
         let firstUnreached = ms.firstIndex { !$0.reached }
         return detailCard {
-            Text("Milestones").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+            Text("Milestones").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
             VStack(spacing: 0) {
                 ForEach(Array(ms.enumerated()), id: \.element.id) { i, m in
                     let isNow = i == firstUnreached
                     HStack(spacing: 12) {
                         Text(m.emoji ?? "⛳").font(.system(size: 16))
                             .frame(width: 34, height: 34)
-                            .background(m.reached ? FamilyColor.wally.solid.opacity(0.18) : (isNow ? NK.primary.opacity(0.12) : NK.panel))
+                            .background(m.reached ? FamilyColor.wally.solid.opacity(0.18) : (isNow ? WF.primary.opacity(0.12) : WF.panel))
                             .clipShape(Circle())
-                            .overlay(Circle().strokeBorder(m.reached ? FamilyColor.wally.solid : (isNow ? NK.primary : Color.clear), lineWidth: 1.5))
+                            .overlay(Circle().strokeBorder(m.reached ? FamilyColor.wally.solid : (isNow ? WF.primary : Color.clear), lineWidth: 1.5))
                         Text(m.label ?? goalFmt(m.threshold))
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(m.reached || isNow ? NK.ink : NK.ink2)
+                            .foregroundStyle(m.reached || isNow ? WF.ink : WF.ink2)
                         Spacer(minLength: 6)
                         Text(m.reached ? "reached"
                                 : isNow ? "\(goalFmt(m.threshold - progress)) to go"
                                 : (m.rewardText ?? "—"))
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(m.reached ? FamilyColor.wally.solid : (isNow ? NK.primary : NK.ink3))
+                            .foregroundStyle(m.reached ? FamilyColor.wally.solid : (isNow ? WF.primary : WF.ink3))
                             .lineLimit(1)
                     }
                     .padding(.vertical, 7)
-                    if i < ms.count - 1 { Divider().background(NK.hair) }
+                    if i < ms.count - 1 { Divider().background(WF.hair) }
                 }
             }
         }
@@ -1421,23 +1421,23 @@ struct GoalDetailView: View {
         let maxProg = max(1, participants.map(\.progress).max() ?? 1)
         return detailCard {
             Text(unit.map { "\($0.prefix(1).uppercased())\($0.dropFirst()) by person" } ?? "By person")
-                .font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
             VStack(spacing: 11) {
                 ForEach(participants, id: \.personId) { p in
                     let color = Color(hexString: p.colorHex) ?? FamilyColor.kevin.solid
                     HStack(spacing: 10) {
                         Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 26)
                         Text(goalFirstName(p.name)).font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(NK.ink).frame(width: 64, alignment: .leading).lineLimit(1)
+                            .foregroundStyle(WF.ink).frame(width: 64, alignment: .leading).lineLimit(1)
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
-                                Capsule().fill(NK.hair)
+                                Capsule().fill(WF.hair)
                                 Capsule().fill(color).frame(width: geo.size.width * min(p.progress / maxProg, 1))
                             }
                         }
                         .frame(height: 8)
                         Text("\(goalFmt(p.progress))\(unit.map { " \($0)" } ?? "")")
-                            .font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
+                            .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
                             .frame(width: 64, alignment: .trailing).lineLimit(1).minimumScaleFactor(0.7)
                     }
                 }
@@ -1449,27 +1449,27 @@ struct GoalDetailView: View {
 
     private var recentCard: some View {
         detailCard {
-            Text("Recent activity").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+            Text("Recent activity").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
             if let r = model.detail?.recent, !r.isEmpty {
                 VStack(spacing: 0) {
                     ForEach(Array(r.enumerated()), id: \.element.id) { i, log in
                         HStack(spacing: 10) {
                             Text(weekday(log.loggedAt)).font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(NK.ink3).frame(width: 34, alignment: .leading)
+                                .foregroundStyle(WF.ink3).frame(width: 34, alignment: .leading)
                             Avatar(colorHex: log.colorHex, emoji: log.avatarEmoji ?? "🙂", size: 24)
                             Text(log.note?.isEmpty == false ? log.note! : "Logged progress")
-                                .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                                .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                             Spacer(minLength: 6)
                             Text("+\(goalFmt(log.amount))\(unit.map { " \($0)" } ?? "")")
                                 .font(.system(size: 13, weight: .bold)).foregroundStyle(FamilyColor.wally.solid)
                         }
                         .padding(.vertical, 8)
-                        if i < r.count - 1 { Divider().background(NK.hair) }
+                        if i < r.count - 1 { Divider().background(WF.hair) }
                     }
                 }
             } else {
                 Text("No activity yet — log some progress.")
-                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3).padding(.vertical, 6)
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3).padding(.vertical, 6)
             }
         }
     }
@@ -1484,7 +1484,7 @@ struct GoalDetailView: View {
         } label: {
             Text(confirmDelete ? "Tap again to delete this goal" : "Delete goal")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(confirmDelete ? NK.primary : NK.ink3)
+                .foregroundStyle(confirmDelete ? WF.primary : WF.ink3)
         }
         .buttonStyle(.plain)
         .padding(.top, 4).padding(.leading, 2)
@@ -1496,7 +1496,7 @@ struct GoalDetailView: View {
         VStack(alignment: .leading, spacing: 12) { content() }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .nkField()
+            .wfField()
     }
 
     private func monthDay(_ iso: String) -> String { fmtDate(iso, "MMM d") }
@@ -1543,16 +1543,16 @@ struct GoalListCreateSheet: View {
                                 .font(.system(size: 16, weight: .semibold)).textInputAutocapitalization(.words)
                                 .focused($nameFocused)
                                 .padding(.horizontal, 13).padding(.vertical, 12)
-                                .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                                .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                         }
                         VStack(alignment: .leading, spacing: 9) {
                             SectionLabel(text: "Emoji")
                             TextField("💑", text: $emoji)
                                 .font(.system(size: 16, weight: .semibold)).multilineTextAlignment(.center)
                                 .frame(width: 60).padding(.vertical, 12)
-                                .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                                .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                                 .onChange(of: emoji) { _, v in if v.count > 2 { emoji = String(v.prefix(2)) } }
                         }
                     }
@@ -1562,17 +1562,17 @@ struct GoalListCreateSheet: View {
                         ChipFlow(spacing: 8, lineSpacing: 8) {
                             ForEach(members) { m in
                                 let on = memberIds.contains(m.id)
-                                let c = Color(hexString: m.colorHex) ?? NK.ink3
+                                let c = Color(hexString: m.colorHex) ?? WF.ink3
                                 Button {
                                     if on { memberIds.remove(m.id) } else { memberIds.insert(m.id) }
                                 } label: {
                                     HStack(spacing: 7) {
                                         Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 24)
                                         Text(goalFirstName(m.name)).font(.system(size: 14, weight: .semibold))
-                                            .foregroundStyle(on ? NK.ink : NK.ink2)
+                                            .foregroundStyle(on ? WF.ink : WF.ink2)
                                     }
                                     .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
-                                    .nkChip(selected: on, tint: c)
+                                    .wfChip(selected: on, tint: c)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -1581,18 +1581,18 @@ struct GoalListCreateSheet: View {
 
                     Toggle(isOn: $isPrivate) {
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("Private").font(.system(size: 14.5, weight: .bold)).foregroundStyle(NK.ink)
-                            Text("Only these members see it").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                            Text("Private").font(.system(size: 14.5, weight: .bold)).foregroundStyle(WF.ink)
+                            Text("Only these members see it").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                         }
                     }
                     .tint(FamilyColor.wally.solid)
                     .padding(13)
-                    .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                    .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                 }
                 .padding(20)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("New goal list")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

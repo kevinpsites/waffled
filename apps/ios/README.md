@@ -77,7 +77,7 @@ dependency at that local copy. Revert to the remote pin once upstream fixes it.
 ## Run the Phase 1 sync demo
 
 Bring up the backend (`docker compose … up -d` / `just up`), mint a dev token
-(`just token` / `nook token`), then launch the app pointed at the local stack.
+(`just token` / `waffled token`), then launch the app pointed at the local stack.
 Config comes from the launch environment (or the in-app Sync → Connection panel):
 
 ```bash

@@ -22,7 +22,7 @@ enum MealPlanText {
 
 // Stateless leaf views shared by PlanWeekSheet and PlanMonthSheet. These are pure
 // view-layer reuse — no parent state lives here. Keep rendered output pixel-identical
-// to the originals (NK.* tokens, font sizes, spacing must match exactly).
+// to the originals (WF.* tokens, font sizes, spacing must match exactly).
 
 /// A small pill button (icon + label) used in a review card's action row.
 struct PlanActionChip: View {
@@ -36,9 +36,9 @@ struct PlanActionChip: View {
                 Image(systemName: icon).font(.system(size: 12, weight: .bold))
                 Text(label).font(.system(size: 12, weight: .bold)).lineLimit(1).fixedSize()
             }
-            .foregroundStyle(NK.ink2)
+            .foregroundStyle(WF.ink2)
             .padding(.horizontal, 12).padding(.vertical, 7)
-            .background(NK.panel).clipShape(Capsule())
+            .background(WF.panel).clipShape(Capsule())
         }
         .buttonStyle(.plain)
     }
@@ -49,8 +49,8 @@ struct PlanTag: View {
     let text: String
 
     var body: some View {
-        Text(text).font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink2)
-            .padding(.horizontal, 7).padding(.vertical, 2).background(NK.panel).clipShape(Capsule()).lineLimit(1)
+        Text(text).font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink2)
+            .padding(.horizontal, 7).padding(.vertical, 2).background(WF.panel).clipShape(Capsule()).lineLimit(1)
     }
 }
 
@@ -64,7 +64,7 @@ struct UseUpCard: View {
     var body: some View {
         WaffledCard(padding: 14) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Use up first").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
+                Text("Use up first").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink)
                 ChipFlow(spacing: 8, lineSpacing: 8) {
                     ForEach(items, id: \.self) { u in chip(u) }
                     TextField("+ Add", text: $input)
@@ -72,7 +72,7 @@ struct UseUpCard: View {
                         .submitLabel(.done).onSubmit { add() }
                         .frame(minWidth: 80)
                         .padding(.horizontal, 12).padding(.vertical, 7)
-                        .background(NK.panel).clipShape(Capsule())
+                        .background(WF.panel).clipShape(Capsule())
                 }
             }
         }
@@ -80,13 +80,13 @@ struct UseUpCard: View {
 
     private func chip(_ u: String) -> some View {
         HStack(spacing: 5) {
-            Text(u).font(.system(size: 14, weight: .medium)).foregroundStyle(NK.ink)
+            Text(u).font(.system(size: 14, weight: .medium)).foregroundStyle(WF.ink)
             Button { items.removeAll { $0 == u } } label: {
-                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(NK.ink3)
+                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(WF.ink3)
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 7)
-        .background(NK.panel).clipShape(Capsule())
+        .background(WF.panel).clipShape(Capsule())
     }
 
     private func add() {
@@ -103,10 +103,10 @@ struct PlanLoadingView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            ProgressView().controlSize(.large).tint(NK.ai)
-            Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
+            ProgressView().controlSize(.large).tint(WF.ai)
+            Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink)
             Text(subtitle)
-                .font(.system(size: 13)).foregroundStyle(NK.ink3).multilineTextAlignment(.center)
+                .font(.system(size: 13)).foregroundStyle(WF.ink3).multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -123,12 +123,12 @@ struct PlanMessageView: View {
     var body: some View {
         VStack(spacing: 12) {
             Text(emoji).font(.system(size: 44))
-            Text(title).font(.system(size: 18, weight: .bold)).foregroundStyle(NK.ink)
-            Text(subtitle).font(.system(size: 14)).foregroundStyle(NK.ink3)
+            Text(title).font(.system(size: 18, weight: .bold)).foregroundStyle(WF.ink)
+            Text(subtitle).font(.system(size: 14)).foregroundStyle(WF.ink3)
                 .multilineTextAlignment(.center).padding(.horizontal, 40)
             if let onRetry {
                 Button(action: onRetry) {
-                    Text("Try again").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ai)
+                    Text("Try again").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ai)
                 }
                 .padding(.top, 4)
             }
@@ -144,10 +144,10 @@ struct PlanCardDragPreview: View {
     var body: some View {
         HStack(spacing: 5) {
             Text(card.emoji ?? "🍽️").font(.system(size: 14))
-            Text(card.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+            Text(card.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
         }
         .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(NK.card).clipShape(Capsule()).overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(Capsule()).overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
     }
 }
 
@@ -162,13 +162,13 @@ struct PlanReshuffleButton: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 if isBusy {
-                    ProgressView().controlSize(.small).tint(NK.ai)
+                    ProgressView().controlSize(.small).tint(WF.ai)
                 } else { Text("✨").font(.system(size: 13)) }
                 Text(isBusy ? "Reshuffling…" : "Reshuffle")
-                    .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ai)
+                    .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ai)
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(NK.ai.opacity(0.10)).clipShape(Capsule())
+            .background(WF.ai.opacity(0.10)).clipShape(Capsule())
         }
         .buttonStyle(.plain).disabled(isDisabled)
     }
@@ -211,25 +211,25 @@ struct MealPlanReviewCard: View {
                     .frame(width: 46, height: 46).background(RecipeGradient.forCategory(card.mealType))
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(dayLabel).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
+                    Text(dayLabel).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
                     titleText
                     HStack(spacing: 8) {
                         ForEach(metaTags, id: \.self) { PlanTag(text: $0) }
                     }
                     if let note = belowTitleNote, !note.isEmpty {
-                        Text(note).font(.system(size: 12)).foregroundStyle(NK.ink3).lineLimit(2)
+                        Text(note).font(.system(size: 12)).foregroundStyle(WF.ink3).lineLimit(2)
                     }
                 }
                 Spacer(minLength: 0)
                 if let onSkip {
                     Button(action: onSkip) {
-                        Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
-                            .frame(width: 28, height: 28).background(NK.panel).clipShape(Circle())
+                        Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
+                            .frame(width: 28, height: 28).background(WF.panel).clipShape(Circle())
                     }
                     .buttonStyle(.plain)
                 }
             }
-            Divider().background(NK.hair)
+            Divider().background(WF.hair)
             HStack(spacing: 8) {
                 PlanActionChip(icon: "arrow.triangle.2.circlepath", label: "Swap", action: onSwap)
                     .disabled(actionsDisabled)
@@ -242,27 +242,27 @@ struct MealPlanReviewCard: View {
                             .font(.system(size: 12, weight: .bold))
                         Text(isLocked ? "Locked" : "Lock").font(.system(size: 12, weight: .bold)).lineLimit(1).fixedSize()
                     }
-                    .foregroundStyle(isLocked ? .white : NK.ink2)
+                    .foregroundStyle(isLocked ? .white : WF.ink2)
                     .padding(.horizontal, 12).padding(.vertical, 7)
-                    .background(isLocked ? NK.primary : NK.panel).clipShape(Capsule())
+                    .background(isLocked ? WF.primary : WF.panel).clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(13)
-        .background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-            .strokeBorder(isLocked ? NK.primary.opacity(0.45) : NK.hair, lineWidth: 1))
+        .background(WF.card)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+            .strokeBorder(isLocked ? WF.primary.opacity(0.45) : WF.hair, lineWidth: 1))
         .overlay {
             if isBusy {
-                RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).fill(NK.card.opacity(0.7))
-                    .overlay(ProgressView().controlSize(.small).tint(NK.ai))
+                RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).fill(WF.card.opacity(0.7))
+                    .overlay(ProgressView().controlSize(.small).tint(WF.ai))
             }
         }
         .animation(.easeInOut(duration: 0.15), value: isLocked)
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-            .strokeBorder(isDragTarget ? NK.ai : .clear, lineWidth: 2))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+            .strokeBorder(isDragTarget ? WF.ai : .clear, lineWidth: 2))
         .draggable(card.date) { PlanCardDragPreview(card: card) }
         .dropDestination(for: String.self) { items, _ in
             guard let s = items.first else { return false }
@@ -275,10 +275,10 @@ struct MealPlanReviewCard: View {
     /// the modifier chain is byte-identical to each original.
     @ViewBuilder private var titleText: some View {
         if titleMultilineLeading {
-            Text(card.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+            Text(card.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                 .lineLimit(2).multilineTextAlignment(.leading)
         } else {
-            Text(card.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+            Text(card.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                 .lineLimit(2)
         }
     }
@@ -288,7 +288,7 @@ struct MealPlanReviewCard: View {
 /// The parent passes the already-resolved `label` (e.g. "Add 5 & build list" /
 /// "Save month & build list"); when `isBusy` the bar shows a ProgressView.
 ///
-/// `isInactive` drives the gray vs. NK.ai tint (originally `suggestions.isEmpty`),
+/// `isInactive` drives the gray vs. WF.ai tint (originally `suggestions.isEmpty`),
 /// while `isDisabled` is the broader gate (originally
 /// `suggestions.isEmpty || applying || redrafting`). These differ on purpose: a
 /// busy bar with suggestions still shows the blue tint while disabled.
@@ -301,7 +301,7 @@ struct PlanApplyBar: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Divider().background(NK.hair)
+            Divider().background(WF.hair)
             Button(action: action) {
                 HStack(spacing: 8) {
                     if isBusy { ProgressView().controlSize(.small).tint(.white) }
@@ -309,12 +309,12 @@ struct PlanApplyBar: View {
                         .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 14)
-                .background(isInactive ? NK.ink3 : NK.ai)
-                .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                .background(isInactive ? WF.ink3 : WF.ai)
+                .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
             }
             .buttonStyle(.plain).disabled(isDisabled)
             .padding(.horizontal, 16).padding(.vertical, 12)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
     }
 }

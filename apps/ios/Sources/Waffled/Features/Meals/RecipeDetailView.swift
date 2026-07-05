@@ -47,20 +47,20 @@ struct RecipeDetailView: View {
         ScrollView {
             detailContent.padding(16).padding(.bottom, 110)   // clear the floating tab bar
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle(r.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { toggleFavorite() } label: {
                     Image(systemName: r.isFavorite ? "heart.fill" : "heart")
-                        .foregroundStyle(r.isFavorite ? NK.primary : NK.ink2)
+                        .foregroundStyle(r.isFavorite ? WF.primary : WF.ink2)
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button { editing = true } label: { Label("Edit recipe", systemImage: "pencil") }
-                } label: { Image(systemName: "ellipsis.circle").foregroundStyle(NK.ink2) }
+                } label: { Image(systemName: "ellipsis.circle").foregroundStyle(WF.ink2) }
             }
         }
         .task {
@@ -105,7 +105,7 @@ struct RecipeDetailView: View {
             if loading && ingredients.isEmpty && steps.isEmpty {
                 WaffledLoading(top: 30)
             } else if error {
-                Text("Couldn’t load this recipe.").font(.system(size: 14)).foregroundStyle(NK.ink3)
+                Text("Couldn’t load this recipe.").font(.system(size: 14)).foregroundStyle(WF.ink3)
                     .frame(maxWidth: .infinity).padding(.vertical, 20)
             } else if isKiosk {
                 HStack(alignment: .top, spacing: 20) {
@@ -140,12 +140,12 @@ struct RecipeDetailView: View {
             }
         }
         .frame(height: 190).frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(r.title).font(NK.serif(26, .bold)).foregroundStyle(NK.ink)
+            Text(r.title).font(WF.serif(26, .bold)).foregroundStyle(WF.ink)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 14) {
@@ -166,7 +166,7 @@ struct RecipeDetailView: View {
     }
 
     private func metaItem(_ icon: String, _ text: String) -> some View {
-        Text("\(icon) \(text)").font(.system(size: 13, weight: .medium)).foregroundStyle(NK.ink2).lineLimit(1)
+        Text("\(icon) \(text)").font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink2).lineLimit(1)
     }
 
     private var cookButton: some View {
@@ -176,7 +176,7 @@ struct RecipeDetailView: View {
                 Text("Cook mode").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
             }
             .frame(maxWidth: .infinity).padding(.vertical, 13)
-            .background(NK.ink).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .background(WF.ink).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -184,16 +184,16 @@ struct RecipeDetailView: View {
     private var cookedRow: some View {
         HStack {
             if let msg = cookedMessage {
-                Text(msg).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.primary)
+                Text(msg).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.primary)
             } else {
                 Text(r.cookedCount > 0 ? "👨‍🍳 Cooked \(r.cookedCount)×" : "Not cooked yet")
-                    .font(.system(size: 13, weight: .medium)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink3)
             }
             Spacer()
             Button { markCooked() } label: {
-                Text("✓ Mark cooked").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink)
+                Text("✓ Mark cooked").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink)
                     .padding(.horizontal, 13).padding(.vertical, 8)
-                    .background(NK.panel).clipShape(Capsule())
+                    .background(WF.panel).clipShape(Capsule())
             }
             .buttonStyle(.plain)
         }
@@ -203,13 +203,13 @@ struct RecipeDetailView: View {
         WaffledCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("Ingredients").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
+                    Text("Ingredients").font(.system(size: 17, weight: .bold)).foregroundStyle(WF.ink)
                     Spacer()
                     servingsScaler
                 }
                 ForEach(ingredients) { ing in
                     ingredientRow(ing)
-                    if ing.id != ingredients.last?.id { Divider().background(NK.hair) }
+                    if ing.id != ingredients.last?.id { Divider().background(WF.hair) }
                 }
             }
         }
@@ -217,37 +217,37 @@ struct RecipeDetailView: View {
 
     private var servingsScaler: some View {
         HStack(spacing: 10) {
-            Text("Servings").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+            Text("Servings").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
             Button { servings = max(1, currentServings - 1) } label: { scalerGlyph("minus") }
-            Text("\(currentServings)").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink).frame(minWidth: 18)
+            Text("\(currentServings)").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).frame(minWidth: 18)
             Button { servings = currentServings + 1 } label: { scalerGlyph("plus") }
         }
     }
 
     private func scalerGlyph(_ name: String) -> some View {
-        Image(systemName: name).font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink)
-            .frame(width: 26, height: 26).background(NK.panel).clipShape(Circle())
+        Image(systemName: name).font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink)
+            .frame(width: 26, height: 26).background(WF.panel).clipShape(Circle())
     }
 
     private func ingredientRow(_ ing: WaffledAPI.RecipeIngredientDTO) -> some View {
         let sub = subFor(ing)
         return HStack(alignment: .top, spacing: 12) {
             Text(amountText(ing)).font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(NK.ink2).frame(width: 62, alignment: .trailing)
+                .foregroundStyle(WF.ink2).frame(width: 62, alignment: .trailing)
             VStack(alignment: .leading, spacing: 2) {
-                Text(sub ?? nameText(ing)).font(.system(size: 15)).foregroundStyle(NK.ink)
+                Text(sub ?? nameText(ing)).font(.system(size: 15)).foregroundStyle(WF.ink)
                     .fixedSize(horizontal: false, vertical: true)
                 if sub != nil {
-                    Text("↺ instead of \(ing.name)").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                    Text("↺ instead of \(ing.name)").font(.system(size: 12)).foregroundStyle(WF.ink3)
                 }
             }
             Spacer(minLength: 0)
             Button { subEdit = SubEdit(name: ing.name, current: sub) } label: {
                 Image(systemName: "arrow.left.arrow.right")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(sub != nil ? NK.ai : NK.ink3)
+                    .foregroundStyle(sub != nil ? WF.ai : WF.ink3)
                     .frame(width: 30, height: 30)
-                    .background(sub != nil ? NK.ai.opacity(0.12) : NK.panel)
+                    .background(sub != nil ? WF.ai.opacity(0.12) : WF.panel)
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
@@ -274,36 +274,36 @@ struct RecipeDetailView: View {
             return "Need \(missing.count): \(shown)\(missing.count > 4 ? "…" : "")"
         }()
         return HStack(alignment: .top, spacing: 11) {
-            Text("✦").font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ai)
+            Text("✦").font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ai)
             VStack(alignment: .leading, spacing: 3) {
                 Text("\(onHand) of \(total) ingredient\(total == 1 ? "" : "s") already on hand")
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink)
-                Text(subtitle).font(.system(size: 12)).foregroundStyle(NK.ink2)
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
+                Text(subtitle).font(.system(size: 12)).foregroundStyle(WF.ink2)
             }
             Spacer(minLength: 0)
         }
-        .padding(14).background(NK.ai.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .padding(14).background(WF.ai.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
     }
 
     private var methodCard: some View {
         WaffledCard {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Method").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
+                Text("Method").font(.system(size: 17, weight: .bold)).foregroundStyle(WF.ink)
                 ForEach(steps) { step in
                     HStack(alignment: .top, spacing: 12) {
-                        Text("\(step.stepNumber)").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
-                            .frame(width: 28, height: 28).background(NK.panel).clipShape(Circle())
+                        Text("\(step.stepNumber)").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink2)
+                            .frame(width: 28, height: 28).background(WF.panel).clipShape(Circle())
                         VStack(alignment: .leading, spacing: 7) {
-                            Text(step.instruction).font(.system(size: 15)).foregroundStyle(NK.ink)
+                            Text(step.instruction).font(.system(size: 15)).foregroundStyle(WF.ink)
                                 .fixedSize(horizontal: false, vertical: true)
                             if !step.ingredients.isEmpty || (step.timerSeconds ?? 0) > 0 {
                                 ChipFlow(spacing: 6, lineSpacing: 6) {
                                     if let secs = step.timerSeconds, secs > 0 {
                                         Text("⏱ \(CookTimer.mmss(secs))").font(.system(size: 12, weight: .semibold))
-                                            .foregroundStyle(NK.primaryD)
+                                            .foregroundStyle(WF.primaryD)
                                             .padding(.horizontal, 9).padding(.vertical, 4)
-                                            .background(NK.primary.opacity(0.12)).clipShape(Capsule())
+                                            .background(WF.primary.opacity(0.12)).clipShape(Capsule())
                                     }
                                     ForEach(step.ingredients, id: \.self) { ig in
                                         Text(ig).font(.system(size: 12, weight: .medium))
@@ -314,11 +314,11 @@ struct RecipeDetailView: View {
                                 }
                             }
                             if let note = noteFor(step.stepNumber) {
-                                Text("📝 \(note)").font(.system(size: 13)).foregroundStyle(NK.ink2)
+                                Text("📝 \(note)").font(.system(size: 13)).foregroundStyle(WF.ink2)
                             }
                             Button { stepNoteEdit = StepNoteEdit(step: step.stepNumber) } label: {
                                 Text(noteFor(step.stepNumber) == nil ? "＋ Add note" : "Edit note")
-                                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ai)
+                                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ai)
                             }
                             .buttonStyle(.plain)
                         }
@@ -331,37 +331,37 @@ struct RecipeDetailView: View {
     private var notesCard: some View {
         WaffledCard {
             VStack(alignment: .leading, spacing: 10) {
-                Text("📝 Your notes").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
+                Text("📝 Your notes").font(.system(size: 17, weight: .bold)).foregroundStyle(WF.ink)
                 ZStack(alignment: .topLeading) {
                     if userNotesDraft.isEmpty {
                         Text("e.g. doubles well · use less salt · the kids love this one…")
-                            .font(.system(size: 14)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 14)).foregroundStyle(WF.ink3)
                             .padding(.horizontal, 5).padding(.vertical, 8)
                     }
-                    TextEditor(text: $userNotesDraft).font(.system(size: 14)).foregroundStyle(NK.ink)
+                    TextEditor(text: $userNotesDraft).font(.system(size: 14)).foregroundStyle(WF.ink)
                         .frame(minHeight: 70).scrollContentBackground(.hidden)
                 }
                 .padding(.horizontal, 9).padding(.vertical, 3)
-                .background(NK.card2).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                .background(WF.card2).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
 
                 if userNotesDraft != (r.userNotes ?? "") {
                     Button { saveNotes() } label: {
                         Text("Save notes").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
                             .padding(.horizontal, 16).padding(.vertical, 9)
-                            .background(NK.primary).clipShape(Capsule())
+                            .background(WF.primary).clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
                 }
 
                 if let recipeNotes = r.notes, !recipeNotes.isEmpty {
                     DisclosureGroup {
-                        Text(recipeNotes).font(.system(size: 13)).foregroundStyle(NK.ink2)
+                        Text(recipeNotes).font(.system(size: 13)).foregroundStyle(WF.ink2)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 4)
                     } label: {
-                        Text("Recipe notes (from the source)").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink2)
+                        Text("Recipe notes (from the source)").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
                     }
-                    .tint(NK.ink2)
+                    .tint(WF.ink2)
                 }
             }
         }
@@ -514,24 +514,24 @@ struct TagChip: View {
             .foregroundStyle(fg)
             .padding(.horizontal, 11).padding(.vertical, 5)
             .background(bg)
-            .overlay(chip.style == .soft ? Capsule().strokeBorder(NK.hair, lineWidth: 1) : nil)
+            .overlay(chip.style == .soft ? Capsule().strokeBorder(WF.hair, lineWidth: 1) : nil)
             .clipShape(Capsule())
     }
 
     private var fg: Color {
         switch chip.style {
-        case .plain: return NK.ink2
+        case .plain: return WF.ink2
         case .collection: return Color(hex: 0x1559B8)
-        case .dietary: return NK.ai
+        case .dietary: return WF.ai
         case .veg: return Color(hex: 0x167A4A)
-        case .soft: return NK.ink3
+        case .soft: return WF.ink3
         }
     }
     private var bg: Color {
         switch chip.style {
-        case .plain: return NK.panel
+        case .plain: return WF.panel
         case .collection: return Color(hex: 0x1559B8).opacity(0.12)
-        case .dietary: return NK.ai.opacity(0.12)
+        case .dietary: return WF.ai.opacity(0.12)
         case .veg: return Color(hex: 0x167A4A).opacity(0.12)
         case .soft: return .clear
         }
@@ -556,16 +556,16 @@ struct StepNoteSheet: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 10) {
                 SectionLabel(text: "Note for step \(stepNumber)")
-                TextEditor(text: $text).font(.system(size: 16)).foregroundStyle(NK.ink)
+                TextEditor(text: $text).font(.system(size: 16)).foregroundStyle(WF.ink)
                     .focused($focused)
                     .frame(minHeight: 120).scrollContentBackground(.hidden)
-                    .padding(10).background(NK.card2)
-                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                    .padding(10).background(WF.card2)
+                    .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                 Spacer()
             }
             .onAppear { focused = true }
-            .padding(20).background(NK.canvas)
+            .padding(20).background(WF.canvas)
             .navigationTitle("Step note").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -599,26 +599,26 @@ struct IngredientSubSheet: View {
             VStack(alignment: .leading, spacing: 12) {
                 SectionLabel(text: "Substitute for \(ingredientName)")
                 TextField("e.g. olive oil", text: $text)
-                    .font(.system(size: 16)).foregroundStyle(NK.ink)
+                    .font(.system(size: 16)).foregroundStyle(WF.ink)
                     .focused($focused)
                     .textInputAutocapitalization(.never)
-                    .padding(14).background(NK.card2)
-                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                    .padding(14).background(WF.card2)
+                    .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                     .onSubmit { onSave(text); dismiss() }
                 Text("Swaps this ingredient in the recipe and on the grocery list. Leave empty to use the original.")
-                    .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 12)).foregroundStyle(WF.ink3)
                 if !text.trimmingCharacters(in: .whitespaces).isEmpty {
                     Button { onSave(""); dismiss() } label: {
                         Text("↺ Use the original (\(ingredientName))")
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ai)
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ai)
                     }
                     .buttonStyle(.plain)
                 }
                 Spacer()
             }
             .onAppear { focused = true }
-            .padding(20).background(NK.canvas)
+            .padding(20).background(WF.canvas)
             .navigationTitle("Substitution").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -662,11 +662,11 @@ struct TagsEditorSheet: View {
                             ForEach(tags, id: \.self) { t in
                                 Button { tags.removeAll { $0 == t } } label: {
                                     HStack(spacing: 5) {
-                                        Text("#\(t)").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink)
-                                        Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(NK.ink3)
+                                        Text("#\(t)").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink)
+                                        Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(WF.ink3)
                                     }
                                     .padding(.horizontal, 11).padding(.vertical, 6)
-                                    .background(NK.panel).clipShape(Capsule())
+                                    .background(WF.panel).clipShape(Capsule())
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -675,12 +675,12 @@ struct TagsEditorSheet: View {
                             TextField("Add a tag…", text: $newTag)
                                 .font(.system(size: 15)).textInputAutocapitalization(.never)
                                 .padding(.horizontal, 12).padding(.vertical, 9)
-                                .background(NK.card2).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                                .background(WF.card2).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                                 .onSubmit(addTag)
                             Button(action: addTag) {
                                 Image(systemName: "plus").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
-                                    .frame(width: 38, height: 38).background(NK.primary).clipShape(Circle())
+                                    .frame(width: 38, height: 38).background(WF.primary).clipShape(Circle())
                             }
                             .buttonStyle(.plain).disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
                         }
@@ -693,10 +693,10 @@ struct TagsEditorSheet: View {
                                 let on = dietary.contains(d)
                                 Button { if on { dietary.remove(d) } else { dietary.insert(d) } } label: {
                                     Text(d).font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(on ? NK.ai : NK.ink2)
+                                        .foregroundStyle(on ? WF.ai : WF.ink2)
                                         .padding(.horizontal, 12).padding(.vertical, 7)
-                                        .background(on ? NK.ai.opacity(0.12) : NK.card2)
-                                        .overlay(Capsule().strokeBorder(on ? NK.ai.opacity(0.5) : NK.hair, lineWidth: 1))
+                                        .background(on ? WF.ai.opacity(0.12) : WF.card2)
+                                        .overlay(Capsule().strokeBorder(on ? WF.ai.opacity(0.5) : WF.hair, lineWidth: 1))
                                         .clipShape(Capsule())
                                 }
                                 .buttonStyle(.plain)
@@ -706,7 +706,7 @@ struct TagsEditorSheet: View {
                 }
                 .padding(20)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Tags & dietary").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

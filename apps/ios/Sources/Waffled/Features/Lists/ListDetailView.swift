@@ -295,7 +295,7 @@ struct ListDetailView: View {
         Group {
             if isKiosk { kioskBody } else { phoneBody }
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle(model.list.name)
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -366,7 +366,7 @@ struct ListDetailView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) { addBar }
                 .frame(maxWidth: .infinity)
             if model.isGrocery && !searchActive && (!model.meals.isEmpty || !model.staples.isEmpty) {
-                Rectangle().fill(NK.hair).frame(width: 1)
+                Rectangle().fill(WF.hair).frame(width: 1)
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
                         if !model.meals.isEmpty { summaryPanel }
@@ -375,7 +375,7 @@ struct ListDetailView: View {
                     .padding(16)
                 }
                 .frame(width: 340)
-                .background(NK.panel.opacity(0.3))
+                .background(WF.panel.opacity(0.3))
             }
         }
     }
@@ -384,7 +384,7 @@ struct ListDetailView: View {
     @ViewBuilder private var itemRows: some View {
         if model.items.isEmpty && !model.loading {
             Text(model.error ? "Couldn’t load this list." : "Nothing here yet.")
-                .font(.system(size: 14)).foregroundStyle(NK.ink3)
+                .font(.system(size: 14)).foregroundStyle(WF.ink3)
                 .listRowSeparator(.hidden).listRowBackground(Color.clear)
         }
         if model.isGrocery && mode == .meal {
@@ -417,28 +417,28 @@ struct ListDetailView: View {
             if showSearch { searchField }
             if model.isGrocery { modeToggle }
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
     }
 
     /// Inline search box — filters items by name, section, or quantity.
     private var searchField: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
+            Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
             TextField("Search this list…", text: $query)
                 .font(.system(size: 15, weight: .medium))
                 .focused($focus, equals: .search)
                 .textInputAutocapitalization(.never).autocorrectionDisabled().submitLabel(.search)
             if !query.isEmpty {
                 Button { query = "" } label: {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(NK.ink3)
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(WF.ink3)
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 13).padding(.vertical, 9)
-        .background(NK.panel)
+        .background(WF.panel)
         .clipShape(Capsule())
-        .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+        .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
         .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, model.isGrocery ? 2 : 8)
     }
 
@@ -465,7 +465,7 @@ struct ListDetailView: View {
                     if editingId != nil { commitEdit() }
                     detailItem = item
                 } label: { Label("Details", systemImage: "slider.horizontal.3") }
-                    .tint(NK.ai)
+                    .tint(WF.ai)
             }
     }
 
@@ -476,10 +476,10 @@ struct ListDetailView: View {
                     chevron(for: group.id)
                     Text(title.uppercased())
                         .font(.system(size: 11, weight: .heavy)).tracking(0.5)
-                        .foregroundStyle(NK.ink3)
+                        .foregroundStyle(WF.ink3)
                     Spacer(minLength: 6)
                     Text("\(group.items.count)")
-                        .font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
                 }
             }
         }
@@ -492,7 +492,7 @@ struct ListDetailView: View {
         content()
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 4)
-            .background(NK.canvas)
+            .background(WF.canvas)
             .listRowInsets(EdgeInsets())
     }
 
@@ -522,7 +522,7 @@ struct ListDetailView: View {
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 8)
-            .background(NK.canvas)
+            .background(WF.canvas)
         }
     }
 
@@ -533,7 +533,7 @@ struct ListDetailView: View {
             collapseButton(id: group.id) {
                 chevron(for: group.id)
                 if let meal = group.meal {
-                    let color = Color(hexString: meal.color) ?? NK.ink3
+                    let color = Color(hexString: meal.color) ?? WF.ink3
                     if let type = meal.mealType, !type.isEmpty {
                         Text(type.uppercased())
                             .font(.system(size: 9.5, weight: .heavy)).tracking(0.4)
@@ -544,16 +544,16 @@ struct ListDetailView: View {
                     }
                     Text((meal.title ?? "Meal").uppercased())
                         .font(.system(size: 11, weight: .heavy)).tracking(0.5)
-                        .foregroundStyle(NK.ink3)
+                        .foregroundStyle(WF.ink3)
                         .lineLimit(1)
                 } else {
                     Text("STAPLES & EXTRAS")
                         .font(.system(size: 11, weight: .heavy)).tracking(0.5)
-                        .foregroundStyle(NK.ink3)
+                        .foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 6)
                 Text("\(group.items.count)")
-                    .font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
             }
         }
     }
@@ -564,7 +564,7 @@ struct ListDetailView: View {
         if !colors.isEmpty {
             HStack(spacing: 3) {
                 ForEach(Array(colors.prefix(4).enumerated()), id: \.offset) { _, hex in
-                    Circle().fill(Color(hexString: hex) ?? NK.ink3).frame(width: 7, height: 7)
+                    Circle().fill(Color(hexString: hex) ?? WF.ink3).frame(width: 7, height: 7)
                 }
             }
         }
@@ -596,7 +596,7 @@ struct ListDetailView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("THIS WEEK’S MEALS")
-                    .font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
+                    .font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
                 Spacer()
                 Button { Task { await model.rebuild() } } label: {
                     HStack(spacing: 5) {
@@ -607,7 +607,7 @@ struct ListDetailView: View {
                         }
                         Text(model.rebuilding ? "Refreshing…" : "Refresh").font(.system(size: 12, weight: .semibold))
                     }
-                    .foregroundStyle(NK.ai)
+                    .foregroundStyle(WF.ai)
                 }
                 .buttonStyle(.plain).disabled(model.rebuilding)
             }
@@ -626,23 +626,23 @@ struct ListDetailView: View {
             }
         }
         .padding(14)
-        .nkField()
+        .wfField()
     }
 
     @ViewBuilder private func mealRecapRow(_ meal: WaffledAPI.GroceryBoardDTO.Meal) -> some View {
-        let color = Color(hexString: meal.color) ?? NK.ink3
+        let color = Color(hexString: meal.color) ?? WF.ink3
         let row = HStack(spacing: 10) {
             Circle().fill(color).frame(width: 9, height: 9)
             Text(weekday(meal.date))
-                .font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
                 .frame(width: 34, alignment: .leading)
             Text(meal.title ?? "—")
-                .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink)
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
                 .lineLimit(1)
             Spacer(minLength: 6)
             // A chevron hints the row drills into the recipe (only when it links one).
             if meal.recipeId != nil {
-                Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
             }
             Text(meal.emoji ?? Self.mealTypeEmoji[meal.mealType ?? ""] ?? "🍽️")
                 .font(.system(size: 14))
@@ -678,19 +678,19 @@ struct ListDetailView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("PANTRY CHECK")
-                    .font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
+                    .font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
                 Spacer()
                 Button { editingStaples = true } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "gearshape").font(.system(size: 11, weight: .bold))
                         Text("Edit staples").font(.system(size: 12, weight: .semibold))
                     }
-                    .foregroundStyle(NK.ai)
+                    .foregroundStyle(WF.ai)
                 }
                 .buttonStyle(.plain)
             }
             Text("These staples are assumed in the house, so they’re left off the list. Tap one to add it anyway.")
-                .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink2)
+                .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink2)
                 .fixedSize(horizontal: false, vertical: true)
             ChipFlow(spacing: 8, lineSpacing: 8) {
                 ForEach(model.staples) { s in
@@ -704,10 +704,10 @@ struct ListDetailView: View {
                             Image(systemName: "plus").font(.system(size: 10, weight: .heavy))
                             Text(s.name).font(.system(size: 13, weight: .semibold))
                         }
-                        .foregroundStyle(NK.ink2)
+                        .foregroundStyle(WF.ink2)
                         .padding(.horizontal, 11).padding(.vertical, 7)
-                        .background(NK.card2)
-                        .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+                        .background(WF.card2)
+                        .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
                         .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
@@ -716,9 +716,9 @@ struct ListDetailView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(NK.panel)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.panel)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     @ViewBuilder private var completedSection: some View {
@@ -739,7 +739,7 @@ struct ListDetailView: View {
                                 .font(.system(size: 11, weight: .heavy)).tracking(0.5)
                             Spacer()
                         }
-                        .foregroundStyle(NK.ink3)
+                        .foregroundStyle(WF.ink3)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -757,7 +757,7 @@ struct ListDetailView: View {
             } label: {
                 Image(systemName: item.checked ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 21))
-                    .foregroundStyle(item.checked ? NK.primary : NK.ink3)
+                    .foregroundStyle(item.checked ? WF.primary : WF.ink3)
                     .frame(width: 32, height: 32)
                     .contentShape(Rectangle())
             }
@@ -787,7 +787,7 @@ struct ListDetailView: View {
                 } label: {
                     Image(systemName: "slider.horizontal.3")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(NK.ai)
+                        .foregroundStyle(WF.ai)
                         .frame(width: 32, height: 32)
                         .contentShape(Rectangle())
                 }
@@ -797,12 +797,12 @@ struct ListDetailView: View {
                     HStack(spacing: 8) {
                         Text(item.name)
                             .font(.system(size: 16, weight: .semibold))
-                            .strikethrough(item.checked, color: NK.ink3)
-                            .foregroundStyle(item.checked ? NK.ink3 : NK.ink)
+                            .strikethrough(item.checked, color: WF.ink3)
+                            .foregroundStyle(item.checked ? WF.ink3 : WF.ink)
                         Spacer(minLength: 8)
                         mealDots(for: item)
                         if let q = item.quantity, !q.isEmpty {
-                            Text(q).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                            Text(q).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                         }
                         if let a = item.assignee, a.avatarEmoji != nil || a.colorHex != nil {
                             Avatar(colorHex: a.colorHex, emoji: a.avatarEmoji ?? "🙂", size: 24)
@@ -825,7 +825,7 @@ struct ListDetailView: View {
                 sectionPicker
             }
             HStack(spacing: 10) {
-                Image(systemName: "plus.circle.fill").font(.system(size: 20)).foregroundStyle(NK.primary)
+                Image(systemName: "plus.circle.fill").font(.system(size: 20)).foregroundStyle(WF.primary)
                 TextField("Add item", text: $draftName)
                     .font(.system(size: 16, weight: .semibold))
                     .focused($focus, equals: .add)
@@ -840,12 +840,12 @@ struct ListDetailView: View {
                     .onSubmit(submit)
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
-            .nkField()
+            .wfField()
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, isKiosk ? 14 : 78)   // iPhone clears the floating tab bar; iPad has none
-        .background(NK.canvas)           // opaque strip so rows don't show through
+        .background(WF.canvas)           // opaque strip so rows don't show through
         .animation(.easeInOut(duration: 0.18), value: showSectionPicker)
     }
 
@@ -877,9 +877,9 @@ struct ListDetailView: View {
                 if let img = systemImage { Image(systemName: img).font(.system(size: 10, weight: .heavy)) }
                 Text(label).font(.system(size: 13, weight: .semibold))
             }
-            .foregroundStyle(selected ? NK.ink : NK.ink2)
+            .foregroundStyle(selected ? WF.ink : WF.ink2)
             .padding(.horizontal, 12).padding(.vertical, 7)
-            .nkChip(selected: selected)
+            .wfChip(selected: selected)
         }
         .buttonStyle(.plain)
     }
@@ -920,13 +920,13 @@ struct ListDetailView: View {
     @ViewBuilder private var toastBanner: some View {
         if let t = toast {
             HStack(spacing: 8) {
-                Image(systemName: "checkmark.circle.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.primary)
-                Text(t).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink)
+                Image(systemName: "checkmark.circle.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.primary)
+                Text(t).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
             }
             .padding(.horizontal, 16).padding(.vertical, 11)
-            .background(NK.card)
+            .background(WF.card)
             .clipShape(Capsule())
-            .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+            .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
             .shadow(color: .black.opacity(0.12), radius: 10, y: 3)
             .padding(.bottom, 150)            // clear the add bar + tab bar
             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -936,7 +936,7 @@ struct ListDetailView: View {
 
 /// The fuller "Details" editor reached by swiping a row — name, quantity, assignee,
 /// and section. The 90% case stays on the inline row editor; this is for the rest.
-/// Styled to match the app (NK cards on canvas) rather than the stock iOS Form.
+/// Styled to match the app (WF cards on canvas) rather than the stock iOS Form.
 struct ItemDetailEditor: View {
     @Environment(\.dismiss) private var dismiss
     let originalName: String
@@ -982,12 +982,12 @@ struct ItemDetailEditor: View {
                         Text(sectionIsAuto
                              ? "Auto — filed by item name."
                              : "Filed under “\(section.trimmingCharacters(in: .whitespaces))”.")
-                            .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 12)).foregroundStyle(WF.ink3)
                     }
                 }
                 .padding(20)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Edit \(originalName)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1019,7 +1019,7 @@ struct ItemDetailEditor: View {
             .font(.system(size: 16, weight: .semibold))
             .padding(.horizontal, 15).padding(.vertical, 13)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .nkField()
+            .wfField()
     }
 
     private var assigneeRow: some View {
@@ -1042,15 +1042,15 @@ struct ItemDetailEditor: View {
                 } else {
                     Image(systemName: "person.2")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(NK.ink3)
+                        .foregroundStyle(WF.ink3)
                         .frame(width: 24, height: 24)
-                        .background(NK.panel).clipShape(Circle())
+                        .background(WF.panel).clipShape(Circle())
                 }
                 Text(label).font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(selected ? NK.ink : NK.ink2)
+                    .foregroundStyle(selected ? WF.ink : WF.ink2)
             }
             .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
-            .nkChip(selected: selected)
+            .wfChip(selected: selected)
         }
         .buttonStyle(.plain)
     }
@@ -1067,18 +1067,18 @@ struct ItemDetailEditor: View {
                         Image(systemName: "wand.and.stars").font(.system(size: 10, weight: .heavy))
                         Text("Auto").font(.system(size: 13, weight: .semibold))
                     }
-                    .foregroundStyle(sectionIsAuto ? NK.ink : NK.ink2)
+                    .foregroundStyle(sectionIsAuto ? WF.ink : WF.ink2)
                     .padding(.horizontal, 12).padding(.vertical, 7)
-                    .nkChip(selected: sectionIsAuto)
+                    .wfChip(selected: sectionIsAuto)
                 }
                 .buttonStyle(.plain)
                 ForEach(suggestions, id: \.self) { s in
                     let selected = section.caseInsensitiveCompare(s) == .orderedSame
                     Button { section = s } label: {
                         Text(s).font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(selected ? NK.ink : NK.ink2)
+                            .foregroundStyle(selected ? WF.ink : WF.ink2)
                             .padding(.horizontal, 12).padding(.vertical, 7)
-                            .nkChip(selected: selected)
+                            .wfChip(selected: selected)
                     }
                     .buttonStyle(.plain)
                 }
@@ -1111,7 +1111,7 @@ struct PantryStaplesEditor: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Assumed in the house — the grocery list leaves these off.")
-                        .font(.system(size: 13, weight: .medium)).foregroundStyle(NK.ink2)
+                        .font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink2)
                         .fixedSize(horizontal: false, vertical: true)
 
                     HStack(spacing: 10) {
@@ -1121,31 +1121,31 @@ struct PantryStaplesEditor: View {
                             .focused($fieldFocused)
                             .onSubmit { Task { await add() } }
                             .padding(.horizontal, 14).padding(.vertical, 12)
-                            .nkField()
+                            .wfField()
                         Button { Task { await add() } } label: {
                             Text("Add").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
                                 .padding(.horizontal, 18).padding(.vertical, 12)
-                                .background(canAdd ? NK.primary : NK.primary.opacity(0.4))
+                                .background(canAdd ? WF.primary : WF.primary.opacity(0.4))
                                 .clipShape(Capsule())
                         }
                         .buttonStyle(.plain).disabled(!canAdd || busy)
                     }
 
                     if staples.isEmpty {
-                        Text("No staples yet.").font(.system(size: 14)).foregroundStyle(NK.ink3)
+                        Text("No staples yet.").font(.system(size: 14)).foregroundStyle(WF.ink3)
                     } else {
                         ChipFlow(spacing: 8, lineSpacing: 8) {
                             ForEach(staples) { s in
                                 HStack(spacing: 7) {
-                                    Text(s.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
+                                    Text(s.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
                                     Button { Task { await remove(s) } } label: {
-                                        Image(systemName: "xmark").font(.system(size: 10, weight: .heavy)).foregroundStyle(NK.ink3)
+                                        Image(systemName: "xmark").font(.system(size: 10, weight: .heavy)).foregroundStyle(WF.ink3)
                                     }
                                     .buttonStyle(.plain)
                                 }
                                 .padding(.leading, 12).padding(.trailing, 9).padding(.vertical, 8)
-                                .background(NK.card2)
-                                .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+                                .background(WF.card2)
+                                .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
                                 .clipShape(Capsule())
                             }
                         }
@@ -1153,7 +1153,7 @@ struct PantryStaplesEditor: View {
                 }
                 .padding(20)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Pantry staples")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

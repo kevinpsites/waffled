@@ -41,7 +41,7 @@ struct KioskMoreView: View {
             .padding(.bottom, 40)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(NK.canvas)
+        .background(WF.canvas)
     }
 
     private func tile(_ nav: KioskNav) -> some View {
@@ -56,11 +56,11 @@ struct KioskMoreView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         Spacer()
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink3)
                     }
-                    Text(d.title).font(NK.serif(22)).foregroundStyle(NK.ink).padding(.top, 16)
+                    Text(d.title).font(WF.serif(22)).foregroundStyle(WF.ink).padding(.top, 16)
                     Text(d.subtitle)
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
                         .padding(.top, 3)
                 }
             }
@@ -78,7 +78,7 @@ struct KioskMoreView: View {
         case .photos:  return ("📷", "Photos", "The family album", Color(hex: 0xDFF0EF))
         case .meals:   return ("🍽️", "Meals", "This week's plan & recipes", Color(hex: 0xF6E7DE))
         case .family:  return ("👪", "Family", "People, spotlights & more", Color(hex: 0xEDE7F3))
-        default:       return ("•", nav.label, "", NK.panel)
+        default:       return ("•", nav.label, "", WF.panel)
         }
     }
 }

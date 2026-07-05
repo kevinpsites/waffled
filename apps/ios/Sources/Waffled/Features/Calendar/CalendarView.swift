@@ -74,7 +74,7 @@ struct CalendarView: View {
                 .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded(handleCalendarSwipe))
             }
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .sheet(item: $editing) { target in
             switch target {
             case let .new(date): EventEditSheet(event: nil, initialDate: date)
@@ -107,14 +107,14 @@ struct CalendarView: View {
         HStack(spacing: 12) {
             switch mode {
             case .agenda:
-                Text(monthTitle(Date(), year: false)).font(NK.serif(30)).foregroundStyle(NK.ink)
+                Text(monthTitle(Date(), year: false)).font(WF.serif(30)).foregroundStyle(WF.ink)
             case .month:
                 Button { stepMonth(-1) } label: { chevron("chevron.left") }
-                Text(monthTitle(monthAnchor, year: true)).font(NK.serif(24)).foregroundStyle(NK.ink).lineLimit(1)
+                Text(monthTitle(monthAnchor, year: true)).font(WF.serif(24)).foregroundStyle(WF.ink).lineLimit(1)
                 Button { stepMonth(1) } label: { chevron("chevron.right") }
             case .day:
                 Button { stepDay(-1) } label: { chevron("chevron.left") }
-                Text(dayTitle(selectedDay)).font(NK.serif(22)).foregroundStyle(NK.ink).lineLimit(1)
+                Text(dayTitle(selectedDay)).font(WF.serif(22)).foregroundStyle(WF.ink).lineLimit(1)
                 Button { stepDay(1) } label: { chevron("chevron.right") }
             }
             Spacer()
@@ -124,22 +124,22 @@ struct CalendarView: View {
                 }
             } label: {
                 Image(systemName: mode.icon)
-                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink2)
-                    .frame(width: 38, height: 38).background(NK.card).clipShape(Circle())
-                    .overlay(Circle().strokeBorder(NK.hair, lineWidth: 1))
+                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink2)
+                    .frame(width: 38, height: 38).background(WF.card).clipShape(Circle())
+                    .overlay(Circle().strokeBorder(WF.hair, lineWidth: 1))
             }
             Button { editing = .new(mode == .agenda ? Date() : (dayKeyToDate(selectedDay) ?? Date())) } label: {
                 Image(systemName: "plus").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
-                    .frame(width: 38, height: 38).background(NK.primary).clipShape(Circle())
+                    .frame(width: 38, height: 38).background(WF.primary).clipShape(Circle())
             }
             .buttonStyle(.plain)
         }
     }
 
     private func chevron(_ s: String) -> some View {
-        Image(systemName: s).font(.system(size: 13, weight: .heavy)).foregroundStyle(NK.ink2)
-            .frame(width: 30, height: 30).background(NK.card).clipShape(Circle())
-            .overlay(Circle().strokeBorder(NK.hair, lineWidth: 1))
+        Image(systemName: s).font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.ink2)
+            .frame(width: 30, height: 30).background(WF.card).clipShape(Circle())
+            .overlay(Circle().strokeBorder(WF.hair, lineWidth: 1))
     }
 
     // MARK: agenda
@@ -151,9 +151,9 @@ struct CalendarView: View {
         personFilter
         if groups.isEmpty {
             VStack(spacing: 10) {
-                Image(systemName: "calendar").font(.system(size: 34)).foregroundStyle(NK.ink3)
+                Image(systemName: "calendar").font(.system(size: 34)).foregroundStyle(WF.ink3)
                 Text(filterPerson == nil ? "No upcoming events." : "Nothing for them coming up.")
-                    .font(.system(size: 14)).foregroundStyle(NK.ink2)
+                    .font(.system(size: 14)).foregroundStyle(WF.ink2)
             }
             .frame(maxWidth: .infinity).padding(.top, 56)
         } else {
@@ -187,16 +187,16 @@ struct CalendarView: View {
                 } else {
                     // "Everyone" — a family glyph so the chip matches the person chips' size.
                     Image(systemName: "person.2.fill").font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(on ? .white : NK.ink2)
+                        .foregroundStyle(on ? .white : WF.ink2)
                         .frame(width: 24, height: 24)
-                        .background(on ? Color.white.opacity(0.22) : NK.panel).clipShape(Circle())
+                        .background(on ? Color.white.opacity(0.22) : WF.panel).clipShape(Circle())
                 }
                 Text(label).font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(on ? .white : NK.ink2)
+                    .foregroundStyle(on ? .white : WF.ink2)
             }
             .padding(.leading, 6).padding(.trailing, 14).padding(.vertical, 7)
-            .background(on ? NK.ink : NK.card)
-            .overlay(Capsule().strokeBorder(on ? Color.clear : NK.hair, lineWidth: 1))
+            .background(on ? WF.ink : WF.card)
+            .overlay(Capsule().strokeBorder(on ? Color.clear : WF.hair, lineWidth: 1))
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -209,7 +209,7 @@ struct CalendarView: View {
         VStack(spacing: 8) {
             HStack(spacing: 0) {
                 ForEach(["S", "M", "T", "W", "T", "F", "S"], id: \.self) { d in
-                    Text(d).font(.system(size: 11, weight: .heavy)).foregroundStyle(NK.ink3)
+                    Text(d).font(.system(size: 11, weight: .heavy)).foregroundStyle(WF.ink3)
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -218,8 +218,8 @@ struct CalendarView: View {
             }
         }
         .padding(12)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
 
         dayHeading(selectedDay).padding(.top, 6)
         let dayItems = Agenda.forDay(filtered, day: selectedDay, tz: tz)
@@ -229,7 +229,7 @@ struct CalendarView: View {
                     Image(systemName: "plus").font(.system(size: 12, weight: .heavy))
                     Text("Add an event").font(.system(size: 14, weight: .semibold))
                 }
-                .foregroundStyle(NK.ink3).padding(.vertical, 10)
+                .foregroundStyle(WF.ink3).padding(.vertical, 10)
             }
             .buttonStyle(.plain)
         } else {
@@ -246,29 +246,29 @@ struct CalendarView: View {
             VStack(spacing: 3) {
                 Text("\(cell.day)")
                     .font(.system(size: 14, weight: isToday ? .heavy : .semibold))
-                    .foregroundStyle(cell.inMonth ? (isToday ? NK.primary : NK.ink) : NK.ink3.opacity(0.5))
+                    .foregroundStyle(cell.inMonth ? (isToday ? WF.primary : WF.ink) : WF.ink3.opacity(0.5))
                 if let cds = countdowns.byDate[cell.key], let first = cds.first {
                     HStack(spacing: 2) {
                         Text(first.emoji ?? "⏳").font(.system(size: 8))
                         Text(CountdownFormat.short(first.daysLeft)).font(.system(size: 8, weight: .heavy)).foregroundStyle(Color(hex: 0x8A6D3B))
-                        if cds.count > 1 { Text("+\(cds.count - 1)").font(.system(size: 8, weight: .bold)).foregroundStyle(NK.ink3) }
+                        if cds.count > 1 { Text("+\(cds.count - 1)").font(.system(size: 8, weight: .bold)).foregroundStyle(WF.ink3) }
                     }
                     .padding(.horizontal, 3).padding(.vertical, 1)
                     .background(Color(hex: 0xF4ECD8)).clipShape(Capsule())
                 } else {
                     HStack(spacing: 2) {
                         ForEach(Array(dotColors(cell.key).prefix(3).enumerated()), id: \.offset) { _, hex in
-                            Circle().fill(Color(hexString: hex) ?? NK.ink3).frame(width: 5, height: 5)
+                            Circle().fill(Color(hexString: hex) ?? WF.ink3).frame(width: 5, height: 5)
                         }
                     }
                     .frame(height: 5)
                 }
             }
             .frame(maxWidth: .infinity).frame(height: 44)
-            .background(isSelected ? NK.primary.opacity(0.12) : Color.clear)
+            .background(isSelected ? WF.primary.opacity(0.12) : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(isSelected ? NK.primary : Color.clear, lineWidth: 1.5))
+                .strokeBorder(isSelected ? WF.primary : Color.clear, lineWidth: 1.5))
         }
         .buttonStyle(.plain)
     }
@@ -303,8 +303,8 @@ struct CalendarView: View {
                     Button { editing = .new(dateAt(hour: h)) } label: {
                         HStack(alignment: .top, spacing: 8) {
                             Text(hourLabel(h)).font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(NK.ink3).frame(width: 48, alignment: .trailing)
-                            Rectangle().fill(NK.hair).frame(height: 1)
+                                .foregroundStyle(WF.ink3).frame(width: 48, alignment: .trailing)
+                            Rectangle().fill(WF.hair).frame(height: 1)
                             Spacer(minLength: 0)
                         }
                         .frame(height: Self.hourHeight, alignment: .top)
@@ -345,14 +345,14 @@ struct CalendarView: View {
             let y = (CGFloat(comps.h) + CGFloat(comps.m) / 60) * Self.hourHeight
             let durMin = ev.endsAt.map { max(30, $0.timeIntervalSince(start) / 60) } ?? 60
             let height = max(30, CGFloat(durMin) / 60 * Self.hourHeight - 4)
-            let color = Color(hexString: ev.colorHex) ?? NK.ink3
+            let color = Color(hexString: ev.colorHex) ?? WF.ink3
             Button { detailEvent = ev } label: {
                 HStack(spacing: 7) {
                     RoundedRectangle(cornerRadius: 99).fill(color).frame(width: 3)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(ev.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                        Text(ev.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                         if height > 40 {
-                            Text(EventTime.timeLabel(start, tz)).font(.system(size: 10.5, weight: .medium)).foregroundStyle(NK.ink3)
+                            Text(EventTime.timeLabel(start, tz)).font(.system(size: 10.5, weight: .medium)).foregroundStyle(WF.ink3)
                         }
                     }
                     Spacer(minLength: 0)
@@ -448,8 +448,8 @@ struct CalendarView: View {
     /// A day heading: serif relative label ("Today") + gray date ("Sat · May 31").
     @ViewBuilder private func dayHeading(_ key: String) -> some View {
         HStack(spacing: 8) {
-            Text(relativeLabel(key)).font(NK.serif(20)).foregroundStyle(NK.ink)
-            Text(dateLabel(key)).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+            Text(relativeLabel(key)).font(WF.serif(20)).foregroundStyle(WF.ink)
+            Text(dateLabel(key)).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
             Spacer()
         }
     }
@@ -479,11 +479,11 @@ struct EventCard: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
-                Text(timeText).font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink2)
+                Text(timeText).font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
                     .frame(width: 72, alignment: .leading)
-                RoundedRectangle(cornerRadius: 99).fill(Color(hexString: event.colorHex) ?? NK.ink3)
+                RoundedRectangle(cornerRadius: 99).fill(Color(hexString: event.colorHex) ?? WF.ink3)
                     .frame(width: 4, height: 34)
-                Text(event.title).font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                Text(event.title).font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                 Spacer(minLength: 8)
                 if let emoji = event.emoji {
                     Avatar(colorHex: event.colorHex, emoji: emoji, size: 30)
@@ -491,8 +491,8 @@ struct EventCard: View {
             }
             .padding(.horizontal, 15).padding(.vertical, 13)
             .frame(maxWidth: .infinity)
-            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-            .nkShadow1()
+            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+            .wfShadow1()
             .contentShape(Rectangle())
             // Subtly fade events that have already finished, so the eye lands on what's
             // still ahead.
@@ -528,15 +528,15 @@ struct TabPlaceholder: View {
         VStack(spacing: 14) {
             Image(systemName: icon)
                 .font(.system(size: 40, weight: .regular))
-                .foregroundStyle(NK.ink3)
-            Text(title).font(NK.serif(26)).foregroundStyle(NK.ink)
+                .foregroundStyle(WF.ink3)
+            Text(title).font(WF.serif(26)).foregroundStyle(WF.ink)
             Text(note)
-                .font(.system(size: 14)).foregroundStyle(NK.ink2)
+                .font(.system(size: 14)).foregroundStyle(WF.ink2)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(NK.canvas)
+        .background(WF.canvas)
     }
 }
 
@@ -684,9 +684,9 @@ struct EventEditSheet: View {
                                     }
                                 } label: {
                                     HStack {
-                                        Text(durationLabel(durationMin)).font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
+                                        Text(durationLabel(durationMin)).font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink)
                                         Spacer()
-                                        Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                                        Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
                                     }
                                     .padding(.horizontal, 13).padding(.vertical, 11).innerField()
                                 }
@@ -696,7 +696,7 @@ struct EventEditSheet: View {
 
                     // All day — boxed grouping like the web, with a toggle.
                     Toggle(isOn: $allDay.animation()) {
-                        Text("All day").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                        Text("All day").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                     }
                     .tint(FamilyColor.wally.solid)
                     .padding(14).cardBox()
@@ -704,8 +704,8 @@ struct EventEditSheet: View {
                     // Countdown flag — surfaces this event in the "N days until…" list.
                     Toggle(isOn: $isCountdown) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("⏳ Show a countdown").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                            Text("Build anticipation with “N days until…”").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                            Text("⏳ Show a countdown").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                            Text("Build anticipation with “N days until…”").font(.system(size: 12)).foregroundStyle(WF.ink3)
                         }
                     }
                     .tint(FamilyColor.wally.solid)
@@ -717,7 +717,7 @@ struct EventEditSheet: View {
                         ChipFlow(spacing: 8, lineSpacing: 8) {
                             ForEach(sync.members) { m in
                                 let on = participants.contains(m.id)
-                                let c = Color(hexString: m.colorHex) ?? NK.ink3
+                                let c = Color(hexString: m.colorHex) ?? WF.ink3
                                 Button {
                                     if let idx = participants.firstIndex(of: m.id) { participants.remove(at: idx) }
                                     else { participants.append(m.id) }
@@ -725,10 +725,10 @@ struct EventEditSheet: View {
                                     HStack(spacing: 7) {
                                         Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 24)
                                         Text(m.name).font(.system(size: 14, weight: .semibold))
-                                            .foregroundStyle(on ? NK.ink : NK.ink2)
+                                            .foregroundStyle(on ? WF.ink : WF.ink2)
                                     }
                                     .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
-                                    .nkChip(selected: on, tint: c)
+                                    .wfChip(selected: on, tint: c)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -749,9 +749,9 @@ struct EventEditSheet: View {
                                 HStack {
                                     let sel = ownerCals.first { $0.id == calendarId }
                                     Text("\(sel?.summary ?? "Choose…")\(sel?.isWriteTarget == true ? " ★" : "")")
-                                        .font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                                        .font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                                     Spacer()
-                                    Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                                    Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
                                 }
                                 .padding(.horizontal, 13).padding(.vertical, 11).innerField()
                             }
@@ -768,7 +768,7 @@ struct EventEditSheet: View {
                 }
                 .padding(18)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle(editing ? "Edit event" : "New event")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -810,13 +810,13 @@ struct EventEditSheet: View {
                     else { withAnimation { confirmDelete = true } }
                 } label: {
                     Text(confirmDelete && !wasRecurring ? "Tap again" : "Delete")
-                        .font(.system(size: 15, weight: .bold)).foregroundStyle(NK.primary)
+                        .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.primary)
                 }
                 .buttonStyle(.plain)
             }
             WaffledPrimaryCTA(
                 label: editing ? "Save" : "Add event",
-                tint: NK.primary,
+                tint: WF.primary,
                 isDisabled: !canSave,
                 action: { save() }
             )
@@ -854,9 +854,9 @@ struct EventEditSheet: View {
                 } label: {
                     HStack {
                         Text(goalMenuLabel).font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(goalId == nil ? NK.ink3 : NK.ink).lineLimit(1)
+                            .foregroundStyle(goalId == nil ? WF.ink3 : WF.ink).lineLimit(1)
                         Spacer()
-                        Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                        Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
                     }
                     .padding(.horizontal, 13).padding(.vertical, 11).innerField()
                 }
@@ -869,9 +869,9 @@ struct EventEditSheet: View {
                     } label: {
                         HStack {
                             Text(stepMenuLabel).font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(goalStepId == nil ? NK.ink3 : NK.ink).lineLimit(1)
+                                .foregroundStyle(goalStepId == nil ? WF.ink3 : WF.ink).lineLimit(1)
                             Spacer()
-                            Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                            Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
                         }
                         .padding(.horizontal, 13).padding(.vertical, 10).innerField()
                     }
@@ -899,48 +899,48 @@ struct EventEditSheet: View {
     /// Auto-link note: memory was confident, so the goal is pre-filled below.
     private func autoLinkedHint(_ g: WaffledAPI.Goal) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "sparkles").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ai)
+            Image(systemName: "sparkles").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ai)
             Text("Auto-linked to \(g.emoji.map { "\($0) " } ?? "")\(g.title) — we've learned this. Change it below if needed.")
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink2)
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 6)
         }
         .padding(12)
-        .background(NK.ai.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.ai.opacity(0.25), lineWidth: 1))
+        .background(WF.ai.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.ai.opacity(0.25), lineWidth: 1))
     }
 
     /// The web's "thinking" box, shown while the server matches a goal.
     private var suggestingHint: some View {
         HStack(spacing: 10) {
-            Image(systemName: "sparkles").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ai)
+            Image(systemName: "sparkles").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ai)
             Text("Looking for a goal this counts toward…")
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink2)
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
             Spacer(minLength: 6)
-            ProgressView().controlSize(.small).tint(NK.ai)
+            ProgressView().controlSize(.small).tint(WF.ai)
         }
         .padding(12)
-        .background(NK.ai.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.ai.opacity(0.25), lineWidth: 1))
+        .background(WF.ai.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.ai.opacity(0.25), lineWidth: 1))
     }
 
     private func suggestionHint(_ s: WaffledAPI.GoalSuggestOne) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "sparkles").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ai)
+            Image(systemName: "sparkles").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ai)
             Text("Looks like this counts toward \(s.goalEmoji.map { "\($0) " } ?? "")\(s.goalTitle)")
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink2).fixedSize(horizontal: false, vertical: true)
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 6)
-            Button("Link") { selectGoal(s.goalId) }.font(.system(size: 13, weight: .heavy)).foregroundStyle(NK.ai)
+            Button("Link") { selectGoal(s.goalId) }.font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.ai)
             Button { suggestion = nil } label: {
-                Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
             }.buttonStyle(.plain)
         }
         .padding(12)
-        .background(NK.ai.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.ai.opacity(0.25), lineWidth: 1))
+        .background(WF.ai.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.ai.opacity(0.25), lineWidth: 1))
     }
 
     private func selectGoal(_ id: String) {
@@ -1084,9 +1084,9 @@ struct EventEditSheet: View {
                     }
                 } label: {
                     HStack {
-                        Text(freqLabel(repeatState.freq)).font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
+                        Text(freqLabel(repeatState.freq)).font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink)
                         Spacer()
-                        Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                        Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
                     }
                     .padding(.horizontal, 13).padding(.vertical, 11).innerField()
                 }
@@ -1094,7 +1094,7 @@ struct EventEditSheet: View {
                 if repeatState.freq == .custom { customBuilder }
                 if repeatState.freq != .none {
                     endsRow
-                    Text(repeatSummary).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                    Text(repeatSummary).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
             }
         }
@@ -1104,15 +1104,15 @@ struct EventEditSheet: View {
     private var endsRow: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                Text("Ends").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink2)
+                Text("Ends").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink2)
                 Menu {
                     Button("Never") { endMode = .never }
                     Button("On a date") { endMode = .on }
                     Button("After…") { endMode = .after }
                 } label: {
                     HStack(spacing: 5) {
-                        Text(endModeLabel).font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
-                        Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                        Text(endModeLabel).font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink)
+                        Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
                     }
                     .padding(.horizontal, 12).padding(.vertical, 9).innerField()
                 }
@@ -1125,11 +1125,11 @@ struct EventEditSheet: View {
             if endMode == .after {
                 HStack(spacing: 10) {
                     Stepper(value: $occurrenceCount, in: 1...365) {
-                        Text("\(occurrenceCount)").font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
+                        Text("\(occurrenceCount)").font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink)
                     }
                     .fixedSize()
                     Text(occurrenceCount == 1 ? "occurrence" : "occurrences")
-                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink2)
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink2)
                 }
             }
         }
@@ -1168,7 +1168,7 @@ struct EventEditSheet: View {
                     Text(Self.chipDay[code] ?? code)
                         .font(.system(size: 13, weight: .bold))
                         .frame(width: 38, height: 36)
-                        .nkChip(selected: on, tint: FamilyColor.wally.solid)
+                        .wfChip(selected: on, tint: FamilyColor.wally.solid)
                 }
                 .buttonStyle(.plain)
             }
@@ -1186,9 +1186,9 @@ struct EventEditSheet: View {
     private var customBuilder: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                Text("Every").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink2)
+                Text("Every").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink2)
                 Stepper(value: $repeatState.interval, in: 1...99) {
-                    Text("\(repeatState.interval)").font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
+                    Text("\(repeatState.interval)").font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink)
                 }
                 .fixedSize()
                 Menu {
@@ -1198,8 +1198,8 @@ struct EventEditSheet: View {
                 } label: {
                     HStack(spacing: 5) {
                         Text(unitLabel(repeatState.unit, plural: repeatState.interval != 1))
-                            .font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
-                        Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink)
+                        Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
                     }
                     .padding(.horizontal, 12).padding(.vertical, 9).innerField()
                 }
@@ -1230,9 +1230,9 @@ struct EventEditSheet: View {
             }
         } label: {
             HStack {
-                Text(current).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                Text(current).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                 Spacer()
-                Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
             }
             .padding(.horizontal, 12).padding(.vertical, 9).innerField()
         }
@@ -1370,7 +1370,7 @@ struct EventEditSheet: View {
     /// A labeled field card (label top-left, content below) — the web's panel look.
     private func group<V: View>(_ label: String, @ViewBuilder _ content: () -> V) -> some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink2)
+            Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink2)
             content()
         }
         .padding(14).cardBox()
@@ -1380,10 +1380,10 @@ struct EventEditSheet: View {
 private extension View {
     /// The outer card-group chrome (white box on the tan sheet, hairline border).
     func cardBox() -> some View {
-        frame(maxWidth: .infinity, alignment: .leading).nkField()
+        frame(maxWidth: .infinity, alignment: .leading).wfField()
     }
     /// The inner input chrome (white, hairline border) — sits on the white box.
     func innerField() -> some View {
-        frame(maxWidth: .infinity, alignment: .leading).nkField(radius: NK.rSM)
+        frame(maxWidth: .infinity, alignment: .leading).wfField(radius: WF.rSM)
     }
 }

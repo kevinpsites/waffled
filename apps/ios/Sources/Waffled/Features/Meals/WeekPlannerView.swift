@@ -38,7 +38,7 @@ struct WeekPlannerView: View {
         Group {
             if isKiosk { kioskWeek } else { phoneWeek }
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .task { await load(); autoPlanOnceIfNeeded() }
         .onChange(of: weekOffset) { _, _ in Task { await load() } }
         .onChange(of: sync.mealsRev) { _, _ in Task { await load() } }
@@ -88,7 +88,7 @@ struct WeekPlannerView: View {
                 ForEach(visibleSlots, id: \.self) { slot in
                     HStack(alignment: .top, spacing: 8) {
                         Text(slotLabel(slot)).font(.system(size: 13, weight: .heavy))
-                            .foregroundStyle(NK.ink2).frame(width: rowLabelWidth, alignment: .leading)
+                            .foregroundStyle(WF.ink2).frame(width: rowLabelWidth, alignment: .leading)
                         ForEach(days, id: \.self) { day in kioskSlotCell(day: day, slot: slot) }
                     }
                     // Cap each meal row so a single-row "Dinners" view doesn't balloon to
@@ -115,7 +115,7 @@ struct WeekPlannerView: View {
                         Text("Plan my week").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
                     }
                     .padding(.horizontal, 14).padding(.vertical, 9)
-                    .background(NK.ai).clipShape(Capsule())
+                    .background(WF.ai).clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
@@ -127,10 +127,10 @@ struct WeekPlannerView: View {
             Spacer()
             Button { withAnimation { weekOffset -= 1 } } label: { weekChevron("chevron.left") }
             VStack(spacing: 1) {
-                Text(weekTitle).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                Text(weekTitle).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
                 if weekOffset != 0 {
                     Button("Jump to this week") { withAnimation { weekOffset = 0 } }
-                        .font(.system(size: 11, weight: .semibold)).tint(NK.primary)
+                        .font(.system(size: 11, weight: .semibold)).tint(WF.primary)
                 }
             }
             .frame(minWidth: 130)
@@ -139,19 +139,19 @@ struct WeekPlannerView: View {
     }
 
     private func weekChevron(_ s: String) -> some View {
-        Image(systemName: s).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
-            .frame(width: 34, height: 34).background(NK.card).clipShape(Circle())
-            .overlay(Circle().strokeBorder(NK.hair, lineWidth: 1))
+        Image(systemName: s).font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink2)
+            .frame(width: 34, height: 34).background(WF.card).clipShape(Circle())
+            .overlay(Circle().strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private func kioskDayHeader(_ day: Date) -> some View {
         let isToday = ymd(day) == ymd(Date())
         return VStack(spacing: 1) {
-            Text(weekday(day)).font(.system(size: 12, weight: .heavy)).foregroundStyle(isToday ? NK.primary : NK.ink2)
+            Text(weekday(day)).font(.system(size: 12, weight: .heavy)).foregroundStyle(isToday ? WF.primary : WF.ink2)
             Text(fmt(day, "d")).font(.system(size: 13, weight: .bold))
-                .foregroundStyle(isToday ? .white : NK.ink)
+                .foregroundStyle(isToday ? .white : WF.ink)
                 .frame(width: 26, height: 26)
-                .background(isToday ? NK.primary : Color.clear).clipShape(Circle())
+                .background(isToday ? WF.primary : Color.clear).clipShape(Circle())
         }
     }
 
@@ -163,8 +163,8 @@ struct WeekPlannerView: View {
             if let e = entry { kioskMealCard(e) } else { kioskEmptyCell(date: ds, slot: slot) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-            .strokeBorder(dropTargetSlot == cellId ? NK.primary : .clear, lineWidth: 2))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+            .strokeBorder(dropTargetSlot == cellId ? WF.primary : .clear, lineWidth: 2))
         .dropDestination(for: String.self) { items, _ in
             guard let p = items.first else { return false }
             let parts = p.split(separator: "|")
@@ -179,19 +179,19 @@ struct WeekPlannerView: View {
     private func kioskMealCard(_ e: WaffledAPI.WeekEntryDTO) -> some View {
         VStack(spacing: 4) {
             if let emoji = e.recipe?.emoji { Text(emoji).font(.system(size: 22)) }
-            Text(e.displayTitle).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink)
+            Text(e.displayTitle).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink)
                 .multilineTextAlignment(.center).lineLimit(3)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(8)
-        .background(NK.ai.opacity(0.09))
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+        .background(WF.ai.opacity(0.09))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         .overlay(alignment: .topLeading) {
             Button {
                 Task { _ = await sync.clearMealPlan(date: e.date, mealType: e.mealType); await load() }
             } label: {
-                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(NK.ink3)
-                    .frame(width: 20, height: 20).background(NK.card).clipShape(Circle())
+                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(WF.ink3)
+                    .frame(width: 20, height: 20).background(WF.card).clipShape(Circle())
             }
             .buttonStyle(.plain).padding(5)
         }
@@ -202,12 +202,12 @@ struct WeekPlannerView: View {
 
     private func kioskEmptyCell(date: String, slot: String) -> some View {
         Button { picking = PlanTarget(date: date, mealType: slot) } label: {
-            Image(systemName: "plus").font(.system(size: 17)).foregroundStyle(NK.ink3)
+            Image(systemName: "plus").font(.system(size: 17)).foregroundStyle(WF.ink3)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(NK.card.opacity(0.35))
-                .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundStyle(NK.hair))
-                .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                .background(WF.card.opacity(0.35))
+                .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundStyle(WF.hair))
+                .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -228,7 +228,7 @@ struct WeekPlannerView: View {
                 Text("Plan my week").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
             }
             .frame(maxWidth: .infinity).padding(.vertical, 12)
-            .background(NK.ai).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .background(WF.ai).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -238,22 +238,22 @@ struct WeekPlannerView: View {
     private var weekHeader: some View {
         HStack {
             Button { withAnimation { weekOffset -= 1 } } label: {
-                Image(systemName: "chevron.left").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink2)
-                    .frame(width: 36, height: 36).background(NK.card).clipShape(Circle())
+                Image(systemName: "chevron.left").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink2)
+                    .frame(width: 36, height: 36).background(WF.card).clipShape(Circle())
             }
             .buttonStyle(.plain)
             Spacer()
             VStack(spacing: 1) {
-                Text(weekTitle).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
+                Text(weekTitle).font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink)
                 if weekOffset != 0 {
                     Button("Jump to this week") { withAnimation { weekOffset = 0 } }
-                        .font(.system(size: 12, weight: .semibold)).tint(NK.primary)
+                        .font(.system(size: 12, weight: .semibold)).tint(WF.primary)
                 }
             }
             Spacer()
             Button { withAnimation { weekOffset += 1 } } label: {
-                Image(systemName: "chevron.right").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink2)
-                    .frame(width: 36, height: 36).background(NK.card).clipShape(Circle())
+                Image(systemName: "chevron.right").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink2)
+                    .frame(width: 36, height: 36).background(WF.card).clipShape(Circle())
             }
             .buttonStyle(.plain)
         }
@@ -270,12 +270,12 @@ struct WeekPlannerView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     Text(weekday(day)).font(.system(size: 13, weight: .heavy)).tracking(0.6)
-                        .foregroundStyle(isToday || dropTargetDay == ds ? NK.primary : NK.ink2)
-                    Text(dayNumber(day)).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                        .foregroundStyle(isToday || dropTargetDay == ds ? WF.primary : WF.ink2)
+                    Text(dayNumber(day)).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                     if isToday {
-                        Text("TODAY").font(.system(size: 10, weight: .heavy)).foregroundStyle(NK.primary)
+                        Text("TODAY").font(.system(size: 10, weight: .heavy)).foregroundStyle(WF.primary)
                             .padding(.horizontal, 7).padding(.vertical, 3)
-                            .background(NK.primary.opacity(0.12)).clipShape(Capsule())
+                            .background(WF.primary.opacity(0.12)).clipShape(Capsule())
                     }
                     Spacer()
                 }
@@ -289,8 +289,8 @@ struct WeekPlannerView: View {
                 }
             }
         }
-        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous)
-            .strokeBorder(dropTargetDay == ds ? NK.primary : .clear, lineWidth: 2))
+        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous)
+            .strokeBorder(dropTargetDay == ds ? WF.primary : .clear, lineWidth: 2))
         .dropDestination(for: String.self) { items, _ in dropMeal(items, on: ds) } isTargeted: { over in
             dropTargetDay = over ? ds : (dropTargetDay == ds ? nil : dropTargetDay)
         }
@@ -306,7 +306,7 @@ struct WeekPlannerView: View {
                     .background(RecipeGradient.forCategory(e.recipe?.category ?? e.mealType))
                     .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(e.displayTitle).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                    Text(e.displayTitle).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                         .lineLimit(1)
                     HStack(spacing: 8) {
                         if e.mealType != "dinner" { metaTag(slotLabel(e.mealType)) }
@@ -327,7 +327,7 @@ struct WeekPlannerView: View {
                     Task { _ = await sync.clearMealPlan(date: e.date, mealType: e.mealType); await load() }
                 } label: { Label("Remove", systemImage: "trash") }
             } label: {
-                Image(systemName: "ellipsis").font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink3)
+                Image(systemName: "ellipsis").font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink3)
                     .frame(width: 30, height: 30)
             }
         }
@@ -339,22 +339,22 @@ struct WeekPlannerView: View {
                 Image(systemName: "plus").font(.system(size: 13, weight: .bold))
                 Text(label).font(.system(size: 14, weight: .semibold))
             }
-            .foregroundStyle(NK.ink2)
+            .foregroundStyle(WF.ink2)
             .frame(maxWidth: .infinity).padding(.vertical, 11)
-            .background(NK.card2)
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-                .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundStyle(NK.hair))
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .background(WF.card2)
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundStyle(WF.hair))
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         }
         .buttonStyle(.plain)
     }
 
     private func meta(_ t: String) -> some View {
-        Text(t).font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+        Text(t).font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
     }
     private func metaTag(_ t: String) -> some View {
-        Text(t).font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink2)
-            .padding(.horizontal, 7).padding(.vertical, 2).background(NK.panel).clipShape(Capsule())
+        Text(t).font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink2)
+            .padding(.horizontal, 7).padding(.vertical, 2).background(WF.panel).clipShape(Capsule())
     }
 
     // MARK: drag-to-swap
@@ -362,10 +362,10 @@ struct WeekPlannerView: View {
     private func entryDragPreview(_ e: WaffledAPI.WeekEntryDTO) -> some View {
         HStack(spacing: 5) {
             Text(e.recipe?.emoji ?? "🍽️").font(.system(size: 14))
-            Text(e.displayTitle).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+            Text(e.displayTitle).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
         }
         .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(NK.card).clipShape(Capsule()).overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(Capsule()).overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
     }
 
     /// Drop a dragged meal ("date|mealType") onto another day — swap that slot.

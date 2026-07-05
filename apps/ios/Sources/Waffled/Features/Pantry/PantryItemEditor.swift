@@ -77,21 +77,21 @@ struct PantryItemEditor: View {
                     }
                     VStack(alignment: .leading, spacing: 9) {
                         Toggle(isOn: $hasExpiry.animation()) {
-                            Text("Best by").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
-                        }.tint(NK.primary)
+                            Text("Best by").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
+                        }.tint(WF.primary)
                         if hasExpiry {
                             DatePicker("", selection: $expiry, displayedComponents: .date)
-                                .labelsHidden().datePickerStyle(.graphical).tint(NK.primary)
+                                .labelsHidden().datePickerStyle(.graphical).tint(WF.primary)
                         }
                     }
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Added / bought").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
-                            Text("how long it’s been on hand").font(.system(size: 11)).foregroundStyle(NK.ink3)
+                            Text("Added / bought").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
+                            Text("how long it’s been on hand").font(.system(size: 11)).foregroundStyle(WF.ink3)
                         }
                         Spacer()
                         DatePicker("", selection: $addedOn, in: ...Date(), displayedComponents: .date)
-                            .labelsHidden().tint(NK.primary)
+                            .labelsHidden().tint(WF.primary)
                     }
                     HStack(spacing: 12) {
                         field("Note") { TextField("leftovers from Tuesday", text: $note) }
@@ -100,9 +100,9 @@ struct PantryItemEditor: View {
                     Button { isMeal.toggle() } label: {
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: isMeal ? "checkmark.square.fill" : "square")
-                                .font(.system(size: 20)).foregroundStyle(isMeal ? NK.primary : NK.ink3)
+                                .font(.system(size: 20)).foregroundStyle(isMeal ? WF.primary : WF.ink3)
                             Text("It’s a meal — ready to eat (leftovers, pre-made, or a protein to use up). Shows in “Cook from your pantry”.")
-                                .font(.system(size: 13)).foregroundStyle(NK.ink2)
+                                .font(.system(size: 13)).foregroundStyle(WF.ink2)
                                 .fixedSize(horizontal: false, vertical: true)
                             Spacer(minLength: 0)
                         }
@@ -110,7 +110,7 @@ struct PantryItemEditor: View {
                 }
                 .padding(20)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -131,9 +131,9 @@ struct PantryItemEditor: View {
                     let on = loc.caseInsensitiveCompare(location) == .orderedSame
                     Button { location = loc } label: {
                         Text(loc).font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(on ? NK.ink : NK.ink2)
+                            .foregroundStyle(on ? WF.ink : WF.ink2)
                             .padding(.horizontal, 12).padding(.vertical, 7)
-                            .nkChip(selected: on)
+                            .wfChip(selected: on)
                     }.buttonStyle(.plain)
                 }
             }
@@ -148,7 +148,7 @@ struct PantryItemEditor: View {
                 .font(.system(size: 16, weight: .semibold))
                 .padding(.horizontal, 15).padding(.vertical, 13)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .nkField()
+                .wfField()
         }
     }
 

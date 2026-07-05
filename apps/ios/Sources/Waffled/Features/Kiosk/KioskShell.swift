@@ -43,11 +43,11 @@ struct KioskShell: View {
     var body: some View {
         HStack(spacing: 0) {
             rail
-            Rectangle().fill(NK.hair).frame(width: 1).ignoresSafeArea()
+            Rectangle().fill(WF.hair).frame(width: 1).ignoresSafeArea()
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .task { await sync.loadIdentity(); correctSelection() }
         .onChange(of: sync.modulesRev) { _, _ in correctSelection() }
         .sheet(isPresented: $showCapture) {
@@ -92,7 +92,7 @@ struct KioskShell: View {
         .padding(.bottom, 16)
         .frame(width: 120)
         .frame(maxHeight: .infinity)
-        .background(NK.panel.ignoresSafeArea())
+        .background(WF.panel.ignoresSafeArea())
     }
 
     /// The always-present AI capture entry — a coral ✨ pill pinned in the rail so
@@ -106,9 +106,9 @@ struct KioskShell: View {
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 11)
-            .background(NK.primary)
+            .background(WF.primary)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .nkShadow1()
+            .wfShadow1()
         }
         .buttonStyle(.plain)
         .padding(.bottom, 4)
@@ -123,17 +123,17 @@ struct KioskShell: View {
         let chip = VStack(spacing: 4) {
             ZStack(alignment: .bottomTrailing) {
                 Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 40)
-                    .overlay(Circle().strokeBorder(NK.card, lineWidth: 2))
+                    .overlay(Circle().strokeBorder(WF.card, lineWidth: 2))
                 if kiosk.isShared {
                     Image(systemName: "arrow.left.arrow.right.circle.fill")
                         .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(NK.primary)
-                        .background(Circle().fill(NK.panel).frame(width: 17, height: 17))
+                        .foregroundStyle(WF.primary)
+                        .background(Circle().fill(WF.panel).frame(width: 17, height: 17))
                         .offset(x: 3, y: 2)
                 }
             }
             Text(firstName)
-                .font(.system(size: 10.5, weight: .bold)).foregroundStyle(NK.ink2).lineLimit(1)
+                .font(.system(size: 10.5, weight: .bold)).foregroundStyle(WF.ink2).lineLimit(1)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
@@ -168,13 +168,13 @@ struct KioskShell: View {
                 Image(systemName: item.icon).font(.system(size: 21, weight: .semibold))
                 Text(item.label).font(.system(size: 11, weight: .semibold))
             }
-            .foregroundStyle(on ? NK.primary : NK.ink3)
+            .foregroundStyle(on ? WF.primary : WF.ink3)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 11)
-            .background(on ? NK.card : Color.clear)
+            .background(on ? WF.card : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(on ? NK.hair : Color.clear, lineWidth: 1))
+                .strokeBorder(on ? WF.hair : Color.clear, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }

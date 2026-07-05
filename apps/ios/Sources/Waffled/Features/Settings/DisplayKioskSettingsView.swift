@@ -62,7 +62,7 @@ struct DisplayKioskSettingsView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         SectionLabel(text: "This iPad")
                         Text("Only this iPad — these don’t change your other displays.")
-                            .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 12)).foregroundStyle(WF.ink3)
                         if showsDeviceCard { deviceCard }
                         railSection
                     }
@@ -88,7 +88,7 @@ struct DisplayKioskSettingsView: View {
             .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 110)
             .disabled(!sync.isParent)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle("Display & Kiosk").navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -136,7 +136,7 @@ struct DisplayKioskSettingsView: View {
 
     private var intro: some View {
         Text("These control the **family display** — a wall tablet or a browser signed in as a kiosk. Changes apply to every display in your home.")
-            .font(.system(size: 13)).foregroundStyle(NK.ink2)
+            .font(.system(size: 13)).foregroundStyle(WF.ink2)
             .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -148,22 +148,22 @@ struct DisplayKioskSettingsView: View {
                 if kiosk.isShared {
                     rowLabel("This iPad is a shared kiosk", deviceSubtitle)
                     HStack(spacing: 10) {
-                        pillButton("Switch profile", tint: NK.primary) { Task { await kiosk.returnToPicker(sync: sync) } }
-                        pillButton("Stop sharing", tint: NK.ink2, faint: true) { confirmUnpair = true }
+                        pillButton("Switch profile", tint: WF.primary) { Task { await kiosk.returnToPicker(sync: sync) } }
+                        pillButton("Stop sharing", tint: WF.ink2, faint: true) { confirmUnpair = true }
                     }
                 } else {
                     rowLabel("Use this iPad as a shared kiosk",
                              "Show a profile picker so anyone in the household can tap their face to sign in — no shared password.")
                     pillButton(deviceBusy ? "Setting up…" : "Turn this iPad into a shared kiosk",
-                               tint: NK.primary, wide: true) { confirmPromote = true }
+                               tint: WF.primary, wide: true) { confirmPromote = true }
                         .disabled(deviceBusy)
                     Button { showCodeSheet = true } label: {
                         Text("Pair with a code instead")
-                            .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(NK.ink2)
+                            .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink2)
                     }
                     .buttonStyle(.plain)
                     if let deviceError {
-                        Text(deviceError).font(.system(size: 13, weight: .medium)).foregroundStyle(NK.primary)
+                        Text(deviceError).font(.system(size: 13, weight: .medium)).foregroundStyle(WF.primary)
                     }
                 }
             }
@@ -181,11 +181,11 @@ struct DisplayKioskSettingsView: View {
                             _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label).font(.system(size: 14.5, weight: .bold))
-                .foregroundStyle(faint ? NK.ink2 : .white)
+                .foregroundStyle(faint ? WF.ink2 : .white)
                 .frame(maxWidth: wide ? .infinity : nil)
                 .padding(.horizontal, 18).padding(.vertical, 12)
-                .background(faint ? NK.card2 : tint).clipShape(Capsule())
-                .overlay(Capsule().strokeBorder(NK.hair, lineWidth: faint ? 1 : 0))
+                .background(faint ? WF.card2 : tint).clipShape(Capsule())
+                .overlay(Capsule().strokeBorder(WF.hair, lineWidth: faint ? 1 : 0))
         }
         .buttonStyle(.plain)
     }
@@ -205,7 +205,7 @@ struct DisplayKioskSettingsView: View {
             SectionLabel(text: "Sidebar / navigation")
             KioskRailPickerCard()
             Text("Today and Calendar are always at the top; “More” holds anything you leave off. Saved on this iPad.")
-                .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                .font(.system(size: 12)).foregroundStyle(WF.ink3)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -216,7 +216,7 @@ struct DisplayKioskSettingsView: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionLabel(text: "Kiosk devices").padding(.top, 6)
             Text("Shared tablets paired to this household — each shows a profile picker instead of a single login.")
-                .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                .font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                 .fixedSize(horizontal: false, vertical: true)
 
             ForEach(devices) { d in deviceRow(d) }
@@ -226,11 +226,11 @@ struct DisplayKioskSettingsView: View {
                     Image(systemName: "plus").font(.system(size: 13, weight: .bold))
                     Text("Pair a new device").font(.system(size: 14, weight: .semibold))
                 }
-                .foregroundStyle(NK.ink2).frame(maxWidth: .infinity).padding(.vertical, 12)
-                .background(NK.card2)
-                .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundStyle(NK.hair))
-                .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                .foregroundStyle(WF.ink2).frame(maxWidth: .infinity).padding(.vertical, 12)
+                .background(WF.card2)
+                .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundStyle(WF.hair))
+                .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
             }
             .buttonStyle(.plain).padding(.top, 2)
         }
@@ -239,10 +239,10 @@ struct DisplayKioskSettingsView: View {
     private func deviceRow(_ d: WaffledAPI.KioskDevice) -> some View {
         HStack(spacing: 12) {
             Text("🖥️").font(.system(size: 20)).frame(width: 40, height: 40)
-                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text(d.label).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                Text(lastSeen(d.lastSeenAt)).font(.system(size: 12)).foregroundStyle(NK.ink3)
+                Text(d.label).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                Text(lastSeen(d.lastSeenAt)).font(.system(size: 12)).foregroundStyle(WF.ink3)
             }
             Spacer(minLength: 0)
             Button {
@@ -250,15 +250,15 @@ struct DisplayKioskSettingsView: View {
             } label: {
                 Text(confirmRevoke == d.id ? "Tap again" : "Unpair")
                     .font(.system(size: 12.5, weight: .bold))
-                    .foregroundStyle(confirmRevoke == d.id ? NK.primary : NK.ink3)
+                    .foregroundStyle(confirmRevoke == d.id ? WF.primary : WF.ink3)
                     .padding(.horizontal, 10).padding(.vertical, 7)
-                    .background(NK.panel).clipShape(Capsule())
+                    .background(WF.panel).clipShape(Capsule())
             }
             .buttonStyle(.plain)
         }
-        .padding(12).background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .padding(12).background(WF.card)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private func lastSeen(_ iso: String?) -> String {
@@ -276,7 +276,7 @@ struct DisplayKioskSettingsView: View {
 
     private var footnote: some View {
         Text("Photos need a signed-in profile; the picker always shows the clock. Set a device as the display from the web kiosk under Display & Kiosk.")
-            .font(.system(size: 12)).foregroundStyle(NK.ink3)
+            .font(.system(size: 12)).foregroundStyle(WF.ink3)
             .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -285,7 +285,7 @@ struct DisplayKioskSettingsView: View {
             VStack(alignment: .leading, spacing: 10) {
                 rowLabel("Couldn’t load display settings", "Check your connection and try again.")
                 Button { Task { await load() } } label: {
-                    Text("Retry").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.primary)
+                    Text("Retry").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.primary)
                 }.buttonStyle(.plain)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -319,9 +319,9 @@ struct DisplayKioskSettingsView: View {
                             Image(systemName: "play.fill").font(.system(size: 12, weight: .bold))
                             Text("Preview").font(.system(size: 14, weight: .bold))
                         }
-                        .foregroundStyle(NK.primary)
+                        .foregroundStyle(WF.primary)
                         .frame(maxWidth: .infinity).padding(.vertical, 10)
-                        .background(NK.primary.opacity(0.1)).clipShape(Capsule())
+                        .background(WF.primary.opacity(0.1)).clipShape(Capsule())
                     }
                     .buttonStyle(.plain).disabled(cfg?.content == "off")
                 }
@@ -330,7 +330,7 @@ struct DisplayKioskSettingsView: View {
                 Toggle(isOn: bindBool(\.returnToPicker)) {
                     rowLabel("Return to profile picker afterward", "When a paired kiosk wakes, drop to the profile picker.")
                 }
-                .tint(NK.primary).padding(.vertical, 14)
+                .tint(WF.primary).padding(.vertical, 14)
 
                 // Photo-slideshow options — only relevant when the saver shows photos.
                 if cfg?.content == "photos" {
@@ -367,12 +367,12 @@ struct DisplayKioskSettingsView: View {
                     Toggle(isOn: bindBool(\.photoShuffle)) {
                         rowLabel("Shuffle photos", "Play them in a random order.")
                     }
-                    .tint(NK.primary).padding(.vertical, 14)
+                    .tint(WF.primary).padding(.vertical, 14)
                     divider
                     Toggle(isOn: $motion) {
                         rowLabel("Slow zoom on photos", "A gentle Ken-Burns drift, instead of letting each photo sit still. Saved on this device.")
                     }
-                    .tint(NK.primary).padding(.vertical, 14)
+                    .tint(WF.primary).padding(.vertical, 14)
                 }
             }
         }
@@ -406,7 +406,7 @@ struct DisplayKioskSettingsView: View {
                 Toggle(isOn: bindBool(\.nightDim.enabled)) {
                     rowLabel("Night dimming", "Dim the display overnight on a schedule.")
                 }
-                .tint(NK.primary).padding(.vertical, 14)
+                .tint(WF.primary).padding(.vertical, 14)
                 if cfg?.nightDim.enabled == true {
                     divider
                     timeRow("Dim from", bindTime(\.nightDim.start))
@@ -419,7 +419,7 @@ struct DisplayKioskSettingsView: View {
 
     private func timeRow(_ title: String, _ value: Binding<Date>) -> some View {
         HStack {
-            Text(title).font(.system(size: 15, weight: .medium)).foregroundStyle(NK.ink)
+            Text(title).font(.system(size: 15, weight: .medium)).foregroundStyle(WF.ink)
             Spacer(minLength: 8)
             DatePicker("", selection: value, displayedComponents: .hourAndMinute)
                 .labelsHidden()
@@ -506,8 +506,8 @@ struct DisplayKioskSettingsView: View {
 
     private func rowLabel(_ title: String, _ sub: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-            Text(sub).font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+            Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+            Text(sub).font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -519,7 +519,7 @@ struct DisplayKioskSettingsView: View {
             menu()
         } label: {
             HStack {
-                Text(title).font(.system(size: 15, weight: .medium)).foregroundStyle(NK.ink)
+                Text(title).font(.system(size: 15, weight: .medium)).foregroundStyle(WF.ink)
                 Spacer(minLength: 8)
                 WaffledSettingsMenuLabel(value: value)
             }
@@ -527,14 +527,14 @@ struct DisplayKioskSettingsView: View {
         }
     }
 
-    private var divider: some View { Rectangle().fill(NK.hair).frame(height: 1) }
+    private var divider: some View { Rectangle().fill(WF.hair).frame(height: 1) }
 
     @ViewBuilder
     private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 0) { content() }
             .padding(.horizontal, 18)
-            .background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .background(WF.card)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 }

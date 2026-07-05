@@ -73,7 +73,7 @@ struct CookModeView: View {
         ZStack {
             VStack(spacing: 0) {
                 topBar
-                ProgressView(value: progress).tint(NK.primary).padding(.horizontal, 20)
+                ProgressView(value: progress).tint(WF.primary).padding(.horizontal, 20)
 
                 // The current step, centered in the available space — but scrollable so a
                 // long step is never clipped (short steps sit dead-center; long ones scroll).
@@ -87,7 +87,7 @@ struct CookModeView: View {
                                 .font(.system(size: 14, weight: .heavy)).tracking(1.4)
                                 .foregroundStyle(Color(hex: 0x167A4A))
                             Text(step?.instruction ?? "")
-                                .font(NK.serif(instructionSize, .semibold)).foregroundStyle(NK.ink)
+                                .font(WF.serif(instructionSize, .semibold)).foregroundStyle(WF.ink)
                                 .multilineTextAlignment(.leading)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -106,10 +106,10 @@ struct CookModeView: View {
                                 }
                             }
                             if let note = step?.note {
-                                Text("📝 \(note)").font(.system(size: isKiosk ? 19 : 16)).foregroundStyle(NK.ink2)
+                                Text("📝 \(note)").font(.system(size: isKiosk ? 19 : 16)).foregroundStyle(WF.ink2)
                                     .multilineTextAlignment(.leading)
                                     .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -123,7 +123,7 @@ struct CookModeView: View {
 
                 navBar
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
 
             if !dockTimers.isEmpty && firingTimer == nil {
                 // Pinned bottom-right and width-capped, so it occupies one side instead of
@@ -171,7 +171,7 @@ struct CookModeView: View {
             }
             .foregroundStyle(.white)
             .padding(.horizontal, 18).padding(.vertical, 12)
-            .background(NK.primary).clipShape(Capsule())
+            .background(WF.primary).clipShape(Capsule())
         }
         .buttonStyle(.plain)
     }
@@ -188,12 +188,12 @@ struct CookModeView: View {
                         // Tap the timer to jump to its step (the timer keeps running).
                         Button { goToStep(t) } label: {
                             HStack(spacing: 12) {
-                                Image(systemName: "timer").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.primaryD)
+                                Image(systemName: "timer").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.primaryD)
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(t.label).font(.system(size: 11, weight: .heavy)).tracking(0.6).foregroundStyle(NK.ink2)
+                                    Text(t.label).font(.system(size: 11, weight: .heavy)).tracking(0.6).foregroundStyle(WF.ink2)
                                     Text(CookTimer.mmss(t.remaining))
                                         .font(.system(size: 22, weight: .heavy, design: .rounded))
-                                        .monospacedDigit().foregroundStyle(NK.ink)
+                                        .monospacedDigit().foregroundStyle(WF.ink)
                                 }
                             }
                             .contentShape(Rectangle())
@@ -201,18 +201,18 @@ struct CookModeView: View {
                         Spacer(minLength: 8)
                         Button { togglePause(t) } label: {
                             Image(systemName: t.running ? "pause.fill" : "play.fill")
-                                .font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
-                                .frame(width: 34, height: 34).background(NK.panel).clipShape(Circle())
+                                .font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink)
+                                .frame(width: 34, height: 34).background(WF.panel).clipShape(Circle())
                         }.buttonStyle(.plain)
                         Button { dismissTimer(t) } label: {
-                            Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
-                                .frame(width: 34, height: 34).background(NK.panel).clipShape(Circle())
+                            Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
+                                .frame(width: 34, height: 34).background(WF.panel).clipShape(Circle())
                         }.buttonStyle(.plain)
                     }
                     .padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(NK.card)
-                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).stroke(NK.hair, lineWidth: 1))
+                    .background(WF.card)
+                    .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).stroke(WF.hair, lineWidth: 1))
                     .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
                 }
             }
@@ -224,35 +224,35 @@ struct CookModeView: View {
         ZStack {
             Color.black.opacity(0.55).ignoresSafeArea()
             VStack(spacing: 18) {
-                Image(systemName: "timer").font(.system(size: 44, weight: .bold)).foregroundStyle(NK.primary)
-                Text("Timer done").font(NK.serif(28, .bold)).foregroundStyle(NK.ink)
-                Text(t.label).font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink2)
+                Image(systemName: "timer").font(.system(size: 44, weight: .bold)).foregroundStyle(WF.primary)
+                Text("Timer done").font(WF.serif(28, .bold)).foregroundStyle(WF.ink)
+                Text(t.label).font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink2)
 
                 VStack(spacing: 10) {
                     Button { jumpTo(t) } label: {
                         Text("Jump to \(t.label)").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
                             .frame(maxWidth: .infinity).padding(.vertical, 14)
-                            .background(NK.ink).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                            .background(WF.ink).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     }.buttonStyle(.plain)
 
                     HStack(spacing: 10) {
                         Button { addMinute(t) } label: {
-                            Text("+1:00").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.primaryD)
+                            Text("+1:00").font(.system(size: 17, weight: .bold)).foregroundStyle(WF.primaryD)
                                 .frame(maxWidth: .infinity).padding(.vertical, 14)
-                                .background(NK.primary.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                                .background(WF.primary.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                         }.buttonStyle(.plain)
                         Button { dismissTimer(t) } label: {
-                            Text("Dismiss").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink2)
+                            Text("Dismiss").font(.system(size: 17, weight: .bold)).foregroundStyle(WF.ink2)
                                 .frame(maxWidth: .infinity).padding(.vertical, 14)
-                                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                                .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                         }.buttonStyle(.plain)
                     }
                 }
             }
             .padding(26)
             .frame(maxWidth: 360)
-            .background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+            .background(WF.card)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
             .shadow(color: .black.opacity(0.25), radius: 30, y: 10)
             .padding(28)
         }
@@ -337,13 +337,13 @@ struct CookModeView: View {
     private var topBar: some View {
         HStack {
             Button { dismiss() } label: {
-                Image(systemName: "xmark").font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink2)
+                Image(systemName: "xmark").font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink2)
             }
             Spacer()
-            Text(title).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink).lineLimit(1)
+            Text(title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
             Spacer()
             Button { showOverview = true } label: {
-                Image(systemName: "list.bullet").font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink2)
+                Image(systemName: "list.bullet").font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink2)
             }
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
@@ -352,9 +352,9 @@ struct CookModeView: View {
     private var navBar: some View {
         HStack(spacing: 12) {
             Button { withAnimation { index = max(0, index - 1) } } label: {
-                Text("Back").font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink2)
+                Text("Back").font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink2)
                     .frame(maxWidth: .infinity).padding(.vertical, 15)
-                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
             }
             .buttonStyle(.plain).opacity(index == 0 ? 0.4 : 1).disabled(index == 0)
 
@@ -362,14 +362,14 @@ struct CookModeView: View {
                 Button { onFinish(); dismiss() } label: {
                     Text("✓ Finish & mark cooked").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
                         .frame(maxWidth: .infinity).padding(.vertical, 15)
-                        .background(NK.primary).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                        .background(WF.primary).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                 }
                 .buttonStyle(.plain)
             } else {
                 Button { withAnimation { index = min(steps.count - 1, index + 1) } } label: {
                     Text("Next").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
                         .frame(maxWidth: .infinity).padding(.vertical, 15)
-                        .background(NK.ink).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                        .background(WF.ink).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
@@ -392,7 +392,7 @@ struct CookModeView: View {
                                 showOverview = false
                             } label: { overviewStepRow(i, st) }
                             .buttonStyle(.plain)
-                            if st.id != steps.last?.id { Divider().background(NK.hair) }
+                            if st.id != steps.last?.id { Divider().background(WF.hair) }
                         }
                     }
                     if !ingredients.isEmpty {
@@ -401,19 +401,19 @@ struct CookModeView: View {
                             ForEach(ingredients) { ing in
                                 HStack(alignment: .top, spacing: 12) {
                                     Text(amountText(ing)).font(.system(size: 15, weight: .semibold, design: .rounded))
-                                        .foregroundStyle(NK.ink2).frame(width: 70, alignment: .trailing)
-                                    Text(ing.sub ?? ing.name).font(.system(size: 16)).foregroundStyle(NK.ink)
+                                        .foregroundStyle(WF.ink2).frame(width: 70, alignment: .trailing)
+                                    Text(ing.sub ?? ing.name).font(.system(size: 16)).foregroundStyle(WF.ink)
                                     Spacer(minLength: 0)
                                 }
                                 .padding(.vertical, 8)
-                                if ing.id != ingredients.last?.id { Divider().background(NK.hair) }
+                                if ing.id != ingredients.last?.id { Divider().background(WF.hair) }
                             }
                         }
                     }
                 }
                 .padding(20)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showOverview = false } } }
         }
@@ -421,7 +421,7 @@ struct CookModeView: View {
     }
 
     private func sectionLabel(_ text: String) -> some View {
-        Text(text).font(.system(size: 12, weight: .heavy)).tracking(1.2).foregroundStyle(NK.ink3)
+        Text(text).font(.system(size: 12, weight: .heavy)).tracking(1.2).foregroundStyle(WF.ink3)
     }
 
     /// A tappable step row in the overview — number badge, the (current-highlighted)
@@ -434,9 +434,9 @@ struct CookModeView: View {
                 .frame(width: 28, height: 28)
                 .background(isCurrent ? Color(hex: 0x167A4A) : Color(hex: 0x167A4A).opacity(0.12)).clipShape(Circle())
             Text(st.instruction).font(.system(size: 16, weight: isCurrent ? .semibold : .regular))
-                .foregroundStyle(NK.ink).fixedSize(horizontal: false, vertical: true)
+                .foregroundStyle(WF.ink).fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+            Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
                 .padding(.top, 5)
         }
         .padding(.vertical, 8).contentShape(Rectangle())

@@ -32,7 +32,7 @@ struct MonthPlannerView: View {
                     VStack(spacing: 12) {
                         monthHeader
                         Text("Dinners for the month · tap to add or open · drag a night onto another to swap")
-                            .font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Button { planningMonth = true } label: {
                             HStack(spacing: 7) {
@@ -40,7 +40,7 @@ struct MonthPlannerView: View {
                                 Text("Plan my month").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
                             }
                             .frame(maxWidth: .infinity).padding(.vertical, 12)
-                            .background(NK.ai).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                            .background(WF.ai).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                         }
                         .buttonStyle(.plain)
                         weekdayRow
@@ -53,7 +53,7 @@ struct MonthPlannerView: View {
                 }
             }
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .task { await load(); autoPlanOnceIfNeeded() }
         .refreshable { await load() }
         .onChange(of: anchor) { _, _ in Task { await load() } }
@@ -145,16 +145,16 @@ struct MonthPlannerView: View {
                     Text("Plan my month").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
                 }
                 .padding(.horizontal, 14).padding(.vertical, 9)
-                .background(NK.ai).clipShape(Capsule())
+                .background(WF.ai).clipShape(Capsule())
             }
             .buttonStyle(.plain)
             Spacer()
             Button { step(-1) } label: { monthChevron("chevron.left") }
             VStack(spacing: 1) {
-                Text(fmt(anchor, "MMMM yyyy")).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                Text(fmt(anchor, "MMMM yyyy")).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
                 if !isCurrentMonth {
                     Button("Jump to this month") { withAnimation { anchor = Date() } }
-                        .font(.system(size: 11, weight: .semibold)).tint(NK.primary)
+                        .font(.system(size: 11, weight: .semibold)).tint(WF.primary)
                 }
             }
             .frame(minWidth: 140)
@@ -163,30 +163,30 @@ struct MonthPlannerView: View {
     }
 
     private func monthChevron(_ s: String) -> some View {
-        Image(systemName: s).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
-            .frame(width: 34, height: 34).background(NK.card).clipShape(Circle())
-            .overlay(Circle().strokeBorder(NK.hair, lineWidth: 1))
+        Image(systemName: s).font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink2)
+            .frame(width: 34, height: 34).background(WF.card).clipShape(Circle())
+            .overlay(Circle().strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private var monthHeader: some View {
         HStack {
             Button { step(-1) } label: {
-                Image(systemName: "chevron.left").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink2)
-                    .frame(width: 36, height: 36).background(NK.card).clipShape(Circle())
+                Image(systemName: "chevron.left").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink2)
+                    .frame(width: 36, height: 36).background(WF.card).clipShape(Circle())
             }
             .buttonStyle(.plain)
             Spacer()
             VStack(spacing: 1) {
-                Text(fmt(anchor, "MMMM yyyy")).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
+                Text(fmt(anchor, "MMMM yyyy")).font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink)
                 if !isCurrentMonth {
                     Button("Jump to this month") { withAnimation { anchor = Date() } }
-                        .font(.system(size: 12, weight: .semibold)).tint(NK.primary)
+                        .font(.system(size: 12, weight: .semibold)).tint(WF.primary)
                 }
             }
             Spacer()
             Button { step(1) } label: {
-                Image(systemName: "chevron.right").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink2)
-                    .frame(width: 36, height: 36).background(NK.card).clipShape(Circle())
+                Image(systemName: "chevron.right").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink2)
+                    .frame(width: 36, height: 36).background(WF.card).clipShape(Circle())
             }
             .buttonStyle(.plain)
         }
@@ -196,7 +196,7 @@ struct MonthPlannerView: View {
     private var weekdayRow: some View {
         HStack(spacing: 5) {
             ForEach(weekdaySymbols, id: \.self) { s in
-                Text(s).font(.system(size: 11, weight: .heavy)).foregroundStyle(NK.ink3)
+                Text(s).font(.system(size: 11, weight: .heavy)).foregroundStyle(WF.ink3)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -214,17 +214,17 @@ struct MonthPlannerView: View {
             HStack(spacing: 0) {
                 Text(dayNum(day))
                     .font(.system(size: isKiosk ? 14 : 11, weight: isToday ? .heavy : .semibold))
-                    .foregroundStyle(isToday ? NK.primary : (inMonth ? NK.ink2 : NK.ink3))
+                    .foregroundStyle(isToday ? WF.primary : (inMonth ? WF.ink2 : WF.ink3))
                 Spacer(minLength: 0)
             }
             if let e = entry, inMonth {
                 if isKiosk { Spacer(minLength: 0) }
                 Text(e.recipe?.emoji ?? (isEatingOut(e) ? "🍴" : "🍽️")).font(.system(size: isKiosk ? 30 : 17))
-                Text(e.displayTitle).font(.system(size: isKiosk ? 13 : 8.5, weight: .semibold)).foregroundStyle(NK.ink2)
+                Text(e.displayTitle).font(.system(size: isKiosk ? 13 : 8.5, weight: .semibold)).foregroundStyle(WF.ink2)
                     .lineLimit(2).multilineTextAlignment(.center).minimumScaleFactor(0.85)
             } else if inMonth {
                 Spacer(minLength: 0)
-                Image(systemName: "plus").font(.system(size: isKiosk ? 16 : 11, weight: .bold)).foregroundStyle(NK.ink3.opacity(0.5))
+                Image(systemName: "plus").font(.system(size: isKiosk ? 16 : 11, weight: .bold)).foregroundStyle(WF.ink3.opacity(0.5))
             }
             Spacer(minLength: 0)
         }
@@ -233,9 +233,9 @@ struct MonthPlannerView: View {
             .padding(.horizontal, 4).padding(.vertical, 5)
             .frame(maxWidth: .infinity, minHeight: isKiosk ? nil : 66,
                    maxHeight: isKiosk ? .infinity : nil, alignment: .top)
-            .background(highlighted ? NK.primary.opacity(0.1) : (inMonth ? NK.card : Color.clear))
+            .background(highlighted ? WF.primary.opacity(0.1) : (inMonth ? WF.card : Color.clear))
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(highlighted || isToday ? NK.primary : NK.hair, lineWidth: highlighted || isToday ? 2 : 1))
+                .strokeBorder(highlighted || isToday ? WF.primary : WF.hair, lineWidth: highlighted || isToday ? 2 : 1))
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .opacity(inMonth ? 1 : 0.4)
 
@@ -263,10 +263,10 @@ struct MonthPlannerView: View {
     private func dragPreview(_ e: WaffledAPI.WeekEntryDTO) -> some View {
         HStack(spacing: 5) {
             Text(e.recipe?.emoji ?? (isEatingOut(e) ? "🍴" : "🍽️")).font(.system(size: 14))
-            Text(e.displayTitle).font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+            Text(e.displayTitle).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
         }
         .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(NK.card).clipShape(Capsule()).overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(Capsule()).overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
     }
 
     /// Handle a dropped source day onto `target` — swap (or move) the two dinners.

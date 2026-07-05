@@ -24,7 +24,7 @@ struct KioskFamilyView: View {
             }
             .padding(24)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .toolbar(.hidden, for: .navigationBar)   // draws its own "Family" header
         .task {
             await sync.loadIdentity(); await load()
@@ -49,56 +49,56 @@ struct KioskFamilyView: View {
         let pc = chores.first { $0.id == m.id }
         let balance = stars.first { $0.name == m.name }?.stars
         let events = todayEvents(for: m)
-        let tint = Color(hexString: m.colorHex) ?? NK.ink3
+        let tint = Color(hexString: m.colorHex) ?? WF.ink3
         return Button { path.append(.person(m.id)) } label: {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
                     Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 52)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(m.name).font(.system(size: 18, weight: .bold)).foregroundStyle(NK.ink).lineLimit(1)
+                        Text(m.name).font(.system(size: 18, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
                         Text(m.memberType?.capitalized ?? "")
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                     }
                     Spacer(minLength: 6)
-                    if let balance { Text("★ \(balance)").font(.system(size: 15, weight: .heavy)).foregroundStyle(NK.gold) }
-                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+                    if let balance { Text("★ \(balance)").font(.system(size: 15, weight: .heavy)).foregroundStyle(WF.gold) }
+                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
                 }
 
                 if let pc, pc.total > 0 {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text("CHORES").font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
+                            Text("CHORES").font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
                             Spacer()
-                            Text("\(pc.done) of \(pc.total)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
+                            Text("\(pc.done) of \(pc.total)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
                         }
                         ProgressBar(value: Double(pc.done) / Double(pc.total), tint: tint, track: tint.opacity(0.18))
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("TODAY").font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
+                    Text("TODAY").font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
                     if events.isEmpty {
-                        Text("Nothing scheduled").font(.system(size: 13)).foregroundStyle(NK.ink3)
+                        Text("Nothing scheduled").font(.system(size: 13)).foregroundStyle(WF.ink3)
                     } else {
                         ForEach(events.prefix(3)) { ev in
                             HStack(spacing: 8) {
                                 RoundedRectangle(cornerRadius: 99).fill(Color(hexString: ev.colorHex) ?? tint).frame(width: 3, height: 16)
                                 Text(ev.allDay ? "All day" : (ev.startsAt.map { EventTime.timeLabel($0, sync.householdTz) } ?? ""))
-                                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                                     .frame(width: 62, alignment: .leading)
-                                Text(ev.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                                Text(ev.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                                 Spacer(minLength: 0)
                             }
                         }
                         if events.count > 3 {
-                            Text("+\(events.count - 3) more").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                            Text("+\(events.count - 3) more").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                         }
                     }
                 }
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .nkField()
+            .wfField()
         }
         .buttonStyle(.plain)
     }

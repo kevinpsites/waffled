@@ -25,7 +25,7 @@ struct KioskListsView: View {
             }
             .padding(.horizontal, 24).padding(.top, 20).padding(.bottom, 4)
             selectorBar
-            Rectangle().fill(NK.hair).frame(height: 1)
+            Rectangle().fill(WF.hair).frame(height: 1)
             Group {
                 if let sel = selected {
                     ListDetailView(list: sel, openRecipe: openRecipe).id(sel.id)
@@ -35,7 +35,7 @@ struct KioskListsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .task { await model.load() }
         .onChange(of: sync.listsRev) { _, _ in Task { await model.load() } }
         .sheet(isPresented: $creating) {
@@ -59,29 +59,29 @@ struct KioskListsView: View {
                         Image(systemName: "plus").font(.system(size: 12, weight: .bold))
                         Text("New list").font(.system(size: 14, weight: .semibold))
                     }
-                    .foregroundStyle(NK.ink2)
+                    .foregroundStyle(WF.ink2)
                     .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(NK.card).clipShape(Capsule())
-                    .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+                    .background(WF.card).clipShape(Capsule())
+                    .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, 24).padding(.vertical, 12)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
     }
 
     private func listPill(_ list: WaffledAPI.ListSummary, isSelected: Bool) -> some View {
         HStack(spacing: 8) {
             Text(list.emoji ?? "📝").font(.system(size: 16))
             Text(list.name).font(.system(size: 15, weight: .bold))
-                .foregroundStyle(isSelected ? .white : NK.ink2).lineLimit(1)
+                .foregroundStyle(isSelected ? .white : WF.ink2).lineLimit(1)
             Text("\(list.itemCount)").font(.system(size: 12, weight: .heavy))
-                .foregroundStyle(isSelected ? .white.opacity(0.85) : NK.ink3)
+                .foregroundStyle(isSelected ? .white.opacity(0.85) : WF.ink3)
         }
         .padding(.leading, 13).padding(.trailing, 14).padding(.vertical, 8)
-        .background(isSelected ? NK.primary : NK.card)
-        .overlay(Capsule().strokeBorder(isSelected ? Color.clear : NK.hair, lineWidth: 1))
+        .background(isSelected ? WF.primary : WF.card)
+        .overlay(Capsule().strokeBorder(isSelected ? Color.clear : WF.hair, lineWidth: 1))
         .clipShape(Capsule())
     }
 
@@ -92,10 +92,10 @@ struct KioskListsView: View {
             } else {
                 Text("🗒️").font(.system(size: 44))
                 Text(model.error ? "Couldn’t load your lists." : "No lists yet — tap “New list”.")
-                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink2)
+                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink2)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(NK.canvas)
+        .background(WF.canvas)
     }
 }

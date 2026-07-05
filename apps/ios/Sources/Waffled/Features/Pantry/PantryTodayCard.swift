@@ -40,27 +40,27 @@ struct PantryTodayCard: View {
             WaffledCard(padding: 15) {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("🥫 Pantry").font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ink2)
+                        Text("🥫 Pantry").font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
                         Spacer()
-                        Text(headerCount).font(.system(size: 12)).foregroundStyle(NK.ink3)
-                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                        Text(headerCount).font(.system(size: 12)).foregroundStyle(WF.ink3)
+                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                     }
                     if !model.loaded {
-                        Text("Loading…").font(.system(size: 13)).foregroundStyle(NK.ink3)
+                        Text("Loading…").font(.system(size: 13)).foregroundStyle(WF.ink3)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else if model.onHand.isEmpty {
                         Text("Nothing logged yet — add what’s on hand ›")
-                            .font(.system(size: 13)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 13)).foregroundStyle(WF.ink3)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else if attention.isEmpty {
                         Text("All fresh — nothing to use up soon.")
-                            .font(.system(size: 13)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 13)).foregroundStyle(WF.ink3)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
                         ForEach(attention.prefix(cap)) { row($0) }
                         if attention.count > cap {
                             Text("+\(attention.count - cap) more")
-                                .font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
+                                .font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
                         }
                     }
                 }
@@ -79,11 +79,11 @@ struct PantryTodayCard: View {
         HStack(spacing: 10) {
             Text(PantryFood.emoji(for: item.name)).font(.system(size: 17))
                 .frame(width: 32, height: 32)
-                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
             VStack(alignment: .leading, spacing: 1) {
-                Text(item.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                Text(item.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                 if let sub = qtyLabel(item) {
-                    Text(sub).font(.system(size: 11)).foregroundStyle(NK.ink3)
+                    Text(sub).font(.system(size: 11)).foregroundStyle(WF.ink3)
                 }
             }
             Spacer(minLength: 6)
@@ -105,9 +105,9 @@ struct PantryTodayCard: View {
                 .background(Color(hex: 0xFBF0D5)).clipShape(Capsule())
         } else {
             Text("Low")
-                .font(.system(size: 12, weight: .bold)).foregroundStyle(NK.primaryD)
+                .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.primaryD)
                 .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(NK.primaryD.opacity(0.12)).clipShape(Capsule())
+                .background(WF.primaryD.opacity(0.12)).clipShape(Capsule())
         }
     }
 

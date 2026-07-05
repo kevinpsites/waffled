@@ -30,13 +30,13 @@ struct CookConfirmSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Update your pantry after cooking \(title).")
-                        .font(.system(size: 14)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 14)).foregroundStyle(WF.ink3)
                         .padding(.top, 2)
                     ForEach(matches) { row($0) }
                 }
                 .padding(20).padding(.bottom, 90)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .safeAreaInset(edge: .bottom) { bar }
             .navigationTitle("Used from your pantry").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Not now") { dismiss() } } }
@@ -48,18 +48,18 @@ struct CookConfirmSheet: View {
     private func row(_ m: WaffledAPI.RecipeMatch) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 6) {
-                Text(m.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
-                Text(amountLabel(m)).font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                Text(m.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+                Text(amountLabel(m)).font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                 if m.isStaple {
-                    Text("· staple").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                    Text("· staple").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 0)
             }
             segmented(m.id)
         }
         .padding(12)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private func amountLabel(_ m: WaffledAPI.RecipeMatch) -> String {
@@ -76,9 +76,9 @@ struct CookConfirmSheet: View {
                 Button { choice[id] = mode.key } label: {
                     Text(mode.label)
                         .font(.system(size: 13, weight: on ? .bold : .semibold))
-                        .foregroundStyle(on ? .white : NK.ink2)
+                        .foregroundStyle(on ? .white : WF.ink2)
                         .frame(maxWidth: .infinity).padding(.vertical, 8)
-                        .background(on ? NK.primary : NK.panel)
+                        .background(on ? WF.primary : WF.panel)
                         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 }.buttonStyle(.plain)
             }
@@ -90,7 +90,7 @@ struct CookConfirmSheet: View {
             Text(busy ? "Updating…" : "Update pantry").fontWeight(.bold)
                 .font(.system(size: 16)).foregroundStyle(.white)
                 .frame(maxWidth: .infinity).padding(.vertical, 15)
-                .background(NK.primary)
+                .background(WF.primary)
         }
         .buttonStyle(.plain).disabled(busy)
     }

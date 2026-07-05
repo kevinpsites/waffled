@@ -25,7 +25,7 @@ struct NotificationsSettingsView: View {
                     Toggle(isOn: $n.enabled) {
                         rowLabel("Event reminders", "Get a heads-up before your calendar events")
                     }
-                    .tint(NK.primary)
+                    .tint(WF.primary)
                     .padding(.vertical, 14)
                 }
 
@@ -38,7 +38,7 @@ struct NotificationsSettingsView: View {
             }
             .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 110)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle("Notifications").navigationBarTitleDisplayMode(.inline)
         .task { await notifications.refreshAuthorization() }
         // Turning reminders on for the first time prompts for permission.
@@ -49,7 +49,7 @@ struct NotificationsSettingsView: View {
 
     private var intro: some View {
         Text("Reminders are scheduled **on this device** from your synced calendar, so they work offline. They don't send anything to a server.")
-            .font(.system(size: 13)).foregroundStyle(NK.ink2)
+            .font(.system(size: 13)).foregroundStyle(WF.ink2)
             .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -79,7 +79,7 @@ struct NotificationsSettingsView: View {
 
     private var footnote: some View {
         Text("Reminders cover your upcoming events. Recurring events and chore reminders are coming separately.")
-            .font(.system(size: 12)).foregroundStyle(NK.ink3)
+            .font(.system(size: 12)).foregroundStyle(WF.ink3)
             .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -90,7 +90,7 @@ struct NotificationsSettingsView: View {
                 Button {
                     if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
                 } label: {
-                    Text("Open Settings").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.primary)
+                    Text("Open Settings").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.primary)
                 }
                 .buttonStyle(.plain)
             }
@@ -103,8 +103,8 @@ struct NotificationsSettingsView: View {
 
     private func rowLabel(_ title: String, _ sub: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-            Text(sub).font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+            Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+            Text(sub).font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -115,7 +115,7 @@ struct NotificationsSettingsView: View {
             menu()
         } label: {
             HStack {
-                Text(title).font(.system(size: 15, weight: .medium)).foregroundStyle(NK.ink)
+                Text(title).font(.system(size: 15, weight: .medium)).foregroundStyle(WF.ink)
                 Spacer(minLength: 8)
                 WaffledSettingsMenuLabel(value: value)
             }
@@ -123,15 +123,15 @@ struct NotificationsSettingsView: View {
         }
     }
 
-    private var divider: some View { Rectangle().fill(NK.hair).frame(height: 1) }
+    private var divider: some View { Rectangle().fill(WF.hair).frame(height: 1) }
 
     @ViewBuilder
     private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 0) { content() }
             .padding(.horizontal, 18)
-            .background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .background(WF.card)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private func hourLabel(_ h: Int) -> String {

@@ -67,7 +67,7 @@ struct PlanMonthSheet: View {
     var body: some View {
         NavigationStack {
             content
-                .background(NK.canvas)
+                .background(WF.canvas)
                 .navigationTitle("Plan \(monthLabel)").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
@@ -105,9 +105,9 @@ struct PlanMonthSheet: View {
         case .config:
             VStack(spacing: 12) {
                 Text("✨").font(.system(size: 40))
-                Text("Draft your month").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
+                Text("Draft your month").font(.system(size: 17, weight: .bold)).foregroundStyle(WF.ink)
                 Text("Set your guardrails on the left, then tap Plan my month.")
-                    .font(.system(size: 13)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 13)).foregroundStyle(WF.ink3)
                     .multilineTextAlignment(.center).padding(.horizontal, 40)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -125,7 +125,7 @@ struct PlanMonthSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Waffled drafts a dinner rotation for the month from your recipe library, then you tweak it.")
-                        .font(.system(size: 14)).foregroundStyle(NK.ink3).fixedSize(horizontal: false, vertical: true)
+                        .font(.system(size: 14)).foregroundStyle(WF.ink3).fixedSize(horizontal: false, vertical: true)
 
                     WaffledFieldCard(title: "Which days?") {
                         HStack(spacing: 6) { ForEach(0..<7, id: \.self) { weekdayChip($0) } }
@@ -133,7 +133,7 @@ struct PlanMonthSheet: View {
 
                     WaffledCard(padding: 14) {
                         HStack {
-                            Text("Cooking for").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                            Text("Cooking for").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                             Spacer()
                             Menu {
                                 Button { cookingFor = 0 } label: { Text("\(familySize) · whole family") }
@@ -145,11 +145,11 @@ struct PlanMonthSheet: View {
                     WaffledCard(padding: 14) {
                         VStack(alignment: .leading, spacing: 12) {
                             Toggle(isOn: $allowRepeats.animation()) {
-                                Text("Allow repeat meals (a rotation)").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                            }.tint(NK.ai)
+                                Text("Allow repeat meals (a rotation)").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                            }.tint(WF.ai)
                             if allowRepeats {
                                 HStack {
-                                    Text("No closer than").font(.system(size: 14)).foregroundStyle(NK.ink2)
+                                    Text("No closer than").font(.system(size: 14)).foregroundStyle(WF.ink2)
                                     Spacer()
                                     Menu {
                                         ForEach([3, 5, 7, 10, 14], id: \.self) { d in Button { repeatGapDays = d } label: { Text("\(d) days") } }
@@ -162,11 +162,11 @@ struct PlanMonthSheet: View {
                     WaffledCard(padding: 14) {
                         VStack(alignment: .leading, spacing: 12) {
                             Toggle(isOn: $quickWeeknights.animation()) {
-                                Text("Quick weeknights").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                            }.tint(NK.ai)
+                                Text("Quick weeknights").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                            }.tint(WF.ai)
                             if quickWeeknights {
                                 HStack {
-                                    Text("Under").font(.system(size: 14)).foregroundStyle(NK.ink2)
+                                    Text("Under").font(.system(size: 14)).foregroundStyle(WF.ink2)
                                     Spacer()
                                     Menu {
                                         ForEach([20, 30, 45], id: \.self) { m in Button { weeknightMax = m } label: { Text("\(m) min") } }
@@ -174,8 +174,8 @@ struct PlanMonthSheet: View {
                                 }
                             }
                             Toggle(isOn: $leftovers) {
-                                Text("Leftover nights after a big cook").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                            }.tint(NK.ai)
+                                Text("Leftover nights after a big cook").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                            }.tint(WF.ai)
                         }
                     }
 
@@ -185,7 +185,7 @@ struct PlanMonthSheet: View {
                             VStack(spacing: 0) {
                                 ForEach(Array(sortedDays.enumerated()), id: \.element) { idx, dow in
                                     themeRow(dow)
-                                    if idx < sortedDays.count - 1 { Divider().background(NK.hair) }
+                                    if idx < sortedDays.count - 1 { Divider().background(WF.hair) }
                                 }
                             }
                         }
@@ -197,23 +197,23 @@ struct PlanMonthSheet: View {
                         TextField("e.g. school nights are hectic · no pork", text: $keepInMind, axis: .vertical)
                             .font(.system(size: 14)).lineLimit(2...4)
                             .padding(.horizontal, 12).padding(.vertical, 10)
-                            .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                            .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                     }
                 }
                 .padding(20)
             }
             VStack(spacing: 0) {
-                Divider().background(NK.hair)
+                Divider().background(WF.hair)
                 Button { Task { await suggest() } } label: {
                     Text("✨ Plan \(monthLabel)").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
                         .frame(maxWidth: .infinity).padding(.vertical, 14)
-                        .background(weekdays.isEmpty ? NK.ink3 : NK.ai)
-                        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                        .background(weekdays.isEmpty ? WF.ink3 : WF.ai)
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                 }
                 .buttonStyle(.plain).disabled(weekdays.isEmpty)
                 .padding(.horizontal, 16).padding(.vertical, 12)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
         }
     }
 
@@ -226,7 +226,7 @@ struct PlanMonthSheet: View {
     /// One weekday's theme picker — a plain row (the parent groups them in a single card).
     private func themeRow(_ dow: Int) -> some View {
         HStack {
-            Text(Self.dayNames[dow]).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink).frame(width: 44, alignment: .leading)
+            Text(Self.dayNames[dow]).font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink).frame(width: 44, alignment: .leading)
             Spacer()
             Menu {
                 Button { themes[dow] = nil } label: { Text("No theme") }
@@ -261,8 +261,8 @@ struct PlanMonthSheet: View {
                 VStack(spacing: 10) {
                     HStack {
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("Your month").font(NK.serif(17, .bold)).foregroundStyle(NK.ink)
-                            Text(reviewSubtitle).font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
+                            Text("Your month").font(WF.serif(17, .bold)).foregroundStyle(WF.ink)
+                            Text(reviewSubtitle).font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
                         }
                         Spacer()
                         PlanReshuffleButton(isBusy: redrafting && draftingDates.count > 1,
@@ -271,10 +271,10 @@ struct PlanMonthSheet: View {
                         }
                     }
                     if let notice {
-                        Text(notice).font(.system(size: 12, weight: .medium)).foregroundStyle(NK.primary)
+                        Text(notice).font(.system(size: 12, weight: .medium)).foregroundStyle(WF.primary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 12).padding(.vertical, 9)
-                            .background(NK.primary.opacity(0.10)).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                            .background(WF.primary.opacity(0.10)).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                     }
                     ForEach(weekGroups, id: \.key) { group in
                         weekHeader(group)
@@ -290,7 +290,7 @@ struct PlanMonthSheet: View {
                         }
                     }
                     Text("Tap a week to collapse it · lock / swap / pick · drag a night onto another to swap · ✕ to skip.")
-                        .font(.system(size: 12)).foregroundStyle(NK.ink3).frame(maxWidth: .infinity, alignment: .center).padding(.top, 2)
+                        .font(.system(size: 12)).foregroundStyle(WF.ink3).frame(maxWidth: .infinity, alignment: .center).padding(.top, 2)
                 }
                 .padding(16)
             }
@@ -323,9 +323,9 @@ struct PlanMonthSheet: View {
         } label: {
             HStack(spacing: 7) {
                 DisclosureChevron(isOpen: !collapsed)
-                Text("Week of \(weekLabel(group.key))").font(.system(size: 12, weight: .heavy)).tracking(0.4).foregroundStyle(NK.ink2)
+                Text("Week of \(weekLabel(group.key))").font(.system(size: 12, weight: .heavy)).tracking(0.4).foregroundStyle(WF.ink2)
                 Spacer()
-                Text("\(group.cards.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                Text("\(group.cards.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
             }
             .padding(.horizontal, 4).padding(.top, 8).padding(.bottom, 2).contentShape(Rectangle())
         }

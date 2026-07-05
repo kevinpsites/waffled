@@ -12,9 +12,9 @@ struct ColorSwatchPicker: View {
     var body: some View {
         HStack(spacing: 10) {
             ForEach(WaffledSwatch.all, id: \.self) { s in
-                Circle().fill(Color(hexString: s) ?? NK.ink3)
+                Circle().fill(Color(hexString: s) ?? WF.ink3)
                     .frame(width: 30, height: 30)
-                    .overlay(Circle().strokeBorder(hex.lowercased() == s.lowercased() ? NK.ink : .clear, lineWidth: 2.5).padding(-3))
+                    .overlay(Circle().strokeBorder(hex.lowercased() == s.lowercased() ? WF.ink : .clear, lineWidth: 2.5).padding(-3))
                     .onTapGesture { hex = s }
             }
             Spacer(minLength: 0)
@@ -79,7 +79,7 @@ struct SettingsView: View {
             }
             .padding(16).padding(.bottom, 110)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
         .task { await sync.loadIdentity() }
     }
@@ -88,19 +88,19 @@ struct SettingsView: View {
     private var signOutFooter: some View {
         VStack(spacing: 8) {
             if let name = signedInName {
-                Text("Signed in as \(name)").font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                Text("Signed in as \(name)").font(.system(size: 12.5)).foregroundStyle(WF.ink3)
             }
             Button {
                 if confirmSignOut { Task { await signOut() } } else { confirmSignOut = true }
             } label: {
                 Text(busy ? "Signing out…" : (confirmSignOut ? "Tap again to sign out" : "Sign out"))
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(confirmSignOut ? .white : NK.primary)
+                    .foregroundStyle(confirmSignOut ? .white : WF.primary)
                     .frame(maxWidth: .infinity).padding(.vertical, 14)
-                    .background(confirmSignOut ? NK.primary : NK.card)
-                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-                        .strokeBorder(confirmSignOut ? .clear : NK.primary.opacity(0.4), lineWidth: 1))
+                    .background(confirmSignOut ? WF.primary : WF.card)
+                    .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                        .strokeBorder(confirmSignOut ? .clear : WF.primary.opacity(0.4), lineWidth: 1))
             }
             .buttonStyle(.plain).disabled(busy)
         }
@@ -125,20 +125,20 @@ struct SettingsView: View {
             HStack(spacing: 12) {
                 WaffledEmojiTile(emoji: emoji)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(enabled ? NK.ink : NK.ink2)
-                    Text(sub).font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                    Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(enabled ? WF.ink : WF.ink2)
+                    Text(sub).font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 0)
                 if enabled {
-                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+                    Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
                 } else {
-                    Text("Soon").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
-                        .padding(.horizontal, 8).padding(.vertical, 3).background(NK.panel).clipShape(Capsule())
+                    Text("Soon").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
+                        .padding(.horizontal, 8).padding(.vertical, 3).background(WF.panel).clipShape(Capsule())
                 }
             }
-            .padding(12).background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .padding(12).background(WF.card)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
             .opacity(enabled ? 1 : 0.6)
         }
         .buttonStyle(.plain).disabled(!enabled)
@@ -167,11 +167,11 @@ struct ModulesSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Turn off whatever your family doesn’t use — its tab, Today card, and pages disappear everywhere. Today and Calendar always stay on.")
-                    .font(.system(size: 13)).foregroundStyle(NK.ink2)
+                    .font(.system(size: 13)).foregroundStyle(WF.ink2)
                     .fixedSize(horizontal: false, vertical: true)
                 if !isAdmin {
                     Text("Only an admin can change modules.")
-                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
                 if loading {
                     WaffledLoading(top: 30)
@@ -186,7 +186,7 @@ struct ModulesSettingsView: View {
             }
             .padding(16).padding(.bottom, 110)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle("Modules").navigationBarTitleDisplayMode(.inline)
         .task { await load() }
     }
@@ -197,29 +197,29 @@ struct ModulesSettingsView: View {
                       isOn: isOn(m), busy: saving.contains(m.rawValue)) { setModule(m, $0) }
             // Rewards rides under Chores (its spend half) — only when Chores is on.
             if m == .chores, isOn(.chores) {
-                Divider().background(NK.hair).padding(.leading, 52)
+                Divider().background(WF.hair).padding(.leading, 52)
                 toggleRow(icon: "⭐", title: "Rewards", sub: "Star shop & redemptions — the spend half of chores.",
                           isOn: rewards ?? true, busy: saving.contains("rewards"), indented: true) { setRewards($0) }
             }
         }
-        .background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private func toggleRow(icon: String, title: String, sub: String, isOn: Bool, busy: Bool,
                            indented: Bool = false, set: @escaping (Bool) -> Void) -> some View {
         HStack(spacing: 12) {
             Text(icon).font(.system(size: 20)).frame(width: 40, height: 40)
-                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                Text(sub).font(.system(size: 12)).foregroundStyle(NK.ink3)
+                Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                Text(sub).font(.system(size: 12)).foregroundStyle(WF.ink3)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
             Toggle("", isOn: Binding(get: { isOn }, set: { set($0) }))
-                .labelsHidden().tint(NK.primary)
+                .labelsHidden().tint(WF.primary)
                 .disabled(!isAdmin || busy)
         }
         .padding(12).padding(.leading, indented ? 8 : 0)
@@ -228,19 +228,19 @@ struct ModulesSettingsView: View {
     private func comingSoonRow(_ m: WaffledModule) -> some View {
         HStack(spacing: 12) {
             Text(m.icon).font(.system(size: 20)).frame(width: 40, height: 40)
-                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text(m.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink2)
-                Text(m.summary).font(.system(size: 12)).foregroundStyle(NK.ink3)
+                Text(m.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink2)
+                Text(m.summary).font(.system(size: 12)).foregroundStyle(WF.ink3)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
-            Text("Soon").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
-                .padding(.horizontal, 8).padding(.vertical, 3).background(NK.panel).clipShape(Capsule())
+            Text("Soon").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
+                .padding(.horizontal, 8).padding(.vertical, 3).background(WF.panel).clipShape(Capsule())
         }
-        .padding(12).background(NK.card).opacity(0.7)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .padding(12).background(WF.card).opacity(0.7)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private func load() async {
@@ -341,7 +341,7 @@ struct ChoresRewardsSettingsView: View {
             }
             .padding(16).padding(.bottom, 110)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle("Chores & Rewards").navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .onChange(of: sync.rewardsRev) { _, _ in Task { await load() } }
@@ -360,16 +360,16 @@ struct ChoresRewardsSettingsView: View {
         VStack(alignment: .leading, spacing: 18) { content() }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(NK.panel)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .background(WF.panel)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private var currenciesSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionLabel(text: "Currencies & trades")
             Text("Rename stars, add your own, or run several. The **default** is what new chores award; **spendable** ones can buy rewards.")
-                .font(.system(size: 13)).foregroundStyle(NK.ink2)
+                .font(.system(size: 13)).foregroundStyle(WF.ink2)
                 .fixedSize(horizontal: false, vertical: true)
 
             ForEach(currencies) { c in currencyRow(c) }
@@ -379,11 +379,11 @@ struct ChoresRewardsSettingsView: View {
                     Image(systemName: "plus").font(.system(size: 13, weight: .bold))
                     Text("Add a currency").font(.system(size: 14, weight: .semibold))
                 }
-                .foregroundStyle(NK.ink2).frame(maxWidth: .infinity).padding(.vertical, 12)
-                .background(NK.card2)
-                .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundStyle(NK.hair))
-                .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                .foregroundStyle(WF.ink2).frame(maxWidth: .infinity).padding(.vertical, 12)
+                .background(WF.card2)
+                .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3])).foregroundStyle(WF.hair))
+                .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
             }
             .buttonStyle(.plain).padding(.top, 2)
         }
@@ -397,24 +397,24 @@ struct ChoresRewardsSettingsView: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionLabel(text: "Reward approvals")
             Text("Sets the default for **new** rewards. On = a parent OKs the purchase; off = the kid redeems instantly with what they’ve earned. Even if off, each reward can have an override to explicitly require approval.")
-                .font(.system(size: 13)).foregroundStyle(NK.ink2)
+                .font(.system(size: 13)).foregroundStyle(WF.ink2)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 12) {
                 Text("✅").font(.system(size: 20)).frame(width: 40, height: 40)
-                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                 Text("New rewards need a parent’s OK by default")
-                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                 Spacer(minLength: 8)
                 Toggle("", isOn: Binding(
                     get: { requireApproval ?? true },
                     set: { setApproval($0) }))
-                    .labelsHidden().tint(NK.primary)
+                    .labelsHidden().tint(WF.primary)
                     .disabled(requireApproval == nil || savingApproval)
             }
-            .padding(12).background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .padding(12).background(WF.card)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
         }
     }
 
@@ -425,14 +425,14 @@ struct ChoresRewardsSettingsView: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionLabel(text: "Chore photo proof")
             Text("When a chore needs a photo, the snapshot is kept this long after it’s done, then deleted automatically. Awaiting check-offs are always kept until you review them.")
-                .font(.system(size: 13)).foregroundStyle(NK.ink2)
+                .font(.system(size: 13)).foregroundStyle(WF.ink2)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 12) {
                 Text("📸").font(.system(size: 20)).frame(width: 40, height: 40)
-                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                 Text("Keep proof photos for")
-                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                 Spacer(minLength: 8)
                 Menu {
                     ForEach(Self.ttlOptions, id: \.days) { o in
@@ -440,17 +440,17 @@ struct ChoresRewardsSettingsView: View {
                     }
                 } label: {
                     HStack(spacing: 5) {
-                        Text(ttlLabel).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink)
-                        Image(systemName: "chevron.up.chevron.down").font(.system(size: 10, weight: .bold)).foregroundStyle(NK.ink3)
+                        Text(ttlLabel).font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink)
+                        Image(systemName: "chevron.up.chevron.down").font(.system(size: 10, weight: .bold)).foregroundStyle(WF.ink3)
                     }
                     .padding(.horizontal, 12).padding(.vertical, 9)
-                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                 }
                 .disabled(proofTtlDays == nil || savingTtl)
             }
-            .padding(12).background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .padding(12).background(WF.card)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
 
             if !storedProofs.isEmpty {
                 Button { showStoredProofs = true } label: {
@@ -458,11 +458,11 @@ struct ChoresRewardsSettingsView: View {
                         Image(systemName: "photo.stack").font(.system(size: 14, weight: .semibold))
                         Text("View stored photos (\(storedProofs.count))").font(.system(size: 14, weight: .semibold))
                         Spacer(minLength: 0)
-                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
                     }
-                    .foregroundStyle(NK.ink2).padding(12)
-                    .background(NK.card2).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                    .foregroundStyle(WF.ink2).padding(12)
+                    .background(WF.card2).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
@@ -499,21 +499,21 @@ struct ChoresRewardsSettingsView: View {
         Button { editor = .edit(c) } label: {
             HStack(spacing: 12) {
                 Text(c.symbol).font(.system(size: 20)).frame(width: 40, height: 40)
-                    .background((Color(hexString: c.color) ?? NK.gold).opacity(0.16))
+                    .background((Color(hexString: c.color) ?? WF.gold).opacity(0.16))
                     .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(c.label).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                    Text(c.label).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                     HStack(spacing: 6) {
-                        if c.isDefault { tag("★ Default", NK.gold) }
-                        tag(c.spendable ? "Spendable" : "Earn-only", c.spendable ? NK.primary : NK.ink3)
+                        if c.isDefault { tag("★ Default", WF.gold) }
+                        tag(c.spendable ? "Spendable" : "Earn-only", c.spendable ? WF.primary : WF.ink3)
                     }
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "pencil").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                Image(systemName: "pencil").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
             }
-            .padding(12).background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .padding(12).background(WF.card)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
@@ -528,9 +528,9 @@ struct ChoresRewardsSettingsView: View {
         VStack(alignment: .leading, spacing: 10) {
             // A sub-header (not a full SectionLabel) so it reads as part of the
             // "Currencies & trades" group rather than a peer section.
-            Text("Conversions").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink2)
+            Text("Conversions").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink2)
             Text("Let the family trade up a tier — e.g. 10 ⭐ → 1 🥢. Anyone can convert their own balance on the Rewards tab.")
-                .font(.system(size: 13)).foregroundStyle(NK.ink2)
+                .font(.system(size: 13)).foregroundStyle(WF.ink2)
                 .fixedSize(horizontal: false, vertical: true)
 
             ForEach(conversions) { c in conversionRow(c) }
@@ -541,20 +541,20 @@ struct ChoresRewardsSettingsView: View {
     private func conversionRow(_ c: WaffledAPI.Conversion) -> some View {
         HStack(spacing: 8) {
             Text("\(c.fromAmount) \(c.from.symbol ?? "•") \(c.from.label ?? c.fromCurrency)")
-                .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink)
-            Image(systemName: "arrow.right").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
+            Image(systemName: "arrow.right").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
             Text("\(c.toAmount) \(c.to.symbol ?? "•") \(c.to.label ?? c.toCurrency)")
-                .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink)
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
             Spacer(minLength: 0)
             Button { Task { _ = await sync.deleteConversion(id: c.id); await load() } } label: {
-                Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
                     .frame(width: 28, height: 28)
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private var addConversionForm: some View {
@@ -562,21 +562,21 @@ struct ChoresRewardsSettingsView: View {
             HStack(spacing: 8) {
                 amountField($fromAmt)
                 currencyMenu(selected: $fromKey)
-                Image(systemName: "arrow.right").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                Image(systemName: "arrow.right").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
                 amountField($toAmt)
                 currencyMenu(selected: $toKey)
             }
             Button { Task { await addConversion() } } label: {
                 Text("＋ Add rate").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 11)
-                    .background(fromKey == toKey ? NK.ink3 : NK.primary)
-                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    .background(fromKey == toKey ? WF.ink3 : WF.primary)
+                    .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
             }
             .buttonStyle(.plain).disabled(fromKey == toKey || fromKey.isEmpty)
         }
         .padding(12)
-        .background(NK.card2).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card2).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
         .padding(.top, 2)
     }
 
@@ -584,7 +584,7 @@ struct ChoresRewardsSettingsView: View {
         TextField("0", value: value, format: .number)
             .keyboardType(.numberPad).multilineTextAlignment(.center)
             .font(.system(size: 15, weight: .bold)).frame(width: 44)
-            .padding(.vertical, 8).background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+            .padding(.vertical, 8).background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
     }
 
     private func currencyMenu(selected: Binding<String>) -> some View {
@@ -594,10 +594,10 @@ struct ChoresRewardsSettingsView: View {
         } label: {
             HStack(spacing: 4) {
                 Text(cur.map { "\($0.symbol)" } ?? "•").font(.system(size: 15))
-                Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).foregroundStyle(NK.ink3)
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).foregroundStyle(WF.ink3)
             }
             .padding(.horizontal, 10).padding(.vertical, 8)
-            .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+            .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
         }
     }
 
@@ -669,13 +669,13 @@ struct CurrencyEditorSheet: View {
                     HStack(spacing: 14) {
                         TextField("⭐", text: $symbol)
                             .font(.system(size: 30)).multilineTextAlignment(.center)
-                            .frame(width: 64, height: 64).background(NK.panel)
+                            .frame(width: 64, height: 64).background(WF.panel)
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .onChange(of: symbol) { _, v in if v.count > 2 { symbol = String(v.prefix(2)) } }
                         TextField("Stars, Family Dollars…", text: $label)
                             .font(.system(size: 17, weight: .semibold))
                             .padding(.horizontal, 14).padding(.vertical, 14)
-                            .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                            .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     }
 
                     VStack(alignment: .leading, spacing: 9) {
@@ -685,25 +685,25 @@ struct CurrencyEditorSheet: View {
 
                     Toggle(isOn: $isDefault) {
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("Default").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                            Text("New chores award this").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                            Text("Default").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                            Text("New chores award this").font(.system(size: 12)).foregroundStyle(WF.ink3)
                         }
-                    }.tint(NK.primary)
+                    }.tint(WF.primary)
                     Toggle(isOn: $spendable) {
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("Spendable").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
-                            Text("Can buy rewards").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                            Text("Spendable").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                            Text("Can buy rewards").font(.system(size: 12)).foregroundStyle(WF.ink3)
                         }
-                    }.tint(NK.primary)
+                    }.tint(WF.primary)
 
-                    if let error { Text(error).font(.system(size: 13, weight: .medium)).foregroundStyle(NK.primary) }
+                    if let error { Text(error).font(.system(size: 13, weight: .medium)).foregroundStyle(WF.primary) }
 
                     Button { Task { await save() } } label: {
                         Text(busy ? "Saving…" : (editing == nil ? "Add currency" : "Save"))
                             .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
                             .frame(maxWidth: .infinity).padding(.vertical, 14)
-                            .background(label.trimmingCharacters(in: .whitespaces).isEmpty ? NK.ink3 : NK.primary)
-                            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                            .background(label.trimmingCharacters(in: .whitespaces).isEmpty ? WF.ink3 : WF.primary)
+                            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     }
                     .buttonStyle(.plain).disabled(busy || label.trimmingCharacters(in: .whitespaces).isEmpty)
 
@@ -713,7 +713,7 @@ struct CurrencyEditorSheet: View {
                         } label: {
                             Text(confirmDelete ? "Tap again to delete" : "Delete currency")
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(confirmDelete ? NK.primary : NK.ink3)
+                                .foregroundStyle(confirmDelete ? WF.primary : WF.ink3)
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.plain)
@@ -721,7 +721,7 @@ struct CurrencyEditorSheet: View {
                 }
                 .padding(20)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle(editing == nil ? "New currency" : "Edit currency")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }

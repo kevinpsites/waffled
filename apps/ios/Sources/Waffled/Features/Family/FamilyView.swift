@@ -32,16 +32,16 @@ struct FamilyView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 8) {
-                    Text("Family").font(NK.serif(30)).foregroundStyle(NK.ink)
+                    Text("Family").font(WF.serif(30)).foregroundStyle(WF.ink)
                     Spacer()
                     Button { showSync = true } label: {
                         Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 16)).foregroundStyle(NK.ink2)
+                            .font(.system(size: 16)).foregroundStyle(WF.ink2)
                             .frame(width: 36, height: 36)
-                            .background(NK.panel).clipShape(Circle())
+                            .background(WF.panel).clipShape(Circle())
                             .overlay(alignment: .topTrailing) {
                                 Circle().fill(syncDotColor).frame(width: 9, height: 9)
-                                    .overlay(Circle().stroke(NK.canvas, lineWidth: 1.5))
+                                    .overlay(Circle().stroke(WF.canvas, lineWidth: 1.5))
                             }
                     }
                     .buttonStyle(.plain)
@@ -50,7 +50,7 @@ struct FamilyView: View {
 
                 peopleRow.padding(.top, 14)
                 Text("Tap a person to see just their day, chores & goals.")
-                    .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink3)
                     .padding(.top, 8).padding(.bottom, 18)
 
                 SectionLabel(text: "Everything else").padding(.bottom, 11)
@@ -63,13 +63,13 @@ struct FamilyView: View {
                     if sync.module(.lists) { tile("📋", "Lists", hub.listsSubtitle, FamilyColor.kevin.tint, .lists) }
                     if sync.module(.pantry) { tile("🥫", "Pantry", "What’s on hand", Color(hex: 0xF3E8D6), .pantry) }
                     tile("📷", "Photos", hub.photosSubtitle, Color(hex: 0xDFF0EF), .photos)
-                    tile("⚙️", "Settings", "People, calendars, AI", NK.panel, .settings)
+                    tile("⚙️", "Settings", "People, calendars, AI", WF.panel, .settings)
                 }
             }
             .padding(.horizontal, 18)
             .padding(.bottom, 110)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .toolbar(.hidden, for: .navigationBar)   // the screen draws its own "Family" header
         .refreshable { await hub.load(); await approvals.load() }
         .task { await hub.load() }
@@ -122,7 +122,7 @@ struct FamilyView: View {
                         Button { path.append(.person(m.id)) } label: {
                             personChip(name: m.name,
                                        sub: m.memberType?.capitalized ?? "",
-                                       dot: Color(hexString: m.colorHex) ?? NK.ink3) {
+                                       dot: Color(hexString: m.colorHex) ?? WF.ink3) {
                                 Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 46)
                             }
                         }
@@ -131,12 +131,12 @@ struct FamilyView: View {
                 }
                 VStack(spacing: 7) {
                     Image(systemName: "plus")
-                        .font(.system(size: 18, weight: .semibold)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.ink3)
                         .frame(width: 46, height: 46)
-                        .background(NK.panel)
+                        .background(WF.panel)
                         .clipShape(Circle())
-                        .overlay(Circle().strokeBorder(NK.hair, style: StrokeStyle(lineWidth: 2, dash: [3])))
-                    Text("Add").font(.system(size: 10.5, weight: .bold)).foregroundStyle(NK.ink3)
+                        .overlay(Circle().strokeBorder(WF.hair, style: StrokeStyle(lineWidth: 2, dash: [3])))
+                    Text("Add").font(.system(size: 10.5, weight: .bold)).foregroundStyle(WF.ink3)
                 }
                 .frame(width: 64)
             }
@@ -150,10 +150,10 @@ struct FamilyView: View {
                 .overlay(alignment: .bottomTrailing) {
                     Circle().fill(dot)
                         .frame(width: 14, height: 14)
-                        .overlay(Circle().stroke(NK.card, lineWidth: 2))
+                        .overlay(Circle().stroke(WF.card, lineWidth: 2))
                 }
-            Text(name).font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ink)
-            Text(sub).font(.system(size: 10.5, weight: .semibold)).foregroundStyle(NK.ink3)
+            Text(name).font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink)
+            Text(sub).font(.system(size: 10.5, weight: .semibold)).foregroundStyle(WF.ink3)
         }
         .frame(width: 64)
     }
@@ -161,8 +161,8 @@ struct FamilyView: View {
     private var syncDotColor: Color {
         switch sync.status {
         case .connected: return FamilyColor.wally.solid
-        case .connecting: return NK.gold
-        case .offline, .idle: return NK.ink3
+        case .connecting: return WF.gold
+        case .offline, .idle: return WF.ink3
         }
     }
 
@@ -180,12 +180,12 @@ struct FamilyView: View {
                             }
                         Spacer()
                         Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(NK.ink3)
+                            .foregroundStyle(WF.ink3)
                     }
-                    Text(name).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink).padding(.top, 11)
+                    Text(name).font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink).padding(.top, 11)
                     Text(badge > 0 ? approvalSub(badge) : sub)
                         .font(.system(size: 12.5, weight: .semibold))
-                        .foregroundStyle(badge > 0 ? NK.gold : NK.ink3).padding(.top, 2)
+                        .foregroundStyle(badge > 0 ? WF.gold : WF.ink3).padding(.top, 2)
                 }
             }
         }
@@ -200,8 +200,8 @@ struct FamilyView: View {
         Text(n > 9 ? "9+" : "\(n)")
             .font(.system(size: 11, weight: .heavy)).foregroundStyle(.white)
             .padding(.horizontal, n > 9 ? 4 : 5).padding(.vertical, 1.5)
-            .background(Capsule().fill(NK.gold))
-            .overlay(Capsule().stroke(NK.card, lineWidth: 1.5))
+            .background(Capsule().fill(WF.gold))
+            .overlay(Capsule().stroke(WF.card, lineWidth: 1.5))
             .fixedSize()
     }
 }

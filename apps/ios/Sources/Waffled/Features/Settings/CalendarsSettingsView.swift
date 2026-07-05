@@ -61,10 +61,10 @@ struct CalendarsSettingsView: View {
                         connectCard
                     } else {
                         if let m = message {
-                            Text(m).font(.system(size: 13, weight: .medium)).foregroundStyle(NK.ink2)
+                            Text(m).font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink2)
                                 .padding(.horizontal, 12).padding(.vertical, 9)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                                .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                         }
                         filterControls
                         ForEach(status.accounts) { acct in accountCard(acct) }
@@ -76,7 +76,7 @@ struct CalendarsSettingsView: View {
             }
             .padding(16).padding(.bottom, 110)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle("Calendars").navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if status?.connected == true {
@@ -97,22 +97,22 @@ struct CalendarsSettingsView: View {
     /// settings). Countdowns themselves are managed on the Today card + event editor.
     private var countdownsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("⏳ Countdowns").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink2)
+            Text("⏳ Countdowns").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
             Button { toggleSleeps() } label: {
                 HStack(spacing: 8) {
                     Image(systemName: sleeps ? "checkmark.square.fill" : "square")
-                        .font(.system(size: 17)).foregroundStyle(sleeps ? NK.primary : NK.ink3)
+                        .font(.system(size: 17)).foregroundStyle(sleeps ? WF.primary : WF.ink3)
                     Text("Count in “sleeps” instead of “days” (kid-friendly)")
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink)
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
                     Spacer(minLength: 0)
                 }
             }.buttonStyle(.plain)
             Text("Count down to trips, birthdays, and anything you flag on the calendar. Add one from the Today “Countdowns” card, or tick “Show a countdown” when editing an event.")
-                .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                .font(.system(size: 12)).foregroundStyle(WF.ink3)
         }
         .padding(14)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private func toggleSleeps() {
@@ -124,11 +124,11 @@ struct CalendarsSettingsView: View {
     private var filterControls: some View {
         VStack(spacing: 10) {
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").font(.system(size: 13)).foregroundStyle(NK.ink3)
+                Image(systemName: "magnifyingglass").font(.system(size: 13)).foregroundStyle(WF.ink3)
                 TextField("Search calendars…", text: $search).font(.system(size: 14))
             }
             .padding(.horizontal, 12).padding(.vertical, 10)
-            .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+            .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
             HStack(spacing: 18) {
                 checkToggle("Synced only", $syncedOnly)
                 checkToggle("Hide read-only", $hideReadOnly)
@@ -141,8 +141,8 @@ struct CalendarsSettingsView: View {
         Button { on.wrappedValue.toggle() } label: {
             HStack(spacing: 6) {
                 Image(systemName: on.wrappedValue ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 15)).foregroundStyle(on.wrappedValue ? NK.primary : NK.ink3)
-                Text(label).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink2)
+                    .font(.system(size: 15)).foregroundStyle(on.wrappedValue ? WF.primary : WF.ink3)
+                Text(label).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
             }
         }
         .buttonStyle(.plain)
@@ -170,14 +170,14 @@ struct CalendarsSettingsView: View {
 
     private var connectCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Connect a Google account").font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
+            Text("Connect a Google account").font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink)
             Text("Bring your family’s Google calendars into Waffled — you’ll pick which ones sync and who each belongs to.")
-                .font(.system(size: 13)).foregroundStyle(NK.ink3).fixedSize(horizontal: false, vertical: true)
+                .font(.system(size: 13)).foregroundStyle(WF.ink3).fixedSize(horizontal: false, vertical: true)
             connectButton
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private var connectMore: some View { connectButton }
@@ -189,7 +189,7 @@ struct CalendarsSettingsView: View {
                 Text(connecting ? "Connecting…" : "Connect Google Calendar").font(.system(size: 14, weight: .bold))
             }
             .foregroundStyle(.white).frame(maxWidth: .infinity).padding(.vertical, 12)
-            .background(NK.primary).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .background(WF.primary).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         }
         .buttonStyle(.plain).disabled(connecting)
     }
@@ -203,22 +203,22 @@ struct CalendarsSettingsView: View {
         let isCollapsed = collapsed.contains(acct.id)
         return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                Image(systemName: "link").font(.system(size: 15)).foregroundStyle(NK.ai)
-                    .frame(width: 30, height: 30).background(NK.panel).clipShape(Circle())
+                Image(systemName: "link").font(.system(size: 15)).foregroundStyle(WF.ai)
+                    .frame(width: 30, height: 30).background(WF.panel).clipShape(Circle())
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(acct.email ?? "Google account").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink).lineLimit(1)
+                    Text(acct.email ?? "Google account").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
                     Text("\(synced) of \(all.count) syncing · connected \(shortDay(acct.connectedAt))")
-                        .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 12)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 0)
                 Button(role: .destructive) { Task { await disconnect(acct.id) } } label: {
-                    Text("Disconnect").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
-                        .padding(.horizontal, 11).padding(.vertical, 6).background(NK.panel).clipShape(Capsule())
+                    Text("Disconnect").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
+                        .padding(.horizontal, 11).padding(.vertical, 6).background(WF.panel).clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
                 Button { toggleCollapse(acct.id) } label: {
                     Image(systemName: isCollapsed ? "chevron.down" : "chevron.up")
-                        .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3).frame(width: 28, height: 28)
+                        .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3).frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
             }
@@ -226,24 +226,24 @@ struct CalendarsSettingsView: View {
             if !isCollapsed {
                 HStack(spacing: 14) {
                     Button("Sync all") { Task { await setAllSync(acct.id, true) } }
-                        .font(.system(size: 12, weight: .bold)).tint(NK.ai)
-                    Text("·").foregroundStyle(NK.ink3)
+                        .font(.system(size: 12, weight: .bold)).tint(WF.ai)
+                    Text("·").foregroundStyle(WF.ink3)
                     Button("Sync none") { Task { await setAllSync(acct.id, false) } }
-                        .font(.system(size: 12, weight: .bold)).tint(NK.ai)
+                        .font(.system(size: 12, weight: .bold)).tint(WF.ai)
                     Spacer()
                 }
                 VStack(spacing: 8) {
                     ForEach(shown) { c in calendarRow(c) }
                     if shown.isEmpty {
-                        Text("No calendars match.").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                        Text("No calendars match.").font(.system(size: 12)).foregroundStyle(WF.ink3)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6)
                     }
                 }
             }
         }
         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private func toggleCollapse(_ id: String) {
@@ -267,28 +267,28 @@ struct CalendarsSettingsView: View {
     private func calendarRow(_ c: WaffledAPI.CalendarStatus.Cal) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 9) {
-                Circle().fill(Color(hexString: c.colorHex) ?? NK.ink3).frame(width: 10, height: 10)
-                Text(c.summary ?? "Calendar").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                Circle().fill(Color(hexString: c.colorHex) ?? WF.ink3).frame(width: 10, height: 10)
+                Text(c.summary ?? "Calendar").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                 if c.isPrimary { miniTag("primary") }
                 Spacer(minLength: 0)
                 if c.isWritable && c.personId != nil {
                     Button { Task { await patch(c.id, ["isWriteTarget": .bool(!c.isWriteTarget)]) } } label: {
                         Image(systemName: c.isWriteTarget ? "star.fill" : "star")
-                            .font(.system(size: 15)).foregroundStyle(c.isWriteTarget ? NK.gold : NK.ink3)
+                            .font(.system(size: 15)).foregroundStyle(c.isWriteTarget ? WF.gold : WF.ink3)
                     }
                     .buttonStyle(.plain)
                 }
             }
-            Text(statusLine(c)).font(.system(size: 11.5)).foregroundStyle(NK.ink3)
+            Text(statusLine(c)).font(.system(size: 11.5)).foregroundStyle(WF.ink3)
             HStack(spacing: 8) {
                 // sync toggle
                 Button { Task { await patch(c.id, ["selected": .bool(!c.selected)]) } } label: {
                     HStack(spacing: 5) {
                         Image(systemName: c.selected ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 14)).foregroundStyle(c.selected ? NK.primary : NK.ink3)
-                        Text("Sync").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink2)
+                            .font(.system(size: 14)).foregroundStyle(c.selected ? WF.primary : WF.ink3)
+                        Text("Sync").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink2)
                     }
-                    .padding(.horizontal, 10).padding(.vertical, 6).background(NK.panel).clipShape(Capsule())
+                    .padding(.horizontal, 10).padding(.vertical, 6).background(WF.panel).clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
                 // person assign
@@ -300,22 +300,22 @@ struct CalendarsSettingsView: View {
                 } label: {
                     HStack(spacing: 5) {
                         Text(c.personName ?? "Unassigned").font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(c.personName == nil ? NK.ink3 : NK.ink)
-                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).foregroundStyle(NK.ink3)
+                            .foregroundStyle(c.personName == nil ? WF.ink3 : WF.ink)
+                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).foregroundStyle(WF.ink3)
                     }
-                    .padding(.horizontal, 10).padding(.vertical, 6).background(NK.panel).clipShape(Capsule())
+                    .padding(.horizontal, 10).padding(.vertical, 6).background(WF.panel).clipShape(Capsule())
                 }
                 Spacer(minLength: 0)
             }
         }
         .padding(11)
-        .background(NK.card2).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card2).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private func miniTag(_ t: String) -> some View {
-        Text(t).font(.system(size: 9.5, weight: .heavy)).tracking(0.4).foregroundStyle(NK.ink3)
-            .padding(.horizontal, 6).padding(.vertical, 2).background(NK.panel).clipShape(Capsule())
+        Text(t).font(.system(size: 9.5, weight: .heavy)).tracking(0.4).foregroundStyle(WF.ink3)
+            .padding(.horizontal, 6).padding(.vertical, 2).background(WF.panel).clipShape(Capsule())
     }
 
     private func statusLine(_ c: WaffledAPI.CalendarStatus.Cal) -> String {
@@ -327,7 +327,7 @@ struct CalendarsSettingsView: View {
     }
 
     private func notice(_ t: String) -> some View {
-        Text(t).font(.system(size: 14)).foregroundStyle(NK.ink3)
+        Text(t).font(.system(size: 14)).foregroundStyle(WF.ink3)
             .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 20)
     }
 

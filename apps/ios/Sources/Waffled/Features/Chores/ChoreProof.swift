@@ -72,14 +72,14 @@ struct ChoreProofReview: View {
                         Avatar(colorHex: memberColorHex, emoji: chore.emoji ?? "🙂", size: 40)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("\(chore.personName ?? "Someone") finished")
-                                .font(.system(size: 13)).foregroundStyle(NK.ink3)
+                                .font(.system(size: 13)).foregroundStyle(WF.ink3)
                             HStack(spacing: 6) {
                                 Text("\(chore.emoji ?? "🧹") \(chore.choreTitle)")
-                                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(2)
+                                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(2)
                                 if let coin {
-                                    Text(coin).font(.system(size: 12.5, weight: .heavy)).foregroundStyle(NK.gold)
+                                    Text(coin).font(.system(size: 12.5, weight: .heavy)).foregroundStyle(WF.gold)
                                         .padding(.horizontal, 7).padding(.vertical, 2)
-                                        .background(NK.gold.opacity(0.14)).clipShape(Capsule())
+                                        .background(WF.gold.opacity(0.14)).clipShape(Capsule())
                                 }
                             }
                         }
@@ -95,13 +95,13 @@ struct ChoreProofReview: View {
                             onApprove: { onApprove(); dismiss() })
                     } else if chore.status == "awaiting" {
                         Text("Waiting for a grown-up to OK this.")
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                             .frame(maxWidth: .infinity, alignment: .center)
                     }
                 }
                 .padding(20)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Review photo").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
@@ -123,8 +123,8 @@ struct ChoreProofReview: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
         } else {
             proofPlaceholder(chore.hadProof
                 ? "📷 A photo was attached but is no longer saved."
@@ -134,11 +134,11 @@ struct ChoreProofReview: View {
 
     private func proofPlaceholder(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(NK.ink3)
+            .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(WF.ink3)
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity, minHeight: 160)
-            .background(NK.panel)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+            .background(WF.panel)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
     }
 }
 
@@ -162,14 +162,14 @@ struct ChoreProofConfirm: View {
                     HStack(spacing: 12) {
                         Text(chore.emoji ?? "🧹").font(.system(size: 26))
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Finishing").font(.system(size: 13)).foregroundStyle(NK.ink3)
+                            Text("Finishing").font(.system(size: 13)).foregroundStyle(WF.ink3)
                             HStack(spacing: 6) {
                                 Text(chore.choreTitle)
-                                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(2)
+                                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(2)
                                 if let coin {
-                                    Text(coin).font(.system(size: 12.5, weight: .heavy)).foregroundStyle(NK.gold)
+                                    Text(coin).font(.system(size: 12.5, weight: .heavy)).foregroundStyle(WF.gold)
                                         .padding(.horizontal, 7).padding(.vertical, 2)
-                                        .background(NK.gold.opacity(0.14)).clipShape(Capsule())
+                                        .background(WF.gold.opacity(0.14)).clipShape(Capsule())
                                 }
                             }
                         }
@@ -178,26 +178,26 @@ struct ChoreProofConfirm: View {
 
                     Image(uiImage: image).resizable().scaledToFit()
                         .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
 
                     HStack(spacing: 10) {
                         Button { onRetake() } label: {
                             Label("Retake", systemImage: "arrow.counterclockwise")
-                                .font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink2)
+                                .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink2)
                                 .frame(maxWidth: .infinity).padding(.vertical, 13)
-                                .background(NK.panel).clipShape(Capsule())
+                                .background(WF.panel).clipShape(Capsule())
                         }.buttonStyle(.plain)
                         Button { onUse() } label: {
                             Text("Use this photo").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
                                 .frame(maxWidth: .infinity).padding(.vertical, 13)
-                                .background(NK.primary).clipShape(Capsule())
+                                .background(WF.primary).clipShape(Capsule())
                         }.buttonStyle(.plain)
                     }
                 }
                 .padding(20)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Use this photo?").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -222,11 +222,11 @@ struct ChoreProofThumb: View {
             Button(action: onTap) {
                 AsyncImage(url: url) { phase in
                     if let image = phase.image { image.resizable().scaledToFill() }
-                    else { NK.panel }
+                    else { WF.panel }
                 }
                 .frame(width: 44, height: 44)
                 .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                 .overlay(alignment: .bottomTrailing) {
                     Text("🔍").font(.system(size: 10))
                         .padding(2).background(.ultraThinMaterial).clipShape(Circle())
@@ -236,9 +236,9 @@ struct ChoreProofThumb: View {
             .buttonStyle(.plain)
         } else if chore.hadProof {
             Text("📷 gone")
-                .font(.system(size: 10.5, weight: .semibold)).foregroundStyle(NK.ink3)
+                .font(.system(size: 10.5, weight: .semibold)).foregroundStyle(WF.ink3)
                 .padding(.horizontal, 7).padding(.vertical, 4)
-                .background(NK.panel).clipShape(Capsule())
+                .background(WF.panel).clipShape(Capsule())
         }
     }
 }

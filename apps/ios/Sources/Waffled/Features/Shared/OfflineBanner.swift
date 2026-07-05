@@ -13,7 +13,7 @@ struct OfflineBanner: View {
     var body: some View {
         Group {
             if degraded {
-                bar(icon: "wifi.slash", bg: NK.ink2, text: sync.pendingUploads > 0
+                bar(icon: "wifi.slash", bg: WF.ink2, text: sync.pendingUploads > 0
                     ? "Offline · \(changeCount) saved, will sync when you're back"
                     : "Offline · showing your saved data")
             } else if sync.pendingUploads > 0 {

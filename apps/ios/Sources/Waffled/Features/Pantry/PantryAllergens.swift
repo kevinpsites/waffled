@@ -113,12 +113,12 @@ struct AllergenKey: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("ALLERGENS").font(.system(size: 10, weight: .heavy)).tracking(0.6).foregroundStyle(NK.ink3)
+            Text("ALLERGENS").font(.system(size: 10, weight: .heavy)).tracking(0.6).foregroundStyle(WF.ink3)
             ChipFlow(spacing: 12, lineSpacing: 9) {
                 ForEach(PantryAllergen.keys, id: \.self) { k in
                     HStack(spacing: 5) {
                         AllergenBadge(allergen: k, avoid: avoid.contains(k))
-                        Text(PantryAllergen.label(k)).font(.system(size: 12)).foregroundStyle(NK.ink2)
+                        Text(PantryAllergen.label(k)).font(.system(size: 12)).foregroundStyle(WF.ink2)
                     }
                 }
             }

@@ -94,7 +94,7 @@ struct AppRoot: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            NK.canvas.ignoresSafeArea()
+            WF.canvas.ignoresSafeArea()
 
             // Active screen. Each tab keeps its own NavigationStack later; for the
             // scaffold they're simple views.
@@ -194,8 +194,8 @@ struct WaffledTabBar: View {
         .padding(.horizontal, 8)
         .padding(.top, 10)
         .background(
-            NK.card
-                .overlay(NK.hair.frame(height: 1), alignment: .top)
+            WF.card
+                .overlay(WF.hair.frame(height: 1), alignment: .top)
                 .ignoresSafeArea(edges: .bottom)
         )
     }
@@ -212,7 +212,7 @@ struct WaffledTabBar: View {
                     }
                 Text(label).font(.system(size: 10.5, weight: .semibold))
             }
-            .foregroundStyle(on ? NK.primary : NK.ink3)
+            .foregroundStyle(on ? WF.primary : WF.ink3)
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
@@ -223,21 +223,21 @@ struct WaffledTabBar: View {
         Text(n > 9 ? "9+" : "\(n)")
             .font(.system(size: 11, weight: .heavy)).foregroundStyle(.white)
             .padding(.horizontal, n > 9 ? 4 : 5).padding(.vertical, 1.5)
-            .background(Capsule().fill(NK.gold))
-            .overlay(Capsule().stroke(NK.card, lineWidth: 1.5))
+            .background(Capsule().fill(WF.gold))
+            .overlay(Capsule().stroke(WF.card, lineWidth: 1.5))
             .fixedSize()
     }
 
     private var captureButton: some View {
         Button(action: onCapture) {
             ZStack {
-                Circle().fill(NK.primary)
+                Circle().fill(WF.primary)
                 Image(systemName: "sparkles")
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(.white)
             }
             .frame(width: 54, height: 54)
-            .nkShadow3()
+            .wfShadow3()
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)
@@ -275,5 +275,5 @@ private struct FlexModuleView: View {
 }
 
 #Preview {
-    AppRoot().tint(NK.primary).environment(SyncManager())
+    AppRoot().tint(WF.primary).environment(SyncManager())
 }

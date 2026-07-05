@@ -43,7 +43,7 @@ struct MealsView: View {
                     sectionView
                 }
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             // Inline title (no large-title gap); the segmented control is the only
             // nav-bar item and neither screen adds trailing buttons, so it stays
             // centered instead of jumping. On iPad the segment lives in the page header

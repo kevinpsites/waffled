@@ -41,7 +41,7 @@ struct PantryItemDetailView: View {
                 Color.clear.onAppear { dismiss() }
             }
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $editing) {
             if let item {
@@ -72,7 +72,7 @@ struct PantryItemDetailView: View {
                         Text(uploading ? "Uploading…" : "Replace photo").font(.system(size: 14, weight: .semibold))
                     }
                     .foregroundStyle(.white).padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(NK.ink).clipShape(Capsule())
+                    .background(WF.ink).clipShape(Capsule())
                 }
                 .disabled(uploading)
             }
@@ -83,9 +83,9 @@ struct PantryItemDetailView: View {
     private var offBadge: some View {
         HStack(spacing: 5) {
             Circle().fill(Color(hex: 0x167A4A)).frame(width: 7, height: 7)
-            Text("OPEN FOOD FACTS").font(.system(size: 10, weight: .heavy)).tracking(0.4).foregroundStyle(NK.ink2)
+            Text("OPEN FOOD FACTS").font(.system(size: 10, weight: .heavy)).tracking(0.4).foregroundStyle(WF.ink2)
         }
-        .padding(.horizontal, 9).padding(.vertical, 5).background(NK.card).clipShape(Capsule())
+        .padding(.horizontal, 9).padding(.vertical, 5).background(WF.card).clipShape(Capsule())
     }
 
     // MARK: right — info column
@@ -93,21 +93,21 @@ struct PantryItemDetailView: View {
     @ViewBuilder private func infoColumn(_ item: WaffledAPI.PantryItem) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(item.name).font(NK.serif(24, .bold)).foregroundStyle(NK.ink).fixedSize(horizontal: false, vertical: true)
-                if let sub = subtitle(item) { Text(sub).font(.system(size: 14)).foregroundStyle(NK.ink3) }
+                Text(item.name).font(WF.serif(24, .bold)).foregroundStyle(WF.ink).fixedSize(horizontal: false, vertical: true)
+                if let sub = subtitle(item) { Text(sub).font(.system(size: 14)).foregroundStyle(WF.ink3) }
             }
             rowsCard(item)
             if let allergens = item.allergens, !allergens.isEmpty { containsRow(item, allergens) }
             if let traces = item.traces, !traces.isEmpty {
                 Text("May contain \(traces.map(PantryAllergen.label).joined(separator: ", "))")
-                    .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 12.5)).foregroundStyle(WF.ink3)
             }
             if let dietary = item.dietary, !dietary.isEmpty { DietaryChips(dietary: dietary) }
             if let n = item.nutrition, !n.isEmpty { nutritionCard(item, n) }
             if item.isOff {
                 HStack(spacing: 6) {
                     Circle().fill(Color(hex: 0x167A4A)).frame(width: 8, height: 8)
-                    Text("Nutrition & allergens from Open Food Facts").font(.system(size: 12)).foregroundStyle(NK.ink3)
+                    Text("Nutrition & allergens from Open Food Facts").font(.system(size: 12)).foregroundStyle(WF.ink3)
                 }
             }
             actions(item)
@@ -123,43 +123,43 @@ struct PantryItemDetailView: View {
 
     private func rowsCard(_ item: WaffledAPI.PantryItem) -> some View {
         VStack(spacing: 0) {
-            factRow("Location") { Text(item.location).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink) }
-            Divider().background(NK.hair)
+            factRow("Location") { Text(item.location).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink) }
+            Divider().background(WF.hair)
             factRow("Best by") {
                 if let exp = expiryTag(item) { Text(exp.text).font(.system(size: 15, weight: .bold)).foregroundStyle(exp.color) }
-                else { Text("—").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink3) }
+                else { Text("—").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink3) }
             }
-            Divider().background(NK.hair)
+            Divider().background(WF.hair)
             factRow("Added") {
                 if let d = model.ageDays(item) {
                     HStack(spacing: 8) {
-                        Text(PantryExpiry.shortLabel(item.addedOn) ?? "—").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                        Text(PantryExpiry.shortLabel(item.addedOn) ?? "—").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
                         AgePill(days: d, icon: false, trailing: " ago", size: 12.5)
                     }
                 } else {
-                    Text("—").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink3)
+                    Text("—").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink3)
                 }
             }
-            Divider().background(NK.hair)
+            Divider().background(WF.hair)
             factRow("Amount") {
                 if item.usedUp {
-                    Text("Used up").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+                    Text("Used up").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
                 } else {
                     HStack(spacing: 12) {
                         Button { Task { await model.adjust(item, delta: -1) } } label: { stepGlyph("minus") }.buttonStyle(.plain)
-                        Text(amountLabel(item)).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink).frame(minWidth: 36)
+                        Text(amountLabel(item)).font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink).frame(minWidth: 36)
                         Button { Task { await model.adjust(item, delta: 1) } } label: { stepGlyph("plus") }.buttonStyle(.plain)
                     }
                 }
             }
         }
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private func factRow<C: View>(_ label: String, @ViewBuilder _ trailing: () -> C) -> some View {
         HStack {
-            Text(label).font(.system(size: 15)).foregroundStyle(NK.ink3)
+            Text(label).font(.system(size: 15)).foregroundStyle(WF.ink3)
             Spacer()
             trailing()
         }
@@ -173,8 +173,8 @@ struct PantryItemDetailView: View {
         return u.isEmpty ? a : "\(a) \(u)"
     }
     private func stepGlyph(_ n: String) -> some View {
-        Image(systemName: n).font(.system(size: 12, weight: .bold)).foregroundStyle(NK.primary)
-            .frame(width: 30, height: 30).background(NK.panel).clipShape(Circle())
+        Image(systemName: n).font(.system(size: 12, weight: .bold)).foregroundStyle(WF.primary)
+            .frame(width: 30, height: 30).background(WF.panel).clipShape(Circle())
     }
 
     private func expiryTag(_ item: WaffledAPI.PantryItem) -> (text: String, color: Color)? {
@@ -182,7 +182,7 @@ struct PantryItemDetailView: View {
         if d < 0 { return ("Expired", Color(hex: 0xC0392B)) }
         if d == 0 { return ("Today", Color(hex: 0xB8860B)) }
         if d <= 3 { return ("\(d) day\(d == 1 ? "" : "s") left", Color(hex: 0xB8860B)) }
-        return (item.expiresOn.flatMap(PantryExpiry.shortLabel) ?? "—", NK.ink)
+        return (item.expiresOn.flatMap(PantryExpiry.shortLabel) ?? "—", WF.ink)
     }
 
     // MARK: allergens
@@ -191,12 +191,12 @@ struct PantryItemDetailView: View {
         let affects = model.affects(item)
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 8) {
-                Text("CONTAINS").font(.system(size: 11, weight: .heavy)).tracking(0.4).foregroundStyle(NK.ink3)
+                Text("CONTAINS").font(.system(size: 11, weight: .heavy)).tracking(0.4).foregroundStyle(WF.ink3)
                 ChipFlow(spacing: 10, lineSpacing: 8) {
                     ForEach(allergens, id: \.self) { a in
                         HStack(spacing: 5) {
                             AllergenBadge(allergen: a, avoid: model.avoidSet.contains(a))
-                            Text(PantryAllergen.label(a)).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink)
+                            Text(PantryAllergen.label(a)).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
                         }
                     }
                 }
@@ -219,24 +219,24 @@ struct PantryItemDetailView: View {
         if let v = n.sodiumMg { rows.append(("Sodium", "\(formatAmount(v)) mg")) }
         return VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Nutrition").font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
+                Text("Nutrition").font(.system(size: 17, weight: .bold)).foregroundStyle(WF.ink)
                 Spacer()
-                if let basis = item.servingBasis { Text(basis).font(.system(size: 12)).foregroundStyle(NK.ink3) }
+                if let basis = item.servingBasis { Text(basis).font(.system(size: 12)).foregroundStyle(WF.ink3) }
             }
-            Rectangle().fill(NK.ink).frame(height: 3).padding(.vertical, 8)
+            Rectangle().fill(WF.ink).frame(height: 3).padding(.vertical, 8)
             ForEach(Array(rows.enumerated()), id: \.offset) { i, r in
                 HStack {
-                    Text(r.0).font(.system(size: 15)).foregroundStyle(NK.ink)
+                    Text(r.0).font(.system(size: 15)).foregroundStyle(WF.ink)
                     Spacer()
-                    Text(r.1).font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                    Text(r.1).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
                 }
                 .padding(.vertical, 9)
-                if i != rows.count - 1 { Divider().background(NK.hair) }
+                if i != rows.count - 1 { Divider().background(WF.hair) }
             }
         }
         .padding(14)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     // MARK: actions
@@ -245,15 +245,15 @@ struct PantryItemDetailView: View {
         HStack(spacing: 10) {
             Button { Task { await model.setUsedUp(item, !item.usedUp) } } label: {
                 Text(item.usedUp ? "Back on hand" : "Mark used up")
-                    .font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink)
+                    .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
                     .frame(maxWidth: .infinity).padding(.vertical, 13)
-                    .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                    .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
             }.buttonStyle(.plain)
             Button { editing = true } label: {
                 Text("Edit").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 13)
-                    .background(NK.primary).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    .background(WF.primary).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
             }.buttonStyle(.plain)
         }
         .padding(.top, 4)

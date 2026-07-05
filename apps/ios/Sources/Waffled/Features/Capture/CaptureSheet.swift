@@ -51,7 +51,7 @@ struct CaptureSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             header
             if let error {
-                Text(error).font(.system(size: 13)).foregroundStyle(NK.primaryD)
+                Text(error).font(.system(size: 13)).foregroundStyle(WF.primaryD)
             }
             switch phase {
             case .input, .parsing: inputView
@@ -60,7 +60,7 @@ struct CaptureSheet: View {
             Spacer(minLength: 0)
         }
         .padding(20)
-        .background(NK.canvas)
+        .background(WF.canvas)
         .presentationDetents([.medium, .large], selection: $detent)
         .presentationDragIndicator(.visible)
         .task {
@@ -103,11 +103,11 @@ struct CaptureSheet: View {
     // MARK: header
     private var header: some View {
         HStack(spacing: 8) {
-            Image(systemName: "sparkles").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ai)
-            Text("Add with AI").font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ai)
+            Image(systemName: "sparkles").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ai)
+            Text("Add with AI").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ai)
             Spacer()
             Button("Cancel") { dismiss() }
-                .font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink2)
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
         }
     }
 
@@ -122,17 +122,17 @@ struct CaptureSheet: View {
                     .submitLabel(.go)
                     .onSubmit(parse)
                     .padding(16).padding(.trailing, 40)
-                    .background(NK.panel)
-                    .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+                    .background(WF.panel)
+                    .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
 
                 Button { dictation.toggle() } label: {
                     Image(systemName: dictation.isListening ? "mic.fill" : "mic")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(dictation.isListening ? .white : NK.ink2)
+                        .foregroundStyle(dictation.isListening ? .white : WF.ink2)
                         .frame(width: 34, height: 34)
-                        .background(dictation.isListening ? NK.primary : NK.card)
+                        .background(dictation.isListening ? WF.primary : WF.card)
                         .clipShape(Circle())
-                        .overlay(Circle().strokeBorder(dictation.isListening ? Color.clear : NK.hair, lineWidth: 1))
+                        .overlay(Circle().strokeBorder(dictation.isListening ? Color.clear : WF.hair, lineWidth: 1))
                 }
                 .buttonStyle(.plain).padding(10)
             }
@@ -140,7 +140,7 @@ struct CaptureSheet: View {
 
             WaffledPrimaryCTA(
                 label: phase == .parsing ? "Thinking…" : "Tell Waffled",
-                tint: NK.ai,
+                tint: WF.ai,
                 isBusy: phase == .parsing,
                 isDisabled: !canParse,
                 action: parse
@@ -169,9 +169,9 @@ struct CaptureSheet: View {
                         Image(systemName: "slider.horizontal.3").font(.system(size: 13, weight: .semibold))
                         Text("Edit").font(.system(size: 15, weight: .semibold))
                     }
-                    .foregroundStyle(NK.ink)
+                    .foregroundStyle(WF.ink)
                     .frame(maxWidth: .infinity).padding(.vertical, 13)
-                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                 }
                 commitButton
             }
@@ -186,9 +186,9 @@ struct CaptureSheet: View {
             typeSwitcher
             HStack(spacing: 10) {
                 Button("Edit text") { phase = .input; focused = true }
-                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                     .frame(maxWidth: .infinity).padding(.vertical, 13)
-                    .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                 commitButton
             }
             .buttonStyle(.plain)
@@ -198,7 +198,7 @@ struct CaptureSheet: View {
     private var commitButton: some View {
         WaffledPrimaryCTA(
             label: addLabel,
-            tint: NK.primary,
+            tint: WF.primary,
             isBusy: phase == .committing,
             isDisabled: !canCommit,
             action: commit
@@ -211,20 +211,20 @@ struct CaptureSheet: View {
             WaffledEmojiTile(emoji: Self.kinds.first { $0.key == editKind }?.icon ?? "✨")
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(editKind.uppercased()).font(.system(size: 11, weight: .heavy)).tracking(0.4).foregroundStyle(NK.ai)
+                    Text(editKind.uppercased()).font(.system(size: 11, weight: .heavy)).tracking(0.4).foregroundStyle(WF.ai)
                     if thinking {
                         HStack(spacing: 3) {
                             ProgressView().controlSize(.mini)
-                            Text("improving…").font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ai)
+                            Text("improving…").font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ai)
                         }
                     } else if !viaLabel.isEmpty {
-                        Text(viaLabel).font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
+                        Text(viaLabel).font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
                     }
                 }
                 Text(editName.isEmpty ? namePlaceholder : editName)
-                    .font(.system(size: 17, weight: .bold)).foregroundStyle(NK.ink)
+                    .font(.system(size: 17, weight: .bold)).foregroundStyle(WF.ink)
                 if !glanceDetail.isEmpty {
-                    Text(glanceDetail).font(.system(size: 12.5)).foregroundStyle(NK.ink2)
+                    Text(glanceDetail).font(.system(size: 12.5)).foregroundStyle(WF.ink2)
                 }
             }
             Spacer(minLength: 0)
@@ -233,8 +233,8 @@ struct CaptureSheet: View {
             }
         }
         .padding(14)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     /// When the LLM and the on-device guess disagree on the kind, offer the other take —
@@ -243,18 +243,18 @@ struct CaptureSheet: View {
         let s = altSummary(alt)
         return Button { withAnimation(.snappy(duration: 0.2)) { switchToAlt() } } label: {
             HStack(spacing: 10) {
-                Image(systemName: "sparkles").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ai)
+                Image(systemName: "sparkles").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ai)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("\(altProviderLabel) reads it as a \(s.kind.lowercased())")
-                        .font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ai)
-                    Text(s.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                        .font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ai)
+                    Text(s.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                 }
                 Spacer(minLength: 6)
-                Text("Use it").font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ai)
+                Text("Use it").font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ai)
             }
             .padding(.horizontal, 12).padding(.vertical, 10)
-            .background(NK.ai.opacity(0.08)).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.ai.opacity(0.25), lineWidth: 1))
+            .background(WF.ai.opacity(0.08)).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.ai.opacity(0.25), lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
@@ -312,20 +312,20 @@ struct CaptureSheet: View {
                 WaffledEmojiTile(emoji: Self.kinds.first { $0.key == editKind }?.icon ?? "✨")
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 6) {
-                        Text(editKind.uppercased()).font(.system(size: 11, weight: .heavy)).tracking(0.4).foregroundStyle(NK.ai)
-                        if !viaLabel.isEmpty { Text(viaLabel).font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3) }
+                        Text(editKind.uppercased()).font(.system(size: 11, weight: .heavy)).tracking(0.4).foregroundStyle(WF.ai)
+                        if !viaLabel.isEmpty { Text(viaLabel).font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3) }
                         Spacer()
                     }
                     TextField(namePlaceholder, text: $editName)
-                        .font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
+                        .font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink)
                         .padding(.horizontal, 12).padding(.vertical, 10).innerInput()
                     kindFields
                 }
             }
         }
         .padding(14)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     @ViewBuilder private var kindFields: some View {
@@ -342,7 +342,7 @@ struct CaptureSheet: View {
         case "task":
             personChips(allowNone: true, noneLabel: "Up for grabs", icon: "🙌")
             HStack(spacing: 10) {
-                Text(rewardLabel).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink2)
+                Text(rewardLabel).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
                 stepper($taskStars)
                 if sync.currencies.count > 1 { currencyMenu }
             }
@@ -378,11 +378,11 @@ struct CaptureSheet: View {
                 Button { evPerson = m.name } label: {
                     HStack(spacing: 6) {
                         Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 20)
-                        Text(m.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(on ? NK.ai : NK.ink)
+                        Text(m.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(on ? WF.ai : WF.ink)
                     }
                     .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
-                    .background(on ? NK.ai.opacity(0.1) : NK.card2)
-                    .overlay(Capsule().strokeBorder(on ? NK.ai : NK.hair, lineWidth: on ? 1.5 : 1)).clipShape(Capsule())
+                    .background(on ? WF.ai.opacity(0.1) : WF.card2)
+                    .overlay(Capsule().strokeBorder(on ? WF.ai : WF.hair, lineWidth: on ? 1.5 : 1)).clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
@@ -391,11 +391,11 @@ struct CaptureSheet: View {
 
     private func selectChip(_ label: String, on: Bool, _ tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
-            Text(label).font(.system(size: 13, weight: .semibold)).foregroundStyle(on ? NK.ai : NK.ink)
+            Text(label).font(.system(size: 13, weight: .semibold)).foregroundStyle(on ? WF.ai : WF.ink)
                 .lineLimit(1).fixedSize()
                 .padding(.horizontal, 12).padding(.vertical, 7)
-                .background(on ? NK.ai.opacity(0.1) : NK.card2)
-                .overlay(Capsule().strokeBorder(on ? NK.ai : NK.hair, lineWidth: on ? 1.5 : 1)).clipShape(Capsule())
+                .background(on ? WF.ai.opacity(0.1) : WF.card2)
+                .overlay(Capsule().strokeBorder(on ? WF.ai : WF.hair, lineWidth: on ? 1.5 : 1)).clipShape(Capsule())
         }
         .buttonStyle(.plain)
     }
@@ -403,12 +403,12 @@ struct CaptureSheet: View {
     private func toggleChip(_ label: String, on: Bool, _ tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
             HStack(spacing: 5) {
-                Image(systemName: on ? "checkmark.square.fill" : "square").font(.system(size: 13)).foregroundStyle(on ? NK.ai : NK.ink3)
-                Text(label).font(.system(size: 13, weight: .semibold)).foregroundStyle(on ? NK.ai : NK.ink2)
+                Image(systemName: on ? "checkmark.square.fill" : "square").font(.system(size: 13)).foregroundStyle(on ? WF.ai : WF.ink3)
+                Text(label).font(.system(size: 13, weight: .semibold)).foregroundStyle(on ? WF.ai : WF.ink2)
             }
             .padding(.horizontal, 11).padding(.vertical, 7)
-            .background(on ? NK.ai.opacity(0.1) : NK.card2)
-            .overlay(Capsule().strokeBorder(on ? NK.ai : NK.hair, lineWidth: on ? 1.5 : 1)).clipShape(Capsule())
+            .background(on ? WF.ai.opacity(0.1) : WF.card2)
+            .overlay(Capsule().strokeBorder(on ? WF.ai : WF.hair, lineWidth: on ? 1.5 : 1)).clipShape(Capsule())
         }
         .buttonStyle(.plain)
     }
@@ -420,7 +420,7 @@ struct CaptureSheet: View {
     /// full per-occurrence editing lives in the calendar editor.
     @ViewBuilder private var eventRepeatFields: some View {
         HStack(spacing: 8) {
-            Text("Repeats").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink2)
+            Text("Repeats").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
             Menu {
                 Button("Does not repeat") { evRepeat = .none }
                 Button("Daily") { evRepeat = { var s = RepeatState.none; s.freq = .daily; return s }() }
@@ -430,11 +430,11 @@ struct CaptureSheet: View {
                 Button("Yearly") { evRepeat = { var s = RepeatState.none; s.freq = .custom; s.unit = .year; return s }() }
             } label: {
                 HStack(spacing: 5) {
-                    Text(captureRepeatLabel).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink)
-                    Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).foregroundStyle(NK.ink3)
+                    Text(captureRepeatLabel).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink)
+                    Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).foregroundStyle(WF.ink3)
                 }
                 .padding(.horizontal, 11).padding(.vertical, 7)
-                .background(NK.card2).overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1)).clipShape(Capsule())
+                .background(WF.card2).overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1)).clipShape(Capsule())
             }
             Spacer(minLength: 0)
         }
@@ -463,11 +463,11 @@ struct CaptureSheet: View {
     private func stepper(_ value: Binding<Int>) -> some View {
         HStack(spacing: 12) {
             Button { if value.wrappedValue > 0 { value.wrappedValue -= 1 } } label: {
-                Image(systemName: "minus.circle.fill").font(.system(size: 22)).foregroundStyle(value.wrappedValue > 0 ? NK.ink2 : NK.hair)
+                Image(systemName: "minus.circle.fill").font(.system(size: 22)).foregroundStyle(value.wrappedValue > 0 ? WF.ink2 : WF.hair)
             }.buttonStyle(.plain)
-            Text("\(value.wrappedValue)").font(.system(size: 16, weight: .heavy)).foregroundStyle(NK.ink).frame(minWidth: 18)
+            Text("\(value.wrappedValue)").font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink).frame(minWidth: 18)
             Button { value.wrappedValue += 1 } label: {
-                Image(systemName: "plus.circle.fill").font(.system(size: 22)).foregroundStyle(NK.primary)
+                Image(systemName: "plus.circle.fill").font(.system(size: 22)).foregroundStyle(WF.primary)
             }.buttonStyle(.plain)
         }
     }
@@ -478,7 +478,7 @@ struct CaptureSheet: View {
         } label: {
             chipBody {
                 Text(sync.currencySymbol(taskCurrency)).font(.system(size: 13))
-                Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).foregroundStyle(NK.ink3)
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).foregroundStyle(WF.ink3)
             }
         }
     }
@@ -489,9 +489,9 @@ struct CaptureSheet: View {
         } label: {
             HStack {
                 Text(editListName.isEmpty ? "Choose a list" : editListName)
-                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(editListName.isEmpty ? NK.ink3 : NK.ink).lineLimit(1)
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(editListName.isEmpty ? WF.ink3 : WF.ink).lineLimit(1)
                 Spacer()
-                Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
             }
             .padding(.horizontal, 12).padding(.vertical, 11).innerInput()
         }
@@ -504,11 +504,11 @@ struct CaptureSheet: View {
                 Button { editKind = k.key } label: {
                     HStack(spacing: 5) {
                         Text(k.icon).font(.system(size: 13))
-                        Text(k.label).font(.system(size: 13, weight: .semibold)).foregroundStyle(on ? NK.ai : NK.ink2)
+                        Text(k.label).font(.system(size: 13, weight: .semibold)).foregroundStyle(on ? WF.ai : WF.ink2)
                     }
                     .padding(.horizontal, 12).padding(.vertical, 7)
-                    .background(on ? NK.ai.opacity(0.1) : NK.card)
-                    .overlay(Capsule().strokeBorder(on ? NK.ai : NK.hair, lineWidth: on ? 1.5 : 1)).clipShape(Capsule())
+                    .background(on ? WF.ai.opacity(0.1) : WF.card)
+                    .overlay(Capsule().strokeBorder(on ? WF.ai : WF.hair, lineWidth: on ? 1.5 : 1)).clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
@@ -518,7 +518,7 @@ struct CaptureSheet: View {
     private func chipBody<V: View>(@ViewBuilder _ content: () -> V) -> some View {
         HStack(spacing: 6) { content() }
             .padding(.leading, 10).padding(.trailing, 12).padding(.vertical, 7)
-            .background(NK.card2).overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1)).clipShape(Capsule())
+            .background(WF.card2).overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1)).clipShape(Capsule())
     }
 
     private var namePlaceholder: String {
@@ -698,5 +698,5 @@ struct CaptureSheet: View {
 
 private extension View {
     /// The white inner-field treatment used inside the "Waffled understood" card.
-    func innerInput() -> some View { nkField(fill: NK.card2) }
+    func innerInput() -> some View { wfField(fill: WF.card2) }
 }

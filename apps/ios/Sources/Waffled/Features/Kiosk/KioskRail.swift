@@ -111,8 +111,8 @@ struct KioskRailPickerCard: View {
             WaffledCard(padding: 0) {
                 VStack(spacing: 0) {
                     sectionHeader("On the rail", trailing: "\(pinned.count) of \(KioskRail.maxItems)",
-                                  tint: atCap ? NK.primary : NK.ink3)
-                    Rectangle().fill(NK.hair).frame(height: 1)
+                                  tint: atCap ? WF.primary : WF.ink3)
+                    Rectangle().fill(WF.hair).frame(height: 1)
                     if pinned.isEmpty {
                         infoRow("Nothing pinned yet — Today and Calendar are always on the rail; add pages below.")
                     } else {
@@ -137,17 +137,17 @@ struct KioskRailPickerCard: View {
                 WaffledCard(padding: 0) {
                     VStack(spacing: 0) {
                         sectionHeader("Add to the rail", trailing: atCap ? "Rail full" : nil,
-                                      tint: NK.ink3)
-                        Rectangle().fill(NK.hair).frame(height: 1)
+                                      tint: WF.ink3)
+                        Rectangle().fill(WF.hair).frame(height: 1)
                         ForEach(Array(available.enumerated()), id: \.element) { idx, nav in
-                            if idx > 0 { Rectangle().fill(NK.hair).frame(height: 1).padding(.leading, 54) }
+                            if idx > 0 { Rectangle().fill(WF.hair).frame(height: 1).padding(.leading, 54) }
                             availableRow(nav)
                         }
                     }
                 }
             } else if pinned.isEmpty {
                 Text("No optional pages are enabled. Turn on modules in Settings → Modules to pin them here.")
-                    .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -155,7 +155,7 @@ struct KioskRailPickerCard: View {
 
     private func sectionHeader(_ title: String, trailing: String?, tint: Color) -> some View {
         HStack {
-            Text(title).font(.system(size: 13, weight: .heavy)).tracking(0.4).foregroundStyle(NK.ink2)
+            Text(title).font(.system(size: 13, weight: .heavy)).tracking(0.4).foregroundStyle(WF.ink2)
             Spacer()
             if let trailing { Text(trailing).font(.system(size: 13, weight: .bold)).foregroundStyle(tint) }
         }
@@ -163,7 +163,7 @@ struct KioskRailPickerCard: View {
     }
 
     private func infoRow(_ text: String) -> some View {
-        Text(text).font(.system(size: 13)).foregroundStyle(NK.ink3)
+        Text(text).font(.system(size: 13)).foregroundStyle(WF.ink3)
             .frame(maxWidth: .infinity, alignment: .leading).padding(16)
     }
 
@@ -171,14 +171,14 @@ struct KioskRailPickerCard: View {
     private func pinnedRow(_ nav: KioskNav) -> some View {
         HStack(spacing: 12) {
             Image(systemName: nav.icon).font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(NK.primary).frame(width: 26)
-            Text(nav.label).font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
+                .foregroundStyle(WF.primary).frame(width: 26)
+            Text(nav.label).font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink)
             Spacer()
         }
         .contentShape(Rectangle())
         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
         .listRowBackground(Color.clear)
-        .listRowSeparatorTint(NK.hair)
+        .listRowSeparatorTint(WF.hair)
     }
 
     /// An unpinned row — tap ⊕ (or the row) to pin, disabled at the cap.
@@ -186,12 +186,12 @@ struct KioskRailPickerCard: View {
         Button { pin(nav) } label: {
             HStack(spacing: 12) {
                 Image(systemName: nav.icon).font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(NK.ink3).frame(width: 26)
+                    .foregroundStyle(WF.ink3).frame(width: 26)
                 Text(nav.label).font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(atCap ? NK.ink3 : NK.ink)
+                    .foregroundStyle(atCap ? WF.ink3 : WF.ink)
                 Spacer()
                 Image(systemName: "plus.circle.fill").font(.system(size: 20))
-                    .foregroundStyle(atCap ? NK.hair : NK.primary)
+                    .foregroundStyle(atCap ? WF.hair : WF.primary)
             }
             .contentShape(Rectangle())
             .opacity(atCap ? 0.5 : 1)

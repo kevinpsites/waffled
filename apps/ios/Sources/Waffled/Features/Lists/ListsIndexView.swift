@@ -97,7 +97,7 @@ struct ListsIndexView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle("Lists")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
@@ -125,11 +125,11 @@ struct ListsIndexView: View {
         WaffledCard(padding: 15) {
             HStack(spacing: 13) {
                 WaffledEmojiTile(emoji: list.emoji ?? "📝")
-                Text(list.name).font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
+                Text(list.name).font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink)
                 Spacer(minLength: 8)
-                Text("\(list.itemCount)").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink3)
+                Text("\(list.itemCount)").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3.opacity(0.55))
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3.opacity(0.55))
             }
         }
     }
@@ -147,7 +147,7 @@ struct ListsIndexView: View {
     }
 }
 
-/// New custom list — name + optional emoji. NK-styled.
+/// New custom list — name + optional emoji. WF-styled.
 struct NewListSheet: View {
     @Environment(\.dismiss) private var dismiss
     let onCreate: (String, String) -> Void
@@ -165,22 +165,22 @@ struct NewListSheet: View {
                             .font(.system(size: 16, weight: .semibold)).textInputAutocapitalization(.words)
                             .focused($nameFocused)
                             .padding(.horizontal, 13).padding(.vertical, 12)
-                            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                     }
                     VStack(alignment: .leading, spacing: 9) {
                         SectionLabel(text: "Emoji")
                         TextField("📝", text: $emoji)
                             .font(.system(size: 16, weight: .semibold)).multilineTextAlignment(.center)
                             .frame(width: 60).padding(.vertical, 12)
-                            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                             .onChange(of: emoji) { _, v in if v.count > 2 { emoji = String(v.prefix(2)) } }
                     }
                 }
                 .padding(20)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("New list")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

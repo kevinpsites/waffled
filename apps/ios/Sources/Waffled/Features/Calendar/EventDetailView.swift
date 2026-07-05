@@ -26,7 +26,7 @@ struct EventDetailView: View {
     /// master, so we resolve through `seriesId` (mirrors the web's getLocalEvent). For a
     /// single event `seriesId == id`, so this is a no-op there.
     private var seriesId: String { event.seriesId ?? event.id }
-    private var tint: Color { Color(hexString: detail?.personColor ?? event.colorHex ?? "") ?? NK.ink3 }
+    private var tint: Color { Color(hexString: detail?.personColor ?? event.colorHex ?? "") ?? WF.ink3 }
     private var title: String { detail?.title ?? event.title }
     private var start: Date? { parseISO(detail?.startsAt) ?? event.startsAt }
     private var end: Date? { parseISO(detail?.endsAt) ?? event.endsAt }
@@ -37,7 +37,7 @@ struct EventDetailView: View {
             ScrollView {
                 detailBody.padding(isKiosk ? 24 : 18).padding(.bottom, 40)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Event").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
@@ -95,7 +95,7 @@ struct EventDetailView: View {
             else { withAnimation { confirmDelete = true } }
         } label: {
             Text(confirmDelete ? "Tap again to delete this event" : "Delete event")
-                .font(.system(size: 15, weight: .bold)).foregroundStyle(NK.primary)
+                .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.primary)
                 .frame(maxWidth: .infinity).padding(.vertical, 12)
         }
         .buttonStyle(.plain).padding(.top, 4)
@@ -113,30 +113,30 @@ struct EventDetailView: View {
                 .padding(.horizontal, 10).padding(.vertical, 5)
                 .background(.white.opacity(0.22)).clipShape(Capsule())
             }
-            Text(title).font(NK.serif(28)).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
+            Text(title).font(WF.serif(28)).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
             Text(timeLine).font(.system(size: 22, weight: .heavy)).foregroundStyle(.white)
             Text(dateLine).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
         .background(LinearGradient(colors: [tint, tint.opacity(0.78)], startPoint: .topLeading, endPoint: .bottomTrailing))
-        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
     }
 
     private var goalChip: some View {
         HStack(spacing: 8) {
-            Image(systemName: "target").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ai)
+            Image(systemName: "target").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ai)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Counts toward this goal").font(.system(size: 11, weight: .heavy)).tracking(0.3).foregroundStyle(NK.ai)
-                Text(goalChipTitle).font(.system(size: 14, weight: .bold)).foregroundStyle(NK.ink).lineLimit(1)
+                Text("Counts toward this goal").font(.system(size: 11, weight: .heavy)).tracking(0.3).foregroundStyle(WF.ai)
+                Text(goalChipTitle).font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
             }
             Spacer()
-            Image(systemName: "checkmark.circle.fill").font(.system(size: 16)).foregroundStyle(NK.ai)
+            Image(systemName: "checkmark.circle.fill").font(.system(size: 16)).foregroundStyle(WF.ai)
         }
         .padding(12)
-        .background(NK.ai.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.ai.opacity(0.25), lineWidth: 1))
+        .background(WF.ai.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.ai.opacity(0.25), lineWidth: 1))
     }
     private var goalChipTitle: String {
         guard let g = linkedGoal else { return "Linked goal" }
@@ -150,9 +150,9 @@ struct EventDetailView: View {
             if let loc = detail?.location ?? event.location, !loc.isEmpty {
                 row("📍", "Location", loc) {
                     Button { openDirections(loc) } label: {
-                        Text("Directions").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.primary)
+                        Text("Directions").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.primary)
                             .padding(.horizontal, 11).padding(.vertical, 6)
-                            .overlay(Capsule().strokeBorder(NK.primary.opacity(0.5), lineWidth: 1))
+                            .overlay(Capsule().strokeBorder(WF.primary.opacity(0.5), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                 }
@@ -177,7 +177,7 @@ struct EventDetailView: View {
             }
         }
         .padding(.horizontal, 14)
-        .nkField()
+        .wfField()
     }
 
     private func row<Trailing: View>(_ icon: String, _ label: String, _ value: String,
@@ -185,8 +185,8 @@ struct EventDetailView: View {
         HStack(spacing: 12) {
             Text(icon).font(.system(size: 16)).frame(width: 26)
             VStack(alignment: .leading, spacing: 1) {
-                Text(label).font(.system(size: 11, weight: .heavy)).tracking(0.4).foregroundStyle(NK.ink3)
-                Text(value).font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                Text(label).font(.system(size: 11, weight: .heavy)).tracking(0.4).foregroundStyle(WF.ink3)
+                Text(value).font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
@@ -195,77 +195,77 @@ struct EventDetailView: View {
         .padding(.vertical, 13)
     }
 
-    private var divider: some View { Rectangle().fill(NK.hair).frame(height: 1) }
+    private var divider: some View { Rectangle().fill(WF.hair).frame(height: 1) }
 
     private func notesCard(_ note: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("NOTES").font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
-            Text(note).font(.system(size: 14)).foregroundStyle(NK.ink).fixedSize(horizontal: false, vertical: true)
+            Text("NOTES").font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
+            Text(note).font(.system(size: 14)).foregroundStyle(WF.ink).fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading).padding(14)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     // MARK: AI insight
 
     private var aiCard: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "sparkles").font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ai)
-                .frame(width: 34, height: 34).background(NK.ai.opacity(0.12)).clipShape(Circle())
+            Image(systemName: "sparkles").font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ai)
+                .frame(width: 34, height: 34).background(WF.ai.opacity(0.12)).clipShape(Circle())
             VStack(alignment: .leading, spacing: 4) {
                 if let ins = insight {
-                    Text(ins.headline).font(.system(size: 14, weight: .heavy)).foregroundStyle(NK.ink)
-                    Text(ins.body).font(.system(size: 13)).foregroundStyle(NK.ink2).fixedSize(horizontal: false, vertical: true)
+                    Text(ins.headline).font(.system(size: 14, weight: .heavy)).foregroundStyle(WF.ink)
+                    Text(ins.body).font(.system(size: 13)).foregroundStyle(WF.ink2).fixedSize(horizontal: false, vertical: true)
                     if let lb = ins.leaveBy, !lb.isEmpty {
-                        Text("🚗 Leave by \(lb)").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.primary)
-                            .padding(.horizontal, 9).padding(.vertical, 4).background(NK.primary.opacity(0.1)).clipShape(Capsule())
+                        Text("🚗 Leave by \(lb)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.primary)
+                            .padding(.horizontal, 9).padding(.vertical, 4).background(WF.primary.opacity(0.1)).clipShape(Capsule())
                             .padding(.top, 2)
                     }
                 } else if loadingInsight {
-                    Text("Thinking…").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
-                    ProgressView().controlSize(.small).tint(NK.ai)
+                    Text("Thinking…").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
+                    ProgressView().controlSize(.small).tint(WF.ai)
                 } else {
-                    Text("No insight available.").font(.system(size: 13)).foregroundStyle(NK.ink3)
+                    Text("No insight available.").font(.system(size: 13)).foregroundStyle(WF.ink3)
                 }
             }
             Spacer(minLength: 0)
         }
         .padding(14)
-        .background(NK.ai.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.ai.opacity(0.18), lineWidth: 1))
+        .background(WF.ai.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.ai.opacity(0.18), lineWidth: 1))
     }
 
     // MARK: "where it falls today" timeline
 
     private var timelineCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("WHERE IT FALLS TODAY").font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
+            Text("WHERE IT FALLS TODAY").font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
             ForEach(sameDayEvents) { e in
                 HStack(spacing: 10) {
                     Text(e.allDay ? "all day" : fmtTime(e.startsAt))
-                        .font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
                         .frame(width: 64, alignment: .leading)
-                    RoundedRectangle(cornerRadius: 2).fill(Color(hexString: e.colorHex ?? "") ?? NK.ink3)
+                    RoundedRectangle(cornerRadius: 2).fill(Color(hexString: e.colorHex ?? "") ?? WF.ink3)
                         .frame(width: 4, height: 22)
                     Text(e.title).font(.system(size: 14, weight: e.id == event.id ? .bold : .semibold))
-                        .foregroundStyle(e.id == event.id ? NK.ink : NK.ink2).lineLimit(1)
+                        .foregroundStyle(e.id == event.id ? WF.ink : WF.ink2).lineLimit(1)
                     Spacer(minLength: 6)
                     if e.id == event.id {
                         Text("this event").font(.system(size: 10, weight: .heavy)).foregroundStyle(FamilyColor.wally.solid)
                             .padding(.horizontal, 7).padding(.vertical, 2)
                             .background(FamilyColor.wally.solid.opacity(0.14)).clipShape(Capsule())
                     } else if let g = gapLabel(e.startsAt) {
-                        Text(g).font(.system(size: 11, weight: .semibold)).foregroundStyle(NK.ink3)
+                        Text(g).font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
                     }
                 }
             }
-            Text(timelineFooter).font(.system(size: 12, weight: .medium)).foregroundStyle(NK.ink3).padding(.top, 2)
+            Text(timelineFooter).font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3).padding(.top, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading).padding(14)
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     // MARK: data

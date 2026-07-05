@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Waffled design tokens, ported 1:1 from the handoff `nook.css` `:root` variables so
+/// Waffled design tokens, ported 1:1 from the handoff `waffled.css` `:root` variables so
 /// the phone speaks the same visual language as the kiosk — "warm-white canvas,
 /// color comes from people, AI woven in."
-enum NK {
+enum WF {
 
     // MARK: Surfaces
     static let canvas = Color(hex: 0xFAF7F2)   // --bg  warm-white canvas
@@ -67,11 +67,11 @@ enum FamilyColor: String, CaseIterable {
 
 extension View {
     /// Soft card shadow (--sh-1).
-    func nkShadow1() -> some View {
+    func wfShadow1() -> some View {
         shadow(color: Color(hex: 0x282118).opacity(0.05), radius: 1.5, x: 0, y: 1)
     }
     /// Raised shadow (--sh-3) — used by the floating capture button.
-    func nkShadow3() -> some View {
+    func wfShadow3() -> some View {
         shadow(color: Color(hex: 0x282118).opacity(0.12), radius: 18, x: 0, y: 8)
     }
 }

@@ -39,14 +39,14 @@ struct PantrySettingsView: View {
                     allergenCard
                     locationsCard
                 } else if failed {
-                    Text("Couldn’t load pantry settings.").font(.system(size: 14)).foregroundStyle(NK.ink3).padding(.vertical, 30)
+                    Text("Couldn’t load pantry settings.").font(.system(size: 14)).foregroundStyle(WF.ink3).padding(.vertical, 30)
                 } else {
                     WaffledLoading(top: 40)
                 }
             }
             .padding(16).padding(.bottom, 110)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle("Pantry").navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -74,7 +74,7 @@ struct PantrySettingsView: View {
             settingRow("🥫", "Show a card on Today",
                        "Surface use-soon and running-low items on the Today screen.") {
                 Toggle("", isOn: Binding(get: { showOnToday }, set: { setShowOnToday($0) }))
-                    .labelsHidden().tint(NK.primary)
+                    .labelsHidden().tint(WF.primary)
             }
         }
     }
@@ -86,12 +86,12 @@ struct PantrySettingsView: View {
                            "Default for all items; set a per-item override in the item editor’s “Warn below”.") {
                     numberField($lowText, field: .low)
                 }
-                Divider().background(NK.hair)
+                Divider().background(WF.hair)
                 settingRow("🕰️", "Flag items older than",
                            "Items on hand longer than this get a 🕰️ age badge and a “Been a while” group.") {
                     HStack(spacing: 6) {
                         numberField($staleText, field: .stale)
-                        Text("mo").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink3)
+                        Text("mo").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
                     }
                 }
             }
@@ -99,13 +99,13 @@ struct PantrySettingsView: View {
     }
 
     // Allergens to avoid — a chip multi-select over the 9 canonical keys, committed on
-    // each tap. Mirrors the web `.pl-allergen-pick`; avoided ones fill in NK.primary.
+    // each tap. Mirrors the web `.pl-allergen-pick`; avoided ones fill in WF.primary.
     private var allergenCard: some View {
         WaffledCard {
             VStack(alignment: .leading, spacing: 10) {
                 SectionLabel(text: "Allergens to avoid")
                 Text("Items containing these (from Open Food Facts) get a red warning — e.g. a gluten-free home.")
-                    .font(.system(size: 12)).foregroundStyle(NK.ink3).fixedSize(horizontal: false, vertical: true)
+                    .font(.system(size: 12)).foregroundStyle(WF.ink3).fixedSize(horizontal: false, vertical: true)
                 ChipFlow(spacing: 8, lineSpacing: 8) {
                     ForEach(PantryAllergen.keys, id: \.self) { key in allergenChip(key) }
                 }
@@ -120,10 +120,10 @@ struct PantrySettingsView: View {
                 AllergenBadge(allergen: key, avoid: on)
                 Text(PantryAllergen.label(key))
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(on ? .white : NK.ink2)
+                    .foregroundStyle(on ? .white : WF.ink2)
             }
             .padding(.horizontal, 11).padding(.vertical, 7)
-            .background(on ? NK.primary : NK.panel)
+            .background(on ? WF.primary : WF.panel)
             .clipShape(Capsule())
         }.buttonStyle(.plain)
     }
@@ -136,7 +136,7 @@ struct PantrySettingsView: View {
             VStack(alignment: .leading, spacing: 10) {
                 SectionLabel(text: "Locations")
                 Text("Where items live — the sidebar groups by these. Add an emoji to show next to each.")
-                    .font(.system(size: 12)).foregroundStyle(NK.ink3).fixedSize(horizontal: false, vertical: true)
+                    .font(.system(size: 12)).foregroundStyle(WF.ink3).fixedSize(horizontal: false, vertical: true)
                 VStack(spacing: 8) {
                     ForEach(Array(locations.enumerated()), id: \.offset) { idx, _ in locationRow(idx) }
                 }
@@ -150,7 +150,7 @@ struct PantrySettingsView: View {
             TextField("📦", text: iconBinding(idx))
                 .multilineTextAlignment(.center)
                 .frame(width: 44).padding(.vertical, 10)
-                .nkField(fill: NK.panel)
+                .wfField(fill: WF.panel)
                 .focused($focus, equals: .locIcon(idx))
                 .onChange(of: iconBinding(idx).wrappedValue) { _, v in
                     // The server slices to 4 chars; keep it short client-side too.
@@ -160,20 +160,20 @@ struct PantrySettingsView: View {
                 .font(.system(size: 15, weight: .semibold))
                 .padding(.horizontal, 12).padding(.vertical, 10)
                 .frame(maxWidth: .infinity)
-                .nkField(fill: NK.panel)
+                .wfField(fill: WF.panel)
                 .focused($focus, equals: .locName(idx))
                 .submitLabel(.done)
                 .onSubmit { commitLocations() }
             Button { move(idx, by: -1) } label: {
-                Image(systemName: "chevron.up").font(.system(size: 13, weight: .bold)).foregroundStyle(idx == 0 ? NK.ink3.opacity(0.4) : NK.ink3)
+                Image(systemName: "chevron.up").font(.system(size: 13, weight: .bold)).foregroundStyle(idx == 0 ? WF.ink3.opacity(0.4) : WF.ink3)
                     .frame(width: 30, height: 30)
             }.buttonStyle(.plain).disabled(idx == 0)
             Button { move(idx, by: 1) } label: {
-                Image(systemName: "chevron.down").font(.system(size: 13, weight: .bold)).foregroundStyle(idx == locations.count - 1 ? NK.ink3.opacity(0.4) : NK.ink3)
+                Image(systemName: "chevron.down").font(.system(size: 13, weight: .bold)).foregroundStyle(idx == locations.count - 1 ? WF.ink3.opacity(0.4) : WF.ink3)
                     .frame(width: 30, height: 30)
             }.buttonStyle(.plain).disabled(idx == locations.count - 1)
             Button { removeLocation(idx) } label: {
-                Image(systemName: "minus.circle.fill").font(.system(size: 18)).foregroundStyle(NK.ink3)
+                Image(systemName: "minus.circle.fill").font(.system(size: 18)).foregroundStyle(WF.ink3)
                     .frame(width: 30, height: 30)
             }.buttonStyle(.plain)
         }
@@ -185,14 +185,14 @@ struct PantrySettingsView: View {
                 .font(.system(size: 15))
                 .padding(.horizontal, 12).padding(.vertical, 10)
                 .frame(maxWidth: .infinity)
-                .nkField(fill: NK.panel)
+                .wfField(fill: WF.panel)
                 .focused($focus, equals: .addLoc)
                 .submitLabel(.done)
                 .onSubmit(addLocation)
             Button(action: addLocation) {
                 Text("Add").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(addingLocation.trimmingCharacters(in: .whitespaces).isEmpty ? NK.ink3 : NK.primary)
+                    .background(addingLocation.trimmingCharacters(in: .whitespaces).isEmpty ? WF.ink3 : WF.primary)
                     .clipShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -206,10 +206,10 @@ struct PantrySettingsView: View {
     private func settingRow<T: View>(_ icon: String, _ title: String, _ sub: String, @ViewBuilder _ control: () -> T) -> some View {
         HStack(spacing: 11) {
             Text(icon).font(.system(size: 17)).frame(width: 34, height: 34)
-                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 14.5, weight: .semibold)).foregroundStyle(NK.ink)
-                Text(sub).font(.system(size: 12)).foregroundStyle(NK.ink3).fixedSize(horizontal: false, vertical: true)
+                Text(title).font(.system(size: 14.5, weight: .semibold)).foregroundStyle(WF.ink)
+                Text(sub).font(.system(size: 12)).foregroundStyle(WF.ink3).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
             control()
@@ -220,9 +220,9 @@ struct PantrySettingsView: View {
     private func numberField(_ text: Binding<String>, field: Field) -> some View {
         TextField("", text: text)
             .keyboardType(.decimalPad).multilineTextAlignment(.center)
-            .font(.system(size: 15, weight: .bold)).foregroundStyle(NK.ink).frame(width: 56)
+            .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).frame(width: 56)
             .padding(.vertical, 8)
-            .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+            .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
             .focused($focus, equals: field)
     }
 

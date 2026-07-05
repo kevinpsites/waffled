@@ -122,7 +122,7 @@ struct RecipeEditorView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     if let errorText {
-                        Text(errorText).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.primaryD)
+                        Text(errorText).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.primaryD)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if editingId == nil { pasteBar }
@@ -137,7 +137,7 @@ struct RecipeEditorView: View {
                 .frame(maxWidth: 760)
                 .frame(maxWidth: .infinity)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle(editingId == nil ? "New recipe" : "Edit recipe")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -167,12 +167,12 @@ struct RecipeEditorView: View {
     /// A one-line "or paste markdown" affordance above the form (new recipes only).
     private var pasteBar: some View {
         HStack(spacing: 10) {
-            Text("Build it by hand, or").font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+            Text("Build it by hand, or").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
             Button { showPaste = true } label: {
                 Label("Paste markdown", systemImage: "doc.on.clipboard")
-                    .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink)
-                    .padding(.horizontal, 13).padding(.vertical, 8).background(NK.card).clipShape(Capsule())
-                    .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+                    .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink)
+                    .padding(.horizontal, 13).padding(.vertical, 8).background(WF.card).clipShape(Capsule())
+                    .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
             }.buttonStyle(.plain)
             Spacer(minLength: 0)
         }
@@ -184,21 +184,21 @@ struct RecipeEditorView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 8) {
                         Button("Use template") { markdown = Self.template }
-                            .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.primary)
+                            .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.primary)
                         Button("See example") { markdown = Self.example }
-                            .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.primary)
+                            .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.primary)
                         Spacer()
                     }
                     TextField("Paste frontmatter + markdown here…", text: $markdown, axis: .vertical)
                         .font(.system(size: 14, design: .monospaced)).lineLimit(10...30)
-                        .padding(12).nkField(fill: NK.panel)
+                        .padding(12).wfField(fill: WF.panel)
                     if let parseErr {
-                        Text(parseErr).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.primaryD)
+                        Text(parseErr).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.primaryD)
                     }
                 }
                 .padding(16)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Paste a recipe").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showPaste = false } }
@@ -313,13 +313,13 @@ struct RecipeEditorView: View {
                     field("EMOJI") {
                         TextField("🍽️", text: $emoji)
                             .font(.system(size: 22)).multilineTextAlignment(.center)
-                            .frame(width: 58).padding(.vertical, 9).nkField(fill: NK.panel)
+                            .frame(width: 58).padding(.vertical, 9).wfField(fill: WF.panel)
                     }
                     field("TITLE") {
                         TextField("Recipe title", text: $title)
                             .font(.system(size: 16)).focused($focused, equals: .title)
                             .submitLabel(.next).onSubmit { focused = ings.first.map { .ingAmount($0.id) } }
-                            .padding(.horizontal, 12).padding(.vertical, 11).nkField(fill: NK.panel)
+                            .padding(.horizontal, 12).padding(.vertical, 11).wfField(fill: WF.panel)
                     }
                 }
                 HStack(spacing: 10) {
@@ -334,7 +334,7 @@ struct RecipeEditorView: View {
     private func numField(_ value: Binding<String>, _ ph: String) -> some View {
         TextField(ph, text: value)
             .keyboardType(.numberPad).font(.system(size: 16))
-            .padding(.horizontal, 12).padding(.vertical, 11).nkField(fill: NK.panel)
+            .padding(.horizontal, 12).padding(.vertical, 11).wfField(fill: WF.panel)
     }
 
     // MARK: details (+ AI auto-fill)
@@ -344,12 +344,12 @@ struct RecipeEditorView: View {
             VStack(alignment: .leading, spacing: 14) {
                 if suggesting {
                     Label("Thinking…", systemImage: "sparkles")
-                        .font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ai)
+                        .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ai)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 } else if hasSuggestions {
                     Button { keepAllSuggestions() } label: {
                         Label("Keep all suggestions", systemImage: "sparkles")
-                            .font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ai)
+                            .font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ai)
                     }
                     .frame(maxWidth: .infinity, alignment: .trailing)
                 }
@@ -378,16 +378,16 @@ struct RecipeEditorView: View {
         field(label) {
             VStack(alignment: .leading, spacing: 5) {
                 TextField(ph, text: metaBinding(key))
-                    .font(.system(size: 15)).padding(.horizontal, 11).padding(.vertical, 9).nkField(fill: NK.panel)
+                    .font(.system(size: 15)).padding(.horizontal, 11).padding(.vertical, 9).wfField(fill: WF.panel)
                 if let s = sugScalar(key) {
                     HStack(spacing: 5) {
                         Button { meta[key] = s } label: {
-                            Text("✨ \(s)").font(.system(size: 11.5, weight: .bold)).foregroundStyle(NK.ai)
+                            Text("✨ \(s)").font(.system(size: 11.5, weight: .bold)).foregroundStyle(WF.ai)
                                 .lineLimit(1).padding(.horizontal, 8).padding(.vertical, 4)
-                                .background(NK.ai.opacity(0.12)).clipShape(Capsule())
+                                .background(WF.ai.opacity(0.12)).clipShape(Capsule())
                         }.buttonStyle(.plain)
                         Button { dismissedSug.insert(key) } label: {
-                            Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(NK.ink3)
+                            Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(WF.ink3)
                         }.buttonStyle(.plain)
                     }
                 }
@@ -402,16 +402,16 @@ struct RecipeEditorView: View {
                     Image(uiImage: photoPreview).resizable().scaledToFill()
                         .frame(width: 52, height: 52).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 } else if let url = MediaURL.resolve(imageUrl.isEmpty ? nil : imageUrl) {
-                    AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { NK.panel }
+                    AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { WF.panel }
                         .frame(width: 52, height: 52).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 TextField("Paste an image URL…", text: $imageUrl)
                     .font(.system(size: 14)).autocorrectionDisabled().textInputAutocapitalization(.never)
-                    .padding(.horizontal, 11).padding(.vertical, 10).nkField(fill: NK.panel)
+                    .padding(.horizontal, 11).padding(.vertical, 10).wfField(fill: WF.panel)
                 PhotosPicker(selection: $photoItem, matching: .images) {
                     Label(uploadingPhoto ? "…" : "Upload", systemImage: "camera")
-                        .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink)
-                        .padding(.horizontal, 12).padding(.vertical, 10).background(NK.panel).clipShape(Capsule())
+                        .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink)
+                        .padding(.horizontal, 12).padding(.vertical, 10).background(WF.panel).clipShape(Capsule())
                 }
                 .disabled(uploadingPhoto)
             }
@@ -426,19 +426,19 @@ struct RecipeEditorView: View {
                 ForEach(Array(ingGroups.enumerated()), id: \.offset) { gi, grp in
                     // A horizontal rule clearly separates each section (web parity) — the
                     // 🏷 header alone was too subtle. No rule above the very first group.
-                    if gi > 0 { Divider().overlay(NK.hair) }
+                    if gi > 0 { Divider().overlay(WF.hair) }
                     ingredientGroup(grp)
                 }
                 HStack(spacing: 10) {
                     Button { addIngredient() } label: {
                         Label("Add ingredient", systemImage: "plus").font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(NK.ink).padding(.horizontal, 13).padding(.vertical, 9)
-                            .background(NK.panel).clipShape(Capsule())
+                            .foregroundStyle(WF.ink).padding(.horizontal, 13).padding(.vertical, 9)
+                            .background(WF.panel).clipShape(Capsule())
                     }.buttonStyle(.plain)
                     Button { addSection() } label: {
                         Label("Add section", systemImage: "plus").font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(NK.primary).padding(.horizontal, 13).padding(.vertical, 9)
-                            .overlay(Capsule().strokeBorder(NK.primary.opacity(0.35), lineWidth: 1))
+                            .foregroundStyle(WF.primary).padding(.horizontal, 13).padding(.vertical, 9)
+                            .overlay(Capsule().strokeBorder(WF.primary.opacity(0.35), lineWidth: 1))
                     }.buttonStyle(.plain)
                 }
             }
@@ -480,10 +480,10 @@ struct RecipeEditorView: View {
         }
         .padding(8).padding(.horizontal, -8)   // a bit of hit-area around the run
         .background(
-            RoundedRectangle(cornerRadius: NK.rSM, style: .continuous)
-                .fill(dropTargetSection == grp.firstId ? NK.primary.opacity(0.06) : .clear)
-                .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous)
-                    .strokeBorder(dropTargetSection == grp.firstId ? NK.primary.opacity(0.4) : .clear, lineWidth: 1.5))
+            RoundedRectangle(cornerRadius: WF.rSM, style: .continuous)
+                .fill(dropTargetSection == grp.firstId ? WF.primary.opacity(0.06) : .clear)
+                .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous)
+                    .strokeBorder(dropTargetSection == grp.firstId ? WF.primary.opacity(0.4) : .clear, lineWidth: 1.5))
         )
         .contentShape(Rectangle())
         // Drop onto a section's empty space → the dragged row adopts this section and
@@ -589,7 +589,7 @@ struct RecipeEditorView: View {
         WaffledFieldCard(title: "Notes") {
             TextField("Anything worth remembering…", text: $notes, axis: .vertical)
                 .font(.system(size: 15)).lineLimit(2...8)
-                .padding(10).nkField(fill: NK.panel)
+                .padding(10).wfField(fill: WF.panel)
         }
     }
 
@@ -616,8 +616,8 @@ struct RecipeEditorView: View {
                 }
                 Button { steps.append(EditStep()) } label: {
                     Label("Add step", systemImage: "plus").font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(NK.ink).padding(.horizontal, 13).padding(.vertical, 9)
-                        .background(NK.panel).clipShape(Capsule())
+                        .foregroundStyle(WF.ink).padding(.horizontal, 13).padding(.vertical, 9)
+                        .background(WF.panel).clipShape(Capsule())
                 }.buttonStyle(.plain)
             }
         }
@@ -627,7 +627,7 @@ struct RecipeEditorView: View {
 
     @ViewBuilder private func field<V: View>(_ label: String, @ViewBuilder _ content: () -> V) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
+            Text(label).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
             content()
         }
     }
@@ -866,17 +866,17 @@ struct ChipEditorField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(label).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(NK.ink3)
+            Text(label).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
             if !items.isEmpty {
                 ChipFlow(spacing: 7, lineSpacing: 7) {
                     ForEach(items, id: \.self) { it in
                         HStack(spacing: 5) {
-                            Text(it).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink)
+                            Text(it).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink)
                             Button { items.removeAll { $0 == it } } label: {
-                                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(NK.ink3)
+                                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(WF.ink3)
                             }.buttonStyle(.plain)
                         }
-                        .padding(.horizontal, 10).padding(.vertical, 6).nkChip(selected: true)
+                        .padding(.horizontal, 10).padding(.vertical, 6).wfChip(selected: true)
                     }
                 }
             }
@@ -884,9 +884,9 @@ struct ChipEditorField: View {
                 TextField(placeholder, text: $draft)
                     .font(.system(size: 14)).autocorrectionDisabled().textInputAutocapitalization(.never)
                     .onSubmit(commit)
-                    .padding(.horizontal, 11).padding(.vertical, 9).nkField(fill: NK.panel)
+                    .padding(.horizontal, 11).padding(.vertical, 9).wfField(fill: WF.panel)
                 if !draft.trimmingCharacters(in: .whitespaces).isEmpty {
-                    Button("Add", action: commit).font(.system(size: 13, weight: .bold)).foregroundStyle(NK.primary)
+                    Button("Add", action: commit).font(.system(size: 13, weight: .bold)).foregroundStyle(WF.primary)
                 }
             }
             if !suggestions.isEmpty {
@@ -894,10 +894,10 @@ struct ChipEditorField: View {
                     ForEach(suggestions, id: \.self) { s in
                         Button { onAccept(s) } label: {
                             Label("✨ \(s)", systemImage: "plus")
-                                .font(.system(size: 11.5, weight: .bold)).foregroundStyle(NK.ai)
+                                .font(.system(size: 11.5, weight: .bold)).foregroundStyle(WF.ai)
                                 .labelStyle(.titleOnly)
                                 .padding(.horizontal, 9).padding(.vertical, 5)
-                                .background(NK.ai.opacity(0.1)).clipShape(Capsule())
+                                .background(WF.ai.opacity(0.1)).clipShape(Capsule())
                         }.buttonStyle(.plain)
                     }
                 }
@@ -931,13 +931,13 @@ struct SectionInput: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
-                Image(systemName: "tag").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                Image(systemName: "tag").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
                 TextField("Section name", text: $text)
                     .font(.system(size: 13, weight: .heavy)).tracking(0.3)
                     .textInputAutocapitalization(.words).submitLabel(.done)
                     .focused($focused).onSubmit { focused = false }
             }
-            .padding(.horizontal, 11).padding(.vertical, 9).nkField(fill: NK.panel)
+            .padding(.horizontal, 11).padding(.vertical, 9).wfField(fill: WF.panel)
 
             if focused && !matches.isEmpty {
                 VStack(spacing: 0) {
@@ -947,19 +947,19 @@ struct SectionInput: View {
                             focused = false
                         } label: {
                             HStack {
-                                Text(s).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink)
+                                Text(s).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink)
                                 Spacer(minLength: 0)
                             }
                             .padding(.horizontal, 12).padding(.vertical, 9)
                             .contentShape(Rectangle())
                         }.buttonStyle(.plain)
-                        if s != matches.last { Divider().overlay(NK.hair) }
+                        if s != matches.last { Divider().overlay(WF.hair) }
                     }
                 }
                 .frame(maxHeight: 200)
-                .background(NK.card)
-                .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                .background(WF.card)
+                .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                 .shadow(color: .black.opacity(0.08), radius: 8, y: 4)
                 .padding(.top, 4)
             }
@@ -1011,22 +1011,22 @@ struct IngredientRowView: View {
                 // A grip handle owns the drag — dragging from a TextField would steal the
                 // text-selection gesture. Drag a row into another section to re-home it.
                 Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink3)
                     .frame(width: 22, height: 30).contentShape(Rectangle())
                     .draggable(IngredientRowDrag(id: id.uuidString)) { dragPreview }
                 TextField("2", text: $row.amount).keyboardType(.decimalPad)
                     .focused(focused, equals: .ingAmount(id))
-                    .frame(width: 54).padding(8).nkField(fill: NK.panel)
+                    .frame(width: 54).padding(8).wfField(fill: WF.panel)
                 TextField("cups", text: $row.unit).submitLabel(.next).onSubmit(onAdvance)
-                    .frame(width: 72).padding(8).nkField(fill: NK.panel)
+                    .frame(width: 72).padding(8).wfField(fill: WF.panel)
                 TextField("ingredient", text: $row.name)
                     .focused(focused, equals: .ingName(id))
                     .submitLabel(.next).onSubmit(onAdvance)
-                    .padding(8).nkField(fill: NK.panel)
+                    .padding(8).wfField(fill: WF.panel)
             }
             HStack(spacing: 6) {
                 TextField("diced (optional)", text: $row.prepNote).submitLabel(.next).onSubmit(onAdvance)
-                    .padding(8).nkField(fill: NK.panel)
+                    .padding(8).wfField(fill: WF.panel)
                 // Arrows cross section boundaries: moving past the top/bottom of a run makes
                 // the row adopt the adjacent section (web's "adopt the section you land
                 // after"), so repeated ↓ walks a row down and into the next section.
@@ -1034,7 +1034,7 @@ struct IngredientRowView: View {
             }
         }
         .padding(.bottom, 2)
-        .background(isDropTarget ? NK.primary.opacity(0.06) : .clear)
+        .background(isDropTarget ? WF.primary.opacity(0.06) : .clear)
         // Drop ONTO a row → the dragged row adopts this row's section and lands just before
         // it (precise positioning within / into a section).
         .dropDestination(for: IngredientRowDrag.self) { items, _ in
@@ -1051,10 +1051,10 @@ struct IngredientRowView: View {
             Text(name.isEmpty ? "ingredient" : name)
                 .font(.system(size: 14, weight: .semibold)).lineLimit(1)
         }
-        .foregroundStyle(NK.ink)
+        .foregroundStyle(WF.ink)
         .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(NK.card).clipShape(Capsule())
-        .overlay(Capsule().strokeBorder(NK.primary.opacity(0.4), lineWidth: 1))
+        .background(WF.card).clipShape(Capsule())
+        .overlay(Capsule().strokeBorder(WF.primary.opacity(0.4), lineWidth: 1))
     }
 }
 
@@ -1087,15 +1087,15 @@ struct MethodStepRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                Text("\(index + 1)").font(.system(size: 13, weight: .heavy)).foregroundStyle(NK.ink2)
-                    .frame(width: 26, height: 26).background(NK.panel).clipShape(Circle())
+                Text("\(index + 1)").font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.ink2)
+                    .frame(width: 26, height: 26).background(WF.panel).clipShape(Circle())
                 Spacer()
                 EditorRowControls(up: index > 0, down: index < total - 1,
                                   onUp: onUp, onDown: onDown, onDelete: onDelete)
             }
             TextField("Describe this step…", text: $step.instruction, axis: .vertical)
                 .font(.system(size: 15)).lineLimit(2...8)
-                .padding(10).nkField(fill: NK.panel)
+                .padding(10).wfField(fill: WF.panel)
             StepTagSection(step: $step, named: named, onAdd: togglePick, onRemove: removePick)
             stepTimer
         }
@@ -1118,34 +1118,34 @@ struct MethodStepRow: View {
         if total > 0 {
             HStack(spacing: 10) {
                 Text("⏱ \(CookTimer.mmss(total))")
-                    .font(.system(size: 13, weight: .bold)).foregroundStyle(NK.primaryD)
+                    .font(.system(size: 13, weight: .bold)).foregroundStyle(WF.primaryD)
                     .padding(.horizontal, 11).padding(.vertical, 7)
-                    .background(NK.primary.opacity(0.12)).clipShape(Capsule())
+                    .background(WF.primary.opacity(0.12)).clipShape(Capsule())
 
                 HStack(spacing: 4) {
                     TextField("0", value: timerMin, format: .number)
                         .keyboardType(.numberPad).multilineTextAlignment(.center)
                         .font(.system(size: 14, weight: .semibold)).frame(width: 42)
-                        .padding(.vertical, 6).nkField(fill: NK.card)
-                    Text("min").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                        .padding(.vertical, 6).wfField(fill: WF.card)
+                    Text("min").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                     TextField("0", value: timerSec, format: .number)
                         .keyboardType(.numberPad).multilineTextAlignment(.center)
                         .font(.system(size: 14, weight: .semibold)).frame(width: 42)
-                        .padding(.vertical, 6).nkField(fill: NK.card)
-                    Text("sec").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                        .padding(.vertical, 6).wfField(fill: WF.card)
+                    Text("sec").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
                 Spacer()
                 Button { step.timerSeconds = nil } label: {
-                    Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(NK.ink3)
+                    Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
                 }.buttonStyle(.plain)
             }
         } else {
             Button { step.timerSeconds = 60 } label: {
                 Label("Add timer", systemImage: "timer")
-                    .font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.primaryD)
+                    .font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.primaryD)
                     .padding(.horizontal, 11).padding(.vertical, 7)
                     .overlay(Capsule().stroke(style: StrokeStyle(lineWidth: 1.2, dash: [4, 3]))
-                        .foregroundStyle(NK.primaryD.opacity(0.5)))
+                        .foregroundStyle(WF.primaryD.opacity(0.5)))
             }.buttonStyle(.plain)
         }
     }
@@ -1184,15 +1184,15 @@ struct EditorRowControls: View {
             Button(action: onUp) { icon("arrow.up") }.disabled(!up).buttonStyle(.plain)
             Button(action: onDown) { icon("arrow.down") }.disabled(!down).buttonStyle(.plain)
             Button(action: onDelete) {
-                Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.primaryD)
-                    .frame(width: 30, height: 30).background(NK.primaryD.opacity(0.1)).clipShape(RoundedRectangle(cornerRadius: 8))
+                Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.primaryD)
+                    .frame(width: 30, height: 30).background(WF.primaryD.opacity(0.1)).clipShape(RoundedRectangle(cornerRadius: 8))
             }.buttonStyle(.plain)
         }
     }
 
     private func icon(_ name: String) -> some View {
-        Image(systemName: name).font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink2)
-            .frame(width: 30, height: 30).background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 8))
+        Image(systemName: name).font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
+            .frame(width: 30, height: 30).background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -1217,9 +1217,9 @@ struct StepTagSection: View {
             ChipFlow(spacing: 7, lineSpacing: 7) {
                 Button { showPopover = true } label: {
                     Label("Tag ingredient", systemImage: "plus")
-                        .font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ink2)
+                        .font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
                         .padding(.horizontal, 11).padding(.vertical, 6)
-                        .overlay(Capsule().strokeBorder(NK.hair, lineWidth: 1))
+                        .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
                 }.buttonStyle(.plain)
 
                 ForEach(step.picks) { pick in
@@ -1241,12 +1241,12 @@ struct StepTagSection: View {
 
                 ForEach(Array(step.extra.enumerated()), id: \.offset) { ei, line in
                     HStack(spacing: 5) {
-                        Text(line).font(.system(size: 12.5, weight: .medium)).foregroundStyle(NK.ink2)
+                        Text(line).font(.system(size: 12.5, weight: .medium)).foregroundStyle(WF.ink2)
                         Button { step.extra.remove(at: ei) } label: {
-                            Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(NK.ink3)
+                            Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(WF.ink3)
                         }.buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 10).padding(.vertical, 6).nkChip(selected: false)
+                    .padding(.horizontal, 10).padding(.vertical, 6).wfChip(selected: false)
                 }
             }
         }
@@ -1259,7 +1259,7 @@ struct StepTagSection: View {
                 VStack(alignment: .leading, spacing: 10) {
                     if named.isEmpty {
                         Text("Add ingredients above first.")
-                            .font(.system(size: 14)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 14)).foregroundStyle(WF.ink3)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 20)
                     } else {
                         ForEach(named) { g in tagRow(g) }
@@ -1267,7 +1267,7 @@ struct StepTagSection: View {
                 }
                 .padding(16)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Tag ingredients").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .primaryAction) { Button("Done") { showPopover = false }.fontWeight(.semibold) } }
         }
@@ -1280,14 +1280,14 @@ struct StepTagSection: View {
         HStack(spacing: 10) {
             Button { on ? onRemove(g.id) : onAdd(g) } label: {
                 Image(systemName: on ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 20)).foregroundStyle(on ? NK.primary : NK.ink3)
+                    .font(.system(size: 20)).foregroundStyle(on ? WF.primary : WF.ink3)
             }.buttonStyle(.plain)
-            Text(g.name).font(.system(size: 15, weight: on ? .semibold : .regular)).foregroundStyle(NK.ink)
+            Text(g.name).font(.system(size: 15, weight: on ? .semibold : .regular)).foregroundStyle(WF.ink)
             Spacer(minLength: 8)
             if let pi = pickIdx {
                 TextField("amt", text: $step.picks[pi].amount)
                     .font(.system(size: 13)).multilineTextAlignment(.center)
-                    .frame(width: 96).padding(7).nkField(fill: NK.card)
+                    .frame(width: 96).padding(7).wfField(fill: WF.card)
             }
         }
         .padding(.vertical, 4)

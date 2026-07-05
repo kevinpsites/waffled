@@ -66,27 +66,27 @@ struct FamilyNightCard: View {
         WaffledCard(padding: 15) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("🏡 Family Night").font(.system(size: 12.5, weight: .bold)).foregroundStyle(NK.ink2)
+                    Text("🏡 Family Night").font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
                     Spacer()
                     if let d = model.view?.next.date {
                         Text(FamilyNightFormat.dateLabel(d))
-                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                     }
                 }
                 if let v = model.view {
                     if let theme = v.next.theme, !theme.isEmpty {
-                        Text(theme).font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink)
+                        Text(theme).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink)
                     }
                     if v.members.isEmpty {
                         Text("Add family members to start rotating the agenda.")
-                            .font(.system(size: 13)).foregroundStyle(NK.ink3)
+                            .font(.system(size: 13)).foregroundStyle(WF.ink3)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
                         ForEach(v.next.assignments) { partRow($0, members: v.members) }
                     }
                 } else {
                     Text(model.loaded ? "Couldn’t load Family Night." : "Loading…")
-                        .font(.system(size: 13)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 13)).foregroundStyle(WF.ink3)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
@@ -98,8 +98,8 @@ struct FamilyNightCard: View {
         HStack(spacing: 10) {
             Text(a.emoji).font(.system(size: 17))
                 .frame(width: 32, height: 32)
-                .background(NK.panel).clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-            Text(a.label).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink)
+                .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            Text(a.label).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
             Spacer(minLength: 6)
             personPicker(a, members: members)
         }
@@ -129,15 +129,15 @@ struct FamilyNightCard: View {
                         Avatar(colorHex: m.color, emoji: m.emoji ?? "🙂", size: 22)
                     }
                     Text(name).font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(a.suggested ? NK.ink3 : NK.ink)
-                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(NK.ink3)
+                        .foregroundStyle(a.suggested ? WF.ink3 : WF.ink)
+                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(WF.ink3)
                 }
             } else {
                 HStack(spacing: 4) {
                     Text("Pick").font(.system(size: 13, weight: .semibold))
                     Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
                 }
-                .foregroundStyle(NK.ai)
+                .foregroundStyle(WF.ai)
             }
         }
     }

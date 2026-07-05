@@ -29,7 +29,7 @@ struct SplashView: View {
 
     var body: some View {
         ZStack {
-            NK.canvas.ignoresSafeArea()
+            WF.canvas.ignoresSafeArea()
             Image("WaffledMark")
                 .resizable().scaledToFit()
                 .frame(width: 128, height: 128)
@@ -73,7 +73,7 @@ struct LoginView: View {
 
     var body: some View {
         ZStack {
-            NK.canvas.ignoresSafeArea()
+            WF.canvas.ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 0) {
                     Spacer(minLength: 48)
@@ -104,7 +104,7 @@ struct LoginView: View {
                 Image(systemName: "person.2.fill").font(.system(size: 11, weight: .semibold))
                 Text("Set up this iPad as a shared kiosk").font(.system(size: 12.5, weight: .semibold))
             }
-            .foregroundStyle(NK.ink2)
+            .foregroundStyle(WF.ink2)
         }
         .buttonStyle(.plain).padding(.top, 18)
     }
@@ -115,10 +115,10 @@ struct LoginView: View {
             Image("WaffledMark").resizable().scaledToFit()
                 .frame(width: isKiosk ? 104 : 76, height: isKiosk ? 104 : 76)
             Text(isKiosk ? "Set up your Waffled display" : "Welcome to Waffled")
-                .font(.system(size: isKiosk ? 34 : 26, weight: .bold)).foregroundStyle(NK.ink)
+                .font(.system(size: isKiosk ? 34 : 26, weight: .bold)).foregroundStyle(WF.ink)
             Text(isKiosk ? "Sign in to show your family's hub on this iPad."
                          : "Sign in to your family's household.")
-                .font(.system(size: isKiosk ? 18 : 15)).foregroundStyle(NK.ink3)
+                .font(.system(size: isKiosk ? 18 : 15)).foregroundStyle(WF.ink3)
                 .multilineTextAlignment(.center)
         }
         .padding(.bottom, isKiosk ? 36 : 28)
@@ -134,13 +134,13 @@ struct LoginView: View {
                 .onSubmit { Task { await submit() } }
 
             if let error {
-                Text(error).font(.system(size: 13, weight: .medium)).foregroundStyle(NK.primary)
+                Text(error).font(.system(size: 13, weight: .medium)).foregroundStyle(WF.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             WaffledPrimaryCTA(
                 label: busy ? "Signing in…" : "Sign in",
-                tint: NK.primary,
+                tint: WF.primary,
                 isDisabled: !canSubmit,
                 action: { Task { await submit() } }
             )
@@ -156,17 +156,17 @@ struct LoginView: View {
     private func ssoButton(_ label: String) -> some View {
         VStack(spacing: 12) {
             HStack(spacing: 10) {
-                Rectangle().fill(NK.hair).frame(height: 1)
-                Text("or").font(.system(size: 12, weight: .semibold)).foregroundStyle(NK.ink3)
-                Rectangle().fill(NK.hair).frame(height: 1)
+                Rectangle().fill(WF.hair).frame(height: 1)
+                Text("or").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                Rectangle().fill(WF.hair).frame(height: 1)
             }
             Button { Task { await submitOIDC() } } label: {
                 Text(busy ? "Opening…" : label)
-                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
+                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink)
                     .frame(maxWidth: .infinity).padding(.vertical, 14)
-                    .background(NK.card)
-                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                    .background(WF.card)
+                    .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
             }
             .buttonStyle(.plain).disabled(busy)
         }
@@ -176,11 +176,11 @@ struct LoginView: View {
     private var setupNotice: some View {
         VStack(spacing: 10) {
             Text("This Waffled isn't set up yet.")
-                .font(.system(size: 16, weight: .semibold)).foregroundStyle(NK.ink)
+                .font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink)
             Text("Finish first-run setup on the web, then sign in here with that admin account.")
-                .font(.system(size: 14)).foregroundStyle(NK.ink3).multilineTextAlignment(.center)
+                .font(.system(size: 14)).foregroundStyle(WF.ink3).multilineTextAlignment(.center)
             Button { Task { busy = true; await session.refreshStatus(); busy = false } } label: {
-                Text("Check again").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.primary)
+                Text("Check again").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.primary)
             }
             .buttonStyle(.plain).padding(.top, 4)
         }
@@ -194,7 +194,7 @@ struct LoginView: View {
                     Image(systemName: "gearshape").font(.system(size: 11, weight: .semibold))
                     Text("Server address").font(.system(size: 12.5, weight: .semibold))
                 }
-                .foregroundStyle(NK.ink3)
+                .foregroundStyle(WF.ink3)
             }
             .buttonStyle(.plain)
 
@@ -204,16 +204,16 @@ struct LoginView: View {
                         .font(.system(size: 13, design: .monospaced))
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .keyboardType(.URL)
-                        .padding(11).background(NK.panel)
-                        .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                        .padding(11).background(WF.panel)
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                     Button {
                         AppConfig.setApiBaseURL(serverURL.trimmingCharacters(in: .whitespaces))
                         Task { busy = true; await session.refreshStatus(); busy = false }
                     } label: {
-                        Text("Use this server").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink)
+                        Text("Use this server").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink)
                             .frame(maxWidth: .infinity).padding(.vertical, 10)
-                            .background(NK.card2).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                            .background(WF.card2).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                 }
@@ -228,7 +228,7 @@ struct LoginView: View {
                        secure: Bool = false, keyboard: UIKeyboardType = .default,
                        content: UITextContentType? = nil) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink2)
+            Text(label).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink2)
             Group {
                 if secure { SecureField("", text: text) } else { TextField("", text: text) }
             }
@@ -236,10 +236,10 @@ struct LoginView: View {
             .textInputAutocapitalization(.never).autocorrectionDisabled()
             .keyboardType(keyboard).textContentType(content)
             .focused($focus, equals: focusedOn)
-            .padding(14).background(NK.card)
-            .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-                .strokeBorder(focus == focusedOn ? NK.primary : NK.hair, lineWidth: focus == focusedOn ? 2 : 1))
+            .padding(14).background(WF.card)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                .strokeBorder(focus == focusedOn ? WF.primary : WF.hair, lineWidth: focus == focusedOn ? 2 : 1))
         }
     }
 

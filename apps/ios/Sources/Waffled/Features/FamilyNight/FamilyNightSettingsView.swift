@@ -23,7 +23,7 @@ struct FamilyNightSettingsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 if !isAdmin {
                     Text("Only an admin can change Family Night.")
-                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink3)
                 }
                 if loading {
                     WaffledLoading(top: 30)
@@ -35,7 +35,7 @@ struct FamilyNightSettingsView: View {
             }
             .padding(16).padding(.bottom, 110)
         }
-        .background(NK.canvas)
+        .background(WF.canvas)
         .navigationTitle("Family Night").navigationBarTitleDisplayMode(.inline)
         .task { await load() }
     }
@@ -59,14 +59,14 @@ struct FamilyNightSettingsView: View {
                             Text(FamilyNightFormat.weekday(dayOfWeek)).font(.system(size: 15, weight: .semibold))
                             Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold))
                         }
-                        .foregroundStyle(NK.ink)
+                        .foregroundStyle(WF.ink)
                         .padding(.horizontal, 14).padding(.vertical, 11).frame(maxWidth: .infinity, alignment: .leading)
-                        .nkField()
+                        .wfField()
                     }
                     .disabled(!isAdmin)
 
                     DatePicker("", selection: $time, displayedComponents: .hourAndMinute)
-                        .labelsHidden().datePickerStyle(.compact).tint(NK.primary)
+                        .labelsHidden().datePickerStyle(.compact).tint(WF.primary)
                         .disabled(!isAdmin)
                         .onChange(of: time) { _, _ in Task { await saveSchedule() } }
                 }
@@ -81,13 +81,13 @@ struct FamilyNightSettingsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Show on the calendar").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink)
+                        Text("Show on the calendar").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
                         Text("Adds a weekly “🏡 Family Night” event; syncs to Google if connected.")
-                            .font(.system(size: 12)).foregroundStyle(NK.ink3).fixedSize(horizontal: false, vertical: true)
+                            .font(.system(size: 12)).foregroundStyle(WF.ink3).fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 8)
                     Toggle("", isOn: Binding(get: { onCalendar }, set: { toggleCalendar($0) }))
-                        .labelsHidden().tint(NK.primary).disabled(!isAdmin || busyCalendar)
+                        .labelsHidden().tint(WF.primary).disabled(!isAdmin || busyCalendar)
                 }
             }
         }
@@ -100,20 +100,20 @@ struct FamilyNightSettingsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 SectionLabel(text: "Agenda")
                 Text("Each part can rotate a different person through it every week.")
-                    .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                    .font(.system(size: 12)).foregroundStyle(WF.ink3)
                 ForEach($parts) { $part in partRow($part) }
                 if isAdmin {
                     Button {
                         parts.append(.init(id: UUID().uuidString, label: "New part", emoji: "⭐", rotates: true))
                     } label: {
-                        Label("Add part", systemImage: "plus").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ai)
+                        Label("Add part", systemImage: "plus").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ai)
                     }.buttonStyle(.plain).padding(.top, 2)
 
                     Button { Task { await saveAgenda() } } label: {
                         Text(savingAgenda ? "Saving…" : "Save agenda")
                             .font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
                             .frame(maxWidth: .infinity).padding(.vertical, 12)
-                            .background(NK.primary).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
+                            .background(WF.primary).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     }
                     .buttonStyle(.plain).disabled(savingAgenda || parts.isEmpty).padding(.top, 4)
                 }
@@ -126,17 +126,17 @@ struct FamilyNightSettingsView: View {
             TextField("⭐", text: part.emoji)
                 .multilineTextAlignment(.center)
                 .frame(width: 44).padding(.vertical, 10)
-                .nkField().disabled(!isAdmin)
+                .wfField().disabled(!isAdmin)
                 .onChange(of: part.emoji.wrappedValue) { _, v in part.emoji.wrappedValue = String(v.prefix(2)) }
             TextField("Label", text: part.label)
                 .font(.system(size: 15, weight: .semibold))
                 .padding(.horizontal, 12).padding(.vertical, 10)
-                .frame(maxWidth: .infinity).nkField().disabled(!isAdmin)
-            Toggle("", isOn: part.rotates).labelsHidden().tint(NK.primary).disabled(!isAdmin)
+                .frame(maxWidth: .infinity).wfField().disabled(!isAdmin)
+            Toggle("", isOn: part.rotates).labelsHidden().tint(WF.primary).disabled(!isAdmin)
                 .help("Rotate a person weekly")
             if isAdmin {
                 Button { parts.removeAll { $0.id == part.id.wrappedValue } } label: {
-                    Image(systemName: "minus.circle.fill").font(.system(size: 18)).foregroundStyle(NK.ink3)
+                    Image(systemName: "minus.circle.fill").font(.system(size: 18)).foregroundStyle(WF.ink3)
                 }.buttonStyle(.plain)
             }
         }

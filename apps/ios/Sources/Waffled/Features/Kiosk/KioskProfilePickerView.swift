@@ -29,7 +29,7 @@ struct KioskProfilePickerView: View {
 
     var body: some View {
         ZStack {
-            NK.canvas.ignoresSafeArea()
+            WF.canvas.ignoresSafeArea()
             VStack(spacing: 0) {
                 header
                 if !loaded {
@@ -62,7 +62,7 @@ struct KioskProfilePickerView: View {
                 Text(claimError)
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
                     .padding(.horizontal, 18).padding(.vertical, 12)
-                    .background(NK.ink.opacity(0.92)).clipShape(Capsule())
+                    .background(WF.ink.opacity(0.92)).clipShape(Capsule())
                     .padding(.bottom, 40).transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -82,10 +82,10 @@ struct KioskProfilePickerView: View {
     private var escapeButton: some View {
         Button { showEscape = true } label: {
             Image(systemName: "gearshape")
-                .font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.ink3)
+                .font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink3)
                 .frame(width: 44, height: 44)
-                .background(NK.card2).clipShape(Circle())
-                .overlay(Circle().strokeBorder(NK.hair, lineWidth: 1))
+                .background(WF.card2).clipShape(Circle())
+                .overlay(Circle().strokeBorder(WF.hair, lineWidth: 1))
         }
         .buttonStyle(.plain).padding(24)
     }
@@ -95,9 +95,9 @@ struct KioskProfilePickerView: View {
             Image("WaffledMark").resizable().scaledToFit()
                 .frame(width: 80, height: 80)
             Text(deviceLabel ?? "Family hub")
-                .font(NK.serif(34, .bold)).foregroundStyle(NK.ink)
+                .font(WF.serif(34, .bold)).foregroundStyle(WF.ink)
             Text("Who’s using the iPad?")
-                .font(.system(size: 18)).foregroundStyle(NK.ink3)
+                .font(.system(size: 18)).foregroundStyle(WF.ink3)
         }
         .padding(.top, 64).padding(.bottom, 44)
     }
@@ -125,14 +125,14 @@ struct KioskProfilePickerView: View {
                     }
                 }
                 HStack(spacing: 6) {
-                    Text(p.name).font(.system(size: 19, weight: .semibold)).foregroundStyle(NK.ink)
-                    if p.hasPin { Image(systemName: "lock.fill").font(.system(size: 12, weight: .bold)).foregroundStyle(NK.ink3) }
+                    Text(p.name).font(.system(size: 19, weight: .semibold)).foregroundStyle(WF.ink)
+                    if p.hasPin { Image(systemName: "lock.fill").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3) }
                 }
             }
             .frame(maxWidth: .infinity).padding(.vertical, 22)
-            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
-            .nkShadow1()
+            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+            .wfShadow1()
         }
         .buttonStyle(.plain)
         .disabled(claiming != nil)
@@ -143,14 +143,14 @@ struct KioskProfilePickerView: View {
             Spacer()
             Text("🙈").font(.system(size: 56))
             Text("No profiles to show")
-                .font(.system(size: 20, weight: .bold)).foregroundStyle(NK.ink)
+                .font(.system(size: 20, weight: .bold)).foregroundStyle(WF.ink)
             Text(loadError ?? "Add household members (and toggle “Show on kiosk”) from Settings on another device.")
-                .font(.system(size: 15)).foregroundStyle(NK.ink3)
+                .font(.system(size: 15)).foregroundStyle(WF.ink3)
                 .multilineTextAlignment(.center).padding(.horizontal, 40)
             Button {
                 loaded = false; Task { await load() }
             } label: {
-                Text("Try again").font(.system(size: 15, weight: .semibold)).foregroundStyle(NK.primary)
+                Text("Try again").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.primary)
             }
             .buttonStyle(.plain).padding(.top, 6)
             Spacer()
@@ -212,16 +212,16 @@ struct KioskPinPad: View {
 
     var body: some View {
         ZStack {
-            NK.canvas.ignoresSafeArea()
+            WF.canvas.ignoresSafeArea()
             VStack(spacing: 26) {
                 Avatar(colorHex: profile.colorHex, emoji: profile.avatarEmoji ?? "🙂", size: 84)
-                Text(profile.name).font(.system(size: 22, weight: .bold)).foregroundStyle(NK.ink)
+                Text(profile.name).font(.system(size: 22, weight: .bold)).foregroundStyle(WF.ink)
                 Text(lockedUntil > 0 ? "Locked — try again in \(lockedUntil)s" : "Enter your PIN")
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(lockedUntil > 0 ? NK.primary : NK.ink3)
+                    .foregroundStyle(lockedUntil > 0 ? WF.primary : WF.ink3)
                 dots
                 if let message, lockedUntil == 0 {
-                    Text(message).font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.primary)
+                    Text(message).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.primary)
                 }
                 keypad
             }
@@ -231,8 +231,8 @@ struct KioskPinPad: View {
         .interactiveDismissDisabled(busy)
         .overlay(alignment: .topTrailing) {
             Button { dismiss() } label: {
-                Image(systemName: "xmark").font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink2)
-                    .frame(width: 40, height: 40).background(NK.card2).clipShape(Circle())
+                Image(systemName: "xmark").font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink2)
+                    .frame(width: 40, height: 40).background(WF.card2).clipShape(Circle())
             }
             .buttonStyle(.plain).padding(20)
         }
@@ -248,7 +248,7 @@ struct KioskPinPad: View {
         HStack(spacing: 14) {
             ForEach(0..<max(pin.count + 1, 4), id: \.self) { i in
                 Circle()
-                    .fill(i < pin.count ? NK.ink : NK.hair)
+                    .fill(i < pin.count ? WF.ink : WF.hair)
                     .frame(width: 14, height: 14)
             }
         }
@@ -267,12 +267,12 @@ struct KioskPinPad: View {
     @ViewBuilder
     private func keyButton(_ k: String) -> some View {
         if k == "✓" {
-            roundKey(k, tint: pin.count >= 4 ? NK.primary : NK.ink3, fg: .white) { Task { await submit() } }
+            roundKey(k, tint: pin.count >= 4 ? WF.primary : WF.ink3, fg: .white) { Task { await submit() } }
                 .disabled(pin.count < 4 || busy)
         } else if k == "⌫" {
-            roundKey(k, tint: .clear, fg: NK.ink2) { if !pin.isEmpty { pin.removeLast(); message = nil } }
+            roundKey(k, tint: .clear, fg: WF.ink2) { if !pin.isEmpty { pin.removeLast(); message = nil } }
         } else {
-            roundKey(k, tint: NK.card, fg: NK.ink) {
+            roundKey(k, tint: WF.card, fg: WF.ink) {
                 guard pin.count < maxLen else { return }
                 pin.append(k); message = nil
             }
@@ -290,7 +290,7 @@ struct KioskPinPad: View {
             .frame(width: 78, height: 78)
             .background(tint)
             .clipShape(Circle())
-            .overlay(Circle().strokeBorder(NK.hair, lineWidth: tint == NK.card ? 1 : 0))
+            .overlay(Circle().strokeBorder(WF.hair, lineWidth: tint == WF.card ? 1 : 0))
         }
         .buttonStyle(.plain)
     }
@@ -334,7 +334,7 @@ struct KioskPickerEscapeSheet: View {
 
     var body: some View {
         ZStack {
-            NK.canvas.ignoresSafeArea()
+            WF.canvas.ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 24) {
                     header
@@ -347,8 +347,8 @@ struct KioskPickerEscapeSheet: View {
         .presentationDetents([.medium, .large])
         .overlay(alignment: .topTrailing) {
             Button { dismiss() } label: {
-                Image(systemName: "xmark").font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink2)
-                    .frame(width: 40, height: 40).background(NK.card2).clipShape(Circle())
+                Image(systemName: "xmark").font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink2)
+                    .frame(width: 40, height: 40).background(WF.card2).clipShape(Circle())
             }
             .buttonStyle(.plain).padding(20)
         }
@@ -369,38 +369,38 @@ struct KioskPickerEscapeSheet: View {
     private var header: some View {
         VStack(spacing: 8) {
             Text("⚙️").font(.system(size: 40))
-            Text("Kiosk settings").font(NK.serif(26, .bold)).foregroundStyle(NK.ink)
+            Text("Kiosk settings").font(WF.serif(26, .bold)).foregroundStyle(WF.ink)
         }
         .padding(.top, 12)
     }
 
     private var serverSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Server address").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink2)
+            Text("Server address").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
             TextField("http://localhost:3000", text: $serverURL)
                 .font(.system(size: 14, design: .monospaced))
                 .textInputAutocapitalization(.never).autocorrectionDisabled()
                 .keyboardType(.URL)
-                .padding(12).background(NK.panel)
-                .clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
+                .padding(12).background(WF.panel)
+                .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
             Button {
                 AppConfig.setApiBaseURL(serverURL.trimmingCharacters(in: .whitespaces))
                 KioskDeviceAuth.shared.invalidate()   // old base's device token no longer applies
                 onServerChanged()
                 dismiss()
             } label: {
-                Text("Use this server & retry").font(.system(size: 14, weight: .semibold)).foregroundStyle(NK.ink)
+                Text("Use this server & retry").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
                     .frame(maxWidth: .infinity).padding(.vertical, 12)
-                    .background(NK.card2).clipShape(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: NK.rSM, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                    .background(WF.card2).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
             }
             .buttonStyle(.plain)
             Text("If profiles load but tapping a face fails, the address is usually fine — try again, or ask an admin to re-check this kiosk.")
-                .font(.system(size: 12)).foregroundStyle(NK.ink3)
+                .font(.system(size: 12)).foregroundStyle(WF.ink3)
         }
-        .padding(18).background(NK.card)
-        .clipShape(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rLG, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .padding(18).background(WF.card)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private var exitSection: some View {
@@ -409,10 +409,10 @@ struct KioskPickerEscapeSheet: View {
                 Image(systemName: "rectangle.portrait.and.arrow.right").font(.system(size: 14, weight: .semibold))
                 Text("Exit shared kiosk").font(.system(size: 15, weight: .semibold))
             }
-            .foregroundStyle(NK.primary)
+            .foregroundStyle(WF.primary)
             .frame(maxWidth: .infinity).padding(.vertical, 14)
-            .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.primary.opacity(0.4), lineWidth: 1))
+            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.primary.opacity(0.4), lineWidth: 1))
         }
         .buttonStyle(.plain)
     }

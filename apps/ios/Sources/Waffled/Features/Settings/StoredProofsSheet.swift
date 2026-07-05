@@ -33,14 +33,14 @@ struct StoredProofsSheet: View {
                     .padding(16).padding(.bottom, 110)
                 }
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Stored photos").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
                 ToolbarItem(placement: .primaryAction) {
                     if !proofs.isEmpty {
                         Button("Clear all") { confirmClear = true }
-                            .foregroundStyle(NK.primary).disabled(busy)
+                            .foregroundStyle(WF.primary).disabled(busy)
                     }
                 }
             }
@@ -63,7 +63,7 @@ struct StoredProofsSheet: View {
                     .overlay {
                         AsyncImage(url: MediaURL.resolve(p.proofUrl)) { phase in
                             if let img = phase.image { img.resizable().scaledToFill() }
-                            else { ZStack { NK.panel; ProgressView() } }
+                            else { ZStack { WF.panel; ProgressView() } }
                         }
                     }
                     .clipped()
@@ -72,21 +72,21 @@ struct StoredProofsSheet: View {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("\(p.emoji ?? "🧹") \(p.choreTitle)")
-                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.ink).lineLimit(1)
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                     Text([p.personName, Self.shortDate(p.completedAt)].compactMap { $0 }.joined(separator: " · "))
-                        .font(.system(size: 11.5)).foregroundStyle(NK.ink3).lineLimit(1)
+                        .font(.system(size: 11.5)).foregroundStyle(WF.ink3).lineLimit(1)
                 }
                 Spacer(minLength: 4)
                 Button { deleteOne(p) } label: {
-                    Image(systemName: "trash").font(.system(size: 13, weight: .semibold)).foregroundStyle(NK.primary)
+                    Image(systemName: "trash").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.primary)
                         .frame(width: 30, height: 30)
                 }
                 .buttonStyle(.plain).disabled(busy)
             }
             .padding(10)
         }
-        .background(NK.card).clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
     private func enlargedView(_ p: WaffledAPI.StoredProof) -> some View {
@@ -95,24 +95,24 @@ struct StoredProofsSheet: View {
                 VStack(spacing: 14) {
                     AsyncImage(url: MediaURL.resolve(p.proofUrl)) { phase in
                         if let img = phase.image { img.resizable().scaledToFit() }
-                        else { ZStack { NK.panel; ProgressView() }.frame(height: 240) }
+                        else { ZStack { WF.panel; ProgressView() }.frame(height: 240) }
                     }
                     .frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous).strokeBorder(NK.hair, lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
                     Text("\(p.emoji ?? "🧹") \(p.choreTitle)")
-                        .font(.system(size: 16, weight: .bold)).foregroundStyle(NK.ink)
+                        .font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink)
                         .multilineTextAlignment(.center)
                     Text([p.personName, Self.shortDate(p.completedAt)].compactMap { $0 }.joined(separator: " · "))
-                        .font(.system(size: 13)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 13)).foregroundStyle(WF.ink3)
                     Button { deleteOne(p); enlarged = nil } label: {
-                        Text("Delete this photo").font(.system(size: 14, weight: .bold)).foregroundStyle(NK.primary)
+                        Text("Delete this photo").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.primary)
                     }
                     .buttonStyle(.plain).padding(.top, 4)
                 }
                 .padding(20)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Photo").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { enlarged = nil } } }
         }

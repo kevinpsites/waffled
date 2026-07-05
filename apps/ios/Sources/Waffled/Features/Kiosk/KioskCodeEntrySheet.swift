@@ -28,21 +28,21 @@ struct KioskCodeEntrySheet: View {
                     header
                     fields
                     if let error {
-                        Text(error).font(.system(size: 14, weight: .medium)).foregroundStyle(NK.primary)
+                        Text(error).font(.system(size: 14, weight: .medium)).foregroundStyle(WF.primary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     WaffledPrimaryCTA(
                         label: busy ? "Setting up…" : "Set up this iPad",
-                        tint: NK.primary, isDisabled: !canSubmit,
+                        tint: WF.primary, isDisabled: !canSubmit,
                         action: { Task { await submit() } }
                     )
                     Text("Ask an adult to open Waffled → Settings → Display & Kiosk → “Pair a kiosk” to get a code. It’s one-time and expires in about 10 minutes.")
-                        .font(.system(size: 12.5)).foregroundStyle(NK.ink3)
+                        .font(.system(size: 12.5)).foregroundStyle(WF.ink3)
                         .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(24).frame(maxWidth: 480).frame(maxWidth: .infinity)
             }
-            .background(NK.canvas)
+            .background(WF.canvas)
             .navigationTitle("Shared kiosk").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
@@ -53,10 +53,10 @@ struct KioskCodeEntrySheet: View {
         VStack(spacing: 10) {
             Text("🖥️").font(.system(size: 52))
             Text("Use this iPad as a family hub")
-                .font(.system(size: 22, weight: .bold)).foregroundStyle(NK.ink)
+                .font(.system(size: 22, weight: .bold)).foregroundStyle(WF.ink)
                 .multilineTextAlignment(.center)
             Text("Everyone in the household taps their own face to sign in — no shared password.")
-                .font(.system(size: 14)).foregroundStyle(NK.ink3)
+                .font(.system(size: 14)).foregroundStyle(WF.ink3)
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
         }
         .padding(.top, 8)
@@ -72,17 +72,17 @@ struct KioskCodeEntrySheet: View {
     @ViewBuilder
     private func field(_ title: String, text: Binding<String>, focusedOn: Field, mono: Bool, keyboard: UIKeyboardType = .default) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(NK.ink2)
+            Text(title).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink2)
             TextField("", text: text)
                 .font(mono ? .system(size: 22, weight: .bold, design: .monospaced) : .system(size: 16))
                 .tracking(mono ? 4 : 0)
                 .textInputAutocapitalization(mono ? .characters : .words).autocorrectionDisabled()
                 .keyboardType(keyboard)
                 .focused($focus, equals: focusedOn)
-                .padding(14).background(NK.card)
-                .clipShape(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: NK.rMD, style: .continuous)
-                    .strokeBorder(focus == focusedOn ? NK.primary : NK.hair, lineWidth: focus == focusedOn ? 2 : 1))
+                .padding(14).background(WF.card)
+                .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                    .strokeBorder(focus == focusedOn ? WF.primary : WF.hair, lineWidth: focus == focusedOn ? 2 : 1))
         }
     }
 
