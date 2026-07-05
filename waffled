@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # waffled — one-touch control for the local stack (postgres, api, powersync, caddy).
 #
-#   ./waffled up        start everything (checks prereqs, creates .env on first run, builds
-#                    images, runs migrations), then status + what-to-do-next
+#   ./waffled up        start everything (checks prereqs, creates .env on first run, PULLS
+#                    the published images, runs migrations), then status + what's-next
+#   ./waffled up --build   same, but build the images from source (dev / bleeding-edge)
 #   ./waffled setup     guided: how devices reach this server (localhost / LAN IP / hostname)
 #   ./waffled status    show each container's state + health (✓/✗)
 #   ./waffled down      stop & remove the stack
@@ -174,8 +175,18 @@ case "$cmd" in
   up)
     preflight || exit 1
     ensure_env; export_build_meta
-    echo "${c_dim}Starting stack (building as needed, applying migrations)…${c_reset}"
-    "${DC[@]}" up -d --build "$@"
+    # Default: pull the published images (fast — no local toolchain build) and start.
+    # `./waffled up --build [svc]` (dev/bleeding-edge): build the images from source
+    # instead, stamping the current git SHA into /healthz + /api/health.
+    if [ "${1:-}" = "--build" ]; then
+      shift
+      echo "${c_dim}Building images from source + starting stack (applying migrations)…${c_reset}"
+      "${DC[@]}" up -d --build "$@"
+    else
+      echo "${c_dim}Pulling published images + starting stack (applying migrations)…${c_reset}"
+      "${DC[@]}" pull "$@" || echo "${c_ylw}⚠ Couldn't pull some images — using local/cached copies. Run './waffled up --build' to build from source.${c_reset}"
+      "${DC[@]}" up -d "$@"
+    fi
     echo; status || true
     next_steps
     ;;

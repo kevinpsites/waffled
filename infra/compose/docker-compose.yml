@@ -36,7 +36,7 @@ services:
   # command), so the schema — and the PowerSync publication (migration 0003) — exist
   # before api/powersync start. Idempotent, so it runs harmlessly on every `up`.
   migrate:
-    image: ${WAFFLED_API_IMAGE:-waffled-api:local}
+    image: ${WAFFLED_API_IMAGE:-ghcr.io/kevinpsites/waffled-api:${WAFFLED_VERSION:-latest}}
     build:
       context: ../../apps/api
     container_name: waffled-migrate
@@ -49,9 +49,10 @@ services:
     restart: "no"
 
   api:
-    # Image name so a `docker compose pull` works once images are published to a
-    # registry (GHCR); with build: present, `up --build` builds + tags it locally.
-    image: ${WAFFLED_API_IMAGE:-waffled-api:local}
+    # Default: the published GHCR image at the pinned WAFFLED_VERSION, so `./waffled up`
+    # (and `docker compose pull`) run without a local build. `./waffled up --build` (with
+    # the build: block below) builds from source + tags it under this same name locally.
+    image: ${WAFFLED_API_IMAGE:-ghcr.io/kevinpsites/waffled-api:${WAFFLED_VERSION:-latest}}
     build:
       context: ../../apps/api
       args:
@@ -176,8 +177,9 @@ services:
     restart: unless-stopped
 
   caddy:
-    # Bakes the built web SPA + serves it; image name makes it registry-publishable.
-    image: ${WAFFLED_CADDY_IMAGE:-waffled-caddy:local}
+    # Bakes the built web SPA + serves it; defaults to the published GHCR image at the
+    # pinned WAFFLED_VERSION (build from source with `./waffled up --build`).
+    image: ${WAFFLED_CADDY_IMAGE:-ghcr.io/kevinpsites/waffled-caddy:${WAFFLED_VERSION:-latest}}
     build:
       context: ../..                            # repo root, so the web app is in context
       dockerfile: infra/compose/caddy/Dockerfile
@@ -215,7 +217,7 @@ services:
   #   ./waffled backup            run one now      ./waffled backup list   list dumps
   #   ./waffled restore <file>    restore a dump (destructive; stops the app first)
   backup:
-    image: ${WAFFLED_BACKUP_IMAGE:-waffled-backup:local}
+    image: ${WAFFLED_BACKUP_IMAGE:-ghcr.io/kevinpsites/waffled-backup:${WAFFLED_VERSION:-latest}}
     build:
       context: ./backup
     container_name: waffled-backup
