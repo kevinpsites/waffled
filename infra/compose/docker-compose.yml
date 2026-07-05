@@ -1,4 +1,4 @@
-name: nook
+name: waffled
 
 # Chunk 2.1 — local runtime: Postgres + Caddy.
 # Later chunks add: api, worker, powersync, backup (see ROADMAP.md).
@@ -7,7 +7,7 @@ name: nook
 services:
   postgres:
     image: postgres:16
-    container_name: nook-postgres
+    container_name: waffled-postgres
     command:
       - postgres
       - -c
@@ -36,10 +36,10 @@ services:
   # command), so the schema — and the PowerSync publication (migration 0003) — exist
   # before api/powersync start. Idempotent, so it runs harmlessly on every `up`.
   migrate:
-    image: ${NOOK_API_IMAGE:-nook-api:local}
+    image: ${WAFFLED_API_IMAGE:-waffled-api:local}
     build:
       context: ../../apps/api
-    container_name: nook-migrate
+    container_name: waffled-migrate
     depends_on:
       postgres:
         condition: service_healthy
@@ -51,15 +51,15 @@ services:
   api:
     # Image name so a `docker compose pull` works once images are published to a
     # registry (GHCR); with build: present, `up --build` builds + tags it locally.
-    image: ${NOOK_API_IMAGE:-nook-api:local}
+    image: ${WAFFLED_API_IMAGE:-waffled-api:local}
     build:
       context: ../../apps/api
       args:
-        # Build provenance, surfaced on /healthz + /api/health. ./nook passes the
+        # Build provenance, surfaced on /healthz + /api/health. ./waffled passes the
         # real values; a bare `docker compose build` falls back to dev/empty.
         GIT_SHA: ${GIT_SHA:-dev}
         BUILD_TIME: ${BUILD_TIME:-}
-    container_name: nook-api
+    container_name: waffled-api
     depends_on:
       postgres:
         condition: service_healthy
@@ -70,7 +70,7 @@ services:
       PORT: 3000
       # Local auth (HS256). Leave AUTH0_DOMAIN unset to stay dependency-free.
       # mint-token signs with this same secret, so dev tokens validate.
-      LOCAL_JWT_SECRET: ${LOCAL_JWT_SECRET:-nook-local-dev-secret-change-me}
+      LOCAL_JWT_SECRET: ${LOCAL_JWT_SECRET:-waffled-local-dev-secret-change-me}
       # Session lifetimes (built-in + OIDC login). Empty → code defaults (1h / 60d).
       ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-}
       REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-}
@@ -81,7 +81,7 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       # --- Media/blob uploads (local disk): api writes blobs, Caddy serves them.
-      # Files land in MEDIA_DIR (the nook_media volume) and are served read-only by
+      # Files land in MEDIA_DIR (the waffled_media volume) and are served read-only by
       # Caddy at MEDIA_BASE_URL, so the api stays out of the read path.
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
       MEDIA_DIR: ${MEDIA_DIR:-/data/media}
@@ -112,28 +112,28 @@ services:
       GOOGLE_CALENDAR_REDIRECT_URI: ${GOOGLE_CALENDAR_REDIRECT_URI:-}
       GOOGLE_CALENDAR_SCOPES: ${GOOGLE_CALENDAR_SCOPES:-}
       # --- OpenTelemetry (optional, OFF by default). Set OTEL_EXPORTER_OTLP_ENDPOINT
-      # to export traces+metrics to any OTLP backend. `./nook observability up` runs a
+      # to export traces+metrics to any OTLP backend. `./waffled observability up` runs a
       # local Grafana stack (the `observability` profile below) and sets this for you.
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
-      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-nook-api}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-waffled-api}
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-}
       # Structured logs: LOG_FORMAT=json (default) | pretty; LOG_LEVEL=info default.
       LOG_FORMAT: ${LOG_FORMAT:-json}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      # Lets /api/health + `./nook doctor` expect a recent backup and flag a stale/failed
+      # Lets /api/health + `./waffled doctor` expect a recent backup and flag a stale/failed
       # one. Set BACKUP_ENABLED=false if you remove the `backup` service so it won't nag.
       BACKUP_ENABLED: ${BACKUP_ENABLED:-true}
       # In-app update notifier (Settings → System Health). Checks the latest GitHub
       # release of UPDATE_CHECK_REPO ("owner/name"); unset → no check. Operator
       # kill-switch: UPDATE_CHECK_ENABLED=false (no outbound call at all).
       UPDATE_CHECK_ENABLED: ${UPDATE_CHECK_ENABLED:-true}
-      UPDATE_CHECK_REPO: ${UPDATE_CHECK_REPO:-kevinpsites/nook}
+      UPDATE_CHECK_REPO: ${UPDATE_CHECK_REPO:-kevinpsites/waffled}   # GitHub repo slug for the update notifier
       # --- switch to Auth0 (RS256): set these, then restart the api ---
       # AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       # AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
     volumes:
-      - nook_media:/data/media         # uploaded blobs (read-write); Caddy serves them read-only
+      - waffled_media:/data/media         # uploaded blobs (read-write); Caddy serves them read-only
     ports:
       - "${API_PORT:-3000}:3000"     # direct dev access; also reachable via Caddy /api/*
     healthcheck:
@@ -145,7 +145,7 @@ services:
 
   powersync:
     image: journeyapps/powersync-service:1.22.0
-    container_name: nook-powersync
+    container_name: waffled-powersync
     depends_on:
       postgres:
         condition: service_healthy
@@ -177,11 +177,11 @@ services:
 
   caddy:
     # Bakes the built web SPA + serves it; image name makes it registry-publishable.
-    image: ${NOOK_CADDY_IMAGE:-nook-caddy:local}
+    image: ${WAFFLED_CADDY_IMAGE:-waffled-caddy:local}
     build:
       context: ../..                            # repo root, so the web app is in context
       dockerfile: infra/compose/caddy/Dockerfile
-    container_name: nook-caddy
+    container_name: waffled-caddy
     depends_on:
       postgres:
         condition: service_healthy
@@ -195,7 +195,7 @@ services:
       CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-:80}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro   # web build is baked into the image at /srv
-      - nook_media:/data/media:ro                   # serve uploaded blobs directly (read-only)
+      - waffled_media:/data/media:ro                   # serve uploaded blobs directly (read-only)
       - caddy_data:/data
       - caddy_config:/config
     healthcheck:
@@ -208,17 +208,17 @@ services:
     restart: unless-stopped
 
   # Nightly database (and optional media) backups. On by default, zero-config: dumps
-  # land in the `nook_backups` volume (see BACKUP_HOST_PATH to write to a folder you
+  # land in the `waffled_backups` volume (see BACKUP_HOST_PATH to write to a folder you
   # choose instead, e.g. a mounted drive), pruned after BACKUP_RETENTION_DAYS. Set the
   # BACKUP_S3_* vars to ALSO push each dump offsite to S3 / B2 / R2 / MinIO. Every run
-  # is recorded in backup_runs so Settings → System Health + `./nook doctor` show it.
-  #   ./nook backup            run one now      ./nook backup list   list dumps
-  #   ./nook restore <file>    restore a dump (destructive; stops the app first)
+  # is recorded in backup_runs so Settings → System Health + `./waffled doctor` show it.
+  #   ./waffled backup            run one now      ./waffled backup list   list dumps
+  #   ./waffled restore <file>    restore a dump (destructive; stops the app first)
   backup:
-    image: ${NOOK_BACKUP_IMAGE:-nook-backup:local}
+    image: ${WAFFLED_BACKUP_IMAGE:-waffled-backup:local}
     build:
       context: ./backup
-    container_name: nook-backup
+    container_name: waffled-backup
     depends_on:
       postgres:
         condition: service_healthy
@@ -234,25 +234,25 @@ services:
       BACKUP_INCLUDE_MEDIA: ${BACKUP_INCLUDE_MEDIA:-false}  # also archive uploaded media
       MEDIA_DIR: /data/media
       # Optional offsite copy. Leave BACKUP_S3_BUCKET empty for local-only.
-      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}               # e.g. s3://my-bucket/nook
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}               # e.g. s3://my-bucket/waffled
       BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}           # set for B2/R2/MinIO; empty=AWS
       AWS_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:-}
       AWS_DEFAULT_REGION: ${BACKUP_S3_REGION:-us-east-1}
     volumes:
-      # Default: the nook_backups named volume. Set BACKUP_HOST_PATH=/some/dir to write
+      # Default: the waffled_backups named volume. Set BACKUP_HOST_PATH=/some/dir to write
       # dumps to a host folder of your choice instead (compose treats a path as a bind).
-      - ${BACKUP_HOST_PATH:-nook_backups}:/backups
-      - nook_media:/data/media:ro
+      - ${BACKUP_HOST_PATH:-waffled_backups}:/backups
+      - waffled_media:/data/media:ro
     restart: unless-stopped
 
   # Optional all-in-one local OpenTelemetry backend — Grafana + Prometheus/Mimir +
   # Tempo + Loki in one container. Started only with the `observability` profile
-  # (`./nook observability up`); receives OTLP from the api and gives you Grafana
+  # (`./waffled observability up`); receives OTLP from the api and gives you Grafana
   # dashboards entirely on your machine. Nothing leaves the host.
   lgtm:
     image: grafana/otel-lgtm:latest
-    container_name: nook-lgtm
+    container_name: waffled-lgtm
     profiles: ["observability"]
     ports:
       - "${GRAFANA_PORT:-3001}:3000"   # Grafana UI (api already owns :3000)
@@ -271,8 +271,8 @@ services:
 
 volumes:
   pgdata:
-  nook_media:        # uploaded media blobs — NEVER WIPE (like pgdata)
-  nook_backups:      # nightly DB/media dumps (default target; override via BACKUP_HOST_PATH)
+  waffled_media:        # uploaded media blobs — NEVER WIPE (like pgdata)
+  waffled_backups:      # nightly DB/media dumps (default target; override via BACKUP_HOST_PATH)
   caddy_data:
   caddy_config:
   lgtm_data:         # Grafana/Prometheus/Tempo/Loki state (observability profile)

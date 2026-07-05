@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# One backup run: pg_dump the Nook database (gzipped, plain SQL so restore is a simple
+# One backup run: pg_dump the Waffled database (gzipped, plain SQL so restore is a simple
 # `gunzip | psql`), optionally tar the media dir, optionally upload to S3, prune old
 # local files, and record the outcome in the backup_runs table so `/api/health` and
-# `./nook doctor` can report "last backup: ok/failed, N hours ago".
+# `./waffled doctor` can report "last backup: ok/failed, N hours ago".
 #
 # Intentionally NOT `set -e`: a failure must be recorded in the DB, not crash the loop.
 set -uo pipefail
@@ -11,15 +11,15 @@ BACKUP_DIR="${BACKUP_DIR:-/backups}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"
 INCLUDE_MEDIA="${BACKUP_INCLUDE_MEDIA:-false}"
 MEDIA_DIR="${MEDIA_DIR:-/data/media}"
-S3_BUCKET="${BACKUP_S3_BUCKET:-}"      # e.g. s3://my-bucket/nook  (empty → local only)
+S3_BUCKET="${BACKUP_S3_BUCKET:-}"      # e.g. s3://my-bucket/waffled  (empty → local only)
 S3_ENDPOINT="${BACKUP_S3_ENDPOINT:-}"  # set for B2 / R2 / MinIO; empty → real AWS
 
-log() { echo "[nook-backup] $(date -u +%FT%TZ) $*"; }
+log() { echo "[waffled-backup] $(date -u +%FT%TZ) $*"; }
 now_ms() { echo $(( $(date +%s%N) / 1000000 )); }
 
 mkdir -p "$BACKUP_DIR"
 TS="$(date -u +%Y%m%d-%H%M%S)"
-DUMP_FILE="$BACKUP_DIR/nook-$TS.sql.gz"
+DUMP_FILE="$BACKUP_DIR/waffled-$TS.sql.gz"
 MEDIA_FILE=""
 DEST="local"; [ -n "$S3_BUCKET" ] && DEST="local+s3"
 START_MS=$(now_ms)
@@ -66,7 +66,7 @@ SIZE="$(stat -c %s "$DUMP_FILE" 2>/dev/null || echo 0)"
 # --- Optional media archive ------------------------------------------------------
 if [ "$INCLUDE_MEDIA" = "true" ]; then
   if [ -d "$MEDIA_DIR" ]; then
-    MEDIA_FILE="$BACKUP_DIR/nook-media-$TS.tar.gz"
+    MEDIA_FILE="$BACKUP_DIR/waffled-media-$TS.tar.gz"
     log "archiving media → $MEDIA_FILE"
     tar -czf "$MEDIA_FILE" -C "$MEDIA_DIR" . || { log "media archive failed (continuing with DB backup)"; MEDIA_FILE=""; }
   else
@@ -83,7 +83,7 @@ if [ -n "$S3_BUCKET" ]; then
 fi
 
 # --- Local retention (S3 retention → use a bucket lifecycle rule) -----------------
-find "$BACKUP_DIR" -maxdepth 1 -name 'nook-*.sql.gz'     -type f -mtime "+$RETENTION_DAYS" -delete 2>/dev/null || true
-find "$BACKUP_DIR" -maxdepth 1 -name 'nook-media-*.tar.gz' -type f -mtime "+$RETENTION_DAYS" -delete 2>/dev/null || true
+find "$BACKUP_DIR" -maxdepth 1 -name 'waffled-*.sql.gz'     -type f -mtime "+$RETENTION_DAYS" -delete 2>/dev/null || true
+find "$BACKUP_DIR" -maxdepth 1 -name 'waffled-media-*.tar.gz' -type f -mtime "+$RETENTION_DAYS" -delete 2>/dev/null || true
 
 finish_ok "$SIZE" "$(basename "$DUMP_FILE")"

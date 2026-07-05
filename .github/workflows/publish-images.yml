@@ -1,16 +1,16 @@
-# Build & publish the Nook runtime images to GitHub Container Registry (GHCR).
+# Build & publish the Waffled runtime images to GitHub Container Registry (GHCR).
 #
 # Produces three multi-arch (amd64 + arm64) images that the compose stack can pull
 # instead of building from source:
-#   ghcr.io/kevinpsites/nook-api     (apps/api/Dockerfile)
-#   ghcr.io/kevinpsites/nook-caddy   (infra/compose/caddy/Dockerfile — bakes the web SPA)
-#   ghcr.io/kevinpsites/nook-backup  (infra/compose/backup/Dockerfile — backup sidecar)
+#   ghcr.io/kevinpsites/waffled-api     (apps/api/Dockerfile)
+#   ghcr.io/kevinpsites/waffled-caddy   (infra/compose/caddy/Dockerfile — bakes the web SPA)
+#   ghcr.io/kevinpsites/waffled-backup  (infra/compose/backup/Dockerfile — backup sidecar)
 #
 # To run from these instead of building locally, set in infra/compose/.env:
-#   NOOK_API_IMAGE=ghcr.io/kevinpsites/nook-api:latest
-#   NOOK_CADDY_IMAGE=ghcr.io/kevinpsites/nook-caddy:latest
-#   NOOK_BACKUP_IMAGE=ghcr.io/kevinpsites/nook-backup:latest
-# then `docker compose pull && ./nook up`.
+#   WAFFLED_API_IMAGE=ghcr.io/kevinpsites/waffled-api:latest
+#   WAFFLED_CADDY_IMAGE=ghcr.io/kevinpsites/waffled-caddy:latest
+#   WAFFLED_BACKUP_IMAGE=ghcr.io/kevinpsites/waffled-backup:latest
+# then `docker compose pull && ./waffled up`.
 #
 # Runs ONLY on a version tag (e.g. `git tag v0.1.0 && git push --tags`) or a manual
 # dispatch — NOT on every push to main, to conserve Actions minutes.
@@ -64,7 +64,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           # Owner is whatever account/org this repo lives under; l-cased for GHCR.
-          images: ghcr.io/${{ github.repository_owner }}/nook-${{ matrix.name }}
+          images: ghcr.io/${{ github.repository_owner }}/waffled-${{ matrix.name }}
           # Releases (v* tags) get semver tags + `latest`; manual dispatches get only
           # an sha tag, so a test build never clobbers `latest`.
           tags: |
@@ -86,9 +86,9 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
   # On a version tag, cut a GitHub Release: auto-generated notes + the env template so
-  # operators have a canonical, version-matched starting point. Nook mounts host config
+  # operators have a canonical, version-matched starting point. Waffled mounts host config
   # (Caddyfile, powersync, postgres/init), so the runnable "matched pair" is the tagged
-  # repo itself (`git checkout <tag>` → the compose, configs, and ./nook that match these
+  # repo itself (`git checkout <tag>` → the compose, configs, and ./waffled that match these
   # images) — hence we attach example.env, not a standalone compose.
   release:
     needs: build

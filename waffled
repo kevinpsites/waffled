@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# nook — one-touch control for the local stack (postgres, api, powersync, caddy).
+# waffled — one-touch control for the local stack (postgres, api, powersync, caddy).
 #
-#   ./nook up        start everything (checks prereqs, creates .env on first run, builds
+#   ./waffled up        start everything (checks prereqs, creates .env on first run, builds
 #                    images, runs migrations), then status + what-to-do-next
-#   ./nook setup     guided: how devices reach this server (localhost / LAN IP / hostname)
-#   ./nook status    show each container's state + health (✓/✗)
-#   ./nook down      stop & remove the stack
-#   ./nook restart [svc]   restart all (or one) service
-#   ./nook rebuild [svc]   force a rebuild + recreate (all, or one)
-#   ./nook logs [svc]      follow logs (all, or one)
-#   ./nook migrate   re-apply DB migrations from the host (also run automatically on up)
-#   ./nook backup [list]   run a DB backup now (or list existing dumps)
-#   ./nook restore <file>  restore a dump (DESTRUCTIVE — stops the app, overwrites the DB)
-#   ./nook psql      open a psql shell on the database
-#   ./nook token [sub]     mint a dev JWT for localStorage (default sub: dev|demo)
-#   ./nook doctor    deep health check (db, migrations, jobs, calendar, storage, backup)
-#   ./nook admin [cmd]     operator/break-glass commands (reset-password, list-members,
-#                    make-admin, prune-sessions, …); run './nook admin help' for the list
-#   ./nook observability up|down   run a local Grafana/OTEL stack + point the api at it
-#   ./nook web       run the Vite dev server (HMR) on :5175
+#   ./waffled setup     guided: how devices reach this server (localhost / LAN IP / hostname)
+#   ./waffled status    show each container's state + health (✓/✗)
+#   ./waffled down      stop & remove the stack
+#   ./waffled restart [svc]   restart all (or one) service
+#   ./waffled rebuild [svc]   force a rebuild + recreate (all, or one)
+#   ./waffled logs [svc]      follow logs (all, or one)
+#   ./waffled migrate   re-apply DB migrations from the host (also run automatically on up)
+#   ./waffled backup [list]   run a DB backup now (or list existing dumps)
+#   ./waffled restore <file>  restore a dump (DESTRUCTIVE — stops the app, overwrites the DB)
+#   ./waffled psql      open a psql shell on the database
+#   ./waffled token [sub]     mint a dev JWT for localStorage (default sub: dev|demo)
+#   ./waffled doctor    deep health check (db, migrations, jobs, calendar, storage, backup)
+#   ./waffled admin [cmd]     operator/break-glass commands (reset-password, list-members,
+#                    make-admin, prune-sessions, …); run './waffled admin help' for the list
+#   ./waffled observability up|down   run a local Grafana/OTEL stack + point the api at it
+#   ./waffled web       run the Vite dev server (HMR) on :5175
 #
 # Everything is driven off infra/compose so you never type the long flags.
 set -euo pipefail
@@ -55,7 +55,7 @@ export_build_meta() {
 }
 
 # First-run bootstrap: if there's no .env, copy the example and fill the required
-# secrets with freshly generated values so `./nook up` works on a clean clone with
+# secrets with freshly generated values so `./waffled up` works on a clean clone with
 # zero manual editing. Existing .env files are never touched.
 ensure_env() {
   [ -f "$ENV_FILE" ] && return 0
@@ -95,7 +95,7 @@ status() {
     printf '%s%s %-10s %-10s %s%s\n' "$color" "$mark" "$s" "$state" "$health" "$c_reset"
   done
   [ "$any_fail" -eq 0 ] && echo "${c_grn}All services healthy.${c_reset}" \
-                        || echo "${c_ylw}Some services are not healthy — see 'nook logs <svc>'.${c_reset}"
+                        || echo "${c_ylw}Some services are not healthy — see 'waffled logs <svc>'.${c_reset}"
   return "$any_fail"
 }
 
@@ -133,7 +133,7 @@ preflight() {
     echo "${c_ylw}⚠ openssl not found — secrets can't be auto-generated; set them in infra/compose/.env after first run.${c_reset}"
   fi
   # Port conflicts — only on a cold start (skip if our stack already holds them).
-  if command -v lsof >/dev/null 2>&1 && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^nook-'; then
+  if command -v lsof >/dev/null 2>&1 && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^waffled-'; then
     for pv in "HTTP_PORT:8080:kiosk" "API_PORT:3000:api" "POWERSYNC_PORT:8090:powersync" "POSTGRES_PORT:5432:postgres"; do
       local var="${pv%%:*}" rest="${pv#*:}" def label port
       def="${rest%%:*}"; label="${rest#*:}"
@@ -155,16 +155,16 @@ next_steps() {
   if [ -n "$site" ] && [ "$site" != ":80" ]; then
     url="https://${site#:}"                 # hostname mode (Caddy auto-TLS)
   elif [ -n "$pbu" ]; then
-    url="$pbu"                              # explicit public origin (e.g. LAN, set by ./nook setup)
+    url="$pbu"                              # explicit public origin (e.g. LAN, set by ./waffled setup)
   else
     url="http://localhost:$http_port"
   fi
   echo
-  echo "${c_grn}✅ Nook is up.${c_reset} Open ${c_grn}${url}${c_reset} to finish setup (create your household + admin)."
+  echo "${c_grn}✅ Waffled is up.${c_reset} Open ${c_grn}${url}${c_reset} to finish setup (create your household + admin)."
   if [ "$url" = "http://localhost:$http_port" ]; then
     local ip; ip="$(detect_lan_ip)"
     if [ -n "$ip" ]; then
-      echo "   Using it from a tablet/phone on your network? Run ${c_dim}./nook setup${c_reset} (this machine looks like ${ip})."
+      echo "   Using it from a tablet/phone on your network? Run ${c_dim}./waffled setup${c_reset} (this machine looks like ${ip})."
     fi
   fi
 }
@@ -193,27 +193,27 @@ case "$cmd" in
   backup)
     # Run a backup right now (or list dumps) via the backup sidecar. It has pg_dump,
     # the /backups target, and DATABASE_URL already — no flags to remember.
-    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^nook-backup$'; then
-      echo "${c_red}nook-backup is not running — start it with ./nook up${c_reset}"; exit 2
+    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^waffled-backup$'; then
+      echo "${c_red}waffled-backup is not running — start it with ./waffled up${c_reset}"; exit 2
     fi
     if [ "${1:-}" = "list" ]; then
-      docker exec nook-backup sh -c 'ls -lh /backups/nook-*.sql.gz 2>/dev/null || echo "no backups yet"'
+      docker exec waffled-backup sh -c 'ls -lh /backups/waffled-*.sql.gz 2>/dev/null || echo "no backups yet"'
     else
       echo "${c_dim}Running a backup now…${c_reset}"
-      docker exec nook-backup nook-backup
+      docker exec waffled-backup waffled-backup
     fi
     ;;
   restore)
     file="${1:-}"
     if [ -z "$file" ]; then
-      echo "usage: ./nook restore <file>   (see ./nook backup list for names, e.g. nook-20260701-020000.sql.gz)"; exit 1
+      echo "usage: ./waffled restore <file>   (see ./waffled backup list for names, e.g. waffled-20260701-020000.sql.gz)"; exit 1
     fi
     file="$(basename "$file")"   # accept a bare name or a path; the file lives in /backups
-    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^nook-backup$'; then
-      echo "${c_red}nook-backup is not running — start it with ./nook up${c_reset}"; exit 2
+    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^waffled-backup$'; then
+      echo "${c_red}waffled-backup is not running — start it with ./waffled up${c_reset}"; exit 2
     fi
-    if ! docker exec nook-backup test -f "/backups/$file"; then
-      echo "${c_red}/backups/$file not found. Run './nook backup list'.${c_reset}"; exit 1
+    if ! docker exec waffled-backup test -f "/backups/$file"; then
+      echo "${c_red}/backups/$file not found. Run './waffled backup list'.${c_reset}"; exit 1
     fi
     echo "${c_ylw}This OVERWRITES the current database with $file — all current data is replaced.${c_reset}"
     if [ -t 0 ]; then
@@ -225,7 +225,7 @@ case "$cmd" in
     echo "${c_dim}Restoring…${c_reset}"
     # Plain-SQL dump: the --clean/--if-exists header drops+recreates objects, so piping
     # it back through psql restores in place. --single-transaction → all-or-nothing.
-    docker exec nook-backup sh -c \
+    docker exec waffled-backup sh -c \
       "gunzip -c /backups/$file | psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 --single-transaction"
     echo "${c_dim}Restarting the stack (migrations re-run to catch up an older dump)…${c_reset}"
     export_build_meta; "${DC[@]}" up -d
@@ -239,26 +239,26 @@ case "$cmd" in
     # — Google, AI, OIDC — is configured in the app's Settings, not here.
     ensure_env
     if [ ! -t 0 ]; then
-      echo "${c_ylw}./nook setup is interactive — run it in a terminal.${c_reset}"; exit 1
+      echo "${c_ylw}./waffled setup is interactive — run it in a terminal.${c_reset}"; exit 1
     fi
     http_port="$(env_val HTTP_PORT)"; http_port="${http_port:-8080}"
     ps_port="$(env_val POWERSYNC_PORT)"; ps_port="${ps_port:-8090}"
     ip="$(detect_lan_ip)"
-    echo "How will devices (tablets, phones, other computers) reach this Nook server?"
+    echo "How will devices (tablets, phones, other computers) reach this Waffled server?"
     echo "  1) Just this computer (localhost)"
     if [ -n "$ip" ]; then
       echo "  2) Other devices on my network      (detected: ${c_grn}$ip${c_reset})"
     else
       echo "  2) Other devices on my network      (you'll enter the IP)"
     fi
-    echo "  3) A hostname with automatic HTTPS  (e.g. nook.example.com)"
+    echo "  3) A hostname with automatic HTTPS  (e.g. waffled.example.com)"
     printf "Choose [1/2/3]: "; read -r choice
     case "$choice" in
       1)
         set_env_var PUBLIC_BASE_URL ""
         set_env_var POWERSYNC_PUBLIC_URL "http://localhost:$ps_port"
         set_env_var CADDY_SITE_ADDRESS ":80"
-        echo "${c_grn}Set for localhost.${c_reset} Run ${c_dim}./nook up${c_reset}, then open http://localhost:$http_port"
+        echo "${c_grn}Set for localhost.${c_reset} Run ${c_dim}./waffled up${c_reset}, then open http://localhost:$http_port"
         ;;
       2)
         addr="$ip"
@@ -268,33 +268,33 @@ case "$cmd" in
         set_env_var PUBLIC_BASE_URL "http://$addr:$http_port"
         set_env_var POWERSYNC_PUBLIC_URL "http://$addr:$ps_port"
         set_env_var CADDY_SITE_ADDRESS ":80"
-        echo "${c_grn}Set for your network ($addr).${c_reset} Run ${c_dim}./nook up${c_reset}, then open http://$addr:$http_port on any device."
+        echo "${c_grn}Set for your network ($addr).${c_reset} Run ${c_dim}./waffled up${c_reset}, then open http://$addr:$http_port on any device."
         echo "${c_dim}Tip: reserve a static IP for this machine in your router so the address doesn't drift.${c_reset}"
         ;;
       3)
-        printf "Hostname (e.g. nook.example.com): "; read -r host
+        printf "Hostname (e.g. waffled.example.com): "; read -r host
         [ -n "$host" ] || { echo "${c_red}No hostname given — aborting.${c_reset}"; exit 1; }
         set_env_var CADDY_SITE_ADDRESS "$host"
         set_env_var PUBLIC_BASE_URL "https://$host"
         set_env_var POWERSYNC_PUBLIC_URL "https://$host:$ps_port"
-        echo "${c_grn}Set for https://$host.${c_reset} Enable the 443 mapping in infra/compose/docker-compose.yml, point DNS at this machine, then run ${c_dim}./nook up${c_reset}."
+        echo "${c_grn}Set for https://$host.${c_reset} Enable the 443 mapping in infra/compose/docker-compose.yml, point DNS at this machine, then run ${c_dim}./waffled up${c_reset}."
         echo "${c_ylw}Note: PowerSync serves on :$ps_port — for public HTTPS you'll also need to expose/proxy that port with TLS (see docs/TROUBLESHOOTING.md).${c_reset}"
         ;;
-      *) echo "${c_red}Unknown choice — run ./nook setup again.${c_reset}"; exit 1 ;;
+      *) echo "${c_red}Unknown choice — run ./waffled setup again.${c_reset}"; exit 1 ;;
     esac
     ;;
   psql)
-    docker exec -it nook-postgres psql -U "$(env_val POSTGRES_USER)" -d "$(env_val POSTGRES_DB)" ;;
+    docker exec -it waffled-postgres psql -U "$(env_val POSTGRES_USER)" -d "$(env_val POSTGRES_DB)" ;;
   token)
     sub="${1:-dev|demo}"
-    docker exec nook-api node dist/mint-token.js --sub "$sub" ;;
+    docker exec waffled-api node dist/mint-token.js --sub "$sub" ;;
   doctor)
     # Deep health from inside the api container (no token/HTTP needed), then the
     # container-health table. Non-zero exit if anything is degraded/down.
-    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^nook-api$'; then
-      echo "${c_red}nook-api is not running — start it with ./nook up${c_reset}"; exit 2
+    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^waffled-api$'; then
+      echo "${c_red}waffled-api is not running — start it with ./waffled up${c_reset}"; exit 2
     fi
-    hc=0; docker exec nook-api node dist/health-cli.js --pretty || hc=$?
+    hc=0; docker exec waffled-api node dist/health-cli.js --pretty || hc=$?
     echo
     sc=0; status || sc=$?
     [ "$hc" -gt "$sc" ] && exit "$hc" || exit "$sc"
@@ -303,11 +303,11 @@ case "$cmd" in
     # Operator/break-glass commands, run inside the api container (reaches the DB +
     # encryption key directly — no token/HTTP). Allocate a TTY when we have one so the
     # destructive-command confirmation prompts work.
-    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^nook-api$'; then
-      echo "${c_red}nook-api is not running — start it with ./nook up${c_reset}"; exit 2
+    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^waffled-api$'; then
+      echo "${c_red}waffled-api is not running — start it with ./waffled up${c_reset}"; exit 2
     fi
     if [ -t 0 ]; then ti=(-it); else ti=(-i); fi
-    docker exec "${ti[@]}" nook-api node dist/admin.js "$@"
+    docker exec "${ti[@]}" waffled-api node dist/admin.js "$@"
     ;;
   observability)
     ensure_env
@@ -326,12 +326,12 @@ case "$cmd" in
         "${DC[@]}" up -d api
         echo "${c_grn}Observability OFF (api restarted without an OTLP endpoint; lgtm stopped).${c_reset}"
         ;;
-      *) echo "usage: ./nook observability up|down"; exit 1 ;;
+      *) echo "usage: ./waffled observability up|down"; exit 1 ;;
     esac
     ;;
   web)
     # Vite dev server with HMR on :5173 (separate from the stack's :8080 build).
     ( cd "$ROOT/apps/web" && npm run dev ) ;;
   help|-h|--help|*)
-    awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$ROOT/nook" ;;
+    awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$ROOT/waffled" ;;
 esac

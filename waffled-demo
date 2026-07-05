@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Throwaway isolated demo stack — a second, fully separate Nook (project "nook-demo")
+# Throwaway isolated demo stack — a second, fully separate Waffled (project "waffled-demo")
 # with its own DB/media volumes and ports, for trying the first-run setup wizard and a
-# fresh household WITHOUT touching the real `nook` stack or its data.
+# fresh household WITHOUT touching the real `waffled` stack or its data.
 #
-#   ./nook-demo up      build + start (empty DB → first-run wizard at http://localhost:8081)
-#   ./nook-demo status  container health
-#   ./nook-demo logs    follow logs (optionally a service)
-#   ./nook-demo psql    psql into the demo DB
-#   ./nook-demo down    stop (KEEP volumes)
-#   ./nook-demo nuke    stop + DELETE this stack's volumes (safe: only nook-demo_*)
+#   ./waffled-demo up      build + start (empty DB → first-run wizard at http://localhost:8081)
+#   ./waffled-demo status  container health
+#   ./waffled-demo logs    follow logs (optionally a service)
+#   ./waffled-demo psql    psql into the demo DB
+#   ./waffled-demo down    stop (KEEP volumes)
+#   ./waffled-demo nuke    stop + DELETE this stack's volumes (safe: only waffled-demo_*)
 #
-# The real stack stays up the whole time; this never touches nook_pgdata / nook_media.
+# The real stack stays up the whole time; this never touches waffled_pgdata / waffled_media.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DC=(docker compose -p nook-demo \
+DC=(docker compose -p waffled-demo \
   -f "$ROOT/infra/compose/docker-compose.yml" \
   -f "$ROOT/infra/compose/docker-compose.demo.yml" \
   --env-file "$ROOT/infra/compose/.env.demo")
@@ -30,9 +30,9 @@ case "$cmd" in
     ;;
   status) "${DC[@]}" ps ;;
   logs)   "${DC[@]}" logs -f "$@" ;;
-  psql)   docker exec -it nook-demo-postgres psql -U nook -d nook ;;
+  psql)   docker exec -it waffled-demo-postgres psql -U waffled -d waffled ;;
   exec)   "${DC[@]}" exec "$@" ;;
   down)   "${DC[@]}" down "$@" ;;
-  nuke)   "${DC[@]}" down -v "$@"; echo "Removed nook-demo containers + volumes." ;;
+  nuke)   "${DC[@]}" down -v "$@"; echo "Removed waffled-demo containers + volumes." ;;
   *) grep -E '^#( |$)' "$0" | sed -E 's/^# ?//' ;;
 esac

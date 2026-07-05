@@ -1,16 +1,16 @@
 # Override for the THROWAWAY isolated demo stack.
-# Used as: docker compose -p nook-demo -f docker-compose.yml -f docker-compose.demo.yml --env-file .env.demo ...
+# Used as: docker compose -p waffled-demo -f docker-compose.yml -f docker-compose.demo.yml --env-file .env.demo ...
 # Sole purpose: rename the hardcoded container_names so they don't collide with the
-# real `nook` stack's containers on the same Docker daemon. Volumes are already
+# real `waffled` stack's containers on the same Docker daemon. Volumes are already
 # isolated automatically (Docker prefixes named volumes with the project name).
 services:
   postgres:
-    container_name: nook-demo-postgres
+    container_name: waffled-demo-postgres
   migrate:
-    container_name: nook-demo-migrate
+    container_name: waffled-demo-migrate
   api:
-    container_name: nook-demo-api
+    container_name: waffled-demo-api
   powersync:
-    container_name: nook-demo-powersync
+    container_name: waffled-demo-powersync
   caddy:
-    container_name: nook-demo-caddy
+    container_name: waffled-demo-caddy

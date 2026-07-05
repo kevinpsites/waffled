@@ -1,4 +1,4 @@
-# Nook backup sidecar — scheduled Postgres (and optional media) backups, local + S3.
+# Waffled backup sidecar — scheduled Postgres (and optional media) backups, local + S3.
 #
 # Based on the same postgres major as the DB so `pg_dump` matches the server exactly
 # (a mismatched pg_dump refuses to dump a newer server). Adds:
@@ -10,9 +10,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends awscli ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY backup.sh     /usr/local/bin/nook-backup
-COPY entrypoint.sh /usr/local/bin/nook-backup-entrypoint
-RUN chmod +x /usr/local/bin/nook-backup /usr/local/bin/nook-backup-entrypoint
+COPY backup.sh     /usr/local/bin/waffled-backup
+COPY entrypoint.sh /usr/local/bin/waffled-backup-entrypoint
+RUN chmod +x /usr/local/bin/waffled-backup /usr/local/bin/waffled-backup-entrypoint
 
-# Runs the scheduler loop; `docker exec nook-backup nook-backup` triggers one on demand.
-ENTRYPOINT ["/usr/local/bin/nook-backup-entrypoint"]
+# Runs the scheduler loop; `docker exec waffled-backup waffled-backup` triggers one on demand.
+ENTRYPOINT ["/usr/local/bin/waffled-backup-entrypoint"]

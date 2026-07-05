@@ -1,4 +1,4 @@
-# Nook API — TS bundled to JS with esbuild. Multi-stage: build, then a lean runtime.
+# Waffled API — TS bundled to JS with esbuild. Multi-stage: build, then a lean runtime.
 # esbuild bundles deps into dist/, so the runtime carries no node_modules EXCEPT the
 # OpenTelemetry packages (kept external on purpose — see esbuild.config.mjs).
 
@@ -24,7 +24,7 @@ FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
-# Build provenance — surfaced on /healthz + /api/health (passed by ./nook / CI).
+# Build provenance — surfaced on /healthz + /api/health (passed by ./waffled / CI).
 ARG GIT_SHA=dev
 ARG BUILD_TIME=
 ENV GIT_SHA=$GIT_SHA

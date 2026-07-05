@@ -14,7 +14,7 @@
 	# (POWERSYNC_PORT, default 8090); clients get its URL from /api/powersync/token.
 	# Front it with its own hostname when public ingress lands (M7).
 
-	# Uploaded media blobs. The api writes to the nook_media volume (/data/media);
+	# Uploaded media blobs. The api writes to the waffled_media volume (/data/media);
 	# Caddy serves it read-only so the api stays out of the read path. handle_path
 	# strips the /media prefix, so /media/<household>/<hex>.jpg → /data/media/<household>/<hex>.jpg.
 	# Must precede the SPA catch-all below so these requests don't fall through to index.html.
