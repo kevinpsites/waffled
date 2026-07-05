@@ -6,25 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!--
-  RELEASING: no version has been tagged yet. Everything that has shipped so far
-  lives under [Unreleased] below. To cut the first release:
-
-    1. Rename `## [Unreleased]` to `## [0.1.0] - YYYY-MM-DD` (today's date).
-    2. Add a fresh, empty `## [Unreleased]` section above it (with the empty
-       category headings) for the next cycle.
-    3. Commit, then `git tag v0.1.0 && git push origin v0.1.0`.
-       The tag triggers .github/workflows/publish-images.yml, which builds and
-       pushes the multi-arch waffled-api / waffled-caddy images to GHCR
-       (semver + `latest` tags).
-    4. Paste this section into the GitHub Release notes.
-
-  See "Release process" at the bottom for the full workflow and the
-  commit-prefix -> category mapping.
+  RELEASING: add bullets under [Unreleased] as work lands, then cut a versioned
+  release by following "Release process" at the bottom (rename the section, bump
+  the versions, tag, push). The `v*` tag builds and publishes the GHCR images.
 -->
 
 ## [Unreleased]
 
-Everything below is the initial feature surface, targeted for the first tag
+### Added
+
+### Changed
+
+### Fixed
+
+## [0.1.0] - 2026-07-05
+
+Everything below is the initial feature surface, shipped in the first tag
 (**v0.1.0**). It covers the web/kiosk app, the native iOS/iPadOS app, and the
 self-hosted server + tooling. Grouped by Keep a Changelog category; most-significant
 user-facing features first within each.
@@ -44,9 +41,10 @@ user-facing features first within each.
 - **In-container migrations** as a one-shot compose service (the API and PowerSync
   gate on it), so the schema and PowerSync publication exist before anything starts;
   idempotent on every `up`.
-- **GHCR multi-arch images** (`waffled-api`, `waffled-caddy`, amd64 + arm64) published on a
-  `v*` release tag; point `WAFFLED_API_IMAGE` / `WAFFLED_CADDY_IMAGE` at the tags and
-  `docker compose pull` to run without a local build.
+- **Prebuilt GHCR images by default.** `./waffled up` now **pulls** the published multi-arch
+  (`waffled-api` / `waffled-caddy` / `waffled-backup`, amd64 + arm64) images pinned to
+  `WAFFLED_VERSION`, so a fresh clone starts without a local toolchain build. `./waffled up
+  --build` builds from source (dev / bleeding-edge) instead. Images publish on a `v*` tag.
 - **Operator CLI** (`./waffled admin …`) for break-glass and recovery without the UI:
   reset-password, list/make/revoke-admin, password-login on/off, clear-calendar-error,
   prune-sessions, regenerate-powersync-key, list/delete-household, add-member,
@@ -324,11 +322,15 @@ tests, tooling, and refactors with no user-visible effect).
 **To cut a release:**
 1. Rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`.
 2. Add a fresh, empty `## [Unreleased]` section above it (with the category headings).
-3. Commit, then tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+3. Bump the version to match the tag in all three places so the repo, the published
+   images, and a fresh clone's generated `.env` agree: `apps/api/package.json`,
+   `apps/web/package.json`, and **`WAFFLED_VERSION`** in `infra/compose/.env.example`
+   (the pinned GHCR image tag that `./waffled up` pulls).
+4. Commit, then tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
    The `v*` tag triggers [`.github/workflows/publish-images.yml`](.github/workflows/publish-images.yml),
-   which builds and pushes the multi-arch `waffled-api` / `waffled-caddy` images to GHCR
-   (semver + `major.minor` + `latest` tags).
-4. Paste the released section into the GitHub Release notes for the tag.
+   which builds and pushes the multi-arch `waffled-api` / `waffled-caddy` / `waffled-backup`
+   images to GHCR (semver + `major.minor` + `latest` tags).
+5. Paste the released section into the GitHub Release notes for the tag.
 
 **Versioning** follows [SemVer](https://semver.org/): breaking API/data-model or
 self-host changes bump **MAJOR**, backward-compatible features bump **MINOR**, and
@@ -350,8 +352,5 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/HEAD
-<!-- On first release, replace the line above with:
-[Unreleased]: https://github.com/<owner>/waffled/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/<owner>/waffled/releases/tag/v0.1.0
--->
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/kevinpsites/waffled/releases/tag/v0.1.0
