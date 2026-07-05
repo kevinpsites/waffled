@@ -10,8 +10,8 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 
-const SECRET = 'nook-local-dev-secret-change-me'
-const HH_CLAIM = 'https://nook.app/household_id'
+const SECRET = 'waffled-local-dev-secret-change-me'
+const HH_CLAIM = 'https://waffled.app/household_id'
 
 let pg: StartedPostgreSqlContainer
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -1,4 +1,4 @@
-// Nook kiosk service worker (roadmap 7.1). Hand-rolled (no build plugin) so the
+// Waffled kiosk service worker (roadmap 7.1). Hand-rolled (no build plugin) so the
 // kiosk survives backend blips and brief network drops by serving the last-known
 // app shell, hashed assets, and the most recent successful /api GET responses.
 //
@@ -14,7 +14,7 @@
 // reflects the change — SWR returns the page a stale copy and only refreshes its
 // own cache, which made "mutate then refetch" show old data.
 
-const VERSION = 'nook-v4'
+const VERSION = 'waffled-v1'
 const SHELL = `${VERSION}-shell`
 const ASSETS = `${VERSION}-assets`
 const API = `${VERSION}-api`

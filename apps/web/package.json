@@ -1,9 +1,9 @@
 {
-  "name": "@nook/web",
+  "name": "@waffled/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Nook web app + counter-kiosk (Vite + React + TS). Static SPA served by Caddy/CloudFront.",
+  "description": "Waffled web app + counter-kiosk (Vite + React + TS). Static SPA served by Caddy/CloudFront.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

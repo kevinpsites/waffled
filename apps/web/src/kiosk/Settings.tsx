@@ -262,7 +262,7 @@ function ApiKeysPanel() {
   return (
     <div className="set-panel">
       <div className="set-head">
-        <div className="nk-serif set-head-t">API Keys</div>
+        <div className="wf-serif set-head-t">API Keys</div>
         <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}>+ New key</button>
       </div>
       <div className="tiny muted" style={{ fontWeight: 600, margin: '-6px 2px 16px', lineHeight: 1.45 }}>
@@ -285,7 +285,7 @@ function ApiKeysPanel() {
       {keys == null ? (
         <div className="tiny muted" style={{ fontWeight: 600, padding: 8 }}>Loading…</div>
       ) : keys.length === 0 ? (
-        <div className="tiny muted" style={{ fontWeight: 600, padding: '14px 2px' }}>No API keys yet. Create one to let an outside app reach Kinnook.</div>
+        <div className="tiny muted" style={{ fontWeight: 600, padding: '14px 2px' }}>No API keys yet. Create one to let an outside app reach Waffled.</div>
       ) : (
         <div className="apikey-list">
           {keys.map((k) => (
@@ -367,7 +367,7 @@ function NewApiKeyModal({ catalog, onClose, onCreated }: {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>New API key</div>
+        <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>New API key</div>
         <label className="pantry-field"><span>Name</span>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Home Assistant" autoFocus />
         </label>
@@ -434,7 +434,7 @@ function SystemHealthPanel() {
   return (
     <div className="set-panel">
       <div className="set-head">
-        <div className="nk-serif set-head-t">System Health</div>
+        <div className="wf-serif set-head-t">System Health</div>
         {report && (
           <span className={`health-badge health-${report.status} health-badge-lg`} title={`Overall: ${report.status}`}>
             {HEALTH_ICON[report.status]} {report.status.toUpperCase()}
@@ -442,7 +442,7 @@ function SystemHealthPanel() {
         )}
       </div>
       <div className="tiny muted" style={{ fontWeight: 600, margin: '-6px 2px 14px' }}>
-        Live status of the self-hosted stack. Same data as <code>./nook doctor</code> in a terminal.
+        Live status of the self-hosted stack. Same data as <code>./waffled doctor</code> in a terminal.
       </div>
       {upd && <UpdateBanner upd={upd} onToggle={toggleUpd} toggling={togglingUpd} />}
       {!report ? (
@@ -497,7 +497,7 @@ function UpdateBanner({ upd, onToggle, toggling }: { upd: UpdateInfo; onToggle: 
             <>
               <div className="card-h" style={{ margin: 0 }}>Update checks off</div>
               <div className="tiny muted" style={{ fontWeight: 600 }}>
-                {envOff ? 'Disabled by the operator (UPDATE_CHECK_ENABLED).' : "Kinnook won't check GitHub for new releases."}
+                {envOff ? 'Disabled by the operator (UPDATE_CHECK_ENABLED).' : "Waffled won't check GitHub for new releases."}
               </div>
             </>
           )}
@@ -582,7 +582,7 @@ function MyProfilePanel() {
   return (
     <div className="set-panel">
       <div className="set-head">
-        <div className="nk-serif set-head-t">My Profile</div>
+        <div className="wf-serif set-head-t">My Profile</div>
         <div className="tiny muted" style={{ fontWeight: 600 }}>How you appear on the kiosk</div>
       </div>
 
@@ -702,7 +702,7 @@ function MyAccountPanel() {
   return (
     <div className="set-panel">
       <div className="set-head">
-        <div className="nk-serif set-head-t">My Account</div>
+        <div className="wf-serif set-head-t">My Account</div>
         <div className="tiny muted" style={{ fontWeight: 600 }}>Login &amp; security</div>
       </div>
 
@@ -835,7 +835,7 @@ function FamilyPanel() {
   return (
     <div className="set-panel">
       <div className="set-head">
-        <div className="nk-serif set-head-t">Family &amp; People</div>
+        <div className="wf-serif set-head-t">Family &amp; People</div>
         <div className="tiny muted" style={{ fontWeight: 600 }}>{members.length} {members.length === 1 ? 'person' : 'people'}</div>
       </div>
 
@@ -941,7 +941,7 @@ function LearnedMatches() {
     <div className="set-card" style={{ marginTop: 18 }}>
       <div className="set-row2-t" style={{ marginBottom: 4 }}>Smart matching</div>
       <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 12 }}>
-        Words Kinnook has learned to link to a goal, from the events you’ve linked. Remove any that look wrong.
+        Words Waffled has learned to link to a goal, from the events you’ve linked. Remove any that look wrong.
       </div>
       {groups.length === 0 ? (
         <div className="tiny muted" style={{ fontWeight: 600 }}>
@@ -1028,7 +1028,7 @@ function AiPanel() {
   return (
     <div className="set-panel">
       <div className="set-head">
-        <div className="nk-serif set-head-t">AI &amp; Capture</div>
+        <div className="wf-serif set-head-t">AI &amp; Capture</div>
         <div className="tiny muted" style={{ fontWeight: 600 }}>Powers the “Add anything” bar</div>
       </div>
 
@@ -1195,13 +1195,13 @@ function MealsPanel() {
   return (
     <div className="set-panel">
       <div className="set-head" style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-        <div className="nk-serif set-head-t">Meals</div>
+        <div className="wf-serif set-head-t">Meals</div>
         {savedFlash && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved · meals updated</span>}
         <span className="tiny muted" style={{ marginLeft: 'auto', fontWeight: 600 }}>Changes save automatically</span>
       </div>
 
       <div className="set-card">
-        <SettingRow icon="📅" title="Add planned meals to the calendar" sub="Each meal you plan shows on the Kinnook calendar, linked to its recipe.">
+        <SettingRow icon="📅" title="Add planned meals to the calendar" sub="Each meal you plan shows on the Waffled calendar, linked to its recipe.">
           <input type="checkbox" className="set-check" checked={cfg.addToCalendar} onChange={(e) => update({ addToCalendar: e.target.checked })} />
         </SettingRow>
         <SettingRow icon="🔄" title="Sync them to Google Calendar" sub="Also push meal events to the calendar below, so they show on everyone’s phones.">
@@ -1266,7 +1266,7 @@ function isReadOnly(accessRole: string | null): boolean {
 }
 
 // Calendars: connect Google accounts, map each calendar to a person (color/owner),
-// toggle which ones Kinnook syncs, and pull events on demand. Connect navigates to
+// toggle which ones Waffled syncs, and pull events on demand. Connect navigates to
 // Google's consent screen; the api callback redirects back here when it's done.
 function CalendarsPanel() {
   const [status, setStatus] = useState<CalendarStatus | null>(null)
@@ -1393,7 +1393,7 @@ function CalendarsPanel() {
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
-        <label className="cal-sync" title="Sync this calendar into Kinnook">
+        <label className="cal-sync" title="Sync this calendar into Waffled">
           <input type="checkbox" checked={cal.selected} onChange={() => toggleSelected(cal)} />
           Sync
         </label>
@@ -1404,7 +1404,7 @@ function CalendarsPanel() {
   if (!status.configured) {
     return (
       <div className="set-panel">
-        <div className="set-head"><div className="nk-serif set-head-t">Calendars</div></div>
+        <div className="set-head"><div className="wf-serif set-head-t">Calendars</div></div>
         <div className="set-card" style={{ padding: 22 }}>
           <div className="muted" style={{ fontWeight: 600 }}>
             Google Calendar isn’t configured on the server yet. Set <code>GOOGLE_CLIENT_ID</code>,{' '}
@@ -1419,7 +1419,7 @@ function CalendarsPanel() {
   return (
     <div className="set-panel">
       <div className="set-head">
-        <div className="nk-serif set-head-t">Calendars</div>
+        <div className="wf-serif set-head-t">Calendars</div>
         {status.connected && (
           <button type="button" className="btn btn-primary" onClick={syncNow} disabled={syncing}>
             {syncing ? 'Syncing…' : '↻ Sync now'}
@@ -1433,7 +1433,7 @@ function CalendarsPanel() {
         <div className="set-card" style={{ padding: 22 }}>
           <div className="set-row2-t" style={{ marginBottom: 6 }}>Connect a Google account</div>
           <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 16 }}>
-            Bring your family’s Google calendars into Kinnook. You’ll pick which ones sync and who each one belongs to.
+            Bring your family’s Google calendars into Waffled. You’ll pick which ones sync and who each one belongs to.
           </div>
           <button type="button" className="btn btn-primary" onClick={connect} disabled={connecting}>
             {connecting ? 'Opening Google…' : 'Connect Google Calendar'}
@@ -1575,7 +1575,7 @@ function Placeholder({ tab }: { tab: string }) {
   return (
     <div className="set-panel">
       <div className="set-head">
-        <div className="nk-serif set-head-t">{p.title}</div>
+        <div className="wf-serif set-head-t">{p.title}</div>
       </div>
       <div className="set-card" style={{ padding: 22 }}>
         <div className="muted" style={{ fontWeight: 600 }}>{p.note}</div>
@@ -1689,7 +1689,7 @@ function ChoreProofCard() {
     <div className="set-card" style={{ padding: 18, marginTop: 14 }}>
       <div className="card-h" style={{ marginBottom: 4 }}>Photo proof</div>
       <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
-        Some chores require a photo to complete. These are quick proof shots, not memories — Kinnook deletes them automatically after the chore is settled (a note that a photo was attached stays). Rejected chores’ photos are removed right away.
+        Some chores require a photo to complete. These are quick proof shots, not memories — Waffled deletes them automatically after the chore is settled (a note that a photo was attached stays). Rejected chores’ photos are removed right away.
       </div>
       <SettingRow icon="📸" title="Keep proof photos for" sub={sub}>
         <select className="sel" value={ttl ?? 3} disabled={ttl === null || saving}
@@ -1757,7 +1757,7 @@ function ChoreProofsDrawer({
         <div className="proof-drawer" role="dialog" aria-label="Stored proof photos" onClick={(e) => e.stopPropagation()}>
           <div className="proof-drawer-head">
             <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={onClose}>‹ Back</button>
-            <div className="nk-serif">Stored proof photos</div>
+            <div className="wf-serif">Stored proof photos</div>
           </div>
           <div className="proof-drawer-body">
             <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
@@ -1831,7 +1831,7 @@ function RewardsSettingsPanel() {
   return (
     <div className="set-panel">
       <div className="set-head">
-        <div className="nk-serif set-head-t">Chores &amp; Rewards</div>
+        <div className="wf-serif set-head-t">Chores &amp; Rewards</div>
         <div className="tiny muted" style={{ fontWeight: 600 }}>The currencies your family earns &amp; spends</div>
       </div>
       {/* Economy widget — the currencies a family earns/spends and the trades
@@ -1917,7 +1917,7 @@ function ConversionsSection({ currencies }: { currencies: Currency[] }) {
 }
 
 // Sign out — clears the local session (and revokes the refresh token server-side),
-// which fires nook:auth-changed and drops the kiosk back to the Login screen.
+// which fires waffled:auth-changed and drops the kiosk back to the Login screen.
 // Tap-to-confirm so a stray touch on the wall-mounted kiosk doesn't sign everyone out.
 function SignOutButton({ className }: { className?: string }) {
   const [confirm, setConfirm] = useState(false)
@@ -1938,7 +1938,7 @@ function SignOutButton({ className }: { className?: string }) {
   )
 }
 
-// About / account — what this Kinnook is, plus the sign-out control. Replaces the old
+// About / account — what this Waffled is, plus the sign-out control. Replaces the old
 // placeholder now that real auth exists.
 // A pill toggle switch (replaces the bare checkbox for on/off settings).
 function Switch({ checked, disabled, onChange, ariaLabel }: { checked: boolean; disabled?: boolean; onChange: (v: boolean) => void; ariaLabel: string }) {
@@ -1978,7 +1978,7 @@ function ModulesPanel() {
   return (
     <div className="set-panel">
       <div className="set-head">
-        <div className="nk-serif set-head-t">Modules</div>
+        <div className="wf-serif set-head-t">Modules</div>
         <div className="set-head-sub">Optional features for your household — turn on just what you want.</div>
       </div>
       <div className="set-modules">
@@ -2240,9 +2240,9 @@ function AboutPanel() {
   const { household } = useHousehold()
   return (
     <div className="set-panel">
-      <div className="set-head"><div className="nk-serif set-head-t">About</div></div>
+      <div className="set-head"><div className="wf-serif set-head-t">About</div></div>
       <div className="set-card" style={{ padding: 22 }}>
-        <div className="set-row2-t" style={{ marginBottom: 4 }}>Kinnook — Family Hub</div>
+        <div className="set-row2-t" style={{ marginBottom: 4 }}>Waffled — Family Hub</div>
         <div className="tiny muted" style={{ fontWeight: 600 }}>
           Self-hosted{household?.name ? ` · ${household.name}` : ''}. Version and storage info land here.
         </div>
@@ -2290,13 +2290,13 @@ function HouseholdsPanel() {
 
   return (
     <div className="set-panel">
-      <div className="set-head"><div className="nk-serif set-head-t">Households</div></div>
+      <div className="set-head"><div className="wf-serif set-head-t">Households</div></div>
       <div className="set-card" style={{ padding: 22 }}>
         <div className="set-row2-t" style={{ marginBottom: 4 }}>Your households</div>
         <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 16 }}>
           {soloAndNoInvites
             ? 'You belong to one household. Invitations to join others will show up here.'
-            : 'Switch between the households you belong to. Switching reloads Kinnook for that family.'}
+            : 'Switch between the households you belong to. Switching reloads Waffled for that family.'}
         </div>
         {memberships.map((m) => {
           const current = m.householdId === household?.id
@@ -2366,7 +2366,7 @@ function SecurityPanel() {
     authApi.getConfig().then(hydrate).catch(() => setForbidden(true))
   }, [])
 
-  if (forbidden) return <div className="set-panel"><div className="set-head"><div className="nk-serif set-head-t">Sign-in &amp; Security</div></div><div className="set-card" style={{ padding: 22 }}><div className="muted" style={{ fontWeight: 600 }}>Only an admin can manage sign-in settings.</div></div></div>
+  if (forbidden) return <div className="set-panel"><div className="set-head"><div className="wf-serif set-head-t">Sign-in &amp; Security</div></div><div className="set-card" style={{ padding: 22 }}><div className="muted" style={{ fontWeight: 600 }}>Only an admin can manage sign-in settings.</div></div></div>
   if (!cfg) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
 
   async function test() {
@@ -2414,7 +2414,7 @@ function SecurityPanel() {
   return (
     <div className="set-panel">
       <div className="set-head" style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-        <div className="nk-serif set-head-t">Sign-in &amp; Security</div>
+        <div className="wf-serif set-head-t">Sign-in &amp; Security</div>
         {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
       </div>
 
@@ -2434,13 +2434,13 @@ function SecurityPanel() {
         <div className="sec-form">
           <label className="auth-label">Issuer URL</label>
           <div style={{ display: 'flex', gap: 8 }}>
-            <input className="set-inline-input" style={{ flex: 1, width: 'auto' }} value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="https://auth.example.com/application/o/nook/" />
+            <input className="set-inline-input" style={{ flex: 1, width: 'auto' }} value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="https://auth.example.com/application/o/waffled/" />
             <button type="button" className="btn btn-ghost" onClick={test} disabled={busy || !issuer.trim()}>Test</button>
           </div>
           {testMsg && <div className="tiny" style={{ fontWeight: 700, marginTop: 6, color: testMsg.ok ? 'var(--good, #2e7d32)' : 'var(--primary, #e0653f)' }}>{testMsg.text}</div>}
 
           <label className="auth-label">Client ID</label>
-          <input className="set-inline-input" style={{ width: '100%' }} value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="nook" />
+          <input className="set-inline-input" style={{ width: '100%' }} value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="waffled" />
 
           <label className="auth-label">Client secret</label>
           <input className="set-inline-input" style={{ width: '100%' }} type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={cfg.secretSet ? '•••••••• (leave blank to keep)' : 'Paste the client secret'} />
@@ -2582,7 +2582,7 @@ function KioskDevicesSection() {
             <span className="tiny muted" style={{ fontWeight: 600 }}>Waiting for a device to pair…</span>
           </div>
           <div className="tiny muted" style={{ fontWeight: 600, marginTop: 8 }}>
-            On the new tablet: open this Kinnook’s address → “Set up this device as a kiosk” → enter this code. One-time, expires in ~10 minutes.
+            On the new tablet: open this Waffled’s address → “Set up this device as a kiosk” → enter this code. One-time, expires in ~10 minutes.
           </div>
         </div>
       )}
@@ -2692,7 +2692,7 @@ function DisplayKioskPanel() {
         dirtyRef.current = false
         setCfg(s)
         // Let a display layer running in THIS browser reload immediately.
-        window.dispatchEvent(new Event('nook:display-changed'))
+        window.dispatchEvent(new Event('waffled:display-changed'))
         setSavedFlash(true)
         setTimeout(() => setSavedFlash(false), 1800)
       } catch {
@@ -2711,7 +2711,7 @@ function DisplayKioskPanel() {
   return (
     <div className="set-panel">
       <div className="set-head" style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-        <div className="nk-serif set-head-t">Display &amp; Kiosk</div>
+        <div className="wf-serif set-head-t">Display &amp; Kiosk</div>
         {savedFlash && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
         <span className="tiny muted" style={{ marginLeft: 'auto', fontWeight: 600 }}>Screensaver settings save automatically</span>
       </div>

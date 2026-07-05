@@ -1,6 +1,6 @@
 /* ===========================================================================
    Calendar — week & agenda views, the view toggle, and the event detail screen.
-   (Month grid + .ev chips live in nook.css; .cal-screen shell in kiosk.css.)
+   (Month grid + .ev chips live in waffled.css; .cal-screen shell in kiosk.css.)
    =========================================================================== */
 
 /* ---- topbar: view toggle + period nav ---- */
@@ -120,7 +120,7 @@
 .ag-h { font-size: 28px; font-weight: 600; margin-bottom: 10px; }
 .ag-group { margin-bottom: 18px; }
 .ag-group-h { display: flex; align-items: baseline; gap: 10px; margin: 10px 2px 8px; }
-.ag-group-h .nk-serif { font-size: 21px; font-weight: 600; }
+.ag-group-h .wf-serif { font-size: 21px; font-weight: 600; }
 .ag-group-h .muted { font-size: 14px; font-weight: 600; }
 .ag-add { width: 100%; margin-bottom: 18px; }
 .ag-group-add { margin-left: auto; align-self: center; width: 26px; height: 26px; border-radius: 999px;

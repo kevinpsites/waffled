@@ -5,7 +5,7 @@
 // data hooks refetch the instant replicated rows change.
 import { PowerSyncDatabase } from '@powersync/web'
 import { AppSchema } from './schema'
-import { NookConnector } from './connector'
+import { WaffledConnector } from './connector'
 
 let db: PowerSyncDatabase | null = null
 
@@ -20,13 +20,13 @@ export async function connectPowerSync(): Promise<void> {
   try {
     const instance = new PowerSyncDatabase({
       schema: AppSchema,
-      database: { dbFilename: 'nook.db' },
+      database: { dbFilename: 'waffled.db' },
     })
     await instance.init()
     db = instance
     // connect() retries internally; fetchCredentials returning null just means
     // "not signed in yet" — it'll connect once a token is available.
-    await instance.connect(new NookConnector())
+    await instance.connect(new WaffledConnector())
   } catch (err) {
     console.warn('PowerSync unavailable; falling back to REST only', err)
     db = null

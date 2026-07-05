@@ -73,7 +73,7 @@ function MiniMonth({ events, tz, onPickDate }: { events: AgendaEvent[]; tz: stri
   return (
     <div className="card ag-mini">
       <div className="ag-mini-head">
-        <div className="nk-serif" style={{ fontSize: 19, fontWeight: 600 }}>{MONTHS[view.month]}</div>
+        <div className="wf-serif" style={{ fontSize: 19, fontWeight: 600 }}>{MONTHS[view.month]}</div>
         <div className="ag-mini-nav">
           <button type="button" aria-label="Previous month" onClick={() => shift(-1)}><Icon name="cl" /></button>
           <button type="button" aria-label="Next month" onClick={() => shift(1)}><Icon name="cr" /></button>
@@ -135,8 +135,8 @@ function HeadsUpCard({ refreshKey }: { refreshKey: number }) {
           <div className="ag-ai-b">{card.body}</div>
         ) : (
           <div className="ai-think" aria-label="Thinking…">
-            <div className="ai-think-bar" />
-            <div className="ai-think-bar short" />
+            <div className="ai-thiwf-bar" />
+            <div className="ai-thiwf-bar short" />
           </div>
         )}
       </div>
@@ -204,7 +204,7 @@ export function AgendaView({
   return (
     <div className="ag-screen">
       <div className="ag-list">
-        <div className="nk-serif ag-h">What's coming up</div>
+        <div className="wf-serif ag-h">What's coming up</div>
         {/* Quick-add, matching the Day/Week bar — defaults to today. */}
         <button type="button" className="wk-add ag-add" onClick={() => onCreate(todayKey)}>
           <span className="wk-add-plus">＋</span>
@@ -214,7 +214,7 @@ export function AgendaView({
         {groups.map((g) => (
           <div key={g.key} className="ag-group">
             <div className="ag-group-h">
-              <span className="nk-serif">{dayLabel(g.date, todayMid)}</span>
+              <span className="wf-serif">{dayLabel(g.date, todayMid)}</span>
               <span className="muted">{g.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
               {/* Add on this specific day — parity with tapping a day elsewhere. */}
               <button type="button" className="ag-group-add" title={`Add an event on ${g.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`} aria-label="Add an event on this day" onClick={() => onCreate(g.key)}>＋</button>

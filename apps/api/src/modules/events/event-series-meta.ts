@@ -1,12 +1,12 @@
 // Series-level goal links for GOOGLE-sourced recurring events. Google sync expands
 // recurrences (singleEvents=true) into one events row per instance, all sharing one
-// ical_uid. A goal link is Nook-owned and preserved across sync, but a NEW instance
+// ical_uid. A goal link is Waffled-owned and preserved across sync, but a NEW instance
 // streaming in later carries no link — so linking "the series" would only stick on the
 // instances that existed at link time. event_series_meta (keyed by household + ical_uid)
 // is the durable record of that choice: linking writes it here AND fans the goal out to
 // every current instance; sync reads it back so a fresh instance inherits the goal.
 //
-// Nook-native events (single events / Nook-owned recurring masters) have no ical_uid —
+// Waffled-native events (single events / Waffled-owned recurring masters) have no ical_uid —
 // for them there's no series fan-out, so callers fall back to today's per-event behavior.
 import type { PoolClient } from 'pg'
 import { getPool, query } from '../../platform/db'

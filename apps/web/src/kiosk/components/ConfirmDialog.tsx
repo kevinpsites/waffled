@@ -40,7 +40,7 @@ export function ConfirmDialog({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <form className="modal-card" onClick={(e) => e.stopPropagation()} onSubmit={confirm} style={{ maxWidth: 400 }}>
-        <div className="nk-serif" style={{ fontSize: 19, fontWeight: 600, marginBottom: message || input ? 8 : 16 }}>{title}</div>
+        <div className="wf-serif" style={{ fontSize: 19, fontWeight: 600, marginBottom: message || input ? 8 : 16 }}>{title}</div>
         {message && <div className="tiny muted" style={{ fontWeight: 600, marginBottom: input ? 14 : 18, lineHeight: 1.4 }}>{message}</div>}
         {input && (
           <label className="field" style={{ marginBottom: 16 }}>

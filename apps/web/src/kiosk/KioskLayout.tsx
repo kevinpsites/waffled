@@ -11,7 +11,7 @@ import '../styles/kiosk-profiles.css'
 export function KioskLayout() {
   return (
     <TopbarSlotProvider>
-      <div className="nk-kiosk nk">
+      <div className="wf-kiosk wf">
         <Rail />
         <div className="kiosk-main">
           <OfflineBanner />

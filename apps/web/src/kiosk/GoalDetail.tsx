@@ -203,7 +203,7 @@ export function GoalDetail() {
           </Ring>
           <div style={{ flex: 1, minWidth: 0 }}>
             <span className="cat-pill hero-pill">{c ? `${c.emoji} ${c.label}` : '⭐ Featured'}</span>
-            <div className="nk-serif detail-hero-title">{goal.title}</div>
+            <div className="wf-serif detail-hero-title">{goal.title}</div>
             <div className="detail-hero-sub">
               Started {fmtMonthDay(goal.createdAt)} · {pctOf(dProg, dTarget)}% complete
               {goal.streakDays > 0 ? ` · 🔥 ${goal.streakDays}-day streak` : ''}

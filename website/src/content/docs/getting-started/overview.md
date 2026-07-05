@@ -1,11 +1,11 @@
 ---
 title: Overview
-description: What Kinnook is, its three surfaces, and the core ideas behind it.
+description: What Waffled is, its three surfaces, and the core ideas behind it.
 ---
 
-## What Kinnook is
+## What Waffled is
 
-Kinnook is a **self-hosted family operating system**. One household, one source of truth for
+Waffled is a **self-hosted family operating system**. One household, one source of truth for
 everything a family coordinates day to day:
 
 - 📅 **Calendar** with optional two-way Google Calendar sync
@@ -51,4 +51,4 @@ feature matrix); iOS is a separate native client (the "Mobile" column).
 - New to running it? → [Quick start](/getting-started/quick-start/)
 - Want the full capability list? → [Feature matrix](/reference/features/)
 - Curious how it grows? → [Extensibility & modules](/concepts/extensibility/)
-- Tracking progress? → the [roadmap status](https://github.com/kevinpsites/nook/blob/main/docs/product/roadmap.md)
+- Tracking progress? → the [roadmap status](https://github.com/kevinpsites/waffled/blob/main/docs/product/roadmap.md)

@@ -30,7 +30,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       const code = new URLSearchParams(window.location.search).get('code')
       try {
         if (!code) throw new Error('Sign-in was cancelled.')
-        await authApi.oidcExchange(code) // fires nook:auth-changed on success
+        await authApi.oidcExchange(code) // fires waffled:auth-changed on success
         navigate('/', { replace: true })
         return
       } catch (err) {
@@ -68,8 +68,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // Login/setup/logout (and a failed refresh) all fire this; re-resolve.
   useEffect(() => {
     const onChange = () => setPhase(getAccessToken() ? 'authed' : 'loading')
-    window.addEventListener('nook:auth-changed', onChange)
-    return () => window.removeEventListener('nook:auth-changed', onChange)
+    window.addEventListener('waffled:auth-changed', onChange)
+    return () => window.removeEventListener('waffled:auth-changed', onChange)
   }, [])
 
   if (phase === 'authed') return <>{children}</>
@@ -87,8 +87,8 @@ function AuthShell({ title, sub, children }: { title: string; sub: string; child
   return (
     <div className="auth-screen">
       <div className="auth-card">
-        <img className="auth-logo-img" src="/logo.png" alt="Kinnook" width={96} height={96} />
-        <div className="auth-title nk-serif">{title}</div>
+        <img className="auth-logo-img" src="/logo.png" alt="Waffled" width={96} height={96} />
+        <div className="auth-title wf-serif">{title}</div>
         <div className="auth-sub">{sub}</div>
         {children}
       </div>
@@ -116,7 +116,7 @@ function LoginScreen({ status, oidcError }: { status: AuthStatus | null; oidcErr
     setError(null)
     try {
       await authApi.login(email.trim(), password)
-      // setSession fires 'nook:auth-changed' → gate flips to the app.
+      // setSession fires 'waffled:auth-changed' → gate flips to the app.
     } catch (err) {
       setError((err as Error).message)
       setBusy(false)
@@ -124,7 +124,7 @@ function LoginScreen({ status, oidcError }: { status: AuthStatus | null; oidcErr
   }
 
   return (
-    <AuthShell title="Welcome back" sub="Sign in to your family's Kinnook.">
+    <AuthShell title="Welcome back" sub="Sign in to your family's Waffled.">
       {error && <div className="auth-error" style={{ marginBottom: 12 }}>{error}</div>}
       {showOidc && (
         <button type="button" className="btn auth-submit auth-sso" style={{ marginTop: 0 }} onClick={() => authApi.startOidc()}>
@@ -221,7 +221,7 @@ function SetupWizard() {
   }
 
   return (
-    <AuthShell title="Welcome to Kinnook" sub="Let's set up your household and your admin account.">
+    <AuthShell title="Welcome to Waffled" sub="Let's set up your household and your admin account.">
       <form onSubmit={submit} className="auth-form">
         <div className="auth-section">Your household</div>
         <label className="auth-label">Household name</label>

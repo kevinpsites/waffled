@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to **Kinnook** (the self-hosted family hub) are documented in this file.
+All notable changes to **Waffled** (the self-hosted family hub) are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
        category headings) for the next cycle.
     3. Commit, then `git tag v0.1.0 && git push origin v0.1.0`.
        The tag triggers .github/workflows/publish-images.yml, which builds and
-       pushes the multi-arch nook-api / nook-caddy images to GHCR
+       pushes the multi-arch waffled-api / waffled-caddy images to GHCR
        (semver + `latest` tags).
     4. Paste this section into the GitHub Release notes.
 
@@ -32,22 +32,22 @@ user-facing features first within each.
 ### Added
 
 #### Platform & deployment
-- **Self-hosted, zero-dependency deployment.** `git clone` + `./nook up` brings up
+- **Self-hosted, zero-dependency deployment.** `git clone` + `./waffled up` brings up
   the whole stack (Postgres, API, PowerSync, Caddy) via Docker Compose — no host
   toolchain and no manual steps. First run auto-generates `infra/compose/.env` with
   fresh secrets.
-- **Guided setup.** `./nook up` now runs a **preflight** (Docker present + running,
+- **Guided setup.** `./waffled up` now runs a **preflight** (Docker present + running,
   Compose v2, free ports) with fix-it messages, and prints the exact URL to open when
-  it's up. `./nook setup` configures how devices reach the server (localhost / auto-
+  it's up. `./waffled setup` configures how devices reach the server (localhost / auto-
   detected LAN IP / hostname) and writes the address vars — avoiding the "shows Offline
   on the tablet" `localhost`-sync-URL trap.
 - **In-container migrations** as a one-shot compose service (the API and PowerSync
   gate on it), so the schema and PowerSync publication exist before anything starts;
   idempotent on every `up`.
-- **GHCR multi-arch images** (`nook-api`, `nook-caddy`, amd64 + arm64) published on a
-  `v*` release tag; point `NOOK_API_IMAGE` / `NOOK_CADDY_IMAGE` at the tags and
+- **GHCR multi-arch images** (`waffled-api`, `waffled-caddy`, amd64 + arm64) published on a
+  `v*` release tag; point `WAFFLED_API_IMAGE` / `WAFFLED_CADDY_IMAGE` at the tags and
   `docker compose pull` to run without a local build.
-- **Operator CLI** (`./nook admin …`) for break-glass and recovery without the UI:
+- **Operator CLI** (`./waffled admin …`) for break-glass and recovery without the UI:
   reset-password, list/make/revoke-admin, password-login on/off, clear-calendar-error,
   prune-sessions, regenerate-powersync-key, list/delete-household, add-member,
   list-accounts. Runs in-container (host access is the authorization).
@@ -201,7 +201,7 @@ user-facing features first within each.
   customizable agenda of "parts" that auto-rotate among members (overridable per week),
   a Today card with per-part person pickers, an admin agenda/day/time editor, and an
   optional weekly calendar event.
-- **Public API keys + scopes** — issue `nook_…` keys (`x-api-key`) with
+- **Public API keys + scopes** — issue `waffled_…` keys (`x-api-key`) with
   `<resource>:read|write` scopes for external integrations, managed in a
   Settings → API Keys tab (generate / scope / reveal-once / revoke); layered over the
   in-route capability matrix, with sensitive paths never exposed.
@@ -217,7 +217,7 @@ user-facing features first within each.
 #### iOS / iPadOS app
 - **Universal native app** — one binary that adapts by idiom: an iPhone
   *personal-planner* experience and an iPad *family-hub* experience (left nav rail,
-  wide layouts, the counter screensaver) over a shared SyncManager/NookAPI data layer.
+  wide layouts, the counter screensaver) over a shared SyncManager/WaffledAPI data layer.
 - **Native auth** — email/password + OIDC SSO (Keychain token store, 401-refresh,
   `ASWebAuthenticationSession`), and About settings (version + editable server address).
 - **Offline-first calendar** via the PowerSync Swift SDK (persons/events/participants/
@@ -236,17 +236,17 @@ user-facing features first within each.
   backlog + stale calendars, media writability, build sha) and an enriched public
   `/healthz`.
 - **Settings → System Health** admin panel (live, polls `/api/health`) with actionable
-  hints, and **`./nook doctor`** for an in-container health report.
+  hints, and **`./waffled doctor`** for an in-container health report.
 - **Background job run registry** (last-run / duration / error / run count per
   scheduler) and baked **build provenance** (git sha + build time).
 - **OpenTelemetry** traces + metrics (OTLP, off by default) and an all-local
-  Grafana/OTEL stack via `./nook observability up`.
+  Grafana/OTEL stack via `./waffled observability up`.
 - **Automatic backups (local + offsite) & restore.** A `backup` sidecar dumps the
-  database nightly (`BACKUP_TIME`) into the `nook_backups` volume — on by default,
+  database nightly (`BACKUP_TIME`) into the `waffled_backups` volume — on by default,
   zero-config — pruned after `BACKUP_RETENTION_DAYS`. Optional offsite copy to any
   S3-compatible store (`BACKUP_S3_*` — AWS S3 / Backblaze B2 / Cloudflare R2 / MinIO),
   optional media archive (`BACKUP_INCLUDE_MEDIA`), and a custom target folder
-  (`BACKUP_HOST_PATH`). `./nook backup [list]` runs one on demand; `./nook restore
+  (`BACKUP_HOST_PATH`). `./waffled backup [list]` runs one on demand; `./waffled restore
   <file>` does a confirmed, app-stopped, single-transaction restore. Each run is recorded
   in `backup_runs` and surfaced by the `backup` health check (degraded when a run failed
   or the last success is >48 h old). See the Backup & restore docs.
@@ -256,7 +256,7 @@ user-facing features first within each.
   release is available (`UPDATE_CHECK_REPO`, cached 6 h), with an admin toggle and an
   `UPDATE_CHECK_ENABLED` operator kill-switch (no outbound call when off).
 - **Healthchecks on every default service** — added caddy + lgtm, so `docker compose ps`
-  (and `./nook status`) is all-green.
+  (and `./waffled status`) is all-green.
 - **Release automation.** A version tag (`v*`) now cuts a GitHub Release (auto notes +
   `example.env`) and publishes all three images (api, caddy, backup) to GHCR.
 
@@ -311,7 +311,7 @@ tests, tooling, and refactors with no user-visible effect).
 2. Add a fresh, empty `## [Unreleased]` section above it (with the category headings).
 3. Commit, then tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
    The `v*` tag triggers [`.github/workflows/publish-images.yml`](.github/workflows/publish-images.yml),
-   which builds and pushes the multi-arch `nook-api` / `nook-caddy` images to GHCR
+   which builds and pushes the multi-arch `waffled-api` / `waffled-caddy` images to GHCR
    (semver + `major.minor` + `latest` tags).
 4. Paste the released section into the GitHub Release notes for the tag.
 
@@ -335,8 +335,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinsites/nook/compare/HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/HEAD
 <!-- On first release, replace the line above with:
-[Unreleased]: https://github.com/<owner>/nook/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/<owner>/nook/releases/tag/v0.1.0
+[Unreleased]: https://github.com/<owner>/waffled/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/<owner>/waffled/releases/tag/v0.1.0
 -->

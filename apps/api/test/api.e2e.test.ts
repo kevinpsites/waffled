@@ -8,7 +8,7 @@ import { dirname, resolve } from 'node:path'
 import jwt from 'jsonwebtoken'
 
 const SECRET = 'e2e-secret-change-me'
-const CLAIM = 'https://nook.app/household_id'
+const CLAIM = 'https://waffled.app/household_id'
 const apiDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 let container: StartedTestContainer
@@ -32,8 +32,8 @@ function mint(household: string, sub = 'dev|kevin'): string {
   return jwt.sign({ [CLAIM]: household }, SECRET, {
     algorithm: 'HS256',
     subject: sub,
-    issuer: 'nook-local',
-    audience: 'nook-api',
+    issuer: 'waffled-local',
+    audience: 'waffled-api',
     expiresIn: '1h',
   })
 }
@@ -43,7 +43,7 @@ describe('api image — real container over HTTP', () => {
     const res = await fetch(`${baseUrl}/healthz`)
     expect(res.status).toBe(200)
     const body = (await res.json()) as { ok: boolean; version?: { sha?: string }; db?: string }
-    expect(body).toMatchObject({ ok: true, service: 'nook-api', authMode: 'local' })
+    expect(body).toMatchObject({ ok: true, service: 'waffled-api', authMode: 'local' })
     expect(body.version?.sha).toBeTruthy()
     // No DATABASE_URL in this container → the readiness ping reports db down,
     // but liveness (HTTP 200) is unaffected.

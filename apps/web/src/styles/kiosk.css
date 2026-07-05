@@ -16,7 +16,7 @@ body {
 }
 
 /* Override the design's fixed dimensions; keep its 96px rail + content grid. */
-.nk-kiosk {
+.wf-kiosk {
   width: 100%;
   height: 100dvh;
 }

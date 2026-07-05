@@ -49,7 +49,7 @@ export function FamilyOverview() {
 
   return (
     <div className="family-overview">
-      <div className="fam-title nk-serif">How everyone’s doing</div>
+      <div className="fam-title wf-serif">How everyone’s doing</div>
       <div className="fam-grid">
         {people.map((m) => (
           <MemberCard key={m.personId} m={m} onOpen={() => navigate(`/person/${m.personId}`)} />

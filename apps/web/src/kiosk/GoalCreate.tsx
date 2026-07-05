@@ -173,7 +173,7 @@ export function GoalCreate() {
     () => (
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
         <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(backToGoals, { replace: true })}>‹ {editing ? 'Goal' : 'Goals'}</button>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600 }}>{editing ? 'Edit goal' : 'New goal'}</div>
+        <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600 }}>{editing ? 'Edit goal' : 'New goal'}</div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
           <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(backToGoals, { replace: true })}>Cancel</button>
           <button
@@ -398,7 +398,7 @@ export function GoalCreate() {
               <span className="cat-pill hero-pill" style={{ fontSize: 10 }}>
                 ⭐ Featured · {form.trackingMode === 'each_tracks' ? 'each tracks' : 'shared total'}
               </span>
-              <div className="nk-serif" style={{ fontSize: 21, fontWeight: 600, margin: '7px 0 2px', textTransform: 'capitalize' }}>{form.title || 'New goal'}</div>
+              <div className="wf-serif" style={{ fontSize: 21, fontWeight: 600, margin: '7px 0 2px', textTransform: 'capitalize' }}>{form.title || 'New goal'}</div>
               <div style={{ fontSize: 11.5, opacity: 0.9, fontWeight: 600 }}>
                 {form.trackingMode === 'each_tracks' ? 'Each tracks their own' : 'Everyone contributes'}
                 {form.goalType !== 'habit' && form.unit ? ` · tracked in ${form.unit}` : ''}

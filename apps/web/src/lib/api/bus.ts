@@ -7,7 +7,7 @@ import { useEffect, useRef } from 'react'
 export type Topic = 'grocery' | 'meals' | 'chores' | 'rewards' | 'goals' | 'currencies' | 'recipes' | 'countdowns' | 'familyNight'
 
 export function emit(topic: Topic): void {
-  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(`nook:${topic}`))
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(`waffled:${topic}`))
 }
 
 // Pass-through tap for promise chains: `.then(tap('grocery'))`.
@@ -27,7 +27,7 @@ export function useRefetchOn(topics: Topic[], refetch: () => void): void {
   const key = topics.join(',')
   useEffect(() => {
     const handler = () => ref.current()
-    const names = key.split(',').map((t) => `nook:${t}`)
+    const names = key.split(',').map((t) => `waffled:${t}`)
     names.forEach((n) => window.addEventListener(n, handler))
     return () => names.forEach((n) => window.removeEventListener(n, handler))
   }, [key])

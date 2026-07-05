@@ -34,7 +34,7 @@ function TonightCard({ entry }: { entry: WeekEntry }) {
         <div className="tiny" style={{ color: 'var(--lottie)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>
           Tonight · Dinner
         </div>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, margin: '3px 0 6px' }}>
+        <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, margin: '3px 0 6px' }}>
           {eatingOut ? 'Eating out' : title}
         </div>
 

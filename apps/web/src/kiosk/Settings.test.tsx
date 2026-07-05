@@ -58,7 +58,7 @@ describe('Settings screen', () => {
     renderSettings()
     fireEvent.click(await screen.findByText(/Add a person/))
     expect(document.querySelector('.modal-card')).toBeTruthy()
-    expect(screen.getByText('Add a person', { selector: '.nk-serif' })).toBeInTheDocument()
+    expect(screen.getByText('Add a person', { selector: '.wf-serif' })).toBeInTheDocument()
   })
 
   it('switches to a placeholder sub-tab', async () => {
@@ -189,7 +189,7 @@ describe('Settings screen', () => {
     }) as unknown as typeof fetch
     renderSettings()
 
-    expect(await screen.findByText('Kinnook — Family Hub')).toBeInTheDocument() // About panel content
+    expect(await screen.findByText('Waffled — Family Hub')).toBeInTheDocument() // About panel content
     expect(screen.getByText('About', { selector: '.set-navitem' })).toBeInTheDocument()
     expect(screen.getByText(/Sign out/, { selector: '.set-signout' })).toBeInTheDocument()
     expect(screen.queryByText('Family & People')).not.toBeInTheDocument()

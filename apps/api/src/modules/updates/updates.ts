@@ -68,7 +68,7 @@ async function fetchLatest(): Promise<Cache> {
   if (!r) return { at: Date.now(), release: null, error: 'UPDATE_CHECK_REPO not set' }
   try {
     const res = await fetch(`https://api.github.com/repos/${r}/releases/latest`, {
-      headers: { accept: 'application/vnd.github+json', 'user-agent': 'nook' },
+      headers: { accept: 'application/vnd.github+json', 'user-agent': 'waffled' },
     })
     if (!res.ok) return { at: Date.now(), release: null, error: `GitHub ${res.status}` }
     const j = (await res.json()) as { tag_name?: string; html_url?: string; published_at?: string }

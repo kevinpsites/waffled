@@ -112,11 +112,11 @@ export function PhotoAdd({
 
   return (
     <div className="ph-saver" style={{ position: 'fixed', inset: 0, zIndex: 900, background: 'var(--bg, #efece6)', color: 'var(--ink)', display: 'block', cursor: 'default' }}>
-      <div className="nk-kiosk nk" style={{ position: 'absolute', inset: 0, background: '#efece6' }}>
+      <div className="wf-kiosk wf" style={{ position: 'absolute', inset: 0, background: '#efece6' }}>
         <div className="kiosk-main" style={{ gridColumn: '1 / -1' }}>
           <div className="topbar">
             <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={onClose}>‹ Photos</button>
-            <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginLeft: 14 }}>Add photos</div>
+            <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, marginLeft: 14 }}>Add photos</div>
             <div className="tb-right">
               {staged && (
                 <button type="button" className="btn btn-primary" disabled={saving || uploading > 0} onClick={add}>

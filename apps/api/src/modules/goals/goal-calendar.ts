@@ -80,7 +80,7 @@ function defaultPersonIds(row: RecapRow): string[] {
 }
 
 // Pending recap items: linked occurrences whose time has passed and that haven't
-// been confirmed or skipped yet. UNION of single events and Nook-native recurring
+// been confirmed or skipped yet. UNION of single events and Waffled-native recurring
 // occurrences (linked via their master m). For both, the idempotency key is
 // (event_id, occurrence_date, goal_id) — a recurring series uses the MASTER id as
 // event_id and the occurrence's local date, so each weekly instance recaps once and

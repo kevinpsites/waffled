@@ -1,4 +1,4 @@
-// Recurrence expansion worker — materializes Nook-native masters into
+// Recurrence expansion worker — materializes Waffled-native masters into
 // event_occurrences against a real Postgres (Testcontainers). Covers count/inherited
 // fields, idempotent re-runs (stable row ids), override move + cancel, and clearing
 // occurrences when a master stops recurring.

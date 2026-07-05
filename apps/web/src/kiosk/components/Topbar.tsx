@@ -69,7 +69,7 @@ export function Topbar() {
   if (full) return <div className="topbar">{full}</div>
   return (
     <div className="topbar">
-      <div className="tb-date nk-serif">{formatDate(now, tz)}</div>
+      <div className="tb-date wf-serif">{formatDate(now, tz)}</div>
       <div className="tb-time">{formatTime(now, tz)}</div>
       {wx?.configured && wx.tempF != null && <WeatherWidget wx={wx} />}
       <div className="tb-right">{right ?? <CaptureBar />}</div>

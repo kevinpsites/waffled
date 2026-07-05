@@ -72,7 +72,7 @@ function AddCountdown({ onClose }: { onClose: () => void }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>New countdown</div>
+        <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>New countdown</div>
         <div className="cd-form">
           <label><span>What</span><input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Hawaii trip" /></label>
           <div className="cd-form-row">

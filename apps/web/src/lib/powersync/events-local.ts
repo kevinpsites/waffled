@@ -13,7 +13,7 @@ import { getPowerSyncDb } from './db'
 // read until the window passes — persisted to localStorage so it also survives a
 // reload inside that window. (Event ids are UUIDs, so a tombstone never hides a
 // future event.)
-const TOMBSTONE_KEY = 'nook.deletedEvents'
+const TOMBSTONE_KEY = 'waffled.deletedEvents'
 const TOMBSTONE_MS = 5 * 60_000
 
 function loadTombstones(): Map<string, number> {

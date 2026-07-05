@@ -17,7 +17,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## M1 — Infrastructure as code
 > **⛔ SUPERSEDED by the self-hosted pivot (2026-06-20) — see the "Self-hosted (Immich-style)" section below.**
-> Kinnook is now `git clone` + `./nook up` Docker Compose, not Terraform/AWS/Auth0. The
+> Waffled is now `git clone` + `./waffled up` Docker Compose, not Terraform/AWS/Auth0. The
 > cloud IaC milestone below is abandoned; kept for history. (Backups moved to Phase 4
 > S3 backup; identity moved to built-in auth + OIDC.)
 - [x] 1.0 **Data model design** — `docs/DATA_MODEL.md` (all domains, ERD, sync/conflict, decisions)
@@ -34,7 +34,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] 2.4 `backup` service (pg_dump→S3) + restore-check (restore into throwaway PG, assert row counts) — *now tracked as **Phase 4 — optional S3 backup** in the self-host section*
 
 ## MW — Web & kiosk (apps/web)
-- [x] W1a Web scaffold (Vite + React + TS) + kiosk shell: design system (nook.css) ported, 1280×800 scaling stage, nav rail + topbar (live clock) + AI capture bar
+- [x] W1a Web scaffold (Vite + React + TS) + kiosk shell: design system (waffled.css) ported, 1280×800 scaling stage, nav rail + topbar (live clock) + AI capture bar
 - [x] W1b Kiosk **Today** dashboard: agenda · meals · family chores + grocery (design-faithful; placeholder data until each domain lands)
 - [x] W1c Served via Caddy in the stack (web build baked into the caddy image; SPA fallback; `/api` proxied). `just web` for Vite dev
 - [x] W2a Responsive layout (fills viewport, reflows 3→2→1 cols) + **working rail navigation** (routes; placeholders for not-yet-built screens)
@@ -46,7 +46,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] W2c **All four Today cards live** (agenda · meals · chores · grocery). Kiosk surfaces: Today, Tasks, Calendar real; Goals/Lists/Photos/Settings still placeholders
 - [x] W2c-event-create Calendar self-serve: create/edit/delete single events from the kiosk (day-click / New / click an event → modal; PATCH/DELETE) with **multiple participants** (event_participants; date night = Kevin+Kelly, stacked avatars). Recurrence + AI capture still to come
 - [x] W2c-goals Goals domain, **mock-faithful** (handoff "Home / Family list", "The Kids list", create, detail). Goal-lists membership model: SHARED LISTS / INDIVIDUAL sidebar (members + counts), list header + All/Shared/Each, **adaptive featured hero** (green pooled ring+contrib bars / orange "TOGETHER" each-tracks), more-goals grid; full-screen **create-a-goal** (type cards, list picker, measure config, log method, live preview, feature/milestones/check-in toggles); **goal detail** (milestone track, hours-by-person, recent activity, this-week, streak). Per-screen topbar slots. *(Verified live with Playwright against the mocks.)* Defended deferrals: Edit-goal form (needs PATCH), AI insight cards (6.6), auto-from-calendar log (M5)
-- [x] W2c-screens **All rail surfaces real** (parallel build, mock-faithful): **Lists** (multi-list sidebar, sectioned items, quantities, assignees), **Meals** (weekly planner grid + recipe picker + week nav), **Settings/Family** (sub-nav + Family & people CRUD + household settings), **Photos** (memory wall + screensaver + add/detail). Each its own api/client/screen/CSS/tests; built on isolated worktrees + merged. *(Verified live with Playwright against the handoff screenshots.)* Defended deferrals per screen (AI "Kinnook suggests"/"Plan my week", list sharing, real blob upload → emoji+URL tiles, integration-dependent settings sub-tabs)
+- [x] W2c-screens **All rail surfaces real** (parallel build, mock-faithful): **Lists** (multi-list sidebar, sectioned items, quantities, assignees), **Meals** (weekly planner grid + recipe picker + week nav), **Settings/Family** (sub-nav + Family & people CRUD + household settings), **Photos** (memory wall + screensaver + add/detail). Each its own api/client/screen/CSS/tests; built on isolated worktrees + merged. *(Verified live with Playwright against the handoff screenshots.)* Defended deferrals per screen (AI "Waffled suggests"/"Plan my week", list sharing, real blob upload → emoji+URL tiles, integration-dependent settings sub-tabs)
 - [ ] W3 Secondary surfaces (recipe library / Plan-my-week AI / settings sub-tabs depth); real device pairing (3.3) replaces the dev token
 - [ ] W3 Web management dashboard (full SPA: setup, calendar, lists, …) — grows alongside the backend domains
 
@@ -59,16 +59,16 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## M4 — Offline foundation (de-risk #1)
 - [x] 4.1 Self-hosted `powersync` service + `service.yaml`/`sync-config.yaml` (one `household` bucket scoped by the `household_id` JWT claim); logical-replication publication (4.1a); api as PowerSync token authority — JWKS + `/api/powersync/token` (4.1b); service replicating `households`+`persons`, verified healthy (4.1c). *Client sync E2E lands in 4.2.*
-- [x] 4.2 iOS skeleton (SwiftUI) + PowerSync Swift SDK sync; **airplane-mode read/write + reconnect demonstrated**. `apps/ios` XcodeGen project (SwiftUI + SwiftData-for-local + PowerSync), Kinnook design system ported, 5-tab nav. PowerSync client mirrors `persons`/`events`/`households`/`event_participants` to on-device SQLite (schema + connector mirror the web client); `fetchCredentials` exchanges the session token at `/api/powersync/token`; `uploadData` drains queued writes to `/api/powersync/crud`. **Verified E2E on the iPhone 17 Pro sim against the live stack:** family renders from local SQLite, an event created on-device round-tripped to Postgres, offline read kept working with the backend stopped, an offline write queued and then **drained on reconnect**. Auth via local HS256 dev token (Auth0 login split out to 4.2.1). *Tooling note: pinned to a locally-patched PowerSync 1.14.3 — the released SDK's `weak let` doesn't compile under Xcode 26.1 / Swift 6.2; revert once upstream fixes it.*
+- [x] 4.2 iOS skeleton (SwiftUI) + PowerSync Swift SDK sync; **airplane-mode read/write + reconnect demonstrated**. `apps/ios` XcodeGen project (SwiftUI + SwiftData-for-local + PowerSync), Waffled design system ported, 5-tab nav. PowerSync client mirrors `persons`/`events`/`households`/`event_participants` to on-device SQLite (schema + connector mirror the web client); `fetchCredentials` exchanges the session token at `/api/powersync/token`; `uploadData` drains queued writes to `/api/powersync/crud`. **Verified E2E on the iPhone 17 Pro sim against the live stack:** family renders from local SQLite, an event created on-device round-tripped to Postgres, offline read kept working with the backend stopped, an offline write queued and then **drained on reconnect**. Auth via local HS256 dev token (Auth0 login split out to 4.2.1). *Tooling note: pinned to a locally-patched PowerSync 1.14.3 — the released SDK's `weak let` doesn't compile under Xcode 26.1 / Swift 6.2; revert once upstream fixes it.*
 - [x] ~~4.2.1 iOS **Auth0 login** (Sign in with Apple + Google)~~ **DONE differently — native auth, not Auth0.** The iOS app now signs in with the **built-in login + OIDC** flow (Keychain token store, 401-refresh, `ASWebAuthenticationSession` SSO) — same `/api/auth/*` endpoints as web, minted HS256 JWT keeps the `household_id` claim so PowerSync rules are unchanged. (Merged via `ios/mobile`.)
 
 ## M5 — Calendar (de-risk #2, the core tenet)
-**Part 1 (Kinnook-native, no Google) — done:** `events` migration, events api (create + today
+**Part 1 (Waffled-native, no Google) — done:** `events` migration, events api (create + today
 agenda + range), kiosk agenda card + Calendar month-grid screen. Part 2 below is the Google sync.
 - [x] 5.1 Schema: `events` (timestamptz, rrule, tz, `google_event_id`, `etag`, …) + migration (`0007_events`); native single-events. Recurrence read-model/overrides/participants deferred to recurrence work
 - [x] 5.2 Backend Google **Calendar OAuth** ("Connect your calendar") — connect/callback (Auth0-independent), AES-256-GCM encrypted refresh token (`src/crypto.ts`), calendar import + person↔calendar mapping, write-target (★) per person; **Settings → Calendars** UI (grouped by account, search/filter, hide read-only, sync now)
-- [x] 5.3 **Inbound** sync (`syncToken`) → upsert events (`src/calendar-sync.ts`); on-demand `POST /api/calendar/sync` + **5-min in-process scheduler** (`startSyncScheduler`); 410 full-resync; cancellations soft-delete; Google-owned vs Kinnook-owned fields. *(Worker runs in the api process, not a separate service.)*
-- [x] 5.4 **Outbound** write-back (Kinnook event → Google): per-person write-target routing + create-time calendar picker; create/edit/delete push (idempotent, best-effort); `pending_push`/`push_failed` retried on sync
+- [x] 5.3 **Inbound** sync (`syncToken`) → upsert events (`src/calendar-sync.ts`); on-demand `POST /api/calendar/sync` + **5-min in-process scheduler** (`startSyncScheduler`); 410 full-resync; cancellations soft-delete; Google-owned vs Waffled-owned fields. *(Worker runs in the api process, not a separate service.)*
+- [x] 5.4 **Outbound** write-back (Waffled event → Google): per-person write-target routing + create-time calendar picker; create/edit/delete push (idempotent, best-effort); `pending_push`/`push_failed` retried on sync
 - [x] 5.5 Calendar UI: kiosk/web Today + agenda + month + create/edit/delete with duration + participants. **iOS shipped** (M4.2): agenda/month/day views + event detail + create/edit/delete + per-person filter, local-first over PowerSync
 - [x] 5.6 **Realtime + offline (web)**: events replicated over PowerSync (migration 0027); local-first agenda reads + offline writes (`POST /api/powersync/crud`) — kiosk renders from local SQLite, survives API outages, edits/deletes apply instantly and upload on reconnect
 - [~] 5.7 Calendar views + detail + **AI cards**: Month / **Week** / **Day** / **Agenda** toggle (week & day are hour-grid views with all-day strips, person filters, lane-packed overlaps + a live "now" line; day answers "a day with >3 events I can't see"), full-screen **event detail/edit** (`/calendar/event/:id` — location/Directions, calendar+sync status, repeats, participants, notes, "where it falls today" timeline). **AI cards real** via the household's provider (shared `src/llm.ts`, `src/calendar-ai.ts`): **"Heads up this week"** digest (agenda) + **per-event insight** (detail) — each computes facts deterministically server-side so they degrade to a useful card when the provider is heuristic/offline. **"Remind me"** surfaces an AI-suggested nudge inline (no delivery yet — kiosk notifications tracked in 6.7)
@@ -81,7 +81,7 @@ agenda + range), kiosk agenda card + Calendar month-grid screen. Part 2 below is
   - [ ] 6.3-ai **Conversational recipe AI** — beyond the auto-fill above, instruction-driven edits on a recipe: "make this gluten-free", "scale to N servings", "swap X for Y", "make it healthier / spicier", "write or expand the steps". Reuse the pluggable LLM layer + the editor's review pattern (propose → inline keep/dismiss, never auto-apply). **Stretch: photo → recipe** — draft a full recipe (ingredients + steps) from a photo of a recipe card or dish; needs a vision-capable provider + real blob upload (6.5). Note: provider quality matters — the local 8B is loose (e.g. put "vegetarian" in the protein field), so a stronger/hosted model is meaningfully crisper here.
   - [x] 6.3-edit **Create / edit / delete recipes in-app — done.** A unified full **RecipeEditor** (new + edit, `/meals/recipe/new` & `/meals/recipe/:id/edit`) authors a recipe from scratch or fully edits one — title/emoji, all metadata + dietary/vegetables/tags chips, ingredient rows (amount/unit/name/prep/section, reorder/remove) and step rows (instruction + per-step ingredients, reorder/remove). Reached from a **＋ New recipe** button in the library and the **✏️ Edit** action on a recipe; the old override-only CustomizeModal is **retired**. Backend: `POST /api/recipes` and `PATCH /api/recipes/:id` broadened to all fields **+ full-replace of ingredients/steps in a transaction**, new `DELETE /api/recipes/:id` (soft-delete + cascade), and `POST /api/recipes/parse-markdown`. **Edit model — detach on deep edit:** a structural edit flips an imported recipe's `source_type` to `manual` so the dev/seed importer never overwrites it; light override-style tweaks still merge non-destructively (legacy). **Paste-markdown** path: the blessed Markdown format (shared parser, used by both the in-app paste endpoint and the dev-only `import-recipes` CLI) with **Use template** / **See example** helpers, documented in `docs/RECIPE_FORMAT.md` — paste a recipe (or have an LLM generate one) → parse → review → save. The `import-recipes` CLI stays a **dev/seed tool only**, not a user feature.
 - [~] 6.4 Goals + rewards: real api (migrations 0010 + 0011 — goal_lists + **goal_list_members** membership, goals, goal_participants, goal_logs, **goal_milestones**; count/total/habit/checklist; shared_total vs each_tracks; append-only logs → derived progress; **goal-lists CRUD**, **detail read-model** with hours-by-person/recent-activity/streak/this-week; **Edit-goal** via PATCH /api/goals/:id) + mock-faithful kiosk Goals (home/create/**edit**/detail — see W2c-goals). **Reward redemption + per-person balances done** (see 6.1 — stars ledger reused). **Person + family overview done** (`src/overview.ts`: `/api/persons/:id/overview` — their goals with per-person progress, whole-person **balance across the 5 life categories** using `goals.category`, a *local* heuristic insight + suggestions, stars ledger, reward redemptions; `/api/family/overview` — glanceable per-member goals/avg-progress/streak/stars). Kiosk: **PersonProfile** (`/person/:id`, modeled on the "Person / Wally" mock, extended with chores/stars/rewards) + **FamilyOverview** (`/family`), reached from a "Family" button on Goals. **Goals mechanics overhaul done** — logging style derived from goal type (total=amount, count=stepper, habit=once/day, checklist=tick steps; the enter-vs-tap fork retired); create-form validation (name + ≥1 person + per-type measurement); per-cadence habit once-a-day guard (`loggedTodayBy`); detail ring-fill fix + type-aware/hidden log button; optimistic checklist toggles; selected list persisted in `?list=`; back-nav returns to prior page. **Milestones/checklist rethink done** (see backlog): `goal_steps` real named steps (migration 0030) + per-type milestone thresholds (units/streak-days/percent), text-only. **Saving-toward + streaks done** — kids pin one shop reward (`persons.saving_toward_reward_id`, migration 0032) shown as bar **or jar** with "X to go" + inline redeem; weekly activity streak (a day counts for a chore OR a goal) on the profile; best-goal-streak on the individual goals list; currencies rendered equal (no default priority). **`auto_from_calendar` opt-in** added (migration 0031) — preference only until the calendar→goal bridge (backlog) lands. Still to come: AI suggestion cards upgraded via Claude (6.6), auto-from-calendar logging (the bridge — backlog), milestone reward payouts (deferred — backlog)
-- [x] 6.5 Photos / memories: **done** — `photos` table + family wall (emoji/URL tiles), "new memory" banner, full-screen **screensaver**, add-photos + photo detail. **Real blob upload done** (migration 0051): an S3-ready `BlobStore` interface (`platform/storage.ts`) with a local-disk driver (`STORAGE_DRIVER`/`MEDIA_DIR`/`MEDIA_BASE_URL`, persistent `nook_media` volume — **joins the never-wipe set**); `POST /api/media` takes downscaled base64 JSON (browser canvas re-encode to JPEG/WebP, 10 MB cap guarded client + server: bad type→400, oversize→413) and returns an unguessable per-household **capability URL** (`/media/<householdId>/<hex>.<ext>`) served **directly by Caddy** (api out of the read path). `photos`/`recipes` store a nullable `storage_key`; `imageUrl` resolves from it at read time (external URLs still work); blobs are best-effort deleted on row delete / image replace. Web: 📷 Upload on the photo wall (PhotoAdd) **and** the recipe editor; **RecipeView now renders a hero image** (closed the emoji-only gap). *(Verified live with Playwright on the built stack — upload→disk→Caddy roundtrip on both surfaces, guards, and blob cleanup.)* iOS just consumes the resolved URL (its agent handles the client). **Photos UX fleshed out:** retired the mock skeleton — dropped the fake "Kinnook found N photos" emoji grid + dead Phone-library/Import-a-link/Share controls and the non-persisted Reactions card; the add flow is now upload → caption + **album** (pick existing via datalist or type new) + favorite; **photo editing** via `PATCH /api/photos/:id` (recaption, move album, set date, toggle favorite); the wall has an **album filter** chip row (albums = the photo `memory` field). A muted "☁️ Shared album — soon" placeholder marks the one deferred source (future Google Photos / iCloud integration). **Screensaver settings** (household-wide, in Settings → Display & Kiosk, extending `settings.display` — no migration): photo **source** (all / favorites / a specific album), **transition speed** (clamped 3–120s), and **shuffle**, alongside the pre-existing idle auto-start (screensaver-after-N-min + what-it-shows); a shared `screensaverPhotos()` helper feeds both the idle (KioskDisplay) and manual (Photos) paths and the Screensaver honors the interval. *(Edit/album/rendering fixes: detail + add-preview use object-fit:contain and the wall is an aspect-preserving CSS-columns masonry so photos aren't cropped; the detail overlay derives from the live list so edits show immediately.)*
+- [x] 6.5 Photos / memories: **done** — `photos` table + family wall (emoji/URL tiles), "new memory" banner, full-screen **screensaver**, add-photos + photo detail. **Real blob upload done** (migration 0051): an S3-ready `BlobStore` interface (`platform/storage.ts`) with a local-disk driver (`STORAGE_DRIVER`/`MEDIA_DIR`/`MEDIA_BASE_URL`, persistent `waffled_media` volume — **joins the never-wipe set**); `POST /api/media` takes downscaled base64 JSON (browser canvas re-encode to JPEG/WebP, 10 MB cap guarded client + server: bad type→400, oversize→413) and returns an unguessable per-household **capability URL** (`/media/<householdId>/<hex>.<ext>`) served **directly by Caddy** (api out of the read path). `photos`/`recipes` store a nullable `storage_key`; `imageUrl` resolves from it at read time (external URLs still work); blobs are best-effort deleted on row delete / image replace. Web: 📷 Upload on the photo wall (PhotoAdd) **and** the recipe editor; **RecipeView now renders a hero image** (closed the emoji-only gap). *(Verified live with Playwright on the built stack — upload→disk→Caddy roundtrip on both surfaces, guards, and blob cleanup.)* iOS just consumes the resolved URL (its agent handles the client). **Photos UX fleshed out:** retired the mock skeleton — dropped the fake "Waffled found N photos" emoji grid + dead Phone-library/Import-a-link/Share controls and the non-persisted Reactions card; the add flow is now upload → caption + **album** (pick existing via datalist or type new) + favorite; **photo editing** via `PATCH /api/photos/:id` (recaption, move album, set date, toggle favorite); the wall has an **album filter** chip row (albums = the photo `memory` field). A muted "☁️ Shared album — soon" placeholder marks the one deferred source (future Google Photos / iCloud integration). **Screensaver settings** (household-wide, in Settings → Display & Kiosk, extending `settings.display` — no migration): photo **source** (all / favorites / a specific album), **transition speed** (clamped 3–120s), and **shuffle**, alongside the pre-existing idle auto-start (screensaver-after-N-min + what-it-shows); a shared `screensaverPhotos()` helper feeds both the idle (KioskDisplay) and manual (Photos) paths and the Screensaver honors the interval. *(Edit/album/rendering fixes: detail + add-preview use object-fit:contain and the wall is an aspect-preserving CSS-columns masonry so photos aren't cropped; the detail overlay derives from the live list so edits show immediately.)*
 - [x] 6.6 AI "Add anything" intent parsing → route to event/task/grocery/meal. **Pluggable LLM provider behind one interface** (`src/capture.ts`): credentials live only in the server env (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` + `OPENAI_BASE_URL` / `OLLAMA_HOST`), the **active provider + model is chosen per household** in **Settings → AI & capture** (stored in `households.settings.ai`; the UI only enables providers whose key/host the server reports present, and never sees the keys). `POST /api/capture` parses with the chosen model (forced JSON-schema/tool output, temp 0, few-shot, household-local "now" + family names for resolution; server converts the model's naive local datetime to the household tz); `GET/PUT /api/capture/config` read/flip the selection. The kiosk shows an **instant on-device parse, then upgrades to the LLM** with a "via Claude/OpenAI/local LLM" tag, and **falls back to the on-device heuristic** whenever the provider defers, errors, or you're offline. Heuristic (no-LLM) path also hardened (possessive names, quoted titles, "to X's chore list" destinations, weekday recurrence). *(Verified end-to-end against a local Ollama: laundry/Kelly, quoted-title/Lottie, Soccer-Tue-4pm/Wally all parse correctly.)* Note: small local models (llama3.2:3b) need the few-shot prompt to behave; a 7–8B model or hosted Claude is more reliable
   - [ ] **6.6-names — server-side fuzzy person resolution** (backend, on `main`): the parser only resolves an assignee when the text matches a roster name closely, so nicknames/variants are dropped — e.g. "add soccer for **Walter** today at 3" (member is **Wally**) came back `kind: task, personName: null`, while "**Wally**" parses as an event with the person attached. Resolve `personName` against the household roster **server-side after parse**: fuzzy/alias match (Levenshtein + common nicknames: Walter→Wally, Walt; Katherine→Kelly; etc.), prefer a confident single match, else leave null. Keeps clients dumb (they already commit whatever `personName` comes back) and helps every surface (kiosk + iOS). Pairs with the model-quality note above — a stronger model also helps, but post-parse roster matching is deterministic and cheap. *(iOS side already fixed on the `ios/scaffold` worktree: `commitEvent` now writes the `event_participants` row, not just `person_id`, so a resolved person actually attaches as a participant.)*
 - [ ] 6.7 Notifications: ride Google reminders + APNs nudges. **Kiosk notifications (local-only, buildable now)** — an in-kiosk "due soon" surface so reminders work without APNs/web-push: a `reminders` table + endpoint, a kiosk banner/toast when a reminder time passes (fires while the kiosk is open), seeded by the calendar's **"Remind me"** (today an AI-suggested nudge only — see 5.7). A later step adds web-push (service worker + VAPID + scheduler) so reminders fire when the kiosk is closed
@@ -108,7 +108,7 @@ agenda + range), kiosk agenda card + Calendar month-grid screen. Part 2 below is
   `OTEL_EXPORTER_OTLP_ENDPOINT` set**, `@opentelemetry/*` kept esbuild-external so
   auto-instrumentation works; manual db/job/http instruments in `platform/telemetry.ts`); an
   all-local **`observability` compose profile** (`grafana/otel-lgtm`, Grafana :3001) toggled by
-  **`./nook observability up|down`**; **`./nook doctor`** (in-container health report, non-zero on
+  **`./waffled observability up|down`**; **`./waffled doctor`** (in-container health report, non-zero on
   degraded); and a **Settings → System Health** admin panel (live cards, polls `/api/health`).
   Backup/restore **shipped 2026-07-01** (see "Operational maturity"). *Still open:* automated
   scheduled restore *drills* (periodic test-restore into throwaway PG + row-count assert).
@@ -116,7 +116,7 @@ agenda + range), kiosk agenda card + Calendar month-grid screen. Part 2 below is
 ---
 
 ### Current focus
-**Feature surface complete + self-host packaging shipped — a fresh `git clone` + `./nook up`
+**Feature surface complete + self-host packaging shipped — a fresh `git clone` + `./waffled up`
 comes up with real auth (built-in password / OIDC) and runs.** Every M6
 domain is built and mock-faithful: Today (4 live cards), Tasks/chores (full stars loop —
 rewards catalog → redeem → parent-approve → ledger debit, weekly schedules, up-for-grabs claim,
@@ -144,7 +144,7 @@ backups moved to Phase 4)*:
   expanded on inbound, and **calendar → goal counting for recurring events** (recap queue
   UNIONs occurrences); **chore photo-proof** (migration 0052 — a consumer of the 6.5 blob upload).)*
 
-Other deferred polish folded into done items: AI "Kinnook suggests" cards (→6.6-ai), list-sharing
+Other deferred polish folded into done items: AI "Waffled suggests" cards (→6.6-ai), list-sharing
 UI, settings sub-tab depth, auto-from-calendar goal logging (M5). *(Event recurrence/overrides
 shipped — see 0048–0050 + the calendar→goal Phase 2 note above.)*
 
@@ -156,7 +156,7 @@ shipped — see 0048–0050 + the calendar→goal Phase 2 note above.)*
 Design rationale + the A/B/C pattern model: [`website/src/content/docs/concepts/extensibility.md`](website/src/content/docs/concepts/extensibility.md).
 Build order: ① module framework + Modules tab → ② Pantry module → ③ this (API keys). ✅ all shipped.
 
-**Shipped** (`feat(api-keys)`): `nook_…` secret (sha256 at rest) via the `x-api-key` header;
+**Shipped** (`feat(api-keys)`): `waffled_…` secret (sha256 at rest) via the `x-api-key` header;
 migration `0061_api_keys.sql`; central scope gate in the auth gate (only paths in the `API_SCOPES`
 catalog are reachable — auth/kiosk/permissions/key-mgmt/PowerSync are never exposed); scopes are
 `<resource>:read|write` (write implies read) layered over the unchanged in-route capability matrix;
@@ -173,11 +173,11 @@ refresh), authorization is a role→capability matrix bound to the *person* (not
 **no API keys, no scopes**, no OpenAPI/published contract, and the API is same-origin (no CORS).
 Goal: let operators (and the people they share with) build their own integrations against a stable,
 documented API — the platform enabler that the optional modules below can also be fed by.
-- **`api_keys` table** — account/person + household, name, hashed key (`nook_…` prefix), `scopes[]`,
+- **`api_keys` table** — account/person + household, name, hashed key (`waffled_…` prefix), `scopes[]`,
   `last_used_at`, `expires_at`, `revoked_at`. Key shown once on creation.
 - **Issuance UI** — Settings → API keys (generate / name / scope / revoke); admin-gated at first,
   per-user later.
-- **Auth gate** — `requireAuth` recognizes a `nook_…` bearer, looks the key up by hash, resolves the
+- **Auth gate** — `requireAuth` recognizes a `waffled_…` bearer, looks the key up by hash, resolves the
   tenant from the key's person+household, and attaches its scopes (sessions keep current behavior).
 - **Scopes** — coarse to start (e.g. `read`/`write` per domain: `recipes:read`, `chores:write`, …),
   enforced in the route guards for key-auth callers (layered over the existing capability matrix —
@@ -260,7 +260,7 @@ Shipped (migration **0058_recipe_step_timer**):
 "N days until X" to build anticipation. A **core Calendar feature** (not a gated module).
 Shipped (migration **0069_countdowns**: `events.is_countdown` + a `countdowns` table):
 - **Three sources, merged soonest-first** via `GET /api/countdowns`: flag any event as a
-  countdown (Kinnook-owned column, never pushed to Google; synced through the offline path +
+  countdown (Waffled-owned column, never pushed to Google; synced through the offline path +
   crud sink), standalone countdown items (REST CRUD), and each member's next **birthday**
   (derived from `persons.birthday`).
 - **Surfaces:** a **"Countdowns" Today card** (added to the card set; auto-appears via
@@ -285,9 +285,9 @@ The guards also stash `householdId` on the request for the observability access 
 ### Server admin CLI commands — SHIPPED 2026-06-25
 Immich-style operator commands for break-glass / recovery without the UI
 (see https://docs.immich.app/administration/server-commands). Run in-container via
-`./nook admin <cmd>` → `docker exec nook-api node dist/admin.js <cmd>`, so they reach the
+`./waffled admin <cmd>` → `docker exec waffled-api node dist/admin.js <cmd>`, so they reach the
 DB + encryption key directly (no login/admin token — host access is the authorization).
-Built (`scripts/admin.ts` → bundled `dist/admin.js`, `./nook admin` dispatcher, TTY-aware
+Built (`scripts/admin.ts` → bundled `dist/admin.js`, `./waffled admin` dispatcher, TTY-aware
 confirmation prompts / `--yes`, `admin-cli.integration.test.ts`):
 - **reset-password** `--email <e> [--password <pw>]` — set a member's password (random + printed
   if omitted); revokes their sessions. Reuses the API's `setPersonLogin` (scrypt + identity wiring).
@@ -298,11 +298,11 @@ confirmation prompts / `--yes`, `admin-cli.integration.test.ts`):
   flag (the actual token fix is the per-account **Reconnect** in Settings → Calendars).
 - **prune-sessions** `[--email]` — revoke refresh tokens (one member, or all).
 - **regenerate-powersync-key** — prints a fresh `POWERSYNC_JWT_PRIVATE_KEY` (RSA-2048) to paste
-  into `.env` + `./nook restart api powersync`.
+  into `.env` + `./waffled restart api powersync`.
 - **list-households** / **delete-household** `--id [--force]` — list households (member/login counts)
   and permanently delete one + all its scoped rows (dynamic per-`household_id` sweep under
   `session_replication_role=replica`; refuses households with logins unless `--force`). Clears test debris.
-Documented in `README.md` → "Operator commands (`./nook admin`)". **force-password** stays an
+Documented in `README.md` → "Operator commands (`./waffled admin`)". **force-password** stays an
 env break-glass (`AUTH_FORCE_PASSWORD=1`) and **OAuth login on/off** lives in the Settings UI —
 the two of the ~10 candidates intentionally left as env/UI rather than CLI. Auth writes go
 through the same hashing/validation as the API (one source of truth). *(raised + shipped 2026-06-25)*
@@ -413,7 +413,7 @@ Milestones currently pay nothing (cosmetic). Before wiring real payouts, resolve
 
 ### UX feedback pass — Jun 2026
 A round of in-app user feedback. **Quick fixes SHIPPED 2026-06-19:** nav labels no
-longer underlined + the Kinnook "N" links home; Today calendar title sans-serif (was
+longer underlined + the Waffled "N" links home; Today calendar title sans-serif (was
 serif) and "Family Chores" title-cased; Today chore rows link to `/tasks` and the
 "This week's dinners" header links to `/meals`; Today cards fill but no longer
 overflow the 3-col kiosk (the height-bound breakpoint now actually constrains —
@@ -490,7 +490,7 @@ fallback**.
 - `POST /api/auth/refresh` `{refreshToken}` → new pair (**rotating, single-use**)
 - `POST /api/auth/logout` `{refreshToken}` → revoke
 - Passwords: Node `scrypt` (no dep). Access = HS256 JWT signed with `LOCAL_JWT_SECRET`
-  (issuer `nook-local`, aud `nook-api`) so `requireAuth` + the PowerSync token
+  (issuer `waffled-local`, aud `waffled-api`) so `requireAuth` + the PowerSync token
   exchange validate it unchanged. Refresh = opaque, sha256-at-rest. TTLs env-tunable:
   `ACCESS_TOKEN_TTL_SECONDS` (default **3600 / 1h**), `REFRESH_TOKEN_TTL_DAYS`
   (default **60**). Password users reuse `identities` (provider=`password`,
@@ -511,15 +511,15 @@ web-cookie assumptions:
   local PowerSync SQLite, and reconnect after up to `REFRESH_TOKEN_TTL_DAYS` is
   covered by the refresh token — so a 1h access TTL is safe for mobile.
 - **Token compatibility:** access tokens are HS256 over `LOCAL_JWT_SECRET` (issuer
-  `nook-local`, aud `nook-api`). Point the app's env at the **same** `LOCAL_JWT_SECRET`
+  `waffled-local`, aud `waffled-api`). Point the app's env at the **same** `LOCAL_JWT_SECRET`
   the server uses (supersedes 4.2.1's Auth0 plan).
 
 **Phase 1b — SHIPPED 2026-06-20** (`apps/web`): `AuthGate` (loading/authed/login/
 setup), first-run **Setup wizard** + **Login screen**, `client.ts` session mgmt
 (access + rotating refresh in localStorage, bearer on every call, transparent 401
-refresh-retry), legacy `nook.token` still honored. **Sign out** in Settings (nav
+refresh-retry), legacy `waffled.token` still honored. **Sign out** in Settings (nav
 footer + real About panel; tap-to-confirm) — `authApi.logout()` revokes refresh +
-clears session + fires `nook:auth-changed`. Verified live + 95 web tests green.
+clears session + fires `waffled:auth-changed`. Verified live + 95 web tests green.
 
 ### Phase 2 — OIDC, backend-mediated, **Settings-managed** (Immich-style) — SHIPPED 2026-06-20
 **Verified live against real Google discovery** (test/enable/status/secret-safe
@@ -596,26 +596,26 @@ steps**. Shipped:
   the bundled runner against the live DB (`__dirname`-relative dir resolution; CJS
   `import.meta` pitfall avoided by passing the dir explicitly).
 - **Registry-ready images.** `api`/`caddy`/`migrate` carry `image:` names
-  (`${NOOK_API_IMAGE:-nook-api:local}` / `${NOOK_CADDY_IMAGE:-nook-caddy:local}`)
+  (`${WAFFLED_API_IMAGE:-waffled-api:local}` / `${WAFFLED_CADDY_IMAGE:-waffled-caddy:local}`)
   alongside `build:`, so the same compose file builds-from-source today and
   `docker compose pull`s from GHCR when the overrides point at published tags.
 - **GHCR publish workflow.** `.github/workflows/publish-images.yml` builds both
-  `nook-api` and `nook-caddy` **multi-arch (amd64 + arm64)** and pushes them to
+  `waffled-api` and `waffled-caddy` **multi-arch (amd64 + arm64)** and pushes them to
   `ghcr.io/<owner>/…` **on a `v*` release tag** (or manual dispatch) — *not* every
   push to main, to conserve Actions minutes (matrix build, Buildx + QEMU, gha layer
   cache, repo-default `GITHUB_TOKEN` — no extra secrets). Release tags publish
   `version` / `major.minor` / `latest`; a manual run publishes an `sha-…` tag only.
-  Set `NOOK_API_IMAGE` / `NOOK_CADDY_IMAGE` to the published tags + `docker compose
+  Set `WAFFLED_API_IMAGE` / `WAFFLED_CADDY_IMAGE` to the published tags + `docker compose
   pull` to run without a local build.
-- **One-command fresh run.** `./nook up` auto-creates `infra/compose/.env` from the
+- **One-command fresh run.** `./waffled up` auto-creates `infra/compose/.env` from the
   example with generated secrets (`LOCAL_JWT_SECRET` / `TOKEN_ENCRYPTION_KEY` /
-  `POSTGRES_PASSWORD`) and migrations run automatically — no separate `./nook migrate`.
+  `POSTGRES_PASSWORD`) and migrations run automatically — no separate `./waffled migrate`.
 - **`.env.example` rewritten** for self-host (required vs optional, sessions, image
   overrides, `PUBLIC_BASE_URL`) and the api now passes through the auth TTLs +
   `AUTH_FORCE_PASSWORD` + `PUBLIC_BASE_URL`. README quickstart collapsed to clone + up.
 
 Build-from-source stays the zero-config default; pulling published images is a pure
-env change (`NOOK_*_IMAGE` → the GHCR tags).
+env change (`WAFFLED_*_IMAGE` → the GHCR tags).
 
 **Next:** ~~Phase 4 optional S3 backup~~ — **SHIPPED 2026-07-01** (local default + S3/B2/R2/MinIO
 offsite + media + health/doctor integration; see "Operational maturity" at the end of this file).
@@ -637,7 +637,7 @@ Shipped:
   Admin-gated additional-household creation (`POST /api/households` → owner person linked
   to the existing account). **Settings → Households** lists every membership with a Switch
   action; login lands on the account's `last_household_id`.
-- **Operator CLI.** `./nook admin add-member` / `list-accounts` / `list-households` /
+- **Operator CLI.** `./waffled admin add-member` / `list-accounts` / `list-households` /
   `delete-household` for attaching a human to a second home and clearing test debris.
 - **Onboarding state moved server-side** (2026-06-29): the post-setup "Getting started"
   checklist is armed at provision time and tracked in `households.settings.onboarding`
@@ -657,21 +657,21 @@ Shipped:
 
 ## Operational maturity — reach (and beat) Immich-level stability
 Benchmarked our self-host operational posture against Immich (2026-07-01). We're already
-**ahead on observability** (deep `/api/health` + `./nook doctor` + System Health panel + OTEL
-vs. their shallow `/ping`), at **parity on setup/upgrade** (`./nook up` auto-bootstraps secrets +
+**ahead on observability** (deep `/api/health` + `./waffled doctor` + System Health panel + OTEL
+vs. their shallow `/ping`), at **parity on setup/upgrade** (`./waffled up` auto-bootstraps secrets +
 runs migrations; `docker compose pull` upgrades). The real gaps were backup, release discipline,
 and CI. Prioritized backlog (P0 = the "trust it with my family's data" floor):
 
 **P0 — SHIPPED 2026-07-01:**
 - [x] **Backup & restore (local + S3) — exceeds Immich.** New `backup` sidecar
   (`infra/compose/backup/`, image = `postgres:16` + awscli + a dependency-free bash scheduler):
-  nightly `pg_dump | gzip` into the `nook_backups` volume (**on by default, zero-config**),
+  nightly `pg_dump | gzip` into the `waffled_backups` volume (**on by default, zero-config**),
   pruned after `BACKUP_RETENTION_DAYS`. Beats Immich on three axes it lacks: **env-declarative**
   (not UI-only), **offsite** (`BACKUP_S3_*` → S3 / B2 / R2 / MinIO), and **media** included
   (`BACKUP_INCLUDE_MEDIA`). `BACKUP_HOST_PATH` writes dumps to an operator-chosen folder. Every
-  run is recorded in **`backup_runs`** (migration 0071) so `/api/health` + `./nook doctor` +
+  run is recorded in **`backup_runs`** (migration 0071) so `/api/health` + `./waffled doctor` +
   Settings → System Health show "last backup: ok/failed, N h ago" (degraded when failed or
-  >48 h stale). CLI: `./nook backup [list]` runs one now; `./nook restore <file>` does a
+  >48 h stale). CLI: `./waffled backup [list]` runs one now; `./waffled restore <file>` does a
   confirmed, app-stopped, single-transaction restore. **Verified live**: backup → recorded →
   doctor green; restore round-trip → api+powersync healthy, data intact, PowerSync self-healed
   its replication slot. (Supersedes the old "Phase 4 — optional S3 backup" — now done + broader.)
@@ -688,15 +688,15 @@ and CI. Prioritized backlog (P0 = the "trust it with my family's data" floor):
   (`UPDATE_CHECK_REPO`, cached 6h); System Health shows an "update available / up to date / off"
   banner + toggle. Operator kill-switch `UPDATE_CHECK_ENABLED`; per-household admin toggle.
 - [x] **Docs: UPGRADING.md + TROUBLESHOOTING.md** added under `docs/`.
-- [~] **Release-served compose/env** — reframed for Kinnook's architecture: the publish workflow now
+- [~] **Release-served compose/env** — reframed for Waffled's architecture: the publish workflow now
   cuts a **GitHub Release** (auto notes + `example.env`) and builds all three images (api/caddy/
-  **backup**). A standalone download-and-run compose is N/A because Kinnook mounts host config
+  **backup**). A standalone download-and-run compose is N/A because Waffled mounts host config
   (Caddyfile/powersync/postgres-init) — the runnable matched pair is `git checkout <tag>`.
 
 **Setup experience — SHIPPED 2026-07-01** (benchmarked vs Immich's quick-start): we
 already required *zero* env edits vs their two, so instead of a big env questionnaire we
-added `./nook up` **preflight** (Docker/daemon/Compose-v2/ports, friendly fixes) + a
-"here's the URL to open" summary, and **`./nook setup`** — one question (localhost / auto-
+added `./waffled up` **preflight** (Docker/daemon/Compose-v2/ports, friendly fixes) + a
+"here's the URL to open" summary, and **`./waffled setup`** — one question (localhost / auto-
 detected LAN IP / hostname) that writes the address vars coherently (kills the localhost-
 `POWERSYNC_PUBLIC_URL` "Offline on the tablet" trap). Quick-start doc refreshed. Integrations
 (Google/AI/OIDC) stay in in-app Settings by design, not a CLI wizard.

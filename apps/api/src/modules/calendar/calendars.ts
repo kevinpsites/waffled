@@ -1,5 +1,5 @@
 // Calendar — Google connect (roadmap 5.2). Links a Google account to the household
-// and imports its calendars, each mappable to a Nook person for color/ownership.
+// and imports its calendars, each mappable to a Waffled person for color/ownership.
 //
 // The OAuth round-trip:
 //   1. POST /api/calendar/google/connect  (authed) → mints a one-time state row and
@@ -66,7 +66,7 @@ interface CalendarRow extends QueryResultRow {
 
 // Upsert the account + its calendars in one transaction. Re-connecting refreshes
 // the token and calendar metadata but PRESERVES any person mapping / selected flag
-// the household has already chosen (those are nook-owned, not Google-owned).
+// the household has already chosen (those are waffled-owned, not Google-owned).
 async function storeConnection(opts: {
   householdId: string
   personId: string
@@ -281,7 +281,7 @@ export function registerCalendarRoutes(api: Api): void {
     }
 
     if (st.redirect_to) return res.redirect(st.redirect_to)
-    return res.html(resultPage('Calendar connected', 'You can close this tab and return to Nook.'))
+    return res.html(resultPage('Calendar connected', 'You can close this tab and return to Waffled.'))
   })
 
   // What's connected: accounts + their calendars (with person mapping).
@@ -298,7 +298,7 @@ export function registerCalendarRoutes(api: Api): void {
     }
   }))
 
-  // Map a calendar to a person / toggle whether Nook syncs it (admins).
+  // Map a calendar to a person / toggle whether Waffled syncs it (admins).
   api.patch('/api/calendar/google/calendars/:id', adminRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'calendar not found' })

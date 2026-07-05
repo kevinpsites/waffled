@@ -4,7 +4,7 @@
 -- detail with reactions). Household-scoped, soft-deleted, with an updated_at
 -- trigger — mirrors 0011_goal_lists_membership.sql.
 --
--- NOTE ON THE DATA MODEL: Nook has no blob-storage / file-upload infra yet, so a
+-- NOTE ON THE DATA MODEL: Waffled has no blob-storage / file-upload infra yet, so a
 -- photo is EITHER an image URL (image_url) OR an emoji + color tile (emoji +
 -- color_hex). The handoff mock itself renders colored emoji tiles, so this is the
 -- intended fallback, not a simplification — the wall, screensaver and detail all

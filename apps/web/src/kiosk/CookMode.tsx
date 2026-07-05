@@ -136,7 +136,7 @@ export function CookMode() {
     () => (
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
         <button className="pill" style={{ cursor: 'pointer' }} onClick={exit}>✕ Exit cook mode</button>
-        <div className="cm-top-title nk-serif">{recipe?.title ?? ''}</div>
+        <div className="cm-top-title wf-serif">{recipe?.title ?? ''}</div>
         <div style={{ marginLeft: 'auto' }} className="cm-top-prog tiny muted">
           {total > 0 && !done ? `Step ${i + 1} of ${total}` : ''}
         </div>
@@ -162,7 +162,7 @@ export function CookMode() {
     return (
       <div className="cookmode cm-done">
         <div className="cm-done-emoji">🎉</div>
-        <div className="nk-serif cm-done-h">Nicely done.</div>
+        <div className="wf-serif cm-done-h">Nicely done.</div>
         <div className="muted cm-done-sub">“{recipe.title}” is marked as cooked.</div>
         <div className="cm-done-actions">
           <button className="btn btn-ghost" onClick={() => { setDone(false); setI(0) }}>↻ Start over</button>
@@ -189,7 +189,7 @@ export function CookMode() {
 
       <div className="cm-stage">
         <div className="cm-step-n">Step {i + 1}</div>
-        <div className="cm-instruction nk-serif">{step.instruction}</div>
+        <div className="cm-instruction wf-serif">{step.instruction}</div>
 
         {step.ingredients.length > 0 && (
           <div className="cm-ings">
@@ -228,7 +228,7 @@ export function CookMode() {
         <div className="modal-overlay" onClick={() => setShowAll(false)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
             <button type="button" className="modal-close" aria-label="Close" onClick={() => setShowAll(false)}>×</button>
-            <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 12 }}>All ingredients</div>
+            <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 12 }}>All ingredients</div>
             <div className="cm-all-list">
               {ingredients.map((ing) => (
                 <div key={ing.id} className="cm-all-row">
@@ -266,7 +266,7 @@ function TimerAlarm({
     <div className="cm-alarm" role="alertdialog" aria-label="Timer finished">
       <div className="cm-alarm-card">
         <div className="cm-alarm-ic" aria-hidden>⏱</div>
-        <div className="cm-alarm-h nk-serif">{firing.length > 1 ? `${firing.length} timers done` : 'Timer done'}</div>
+        <div className="cm-alarm-h wf-serif">{firing.length > 1 ? `${firing.length} timers done` : 'Timer done'}</div>
         <div className="cm-alarm-list">
           {firing.map((t) => (
             <div key={t.id} className="cm-alarm-row">

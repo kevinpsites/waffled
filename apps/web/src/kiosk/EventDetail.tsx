@@ -181,7 +181,7 @@ export function EventDetail() {
   const calStatus =
     view.calendarName
       ? `${view.calendarName}${view.syncState === 'synced' ? ' · synced from Google' : ' · pending sync'}`
-      : 'Kinnook only'
+      : 'Waffled only'
 
   // Smart suggestion for an untagged, non-meal, single event that looks like a
   // goal. "Link" opens the editor pre-linked so the human confirms (and can pick
@@ -201,7 +201,7 @@ export function EventDetail() {
               {view.personEmoji ?? '🙂'} {view.personName}
             </span>
           )}
-          <div className="ed-hero-title nk-serif">{view.title}</div>
+          <div className="ed-hero-title wf-serif">{view.title}</div>
           <div className="ed-hero-when">
             {view.allDay ? (
               <span className="ed-hero-time">All day</span>
@@ -310,9 +310,9 @@ export function EventDetail() {
             ) : (
               // Don't assert a headline before the model has decided — shimmer it too.
               <div className="ai-think" aria-label="Thinking…">
-                <div className="ai-think-bar head" />
-                <div className="ai-think-bar" />
-                <div className="ai-think-bar short" />
+                <div className="ai-thiwf-bar head" />
+                <div className="ai-thiwf-bar" />
+                <div className="ai-thiwf-bar short" />
               </div>
             )}
             {remindShown && (

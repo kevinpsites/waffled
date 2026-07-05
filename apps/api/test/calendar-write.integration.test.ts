@@ -1,4 +1,4 @@
-// Calendar — outbound write-back (5.4): events authored in Nook are routed to the
+// Calendar — outbound write-back (5.4): events authored in Waffled are routed to the
 // owner's write-target calendar and created/updated/deleted on Google, exercised
 // against an in-process stub for the token + event write/list endpoints. Covers
 // routing to a single target when a person owns several writable calendars, the
@@ -11,7 +11,7 @@ import { randomBytes } from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 
-const SECRET = 'nook-local-dev-secret-change-me'
+const SECRET = 'waffled-local-dev-secret-change-me'
 
 let pg: StartedPostgreSqlContainer
 let stub: Server
@@ -26,7 +26,7 @@ let failInsertOnce = false
 let seq = 0
 
 function mint(sub: string): string {
-  return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'nook-local', audience: 'nook-api', expiresIn: '1h' })
+  return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
 }
 
 interface RunResult { statusCode: number; body: string }
@@ -225,10 +225,10 @@ describe('outbound write-back', () => {
     expect(writes[0]).toMatchObject({ method: 'POST', calendar: 'primary' })
   })
 
-  it('creates a Nook-only event when calendarId is null (no push)', async () => {
+  it('creates a Waffled-only event when calendarId is null (no push)', async () => {
     const n = writeCalls.length
     const res = await call('POST', '/api/events', kevin, {
-      title: 'Nook only',
+      title: 'Waffled only',
       startsAt: '2026-07-08T15:00:00Z',
       personId: kevinId,
       calendarId: null,

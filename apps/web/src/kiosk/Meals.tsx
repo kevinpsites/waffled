@@ -106,7 +106,7 @@ function MealPicker({
           <Icon name="cl" />
           Meals
         </div>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginLeft: 14 }}>
+        <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, marginLeft: 14 }}>
           {browse ? 'Explore recipes' : `Add a ${MEAL_LABEL[slot].toLowerCase()} · ${dayLabel}`}
         </div>
         <div className="tb-right" style={{ marginLeft: 'auto' }}>
@@ -155,9 +155,9 @@ export function Meals() {
   // "Plan from pantry" (from the Pantry screen) seeds the planner with use-up items.
   const [seedUseUp, setSeedUseUp] = useState<string[]>([])
   useEffect(() => {
-    const raw = sessionStorage.getItem('nook.planUseUp')
+    const raw = sessionStorage.getItem('waffled.planUseUp')
     if (raw) {
-      sessionStorage.removeItem('nook.planUseUp')
+      sessionStorage.removeItem('waffled.planUseUp')
       try { const items = JSON.parse(raw); if (Array.isArray(items) && items.length) { setSeedUseUp(items); setPlanning(true) } } catch { /* ignore */ }
     }
   }, [])
@@ -394,7 +394,7 @@ export function Meals() {
   return (
     <div className="meals-screen">
       <div className="meals-head">
-        <div className="card-h nk-serif" style={{ fontSize: 20 }}>{view === 'month' ? monthLabel : 'Meal plan'}</div>
+        <div className="card-h wf-serif" style={{ fontSize: 20 }}>{view === 'month' ? monthLabel : 'Meal plan'}</div>
         <div className="seg">
           <button className={view === 'week' ? 'on' : ''} onClick={() => setView('week')}>Week</button>
           <button className={view === 'month' ? 'on' : ''} onClick={() => setView('month')}>Month</button>

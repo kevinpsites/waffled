@@ -381,7 +381,7 @@ export function EventModal({
   }, [isMeal, event?.originRefId])
 
   // Calendar picker (create only): which Google calendar the event is written to.
-  // '' = Kinnook only. Defaults to the owner's ★ calendar and follows the owner until
+  // '' = Waffled only. Defaults to the owner's ★ calendar and follows the owner until
   // the user picks manually. Editing keeps the event on its existing calendar.
   const [writableCals, setWritableCals] = useState<CalendarLink[]>([])
   const [calendarId, setCalendarId] = useState('')
@@ -569,7 +569,7 @@ export function EventModal({
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>
           ×
         </button>
-        <div className="nk-serif" style={{ fontSize: 22, fontWeight: 600, marginBottom: 14 }}>
+        <div className="wf-serif" style={{ fontSize: 22, fontWeight: 600, marginBottom: 14 }}>
           {editing ? (isMeal ? 'Planned meal' : 'Edit event') : 'New event'}
         </div>
 
@@ -937,7 +937,7 @@ export function EventModal({
         {scopePrompt && (
           <div className="modal-overlay" onClick={() => { setScopePrompt(null); setSaving(false) }}>
             <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 360 }}>
-              <div className="nk-serif" style={{ fontSize: 19, fontWeight: 600, marginBottom: 14 }}>
+              <div className="wf-serif" style={{ fontSize: 19, fontWeight: 600, marginBottom: 14 }}>
                 {scopePrompt === 'delete' ? 'Delete recurring event' : 'Edit recurring event'}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>

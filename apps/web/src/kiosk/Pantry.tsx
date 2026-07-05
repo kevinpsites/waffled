@@ -152,7 +152,7 @@ export function Pantry() {
   return (
     <div className="pl-wrap">
       <div className="pl-head">
-        <div className="nk-serif pl-title">Pantry</div>
+        <div className="wf-serif pl-title">Pantry</div>
         <input className="pl-search" placeholder={`Search all ${counts.all} items…`} value={q} onChange={(e) => setQ(e.target.value)} />
         <div className="pl-head-actions">
           <button type="button" className="pill" onClick={() => setScanning(true)}>⛶ Scan</button>
@@ -510,7 +510,7 @@ function ItemModal({ item, locations, onClose, onSaved }: {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>{item ? 'Edit item' : 'Add to pantry'}</div>
+        <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>{item ? 'Edit item' : 'Add to pantry'}</div>
         {!item && (
           <label className="pantry-field"><span>Barcode (optional)</span>
             <div className="pl-barcode-row">

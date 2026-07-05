@@ -116,7 +116,7 @@ function SharedHero({ goal, onLog, onOpen }: { goal: Goal; onLog: (g: Goal) => v
         </Ring>
         <div style={{ flex: 1, minWidth: 0 }}>
           <span className="cat-pill hero-pill">⭐ Featured · shared total</span>
-          <div className="nk-serif hero-title">{goal.title}</div>
+          <div className="wf-serif hero-title">{goal.title}</div>
           <div className="hero-sub">Everyone contributes to one pool{goal.deadline ? ` · by ${fmtDeadline(goal.deadline)}` : ''}</div>
           {goal.participants.length > 0 && (
             <div className="hero-contribs">
@@ -160,7 +160,7 @@ function EachHero({ goal, onOpen }: { goal: Goal; onOpen: () => void }) {
         <div className="hero-emoji">{goal.emoji ?? '🎯'}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <span className="cat-pill hero-pill">⭐ Featured · each tracks their own</span>
-          <div className="nk-serif hero-title">{goal.title}</div>
+          <div className="wf-serif hero-title">{goal.title}</div>
           <div className="hero-sub">{sub}</div>
         </div>
         <div className="ch-side hero-each-side">
@@ -287,14 +287,14 @@ export function Goals() {
               // An individual list IS a person — make the name open their profile.
               <button
                 type="button"
-                className="nk-serif goal-listhead-t goal-listhead-link"
+                className="wf-serif goal-listhead-t goal-listhead-link"
                 onClick={() => navigate(`/person/${selected.members[0].personId}`)}
                 title={`View ${selected.name}'s page`}
               >
                 {selected.name}
               </button>
             ) : (
-              <div className="nk-serif goal-listhead-t">{selected?.name ?? 'All goals'}</div>
+              <div className="wf-serif goal-listhead-t">{selected?.name ?? 'All goals'}</div>
             )}
             <div className="tiny muted" style={{ fontWeight: 600 }}>
               {selected ? `${selected.goalCount} goals · ${listSub(selected)}` : `${goals.length} goals`}

@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react'
 // Proxy /api to the local api container so the SPA and api share an origin (no
 // CORS), exactly like Caddy does in the stack. We forward the browser's host +
 // proto so the api can build correct absolute URLs (OIDC redirect_uri, the
-// "Back to Nook" links) — otherwise it only sees its own :3000 address and SSO
+// "Back to Waffled" links) — otherwise it only sees its own :3000 address and SSO
 // callbacks point at the wrong place.
 const apiProxy: Record<string, ProxyOptions> = {
   '/api': {
@@ -19,7 +19,7 @@ const apiProxy: Record<string, ProxyOptions> = {
       })
     },
   },
-  // Uploaded media (/media/*) is served by Caddy off the shared nook_media volume,
+  // Uploaded media (/media/*) is served by Caddy off the shared waffled_media volume,
   // NOT by the api — so in dev we forward to the running stack's Caddy (:8080) the
   // same way it's served in production. Without this, the dev server returns
   // index.html for /media URLs and uploaded images render broken.

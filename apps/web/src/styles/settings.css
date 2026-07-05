@@ -455,7 +455,7 @@ select.sel {
   display: flex; align-items: center; gap: 12px; padding: 15px 18px;
   border-bottom: 1px solid var(--hair); flex: none;
 }
-.proof-drawer-head .nk-serif { font-size: 18px; font-weight: 600; }
+.proof-drawer-head .wf-serif { font-size: 18px; font-weight: 600; }
 .proof-drawer-body { padding: 16px 18px; overflow-y: auto; }
 /* "View stored photos ›" — muted bold text action, matching the "Delete goal"
    look (var(--ink-3), 13px, 700, flat). Only rendered when there are stored proofs. */

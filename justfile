@@ -1,4 +1,4 @@
-# Nook task runner — requires `just` (https://github.com/casey/just) + Docker.
+# Waffled task runner — requires `just` (https://github.com/casey/just) + Docker.
 # No `just`? Run the underlying `docker compose ...` commands directly.
 
 compose := "docker compose -f infra/compose/docker-compose.yml --env-file infra/compose/.env"
@@ -126,7 +126,7 @@ seed:
       curl -s -X POST -H "$H" -H "$J" -d "$ev" localhost:3000/api/events >/dev/null || true
     done
     echo "Seeded. In the kiosk browser console, run:"
-    echo "  localStorage.setItem('nook.token', '$TOKEN'); location.reload()"
+    echo "  localStorage.setItem('waffled.token', '$TOKEN'); location.reload()"
 
 # DANGER: stop and wipe local volumes (destroys local db)
 nuke:

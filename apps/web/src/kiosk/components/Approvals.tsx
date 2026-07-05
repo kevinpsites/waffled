@@ -341,7 +341,7 @@ function ApprovalsDrawer({
           <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={onClose}>‹ Today</button>
         </div>
         <div className="review-drawer-body">
-          <div className="nk-serif review-title">Needs your OK</div>
+          <div className="wf-serif review-title">Needs your OK</div>
           <div className="review-sub">Approve finished chores to award their stars, and approve or deny reward requests.</div>
           <ChoreApprovalsCard chores={chores} cur={cur} busy={busy} onApprove={onApproveChore} onReject={onRejectChore} title="Chores to approve" />
           <RewardApprovalsCard pending={pending} cur={cur} busy={busy} onDecide={onDecideReward} title="Rewards to approve" />

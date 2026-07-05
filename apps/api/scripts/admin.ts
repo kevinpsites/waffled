@@ -1,14 +1,14 @@
 // In-container operator CLI for break-glass / recovery without the web UI.
-// Runs inside nook-api (where DATABASE_URL + TOKEN_ENCRYPTION_KEY are set), so it
+// Runs inside waffled-api (where DATABASE_URL + TOKEN_ENCRYPTION_KEY are set), so it
 // reaches the DB directly — no HTTP, no admin token. Invoked as
-//   ./nook admin <command> [flags]   →   docker exec nook-api node dist/admin.js …
+//   ./waffled admin <command> [flags]   →   docker exec waffled-api node dist/admin.js …
 //
 // All auth-data writes go through the SAME service helpers the API uses
 // (hashPassword / setPersonLogin), so there is one source of truth for hashing and
 // the password→identity wiring. Destructive commands require an interactive "y"
 // confirmation or the --yes flag.
 //
-// Commands (see `./nook admin help`):
+// Commands (see `./waffled admin help`):
 //   list-members
 //   reset-password   --email <e> [--password <pw>] [--yes]
 //   make-admin       (--email <e> | --person <uuid>)
@@ -251,7 +251,7 @@ function regeneratePowerSyncKey(): void {
   console.log(`POWERSYNC_JWT_PRIVATE_KEY=${b64}\n`)
   console.log(warn('Rotating the key signs all NEW PowerSync tokens with it; existing client'))
   console.log(warn('tokens stay valid until they expire (~5 min), then refresh against the new key.'))
-  console.log(c.dim + '\nApply with:  ./nook restart api powersync' + c.reset)
+  console.log(c.dim + '\nApply with:  ./waffled restart api powersync' + c.reset)
 }
 
 async function listHouseholds(): Promise<void> {
@@ -397,8 +397,8 @@ async function listAccounts(): Promise<void> {
 }
 
 function help(): void {
-  console.log(`${c.bold}Nook admin — operator / break-glass commands${c.reset}
-${c.dim}Run as: ./nook admin <command> [flags]${c.reset}
+  console.log(`${c.bold}Waffled admin — operator / break-glass commands${c.reset}
+${c.dim}Run as: ./waffled admin <command> [flags]${c.reset}
 
   ${c.bold}list-members${c.reset}                       people, login email, admin/owner, password/SSO
   ${c.bold}reset-password${c.reset} --email <e> [--password <pw>] [--yes]

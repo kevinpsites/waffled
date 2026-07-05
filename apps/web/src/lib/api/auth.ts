@@ -87,7 +87,7 @@ export const authApi = {
   async logout(): Promise<void> {
     let refreshToken: string | undefined
     try {
-      refreshToken = localStorage.getItem('nook.refresh') || undefined
+      refreshToken = localStorage.getItem('waffled.refresh') || undefined
     } catch {
       /* ignore */
     }

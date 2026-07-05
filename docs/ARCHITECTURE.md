@@ -1,4 +1,4 @@
-# Kinnook — Architecture Decision Record
+# Waffled — Architecture Decision Record
 
 A snapshot of the decisions made during planning, with rationale, so the "why" isn't lost.
 
@@ -28,15 +28,15 @@ Kiosk and web share the same React codebase (kiosk = a layout/PWA mode).
 ## Calendar (a core tenet)
 
 - **2-way Google Calendar sync, day one.** Not deferrable.
-- **Authority:** Google is authoritative for events that originated in Google; Kinnook is
-  authoritative for Kinnook-native fields (assignee/color, reward links). Conflict = compare
-  `updated`/`etag`; Kinnook-native fields never lost.
+- **Authority:** Google is authoritative for events that originated in Google; Waffled is
+  authoritative for Waffled-native fields (assignee/color, reward links). Conflict = compare
+  `updated`/`etag`; Waffled-native fields never lost.
 - **Freshness:** 2–5 min outbound polling (`syncToken`). No public webhook needed now;
   `watch` push channels are a later upgrade.
 - **Topology:** one **hub Google account** (Kevin's for v1) owns secondary calendars for
   the kids (who have no Google identity). Each adult connects their own account; their
   events live in their real calendar and are shared so they surface for everyone.
-- Each Kinnook person has one **home calendar** (write-back target) + zero or more
+- Each Waffled person has one **home calendar** (write-back target) + zero or more
   **subscribed** (read) calendars. Write-back needs a stored token per connected adult.
 - Store events as `timestamptz` + `RRULE` + timezone — never the prototype's human strings.
 - **The phone never talks to Google.** It syncs to Postgres; the server-side worker owns
@@ -66,7 +66,7 @@ Kiosk and web share the same React codebase (kiosk = a layout/PWA mode).
   Caddy ingress, nightly pg_dump→S3 backup). Behind **Tailscale** — nothing public,
   CGNAT/dynamic-IP irrelevant. Kiosk on the LAN keeps working during internet outages.
 - **Later ("make it real"):** swap is env-var/service-level, not app code —
-  hostname (`NOOK_HOSTNAME`), ingress (Caddy → Cloudflare Tunnel/public), DB
+  hostname (`WAFFLED_HOSTNAME`), ingress (Caddy → Cloudflare Tunnel/public), DB
   (container → RDS), PowerSync (self-hosted → Cloud). Keep DB/admin on the tailnet forever.
 - **IaC:** Terraform for AWS (S3, CloudFront, backup IAM, state) + Auth0. Compose for
   runtime. One `hostname` value per environment, referenced by both. The only

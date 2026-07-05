@@ -324,8 +324,8 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
     <div className="plan-screen">
       {/* Left: the guardrails */}
       <div className="plan-config">
-        <div className="plan-title nk-serif">Plan {monthLabel}</div>
-        <div className="tiny muted plan-sub">Kinnook drafts a rotation of your recipes and spreads it across the month — then builds your grocery list.</div>
+        <div className="plan-title wf-serif">Plan {monthLabel}</div>
+        <div className="tiny muted plan-sub">Waffled drafts a rotation of your recipes and spreads it across the month — then builds your grocery list.</div>
 
         {libShort && (
           <div className="plan-lib-hint tiny">
@@ -431,7 +431,7 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
       {/* Right: the month */}
       <div className="plan-results">
         <div className="plan-results-head">
-          <div className="card-h nk-serif">Your {monthLabel} dinners</div>
+          <div className="card-h wf-serif">Your {monthLabel} dinners</div>
           {cards.length > 0 && (
             <button type="button" className="pill" onClick={reshuffle} disabled={loading}>
               {loading ? <><span className="spinner" /> Reshuffling…</> : <><Icon name="spark" /> Reshuffle</>}
@@ -552,7 +552,7 @@ export function PlanMonth({ monthStart, onClose, onApplied }: { monthStart: stri
             <button type="button" className="pill" onClick={() => setPickForDate(null)} style={{ cursor: 'pointer' }}>
               <Icon name="cl" /> Back
             </button>
-            <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginLeft: 14 }}>
+            <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, marginLeft: 14 }}>
               Choose a recipe · {labelFor(pickForDate).dow} {labelFor(pickForDate).dt}
             </div>
           </div>

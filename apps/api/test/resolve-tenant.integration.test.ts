@@ -14,9 +14,9 @@ import { randomBytes } from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 
-const SECRET = 'nook-local-dev-secret-change-me'
+const SECRET = 'waffled-local-dev-secret-change-me'
 // config default (HOUSEHOLD_CLAIM unset in tests).
-const HH_CLAIM = 'https://nook.app/household_id'
+const HH_CLAIM = 'https://waffled.app/household_id'
 
 let pg: StartedPostgreSqlContainer
 let dbUrl = ''
@@ -34,12 +34,12 @@ let kevinBId = ''
 
 // A legacy-shaped token: subject only, no household claim.
 function mintLegacy(sub: string): string {
-  return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'nook-local', audience: 'nook-api', expiresIn: '1h' })
+  return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
 }
 // An account-scoped token: subject = account id + the active household claim.
 function mintAccount(accountSub: string, householdId: string): string {
   return jwt.sign({ [HH_CLAIM]: householdId }, SECRET, {
-    algorithm: 'HS256', subject: accountSub, issuer: 'nook-local', audience: 'nook-api', expiresIn: '1h',
+    algorithm: 'HS256', subject: accountSub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h',
   })
 }
 

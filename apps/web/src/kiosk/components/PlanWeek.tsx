@@ -180,8 +180,8 @@ export function PlanWeek({ startStr, days, onClose, onApplied, initialUseUp }: {
     <div className="plan-screen">
       {/* Left: the guardrails (headed by the screen title, per the mock) */}
       <div className="plan-config">
-        <div className="plan-title nk-serif">Plan my week</div>
-        <div className="tiny muted plan-sub">Tell Kinnook the guardrails — it drafts the meals and the grocery list in one go.</div>
+        <div className="plan-title wf-serif">Plan my week</div>
+        <div className="tiny muted plan-sub">Tell Waffled the guardrails — it drafts the meals and the grocery list in one go.</div>
         <div className="flabel">Plan which meal?</div>
         <div className="seg seg-plantype">
           {MEAL_TYPES.map((m) => (
@@ -241,7 +241,7 @@ export function PlanWeek({ startStr, days, onClose, onApplied, initialUseUp }: {
       {/* Right: the drafted week */}
       <div className="plan-results">
         <div className="plan-results-head">
-          <div className="card-h nk-serif">Here’s your week</div>
+          <div className="card-h wf-serif">Here’s your week</div>
           {cards.length > 0 && (
             <button type="button" className="pill" onClick={reshuffle} disabled={loading}>
               {loading ? <><span className="spinner" /> Reshuffling…</> : <><Icon name="spark" /> Reshuffle</>}
@@ -348,7 +348,7 @@ export function PlanWeek({ startStr, days, onClose, onApplied, initialUseUp }: {
             <button type="button" className="pill" onClick={() => setPickForDate(null)} style={{ cursor: 'pointer' }}>
               <Icon name="cl" /> Back
             </button>
-            <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginLeft: 14 }}>
+            <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, marginLeft: 14 }}>
               Choose a recipe · {labelFor(pickForDate).dow} {labelFor(pickForDate).dt}
             </div>
           </div>

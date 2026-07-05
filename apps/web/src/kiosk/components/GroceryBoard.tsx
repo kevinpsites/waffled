@@ -327,7 +327,7 @@ export function GroceryBoard({ onBack }: { onBack: () => void }) {
     <div className="grocery-board">
       <div className="grocery-main">
         <div className="grocery-head">
-          <div className="card-h nk-serif grocery-title">Grocery list</div>
+          <div className="card-h wf-serif grocery-title">Grocery list</div>
           <div className="muted grocery-count" style={{ fontWeight: 600 }}>
             {activeItems.length} to get{completedItems.length > 0 ? ` · ${completedItems.length} done` : ''}
           </div>

@@ -48,7 +48,7 @@ export function PinPad({ profile, onCancel }: { profile: KioskProfile; onCancel:
         <span className="kp-av kp-av-lg" style={{ background: profile.colorHex ? `${profile.colorHex}22` : 'var(--panel)' }}>
           {profile.avatarEmoji ?? '🙂'}
         </span>
-        <div className="kp-title nk-serif">{profile.name}’s PIN</div>
+        <div className="kp-title wf-serif">{profile.name}’s PIN</div>
         <div className="kp-dots" aria-label={`${pin.length} digits entered`}>
           {Array.from({ length: pin.length }).map((_, i) => (
             <span key={i} className="kp-dot on" />

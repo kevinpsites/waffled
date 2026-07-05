@@ -96,13 +96,13 @@ export const config: AppConfig = {
 
   auth: {
     mode,
-    householdClaim: process.env.HOUSEHOLD_CLAIM ?? 'https://nook.app/household_id',
+    householdClaim: process.env.HOUSEHOLD_CLAIM ?? 'https://waffled.app/household_id',
 
     // Local mode (HS256) — default until Auth0 is wired up.
     local: {
-      secret: process.env.LOCAL_JWT_SECRET ?? 'nook-local-dev-secret-change-me',
-      issuer: process.env.LOCAL_JWT_ISSUER ?? 'nook-local',
-      audience: process.env.LOCAL_JWT_AUDIENCE ?? 'nook-api',
+      secret: process.env.LOCAL_JWT_SECRET ?? 'waffled-local-dev-secret-change-me',
+      issuer: process.env.LOCAL_JWT_ISSUER ?? 'waffled-local',
+      audience: process.env.LOCAL_JWT_AUDIENCE ?? 'waffled-api',
     },
 
     // Auth0 mode (RS256) — used as soon as AUTH0_DOMAIN is set.

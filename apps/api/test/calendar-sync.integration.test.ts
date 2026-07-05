@@ -2,7 +2,7 @@
 // connected calendars into the events table, exercised against an in-process stub
 // standing in for Google's token + events.list endpoints. Covers the first full pull
 // (paged → nextSyncToken), the incremental pull (updates + cancellations via the
-// stored cursor), nook-owned person inheritance/preservation, the 410 stale-token
+// stored cursor), waffled-owned person inheritance/preservation, the 410 stale-token
 // full-resync path, and skipping unselected calendars.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
@@ -11,7 +11,7 @@ import { randomBytes } from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 
-const SECRET = 'nook-local-dev-secret-change-me'
+const SECRET = 'waffled-local-dev-secret-change-me'
 
 let pg: StartedPostgreSqlContainer
 let stub: Server
@@ -25,7 +25,7 @@ let eventCalls: Array<{ calendar: string; syncToken: string | null; hasWindow: b
 let primaryFullSyncs = 0
 
 function mint(sub: string): string {
-  return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'nook-local', audience: 'nook-api', expiresIn: '1h' })
+  return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
 }
 
 interface RunResult { statusCode: number; body: string }
@@ -208,7 +208,7 @@ describe('inbound sync', () => {
   })
 
   it('second sync uses the stored cursor, applying updates + cancellations', async () => {
-    // A manual person reassignment must survive sync (person_id is nook-owned).
+    // A manual person reassignment must survive sync (person_id is waffled-owned).
     const before = await eventsInJune()
     const standupId = before.find((e) => e.title === 'Standup')!.id
     await call('PATCH', `/api/events/${standupId}`, kevin, { personId: kellyId })

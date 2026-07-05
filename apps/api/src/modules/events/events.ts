@@ -1,4 +1,4 @@
-// Calendar — Nook-native events. Single events created here and read for the
+// Calendar — Waffled-native events. Single events created here and read for the
 // agenda / Calendar screen. "Today" buckets by the household's timezone so a kiosk
 // shows the right local day. events.person_id is the color/owner; event_participants
 // is the broader "who's involved" set. Events authored for a person who has a Google
@@ -37,7 +37,7 @@ const UPDATABLE: Record<string, string> = {
 }
 
 // Patch fields Google owns — a change to one of these is worth pushing back to
-// Google. personId/participantIds are Nook-owned and never trigger an outbound push.
+// Google. personId/participantIds are Waffled-owned and never trigger an outbound push.
 const GOOGLE_OWNED_FIELDS = ['title', 'description', 'location', 'startsAt', 'endsAt', 'allDay']
 
 export interface Participant {
@@ -70,7 +70,7 @@ export interface EventRow extends QueryResultRow {
   person_emoji?: string | null
   participants?: Participant[]
   // Recurrence: for a single/Google event series_id === id and occurrence_start is
-  // null; for a Nook-native expanded occurrence series_id is the master, id is the
+  // null; for a Waffled-native expanded occurrence series_id is the master, id is the
   // occurrence row, occurrence_start is the rule slot (the edit-scope handle).
   series_id?: string
   occurrence_start?: Date | null
@@ -81,7 +81,7 @@ export interface CreateEventInput {
   startsAt: string
   endsAt?: string | null
   allDay?: boolean
-  // Show a "N days until…" countdown for this event (Nook-owned; never pushed to Google).
+  // Show a "N days until…" countdown for this event (Waffled-owned; never pushed to Google).
   isCountdown?: boolean
   location?: string | null
   description?: string | null
@@ -95,9 +95,9 @@ export interface CreateEventInput {
   goalStepId?: string | null
   timezone?: string | null
   // Explicit calendar choice (create-time picker): a calendar id to write to, or
-  // null for "Nook only". Omit entirely to auto-route to the owner's ★ default.
+  // null for "Waffled only". Omit entirely to auto-route to the owner's ★ default.
   calendarId?: string | null
-  // Recurrence (Nook-native). rrule is an RFC5545 RRULE; rdate/exdate are extra/
+  // Recurrence (Waffled-native). rrule is an RFC5545 RRULE; rdate/exdate are extra/
   // excluded occurrence instants (ISO); recurrenceEndAt is a hard stop. Omit for a
   // single event. Creating with an rrule materializes occurrences immediately.
   rrule?: string | null
@@ -126,7 +126,7 @@ export async function createEvent(tenant: Tenant, input: CreateEventInput): Prom
   const personIds = input.participantIds ?? (input.personId ? [input.personId] : [])
   const primary = personIds[0] ?? input.personId ?? null
   // Pick the destination calendar: an explicit picker choice (calendarId present)
-  // wins — a calendar id routes there, null means "Nook only"; when omitted, fall
+  // wins — a calendar id routes there, null means "Waffled only"; when omitted, fall
   // back to auto-routing to the owner's ★ default. No target ⇒ local-only event.
   const target =
     input.calendarId !== undefined
@@ -187,7 +187,7 @@ export async function createEvent(tenant: Tenant, input: CreateEventInput): Prom
 }
 
 // Reads UNION two row kinds (see EventRow): plain single/Google events
-// (events.rrule is null) and materialized Nook-native occurrences (joined to their
+// (events.rrule is null) and materialized Waffled-native occurrences (joined to their
 // master m). Both expose the same columns + series_id/occurrence_start, so callers
 // and the presenter don't special-case recurrence.
 function participantsSub(idExpr: string): string {
@@ -320,13 +320,13 @@ export async function updateEvent(
     // events rows sharing an ical_uid), record it at the series level and fan it out
     // to every current instance — so the link covers the whole series and a fresh
     // instance streaming in later inherits it (calendar-sync's applySeriesMeta). A
-    // Nook-native event (no ical_uid) keeps today's single-event behavior.
+    // Waffled-native event (no ical_uid) keeps today's single-event behavior.
     const ical = event.ical_uid as string | null | undefined
     if (('goalId' in patch || 'goalStepId' in patch) && ical) {
       await upsertSeriesMeta(householdId, ical, event.goal_id ?? null, event.goal_step_id ?? null)
     }
     // Mirror the edit to Google only when a Google-owned field changed — person/
-    // participants are Nook-owned (Google has no such field), so don't push for them.
+    // participants are Waffled-owned (Google has no such field), so don't push for them.
     const touchedGoogle = GOOGLE_OWNED_FIELDS.some((f) => f in patch)
     if (event.calendar_id && touchedGoogle) await pushEventNow(householdId, id)
     // Re-expand if this is (or just became / stopped being) a recurring master, so

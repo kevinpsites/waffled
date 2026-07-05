@@ -24,8 +24,8 @@ export function KioskDisplay({ children }: { children: ReactNode }) {
   const [on, setOn] = useState(isDisplayMode())
   useEffect(() => {
     const h = () => setOn(isDisplayMode())
-    window.addEventListener('nook:auth-changed', h)
-    return () => window.removeEventListener('nook:auth-changed', h)
+    window.addEventListener('waffled:auth-changed', h)
+    return () => window.removeEventListener('waffled:auth-changed', h)
   }, [])
   return (
     <>
@@ -74,7 +74,7 @@ function DisplayLayer() {
   }, [])
 
   // Load settings; refresh on focus, session change, an explicit save from this
-  // browser (nook:display-changed), and poll every 2 min so an always-on kiosk picks
+  // browser (waffled:display-changed), and poll every 2 min so an always-on kiosk picks
   // up admin edits made elsewhere (it never blurs, so focus alone isn't enough).
   useEffect(() => {
     // Keep the same object reference when nothing changed, so polling doesn't churn
@@ -86,13 +86,13 @@ function DisplayLayer() {
     load()
     const onVis = () => document.visibilityState === 'visible' && load()
     document.addEventListener('visibilitychange', onVis)
-    window.addEventListener('nook:auth-changed', load)
-    window.addEventListener('nook:display-changed', load)
+    window.addEventListener('waffled:auth-changed', load)
+    window.addEventListener('waffled:display-changed', load)
     const poll = setInterval(load, 120_000)
     return () => {
       document.removeEventListener('visibilitychange', onVis)
-      window.removeEventListener('nook:auth-changed', load)
-      window.removeEventListener('nook:display-changed', load)
+      window.removeEventListener('waffled:auth-changed', load)
+      window.removeEventListener('waffled:display-changed', load)
       clearInterval(poll)
     }
   }, [])

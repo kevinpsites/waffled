@@ -1,6 +1,6 @@
 -- Up Migration
 -- Operational (not household-scoped) table recording every backup the `backup`
--- sidecar runs, so `/api/health` + `./nook doctor` can surface "last backup: ok/failed,
+-- sidecar runs, so `/api/health` + `./waffled doctor` can surface "last backup: ok/failed,
 -- N hours ago". Deliberately NOT added to the `powersync` publication — this is
 -- server-side operator data and never syncs to clients.
 create table backup_runs (

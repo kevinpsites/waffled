@@ -137,7 +137,7 @@ export function ChoreModal({
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>
           ×
         </button>
-        <div className="nk-serif" style={{ fontSize: 22, fontWeight: 600, marginBottom: 14 }}>
+        <div className="wf-serif" style={{ fontSize: 22, fontWeight: 600, marginBottom: 14 }}>
           {editing ? 'Edit chore' : 'New chore'}
         </div>
 

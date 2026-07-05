@@ -40,7 +40,7 @@ export function ListsModal({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>{editing ? 'Rename list' : 'New list'}</div>
+        <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>{editing ? 'Rename list' : 'New list'}</div>
         <form onSubmit={submit}>
           <div className="field-row">
             <label className="field" style={{ flex: 3 }}>

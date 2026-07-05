@@ -1,4 +1,4 @@
-// Pure RRULE expansion — the heart of recurring events. Given a Nook-native master
+// Pure RRULE expansion — the heart of recurring events. Given a Waffled-native master
 // (its rrule/rdate/exdate + timezone) and its per-occurrence overrides, expand the
 // series into concrete occurrences within a bounded window. No DB, no I/O — fully
 // unit-testable. The expansion.service.ts worker calls this and persists the result

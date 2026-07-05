@@ -1,14 +1,14 @@
 // Calendar — Google sync, both directions. Inbound (5.3) pulls events from each
 // connected, selected calendar into the events table; outbound (5.4) pushes
-// Nook-authored events back to Google. On-demand via POST /api/calendar/sync
+// Waffled-authored events back to Google. On-demand via POST /api/calendar/sync
 // (push pending first, then pull); the same engines back a future scheduled poll.
 //
 // Inbound: per calendar we keep an incremental cursor (calendars.sync_token); the
 // first run pulls a bounded window, later runs fetch only changes. Recurrences are
 // expanded server-side (singleEvents). Google owns event content (title/time/status
-// — sync overwrites); Nook owns person_id/origin (preserved).
+// — sync overwrites); Waffled owns person_id/origin (preserved).
 //
-// Outbound: an event authored in Nook for a person is routed to that person's
+// Outbound: an event authored in Waffled for a person is routed to that person's
 // write-target calendar (resolveWriteTarget) and created/updated/deleted on Google.
 // sync_state tracks it: pending_push → synced, or push_failed (retried next sync).
 import type { PoolClient, QueryResultRow } from 'pg'
@@ -160,7 +160,7 @@ async function applyEvent(
   // Series-level goal inheritance: if this Google instance belongs to a goal-tracked
   // series (event_series_meta, keyed by ical_uid) and it carries no goal link of its
   // own, apply the series' goal/step. This is what makes a NEW instance — which Google
-  // streams in with no Nook fields — pick up the series link set earlier on a sibling.
+  // streams in with no Waffled fields — pick up the series link set earlier on a sibling.
   await applySeriesMeta(client, cal.household_id, ev.iCalUID ?? null)
   return rows[0]?.inserted ? 'imported' : 'updated'
 }
@@ -334,9 +334,9 @@ export async function syncHousehold(
   }
 }
 
-// ── Outbound (5.4): push Nook-authored events to Google ────────────────────────
+// ── Outbound (5.4): push Waffled-authored events to Google ────────────────────────
 
-// Where a Nook event for this person should be written. Prefers the explicit
+// Where a Waffled event for this person should be written. Prefers the explicit
 // write-target flag, then the person's primary, then any writable calendar — so a
 // person with a single writable calendar needs no configuration. Read-only
 // calendars (reader/freeBusyReader) are never write targets.
@@ -487,7 +487,7 @@ async function pushById(
   }
 }
 
-// Push a single event immediately (called right after a Nook mutation). Safe to
+// Push a single event immediately (called right after a Waffled mutation). Safe to
 // call for any event — local-only events resolve to 'skipped'.
 export async function pushEventNow(householdId: string, eventId: string): Promise<PushOutcome> {
   return pushById(householdId, eventId, makeTokenCache())

@@ -1,12 +1,12 @@
 -- Up Migration
 -- Recurrence read model (DATA_MODEL.md §2). The events.rrule/rdate/exdate columns
--- (0007) are the source of truth for a Nook-native recurring series; the expansion
+-- (0007) are the source of truth for a Waffled-native recurring series; the expansion
 -- worker materializes them into event_occurrences for a rolling window so clients
 -- (kiosk/iOS) render plain dated rows and never run an RRULE engine. event_overrides
 -- carries per-occurrence edits/cancellations (Google's originalStartTime model).
 --
 -- Google-sourced recurrences are NOT modeled here: Google sync expands them itself
--- (singleEvents) into individual events rows, so only Nook-native masters expand.
+-- (singleEvents) into individual events rows, so only Waffled-native masters expand.
 
 create table event_overrides (                       -- per-occurrence edits/cancellations
   id uuid primary key default gen_random_uuid(),

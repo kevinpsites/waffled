@@ -9,7 +9,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 ## The big picture
 
 > **Feature surface complete + self-host packaging shipped + extensibility layer opened.**
-> A fresh `git clone` + `./nook up` comes up with real auth (built-in password / OIDC) and
+> A fresh `git clone` + `./waffled up` comes up with real auth (built-in password / OIDC) and
 > runs with zero external dependencies. Every feature domain (Today, Calendar, Chores,
 > Rewards, Goals, Lists, Meals, Photos, AI capture) is built and usable on the Web/Kiosk,
 > with a **pluggable optional-module framework** (first module: Pantry) and a **public,
@@ -17,13 +17,13 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Done ✅
 
-- **Self-host packaging** — one-command `./nook up`, in-container migrations, multi-arch
+- **Self-host packaging** — one-command `./waffled up`, in-container migrations, multi-arch
   GHCR images, build-from-source default.
 - **Observability** — structured JSON logging, a deep `/api/health` + **Settings → System
-  Health** panel, **`./nook doctor`**, baked build provenance, and **OpenTelemetry**
-  (off by default) with an all-local **`./nook observability up`** Grafana stack. Restore
+  Health** panel, **`./waffled doctor`**, baked build provenance, and **OpenTelemetry**
+  (off by default) with an all-local **`./waffled observability up`** Grafana stack. Restore
   drills still to come (7.4).
-- **Operator CLI** — Immich-style **`./nook admin`** break-glass commands (reset a member's
+- **Operator CLI** — Immich-style **`./waffled admin`** break-glass commands (reset a member's
   password, list members, grant/revoke admin, toggle password login, clear a stuck calendar,
   prune sessions, regenerate the PowerSync key) that run in-container with no login required.
 - **Identity** — built-in email/password auth (rotating refresh), backend-mediated **OIDC
@@ -65,7 +65,7 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   framework** (registry + per-household `settings.modules` toggle, a **Settings → Modules**
   tab; Today cards / nav / routes gate on it), the first module — **Pantry / on-hand
   inventory** (items with quantities + locations, quantity stepper, "used up", drag between
-  locations, a Today card) — and **per-user API keys + scopes** (`nook_…` key via `x-api-key`,
+  locations, a Today card) — and **per-user API keys + scopes** (`waffled_…` key via `x-api-key`,
   `<resource>:read|write` over the unchanged capability matrix, **Settings → API Keys** tab).
   Web today; the module flag is server-shared so iOS can grow native cards later. The two
   supported patterns (built-in toggle module · external integration via API keys) and the one

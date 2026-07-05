@@ -29,7 +29,7 @@ every request:
 - `requireTenant` → `findTenantBySub(sub)` (`modules/households/households.ts`) does the
   `identities → persons → households` join and returns the `Tenant`
   (`{ sub, personId, householdId, isAdmin, memberType }`).
-- `config.auth.householdClaim` (`'https://nook.app/household_id'`) is **defined but
+- `config.auth.householdClaim` (`'https://waffled.app/household_id'`) is **defined but
   currently unused** — it was reserved for exactly this.
 
 Consequence: the ~135 routes, all the FKs to `persons`, the capability matrix, the owner

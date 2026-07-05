@@ -1,4 +1,4 @@
-// Materializes Nook-native recurring masters into event_occurrences — the read
+// Materializes Waffled-native recurring masters into event_occurrences — the read
 // model clients render. Calls the pure expand() engine over a rolling window and
 // upserts the result, keyed by (event_id, original_start) so row ids stay stable
 // (PowerSync doesn't re-stream the whole series each run). Runs on a dedicated,
@@ -184,7 +184,7 @@ export async function materializeAll(now = new Date()): Promise<{ masters: numbe
 let expansionTimer: ReturnType<typeof setInterval> | null = null
 
 // Background rolling-window refresh (server.ts only). Independent of Google config —
-// Nook-native recurrences exist with or without a connected account. On-demand
+// Waffled-native recurrences exist with or without a connected account. On-demand
 // materializeMaster() handles immediacy; this just rolls the horizon forward.
 // EXPANSION_INTERVAL_MS default 6h; 0 disables.
 export function startExpansionScheduler(): void {

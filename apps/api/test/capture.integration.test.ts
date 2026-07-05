@@ -7,7 +7,7 @@ import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 import { finalizeIntent, resolveDayFromText } from '../src/modules/capture/capture'
 
-const SECRET = 'nook-local-dev-secret-change-me'
+const SECRET = 'waffled-local-dev-secret-change-me'
 let pg: StartedPostgreSqlContainer
 let url: string
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -15,7 +15,7 @@ let app: any
 let closePool: () => Promise<void>
 
 function mint(sub: string): string {
-  return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'nook-local', audience: 'nook-api', expiresIn: '1h' })
+  return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
 }
 interface RunResult { statusCode: number; body: string }
 function call(method: string, path: string, token?: string, body?: unknown) {

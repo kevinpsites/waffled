@@ -45,7 +45,7 @@ export function TradeModal({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 2 }}>Trade currencies</div>
+        <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 2 }}>Trade currencies</div>
         <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>for {person.name}</div>
 
         <label className="field"><span>Trade</span>

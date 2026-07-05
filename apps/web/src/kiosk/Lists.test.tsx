@@ -96,7 +96,7 @@ describe('Lists screen', () => {
     expect(screen.getByText('Everyone')).toBeInTheDocument()
 
     // suggestions
-    expect(screen.getByText('Kinnook suggests:')).toBeInTheDocument()
+    expect(screen.getByText('Waffled suggests:')).toBeInTheDocument()
     expect(screen.getByText('Bug spray')).toBeInTheDocument()
 
     // sectioned items with strikethrough on the checked one (titles uppercased via CSS)

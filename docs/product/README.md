@@ -1,4 +1,4 @@
-# Kinnook product docs
+# Waffled product docs
 
 The user- and operator-facing documentation (overview, quick start, feature matrix,
 permissions, extensibility, backup, upgrading, troubleshooting) now lives in the **docs

@@ -411,7 +411,7 @@ function OverlayWizard({
       <div className="ob-card" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="ob-close" aria-label="Close" onClick={onClose}>×</button>
         <div className="ob-eyebrow">Getting started · Step {i + 1} of {steps.length}</div>
-        <div className="ob-step-title nk-serif">{step.title}</div>
+        <div className="ob-step-title wf-serif">{step.title}</div>
         <div className="ob-step-blurb">{step.blurb}</div>
         <div className="ob-body">{body()}</div>
         <div className="ob-footer">
@@ -480,7 +480,7 @@ export function GettingStartedBar() {
       <div className="ob-bar">
         <div className="ob-bar-main">
           <div className="ob-bar-title">Getting started</div>
-          <div className="ob-bar-sub">{doneCount} of {steps.length} done — finish setting up your Kinnook.</div>
+          <div className="ob-bar-sub">{doneCount} of {steps.length} done — finish setting up your Waffled.</div>
           <div className="ob-bar-steps">
             {steps.map((s) => (
               <span key={s.key} className={`ob-chip${statuses[s.key] ? ' done' : ''}`}>

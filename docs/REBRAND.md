@@ -1,95 +1,76 @@
-# Rebrand tracker — Nook → Kinnook
+# Rebrand tracker — → Waffled (waffled.app)
 
-Status: **display name + assets** are being changed to **Kinnook** now. **Technical
-identifiers** (CLI, container/image/volume/db names, env vars, package names, JWT claims,
-storage keys, CSS prefixes, iOS module, repo name) are **deferred** to the full shift so
-we don't break the running stack or invalidate sessions before the repo rename.
-
-> The name may change again — this file is the single source of truth for what's been
-> touched and what still needs to move, so a future rename (to Kinnook or anything else)
-> is a mechanical sweep, not archaeology.
+History: **Nook → Kinnook** (display only, 2026-07-02) → **Kinnook/Nook → Waffled**
+(full shift incl. server-side, 2026-07-02). This file stays the single source of truth so
+any future rename is a mechanical sweep, not archaeology.
 
 ---
 
-## ✅ Changing NOW (user-facing brand + assets) — DONE 2026-07-02
+## ✅ DONE — full Waffled rebrand (display + server-side), 2026-07-02
 
-**Web app (`apps/web`)**
-- [x] `index.html` — `<title>`, `apple-mobile-web-app-title`, icon/favicon links, theme-color (#F5EFE1)
-- [x] `public/manifest.webmanifest` — `name`, `short_name`, icons
-- [x] New icon assets from the logo: `public/{logo.png, icon-512.png, icon-192.png, apple-touch-icon.png, favicon-32.png, favicon-16.png}` (removed the old `icon.svg`)
-- [x] In-app logo image (replaced every "N" glyph logo): `AuthGate.tsx` `AuthShell`,
-      nav `components/Rail.tsx` (`.rail-logo`), `ProfilePicker.tsx` (`.kp-logo`),
-      `PairDevice.tsx` ×2 (`.auth-logo-img`) — all `<img src="/logo.png">`, CSS in
-      `styles/{auth,nook,kiosk-profiles}.css`
-- [x] Service worker cache `VERSION` bumped (`public/sw.js` v3→v4) so clients re-fetch the
-      new shell + favicon instead of the stale cached copy
-- [x] UI copy strings "Nook" → "Kinnook": `Settings.tsx`, `AuthGate.tsx`, `Lists.tsx`,
-      `ProfilePicker.tsx`, `EventDetail.tsx`, `onboarding/GettingStarted.tsx`,
-      `components/PlanWeek.tsx`, `components/PlanMonth.tsx`, `components/EventModal.tsx`, `Photos.tsx`, `styles/lists.css`
-- [x] Test assertions: `Settings.test.tsx` ("Kinnook — Family Hub"), `Lists.test.tsx` ("Kinnook suggests:")
+**Web (`apps/web`)** — UI copy, `index.html`/manifest/SW cache, new waffle-icon favicons +
+logo (`public/{logo,icon-512,icon-192,apple-touch-icon,favicon-32,favicon-16}.png`),
+localStorage keys `nook.*`→`waffled.*`, DOM events `nook:*`→`waffled:*`, CSS prefix
+`nk-`→`wf-`, `styles/nook.css`→`waffled.css`, `NookConnector`→`WaffledConnector`,
+`@waffled/web`. Typecheck ✓, 210 tests ✓.
 
-**Docs site (`website/`)**
-- [x] `astro.config.mjs` — `title` "Kinnook" + Starlight `logo` (`src/assets/kinnook-logo.png`) + `favicon: /favicon.png`
-- [x] Favicon assets (`public/favicon.png`, `public/icon.png`; removed `favicon.svg`)
-- [x] Content prose "Nook" → "Kinnook" (index.mdx + all `src/content/docs/**`)
+**API (`apps/api`)** — JWT issuer `waffled-local`, audience `waffled-api`, local-secret
+default, household claim `https://waffled.app/household_id`, service/telemetry name
+`waffled-api`, `@waffled/api`, all test signers. Typecheck ✓, build ✓, JWT tests ✓.
 
-**Repo docs / prose (brand mentions only; code/commands left as-is)**
-- [x] `README.md`, `CHANGELOG.md`, `ROADMAP.md`, `CLAUDE.md`, `BOOTSTRAP.md`, `SECURITY.md`,
-      `CONTRIBUTING.md`, `docs/**/*.md`, `website/README.md` — lookaround-safe sweep
-      (`perl -pe 's{(?<![/\w])Nook(?![\w])}{Kinnook}g'`) that skipped `Sources/Nook/` + `NookAPI`
-- [ ] **NOT swept:** `docs/handoff/*.js` (frozen design-mock prototypes, not shipped — still say "Nook")
+**Infra + CLI** — CLI `nook`→`waffled`, `nook-demo`→`waffled-demo` (git mv); compose project
+`waffled`; containers `waffled-*`; local images `waffled-*:local` + `WAFFLED_*_IMAGE`;
+volumes `waffled_media`/`waffled_backups`; `.env.example` db defaults `waffled`;
+`LOCAL_JWT_SECRET`/`OTEL_SERVICE_NAME` compose defaults; backup sidecar names/filenames.
+`docker compose config` ✓.
 
----
+**Docs + site (`website/`, root `*.md`, `docs/**`)** — prose, all CLI/container/volume/env
+command refs, `wrangler.jsonc`→`waffled-docs`, astro title/logo/favicon, GHCR image
+basenames `waffled-*`. Astro build ✓.
 
-## ⏸️ NOT touching yet — the full technical shift (do at repo rename)
-
-These break the running stack / sessions / builds if changed piecemeal. Rename all
-together when the repo is renamed.
-
-**CLI & tooling**
-- [ ] `./nook` script — filename, help header, and every `docker exec nook-*` inside it
-      (+ `nook-demo`, `justfile`)
-
-**Docker (`infra/compose/docker-compose.yml` + `./nook`)**
-- [ ] Container names: `nook-postgres`, `nook-api`, `nook-powersync`, `nook-caddy`,
-      `nook-backup`, `nook-migrate`, `nook-lgtm` (+ `nook-demo-*`)
-- [ ] Image names: `nook-api`, `nook-caddy`, `nook-backup` (`image:` + `${NOOK_*_IMAGE:-nook-*:local}` defaults)
-- [ ] Volume names: `nook_media`, `nook_backups` (`pgdata`, `caddy_*`, `lgtm_data` are generic)
-- [ ] GHCR image paths `ghcr.io/<owner>/nook-*` (also tied to the repo name)
-
-**Env vars**
-- [ ] `NOOK_API_IMAGE`, `NOOK_CADDY_IMAGE`, `NOOK_BACKUP_IMAGE` (in compose, `.env.example`,
-      README, docs) — (`POSTGRES_*`, `POWERSYNC_*`, `LOCAL_JWT_SECRET`, `BACKUP_*`, `OTEL_*` are generic, keep)
-
-**Database**
-- [ ] `POSTGRES_DB=nook`, `POSTGRES_USER=nook` (renaming needs a data migration / recreate)
-
-**Packages**
-- [ ] `@nook/api`, `@nook/web` (package.json `name` fields)
-
-**Auth / JWT (changing invalidates existing tokens — coordinate a flush)**
-- [ ] JWT issuer `nook-local`, audience `nook-api` (`apps/api` signing + validation,
-      `scripts/mint-token.ts`, tests, iOS token config)
-
-**Web storage / events (changing logs everyone out)**
-- [ ] `localStorage` keys `nook.access`, `nook.token`; custom event `nook:auth-changed`;
-      kiosk identity `kiosk:<personId>` (unaffected); any other `nook.*` keys
-
-**Code identifiers & styles**
-- [ ] `NookConnector` (web PowerSync class), `NookAPI` (iOS), other `Nook*` types/classes
-- [ ] CSS class prefix `nk-*` (e.g. `nk-serif`) and any `.nook-*` classes
-- [ ] `OTEL_SERVICE_NAME` default `nook-api`
-
-**iOS native app (`apps/ios`) — its own Xcode job**
-- [ ] `Sources/Nook/` directory + `Nook` Swift module, `Nook.app`, display name,
-      bundle id `com.kevinsites.nook`, `project.yml` → re-run `xcodegen`; file-path
-      comments referencing `apps/ios/Sources/Nook/...` in web/api
-
-**Repo & external**
-- [ ] GitHub repo `kevinpsites/nook` → new slug (updates `<owner>/nook` links, GHCR paths,
-      git remote, `publish-images.yml`, docs links, `UPDATE_CHECK_REPO`)
-- [ ] Local working dir `~/dev/nook`
+**Live-stack migration (2026-07-02)** — non-destructive: dumped `nook` db → copied volumes
+to `waffled_*` → fresh `waffled` stack → restored. DB/user renamed `nook`→`waffled`. All 5
+services healthy; data intact (3 households / 13 persons / 469 events / 4 accounts); JWT +
+`TOKEN_ENCRYPTION_KEY` verified live (Google secret still decrypts). Old `nook_*` volumes +
+`infra/compose/.env.nook.bak` retained as rollback.
 
 ---
 
-_Update the checkboxes above as each area is completed._
+## ✅ DONE — final server-internal sweep, 2026-07-04 (pre-release, no back-compat needed)
+
+Since nothing has shipped, the previously-deferred internal identifiers were changed outright
+(no dual-prefix / no JWKS-flush concern):
+- **GitHub repo slug** `kevinpsites/nook` → **`kevinpsites/waffled`** (repo renamed on GitHub).
+  Git remote re-pointed; `UPDATE_CHECK_REPO` compose default + `.env.example`; OFF `USER_AGENT`
+  URL (`off.ts`); README/CHANGELOG/ROADMAP/website doc links (also fixed a stray `kevinsites/`
+  → `kevinpsites/`). GitHub auto-redirects the old slug, so no clone breakage.
+- **`nook_` API-key prefix → `waffled_`** (`api-keys.ts` `mintKey`). Safe: keys verify by
+  `key_hash`, prefix is display-only. Verified live: minted key = `waffled_…`.
+- **PowerSync issuer/KID** `nook` / `nook-powersync-1` → **`waffled` / `waffled-powersync-1`**
+  (`powersync.ts`). `service.yaml` only pins `audience: ['powersync']` (no issuer/KID check),
+  so consistent rename is non-breaking. Verified live: JWKS serves `waffled-powersync-1`; a
+  minted sync token carries `kid=waffled-powersync-1, iss=waffled` and the sync service accepts it.
+- **OTEL metric names** `nook.job.*` / `nook.http.requests` → **`waffled.*`** (`telemetry.ts`).
+- **Misc**: `health.ts` media-volume hint (`waffled_media`), migration comments (0052/0061),
+  `@nook/api|web` lockfile `name` fields, `oidc.ts` deep-link comments, and all affected
+  integration tests (api-keys `/^waffled_/`, powersync `issuer: 'waffled'`, oidc `waffled://`).
+
+Verified: typecheck ✓, 33 affected integration tests ✓, api rebuilt (`waffled-powersync-1` +
+`waffled.job.*` + `waffled.http.requests` in container `dist/server.js`, no `nook` symbols left),
+all 5 services healthy, fresh backup emits `waffled-*.sql.gz`.
+
+## ⏸️ Still deferred (intentional)
+
+- **iOS app (`apps/ios`)** — owned by a separate agent. The `Sources/Nook/`→`Sources/Waffled`
+  rename lives on the unmerged `ios/mobile` branch, so on `main` the iOS tree + a few web
+  comments cross-referencing iOS paths (`apps/web/src/lib/api/kiosk.ts`, `capture/parse.ts`)
+  still say `Sources/Nook`/`NookAPI` — accurate for `main` today; they flip when that branch
+  merges. The server already emits `waffled://auth/callback` (it echoes whatever scheme the
+  native app sends), so iOS's `waffled://` and the server are aligned.
+
+---
+
+## Cleanup once satisfied with the migration
+- Remove old rollback volumes: `docker volume rm nook_pgdata nook_nook_media nook_nook_backups nook_caddy_data nook_caddy_config nook_lgtm_data`
+- Remove `infra/compose/.env.nook.bak`
+- Re-seed / re-migrate the `waffled-demo` stack (old `nook-demo` volumes untouched).

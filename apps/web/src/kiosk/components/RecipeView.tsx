@@ -210,7 +210,7 @@ export function RecipeView({ id, onSelect, selectLabel }: { id: string; onSelect
               <span className="rd-hero-emoji">{recipe.emoji ?? '🍽️'}</span>
             )}
           </div>
-          <div className="nk-serif rd-title">{recipe.title}</div>
+          <div className="wf-serif rd-title">{recipe.title}</div>
           <div className="rd-meta">
             {recipe.cookTimeMinutes != null && <span>🕐 {recipe.cookTimeMinutes} min</span>}
             <span>🍽️ Serves {base}</span>

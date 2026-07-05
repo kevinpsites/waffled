@@ -1,6 +1,6 @@
 -- Up Migration
 -- "Added / bought" date — when the item actually entered the pantry/freezer, distinct
--- from created_at (when the row was logged in Nook) and from expiry. Backdatable, so
+-- from created_at (when the row was logged in Waffled) and from expiry. Backdatable, so
 -- you can record something you bought a while ago. Powers item age + the "old" warning
 -- (e.g. beef that's been in the freezer 6+ months). Default today; backfill existing
 -- rows from created_at.

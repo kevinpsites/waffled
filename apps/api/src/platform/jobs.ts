@@ -1,6 +1,6 @@
 // In-memory run registry for the background schedulers (calendar sync, recurrence
 // expansion, chore-proof cleanup). Records last-run timing/result/error + a run
-// count + an in-flight flag, so /api/health and `./nook doctor` can answer "are the
+// count + an in-flight flag, so /api/health and `./waffled doctor` can answer "are the
 // jobs running, and did the last run fail?" State is process-local (reset on
 // restart) — that's fine; health is about "right now". `runJob` also subsumes the
 // per-scheduler `running` overlap guard.

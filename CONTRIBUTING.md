@@ -1,27 +1,27 @@
-# Contributing to Kinnook
+# Contributing to Waffled
 
-Thanks for your interest in Kinnook — a self-hosted family hub. This guide covers
+Thanks for your interest in Waffled — a self-hosted family hub. This guide covers
 how to get set up, run the checks, and open a good PR. Keep it practical; when in
 doubt, match the surrounding code.
 
 ## Local setup
 
-Kinnook runs as a docker compose stack driven by a root `./nook` bash CLI.
+Waffled runs as a docker compose stack driven by a root `./waffled` bash CLI.
 
 ```bash
-git clone <repo-url> nook
-cd nook
-./nook up          # first run bootstraps infra/compose/.env with generated secrets
+git clone <repo-url> waffled
+cd waffled
+./waffled up          # first run bootstraps infra/compose/.env with generated secrets
 ```
 
-`./nook up` brings up postgres, the API, PowerSync, and Caddy. For web
+`./waffled up` brings up postgres, the API, PowerSync, and Caddy. For web
 development with hot reload:
 
 ```bash
-./nook web         # Vite HMR for apps/web
+./waffled web         # Vite HMR for apps/web
 ```
 
-Other useful CLI verbs: `./nook down`, `rebuild`, `migrate`, `backup`,
+Other useful CLI verbs: `./waffled down`, `rebuild`, `migrate`, `backup`,
 `restore`, `doctor`, `admin`, `logs`, `status`.
 
 Requires Docker and Node 20.

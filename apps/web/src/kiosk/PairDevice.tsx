@@ -73,8 +73,8 @@ function CodeStep({ onPaired, onCancel }: { onPaired: () => void; onCancel: () =
   return (
     <div className="auth-screen">
       <div className="auth-card">
-        <img className="auth-logo-img" src="/logo.png" alt="Kinnook" width={96} height={96} />
-        <div className="auth-title nk-serif">Set up this device</div>
+        <img className="auth-logo-img" src="/logo.png" alt="Waffled" width={96} height={96} />
+        <div className="auth-title wf-serif">Set up this device</div>
         <div className="auth-sub">Enter the pairing code from Settings → Sign-in &amp; Security on an admin’s device.</div>
         {error && <div className="auth-error" style={{ marginBottom: 12 }}>{error}</div>}
 
@@ -127,8 +127,8 @@ function NameStep() {
   return (
     <div className="auth-screen">
       <div className="auth-card">
-        <img className="auth-logo-img" src="/logo.png" alt="Kinnook" width={96} height={96} />
-        <div className="auth-title nk-serif">Name this kiosk</div>
+        <img className="auth-logo-img" src="/logo.png" alt="Waffled" width={96} height={96} />
+        <div className="auth-title wf-serif">Name this kiosk</div>
         <div className="auth-sub">So you can tell your devices apart in Settings.</div>
         <form
           className="auth-form"

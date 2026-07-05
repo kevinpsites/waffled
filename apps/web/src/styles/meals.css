@@ -1,5 +1,5 @@
 /* Meals — weekly planner grid. Co-located with kiosk/Meals.tsx (Meals agent).
-   Reuses nook.css tokens; only the planner-specific layout lives here. */
+   Reuses waffled.css tokens; only the planner-specific layout lives here. */
 
 .meals-screen {
   flex: 1;
@@ -463,7 +463,7 @@
 .plan-card .tiny {
   font-weight: 700;
 }
-/* Inside a plan card it's a single row — drop nook.css's divider/padding so there's
+/* Inside a plan card it's a single row — drop waffled.css's divider/padding so there's
    no orphan line under "Cooking for". */
 .plan-card .constraint {
   display: flex;
@@ -642,14 +642,14 @@
   border: 2.5px solid var(--hair, rgba(0, 0, 0, 0.12));
   border-top-color: var(--primary, #e0664b);
   border-radius: 50%;
-  animation: nook-spin 0.7s linear infinite;
+  animation: waffled-spin 0.7s linear infinite;
 }
 .spinner.lg {
   width: 40px;
   height: 40px;
   border-width: 4px;
 }
-@keyframes nook-spin {
+@keyframes waffled-spin {
   to {
     transform: rotate(360deg);
   }

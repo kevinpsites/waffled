@@ -111,7 +111,7 @@ function CookModal({ items, ready, mains, onClose, onChanged }: { items: PantryI
   const loose = items.filter((i) => !i.isMeal && isSoon(i) && !mainNames.has(i.name))
 
   function planMyWeek() {
-    if (useSoonNames.length) sessionStorage.setItem('nook.planUseUp', JSON.stringify(useSoonNames.slice(0, 12)))
+    if (useSoonNames.length) sessionStorage.setItem('waffled.planUseUp', JSON.stringify(useSoonNames.slice(0, 12)))
     navigate('/meals')
   }
   async function addMissing(key: string, missing: string[]) {
@@ -123,7 +123,7 @@ function CookModal({ items, ready, mains, onClose, onChanged }: { items: PantryI
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card pl-cookm" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="nk-serif pl-cookm-title">Cook from your pantry</div>
+        <div className="wf-serif pl-cookm-title">Cook from your pantry</div>
 
         <button type="button" className="pl-cookm-plan" onClick={planMyWeek}>
           <span className="pl-cookm-plan-ic">✨</span>

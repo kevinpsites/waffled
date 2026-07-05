@@ -17,7 +17,7 @@ to this bar — study it as the worked example of "match the mock, defend the ga
   are the source of truth for layout/spacing/copy. Open yours and match it.
 - **Mock source (exact markup):** `docs/handoff/screens-*.js` — the template
   literals that generate those screenshots (`KIOSK_<key>`). Read the structure +
-  inline styles; the design-system classes are in `apps/web/src/styles/nook.css`
+  inline styles; the design-system classes are in `apps/web/src/styles/waffled.css`
   (reuse `.card`, `.seg`, `.av`, `.btn`, `.pill`, `.glist`, `.cat-pill`, etc).
 - Re-render any screen yourself: `docs/handoff/render-harness.html` +
   `window.show('<KIOSK key>')` under Playwright (see how the screenshots were made).

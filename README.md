@@ -1,4 +1,4 @@
-# Kinnook — Family Hub
+# Waffled — Family Hub
 
 A shared family operating system rendered across three surfaces:
 
@@ -23,17 +23,17 @@ docs/          ARCHITECTURE.md, DATA_MODEL.md, TESTING.md, product/ (user docs)
 
 ## Self-hosting (quickstart)
 
-Kinnook runs as a small Docker Compose stack (Postgres · PowerSync · api · Caddy). Auth
+Waffled runs as a small Docker Compose stack (Postgres · PowerSync · api · Caddy). Auth
 is **built in** — no Auth0 or external identity provider required. You can optionally
 attach your own SSO later (see below).
 
 ```bash
-git clone <this-repo> nook && cd nook
-./nook up    # creates .env (with generated secrets), builds images, migrates, starts the stack
+git clone <this-repo> waffled && cd waffled
+./waffled up    # creates .env (with generated secrets), builds images, migrates, starts the stack
 ```
 
 That single command is the whole install — no host toolchain, no separate migrate
-step. On first run `./nook up`:
+step. On first run `./waffled up`:
 
 1. creates `infra/compose/.env` from `.env.example`, generating `LOCAL_JWT_SECRET`,
    `TOKEN_ENCRYPTION_KEY`, and `POSTGRES_PASSWORD` for you (existing `.env` left alone),
@@ -42,19 +42,19 @@ step. On first run `./nook up`:
    replication publication exists before it starts), then
 4. starts everything and prints a health table.
 
-`./nook up` runs a **preflight** first (Docker present + running, Compose v2, free ports)
+`./waffled up` runs a **preflight** first (Docker present + running, Compose v2, free ports)
 and, once up, prints the exact URL to open. Open the kiosk at `http://localhost:8080`. On
 first load you'll get a **setup wizard**: enter a household name + timezone and create
 your **admin account** (name, email, password). That's it — you're in.
 
-> **Using it from a tablet or the iOS app?** Run `./nook setup` before `./nook up` — one
+> **Using it from a tablet or the iOS app?** Run `./waffled setup` before `./waffled up` — one
 > question (localhost / your LAN IP / a hostname), auto-detects your IP, and writes the
 > address settings so off-device sync works (a `localhost` sync URL is the usual "shows
 > Offline on the tablet" trap).
 
 ### `.env`
 
-`./nook up` writes a working `infra/compose/.env` for you; you only edit it to enable
+`./waffled up` writes a working `infra/compose/.env` for you; you only edit it to enable
 optional integrations or to run somewhere other than `localhost`. The required values
 are the three generated secrets plus the `POSTGRES_*` settings. Optional (leave blank
 to skip): `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OLLAMA_HOST` for the AI capture
@@ -65,18 +65,18 @@ for 2-way Google Calendar sync. See the comments in `.env.example` for the full 
 ### Pre-built images (optional)
 
 The compose stack builds `api` + `caddy` from source by default (tagged
-`nook-api:local` / `nook-caddy:local`). To skip the local build and run from the
+`waffled-api:local` / `waffled-caddy:local`). To skip the local build and run from the
 registry instead, point the image overrides at the published GHCR tags and pull:
 
 ```bash
 # in infra/compose/.env
-NOOK_API_IMAGE=ghcr.io/kevinpsites/nook-api:latest
-NOOK_CADDY_IMAGE=ghcr.io/kevinpsites/nook-caddy:latest
+WAFFLED_API_IMAGE=ghcr.io/kevinpsites/waffled-api:latest
+WAFFLED_CADDY_IMAGE=ghcr.io/kevinpsites/waffled-caddy:latest
 ```
 
 ```bash
 docker compose -f infra/compose/docker-compose.yml --env-file infra/compose/.env pull
-./nook up
+./waffled up
 ```
 
 Both images are multi-arch (amd64 + arm64), so they run on a regular x86 box or an
@@ -97,15 +97,15 @@ password). Email-only members can sign in via SSO once OIDC is configured.
 
 ### Single sign-on (OIDC) — optional
 
-Kinnook supports backend-mediated OIDC (auth-code + PKCE) against any OpenID-Connect
+Waffled supports backend-mediated OIDC (auth-code + PKCE) against any OpenID-Connect
 provider (Authentik, Keycloak, Google, …). It's **invite-gated**: a person can only
 sign in via SSO if the provider's *verified email* already matches a family member's
 login email. Configure it in **Settings → Login & security** (admin only):
 
 1. Ensure `TOKEN_ENCRYPTION_KEY` is set (the client secret is encrypted at rest).
 2. **Issuer URL** — your provider's discovery base, e.g.
-   `https://accounts.google.com` or `https://auth.example.com/application/o/nook/`.
-   Click **Test** to confirm Kinnook can reach its discovery document.
+   `https://accounts.google.com` or `https://auth.example.com/application/o/waffled/`.
+   Click **Test** to confirm Waffled can reach its discovery document.
 3. **Client ID** + **Client secret** from an OIDC app you register at the provider.
 4. Register this **redirect URI** at the provider:
    `https://your.host/api/auth/oidc/callback` (use `http://localhost:8080/...` locally).
@@ -122,11 +122,11 @@ client's *Authorized redirect URIs* (alongside the calendar one), set the issuer
 **iOS app (native SSO):** the same SSO config drives the mobile app — there's
 **nothing extra to register at the provider**. The flow is backend-mediated, so Google
 (or any IdP) only ever sees your backend's `/api/auth/oidc/callback`, never the app's
-`nook://auth/callback` deep link (the backend appends the one-time handoff code to that
+`waffled://auth/callback` deep link (the backend appends the one-time handoff code to that
 deep link itself; the app intercepts it via `ASWebAuthenticationSession`). The "Sign in
 with …" button appears in the app automatically whenever `GET /api/auth/status` reports
 OIDC is ready. Two things to get right:
-- The redirect URI Kinnook sends to the IdP is derived from the host the request arrives
+- The redirect URI Waffled sends to the IdP is derived from the host the request arrives
   on, so the address your **device** uses to reach the API must have a matching
   `/api/auth/oidc/callback` in the provider's *Authorized redirect URIs*. The simulator
   reaches `localhost:8080` (already covered); a physical phone reaches your LAN IP or
@@ -135,18 +135,18 @@ OIDC is ready. Two things to get right:
 - Point the app at the right server on the login screen's **Server address** field if it
   isn't the default.
 
-### Operator commands (`./nook admin`)
+### Operator commands (`./waffled admin`)
 
 Break-glass / recovery commands for when the web UI can't help — e.g. the only admin
 is locked out, SSO is misconfigured, or a Google token died. They run **inside the api
-container** (`docker exec nook-api node dist/admin.js …`), so they reach the database
+container** (`docker exec waffled-api node dist/admin.js …`), so they reach the database
 and the encryption key directly with **no login or admin token required** — physical/SSH
 access to the host *is* the authorization. Auth writes go through the same scrypt hashing
 and credential→identity wiring the API uses, so there's one source of truth.
 
 ```bash
-./nook admin help                      # list every command
-./nook admin list-members              # people, login email, admin/owner, password/SSO
+./waffled admin help                      # list every command
+./waffled admin list-members              # people, login email, admin/owner, password/SSO
 ```
 
 | Command | What it does |
@@ -160,7 +160,7 @@ and credential→identity wiring the API uses, so there's one source of truth.
 | `password-login <on\|off>` | Enable/disable email+password login (the DB toggle mirrored in Settings → Login & security). |
 | `clear-calendar-error (--email <e> \| --all)` | Clear a stuck Google account's "sync failing" flag. (The token itself is fixed by **Reconnect** in Settings → Calendars — a browser OAuth step the CLI can't do.) |
 | `prune-sessions [--email <e>]` | Revoke refresh tokens for one member (**across all of their households**), or everyone — forces re-login. |
-| `regenerate-powersync-key` | Print a fresh `POWERSYNC_JWT_PRIVATE_KEY` (RSA-2048) to paste into `.env`, then `./nook restart api powersync`. |
+| `regenerate-powersync-key` | Print a fresh `POWERSYNC_JWT_PRIVATE_KEY` (RSA-2048) to paste into `.env`, then `./waffled restart api powersync`. |
 | `list-households` | List every household with its member + login counts, created date, and id. |
 | `delete-household --id <uuid> [--force]` | Permanently delete a household and **all** of its data (handy for clearing test debris). Refuses a household that has logins unless you add `--force`. |
 
@@ -170,11 +170,11 @@ non-interactively (e.g. over plain SSH).
 
 > **Hard lockout, no admin at all?** If password login is off and SSO is broken, set
 > `AUTH_FORCE_PASSWORD=1` in the api env and restart — that forces the password form
-> back on regardless of the DB toggle — then `./nook admin reset-password …` to get in.
+> back on regardless of the DB toggle — then `./waffled admin reset-password …` to get in.
 
 ## Start here
 
-1. Run it — the [Self-hosting quickstart](#self-hosting-quickstart) above (`./nook up`).
+1. Run it — the [Self-hosting quickstart](#self-hosting-quickstart) above (`./waffled up`).
 2. Read `docs/ARCHITECTURE.md` — the decisions and why.
 3. Read the docs site (built from `website/`, Astro Starlight) — the user-facing docs and the feature matrix (source: `website/src/content/docs/reference/features.md`).
 4. Follow `ROADMAP.md` — bite-sized, committable chunks, in order.
@@ -187,14 +187,14 @@ non-interactively (e.g. over plain SSH).
 
 Self-hosted Docker Compose · Postgres system-of-record · PowerSync for iOS (and the
 kiosk's calendar) offline · **built-in email/password auth + optional OIDC SSO** (no
-Auth0) · Google Calendar authoritative for Google-origin events, Kinnook authoritative for
+Auth0) · Google Calendar authoritative for Google-origin events, Waffled authoritative for
 native fields · ~5-min in-process calendar sync (no separate worker) · Caddy serves the
 SPA + `/media` and can do public ingress (auto-TLS or a Cloudflare Tunnel) · everything
 in this one repo.
 
 ## License
 
-Kinnook is licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0). See
+Waffled is licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0). See
 [LICENSE](LICENSE). In short: you're free to self-host, study, modify, and share it — but
 if you run a modified version as a network service, you must make your source available to
 its users under the same license.

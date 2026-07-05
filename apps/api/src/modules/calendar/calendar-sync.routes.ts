@@ -27,7 +27,7 @@ export function registerCalendarSyncRoutes(api: Api): void {
     if (calendarId && !UUID_RE.test(calendarId)) {
       return res.status(400).json({ error: 'BadRequest', message: 'calendarId must be a uuid' })
     }
-    // Push local edits out before pulling, so a Nook change isn't clobbered by an
+    // Push local edits out before pulling, so a Waffled change isn't clobbered by an
     // inbound overwrite of the same event in the same run.
     const pushed = await pushPending(tenant.householdId)
     const result = await syncHousehold(tenant.householdId, { calendarId })

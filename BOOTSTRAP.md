@@ -15,7 +15,7 @@ Order: **A → B → C** (Auth0 needs the Google + Apple secrets). D (AWS) can r
 the Calendar API enabled.
 
 1. **Create a project** — <https://console.cloud.google.com> → project picker → New Project →
-   name `nook`. Note the **Project ID**.
+   name `waffled`. Note the **Project ID**.
 2. **Enable APIs** — APIs & Services → Library → enable **Google Calendar API**. (Optionally
    **People API** for profile data.)
 3. **OAuth consent screen** — APIs & Services → OAuth consent screen:
@@ -36,7 +36,7 @@ the Calendar API enabled.
    - Application type: **Web application**.
    - **Authorized redirect URIs** — add both:
      - `https://<AUTH0_DOMAIN>/login/callback`  (Auth0 brokers Google sign-in)
-     - `https://<NOOK_HOSTNAME>/auth/google/calendar/callback`  (backend's incremental Calendar grant)
+     - `https://<WAFFLED_HOSTNAME>/auth/google/calendar/callback`  (backend's incremental Calendar grant)
    - Create → copy **Client ID** and **Client secret**.
 
 > **Produces:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_PROJECT_ID`.
@@ -51,7 +51,7 @@ the Calendar API enabled.
 1. **App ID** — Identifiers → + → App IDs → App → bundle id e.g. `com.kevinsites.nook`.
    Enable capabilities **Sign in with Apple** and **Push Notifications**. Register.
 2. **Services ID** (this is the OAuth `client_id` Auth0 uses) — Identifiers → + → Services IDs
-   → identifier e.g. `com.kevinsites.nook.signin`, description "Kinnook Web". Register, then edit it:
+   → identifier e.g. `com.kevinsites.nook.signin`, description "Waffled Web". Register, then edit it:
    - Enable **Sign in with Apple** → Configure:
      - Primary App ID: the App ID from step 1.
      - **Domains:** `<AUTH0_DOMAIN>`.
@@ -94,7 +94,7 @@ everything else (connections, apps, the `household_id` action, the API/audience)
 `infra/terraform/bootstrap` stack in chunk 1.1).
 
 1. **Identity for Terraform** — an IAM user (or SSO role) with admin-ish rights for the
-   resources we manage (S3, CloudFront, IAM, ACM). Configure an AWS CLI profile `nook`.
+   resources we manage (S3, CloudFront, IAM, ACM). Configure an AWS CLI profile `waffled`.
 2. **State backend** — run the bootstrap Terraform stack once to create the encrypted state
    S3 bucket + DynamoDB lock table. (Documented in `infra/terraform/bootstrap/README.md`.)
 
@@ -113,7 +113,7 @@ everything else (connections, apps, the `household_id` action, the API/audience)
 | `APNS_TEAM_ID` / `APNS_KEY_ID` / `APNS_BUNDLE_ID` + APNs `.p8` | Apple (B) | `worker` push (`.env`, later) |
 | `AUTH0_DOMAIN` / `AUTH0_MGMT_CLIENT_ID` / `AUTH0_MGMT_CLIENT_SECRET` | Auth0 (C) | Auth0 Terraform provider |
 | `AWS_*` / `TF_STATE_BUCKET` / `TF_LOCK_TABLE` | AWS (D) | Terraform backend + providers |
-| `NOOK_HOSTNAME` | your tailnet MagicDNS name | Compose (Caddy, api) + TF (Auth0 callbacks) |
+| `WAFFLED_HOSTNAME` | your tailnet MagicDNS name | Compose (Caddy, api) + TF (Auth0 callbacks) |
 | `TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32` | `api`/`worker` — encrypts Google refresh tokens at rest |
 
 ## After bootstrap

@@ -98,7 +98,7 @@ export const kioskApi = {
   }).then((r) => { if (!r.ok) throw new Error('Could not name this kiosk.') }),
 
   // Device-authed: claim a profile → ephemeral profile session (setSession fires
-  // nook:auth-changed → the gate flips to the app, acting as that person).
+  // waffled:auth-changed → the gate flips to the app, acting as that person).
   async claim(personId: string, pin?: string): Promise<void> {
     const res = await deviceFetch(`/api/kiosk/profile/${personId}`, {
       method: 'POST',

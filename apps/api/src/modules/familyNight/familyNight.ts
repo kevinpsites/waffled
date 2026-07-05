@@ -306,7 +306,7 @@ export async function scheduleEvent(tenant: Tenant): Promise<string> {
     timezone: tz,
     // Omit calendarId → auto-route to the household owner's ★ default calendar, so a
     // recurring family event lands on Google (and everyone's phones) when connected,
-    // and stays Nook-local otherwise.
+    // and stays Waffled-local otherwise.
     rrule: `FREQ=WEEKLY;BYDAY=${DAY}`,
   })
   await setConfig(tenant.householdId, { eventId: event.id })

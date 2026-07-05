@@ -1,5 +1,5 @@
 // SVG icon paths ported verbatim from the design (screens-kiosk-home.js `ic`).
-// nook.css styles the stroke/fill per context (rail, pill, etc.), so each icon
+// waffled.css styles the stroke/fill per context (rail, pill, etc.), so each icon
 // is just the inner markup inside a 0 0 24 24 viewBox.
 const PATHS = {
   home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/>',

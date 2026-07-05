@@ -113,7 +113,7 @@ async function applyParticipantPut(tenant: Tenant, id: string, data: Record<stri
 }
 
 export function registerPowerSyncCrudRoutes(api: Api): void {
-  // PowerSync's connector uploads queued row ops here (see web NookConnector).
+  // PowerSync's connector uploads queued row ops here (see web WaffledConnector).
   api.post('/api/powersync/crud', tenantRoute(async (tenant, req: Request, res: Response) => {
     const ops = (req.body as { ops?: CrudOp[] } | undefined)?.ops
     if (!Array.isArray(ops)) {

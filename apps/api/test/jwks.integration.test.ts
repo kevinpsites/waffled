@@ -7,8 +7,8 @@ import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainer
 import { generateKeyPairSync, type KeyObject } from 'node:crypto'
 import jwt from 'jsonwebtoken'
 
-const CLAIM = 'https://nook.app/household_id'
-const AUDIENCE = 'nook-api'
+const CLAIM = 'https://waffled.app/household_id'
+const AUDIENCE = 'waffled-api'
 const ISSUER = 'https://test.auth0.local/'
 const KID = 'test-key-1'
 

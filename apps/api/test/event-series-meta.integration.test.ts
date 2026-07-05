@@ -2,7 +2,7 @@
 // recurrence (singleEvents=true) into one events row per instance, all sharing one
 // ical_uid; a goal link must (a) cover every current instance, (b) be recorded at the
 // series level (event_series_meta), and (c) be inherited by a NEW instance that streams
-// in later (the sync path). A Nook-native event (no ical_uid) keeps single-event
+// in later (the sync path). A Waffled-native event (no ical_uid) keeps single-event
 // behavior — no series meta, only itself linked. All against a real Postgres.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
@@ -10,7 +10,7 @@ import { Client, type Pool } from 'pg'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 
-const SECRET = 'nook-local-dev-secret-change-me'
+const SECRET = 'waffled-local-dev-secret-change-me'
 let pg: StartedPostgreSqlContainer
 let url: string
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -21,7 +21,7 @@ let applySeriesMeta: any
 let getPool: () => Pool
 
 function mint(sub: string): string {
-  return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'nook-local', audience: 'nook-api', expiresIn: '1h' })
+  return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
 }
 interface RunResult { statusCode: number; body: string }
 function call(method: string, path: string, token?: string, body?: unknown) {
@@ -142,7 +142,7 @@ describe('event series meta — Google recurring goal links survive re-sync', ()
     await call('POST', '/api/goal-calendar/suggestions/link', kevin, { eventId: e1, goalId })
 
     // Simulate a fresh Google instance streaming in later: a new events row with the
-    // same ical_uid and NO goal link (Nook fields never come from Google).
+    // same ical_uid and NO goal link (Waffled fields never come from Google).
     const fresh = await googleInstance(ical, 'g-bbb-new', 1)
     expect(await goalOf(fresh)).toBeNull() // not linked at insert
 
@@ -177,7 +177,7 @@ describe('event series meta — Google recurring goal links survive re-sync', ()
     expect(await goalOf(e2)).toBe(otherGoal)
   })
 
-  it('a Nook-native event (no ical_uid) links only itself — no series meta', async () => {
+  it('a Waffled-native event (no ical_uid) links only itself — no series meta', async () => {
     const goalId = await makeGoal({ title: 'Native goal' })
     const r = await call('POST', '/api/events', kevin, {
       title: 'One-off', startsAt: new Date(Date.now() - 3600_000).toISOString(),

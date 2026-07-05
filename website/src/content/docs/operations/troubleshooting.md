@@ -1,19 +1,19 @@
 ---
 title: Troubleshooting
-description: Symptom → diagnosis → fix for common self-hosted Kinnook issues.
+description: Symptom → diagnosis → fix for common self-hosted Waffled issues.
 ---
 
-Practical fixes for a self-hosted Kinnook. Each entry is **symptom → diagnosis → fix**.
+Practical fixes for a self-hosted Waffled. Each entry is **symptom → diagnosis → fix**.
 
-## Run `./nook doctor` first
+## Run `./waffled doctor` first
 
-`./nook doctor` is a deep, in-container health report (db, migrations, jobs,
+`./waffled doctor` is a deep, in-container health report (db, migrations, jobs,
 calendar, storage, backup) and **exits non-zero when anything is degraded or down**.
 It almost always tells you which component is unhappy before you start guessing. The
 same data is in **Settings → System Health** and `GET /api/health` (admin). For a
 quick liveness check without auth, `GET /healthz` (public: db ping + version).
 
-Then dig into logs for the flagged service: `./nook logs <svc>` (`postgres`, `api`,
+Then dig into logs for the flagged service: `./waffled logs <svc>` (`postgres`, `api`,
 `powersync`, `caddy`, `backup`).
 
 ## Quick index
@@ -33,15 +33,15 @@ Then dig into logs for the flagged service: `./nook logs <svc>` (`postgres`, `ap
 
 ### Postgres unreachable
 
-**Symptom:** `./nook doctor` db check is **down**; api won't start or 500s
+**Symptom:** `./waffled doctor` db check is **down**; api won't start or 500s
 everywhere; `/healthz` fails.
 
-**Diagnose:** `./nook logs postgres` and `./nook status` — is the `postgres`
+**Diagnose:** `./waffled logs postgres` and `./waffled status` — is the `postgres`
 container up and **healthy**? Common causes: container still starting, out of disk,
 or a bad shutdown.
 
 **Fix:** wait for the health check to pass; if it's crash-looping, read the postgres
-logs. `./nook restart postgres` (then `api`, `powersync`). **Never** `docker volume
+logs. `./waffled restart postgres` (then `api`, `powersync`). **Never** `docker volume
 rm pgdata` — that destroys all data (see the never-wipe warning in the
 [upgrading guide](/operations/upgrading/)). If the volume is genuinely corrupt, restore from a
 backup (see [Backup & restore](/operations/backup/)).
@@ -51,16 +51,16 @@ backup (see [Backup & restore](/operations/backup/)).
 **Symptom:** health report flags **"schema behind"** (applied migration count <
 available count); new features missing or erroring after an upgrade.
 
-**Diagnose:** `./nook doctor` shows applied vs available migration counts.
+**Diagnose:** `./waffled doctor` shows applied vs available migration counts.
 
 **Fix:**
 
 ```bash
-./nook migrate      # re-run migrations (idempotent); or ./nook up
+./waffled migrate      # re-run migrations (idempotent); or ./waffled up
 ```
 
 Migrations normally auto-run on `up` via the one-shot `migrate` service; run
-`./nook migrate` directly if you only need to apply them without a full restart.
+`./waffled migrate` directly if you only need to apply them without a full restart.
 
 ### PowerSync "Offline" banner
 
@@ -70,7 +70,7 @@ show `PSYNC_S2101` signature failures.
 **Diagnose (this is almost always it):** `POWERSYNC_JWT_PRIVATE_KEY` is empty in
 `infra/compose/.env`. When it's empty, the api generates a fresh signing key **on
 every restart** — PowerSync then rejects the api-issued JWTs (`PSYNC_S2101`) and all
-clients drop offline. Check `./nook logs powersync` for the signature error and
+clients drop offline. Check `./waffled logs powersync` for the signature error and
 grep the env for an empty key.
 
 **Fix:** set a **stable** value:
@@ -83,7 +83,7 @@ POWERSYNC_JWT_PRIVATE_KEY=<stable base64 key>
 Then restart PowerSync to pick it up and re-validate:
 
 ```bash
-./nook restart powersync     # unstick nook-powersync
+./waffled restart powersync     # unstick waffled-powersync
 ```
 
 **Also check `POWERSYNC_PUBLIC_URL`** — it must be the address clients actually use
@@ -111,30 +111,30 @@ consent flow and stores a fresh token).
 **Symptom:** photo / recipe-image / chore-proof uploads fail; health `storage`
 degraded; images 404 or won't save.
 
-**Diagnose:** the `nook_media` volume isn't writable, or `MEDIA_DIR` points
-somewhere the api can't write. `./nook logs api` will show the write error.
+**Diagnose:** the `waffled_media` volume isn't writable, or `MEDIA_DIR` points
+somewhere the api can't write. `./waffled logs api` will show the write error.
 
-**Fix:** confirm the `nook_media` volume is mounted and writable and that
+**Fix:** confirm the `waffled_media` volume is mounted and writable and that
 `MEDIA_DIR` is correct; check host disk space. **Do not** delete or recreate
-`nook_media` — uploaded blobs live there and are irreplaceable.
+`waffled_media` — uploaded blobs live there and are irreplaceable.
 
 ### Backups failing or stale
 
 **Symptom:** health **`backup`** line is **degraded** (last backup failed, or newest
 success is older than ~48 h).
 
-**Diagnose:** `./nook logs backup`. Usual causes: out of disk space, or bad
+**Diagnose:** `./waffled logs backup`. Usual causes: out of disk space, or bad
 `BACKUP_S3_*` credentials / endpoint when offsite copy is enabled.
 
 **Fix:** free disk space, or fix the S3 creds/endpoint in `infra/compose/.env`, then
-`./nook up` to recreate the backup service. Run `./nook backup` to confirm a manual
+`./waffled up` to recreate the backup service. Run `./waffled backup` to confirm a manual
 run succeeds. Full config in [Backup & restore](/operations/backup/).
 
 ### Can't reach the app / TLS
 
 **Symptom:** browser can't connect, or TLS/certificate errors.
 
-**Diagnose:** this is the **Caddy** layer. `./nook logs caddy`.
+**Diagnose:** this is the **Caddy** layer. `./waffled logs caddy`.
 
 **Fix:**
 
@@ -142,7 +142,7 @@ run succeeds. Full config in [Backup & restore](/operations/backup/).
   `https://`. Don't expect a valid cert locally.
 - **For a real hostname:** set `CADDY_SITE_ADDRESS` to your domain in
   `infra/compose/.env` and enable the **443** port mapping so Caddy can serve HTTPS
-  (and, for public domains, provision a cert). Then `./nook up`.
+  (and, for public domains, provision a cert). Then `./waffled up`.
 
 ### Locked out / forgot admin password
 
@@ -151,10 +151,10 @@ run succeeds. Full config in [Backup & restore](/operations/backup/).
 **Fix (break-glass, from the host):**
 
 ```bash
-./nook admin reset-password        # reset a member's password
-./nook admin make-admin            # grant admin to a member
-./nook admin list-members          # see who exists
-./nook admin prune-sessions        # invalidate active sessions if needed
+./waffled admin reset-password        # reset a member's password
+./waffled admin make-admin            # grant admin to a member
+./waffled admin list-members          # see who exists
+./waffled admin prune-sessions        # invalidate active sessions if needed
 ```
 
 ---
@@ -163,14 +163,14 @@ run succeeds. Full config in [Backup & restore](/operations/backup/).
 
 | Tool | What it gives you |
 |---|---|
-| `./nook doctor` | deep per-component health; non-zero exit when degraded/down |
-| `./nook status` | which services are up / healthy |
-| `./nook logs <svc>` | logs for `postgres` / `api` / `powersync` / `caddy` / `backup` |
+| `./waffled doctor` | deep per-component health; non-zero exit when degraded/down |
+| `./waffled status` | which services are up / healthy |
+| `./waffled logs <svc>` | logs for `postgres` / `api` / `powersync` / `caddy` / `backup` |
 | **Settings → System Health** | same report as `doctor`, in the UI |
 | `GET /healthz` | public shallow check (db ping + version) |
 | `GET /api/health` | admin deep report (per component) |
 
 Tune log verbosity with `LOG_LEVEL` / `LOG_FORMAT` in `infra/compose/.env`. For
-metrics/traces, `./nook observability up` brings up local Grafana (optional
+metrics/traces, `./waffled observability up` brings up local Grafana (optional
 `observability` profile); set `OTEL_EXPORTER_OTLP_ENDPOINT` to export traces (off by
 default).

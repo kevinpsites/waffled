@@ -243,7 +243,7 @@ export function PersonProfile() {
         <div className="pp-hero">
           <span className="pp-av" style={{ background: person.colorHex ? `${person.colorHex}22` : 'var(--panel)' }}>{person.avatarEmoji ?? '🙂'}</span>
           <div>
-            <div className="nk-serif pp-name">{person.name}</div>
+            <div className="wf-serif pp-name">{person.name}</div>
             <div className="pp-sub">{subBits.join(' · ')}</div>
           </div>
         </div>

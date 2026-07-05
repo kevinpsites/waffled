@@ -8,7 +8,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import { randomBytes } from 'node:crypto'
 import { runMigrations } from '../src/migrate'
 
-const SECRET = 'nook-local-dev-secret-change-me'
+const SECRET = 'waffled-local-dev-secret-change-me'
 
 let pg: StartedPostgreSqlContainer
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

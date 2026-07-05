@@ -1,4 +1,4 @@
-// In-container health printer for `./nook doctor`. Runs inside nook-api (where
+// In-container health printer for `./waffled doctor`. Runs inside waffled-api (where
 // DATABASE_URL + MEDIA_DIR are set), so it reaches the DB and media volume with no
 // HTTP call or admin token. Prints JSON by default, or a colored human report with
 // --pretty. Exits non-zero when degraded (1) or down (2) so the CLI can flag it.
@@ -17,7 +17,7 @@ const HINT = '\x1b[36m' // cyan
 
 function pretty(report: Awaited<ReturnType<typeof buildHealthReport>>): string {
   const lines: string[] = []
-  lines.push(`Nook health: ${MARK[report.status]} ${report.status.toUpperCase()}  (build ${report.version.sha})`)
+  lines.push(`Waffled health: ${MARK[report.status]} ${report.status.toUpperCase()}  (build ${report.version.sha})`)
   const nextSteps: string[] = []
   for (const [name, check] of Object.entries(report.checks)) {
     const extras = Object.entries(check)

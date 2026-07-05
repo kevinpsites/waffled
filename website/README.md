@@ -1,6 +1,6 @@
-# Kinnook docs site
+# Waffled docs site
 
-The Kinnook documentation site — [Astro Starlight](https://starlight.astro.build).
+The Waffled documentation site — [Astro Starlight](https://starlight.astro.build).
 User/operator docs live in `src/content/docs/`; engineering docs stay in the repo's
 top-level `docs/`.
 

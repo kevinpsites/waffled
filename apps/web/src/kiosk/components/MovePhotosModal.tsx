@@ -33,7 +33,7 @@ export function MovePhotosModal({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <form className="modal-card" onClick={(e) => e.stopPropagation()} onSubmit={submit} style={{ maxWidth: 400 }}>
-        <div className="nk-serif" style={{ fontSize: 19, fontWeight: 600, marginBottom: 12 }}>
+        <div className="wf-serif" style={{ fontSize: 19, fontWeight: 600, marginBottom: 12 }}>
           Move {count === 1 ? 'photo' : `${count} photos`} to…
         </div>
         <label className="ap-field-label" style={{ marginBottom: 18 }}>

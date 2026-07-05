@@ -1,7 +1,7 @@
 -- Up Migration
 -- Calendar — Google connection (roadmap 5.2). A household connects one or more
 -- Google accounts (calendar_accounts, each holding the encrypted refresh token);
--- every account exposes one or more calendars (calendars), which map to a Nook
+-- every account exposes one or more calendars (calendars), which map to a Waffled
 -- person for color/ownership. The inbound poll (5.3) fills calendars.sync_token;
 -- events.calendar_id — staged FK-less in 0007 — now references calendars.
 -- calendar_oauth_states ties a browser OAuth round-trip back to the household that
@@ -27,7 +27,7 @@ create table calendars (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references households(id),
   account_id uuid not null references calendar_accounts(id),
-  person_id uuid references persons(id),             -- color/owner mapping (nook-owned)
+  person_id uuid references persons(id),             -- color/owner mapping (waffled-owned)
   google_calendar_id text not null,                  -- "primary" or the calendar's id
   summary text,
   description text,
@@ -35,7 +35,7 @@ create table calendars (
   access_role text,                                  -- owner | writer | reader | freeBusyReader
   color_hex text,
   is_primary boolean not null default false,
-  selected boolean not null default true,            -- whether Nook syncs this calendar
+  selected boolean not null default true,            -- whether Waffled syncs this calendar
   sync_token text,                                   -- incremental inbound cursor (5.3)
   last_synced_at timestamptz,
   created_at timestamptz not null default now(),

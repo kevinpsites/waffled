@@ -1,11 +1,11 @@
 {
-  // Cloudflare Workers "Static Assets" config for the Kinnook docs site (website/).
+  // Cloudflare Workers "Static Assets" config for the Waffled docs site (website/).
   // Only needed if you deploy the docs via the Workers importer (npx wrangler deploy);
   // the classic Cloudflare Pages flow doesn't use this file. No Worker code — this is a
   // pure static site, so `assets.directory` is all it needs.
   //
   // Build command (in the Cloudflare project): cd website && npm ci && npm run build
-  "name": "kinnook-docs",
+  "name": "waffled-docs",
   "compatibility_date": "2025-06-01",
   "assets": {
     "directory": "./website/dist"

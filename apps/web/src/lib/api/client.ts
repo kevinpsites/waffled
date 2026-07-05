@@ -3,19 +3,19 @@
 // token + a rotating refresh token in localStorage (set by the login/setup flow).
 // A 401 transparently refreshes once and retries; a failed refresh clears the
 // session and signals the AuthGate to show the login screen.
-const ACCESS_KEY = 'nook.access'
-const REFRESH_KEY = 'nook.refresh'
+const ACCESS_KEY = 'waffled.access'
+const REFRESH_KEY = 'waffled.refresh'
 
 // ── kiosk device layer ─────────────────────────────────────────────────────────
 // A paired tablet stores a long-lived device secret (persists across profile
 // switches and idle) and a short-lived device access token minted from it. The
 // access/refresh keys above are reused for the *currently claimed profile* — an
 // ephemeral session cleared on switch/idle while the device stays paired.
-const DEVICE_SECRET_KEY = 'nook.kiosk.deviceSecret'
-const DEVICE_ID_KEY = 'nook.kiosk.deviceId'
-const DEVICE_ACCESS_KEY = 'nook.kiosk.deviceAccess'
-const KIOSK_MODE_KEY = 'nook.kiosk.mode'      // device is paired (→ profile picker)
-const DISPLAY_MODE_KEY = 'nook.kiosk.display' // this browser is the always-on display
+const DEVICE_SECRET_KEY = 'waffled.kiosk.deviceSecret'
+const DEVICE_ID_KEY = 'waffled.kiosk.deviceId'
+const DEVICE_ACCESS_KEY = 'waffled.kiosk.deviceAccess'
+const KIOSK_MODE_KEY = 'waffled.kiosk.mode'      // device is paired (→ profile picker)
+const DISPLAY_MODE_KEY = 'waffled.kiosk.display' // this browser is the always-on display
 
 export function isKioskMode(): boolean {
   try {
@@ -43,7 +43,7 @@ export function setDisplayMode(on: boolean): void {
   } catch {
     /* ignore */
   }
-  window.dispatchEvent(new Event('nook:auth-changed'))
+  window.dispatchEvent(new Event('waffled:auth-changed'))
 }
 export function getDeviceId(): string | undefined {
   try {
@@ -81,7 +81,7 @@ export function setKioskDevice(deviceSecret: string, deviceId: string): void {
 // Re-resolve the AuthGate now that the device is paired → the profile picker (or, if
 // an admin is still signed in on this browser, just refreshes their session chrome).
 export function enterKioskMode(): void {
-  window.dispatchEvent(new Event('nook:auth-changed'))
+  window.dispatchEvent(new Event('waffled:auth-changed'))
 }
 // Unpair entirely (admin revoked the device, or the operator un-kiosks it): drop
 // the device + any profile session → back to the normal login screen.
@@ -93,7 +93,7 @@ export function clearKioskDevice(): void {
   } catch {
     /* ignore */
   }
-  window.dispatchEvent(new Event('nook:auth-changed'))
+  window.dispatchEvent(new Event('waffled:auth-changed'))
 }
 // End just the claimed-profile session (switch profile / idle), keeping the device
 // paired. The AuthGate re-resolves to the picker because kiosk mode is still on.
@@ -104,12 +104,12 @@ export function clearProfileSession(): void {
   } catch {
     /* ignore */
   }
-  window.dispatchEvent(new Event('nook:auth-changed'))
+  window.dispatchEvent(new Event('waffled:auth-changed'))
 }
 
 export function getAccessToken(): string | undefined {
   try {
-    return localStorage.getItem(ACCESS_KEY) || localStorage.getItem('nook.token') || undefined
+    return localStorage.getItem(ACCESS_KEY) || localStorage.getItem('waffled.token') || undefined
   } catch {
     return import.meta.env.VITE_KIOSK_TOKEN || undefined
   }
@@ -125,21 +125,21 @@ export function setSession(accessToken: string, refreshToken: string): void {
   try {
     localStorage.setItem(ACCESS_KEY, accessToken)
     localStorage.setItem(REFRESH_KEY, refreshToken)
-    localStorage.removeItem('nook.token') // retire the legacy dev key
+    localStorage.removeItem('waffled.token') // retire the legacy dev key
   } catch {
     /* localStorage unavailable */
   }
-  window.dispatchEvent(new Event('nook:auth-changed'))
+  window.dispatchEvent(new Event('waffled:auth-changed'))
 }
 export function clearSession(): void {
   try {
     localStorage.removeItem(ACCESS_KEY)
     localStorage.removeItem(REFRESH_KEY)
-    localStorage.removeItem('nook.token')
+    localStorage.removeItem('waffled.token')
   } catch {
     /* ignore */
   }
-  window.dispatchEvent(new Event('nook:auth-changed'))
+  window.dispatchEvent(new Event('waffled:auth-changed'))
 }
 
 // Single in-flight refresh shared across concurrent 401s.

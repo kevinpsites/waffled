@@ -42,8 +42,8 @@ const server = http.createServer((req, res) => {
 })
 
 server.listen(config.port, () => {
-  log.info('nook-api listening', { port: config.port, authMode: config.auth.mode, sha: version.sha })
-  // Background poll: pull Google calendar changes into Nook on an interval so
+  log.info('waffled-api listening', { port: config.port, authMode: config.auth.mode, sha: version.sha })
+  // Background poll: pull Google calendar changes into Waffled on an interval so
   // edits/deletes made on the Google side appear without a manual sync.
   startSyncScheduler()
   // Roll the recurring-event occurrence horizon forward (Google-independent).

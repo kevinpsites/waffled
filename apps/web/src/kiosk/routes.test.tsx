@@ -41,7 +41,7 @@ describe('kiosk navigation', () => {
     for (const path of ['/tasks', '/calendar', '/goals', '/meals', '/lists', '/photos', '/settings']) {
       const { unmount } = renderAt(path)
       // the layout + a main region always render; no thrown route
-      expect(document.querySelector('.kiosk-main, .nk-kiosk')).toBeTruthy()
+      expect(document.querySelector('.kiosk-main, .wf-kiosk')).toBeTruthy()
       unmount()
     }
   })

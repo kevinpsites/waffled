@@ -1,9 +1,9 @@
 ---
 title: Feature matrix
-description: Every Kinnook feature and whether it's supported on each surface.
+description: Every Waffled feature and whether it's supported on each surface.
 ---
 
-Every Kinnook feature and whether it's supported on each surface.
+Every Waffled feature and whether it's supported on each surface.
 
 - **Web / Kiosk** — the React app (same build powers the desktop browser and the kitchen
   tablet kiosk).
@@ -12,19 +12,19 @@ Every Kinnook feature and whether it's supported on each surface.
 - **iPad** — the **same** universal app's *family-hub* experience (`KioskRoot` → a left nav
   rail + every page, re-laid-out big; runs on the counter). One binary, one App Store
   listing — the device picks the experience by idiom (`DeviceExperience`).
-- **Status** — where the feature sits on the [roadmap](https://github.com/kevinpsites/nook/blob/main/docs/product/roadmap.md).
+- **Status** — where the feature sits on the [roadmap](https://github.com/kevinpsites/waffled/blob/main/docs/product/roadmap.md).
 
 Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 
 > **iPhone vs iPad.** Most feature screens are *shared* and adapt by size; the iPad adds
 > distinct wide layouts (`KioskDashboard`, `KioskCalendarView`, `KioskListsView`, the
-> Kanban chores board, the **screensaver**) on top of the same `SyncManager`/`NookAPI`
+> Kanban chores board, the **screensaver**) on top of the same `SyncManager`/`WaffledAPI`
 > data layer. iPad-only items (screensaver, ambient display) read ❌ N/A on iPhone;
 > shared-but-web-only admin actions (first-run setup, OIDC config) read ❌ on both.
 > The **shared-kiosk profile picker** (pairing + per-profile PIN) now ships on **iPad** as
 > an opt-in (single persistent login stays the default); it's ❌ N/A on iPhone, which is
 > never a kiosk. See
-> [`apps/ios/IPAD_ROADMAP.md`](https://github.com/kevinpsites/nook/blob/main/apps/ios/IPAD_ROADMAP.md) for the mobile build plan.
+> [`apps/ios/IPAD_ROADMAP.md`](https://github.com/kevinpsites/waffled/blob/main/apps/ios/IPAD_ROADMAP.md) for the mobile build plan.
 
 ---
 
@@ -250,7 +250,7 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 | Pantry ↔ meals: **Cook from your pantry** — recipes makeable now (staple-aware), on-hand **proteins as "mains"** → filtered recipe library, leftovers ("It's a meal"), **Plan my week** seeded with soon-to-expire, per-item **Plan it in** | ✅ | ✅ | ✅ | ✅ Done — iOS `CookFromPantryCard` in the Pantry surface (meals-gated) opens a self-contained modal with all five sections: Plan-my-week banner → seeded `PlanWeekSheet`; **Tonight · no cooking** leftovers with **Ate it** (consume) + **Plan** into a slot (planned-state derived from `/api/meals/week`); **You have everything** (`/api/pantry/cookable` `ready`) → recipe detail / Cook Mode; **You have the main** proteins → protein-filtered library + near-makeable recipes + **+ List** grocery add; **Use up soon** chips |
 | Pantry ↔ meals: **cook → decrement** — marking a recipe cooked opens a "Used from your pantry" confirm sheet (Used some / Used it up / Didn't use; staples skipped) that decrements or uses-up stock; leftovers get **"Ate it"**; cooking flips today's planned slot to cooked | ✅ | ✅ | ✅ | ✅ Done — iOS: marking a recipe cooked (button or Cook Mode finish) fetches `/api/pantry/for-recipe` and, when it matches on-hand items, shows a `CookConfirmSheet` (server-suggested defaults) that POSTs `/api/pantry/consume`. Plan-slot flip is the server's free side-effect of `markCooked`. Leftovers **"Ate it"** ships in the Cook-from-pantry surface |
 | **Family Night** module — recurring family gathering (default Mon) with a customizable agenda of "parts" that **auto-rotate** among members (override per week); **Today card** with per-part person pickers; admin agenda/day/time editor; optional weekly **calendar event** (auto-routes to owner's ★ default → Google when connected) | ✅ | 🚧 | 🚧 | ✅ Done (web) — `family_night_occurrences`/`_assignments`, config in `settings.familyNight`; renamed from the "FHE" stub to stay generic. Phase 2: history, recipe/goal links, idea bank |
-| **Public API keys + scopes** — `nook_…` key, `x-api-key`, `<resource>:read\|write` scopes | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web; build #3) — external-integration surface (pattern B), admin-issued |
+| **Public API keys + scopes** — `waffled_…` key, `x-api-key`, `<resource>:read\|write` scopes | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web; build #3) — external-integration surface (pattern B), admin-issued |
 | **Settings → API Keys** tab (generate / scope / reveal-once / revoke) | ✅ | ❌ N/A | ❌ N/A | ✅ Done (web; admin-gated) |
 
 ## Settings
@@ -280,7 +280,7 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 | Other domains (chores/rewards/goals/lists/meals/photos) | REST | REST | REST | 🟡 REST-only, kept fresh by the in-app refresh bus while online |
 | Offline status + pending-uploads + last-synced indicators | ✅ | ✅ | ✅ | ✅ Done |
 | Kiosk **PWA** + cached last-known state | 🚧 | ❌ N/A | ❌ N/A | 🟡 Web partial (7.1); mobile is a native app |
-| Self-host via **Docker Compose** (`./nook up`) | ✅ | — | — | ✅ Done |
+| Self-host via **Docker Compose** (`./waffled up`) | ✅ | — | — | ✅ Done |
 | In-container **migrations** (one-shot) | ✅ | — | — | ✅ Done |
 | **GHCR** multi-arch images (amd64 + arm64) | ✅ | — | — | ✅ Done |
 | Optional **S3 backup** | 🚧 | — | — | 🚧 Parked (Phase 4) |
@@ -294,11 +294,11 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 | Structured **JSON logging** + per-request access log | ✅ | — | — | ✅ Done |
 | Deep **`GET /api/health`** (db, migrations, jobs, calendar backlog, storage) | ✅ | — | — | ✅ Done |
 | **Settings → System Health** admin panel (live, polls /api/health) | ✅ | ⬜ | ⬜ | ✅ Done |
-| **`./nook doctor`** CLI health report (in-container, no token) | ✅ | — | — | ✅ Done |
+| **`./waffled doctor`** CLI health report (in-container, no token) | ✅ | — | — | ✅ Done |
 | Background-**job run registry** (last-run / duration / error per scheduler) | ✅ | — | — | ✅ Done |
 | Build **provenance** (git sha + build time on /healthz + /api/health) | ✅ | — | — | ✅ Done |
 | **OpenTelemetry** traces+metrics (OTLP, **off by default**) | ✅ | — | — | ✅ Done |
-| All-local **Grafana/OTEL stack** (`./nook observability up`, profile) | ✅ | — | — | ✅ Done |
+| All-local **Grafana/OTEL stack** (`./waffled observability up`, profile) | ✅ | — | — | ✅ Done |
 
 > **PowerSync scope note.** Offline-first currently covers the **calendar/events** domain
 > on every surface (local-first reads + queued writes). The iOS app mirrors
@@ -311,7 +311,7 @@ client renders its own native UI, so a module with no iOS screen simply doesn't 
 
 ## Mobile backlog (planned, not yet built)
 
-Tracked in [`apps/ios/IPAD_ROADMAP.md`](https://github.com/kevinpsites/nook/blob/main/apps/ios/IPAD_ROADMAP.md). Highlights:
+Tracked in [`apps/ios/IPAD_ROADMAP.md`](https://github.com/kevinpsites/waffled/blob/main/apps/ios/IPAD_ROADMAP.md). Highlights:
 
 - **Chore reminders** on iOS — blocked on chores landing in PowerSync.
 - **Recurring-event reminders** — the local scheduler doesn't expand recurrences yet.
@@ -323,4 +323,4 @@ Tracked in [`apps/ios/IPAD_ROADMAP.md`](https://github.com/kevinpsites/nook/blob
   server display config + web to carry a `photoMotion` field).
 - **Remote push** (APNs) for reminders when the app is closed.
 
-See [roadmap status](https://github.com/kevinpsites/nook/blob/main/docs/product/roadmap.md) for the cross-surface planned/partial items in context.
+See [roadmap status](https://github.com/kevinpsites/waffled/blob/main/docs/product/roadmap.md) for the cross-surface planned/partial items in context.

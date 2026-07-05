@@ -4,7 +4,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 
-const SECRET = 'nook-local-dev-secret-change-me'
+const SECRET = 'waffled-local-dev-secret-change-me'
 
 let pg: StartedPostgreSqlContainer
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -15,8 +15,8 @@ function mint(sub: string): string {
   return jwt.sign({}, SECRET, {
     algorithm: 'HS256',
     subject: sub,
-    issuer: 'nook-local',
-    audience: 'nook-api',
+    issuer: 'waffled-local',
+    audience: 'waffled-api',
     expiresIn: '1h',
   })
 }

@@ -159,7 +159,7 @@ export function LogModal({
       <div className="modal-overlay" onClick={onClose}>
         <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
           <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-          <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 2 }}>Checklist</div>
+          <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 2 }}>Checklist</div>
           <div className="muted" style={{ fontSize: 14, marginBottom: 14 }}>{goal.title} · {done}/{total} steps</div>
           {steps == null && <div className="muted tiny" style={{ fontWeight: 600 }}>Loading…</div>}
           {steps != null && steps.length === 0 && <div className="muted tiny" style={{ fontWeight: 600 }}>No steps yet — add some by editing this goal.</div>}
@@ -190,7 +190,7 @@ export function LogModal({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 2 }}>Log progress</div>
+        <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 2 }}>Log progress</div>
         <div className="muted" style={{ fontSize: 14, marginBottom: 16 }}>{goal.title}</div>
 
         <form onSubmit={submit}>

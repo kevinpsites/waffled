@@ -98,7 +98,7 @@ export const personsApi = {
 }
 
 // Notify listeners (e.g. the topbar clock) that household basics changed.
-export const HOUSEHOLD_CHANGED = 'nook:household-changed'
+export const HOUSEHOLD_CHANGED = 'waffled:household-changed'
 export function emitHouseholdChanged(): void {
   try {
     window.dispatchEvent(new Event(HOUSEHOLD_CHANGED))

@@ -103,7 +103,7 @@ export function ScanModal({ locations, avoidAllergens, allergenPeople, onClose, 
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card pl-scan" onClick={(e) => e.stopPropagation()}>
         <div className="pl-scan-head">
-          <span className="nk-serif pl-scan-title">Scan into pantry</span>
+          <span className="wf-serif pl-scan-title">Scan into pantry</span>
           {added > 0 && <span className="pl-scan-count">✓ {added} added</span>}
           <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
         </div>

@@ -6,15 +6,15 @@ import starlight from '@astrojs/starlight';
 export default defineConfig({
 	// GitHub-Pages-friendly: `site` + `base` read from env so this works at the
 	// root locally (defaults) and under a project subpath when deployed.
-	site: process.env.DOCS_SITE || undefined,
+	site: process.env.DOCS_SITE || 'https://waffled.app',
 	base: process.env.DOCS_BASE || '/',
 	integrations: [
 		starlight({
-			title: 'Kinnook',
+			title: 'Waffled',
 			tagline: 'Self-hosted family hub',
-			logo: { src: './src/assets/kinnook-logo.png', alt: 'Kinnook' },
+			logo: { src: './src/assets/waffled-logo.png', alt: 'Waffled' },
 			favicon: '/favicon.png',
-			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/kevinpsites/nook' }],
+			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/kevinpsites/waffled' }],
 			sidebar: [
 				{
 					label: 'Getting started',

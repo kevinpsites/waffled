@@ -109,7 +109,7 @@ function ReviewDrawer({
           <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={onClose}>‹ Today</button>
         </div>
         <div className="review-drawer-body">
-          <div className="nk-serif review-title">Review events</div>
+          <div className="wf-serif review-title">Review events</div>
           <div className="review-sub">Confirm linked events that have happened, and link any that look like they count.</div>
           <RecapCard state={recap} variant="page" scoped={false} />
           <SuggestionCard state={suggest} />

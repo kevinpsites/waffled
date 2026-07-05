@@ -10,7 +10,7 @@ import { MovePhotosModal } from './components/MovePhotosModal'
 import '../styles/photos.css'
 
 // Photos home — the family wall (matches photos.png): a "NEW MEMORY" banner over
-// a masonry wall of tiles, each an <img> or an emoji-on-gradient tile (Kinnook has
+// a masonry wall of tiles, each an <img> or an emoji-on-gradient tile (Waffled has
 // no blob storage yet, so emoji tiles are the intended fallback — the mock itself
 // renders colored emoji tiles). Tapping a tile opens the detail; the topbar adds
 // "Play screensaver" + "Add photos"; the screensaver is a full-screen takeover.

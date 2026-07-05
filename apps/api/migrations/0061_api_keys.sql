@@ -10,7 +10,7 @@ create table api_keys (
   person_id uuid not null references persons(id),
   name text not null,                       -- human label ("Home Assistant", "grocery script")
   key_hash text not null unique,            -- sha256(secret) hex; the secret itself is never stored
-  key_prefix text not null,                 -- first chars of the secret, shown to identify it ("nook_AbC…")
+  key_prefix text not null,                 -- first chars of the secret, shown to identify it ("waffled_AbC…")
   scopes text[] not null default '{}',      -- ["lists:read","chores:write", …]
   last_used_at timestamptz,
   expires_at timestamptz,                   -- null = never expires

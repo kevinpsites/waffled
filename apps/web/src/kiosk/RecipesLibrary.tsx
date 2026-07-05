@@ -59,7 +59,7 @@ export function RecipesLibrary() {
     () => (
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
         <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate('/meals')}>‹ Meals</button>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600 }}>Recipes</div>
+        <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600 }}>Recipes</div>
         <button className="pill btn-primary" style={{ marginLeft: 'auto', color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => navigate('/meals/recipe/new')}>＋ New recipe</button>
       </div>
     ),

@@ -108,7 +108,7 @@ export function Screensaver({
       {showChrome && <div className="ph-saver-scrim" />}
       {showChrome && (
         <div className="ph-saver-clock">
-          <div className="nk-serif ph-saver-time">{time}</div>
+          <div className="wf-serif ph-saver-time">{time}</div>
           <div className="ph-saver-date">{date}{wx ? ` · ${wx}` : ''}</div>
         </div>
       )}
@@ -120,7 +120,7 @@ export function Screensaver({
       )}
       {showChrome && photo && (photo.memory || photo.caption) && (
         <div className="ph-saver-meta">
-          <div className="nk-serif">{photo.memory ?? photo.caption}</div>
+          <div className="wf-serif">{photo.memory ?? photo.caption}</div>
         </div>
       )}
       <div className="ph-saver-wake">Tap anywhere to wake</div>

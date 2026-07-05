@@ -56,7 +56,7 @@ export function Rail() {
   const screens = SCREENS.filter((s) => !s.module || moduleEnabled(household, s.module))
   return (
     <nav className="rail">
-      <Link to="/" className="rail-logo" aria-label="Home"><img src="/logo.png" alt="Kinnook" /></Link>
+      <Link to="/" className="rail-logo" aria-label="Home"><img src="/logo.png" alt="Waffled" /></Link>
       <div className="rail-new">New</div>
       {screens.map((s) => (
         <RailLink key={s.path} screen={s} />

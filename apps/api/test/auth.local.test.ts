@@ -4,13 +4,13 @@ import { describe, it, expect } from 'vitest'
 import jwt, { type SignOptions } from 'jsonwebtoken'
 import app from '../src/app'
 
-const SECRET = 'nook-local-dev-secret-change-me' // matches config's local default
+const SECRET = 'waffled-local-dev-secret-change-me' // matches config's local default
 
 function mint(payload: object, opts: SignOptions = {}): string {
   return jwt.sign(payload, SECRET, {
     algorithm: 'HS256',
-    issuer: 'nook-local',
-    audience: 'nook-api',
+    issuer: 'waffled-local',
+    audience: 'waffled-api',
     expiresIn: '1h',
     ...opts,
   })

@@ -154,7 +154,7 @@ export function RecipeEditor() {
     () => (
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
         <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate(-1)}>‹ Back</button>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600 }}>{isEdit ? 'Edit recipe' : 'New recipe'}</div>
+        <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600 }}>{isEdit ? 'Edit recipe' : 'New recipe'}</div>
       </div>
     ),
     [navigate, isEdit]
@@ -325,7 +325,7 @@ export function RecipeEditor() {
   }
   // Rename a section: apply the new name to every row in that group. We keep the
   // pending marker on a just-added section so backspacing the name back to empty
-  // leaves it as its own blank-headed group (showing the full suggestion list) —
+  // leaves it as its own blawf-headed group (showing the full suggestion list) —
   // instead of collapsing the row into the section above. The marker is harmless
   // once named (a named group renders its header anyway) and is replaced by the
   // next "Add section".

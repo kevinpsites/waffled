@@ -1,7 +1,7 @@
 -- Up Migration
 -- Retire the legacy `credentials` table. Every active credential has been mirrored
 -- into `accounts` (same email + password_hash, person linked via persons.account_id)
--- — verified by `./nook admin audit-credentials` before this cutover. Login, member
+-- — verified by `./waffled admin audit-credentials` before this cutover. Login, member
 -- management, OIDC invite-gating and the operator CLI now read/write `accounts`
 -- exclusively, so the table is dead weight. DESTRUCTIVE: drops the table for good.
 drop table if exists credentials;

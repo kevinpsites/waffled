@@ -201,7 +201,7 @@ export function Tasks() {
   return (
     <div className="tasks-page">
       <div className="tasks-head">
-        <div className="card-h nk-serif" style={{ fontSize: 20 }}>
+        <div className="card-h wf-serif" style={{ fontSize: 20 }}>
           {tab === 'chores' ? `${Math.abs(meta.diff) <= 1 ? meta.rel : meta.weekday}’s chores` : 'Stars & rewards'}
         </div>
         {rewardsOn && (

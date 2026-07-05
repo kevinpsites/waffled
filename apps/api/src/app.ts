@@ -118,7 +118,7 @@ api.get('/healthz', async () => {
   } catch {
     db = 'down'
   }
-  return { ok: true, service: 'nook-api', authMode: config.auth.mode, version, db }
+  return { ok: true, service: 'waffled-api', authMode: config.auth.mode, version, db }
 })
 
 // Who the token says you are (no DB).

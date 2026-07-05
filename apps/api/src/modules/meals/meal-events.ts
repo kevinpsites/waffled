@@ -13,11 +13,11 @@ const MEAL_LABEL: Record<string, string> = { breakfast: 'Breakfast', lunch: 'Lun
 const DEFAULT_TIMES: Record<string, string> = { breakfast: '08:00', lunch: '12:00', dinner: '18:00', snack: '15:00' }
 
 export interface MealCalendarSettings {
-  // Create a calendar event for each planned meal at all (shows on the Nook
+  // Create a calendar event for each planned meal at all (shows on the Waffled
   // calendar). Off ⇒ meals never touch the calendar.
   addToCalendar: boolean
   // Also push those events to Google (the calendar person's write target). Off ⇒
-  // the events stay inside Nook.
+  // the events stay inside Waffled.
   pushToGoogle: boolean
   // Whose calendar the meal events belong to (color/owner + Google write target).
   // Defaults to the household owner.
@@ -101,7 +101,7 @@ export async function syncMealEventForEntry(tenant: Tenant, entryId: string): Pr
   const tz = tzRow.rows[0]?.timezone || 'UTC'
 
   // Route to Google only when opted in AND the calendar person has a writable
-  // target; otherwise the event is Nook-only (local_only).
+  // target; otherwise the event is Waffled-only (local_only).
   const target = settings.pushToGoogle ? await resolveWriteTarget(tenant.householdId, settings.calendarPersonId) : null
   const calendarId = target?.calendarId ?? null
 

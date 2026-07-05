@@ -9,7 +9,7 @@ import type {
 } from '@powersync/web'
 import { apiGet, apiSend } from '../api/client'
 
-export class NookConnector implements PowerSyncBackendConnector {
+export class WaffledConnector implements PowerSyncBackendConnector {
   async fetchCredentials(): Promise<PowerSyncCredentials | null> {
     const { token, powerSyncUrl } = await apiGet<{ token: string; powerSyncUrl: string | null }>(
       '/api/powersync/token'

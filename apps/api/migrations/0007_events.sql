@@ -1,6 +1,6 @@
 -- Up Migration
 -- Domain 2: Calendar — the events master table (see docs/DATA_MODEL.md §2). This
--- is Nook-native part 1: single events read straight from here. The Google-sync
+-- is Waffled-native part 1: single events read straight from here. The Google-sync
 -- bookkeeping columns and recurrence fields are included now so M5 layers on
 -- without an ALTER; the read-model (event_occurrences), overrides, and
 -- participants tables come with recurrence/Google. calendar_id has no FK yet
@@ -24,7 +24,7 @@ create table events (
   recurrence_end_at timestamptz,
   status text not null default 'confirmed',          -- confirmed | tentative | cancelled
   reminders jsonb,
-  -- nook-owned (sync never overwrites)
+  -- waffled-owned (sync never overwrites)
   person_id uuid references persons(id),             -- assignee → color
   origin text not null default 'manual',             -- manual | google | meal_plan | task | ai_capture
   origin_ref_id uuid,

@@ -60,7 +60,7 @@
   font-weight: 600;
 }
 /* Individual-list heading doubles as a link to that person's profile — same
-   look as the group headers (font comes from .nk-serif/.goal-listhead-t), just
+   look as the group headers (font comes from .wf-serif/.goal-listhead-t), just
    tappable. Only reset the button chrome, never the font. */
 button.goal-listhead-link {
   background: none;

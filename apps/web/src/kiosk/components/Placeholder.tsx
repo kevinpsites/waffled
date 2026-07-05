@@ -8,7 +8,7 @@ export function Placeholder({ title, icon }: { title: string; icon: IconName }) 
       <div className="ph-icon">
         <Icon name={icon} />
       </div>
-      <div className="nk-serif ph-title">{title}</div>
+      <div className="wf-serif ph-title">{title}</div>
       <div className="muted">Coming soon — this screen lights up as its backend lands.</div>
     </div>
   )

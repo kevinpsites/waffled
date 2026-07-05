@@ -49,7 +49,7 @@ export function DayView({
     <div className="dv-screen">
       <div className="dv-bar">
         <div className="dv-heading">
-          <span className="nk-serif dv-dow">{DOW_FULL[day.getDay()]}</span>
+          <span className="wf-serif dv-dow">{DOW_FULL[day.getDay()]}</span>
           <span className="muted dv-date">{MONTHS[day.getMonth()]} {day.getDate()}</span>
         </div>
         <button type="button" className="wk-add dv-add" onClick={() => onCreate(key)}>

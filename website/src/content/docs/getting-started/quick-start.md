@@ -1,9 +1,9 @@
 ---
 title: Quick start
-description: Install and run Kinnook as a small Docker Compose stack.
+description: Install and run Waffled as a small Docker Compose stack.
 ---
 
-Kinnook runs as a small Docker Compose stack — **Postgres · PowerSync · api · Caddy**. Auth
+Waffled runs as a small Docker Compose stack — **Postgres · PowerSync · api · Caddy**. Auth
 is built in; no Auth0 or external identity provider is required. You can attach your own
 SSO later (optional).
 
@@ -12,17 +12,17 @@ SSO later (optional).
 - **Docker** with the **Compose v2** plugin (`docker compose`, not the legacy
   `docker-compose`). ~4 GB RAM is comfortable.
 - That's it — no host toolchain (Node, etc.). Migrations and builds run in containers.
-- `./nook up` runs a **preflight** first and tells you (with fix links) if Docker is
+- `./waffled up` runs a **preflight** first and tells you (with fix links) if Docker is
   missing, the daemon is off, Compose v2 isn't installed, or a required port is busy.
 
 ## Install
 
 ```bash
-git clone <this-repo> nook && cd nook
-./nook up    # checks prereqs, creates .env (generated secrets), builds, migrates, starts
+git clone <this-repo> waffled && cd waffled
+./waffled up    # checks prereqs, creates .env (generated secrets), builds, migrates, starts
 ```
 
-That single command is the whole install. On first run, `./nook up`:
+That single command is the whole install. On first run, `./waffled up`:
 
 1. Creates `infra/compose/.env` from `.env.example`, generating `LOCAL_JWT_SECRET`,
    `TOKEN_ENCRYPTION_KEY`, and `POSTGRES_PASSWORD` for you (an existing `.env` is left alone).
@@ -33,8 +33,8 @@ That single command is the whole install. On first run, `./nook up`:
 
 Open the kiosk/web app at the URL it prints — **http://localhost:8080** by default.
 
-> **Going to use it from a tablet, phone, or another computer?** (Kinnook's whole point is
-> an always-on tablet + the iOS app.) Run **`./nook setup`** *before* `./nook up` — it
+> **Going to use it from a tablet, phone, or another computer?** (Waffled's whole point is
+> an always-on tablet + the iOS app.) Run **`./waffled setup`** *before* `./waffled up` — it
 > asks one question ("how will devices reach this server?"), auto-detects your machine's
 > LAN IP, and writes the address settings so sync works off-device. Skipping this is the
 > #1 cause of "everything shows Offline on the tablet" (a `localhost` sync URL other
@@ -76,8 +76,8 @@ nothing set, capture still works via an on-device heuristic.
 ## Optional: two-way Google Calendar sync
 
 Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_CALENDAR_REDIRECT_URI` in the
-env, then connect per person in **Settings → Calendars** ("Connect your calendar"). Kinnook
-pulls events on a ~5-minute poll and pushes Kinnook-authored events back.
+env, then connect per person in **Settings → Calendars** ("Connect your calendar"). Waffled
+pulls events on a ~5-minute poll and pushes Waffled-authored events back.
 
 ## Optional: single sign-on (OIDC)
 
@@ -96,7 +96,7 @@ matches a family member's login email.
 
 ## Accessing it from other devices
 
-The easiest path is **`./nook setup`** — it asks how devices will reach the server and
+The easiest path is **`./waffled setup`** — it asks how devices will reach the server and
 writes the address settings for you:
 
 - **Just this computer (localhost)** — the default; nothing to do.
@@ -112,11 +112,11 @@ writes the address settings for you:
 Prefer to edit by hand? The same three vars in `infra/compose/.env` do it:
 `POWERSYNC_PUBLIC_URL` (the sync endpoint clients connect to — the common trap),
 `PUBLIC_BASE_URL` (public origin for calendar/OIDC redirects), and `CADDY_SITE_ADDRESS`
-(hostname for auto-TLS). Run `./nook up` after changing them.
+(hostname for auto-TLS). Run `./waffled up` after changing them.
 
 ## Health, backups, and upgrades
 
-- **Check it's healthy:** `./nook doctor` (db, migrations, jobs, calendar, storage,
+- **Check it's healthy:** `./waffled doctor` (db, migrations, jobs, calendar, storage,
   backup) — or **Settings → System Health** in the app. Both show the same report.
 - **Backups** run nightly out of the box; see [Backup & restore](/operations/backup/) to
   point them at a folder or S3, and to restore.
@@ -129,9 +129,9 @@ The stack builds `api` + `caddy` from source by default. To pull from GHCR inste
 the overrides in `infra/compose/.env` and pull:
 
 ```bash
-NOOK_API_IMAGE=ghcr.io/kevinpsites/nook-api:latest
-NOOK_CADDY_IMAGE=ghcr.io/kevinpsites/nook-caddy:latest
-NOOK_BACKUP_IMAGE=ghcr.io/kevinpsites/nook-backup:latest
+WAFFLED_API_IMAGE=ghcr.io/kevinpsites/waffled-api:latest
+WAFFLED_CADDY_IMAGE=ghcr.io/kevinpsites/waffled-caddy:latest
+WAFFLED_BACKUP_IMAGE=ghcr.io/kevinpsites/waffled-backup:latest
 ```
 
 Images are multi-arch (amd64 + arm64), so they run on x86 or an ARM SBC (e.g. Raspberry

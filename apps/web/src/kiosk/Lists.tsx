@@ -15,7 +15,7 @@ import {
 import { useTopbarRight } from './topbar-slot'
 import '../styles/lists.css'
 
-// "Kinnook suggests" chips are static in the handoff (no suggestion engine yet) —
+// "Waffled suggests" chips are static in the handoff (no suggestion engine yet) —
 // they add their label to the list when tapped. Called out in the summary.
 const SUGGESTIONS = ['Bug spray', 'Phone chargers', 'Snacks for the drive', 'Trash bags']
 
@@ -373,7 +373,7 @@ export function Lists() {
           <>
             <div className="lists-head">
               <div className="lists-head-emoji">{selected.emoji ?? '📝'}</div>
-              <div className="card-h nk-serif lists-head-name">{selected.name}</div>
+              <div className="card-h wf-serif lists-head-name">{selected.name}</div>
               <div className="muted" style={{ fontWeight: 600 }}>{summaryLine(items)}</div>
               <div className="filter-wrap" onClick={(e) => e.stopPropagation()}>
                 <button type="button" className="pill filter-pill" onClick={() => setFilterMenu((v) => !v)}>
@@ -419,7 +419,7 @@ export function Lists() {
             </form>
 
             <div className="lists-suggest">
-              <span className="tiny lists-suggest-label">Kinnook suggests:</span>
+              <span className="tiny lists-suggest-label">Waffled suggests:</span>
               {SUGGESTIONS.map((s) => (
                 <button key={s} type="button" className="sug-chip" onClick={() => addItem(s)}>
                   <svg viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: '<path d="M12 5v14M5 12h14"/>' }} />

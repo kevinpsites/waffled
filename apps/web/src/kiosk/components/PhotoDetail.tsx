@@ -90,7 +90,7 @@ export function PhotoDetail({
 
   return (
     <div className="ph-saver" style={{ zIndex: 900, background: '#efece6', color: 'var(--ink)', display: 'block', cursor: 'default' }}>
-      <div className="nk-kiosk nk" style={{ position: 'absolute', inset: 0, background: '#efece6' }}>
+      <div className="wf-kiosk wf" style={{ position: 'absolute', inset: 0, background: '#efece6' }}>
         <div className="kiosk-main" style={{ gridColumn: '1 / -1' }}>
           <div className="topbar">
             <button type="button" className="pill" style={{ cursor: 'pointer' }} onClick={onClose}>‹ Photos</button>
@@ -108,7 +108,7 @@ export function PhotoDetail({
             <div className="pd-stage" style={{ background: bg }}>
               {photo.imageUrl ? <img src={photo.imageUrl} alt={photo.caption} /> : photo.emoji ?? '🏖️'}
               <div className="pd-stage-cap">
-                {photo.caption && <div className="nk-serif">{photo.caption}</div>}
+                {photo.caption && <div className="wf-serif">{photo.caption}</div>}
                 <div className="pd-stage-sub">
                   {fmtWeekday(photo.takenAt ?? photo.createdAt)}
                   {photo.memory ? ` · ${photo.memory}` : ''}

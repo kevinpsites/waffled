@@ -28,7 +28,7 @@ export function StaplesModal({ staples, onClose, onChanged }: { staples: PantryS
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="nk-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>Pantry staples</div>
+        <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>Pantry staples</div>
         <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
           Assumed in the house — the grocery list leaves these off.
         </div>

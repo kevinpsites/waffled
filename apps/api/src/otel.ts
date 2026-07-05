@@ -5,7 +5,7 @@
 //
 // Completely OFF and ~zero cost unless OTEL_EXPORTER_OTLP_ENDPOINT is set — then it
 // exports OTLP traces + metrics to that collector (e.g. the local grafana/otel-lgtm
-// stack via `./nook observability up`). OTEL_SDK_DISABLED=true is a hard kill switch.
+// stack via `./waffled observability up`). OTEL_SDK_DISABLED=true is a hard kill switch.
 /* eslint-disable @typescript-eslint/no-var-requires */
 const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT
 if (endpoint && process.env.OTEL_SDK_DISABLED !== 'true') {

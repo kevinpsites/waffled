@@ -1,6 +1,6 @@
 -- Up Migration
 -- Optional photo-proof gate on a chore, mirroring requires_approval. When set,
--- completing an instance requires attaching a proof photo (a blob in nook_media);
+-- completing an instance requires attaching a proof photo (a blob in waffled_media);
 -- a parent then sees the photo in the approvals queue. Like requires_approval the
 -- flag is snapshotted onto the instance at materialization, so editing the chore
 -- later doesn't retroactively change in-flight instances. The proof itself
