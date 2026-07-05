@@ -14,6 +14,7 @@ export default defineConfig({
 			tagline: 'Self-hosted family hub',
 			logo: { src: './src/assets/waffled-logo.png', alt: 'Waffled' },
 			favicon: '/favicon.png',
+			customCss: ['./src/styles/docs.css'],
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/kevinpsites/waffled' }],
 			sidebar: [
 				{

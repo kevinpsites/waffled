@@ -1,0 +1,69 @@
+/* ───────────────────────────────────────────────────────────────────────────
+   Waffled docs theme.
+
+   Tokens mirror the product's design system (apps/web/src/styles/waffled.css)
+   so the docs feel like the app: warm cream canvas, ink text, coral accent,
+   New York serif for display type, SF / system sans for everything else.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Brand palette — copied from the app so the two never drift */
+  --wf-canvas:  #FAF7F2; /* warm white canvas */
+  --wf-panel:   #F4EFE7; /* inset panel */
+  --wf-rail:    #F1ECE3; /* nav-rail tint */
+  --wf-card:    #FFFFFF;
+  --wf-ink:     #1D1D1F;
+  --wf-ink-2:   #6B6B70;
+  --wf-coral:   #EC6049; /* primary action */
+  --wf-coral-d: #D84A33;
+  --wf-violet:  #6E56CF; /* AI */
+  --wf-gold:    #F3A93B; /* stars / rewards */
+
+  /* Type: SF / system sans for UI text, New York serif for display */
+  --sl-font: -apple-system, "SF Pro Text", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  --wf-serif: "New York", "Iowan Old Style", ui-serif, Georgia, "Times New Roman", serif;
+}
+
+/* Coral accent — dark theme (Starlight's default :root) */
+:root {
+  --sl-color-accent-low:  #401007;
+  --sl-color-accent:      #e15a46;
+  --sl-color-accent-high: #ffcabf;
+
+  /* Warm the dark canvas so it reads as "Waffled at night" rather than slate */
+  --sl-color-bg:         #1b1917;
+  --sl-color-bg-nav:     #211e1b;
+  --sl-color-bg-sidebar: #211e1b;
+}
+
+/* Light theme — the brand's home turf: cream canvas, ink text, coral links */
+:root[data-theme='light'] {
+  --sl-color-accent-low:  #ffe1d9;
+  --sl-color-accent:      #d1492f;
+  --sl-color-accent-high: #5c1c10;
+  --sl-color-text-accent: var(--wf-coral-d);
+
+  --sl-color-bg:            var(--wf-canvas);
+  --sl-color-bg-nav:        rgba(250, 247, 242, 0.82);
+  --sl-color-bg-sidebar:    var(--wf-panel);
+  --sl-color-bg-inline-code: var(--wf-panel);
+
+  --sl-color-hairline:       rgba(40, 33, 24, 0.10);
+  --sl-color-hairline-light: rgba(40, 33, 24, 0.06);
+  --sl-color-hairline-shade: rgba(40, 33, 24, 0.05);
+}
+
+/* Display type → New York serif, tightened like the app's .wf-serif.
+   `main :is(...)` scopes this to the page title + content headings and leaves
+   the sidebar / nav in the clean system sans. */
+.site-title,
+main :is(h1, h2, h3) {
+  font-family: var(--wf-serif);
+  letter-spacing: -0.015em;
+  font-weight: 600;
+}
+
+/* The site-title text stays ink-colored (the logo carries the brand mark) */
+.site-title {
+  color: var(--sl-color-text);
+}
