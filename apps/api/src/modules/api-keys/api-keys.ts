@@ -107,7 +107,7 @@ function hashKey(secret: string): string {
 }
 
 function mintKey(): { secret: string; hash: string; prefix: string } {
-  const secret = 'nook_' + randomBytes(32).toString('base64url')
+  const secret = 'waffled_' + randomBytes(32).toString('base64url')
   return { secret, hash: hashKey(secret), prefix: secret.slice(0, 12) }
 }
 

@@ -16,7 +16,7 @@ beforeEach(() => {
   savedEnv.MEDIA_DIR = process.env.MEDIA_DIR
   savedEnv.MEDIA_BASE_URL = process.env.MEDIA_BASE_URL
   savedEnv.STORAGE_DRIVER = process.env.STORAGE_DRIVER
-  dir = join(tmpdir(), `nook-storage-${randomBytes(8).toString('hex')}`)
+  dir = join(tmpdir(), `waffled-storage-${randomBytes(8).toString('hex')}`)
   process.env.MEDIA_DIR = dir
   delete process.env.MEDIA_BASE_URL
   delete process.env.STORAGE_DRIVER

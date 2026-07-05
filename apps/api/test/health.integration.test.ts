@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 
-const SECRET = 'nook-local-dev-secret-change-me'
+const SECRET = 'waffled-local-dev-secret-change-me'
 
 let pg: StartedPostgreSqlContainer
 let url: string
@@ -19,7 +19,7 @@ let closePool: () => Promise<void>
 let householdId = ''
 
 function mint(sub: string): string {
-  return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'nook-local', audience: 'nook-api', expiresIn: '1h' })
+  return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
 }
 
 interface RunResult {
@@ -43,7 +43,7 @@ beforeAll(async () => {
   await runMigrations(url)
   process.env.DATABASE_URL = url
   // A writable media dir so the storage check passes in CI.
-  process.env.MEDIA_DIR = mkdtempSync(join(tmpdir(), 'nook-media-'))
+  process.env.MEDIA_DIR = mkdtempSync(join(tmpdir(), 'waffled-media-'))
   delete process.env.AUTH0_DOMAIN
   app = (await import('../src/app')).default
   closePool = (await import('../src/platform/db')).closePool
@@ -139,7 +139,7 @@ describe('GET /api/health — backup check', () => {
     await withClient((c) =>
       c.query(
         `insert into backup_runs (status, finished_at, file_name, size_bytes)
-         values ('success', now(), 'nook-test.sql.gz', 1234)`
+         values ('success', now(), 'waffled-test.sql.gz', 1234)`
       )
     )
     const body = await backupCheck()

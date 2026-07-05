@@ -13,7 +13,7 @@ import { AddressInfo } from 'node:net'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 
-const HH_CLAIM = 'https://nook.app/household_id'
+const HH_CLAIM = 'https://waffled.app/household_id'
 
 let pg: StartedPostgreSqlContainer
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -57,7 +57,7 @@ function startIdp(publicKey: KeyObject): Promise<void> {
         codes.delete(code)
         const idToken = jwt.sign(
           { email: stubUser.email, email_verified: stubUser.email_verified, nonce: entry.nonce },
-          privatePem, { algorithm: 'RS256', keyid: KID, issuer, audience: 'nook-client', subject: stubUser.sub, expiresIn: 300 }
+          privatePem, { algorithm: 'RS256', keyid: KID, issuer, audience: 'waffled-client', subject: stubUser.sub, expiresIn: 300 }
         )
         res.setHeader('content-type', 'application/json')
         return res.end(JSON.stringify({ id_token: idToken, token_type: 'Bearer', access_token: 'stub' }))
@@ -114,7 +114,7 @@ beforeAll(async () => {
   await runMigrations(url)
   process.env.DATABASE_URL = url
   process.env.TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64')
-  process.env.LOCAL_JWT_SECRET = 'nook-local-dev-secret-change-me'
+  process.env.LOCAL_JWT_SECRET = 'waffled-local-dev-secret-change-me'
   delete process.env.AUTH0_DOMAIN
   delete process.env.AUTH_FORCE_PASSWORD
   app = (await import('../src/app')).default
@@ -126,7 +126,7 @@ beforeAll(async () => {
   adminToken = json(setup).accessToken
   kevinAccountId = (await query(`select id from accounts where lower(email)='kevin@example.com' and deleted_at is null`)).rows[0].id
   householdA = (await query(`select household_id from persons where name='Kevin'`)).rows[0].household_id
-  await call('PUT', '/api/auth/config', { token: adminToken, body: { oidcEnabled: true, issuerUrl: issuer, clientId: 'nook-client', clientSecret: 'shh', buttonLabel: 'Sign in with Acme' } })
+  await call('PUT', '/api/auth/config', { token: adminToken, body: { oidcEnabled: true, issuerUrl: issuer, clientId: 'waffled-client', clientSecret: 'shh', buttonLabel: 'Sign in with Acme' } })
 
   // Give Kevin a second membership in household B.
   householdB = (await query(`insert into households (name, timezone) values ('B','America/Chicago') returning id`)).rows[0].id

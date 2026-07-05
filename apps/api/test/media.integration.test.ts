@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { randomBytes } from 'node:crypto'
 import { runMigrations } from '../src/migrate'
 
-const SECRET = 'nook-local-dev-secret-change-me'
+const SECRET = 'waffled-local-dev-secret-change-me'
 
 let pg: StartedPostgreSqlContainer
 let url: string
@@ -20,7 +20,7 @@ let closePool: () => Promise<void>
 let mediaDir = ''
 
 function mint(sub: string): string {
-  return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'nook-local', audience: 'nook-api', expiresIn: '1h' })
+  return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
 }
 
 interface RunResult {
@@ -47,7 +47,7 @@ beforeAll(async () => {
   process.env.DATABASE_URL = url
   process.env.LOCAL_JWT_SECRET = SECRET
   delete process.env.AUTH0_DOMAIN
-  mediaDir = join(tmpdir(), `nook-media-it-${randomBytes(8).toString('hex')}`)
+  mediaDir = join(tmpdir(), `waffled-media-it-${randomBytes(8).toString('hex')}`)
   process.env.MEDIA_DIR = mediaDir
   delete process.env.STORAGE_DRIVER
   delete process.env.MEDIA_BASE_URL

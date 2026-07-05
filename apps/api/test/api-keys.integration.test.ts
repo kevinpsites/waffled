@@ -5,7 +5,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 
-const SECRET = 'nook-local-dev-secret-change-me'
+const SECRET = 'waffled-local-dev-secret-change-me'
 
 let pg: StartedPostgreSqlContainer
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -13,7 +13,7 @@ let app: any
 let closePool: () => Promise<void>
 
 function mint(sub: string): string {
-  return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'nook-local', audience: 'nook-api', expiresIn: '1h' })
+  return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
 }
 
 // Bearer (session) call.
@@ -91,7 +91,7 @@ describe('api-keys management (session)', () => {
     const res = await call('POST', '/api/api-keys', kevin, { name: 'Home Assistant', scopes: ['family:read', 'lists:read'] })
     expect(res.statusCode).toBe(201)
     const body = JSON.parse(res.body)
-    expect(body.key).toMatch(/^nook_/)
+    expect(body.key).toMatch(/^waffled_/)
     expect(body.apiKey).toMatchObject({ name: 'Home Assistant', scopes: ['family:read', 'lists:read'] })
     expect(body.apiKey.prefix).toBe(body.key.slice(0, 12))
 
@@ -112,7 +112,7 @@ describe('api-key authentication + scope gate', () => {
   })
 
   it('rejects an unknown key (401)', async () => {
-    expect((await keyCall('GET', '/api/household', 'nook_not_a_real_key')).statusCode).toBe(401)
+    expect((await keyCall('GET', '/api/household', 'waffled_not_a_real_key')).statusCode).toBe(401)
   })
 
   it('resolves the owner tenant on a scoped read', async () => {

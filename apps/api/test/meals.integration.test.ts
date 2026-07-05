@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { randomBytes } from 'node:crypto'
 import { runMigrations } from '../src/migrate'
 
-const SECRET = 'nook-local-dev-secret-change-me'
+const SECRET = 'waffled-local-dev-secret-change-me'
 
 let pg: StartedPostgreSqlContainer
 let url: string
@@ -21,8 +21,8 @@ function mint(sub: string): string {
   return jwt.sign({}, SECRET, {
     algorithm: 'HS256',
     subject: sub,
-    issuer: 'nook-local',
-    audience: 'nook-api',
+    issuer: 'waffled-local',
+    audience: 'waffled-api',
     expiresIn: '1h',
   })
 }
@@ -67,7 +67,7 @@ beforeAll(async () => {
   await runMigrations(url)
   process.env.DATABASE_URL = url
   delete process.env.AUTH0_DOMAIN
-  mediaDir = join(tmpdir(), `nook-meals-it-${randomBytes(8).toString('hex')}`)
+  mediaDir = join(tmpdir(), `waffled-meals-it-${randomBytes(8).toString('hex')}`)
   process.env.MEDIA_DIR = mediaDir
   delete process.env.STORAGE_DRIVER
   delete process.env.MEDIA_BASE_URL

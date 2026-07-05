@@ -269,7 +269,7 @@ export function registerOidcRoutes(api: Api): void {
             householdId = m.householdId
             await linkIdentity({ householdId, personId, provider: 'oidc', subject, email, emailVerified, accountId: acctId })
           } else {
-            return failSignIn(req, res, st.redirect_to, 403, 'Not invited', `No Nook account uses ${email}. Ask an admin to add you first.`, 'not_invited')
+            return failSignIn(req, res, st.redirect_to, 403, 'Not invited', `No Waffled account uses ${email}. Ask an admin to add you first.`, 'not_invited')
           }
         }
         tenant = { sub: subject, personId, householdId, isAdmin: false, memberType: 'adult' }
@@ -439,7 +439,7 @@ async function exchangeAndVerify(
 // which exchanges the handoff code and lands the user in the app.
 //
 // Web passes an http(s) origin (e.g. https://host/) → we append /auth/callback.
-// A native app passes a custom-scheme deep link (e.g. nook://auth/callback) whose
+// A native app passes a custom-scheme deep link (e.g. waffled://auth/callback) whose
 // `.origin` is the string "null", so we use the deep link itself as the base and
 // just append the handoff code — that's the URL the app's ASWebAuthenticationSession
 // is waiting to intercept.
@@ -459,7 +459,7 @@ function appCallbackUrl(req: Request, redirectTo: string | null, handoff: string
   return `${baseUrl(req)}/auth/callback?code=${encodeURIComponent(handoff)}`
 }
 
-// True for a native deep-link redirect (custom scheme like nook://), false for a
+// True for a native deep-link redirect (custom scheme like waffled://), false for a
 // web origin (http/https) or no redirect.
 function isNativeRedirect(redirectTo: string | null): boolean {
   if (!redirectTo) return false
@@ -474,7 +474,7 @@ function isNativeRedirect(redirectTo: string | null): boolean {
 // End a failed sign-in. A native client gets the error bounced back through its
 // deep link (so ASWebAuthenticationSession dismisses and the app renders a real,
 // in-app message) — exactly mirroring the success path. A browser gets the
-// self-contained result page with a working "Back to Nook" link.
+// self-contained result page with a working "Back to Waffled" link.
 function failSignIn(
   req: Request,
   res: Response,
@@ -507,7 +507,7 @@ function appOrigin(req: Request, redirectTo?: string | null): string {
 
 // Minimal self-contained page for the OAuth dance ending without an SPA redirect
 // (errors). Matches the Google-calendar callback's resultPage convention. backUrl
-// is absolute so "Back to Nook" lands on the SPA, not wherever the api was reached.
+// is absolute so "Back to Waffled" lands on the SPA, not wherever the api was reached.
 function resultPage(title: string, message: string, backUrl = '/'): string {
   return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title}</title>
@@ -515,6 +515,6 @@ function resultPage(title: string, message: string, backUrl = '/'): string {
 <div style="max-width:380px;text-align:center;padding:28px">
 <div style="font-size:22px;font-weight:700;margin-bottom:8px">${title}</div>
 <div style="color:#6b6b6b;font-weight:500">${message}</div>
-<a href="${backUrl}" style="display:inline-block;margin-top:18px;color:#e0653f;font-weight:700;text-decoration:none">← Back to Nook</a>
+<a href="${backUrl}" style="display:inline-block;margin-top:18px;color:#e0653f;font-weight:700;text-decoration:none">← Back to Waffled</a>
 </div></body>`
 }

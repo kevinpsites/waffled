@@ -23,7 +23,7 @@ let meterCache: any
 function meter(): any {
   if (meterCache === undefined) {
     const a = otel()
-    meterCache = a ? a.metrics.getMeter('nook-api') : null
+    meterCache = a ? a.metrics.getMeter('waffled-api') : null
   }
   return meterCache
 }
@@ -32,7 +32,7 @@ let tracerCache: any
 function tracer(): any {
   if (tracerCache === undefined) {
     const a = otel()
-    tracerCache = a ? a.trace.getTracer('nook-api') : null
+    tracerCache = a ? a.trace.getTracer('waffled-api') : null
   }
   return tracerCache
 }
@@ -43,8 +43,8 @@ export function recordJobRun(rec: JobRecord): void {
   const m = meter()
   if (!m) return
   if (!jobDur) {
-    jobDur = m.createHistogram('nook.job.duration_ms')
-    jobErr = m.createCounter('nook.job.errors')
+    jobDur = m.createHistogram('waffled.job.duration_ms')
+    jobErr = m.createCounter('waffled.job.errors')
   }
   jobDur.record(rec.lastDurationMs ?? 0, { job: rec.name, ok: rec.lastError ? 'false' : 'true' })
   if (rec.lastError) jobErr.add(1, { job: rec.name })
@@ -54,7 +54,7 @@ let httpCounter: any
 export function recordHttpRequest(attrs: { method?: string; status?: number }): void {
   const m = meter()
   if (!m) return
-  if (!httpCounter) httpCounter = m.createCounter('nook.http.requests')
+  if (!httpCounter) httpCounter = m.createCounter('waffled.http.requests')
   // Coarse labels only (method + status) to avoid path cardinality explosion.
   httpCounter.add(1, { method: attrs.method ?? 'UNKNOWN', status: String(attrs.status ?? 0) })
 }

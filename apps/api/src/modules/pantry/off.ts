@@ -14,7 +14,7 @@ export const PRODUCT_SWR_DAYS = 30 // older than this (but < TTL) → serve + re
 
 const OFF_BASE = process.env.OFF_API_BASE || 'https://world.openfoodfacts.org'
 // OFF asks every client to identify itself: "AppName/Version (contact)".
-const USER_AGENT = process.env.OFF_USER_AGENT || 'Nook-SelfHosted/1.0 (https://github.com/nook)'
+const USER_AGENT = process.env.OFF_USER_AGENT || 'Waffled-SelfHosted/1.0 (https://github.com/kevinpsites/waffled)'
 const OFF_TIMEOUT_MS = 8000
 
 // OFF allergen tags (en:<x>) → our canonical set (matches the avoid-list + legend).

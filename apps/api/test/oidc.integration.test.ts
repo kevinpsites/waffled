@@ -73,7 +73,7 @@ function startIdp(publicKey: KeyObject): Promise<void> {
             nonce: entry.nonce,
           },
           privatePem,
-          { algorithm: 'RS256', keyid: KID, issuer, audience: 'nook-client', subject: stubUser.sub, expiresIn: 300 }
+          { algorithm: 'RS256', keyid: KID, issuer, audience: 'waffled-client', subject: stubUser.sub, expiresIn: 300 }
         )
         res.setHeader('content-type', 'application/json')
         return res.end(JSON.stringify({ id_token: idToken, token_type: 'Bearer', access_token: 'stub' }))
@@ -168,7 +168,7 @@ describe('OIDC login', () => {
 
     const put = await call('PUT', '/api/auth/config', {
       token: admin.accessToken,
-      body: { oidcEnabled: true, issuerUrl: issuer, clientId: 'nook-client', clientSecret: 'shh-secret', buttonLabel: 'Sign in with Acme' },
+      body: { oidcEnabled: true, issuerUrl: issuer, clientId: 'waffled-client', clientSecret: 'shh-secret', buttonLabel: 'Sign in with Acme' },
     })
     expect(put.statusCode).toBe(200)
   })
@@ -200,12 +200,12 @@ describe('OIDC login', () => {
 
   it('returns a custom-scheme deep link for a native (mobile) redirect', async () => {
     stubUser = { sub: 'idp-sub-1', email: 'kevin@example.com', email_verified: true }
-    const cb = await ssoLogin('nook://auth/callback')
+    const cb = await ssoLogin('waffled://auth/callback')
     expect(cb.statusCode).toBe(302)
     // Must be the app's deep link (not "null/auth/callback") so iOS can intercept it.
     const dest = new URL(loc(cb))
-    expect(dest.protocol).toBe('nook:')
-    expect(loc(cb)).toMatch(/^nook:\/\/auth\/callback\?code=/)
+    expect(dest.protocol).toBe('waffled:')
+    expect(loc(cb)).toMatch(/^waffled:\/\/auth\/callback\?code=/)
     const handoff = dest.searchParams.get('code')!
     expect((await call('POST', '/api/auth/oidc/exchange', { body: { code: handoff } })).statusCode).toBe(200)
   })

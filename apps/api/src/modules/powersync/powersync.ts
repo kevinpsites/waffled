@@ -15,9 +15,9 @@ import { tenantRoute } from '../../platform/route-guards'
 
 type Api = ReturnType<typeof createAPI>
 
-const ISSUER = 'nook'
+const ISSUER = 'waffled'
 const AUDIENCE = 'powersync'
-const KID = process.env.POWERSYNC_JWT_KID ?? 'nook-powersync-1'
+const KID = process.env.POWERSYNC_JWT_KID ?? 'waffled-powersync-1'
 const TOKEN_TTL_SECONDS = 300 // 5 min; clients refresh via this endpoint
 
 interface SigningKeys {
