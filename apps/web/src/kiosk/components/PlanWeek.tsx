@@ -251,54 +251,23 @@ export function PlanWeek({ startStr, days, onClose, onApplied, initialUseUp }: {
 
         {/* "Try New Recipe": nudge the plan toward novelty + list specific dishes to try. */}
         <div className="plan-card">
-          <button
-            type="button"
-            aria-pressed={trySomethingNew}
-            onClick={() => setTrySomethingNew((v) => !v)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              width: '100%',
-              padding: '2px 0',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              font: 'inherit',
-              fontWeight: 700,
-              textAlign: 'left',
-            }}
+          <label
+            style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontWeight: 700 }}
+            onClick={(e) => { e.preventDefault(); setTrySomethingNew((v) => !v) }}
           >
-            <span
-              aria-hidden
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 20,
-                height: 20,
-                borderRadius: 6,
-                fontSize: 13,
-                lineHeight: 1,
-                color: '#fff',
-                border: '1.5px solid var(--line, #d7d2c8)',
-                background: trySomethingNew ? 'var(--accent, #E0548B)' : 'transparent',
-                borderColor: trySomethingNew ? 'var(--accent, #E0548B)' : 'var(--line, #d7d2c8)',
-              }}
-            >
-              {trySomethingNew ? '✓' : ''}
-            </span>
+            <span className={`toggle ${trySomethingNew ? 'on' : ''}`} role="switch" aria-checked={trySomethingNew} aria-label="Try something new this week" />
             <span>✨ Try something new this week</span>
-          </button>
+          </label>
           <div className="tiny muted" style={{ margin: '6px 2px 2px' }}>Adds at least one brand-new dish, even if your library could fill the night.</div>
-          <div className="tiny" style={{ marginTop: 12 }}>Dishes to try</div>
+          <div className="tiny" style={{ marginTop: 12 }}>Cuisines or dishes to try</div>
+          <div className="tiny muted" style={{ margin: '2px 2px 4px' }}>New ideas for the planner to work in — not from your library.</div>
           <div className="use-up-list">
             {wantToTry.map((u) => (
               <span key={u} className="use-chip">{u} <b onClick={() => setWantToTry((x) => x.filter((y) => y !== u))}>×</b></span>
             ))}
             <input
               className="use-add-input"
-              placeholder="+ Dish to try"
+              placeholder="+ e.g. Thai green curry"
               value={wantToTryInput}
               onChange={(e) => setWantToTryInput(e.target.value)}
               onKeyDown={(e) => {

@@ -39,8 +39,10 @@ describe('PlanWeek — Try New Recipe steering', () => {
   it('renders the "try something new" toggle and a "want to try" input', async () => {
     mockApi([])
     renderPlanWeek()
-    expect(await screen.findByText(/try something new/i)).toBeInTheDocument()
-    expect(screen.getByPlaceholderText(/dish to try/i)).toBeInTheDocument()
+    // The toggle is now the shared .toggle pill (role="switch").
+    expect(await screen.findByRole('switch', { name: /try something new/i })).toBeInTheDocument()
+    expect(screen.getByText(/cuisines or dishes to try/i)).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/thai green curry/i)).toBeInTheDocument()
   })
 
   it('passes trySomethingNew + wantToTry through to api.planWeek', async () => {
@@ -48,11 +50,11 @@ describe('PlanWeek — Try New Recipe steering', () => {
     mockApi(planned)
     renderPlanWeek()
 
-    // Toggle "try something new".
-    fireEvent.click(await screen.findByText(/try something new/i))
+    // Toggle "try something new" (shared .toggle pill).
+    fireEvent.click(await screen.findByText(/try something new this week/i))
 
     // Add a specific dish to try (chip input mirrors "Use up first").
-    const input = screen.getByPlaceholderText(/dish to try/i)
+    const input = screen.getByPlaceholderText(/thai green curry/i)
     fireEvent.change(input, { target: { value: 'Shakshuka' } })
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(screen.getByText('Shakshuka')).toBeInTheDocument()
