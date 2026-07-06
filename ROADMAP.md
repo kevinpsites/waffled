@@ -152,6 +152,85 @@ shipped — see 0048–0050 + the calendar→goal Phase 2 note above.)*
 
 ## Backlog — designed, not yet built
 
+### Family-hub feature batch — July 2026 (designed; **all web-side, iOS parity still needed**)
+Eight requested increments (2026-07-06). **Every item below is a web/kiosk build. The iOS app is
+owned by a separate agent, so each ships on web first and then needs matching iOS parity work** —
+called out per item so the paper trail is explicit. Insertion points are from a read-only scope
+pass (file:line current as of the fix commit `c311bc5`). Rough sizing in brackets.
+
+- [ ] **List templates** *(medium; web — iOS parity needed)* — save a list (e.g. "Beach Day") as a
+  reusable template, then apply it to spin up a fresh copy with everything unchecked, so a repeat
+  trip starts clean. `lists.list_type` already discriminates grocery/custom (`0004_lists.sql:10`);
+  lightest approach (Option A) is a new `list_type='template'` (optional `source_template_id` for
+  provenance) rather than new tables. Service: mirror the item-copy in `addRecipeToGrocery` +
+  cascade pattern in `softDeleteList` (`lists.service.ts:264,92`), inserting items with
+  `checked=false`. Routes `POST /api/lists/:id/save-as-template`, `POST /api/lists/templates/:id/apply`,
+  `GET /api/lists/templates` (`lists.routes.ts`); filter templates out of the normal rail
+  (`listLists`, `lists.service.ts:31`). UI: "Save as template" on the Lists header (`Lists.tsx:396`),
+  "Apply" in `ListsModal.tsx`. iOS lists are REST-only → parity is a later iOS-agent task.
+
+- [ ] **On-the-spot cook timer** *(small FE; web/kiosk — iOS parity needed)* — add a timer to a step
+  that never had one, on the fly, still tied to that step. Per-step timers already shipped
+  (mig 0058); the runtime `startTimer(label, secs, stepIndex)` is already decoupled from the step
+  field (`CookMode.tsx:102`). Add an "⏱ Add timer" control in the `else` branch where the Start
+  button renders (`CookMode.tsx:207-214`), reusing the minute/second input from
+  `RecipeEditor.tsx:896` (`StepTimerControl`); ephemeral by default, optional PATCH to persist
+  `timer_seconds` onto the step. iOS cook-mode parity later.
+
+- [ ] **Markdown timer parsing** *(medium; backend + web template — iOS unaffected)* — the deferred
+  phase-2 of cook-mode timers: parse timers from recipe step markdown so import/paste pre-fills
+  `timer_seconds`. The parser has no timer handling today (`recipe-markdown.ts:148-163`, step shape
+  `{text, ingredients}`); add `timerSeconds` to the parsed step via a `**Timer:**` sub-block or an
+  inline token (mirror the `**Ingredients:**` split at `:153`), wire it into the importer insert
+  (`import-recipes.ts:77-80` currently omits it), and document the syntax in `docs/RECIPE_FORMAT.md`
+  (+ update the "Use template"/"See example" helpers). The in-app paste path already persists it via
+  `insertSteps` (`meals.service.ts:62`). iOS consumes the structured field → no client change.
+
+- [ ] **Countdown tweaks** *(small; web — iOS parity needed)* — polish on the shipped countdowns
+  (mig 0069). (a) **Settings card padding:** `CountdownsSettings` has no `padding` override so it
+  renders `6px 20px` while sibling Calendars cards use `padding:22` (`Settings.tsx:1550` vs
+  `:1408,1433`) — add `padding:22` (and optionally wrap in a `.set-tray` + use the `.toggle` pill
+  instead of a raw checkbox). (b) **Birthday horizon:** `listCountdowns` pushes *every* birthday with
+  no filter (`countdowns.ts:84-93`), and `nextBirthday` rolls an already-passed birthday to next year
+  — gate the push on `daysBetween(today,date) <= ~183` (≈6 months) / same calendar year, so a
+  year-away birthday hides until it's close. (c) Optional `birthdayHorizonDays` setting in
+  `settings.countdowns` (extend `PUT /api/countdowns/config`, `countdowns.ts:160`, + a `readSleeps`
+  sibling; no migration). iOS countdowns parity later.
+
+- [ ] **Try New Recipe** *(medium; web — iOS parity needed)* — "I want to try something new this week"
+  (or list specific dishes to try) gets shuffled into the AI weekly plan. `planWeek` already emits
+  novel dishes as `recipeId:null` first-class suggestions (`meals.service.ts:744,781`); add a
+  `wantToTry?: string[]` / `trySomethingNew?: boolean` to `PlanWeekInput` (`meals.types.ts:129`),
+  inject into the prompt (`meals.service.ts:748`), and surface an input in `PlanWeek.tsx` (mirror the
+  "Use up first" chips at `:215`). No new scheduling plumbing — the null-recipe → schedulable-card
+  pipeline already exists. Could also be a standalone "Try New Recipe" card that files a wish into
+  the pool. iOS meals parity later.
+
+- [ ] **Never-cooked / "New" tag + filter** *(tiny, FE-only; web — iOS parity needed)* — see recipes
+  you haven't tried yet. `cookedCount` is already on every recipe: add a "🆕 New" toggle beside
+  Favorites (`RecipesLibrary.tsx:111`), a `r.cookedCount===0` clause in the filter predicate
+  (`:80-88`), a card badge (`:143`), and make the existing "Not cooked yet" detail text a clickable
+  New tag (`RecipeView.tsx:240`). Zero backend. iOS recipe-library parity later.
+
+- [ ] **Waffles default recipe (Easter egg)** *(small, backend seed; surfaces on web + iOS)* — a
+  "Waffles" recipe ships on every fresh household (the app is named Waffled). Fresh installs seed no
+  recipes today (`createHouseholdForAccount`, `households.ts:253-292`); add a
+  `seedDefaultRecipe(client, householdId)` helper called inside that transaction (`:278-284`),
+  reusing `parseRecipe` + the meals insert helpers — doubles as a canonical example recipe and a
+  natural exercise of the new timer-markdown parsing (a waffle-iron timer step). Data-only, so it
+  shows on both web and iOS with no client work.
+
+- [ ] **Spot-award stars** *(small; web — iOS parity needed)* — a parent hands out ad-hoc stars
+  ("5 stars for being so helpful today"), untied to any chore. The ledger is a clean append-only
+  single source (`0005_chores.sql:54`, balances = SUM(amount), no trigger). Add `awardSpot()` to
+  `rewards.ts` (one INSERT: `reason='spot_award'`, null `ref_type/ref_id`, free-text `note`), a new
+  `reward.grant` capability (`permissions.ts:10-21`, adult on / teen+kid off / admin superuser), a
+  `capRoute('reward.grant', …)` route in `registerRewardRoutes` (`rewards.ts:256`), a client
+  `awardSpot()` (`lib/api/rewards.ts:56`) that `.then(tap('rewards'))`, and an "Award stars" button
+  on `PersonProfile.tsx:252` (amount + currency + optional note). No migration — nullable `ref_*` +
+  the unused `note` column already fit; spot-awarded stars auto-advance the saving-toward jar. iOS
+  rewards parity later.
+
 ### Public API — per-user API keys + scopes (Immich-style integration surface) — SHIPPED 2026-06-29 (build #3)
 Design rationale + the A/B/C pattern model: [`website/src/content/docs/concepts/extensibility.md`](website/src/content/docs/concepts/extensibility.md).
 Build order: ① module framework + Modules tab → ② Pantry module → ③ this (API keys). ✅ all shipped.
