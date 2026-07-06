@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { groceryApi } from '../../lib/api'
+import { groceryApi, useTemplates } from '../../lib/api'
 
 // Create OR rename a named list (name + emoji). Pass `list` to edit; omit to create.
 export function ListsModal({
@@ -17,6 +17,21 @@ export function ListsModal({
   const [name, setName] = useState(list?.name ?? '')
   const [emoji, setEmoji] = useState(list?.emoji ?? '')
   const [saving, setSaving] = useState(false)
+  // Saved templates to start a fresh list from (create flow only).
+  const { templates } = useTemplates()
+
+  // Apply a template → a fresh list with everything unchecked, then select it.
+  async function applyTemplate(id: string) {
+    if (saving) return
+    setSaving(true)
+    try {
+      const created = await groceryApi.applyTemplate(id, name.trim() || undefined)
+      onCreated?.(created.id)
+      onClose()
+    } catch {
+      setSaving(false)
+    }
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -61,6 +76,26 @@ export function ListsModal({
             {saving ? 'Saving…' : editing ? 'Save changes' : 'Create list'}
           </button>
         </form>
+
+        {!editing && templates.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 8 }}>Or apply a template</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {templates.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className="pill"
+                  style={{ cursor: 'pointer' }}
+                  disabled={saving}
+                  onClick={() => applyTemplate(t.id)}
+                >
+                  <span>{t.emoji ?? '📑'}</span> {t.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

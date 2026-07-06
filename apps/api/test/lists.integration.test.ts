@@ -505,3 +505,88 @@ describe('grocery auto-build + pantry staples', () => {
     expect((await call('POST', '/api/pantry-staples', kevin, {})).statusCode).toBe(400)
   })
 })
+
+describe('list templates (save-as-template + apply)', () => {
+  let listId = ''
+
+  beforeAll(async () => {
+    // A "Beach Day" list with a couple of items, one already checked off.
+    listId = JSON.parse((await call('POST', '/api/lists', kevin, { name: 'Beach Day', emoji: '🏖️' })).body).list.id
+    await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Sunscreen', category: 'Gear' })
+    const towel = JSON.parse((await call('POST', `/api/lists/${listId}/items`, kevin, { name: 'Towels', quantity: '×4', category: 'Gear' })).body).item
+    // check one item — the template must still store it unchecked
+    await call('PATCH', `/api/list-items/${towel.id}`, kevin, { checked: true })
+  })
+
+  it('saves a list as a template with unchecked copies of its items', async () => {
+    const res = await call('POST', `/api/lists/${listId}/save-as-template`, kevin, { name: 'Beach Day template' })
+    expect(res.statusCode).toBe(201)
+    const tpl = JSON.parse(res.body).template
+    expect(tpl).toMatchObject({ name: 'Beach Day template', listType: 'template' })
+
+    // its items are copies of the source, ALL unchecked (even the one that was checked)
+    const detail = JSON.parse((await call('GET', `/api/lists/templates/${tpl.id}`, kevin)).body)
+    const items = detail.items as Array<{ name: string; checked: boolean; checkedAt: string | null }>
+    expect(items.map((i) => i.name).sort()).toEqual(['Sunscreen', 'Towels'])
+    expect(items.every((i) => i.checked === false)).toBe(true)
+    expect(items.every((i) => i.checkedAt === null)).toBe(true)
+  })
+
+  it('defaults the template name from the source list when none is given', async () => {
+    const res = await call('POST', `/api/lists/${listId}/save-as-template`, kevin)
+    expect(res.statusCode).toBe(201)
+    expect(JSON.parse(res.body).template.name).toBe('Beach Day')
+  })
+
+  it('excludes templates from GET /api/lists (they never show in the normal rail)', async () => {
+    const lists = JSON.parse((await call('GET', '/api/lists', kevin)).body).lists as Array<{ listType: string }>
+    expect(lists.every((l) => l.listType !== 'template')).toBe(true)
+  })
+
+  it('GET /api/lists/templates lists the saved templates', async () => {
+    const templates = JSON.parse((await call('GET', '/api/lists/templates', kevin)).body).templates as Array<{ name: string; listType: string }>
+    expect(templates.length).toBeGreaterThanOrEqual(2)
+    expect(templates.every((t) => t.listType === 'template')).toBe(true)
+    expect(templates.map((t) => t.name)).toContain('Beach Day template')
+  })
+
+  it('applies a template into a fresh custom list with everything unchecked', async () => {
+    const templateId = JSON.parse((await call('POST', `/api/lists/${listId}/save-as-template`, kevin, { name: 'Reusable Beach' })).body).template.id
+
+    const res = await call('POST', `/api/lists/templates/${templateId}/apply`, kevin, { name: 'Beach Day — July 4' })
+    expect(res.statusCode).toBe(201)
+    const list = JSON.parse(res.body).list
+    expect(list).toMatchObject({ name: 'Beach Day — July 4', listType: 'custom' })
+
+    // the fresh list shows in the normal rail...
+    const rail = JSON.parse((await call('GET', '/api/lists', kevin)).body).lists as Array<{ id: string; listType: string }>
+    expect(rail.find((l) => l.id === list.id)?.listType).toBe('custom')
+
+    // ...with all items present and unchecked
+    const detail = JSON.parse((await call('GET', `/api/lists/${list.id}`, kevin)).body)
+    const items = detail.items as Array<{ name: string; checked: boolean }>
+    expect(items.map((i) => i.name).sort()).toEqual(['Sunscreen', 'Towels'])
+    expect(items.every((i) => i.checked === false)).toBe(true)
+
+    // provenance recorded on the new list
+    const row = await withClient((c) =>
+      c.query<{ source_template_id: string | null }>(`select source_template_id from lists where id=$1`, [list.id])
+    )
+    expect(row.rows[0].source_template_id).toBe(templateId)
+  })
+
+  it('defaults the applied list name from the template when none is given', async () => {
+    const templateId = JSON.parse((await call('POST', `/api/lists/${listId}/save-as-template`, kevin, { name: 'Camping kit' })).body).template.id
+    const res = await call('POST', `/api/lists/templates/${templateId}/apply`, kevin)
+    expect(res.statusCode).toBe(201)
+    expect(JSON.parse(res.body).list.name).toBe('Camping kit')
+  })
+
+  it('404s save-as-template / apply for bad ids and another household', async () => {
+    expect((await call('POST', '/api/lists/not-a-uuid/save-as-template', kevin)).statusCode).toBe(404)
+    expect((await call('POST', '/api/lists/00000000-0000-0000-0000-000000000000/save-as-template', kevin)).statusCode).toBe(404)
+    expect((await call('POST', '/api/lists/templates/00000000-0000-0000-0000-000000000000/apply', kevin)).statusCode).toBe(404)
+    const kelly = mint('dev|kelly')
+    expect((await call('POST', `/api/lists/${listId}/save-as-template`, kelly)).statusCode).toBe(404)
+  })
+})

@@ -8,6 +8,7 @@ export interface ListRow extends QueryResultRow {
   list_type: string
   is_auto_built: boolean
   sort_mode: string
+  source_template_id?: string | null
 }
 
 export interface ListItemRow extends QueryResultRow {

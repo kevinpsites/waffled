@@ -15,6 +15,9 @@ import {
   patchItem,
   softDeleteItem,
   addRecipeToGrocery,
+  saveAsTemplate,
+  applyTemplate,
+  listTemplates,
   listPantryStaples,
   ensureDefaultStaples,
   addPantryStaple,
@@ -46,6 +49,45 @@ export function registerListRoutes(api: Api): void {
       return res.status(400).json({ error: 'BadRequest', message: 'name is required' })
     }
     const list = await createList(tenant, { ...body, name: body.name.trim() } as CreateListInput)
+    return res.status(201).json({ list: presentList(list) })
+  }))
+
+  // ---- list templates (save-as-template / apply) ----------------------------
+  // Registered before the `/api/lists/:id` routes so the literal `templates`
+  // segment wins over the `:id` param.
+
+  // The household's saved templates (hidden from the normal rail).
+  api.get('/api/lists/templates', tenantRoute(async (tenant) => {
+    return { templates: await listTemplates(tenant.householdId) }
+  }))
+
+  // A template + its (always-unchecked) items.
+  api.get('/api/lists/templates/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'template not found' })
+    const tpl = await getList(tenant.householdId, id)
+    if (!tpl || tpl.list_type !== 'template') return res.status(404).json({ error: 'NotFound', message: 'template not found' })
+    const items = await listItems(tenant.householdId, id)
+    return { template: presentList(tpl), items: items.map(presentListItem) }
+  }))
+
+  // Save a list as a reusable template (unchecked copies of its live items).
+  api.post('/api/lists/:id/save-as-template', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
+    const name = ((req.body ?? {}) as { name?: string }).name
+    const template = await saveAsTemplate(tenant, id, name)
+    if (!template) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
+    return res.status(201).json({ template: presentList(template) })
+  }))
+
+  // Apply a template → a fresh custom list with everything unchecked.
+  api.post('/api/lists/templates/:id/apply', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'template not found' })
+    const name = ((req.body ?? {}) as { name?: string }).name
+    const list = await applyTemplate(tenant, id, name)
+    if (!list) return res.status(404).json({ error: 'NotFound', message: 'template not found' })
     return res.status(201).json({ list: presentList(list) })
   }))
 

@@ -39,6 +39,10 @@ export interface ListSummary {
   itemCount: number
 }
 
+// A saved list template (a list_type='template' list, hidden from the normal
+// rail). Same shape as a list summary — `listType` is always 'template'.
+export type ListTemplateSummary = ListSummary
+
 // Kept as an alias for back-compat; the shape is the shared person ref.
 export type ListItemAssignee = ListItemPersonRef
 
@@ -103,6 +107,13 @@ export const groceryApi = {
   renameList: (id: string, patch: { name?: string; emoji?: string | null }) =>
     apiSend<{ list: ListSummary }>('PATCH', `/api/lists/${id}`, patch).then((r) => r.list),
   deleteList: (id: string) => apiDelete(`/api/lists/${id}`),
+  // list templates (save a list as a reusable template; apply it into a fresh list)
+  templates: () => apiGet<{ templates: ListTemplateSummary[] }>('/api/lists/templates'),
+  saveAsTemplate: (listId: string, name?: string) =>
+    apiSend<{ template: ListTemplateSummary }>('POST', `/api/lists/${listId}/save-as-template`, name ? { name } : {}).then((r) => r.template).then(tap('grocery')),
+  applyTemplate: (templateId: string, name?: string) =>
+    apiSend<{ list: ListSummary }>('POST', `/api/lists/templates/${templateId}/apply`, name ? { name } : {}).then((r) => r.list).then(tap('grocery')),
+
   addListItem: (listId: string, input: { name: string; quantity?: string | null; section?: string | null; assignedTo?: string | null }) =>
     apiSend<{ item: ListItem }>('POST', `/api/lists/${listId}/items`, {
       name: input.name,
@@ -274,6 +285,33 @@ export function useLists(): ListsState {
     }
   }, [nonce])
   return { lists, loading, error, refetch: () => setNonce((n) => n + 1) }
+}
+
+export interface TemplatesState {
+  templates: ListTemplateSummary[]
+  loading: boolean
+  error: boolean
+  refetch: () => void
+}
+
+// The household's saved list templates (for the "Apply a template" picker).
+export function useTemplates(): TemplatesState {
+  const [templates, setTemplates] = useState<ListTemplateSummary[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const [nonce, setNonce] = useState(0)
+  useEffect(() => {
+    let alive = true
+    groceryApi
+      .templates()
+      .then((d) => alive && (setTemplates(d.templates), setLoading(false), setError(false)))
+      .catch(() => alive && (setError(true), setLoading(false)))
+    return () => {
+      alive = false
+    }
+  }, [nonce])
+  useRefetchOn(['grocery'], () => setNonce((n) => n + 1))
+  return { templates, loading, error, refetch: () => setNonce((n) => n + 1) }
 }
 
 export interface ListDetailState {

@@ -26,13 +26,18 @@ interface Sent {
   body: unknown
 }
 
-function mockApi(opts: { lists?: unknown[]; items?: unknown[]; sent?: Sent[]; created?: unknown }) {
+function mockApi(opts: { lists?: unknown[]; items?: unknown[]; sent?: Sent[]; created?: unknown; templates?: unknown[] }) {
   globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
     const u = String(url)
     const method = init?.method ?? 'GET'
     const body = init?.body ? JSON.parse(init.body) : undefined
     opts.sent?.push({ method, url: u, body })
     if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons }) }
+    // list templates GET (must precede the list-detail regex, which would else
+    // capture "templates" as an :id)
+    if (u.endsWith('/api/lists/templates') && method === 'GET') {
+      return { ok: true, json: async () => ({ templates: opts.templates ?? [] }) }
+    }
     // list detail (must precede the bare /api/lists check)
     if (/\/api\/lists\/[^/]+$/.test(u) && method === 'GET') {
       return { ok: true, json: async () => ({ list: packing, items: opts.items ?? [] }) }
@@ -43,6 +48,13 @@ function mockApi(opts: { lists?: unknown[]; items?: unknown[]; sent?: Sent[]; cr
     // grocery board (auto-built view) — must precede the bare /api/lists check
     if (u.includes('/api/lists/grocery/board')) {
       return { ok: true, json: async () => ({ list: grocery, weekStart: '2026-06-07', meals: [], items: [], staples: [] }) }
+    }
+    // list templates (must precede the bare /api/lists checks)
+    if (/\/api\/lists\/[^/]+\/save-as-template$/.test(u) && method === 'POST') {
+      return { ok: true, json: async () => ({ template: { ...packing, id: 'tpl', name: body?.name ?? 'Beach Day', listType: 'template' } }) }
+    }
+    if (/\/api\/lists\/templates\/[^/]+\/apply$/.test(u) && method === 'POST') {
+      return { ok: true, json: async () => ({ list: { ...packing, id: 'applied', name: body?.name ?? 'Applied', listType: 'custom' } }) }
     }
     if (u.endsWith('/api/lists') && method === 'POST') {
       return { ok: true, json: async () => ({ list: opts.created }) }
@@ -175,5 +187,33 @@ describe('Lists screen', () => {
     await waitFor(() => expect(sent.some((s) => s.method === 'POST' && s.url.endsWith('/api/lists'))).toBe(true))
     expect(sent.find((s) => s.method === 'POST' && s.url.endsWith('/api/lists'))!.body).toMatchObject({ name: 'Costco' })
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith('new'))
+  })
+
+  it('saves the selected list as a template from the header action', async () => {
+    const sent: Sent[] = []
+    mockApi({ lists: [grocery, packing], items: packItems, sent })
+    renderScreen()
+    await exitBoard()
+
+    // packing is auto-selected in the hub; its header exposes a "Save as template" action
+    fireEvent.click(await screen.findByRole('button', { name: /Save as template/i }))
+
+    await waitFor(() => expect(sent.some((s) => s.method === 'POST' && /\/save-as-template$/.test(s.url))).toBe(true))
+    const post = sent.find((s) => s.method === 'POST' && /\/save-as-template$/.test(s.url))!
+    expect(post.url).toContain('/api/lists/pack/save-as-template')
+  })
+
+  it('applies a template from the New list modal picker', async () => {
+    const sent: Sent[] = []
+    const template = { id: 'tpl', name: 'Beach Day', emoji: '🏖️', listType: 'template', isAutoBuilt: false, sortMode: 'manual', itemCount: 4 }
+    mockApi({ lists: [grocery, packing], items: packItems, sent, templates: [template] })
+    const onCreated = vi.fn()
+    render(<ListsModal onClose={() => {}} onCreated={onCreated} />)
+
+    // the saved template is offered as an "apply" option
+    fireEvent.click(await screen.findByRole('button', { name: /Beach Day/ }))
+
+    await waitFor(() => expect(sent.some((s) => s.method === 'POST' && /\/api\/lists\/templates\/tpl\/apply$/.test(s.url))).toBe(true))
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('applied'))
   })
 })
