@@ -301,7 +301,7 @@ async function seedBase() {
       exp === null ? [hh, name, loc, amt, unit] : [hh, name, loc, amt, unit, exp])
 
   // ── Photos (emoji tiles — no blobs needed) ───────────────────────────────────
-  const photos: Array<[string, string, string, string, number, number]> = [
+  const photos: Array<[string, string, string, string | null, number, number]> = [
     // caption, emoji, color, memory, takenDaysAgo, hearts
     ['Beach day in the Hamptons', '🏖️', '#7FC1E8', 'Hamptons Trip', 20, 5],
     ['Sandcastle contest', '🏖️', '#7FC1E8', 'Hamptons Trip', 20, 3],
