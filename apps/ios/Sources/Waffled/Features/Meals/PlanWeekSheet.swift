@@ -34,6 +34,9 @@ struct PlanWeekSheet: View {
     @State private var keepInMind = ""
     @State private var useUp: [String] = []
     @State private var useUpInput = ""
+    @State private var trySomethingNew = false          // nudge the plan toward ≥1 brand-new dish
+    @State private var wantToTry: [String] = []          // specific dishes to feature
+    @State private var wantToTryInput = ""
     @State private var suggestions: [WaffledAPI.PlanCardDTO] = []
     @State private var locked: Set<String> = []          // dates the user won't reshuffle
     @State private var rejected: Set<String> = []         // dish titles shuffled away (kept out)
@@ -177,6 +180,21 @@ struct PlanWeekSheet: View {
                     // Use up first
                     UseUpCard(items: $useUp, input: $useUpInput)
 
+                    // Try something new — a novelty nudge + specific dishes to feature.
+                    WaffledCard(padding: 14) {
+                        Toggle(isOn: $trySomethingNew) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Try something new").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                                Text("Work at least one brand-new dish into the week.")
+                                    .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .tint(WF.ai)
+                    }
+                    UseUpCard(items: $wantToTry, input: $wantToTryInput,
+                              title: "Dishes to try", placeholder: "+ Dish to try")
+
                     // Keep in mind
                     WaffledFieldCard(title: "Keep in mind") {
                         TextField("e.g. Lottie skips spicy · Tue & Thu are busy — keep under 30 min",
@@ -221,6 +239,13 @@ struct PlanWeekSheet: View {
         let v = useUpInput.trimmingCharacters(in: .whitespaces)
         guard !v.isEmpty, !useUp.contains(v), useUp.count < 12 else { useUpInput = ""; return }
         useUp.append(v); useUpInput = ""
+    }
+
+    /// Fold a half-typed "dish to try" entry into the chips before drafting.
+    private func addWantToTry() {
+        let v = wantToTryInput.trimmingCharacters(in: .whitespaces)
+        guard !v.isEmpty, !wantToTry.contains(v), wantToTry.count < 12 else { wantToTryInput = ""; return }
+        wantToTry.append(v); wantToTryInput = ""
     }
 
     private var cookingForLabel: String {
@@ -332,7 +357,8 @@ struct PlanWeekSheet: View {
     // MARK: actions
 
     private func suggest() async {
-        addUseUp()   // fold any half-typed entry into the chips
+        addUseUp()        // fold any half-typed entries into the chips
+        addWantToTry()
         await draft(dates: selectedDays.sorted(), avoid: Array(rejected), full: true)
     }
 
@@ -353,7 +379,10 @@ struct PlanWeekSheet: View {
             let result = try await api.planWeek(
                 start: start, mealType: mealType, dates: dates,
                 cookingFor: cookingFor > 0 ? cookingFor : nil,
-                keepInMind: keepInMind, useUp: Array(useUp.prefix(12)), avoidTitles: avoid)
+                keepInMind: keepInMind, useUp: Array(useUp.prefix(12)), avoidTitles: avoid,
+                // Novelty steering applies to the initial plan; swaps/reshuffles steer by avoid.
+                wantToTry: full ? Array(wantToTry.prefix(12)) : nil,
+                trySomethingNew: full ? trySomethingNew : nil)
             via = result.via
             if let err = result.error, result.suggestions.isEmpty {
                 errorMessage = MealPlanText.friendly(err); if full { phase = .failed }

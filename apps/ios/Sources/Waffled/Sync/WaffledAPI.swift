@@ -315,13 +315,17 @@ struct WaffledAPI: Sendable {
     /// slow on a local model, so it uses a generous timeout.
     func planWeek(start: String, mealType: String = "dinner", dates: [String]? = nil,
                   cookingFor: Int?, keepInMind: String?, useUp: [String]?,
-                  avoidTitles: [String]? = nil) async throws -> PlanWeekResult {
+                  avoidTitles: [String]? = nil, wantToTry: [String]? = nil,
+                  trySomethingNew: Bool? = nil) async throws -> PlanWeekResult {
         var body: [String: JSONValue] = ["start": .string(start), "mealType": .string(mealType)]
         if let dates, !dates.isEmpty { body["dates"] = .array(dates.map { .string($0) }) }
         if let cookingFor { body["cookingFor"] = .int(cookingFor) }   // omit ⇒ server uses whole family
         if let keepInMind, !keepInMind.isEmpty { body["keepInMind"] = .string(keepInMind) }
         if let useUp, !useUp.isEmpty { body["useUp"] = .array(useUp.map { .string($0) }) }
         if let avoidTitles, !avoidTitles.isEmpty { body["avoidTitles"] = .array(avoidTitles.map { .string($0) }) }
+        // "Try New Recipe" steering: specific dishes to feature + a novelty nudge.
+        if let wantToTry, !wantToTry.isEmpty { body["wantToTry"] = .array(wantToTry.map { .string($0) }) }
+        if let trySomethingNew, trySomethingNew { body["trySomethingNew"] = .bool(true) }
         var req = URLRequest(url: url("/api/meals/plan-week"))
         req.httpMethod = "POST"
         authorize(&req)

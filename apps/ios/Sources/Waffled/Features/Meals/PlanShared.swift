@@ -60,14 +60,16 @@ struct PlanTag: View {
 struct UseUpCard: View {
     @Binding var items: [String]
     @Binding var input: String
+    var title: String = "Use up first"
+    var placeholder: String = "+ Add"
 
     var body: some View {
         WaffledCard(padding: 14) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Use up first").font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink)
+                Text(title).font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink)
                 ChipFlow(spacing: 8, lineSpacing: 8) {
                     ForEach(items, id: \.self) { u in chip(u) }
-                    TextField("+ Add", text: $input)
+                    TextField(placeholder, text: $input)
                         .font(.system(size: 14)).textInputAutocapitalization(.never)
                         .submitLabel(.done).onSubmit { add() }
                         .frame(minWidth: 80)
