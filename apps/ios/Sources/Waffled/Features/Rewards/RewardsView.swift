@@ -268,6 +268,8 @@ struct RewardsView: View {
     // MARK: person tabs + shop
 
     /// The person-tab strip at the top of the Rewards tab — pick whose shop to view.
+    /// Height is pinned so the horizontal scroll never collapses in the VStack (a
+    /// SwiftUI trap when the content is momentarily empty on first paint).
     private var personSelector: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -288,7 +290,9 @@ struct RewardsView: View {
                 }
             }
             .padding(.horizontal, 16).padding(.vertical, 10)
+            .frame(maxHeight: .infinity)
         }
+        .frame(height: 58)
         .background(WF.canvas)
     }
 
