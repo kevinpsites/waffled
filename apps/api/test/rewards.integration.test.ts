@@ -271,3 +271,80 @@ describe('reward capability gating (non-admin members)', () => {
     expect(adult.capabilities).toContain('reward.approve')
   })
 })
+
+// Ad-hoc "spot-award" stars — a parent hands out stars on the spot, not tied to
+// any chore. A single positive ledger entry (reason 'spot_award'); no balance
+// guard (it only ever adds). Gated by the NEW reward.grant capability.
+describe('spot-award stars', () => {
+  let adultId = '', kidId = '', teenId = '', adultToken = '', kidToken = '', teenToken = ''
+
+  beforeAll(async () => {
+    adultId = await addMember('SpotAdult', 'adult', false, 'dev|spot-adult')
+    kidId = await addMember('SpotKid', 'kid', false, 'dev|spot-kid')
+    teenId = await addMember('SpotTeen', 'teen', false, 'dev|spot-teen')
+    adultToken = mint('dev|spot-adult'); kidToken = mint('dev|spot-kid'); teenToken = mint('dev|spot-teen')
+  })
+
+  it('awarding N stars increases the balance by N (admin)', async () => {
+    const before = await starsOf(kidId)
+    const res = await call('POST', `/api/persons/${kidId}/award`, kevin, { amount: 5 })
+    expect(res.statusCode).toBe(201)
+    expect(await starsOf(kidId)).toBe(before + 5)
+  })
+
+  it('a non-admin adult (reward.grant by default) can award', async () => {
+    const before = await starsOf(kidId)
+    expect((await call('POST', `/api/persons/${kidId}/award`, adultToken, { amount: 3 })).statusCode).toBe(201)
+    expect(await starsOf(kidId)).toBe(before + 3)
+  })
+
+  it('a kid or teen (no reward.grant) is blocked (403)', async () => {
+    expect((await call('POST', `/api/persons/${kidId}/award`, kidToken, { amount: 2 })).statusCode).toBe(403)
+    expect((await call('POST', `/api/persons/${kidId}/award`, teenToken, { amount: 2 })).statusCode).toBe(403)
+  })
+
+  it('stores the note on the ledger entry', async () => {
+    const res = await call('POST', `/api/persons/${kidId}/award`, kevin, { amount: 1, note: 'so helpful today' })
+    expect(res.statusCode).toBe(201)
+    const note = await withClient(async (c) => {
+      const { rows } = await c.query<{ note: string | null; reason: string }>(
+        `select note, reason from ledger_entries where household_id=$1 and person_id=$2 and reason='spot_award' order by created_at desc limit 1`,
+        [householdId, kidId]
+      )
+      return rows[0]
+    })
+    expect(note.note).toBe('so helpful today')
+    expect(note.reason).toBe('spot_award')
+  })
+
+  it('advances the saving-toward jar (balance-derived)', async () => {
+    // Pin a reward this kid is saving toward, then spot-award and watch progress move.
+    const r = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Spot toy', cost: 100 })).body).reward
+    await withClient((c) => c.query(`update persons set saving_toward_reward_id=$1 where id=$2`, [r.id, teenId]))
+    const ov0 = JSON.parse((await call('GET', `/api/persons/${teenId}/overview`, kevin)).body)
+    const have0 = ov0.savingToward?.have ?? 0
+    expect((await call('POST', `/api/persons/${teenId}/award`, kevin, { amount: 10 })).statusCode).toBe(201)
+    const ov1 = JSON.parse((await call('GET', `/api/persons/${teenId}/overview`, kevin)).body)
+    expect(ov1.savingToward.have).toBe(have0 + 10)
+    expect(ov1.savingToward.pct).toBeGreaterThan(ov0.savingToward?.pct ?? 0)
+  })
+
+  it('works with the rewards SHOP toggle OFF (gated by chores, not the shop)', async () => {
+    // Turn the rewards shop sub-toggle off; spot-award must still work.
+    await withClient((c) => c.query(
+      `update households set settings = coalesce(settings,'{}'::jsonb) || jsonb_build_object('chores', jsonb_build_object('rewards', false)) where id=$1`,
+      [householdId]
+    ))
+    // Shop route is blocked…
+    expect((await call('GET', '/api/rewards', kevin)).statusCode).toBe(403)
+    // …but spot-award still lands.
+    const before = await starsOf(kidId)
+    expect((await call('POST', `/api/persons/${kidId}/award`, kevin, { amount: 4 })).statusCode).toBe(201)
+    expect(await starsOf(kidId)).toBe(before + 4)
+    // restore
+    await withClient((c) => c.query(
+      `update households set settings = coalesce(settings,'{}'::jsonb) || jsonb_build_object('chores', jsonb_build_object('rewards', true)) where id=$1`,
+      [householdId]
+    ))
+  })
+})
