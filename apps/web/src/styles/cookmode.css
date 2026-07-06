@@ -227,6 +227,23 @@
   gap: 2px;
   margin-right: auto;
   min-width: 0;
+  /* tap the label/time to jump back to the step that started this timer */
+  cursor: pointer;
+}
+.cm-timer-info:focus-visible {
+  outline: 2px solid var(--primary, var(--wally));
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+/* on-the-spot add-timer: nudge the shared .re-timer-edit row into the larger
+   cook-mode layout so the ⏱ min/sec ✓ × controls read at kitchen distance */
+.cm-timer-add-edit {
+  font-size: 16px;
+  padding: 8px 12px;
+}
+.cm-timer-add-edit .re-timer-num {
+  width: 58px;
+  font-size: 16px;
 }
 .cm-timer-label {
   font-size: 12px;
