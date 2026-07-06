@@ -95,6 +95,18 @@ struct FamilyView: View {
     private func runDemoHooksIfSet() {
         if DemoHooks.openSync { showSync = true }
         if let hub = DemoHooks.openHub, let route = Self.route(for: hub) { path = [route] }
+        if DemoHooks.openShop, !ranDemo {
+            ranDemo = true
+            Task {
+                for _ in 0..<40 {
+                    if !sync.members.isEmpty { break }
+                    try? await Task.sleep(nanoseconds: 200_000_000)
+                }
+                let kid = sync.members.first { $0.memberType != "adult" } ?? sync.members.first
+                if let kid { path = [.rewardShop(kid.id)] }
+            }
+            return
+        }
         guard DemoHooks.addEvent, !ranDemo else { return }
         ranDemo = true
         Task {

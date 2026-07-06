@@ -461,13 +461,21 @@ struct RewardShopView: View {
     let personId: String
     @Binding var path: [HubRoute]
     @Environment(SyncManager.self) private var sync
+    @Environment(\.dismiss) private var dismiss
     @State private var model = RewardsModel()
     @State private var overview: WaffledAPI.PersonOverview?
     @State private var conversions: [WaffledAPI.Conversion] = []
-    @State private var confirm: WaffledAPI.PersonOverview.ShopReward?
+    @State private var category = "all"                 // selected category chip
+    @State private var redeemFor: WaffledAPI.Reward?     // redeem-confirm sheet
+    @State private var celebrate: Celebrated?            // success sheet
     @State private var giving = false
     @State private var showSavingPicker = false
     @State private var showTrade = false
+
+    struct Celebrated: Identifiable {
+        let reward: WaffledAPI.Reward; let pending: Bool; let balanceBefore: Int
+        var id: String { reward.id }
+    }
 
     private let api = WaffledAPI()
     private let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
@@ -477,20 +485,13 @@ struct RewardShopView: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let p = model.person(personId) {
                     header(p)
-                    SavingTowardCard(saving: overview?.savingToward, colorHex: savingCur?.color,
-                                     symbol: savingCur?.symbol,
-                                     canPick: !(overview?.rewardShop.isEmpty ?? true),
-                                     onChange: { showSavingPicker = true },
-                                     onRedeem: redeemSaving)
-                    shopHead
-                    let shop = overview?.rewardShop ?? []
-                    if shop.isEmpty {
-                        Text("No rewards yet — a parent can add them.")
-                            .font(.system(size: 14)).foregroundStyle(WF.ink3)
-                            .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 30)
+                    heroCard(p)
+                    if !presentCategories.isEmpty { categoryChips }
+                    if rewards.isEmpty {
+                        emptyState
                     } else {
-                        LazyVGrid(columns: cols, spacing: 12) {
-                            ForEach(shop) { r in rewardCard(r) }
+                        ForEach(groupedSections, id: \.cat.key) { s in
+                            categorySection(s.cat, s.items)
                         }
                     }
                 } else if model.loading {
@@ -501,21 +502,24 @@ struct RewardShopView: View {
         }
         .scrollBounceBehavior(.always)
         .background(WF.canvas)
-        .navigationTitle(model.person(personId)?.name ?? "Reward shop")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)   // the content draws its own header
         .task { await reload() }
         .refreshable { await reload() }
         .onChange(of: sync.rewardsRev) { _, _ in Task { await reload() } }
-        .confirmationDialog(confirm.map { "Redeem \($0.title)?" } ?? "",
-                            isPresented: Binding(get: { confirm != nil },
-                                                 set: { if !$0 { confirm = nil } }),
-                            presenting: confirm) { r in
-            Button("Redeem · \(model.currency(r.currency)?.symbol ?? "⭐") \(r.cost)") {
-                Task { await give(r) }
-            }
-            Button("Cancel", role: .cancel) { confirm = nil }
-        } message: { r in
-            Text("Uses \(r.cost) \(model.currency(r.currency)?.label ?? "stars") from \(model.person(personId)?.name ?? "their")’s balance.")
+        .sheet(item: $redeemFor) { r in
+            RedeemShopSheet(reward: r, category: ShopCategory.of(r.category),
+                            currency: model.currency(r.currency), balance: balance(r.currency),
+                            busy: giving,
+                            onCancel: { redeemFor = nil },
+                            onConfirm: { Task { await redeem(r) } })
+                .presentationDetents([.height(440)])
+        }
+        .sheet(item: $celebrate) { c in
+            ShopCelebrationView(reward: c.reward, category: ShopCategory.of(c.reward.category),
+                                currency: model.currency(c.reward.currency),
+                                balanceBefore: c.balanceBefore, pending: c.pending) { celebrate = nil }
+                .presentationDetents([.height(440)])
         }
         .sheet(isPresented: $showSavingPicker) {
             SavingTowardPicker(rewards: overview?.rewardShop ?? [],
@@ -533,55 +537,196 @@ struct RewardShopView: View {
         }
     }
 
-    // MARK: header
+    // MARK: shop data
+
+    private var rewards: [WaffledAPI.Reward] { model.rewards }
+    private func balance(_ currency: String) -> Int { model.balance(personId, currency) }
+    private func affordable(_ r: WaffledAPI.Reward) -> Bool { balance(r.currency) >= r.cost }
+    private var defaultCurrencyKey: String {
+        model.currencies.first { $0.isDefault }?.key ?? model.currencies.first?.key ?? "stars"
+    }
+
+    /// Reward-shop categories that actually have rewards (+ an Other bucket when some
+    /// reward is uncategorised / unknown) — only these get filter chips.
+    private var presentCategories: [ShopCategory] {
+        let keys = Set(rewards.compactMap { $0.category })
+        var cats = ShopCategory.all.filter { keys.contains($0.key) }
+        if rewards.contains(where: { ShopCategory.byKey[$0.category ?? ""] == nil }) { cats.append(.other) }
+        return cats
+    }
+
+    private func catKey(_ r: WaffledAPI.Reward) -> String { ShopCategory.of(r.category).key }
+
+    /// Sections to render: under "All", every present category; under a chip, just it.
+    private var groupedSections: [(cat: ShopCategory, items: [WaffledAPI.Reward])] {
+        let cats = category == "all" ? presentCategories : presentCategories.filter { $0.key == category }
+        return cats.compactMap { c in
+            let items = rewards.filter { catKey($0) == c.key }.sorted { $0.sortOrder < $1.sortOrder }
+            return items.isEmpty ? nil : (c, items)
+        }
+    }
+
+    // MARK: header + hero
 
     private func header(_ p: WaffledAPI.PersonBalance) -> some View {
-        HStack(spacing: 14) {
-            Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 58)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(p.name ?? "—").font(WF.serif(26)).foregroundStyle(WF.ink)
-                HStack(spacing: 8) {
-                    ForEach(displayBalances(p)) { b in
-                        let c = model.currency(b.currency)
-                        CoinChip(symbol: c?.symbol ?? "⭐", colorHex: c?.color, amount: b.balance)
-                    }
-                }
+        HStack(spacing: 12) {
+            Button { dismiss() } label: {
+                Image(systemName: "chevron.left").font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink2)
+                    .frame(width: 36, height: 36).background(WF.panel).clipShape(Circle())
             }
-            Spacer(minLength: 8)
+            .buttonStyle(.plain)
+            Text("Reward shop").font(WF.serif(26)).foregroundStyle(WF.ink)
+            Spacer()
+            Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 40)
+        }
+    }
+
+    /// The wallet hero — this person's balance in the saving-toward (or default)
+    /// currency + a "N to go for {reward}" nudge.
+    private func heroCard(_ p: WaffledAPI.PersonBalance) -> some View {
+        let saving = overview?.savingToward
+        let key = saving?.currency ?? defaultCurrencyKey
+        let cur = model.currency(key)
+        let bal = balance(key)
+        return HStack(spacing: 14) {
+            ZStack {
+                Circle().fill(.white.opacity(0.22)).frame(width: 56, height: 56)
+                Text(cur?.symbol ?? "⭐").font(.system(size: 26))
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text("\((p.name ?? "My").uppercased())’S \((cur?.label ?? "Stars").uppercased())")
+                    .font(.system(size: 12, weight: .heavy)).tracking(0.5).foregroundStyle(.white.opacity(0.85))
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("\(bal)").font(.system(size: 34, weight: .heavy)).foregroundStyle(.white)
+                    Text(cur?.symbol ?? "★").font(.system(size: 18)).foregroundStyle(.white.opacity(0.9))
+                }
+                Button { showSavingPicker = true } label: {
+                    Text(saving.map { "🚀 \($0.toGo) to go for \($0.title)" } ?? "＋ Pick something to save toward")
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.92)).lineLimit(1)
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer(minLength: 4)
             if !conversions.isEmpty {
                 Button { showTrade = true } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.left.arrow.right").font(.system(size: 12, weight: .bold))
-                        Text("Trade").font(.system(size: 13, weight: .bold))
-                    }
-                    .foregroundStyle(WF.ai)
-                    .padding(.horizontal, 11).padding(.vertical, 7)
-                    .background(WF.ai.opacity(0.12)).clipShape(Capsule())
+                    Image(systemName: "arrow.left.arrow.right").font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white).frame(width: 34, height: 34)
+                        .background(.white.opacity(0.18)).clipShape(Circle())
                 }
                 .buttonStyle(.plain)
             }
         }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LinearGradient(colors: [Color(hex: 0x9169EA), Color(hex: 0x7B54E8)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
     }
 
-    /// Balances to show in the header: every catalog currency, so a 0 still reads.
-    private func displayBalances(_ p: WaffledAPI.PersonBalance) -> [WaffledAPI.PersonBalance.CurrencyBalance] {
-        let byKey = Dictionary(uniqueKeysWithValues: p.balances.map { ($0.currency, $0) })
-        let ordered = model.currencies.isEmpty ? p.balances.map(\.currency) : model.currencies.map(\.key)
-        return ordered.map { key in byKey[key] ?? .init(currency: key, balance: 0) }
-    }
-
-    /// The currency definition for the current saving-toward target.
-    private var savingCur: WaffledAPI.PersonOverview.Currency? {
-        guard let key = overview?.savingToward?.currency else { return nil }
-        return overview?.currencies.first { $0.key == key }
-    }
-
-    private var shopHead: some View {
-        HStack {
-            Text("Reward shop").font(.system(size: 18, weight: .bold)).foregroundStyle(WF.ink)
-            Spacer()
-            Text("Set by parents").font(.system(size: 13)).foregroundStyle(WF.ink3)
+    private var categoryChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                chip("all", "All", nil)
+                ForEach(presentCategories) { c in chip(c.key, c.label, c.emoji) }
+            }
+            .padding(.vertical, 1)
         }
+    }
+
+    private func chip(_ key: String, _ label: String, _ emoji: String?) -> some View {
+        let on = category == key
+        return Button { withAnimation(.snappy) { category = key } } label: {
+            HStack(spacing: 5) {
+                if let emoji { Text(emoji).font(.system(size: 13)) }
+                Text(label).font(.system(size: 14, weight: .bold))
+            }
+            .foregroundStyle(on ? .white : WF.ink)
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .background(on ? WF.ink : WF.card)
+            .clipShape(Capsule())
+            .overlay(Capsule().strokeBorder(on ? Color.clear : WF.hair, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var emptyState: some View {
+        Text("No rewards yet — a parent can add them.")
+            .font(.system(size: 14)).foregroundStyle(WF.ink3)
+            .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 30)
+    }
+
+    private func categorySection(_ cat: ShopCategory, _ items: [WaffledAPI.Reward]) -> some View {
+        let canGet = items.filter(affordable).count
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("\(cat.emoji) \(cat.label)").font(.system(size: 17, weight: .bold)).foregroundStyle(WF.ink)
+                Spacer()
+                Text("\(canGet) you can get").font(.system(size: 13)).foregroundStyle(WF.ink3)
+            }
+            LazyVGrid(columns: cols, spacing: 12) {
+                ForEach(items) { r in rewardCard(r, cat) }
+            }
+        }
+    }
+
+    // MARK: a reward tile
+
+    private func rewardCard(_ r: WaffledAPI.Reward, _ cat: ShopCategory) -> some View {
+        let cur = model.currency(r.currency)
+        let bal = balance(r.currency)
+        let can = bal >= r.cost
+        let need = max(0, r.cost - bal)
+        let pct = r.cost > 0 ? min(1.0, Double(bal) / Double(r.cost)) : 1.0
+        return VStack(alignment: .leading, spacing: 0) {
+            ZStack {
+                Rectangle().fill(can ? AnyShapeStyle(cat.gradient) : AnyShapeStyle(WF.panel))
+                Text(r.emoji ?? "🎁").font(.system(size: 38)).opacity(can ? 1 : 0.55)
+            }
+            .frame(height: 92)
+            .overlay(alignment: .topLeading) {
+                if !can { Text("🔒").font(.system(size: 14)).padding(7) }
+            }
+            .overlay(alignment: .topTrailing) {
+                HStack(spacing: 3) {
+                    Text(cur?.symbol ?? "★").font(.system(size: 11))
+                    Text("\(r.cost)").font(.system(size: 12, weight: .heavy))
+                }
+                .foregroundStyle(WF.ink)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(.white).clipShape(Capsule())
+                .padding(7)
+            }
+            VStack(alignment: .leading, spacing: 7) {
+                Text(r.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
+                Text(cat.label.uppercased()).font(.system(size: 10, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
+                if can {
+                    Button { redeemFor = r } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "star.fill").font(.system(size: 11, weight: .bold))
+                            Text("Get it").font(.system(size: 14, weight: .bold))
+                        }
+                        .foregroundStyle(.white).frame(maxWidth: .infinity).padding(.vertical, 9)
+                        .background(WF.primary).clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain).disabled(giving)
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(WF.panel).frame(height: 6)
+                            GeometryReader { g in Capsule().fill(WF.primary).frame(width: g.size.width * pct, height: 6) }
+                                .frame(height: 6)
+                        }
+                        Text("\(need) more to unlock").font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
+                    }
+                    .padding(.top, 2)
+                }
+            }
+            .padding(11)
+        }
+        .background(WF.card)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+        .wfShadow1()
     }
 
     private func reload() async {
@@ -590,55 +735,15 @@ struct RewardShopView: View {
         conversions = (try? await api.conversions()) ?? []
     }
 
-    // MARK: a reward
-
-    private func rewardCard(_ r: WaffledAPI.PersonOverview.ShopReward) -> some View {
-        let cur = model.currency(r.currency)
-        let canAfford = r.have >= r.cost   // server-computed have/toGo
-        return VStack(spacing: 9) {
-            Text(r.emoji ?? "🎁").font(.system(size: 40)).frame(height: 54)
-            Text(r.title).font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink)
-                .multilineTextAlignment(.center).lineLimit(2)
-            Text("\(r.cost) \(cur?.label.lowercased() ?? "")")
-                .font(.system(size: 13)).foregroundStyle(WF.ink3)
-            Spacer(minLength: 0)
-            if canAfford {
-                Button { confirm = r } label: {
-                    HStack(spacing: 5) {
-                        Text("Redeem").font(.system(size: 15, weight: .bold))
-                        Text("\(cur?.symbol ?? "⭐") \(r.cost)").font(.system(size: 15, weight: .bold))
-                    }
-                    .foregroundStyle(.white).frame(maxWidth: .infinity).padding(.vertical, 11)
-                    .background(WF.primary).clipShape(Capsule())
-                }
-                .buttonStyle(.plain).disabled(giving)
-            } else {
-                Text("\(r.toGo) to go")
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
-                    .frame(maxWidth: .infinity).padding(.vertical, 11)
-                    .background(WF.panel).clipShape(Capsule())
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, minHeight: 196)
-        .background(WF.card)
-        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
-        .wfShadow1()
-    }
-
-    private func give(_ r: WaffledAPI.PersonOverview.ShopReward) async {
+    private func redeem(_ r: WaffledAPI.Reward) async {
         giving = true
+        let before = balance(r.currency)
         _ = await sync.giveReward(rewardId: r.id, personId: personId)
-        confirm = nil
         giving = false
+        redeemFor = nil
+        try? await Task.sleep(for: .milliseconds(350))   // let the confirm sheet dismiss first
+        celebrate = Celebrated(reward: r, pending: r.requiresApproval, balanceBefore: before)
         await reload()
-    }
-
-    /// Redeem the pinned saving-toward reward directly (web parity — no extra
-    /// confirm; the button only appears once it's affordable).
-    private func redeemSaving() {
-        guard let s = overview?.savingToward else { return }
-        Task { _ = await sync.giveReward(rewardId: s.id, personId: personId); await reload() }
     }
 }
 
@@ -931,5 +1036,152 @@ struct AwardStarsPickerSheet: View {
         busy = false
         if ok { await onDone(); dismiss() }
         else { error = "Couldn’t award those stars. Try again." }
+    }
+}
+
+/// The reward-shop categories (mirrors the web `SHOP_CATEGORIES`): a key the backend
+/// stores + an emoji, label, and per-category thumb gradient. Unknown/null → Other.
+struct ShopCategory: Identifiable, Hashable {
+    let key: String
+    let label: String
+    let emoji: String
+    let grad: [UInt32]
+    var id: String { key }
+
+    static let all: [ShopCategory] = [
+        .init(key: "treats", label: "Treats", emoji: "🍦", grad: [0xFBDCC4, 0xF3B183]),
+        .init(key: "screen", label: "Screen time", emoji: "📺", grad: [0xD3E2FB, 0x9DC0F2]),
+        .init(key: "adventures", label: "Adventures", emoji: "🎢", grad: [0xD9EDD2, 0xA9D59A]),
+        .init(key: "toys", label: "Toys", emoji: "🧸", grad: [0xEEDAF7, 0xCFA9E8]),
+        .init(key: "privileges", label: "Privileges", emoji: "👑", grad: [0xFBDCC4, 0xF3B183]),
+    ]
+    static let other = ShopCategory(key: "other", label: "Other", emoji: "🎁", grad: [0xEEDAF7, 0xCFA9E8])
+    static let byKey: [String: ShopCategory] = Dictionary(uniqueKeysWithValues: all.map { ($0.key, $0) })
+    static func of(_ key: String?) -> ShopCategory { byKey[key ?? ""] ?? .other }
+
+    var gradient: LinearGradient {
+        LinearGradient(colors: grad.map { Color(hex: $0) }, startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+}
+
+/// The redeem-confirm sheet — mirrors the web RedeemSheet: a gradient well + emoji,
+/// the price, a "balance → left" line, an approval note when the reward needs it, and
+/// Not yet / Redeem it! actions.
+struct RedeemShopSheet: View {
+    let reward: WaffledAPI.Reward
+    let category: ShopCategory
+    let currency: WaffledAPI.Currency?
+    let balance: Int
+    let busy: Bool
+    let onCancel: () -> Void
+    let onConfirm: () -> Void
+
+    private var sym: String { currency?.symbol ?? "★" }
+    private var left: Int { balance - reward.cost }
+
+    var body: some View {
+        VStack(spacing: 13) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 22, style: .continuous).fill(category.gradient).frame(width: 92, height: 92)
+                Text(reward.emoji ?? "🎁").font(.system(size: 44))
+            }
+            .padding(.top, 26)
+            Text("Redeem \(reward.title)?").font(WF.serif(24)).foregroundStyle(WF.ink).multilineTextAlignment(.center)
+            HStack(spacing: 5) {
+                Text(sym).font(.system(size: 13))
+                Text("\(reward.cost) \(currency?.label.lowercased() ?? "stars")").font(.system(size: 15, weight: .bold))
+            }
+            .foregroundStyle(WF.ink2)
+            .padding(.horizontal, 14).padding(.vertical, 7).background(WF.panel).clipShape(Capsule())
+            Text("\(balance) \(sym) → \(left) \(sym) left").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
+            if reward.requiresApproval {
+                Label("Mom & Dad will get a ping to approve", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink2)
+                    .padding(.horizontal, 12).padding(.vertical, 8).background(WF.panel).clipShape(Capsule())
+            }
+            Spacer(minLength: 0)
+            HStack(spacing: 10) {
+                Button(action: onCancel) {
+                    Text("Not yet").font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink2)
+                        .frame(maxWidth: .infinity).padding(.vertical, 14)
+                        .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                Button(action: onConfirm) {
+                    Text(busy ? "Redeeming…" : "Redeem it!").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 14)
+                        .background(WF.primary).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                }
+                .buttonStyle(.plain).disabled(busy)
+            }
+        }
+        .padding(.horizontal, 20).padding(.bottom, 20)
+        .frame(maxWidth: .infinity)
+        .background(WF.canvas)
+    }
+}
+
+/// The post-redeem celebration — a confetti burst over the reward, a balance line, an
+/// approval-aware pill, and Back to shop. Mirrors the web Celebration.
+struct ShopCelebrationView: View {
+    let reward: WaffledAPI.Reward
+    let category: ShopCategory
+    let currency: WaffledAPI.Currency?
+    let balanceBefore: Int
+    let pending: Bool
+    let onClose: () -> Void
+
+    private var sym: String { currency?.symbol ?? "★" }
+    private var left: Int { balanceBefore - reward.cost }
+
+    var body: some View {
+        VStack(spacing: 13) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 22, style: .continuous).fill(category.gradient).frame(width: 92, height: 92)
+                Text(reward.emoji ?? "🎁").font(.system(size: 44))
+            }
+            .padding(.top, 30)
+            Text("\(reward.title) unlocked! 🎉").font(WF.serif(24)).foregroundStyle(WF.ink).multilineTextAlignment(.center)
+            Text("\(balanceBefore) \(sym) → \(left) \(sym) left").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
+            Label(pending ? "We told Mom & Dad — enjoy!" : "Enjoy!", systemImage: "checkmark.circle.fill")
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.primary)
+                .padding(.horizontal, 12).padding(.vertical, 8).background(WF.primary.opacity(0.12)).clipShape(Capsule())
+            Spacer(minLength: 0)
+            Button(action: onClose) {
+                Text("Back to shop").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                    .frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .background(WF.primary).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 20).padding(.bottom, 20)
+        .frame(maxWidth: .infinity)
+        .overlay(ConfettiView().allowsHitTesting(false))
+        .background(WF.canvas)
+    }
+}
+
+/// A lightweight one-shot confetti burst (no dependency) — colored bits fall from the
+/// top on appear.
+struct ConfettiView: View {
+    @State private var fall = false
+    private let colors: [Color] = [0xEC6049, 0x8A5CF0, 0xF3A93B, 0x25A368, 0x2F7FED, 0xE0548B].map { Color(hex: $0) }
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                ForEach(0..<26, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(colors[i % colors.count])
+                        .frame(width: 7, height: 11)
+                        .rotationEffect(.degrees(Double((i * 47) % 360)))
+                        .position(x: CGFloat((i * 37 + 11) % 100) / 100 * max(geo.size.width, 1),
+                                  y: fall ? geo.size.height + 24 : -24)
+                        .opacity(fall ? 0 : 1)
+                        .animation(.easeIn(duration: 1.15).delay(Double(i % 6) * 0.05), value: fall)
+                }
+            }
+        }
+        .onAppear { fall = true }
     }
 }

@@ -118,6 +118,8 @@ enum DemoHooks {
     static var newGoal: Bool { AppConfig.env("WAFFLED_NEW_GOAL") == "1" }
     /// Auto-open the first member's spotlight on the iPad Family page (verification).
     static var openPerson: Bool { AppConfig.env("WAFFLED_OPEN_PERSON") == "1" }
+    /// Open the first kid's reward shop (headless verification of the shop).
+    static var openShop: Bool { AppConfig.env("WAFFLED_OPEN_SHOP") == "1" }
     /// Auto-present the Sync panel on the Family screen.
     static var openSync: Bool { AppConfig.env("WAFFLED_OPEN_SYNC") == "1" }
     /// Insert one offline test event once members have synced.

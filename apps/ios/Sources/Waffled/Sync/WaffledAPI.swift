@@ -1627,6 +1627,7 @@ struct WaffledAPI: Sendable {
         let emoji: String?
         let cost: Int
         let currency: String        // currency key (e.g. "stars")
+        let category: String?       // reward-shop category (treats/screen/…); null = Other
         let sortOrder: Int
         let requiresApproval: Bool   // per-reward parent-approval gate
     }
