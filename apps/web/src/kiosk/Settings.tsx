@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
+import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
 import { PersonModal } from './components/PersonModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -1537,25 +1537,68 @@ function CalendarsPanel() {
   )
 }
 
-// Countdowns display preference (a core Calendar feature). Lives under Calendars.
+// Countdowns display preferences (a core Calendar feature). Lives under Calendars.
+// Birthday-horizon options: a birthday only surfaces once it's within this many days.
+const BIRTHDAY_HORIZON_OPTIONS: { days: number; label: string }[] = [
+  { days: 61, label: '2 months' },
+  { days: 92, label: '3 months' },
+  { days: DEFAULT_BIRTHDAY_HORIZON_DAYS, label: '6 months' },
+  { days: 274, label: '9 months' },
+  { days: 366, label: 'A year (always show)' },
+]
+
 function CountdownsSettings() {
-  const { sleeps } = useCountdowns()
+  const { sleeps, birthdayHorizonDays } = useCountdowns()
   const [on, setOn] = useState(sleeps)
+  const [horizon, setHorizon] = useState(birthdayHorizonDays)
   useEffect(() => setOn(sleeps), [sleeps])
+  useEffect(() => setHorizon(birthdayHorizonDays), [birthdayHorizonDays])
   function toggle(next: boolean) {
     setOn(next)
     countdownsApi.setSleeps(next).catch(() => setOn(!next))
   }
+  function pickHorizon(next: number) {
+    const prev = horizon
+    setHorizon(next)
+    countdownsApi.setBirthdayHorizonDays(next).catch(() => setHorizon(prev))
+  }
   return (
-    <div className="set-card" style={{ marginTop: 18 }}>
-      <div className="set-row2-t" style={{ marginBottom: 4 }}>⏳ Countdowns</div>
-      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 12 }}>
-        Count down to trips, birthdays, and anything you flag on the calendar. Add one from the Today “Countdowns” card, or tick “Show a countdown” when editing an event.
+    <div className="set-tray" style={{ marginTop: 18 }}>
+      <div className="set-card" style={{ padding: 22 }}>
+        <div className="set-row2-t" style={{ marginBottom: 4 }}>⏳ Countdowns</div>
+        <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 16 }}>
+          Count down to trips, birthdays, and anything you flag on the calendar. Add one from the Today “Countdowns” card, or tick “Show a countdown” when editing an event.
+        </div>
+
+        <label
+          style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', fontWeight: 600 }}
+          onClick={(e) => { e.preventDefault(); toggle(!on) }}
+        >
+          <span className={`toggle ${on ? 'on' : ''}`} role="switch" aria-checked={on} aria-label="Count in sleeps instead of days" />
+          <span>Count in “sleeps” instead of “days” (kid-friendly)</span>
+        </label>
+
+        <div style={{ marginTop: 18 }}>
+          <div className="set-row2-t" style={{ marginBottom: 4 }}>Show birthdays within</div>
+          <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 10 }}>
+            A birthday only appears on the countdown list once it’s this close — so the whole family’s birthdays don’t crowd it a year out.
+          </div>
+          <select
+            className="sel"
+            value={horizon}
+            aria-label="Show birthdays within"
+            onChange={(e) => pickHorizon(Number(e.target.value))}
+            style={{ maxWidth: 260 }}
+          >
+            {BIRTHDAY_HORIZON_OPTIONS.some((o) => o.days === horizon) ? null : (
+              <option value={horizon}>{horizon} days</option>
+            )}
+            {BIRTHDAY_HORIZON_OPTIONS.map((o) => (
+              <option key={o.days} value={o.days}>{o.label}</option>
+            ))}
+          </select>
+        </div>
       </div>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontWeight: 600 }}>
-        <input type="checkbox" checked={on} onChange={(e) => toggle(e.target.checked)} style={{ width: 'auto' }} />
-        <span>Count in “sleeps” instead of “days” (kid-friendly)</span>
-      </label>
     </div>
   )
 }

@@ -147,6 +147,37 @@ describe('Settings screen', () => {
     await waitFor(() => expect(puts.some((m) => m.teen['goal.manage'] === true)).toBe(true))
   })
 
+  it('plumbs the Countdowns config (sleeps toggle + birthday horizon) under Calendars', async () => {
+    const puts: Array<Record<string, unknown>> = []
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/api/countdowns/config')) {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+        puts.push(body)
+        return { ok: true, json: async () => body }
+      }
+      if (u.includes('/api/countdowns')) return { ok: true, json: async () => ({ countdowns: [], sleeps: false, birthdayHorizonDays: 183 }) }
+      if (u.includes('/api/calendar/google/status')) return { ok: true, json: async () => ({ configured: false, connected: false, accounts: [], calendars: [] }) }
+      if (u.includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
+      if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household, person: members[0] }) }
+      if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('Calendars'))
+
+    // Sleeps pill flips → PUT { sleeps: true }.
+    fireEvent.click(await screen.findByText(/Count in .sleeps. instead of .days./))
+    await waitFor(() => expect(puts.some((p) => p.sleeps === true)).toBe(true))
+
+    // Birthday-horizon select → PUT { birthdayHorizonDays: <choice> }.
+    const horizon = screen.getByLabelText('Show birthdays within') as HTMLSelectElement
+    fireEvent.change(horizon, { target: { value: '92' } })
+    await waitFor(() => expect(puts.some((p) => p.birthdayHorizonDays === 92)).toBe(true))
+  })
+
   it('shows the System Health panel with component cards (admin)', async () => {
     const report = {
       status: 'degraded',
