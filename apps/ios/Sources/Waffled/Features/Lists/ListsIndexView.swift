@@ -37,6 +37,15 @@ final class ListsIndexModel {
         return created
     }
 
+    /// Rename a list / change its emoji, then reload the index.
+    func update(_ list: WaffledAPI.ListSummary, name: String, emoji: String) async {
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !n.isEmpty else { return }
+        do { _ = try await api.updateList(id: list.id, name: n, emoji: emoji.isEmpty ? "" : emoji) }
+        catch { self.error = true }
+        await load()
+    }
+
     /// Optimistic delete; restore on failure.
     func delete(_ list: WaffledAPI.ListSummary) async {
         let snapshot = lists
@@ -75,6 +84,7 @@ struct ListsIndexView: View {
     @State private var showCapture = false
     @State private var dictateOnOpen = false
     @State private var creatingList = false
+    @State private var editing: WaffledAPI.ListSummary?
 
     /// Fire the headless deep-link at most once per process — the index view is
     /// recreated when you pop back to it, so a per-view flag would re-fire and trap
@@ -82,43 +92,56 @@ struct ListsIndexView: View {
     private static var didDeepLink = false
 
     var body: some View {
-        // A ScrollView (not List) to match the app's other hub screens — a List pushed
-        // under FamilyView's hidden nav bar wouldn't scroll to the last row. Delete
-        // moves from swipe to long-press (same idiom as the template chips).
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 10) {
-                AICaptureBar(placeholder: "Add milk & eggs to groceries…",
-                             onTap: { dictateOnOpen = false; showCapture = true },
-                             onMic: { dictateOnOpen = true; showCapture = true })
-                    .padding(.top, 8)
+        // A List (native swipe → Edit + Delete). The bottom content margin clears the
+        // custom floating tab bar so the last list is reachable (it's an overlay, not
+        // in the safe area, so the List doesn't inset for it on its own).
+        List {
+            AICaptureBar(placeholder: "Add milk & eggs to groceries…",
+                         onTap: { dictateOnOpen = false; showCapture = true },
+                         onMic: { dictateOnOpen = true; showCapture = true })
+                .listRowInsets(EdgeInsets(top: 8, leading: 18, bottom: 8, trailing: 18))
+                .listRowBackground(Color.clear).listRowSeparator(.hidden)
 
-                if !model.lists.isEmpty {
-                    SectionLabel(text: "Your lists").padding(.leading, 2).padding(.top, 2)
-                }
-                if model.loading && model.lists.isEmpty {
-                    WaffledLoading(top: 40)
-                } else if model.lists.isEmpty {
-                    WaffledEmptyState(
-                        emoji: model.error ? "😕" : "🗒️",
-                        title: model.error ? "Couldn’t load your lists" : "No lists yet",
-                        message: model.error ? "Pull to refresh to try again." : "Add one with the ＋ button.")
-                        .padding(.top, 24)
-                }
-                ForEach(model.lists) { list in
-                    Button { path.append(.list(list)) } label: { row(list) }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            if list.listType.lowercased() != "grocery" {
-                                Button(role: .destructive) { Task { await model.delete(list) } } label: {
-                                    Label("Delete list", systemImage: "trash")
-                                }
-                            }
-                        }
-                }
+            if !model.lists.isEmpty {
+                SectionLabel(text: "Your lists")
+                    .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 2, trailing: 18))
+                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 110)
+            if model.loading && model.lists.isEmpty {
+                WaffledLoading(top: 40)
+                    .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 8, trailing: 18))
+                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
+            } else if model.lists.isEmpty {
+                WaffledEmptyState(
+                    emoji: model.error ? "😕" : "🗒️",
+                    title: model.error ? "Couldn’t load your lists" : "No lists yet",
+                    message: model.error ? "Pull to refresh to try again." : "Add one with the ＋ button.")
+                    .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 8, trailing: 18))
+                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
+            }
+            ForEach(model.lists) { list in
+                Button { path.append(.list(list)) } label: { row(list) }
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 5, leading: 18, bottom: 5, trailing: 18))
+                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        // Grocery is auto-built (can't be renamed/deleted); everything else
+                        // gets Edit + Delete.
+                        if list.listType.lowercased() != "grocery" {
+                            Button(role: .destructive) { Task { await model.delete(list) } } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                            Button { editing = list } label: {
+                                Label("Edit", systemImage: "pencil")
+                            }
+                            .tint(WF.ai)
+                        }
+                    }
+            }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .contentMargins(.bottom, 100, for: .scrollContent)
         .background(WF.canvas)
         .navigationTitle("Lists")
         .navigationBarTitleDisplayMode(.large)
@@ -133,6 +156,11 @@ struct ListsIndexView: View {
         }
         .refreshable { await model.load() }
         .onChange(of: sync.listsRev) { _, _ in Task { await model.load() } }
+        .sheet(item: $editing) { list in
+            EditListSheet(list: list) { name, emoji in
+                Task { await model.update(list, name: name, emoji: emoji) }
+            }
+        }
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
         }
@@ -289,5 +317,63 @@ struct NewListSheet: View {
                 Task { await onDeleteTemplate(tpl) }
             } label: { Label("Delete template", systemImage: "trash") }
         }
+    }
+}
+
+/// Rename a list / change its emoji (the swipe "Edit" action). PATCHes on Save.
+struct EditListSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let list: WaffledAPI.ListSummary
+    let onSave: (String, String) -> Void
+    @State private var name: String
+    @State private var emoji: String
+    @FocusState private var nameFocused: Bool
+
+    init(list: WaffledAPI.ListSummary, onSave: @escaping (String, String) -> Void) {
+        self.list = list; self.onSave = onSave
+        _name = State(initialValue: list.name)
+        _emoji = State(initialValue: list.emoji ?? "")
+    }
+
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "List name")
+                        TextField("List name", text: $name)
+                            .font(.system(size: 16, weight: .semibold)).textInputAutocapitalization(.words)
+                            .focused($nameFocused).submitLabel(.done)
+                            .padding(.horizontal, 13).padding(.vertical, 12)
+                            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                                .strokeBorder(nameFocused ? WF.primary : WF.hair, lineWidth: nameFocused ? 2 : 1))
+                    }
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "Emoji")
+                        TextField("📝", text: $emoji)
+                            .font(.system(size: 16, weight: .semibold)).multilineTextAlignment(.center)
+                            .frame(width: 60).padding(.vertical, 12)
+                            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+                            .onChange(of: emoji) { _, v in if v.count > 2 { emoji = String(v.prefix(2)) } }
+                    }
+                }
+                .padding(20)
+            }
+            .background(WF.canvas)
+            .navigationTitle("Edit list").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { onSave(trimmedName, emoji.trimmingCharacters(in: .whitespaces)); dismiss() }
+                        .fontWeight(.semibold).disabled(trimmedName.isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.height(210), .medium])
+        .task { try? await Task.sleep(for: .milliseconds(300)); nameFocused = true }
     }
 }

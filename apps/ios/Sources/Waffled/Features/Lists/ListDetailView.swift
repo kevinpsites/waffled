@@ -253,11 +253,19 @@ final class ListDetailModel {
             return false
         }
     }
+
+    /// Soft-delete the whole list. Returns true so the view can pop back + refresh.
+    func deleteList() async -> Bool {
+        do { try await api.deleteList(id: list.id); return true }
+        catch { self.error = true; return false }
+    }
 }
 
 struct ListDetailView: View {
     @Environment(SyncManager.self) private var sync
+    @Environment(\.dismiss) private var dismiss
     @State private var model: ListDetailModel
+    @State private var confirmingDelete = false
     @State private var draftName = ""
     @State private var draftQty = ""
     /// Target section for the next added item (nil = auto-classify / no section).
@@ -323,6 +331,9 @@ struct ListDetailView: View {
                                 }
                             }
                         } label: { Label("Save as template", systemImage: "doc.on.doc") }
+                        Button(role: .destructive) { confirmingDelete = true } label: {
+                            Label("Delete list", systemImage: "trash")
+                        }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
@@ -349,6 +360,14 @@ struct ListDetailView: View {
             ItemDetailEditor(item: item, members: sync.members, suggestions: sectionSuggestions) { name, qty, member, section in
                 Task { await model.editDetails(item.id, name: name, quantity: qty, member: member, section: section) }
             }
+        }
+        .confirmationDialog("Delete “\(model.list.name)”?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("Delete list", role: .destructive) {
+                Task { if await model.deleteList() { sync.bumpLists(); dismiss() } }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This deletes the list and its items. This can’t be undone.")
         }
         .sheet(isPresented: $editingStaples) {
             PantryStaplesEditor(initial: model.staples) { Task { await model.reloadStaples() } }

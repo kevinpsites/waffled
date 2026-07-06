@@ -2080,6 +2080,16 @@ struct WaffledAPI: Sendable {
     /// Delete a custom list.
     func deleteList(id: String) async throws { try await delete("/api/lists/\(id)") }
 
+    /// Rename a list / change its emoji (PATCH). Passing an empty emoji clears it.
+    @discardableResult
+    func updateList(id: String, name: String? = nil, emoji: String? = nil) async throws -> ListSummary {
+        var body: [String: JSONValue] = [:]
+        if let name { body["name"] = .string(name) }
+        if let emoji { body["emoji"] = emoji.isEmpty ? .null : .string(emoji) }
+        struct Resp: Decodable { let list: ListSummary }
+        return try await sendReturning("PATCH", "/api/lists/\(id)", body: body, as: Resp.self).list
+    }
+
     /// The items in a list (works for any list, grocery included).
     func listItems(listId: String) async throws -> [ListItemDTO] {
         struct Resp: Decodable { let items: [ListItemDTO] }
