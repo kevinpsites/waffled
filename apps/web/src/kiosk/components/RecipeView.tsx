@@ -219,6 +219,7 @@ export function RecipeView({ id, onSelect, selectLabel }: { id: string; onSelect
           </div>
 
           <div className="rd-tags">
+            {cooked === 0 && <button className="rd-tag new" onClick={() => chip('new=1')}>🆕 New</button>}
             {recipe.collection && <button className="rd-tag coll" onClick={() => chip(`collection=${enc(recipe.collection!)}`)}>📁 {recipe.collection}</button>}
             {recipe.cuisine && <button className="rd-tag" onClick={() => chip(`cuisine=${enc(recipe.cuisine!)}`)}>🌍 {recipe.cuisine}</button>}
             {recipe.mealType && <button className="rd-tag" onClick={() => chip(`q=${enc(recipe.mealType!)}`)}>{recipe.mealType.replace('-', ' ')}</button>}
