@@ -425,6 +425,33 @@ describe('meal planning api', () => {
   it('400 clearing without a valid date/mealType', async () => {
     expect((await call('DELETE', '/api/meals/plan?date=nope&mealType=dinner', kevin)).statusCode).toBe(400)
   })
+
+  // "Try New Recipe": the AI planner accepts steering toward novelty — a
+  // `trySomethingNew` toggle and a `wantToTry` list of specific dishes. The test
+  // container has no LLM provider selected → heuristic → the prompt is built and
+  // the request accepted, then completeJson throws → route maps to 501. We assert
+  // the new inputs are accepted the same as a plain plan-week (no 400 / no crash).
+  it('plan-week accepts wantToTry + trySomethingNew (501 with no AI provider, like a plain plan-week)', async () => {
+    // Use a week window with no prior plans so a target date actually reaches the
+    // LLM (an empty/filled window short-circuits to 200 before completeJson).
+    const plain = await call('POST', '/api/meals/plan-week', kevin, {
+      start: '2026-06-22',
+      mealType: 'dinner',
+      dates: ['2026-06-24'],
+    })
+    expect(plain.statusCode).toBe(501)
+
+    const steered = await call('POST', '/api/meals/plan-week', kevin, {
+      start: '2026-06-22',
+      mealType: 'dinner',
+      dates: ['2026-06-24'],
+      trySomethingNew: true,
+      wantToTry: ['Shakshuka', 'Bibimbap'],
+    })
+    // Same accepted path — the new fields don't 400 or blow up prompt building.
+    expect(steered.statusCode).toBe(plain.statusCode)
+    expect(steered.statusCode).toBe(501)
+  })
 })
 
 describe('recipe overrides api', () => {
