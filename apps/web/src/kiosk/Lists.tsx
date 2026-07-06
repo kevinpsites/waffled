@@ -201,6 +201,7 @@ export function Lists() {
   const [filterMenu, setFilterMenu] = useState(false)
   const [itemModal, setItemModal] = useState<{ item: ListItem | null } | null>(null)
   const [groceryOpen, setGroceryOpen] = useState(false)
+  const [savedTemplate, setSavedTemplate] = useState(false)
 
   // On first load, the grocery list opens straight into its auto-built board
   // (its primary view) rather than the plain sectioned list. Without this you'd
@@ -318,6 +319,20 @@ export function Lists() {
     refetchLists()
   }
 
+  // Snapshot the selected list as a reusable template (fresh, unchecked copies of
+  // its items). Brief "Saved ✓" confirmation, then the template is available in
+  // the New list picker.
+  async function saveSelectedAsTemplate() {
+    if (!selected) return
+    try {
+      await groceryApi.saveAsTemplate(selected.id)
+      setSavedTemplate(true)
+      setTimeout(() => setSavedTemplate(false), 2000)
+    } catch {
+      /* keep current state on failure */
+    }
+  }
+
   if (listsError) {
     return <div className="muted" style={{ padding: 30 }}>Couldn't load your lists — try reloading or signing in again.</div>
   }
@@ -394,6 +409,9 @@ export function Lists() {
                 )}
               </div>
               <button type="button" className="pill" style={{ cursor: 'pointer' }} title="Rename list" onClick={() => setEditingList({ id: selected.id, name: selected.name, emoji: selected.emoji })}>✎ Rename</button>
+              <button type="button" className="pill" style={{ cursor: 'pointer', color: savedTemplate ? 'var(--primary)' : undefined, borderColor: savedTemplate ? 'var(--primary)' : undefined }} title="Save this list as a reusable template" onClick={saveSelectedAsTemplate}>
+                {savedTemplate ? 'Saved ✓' : '📑 Save as template'}
+              </button>
               <button type="button" className="pill" style={{ cursor: 'pointer', color: confirmDel ? 'var(--primary)' : undefined, borderColor: confirmDel ? 'var(--primary)' : undefined }} title="Delete list" onClick={deleteSelected}>
                 {confirmDel ? 'Tap again to delete' : '🗑 Delete'}
               </button>
