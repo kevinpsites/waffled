@@ -738,11 +738,21 @@ export async function planWeek(tenant: Tenant, input: PlanWeekInput): Promise<{ 
 
   const dayLabel = (iso: string) =>
     new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+  const wantToTry = (input.wantToTry ?? []).map((s) => s.trim()).filter(Boolean).slice(0, 12)
+  const trySomethingNew = input.trySomethingNew === true
   const system = [
     `You plan family ${mealType.toUpperCase()}S for a household meal planner — cooking for ${servings}.`,
     'Propose exactly one dish for EACH requested date. Vary the cuisine and do not repeat a dish already planned or listed to avoid.',
     "Prefer reusing a recipe from the family's library when it fits (return its recipeId); otherwise suggest a new dish with a short title and recipeId null.",
     'If ingredients are listed to "use up", try to feature them. Honor every dietary note and any "keep in mind" guidance (e.g. busy nights → quick meals).',
+    // "Try New Recipe" steering — nudge the plan toward novelty (new dishes come
+    // back as recipeId:null; the pipeline already resolves those as new suggestions).
+    ...(wantToTry.length
+      ? ['The family listed dishes in "wantToTry" they specifically want to try — schedule each of those as a NEW dish (a fresh title with recipeId null), one per date where it fits, before filling the rest.']
+      : []),
+    ...(trySomethingNew
+      ? ['The family wants to try something new this week — include AT LEAST ONE brand-new dish with recipeId null even if the library could have filled that slot.']
+      : []),
     'Give each a single food emoji, a rough total time in minutes, and ONE very short reason. Keep titles short. Return JSON only.',
   ].join('\n')
   const user = JSON.stringify({
@@ -754,6 +764,8 @@ export async function planWeek(tenant: Tenant, input: PlanWeekInput): Promise<{ 
     dietaryNotes: dietary,
     alreadyPlannedThisWeek: plannedTitles,
     avoid: input.avoidTitles ?? [],
+    wantToTry,
+    trySomethingNew,
     recipeLibrary: lib,
   })
 

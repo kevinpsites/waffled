@@ -224,6 +224,8 @@ export interface PlanWeekRequest {
   keepInMind?: string | null
   useUp?: string[]
   avoidTitles?: string[]
+  wantToTry?: string[] // specific new dishes the family wants to try this week
+  trySomethingNew?: boolean // nudge the plan toward at least one brand-new dish
 }
 
 export interface PlanMonthRequest {

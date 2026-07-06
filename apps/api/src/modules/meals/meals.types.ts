@@ -134,6 +134,8 @@ export interface PlanWeekInput {
   keepInMind?: string | null
   useUp?: string[]
   avoidTitles?: string[] // steer away from these (variety / reshuffle / swap)
+  wantToTry?: string[] // specific new dishes the family wants to try — featured as recipeId:null suggestions
+  trySomethingNew?: boolean // nudge the plan toward novelty: include ≥1 brand-new dish even if the library could fill it
 }
 
 // Month planner (dinners). The LLM drafts a rotation POOL of dishes; the server
