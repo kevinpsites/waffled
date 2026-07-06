@@ -93,6 +93,14 @@ struct CookModeView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             if let secs = step?.timerSeconds, secs > 0 {
                                 startTimerButton(secs: secs)
+                            } else {
+                                // Step has no built-in timer — let the cook add one on the
+                                // fly, tied to this step via the same runtime timer path.
+                                // `id(index)` resets the control when navigating steps.
+                                AddTimerControl { secs in
+                                    startTimer(secs: secs, stepIndex: index, stepNumber: step?.stepNumber ?? index + 1)
+                                }
+                                .id(index)
                             }
                             if let igs = step?.ingredients, !igs.isEmpty {
                                 ChipFlow(spacing: 8, lineSpacing: 8, alignment: .leading) {
@@ -445,6 +453,97 @@ struct CookModeView: View {
     private func amountText(_ ing: WaffledAPI.RecipeIngredientDTO) -> String {
         guard let amt = ing.amount else { return "" }
         return RecipeAmount.format(amt) + (ing.unit.map { " \($0)" } ?? "")
+    }
+}
+
+/// On-the-spot timer for a step the author never gave one. Collapsed to a dashed
+/// "⏱ Add timer" pill; expands to minute + second steppers and starts an ephemeral
+/// (runtime-only) timer via the parent's `startTimer` path — so it lives in the dock,
+/// chimes, and stays tied to its step. Nothing is persisted to `step.timerSeconds`.
+/// Mirrors the web kiosk `AddTimer`.
+private struct AddTimerControl: View {
+    /// Called with the chosen total seconds when the cook taps Start.
+    let onStart: (Int) -> Void
+
+    @State private var open = false
+    @State private var minutes = 0
+    @State private var seconds = 0
+
+    private var total: Int { max(0, minutes) * 60 + max(0, min(59, seconds)) }
+
+    var body: some View {
+        if open {
+            form
+        } else {
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { open = true }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "timer").font(.system(size: 16, weight: .bold))
+                    Text("Add timer").font(.system(size: 17, weight: .bold))
+                }
+                .foregroundStyle(WF.primaryD)
+                .padding(.horizontal, 18).padding(.vertical, 12)
+                .background(
+                    Capsule().stroke(style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                        .foregroundStyle(WF.primary.opacity(0.6))
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var form: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 18) {
+                field("MINUTES", value: $minutes, range: 0...600)
+                field("SECONDS", value: $seconds, range: 0...59)
+            }
+            HStack(spacing: 10) {
+                Button {
+                    guard total > 0 else { return }
+                    onStart(total)
+                    reset()
+                } label: {
+                    Text("Start \(CookTimer.mmss(total))").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 18).padding(.vertical, 12)
+                        .background(total > 0 ? WF.primary : WF.ink3).clipShape(Capsule())
+                }
+                .buttonStyle(.plain).disabled(total <= 0)
+
+                Button { reset() } label: {
+                    Text("Cancel").font(.system(size: 17, weight: .semibold)).foregroundStyle(WF.ink2)
+                        .padding(.horizontal, 18).padding(.vertical, 12)
+                        .background(WF.panel).clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .background(WF.card)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).stroke(WF.hair, lineWidth: 1))
+    }
+
+    /// A labeled stepper — big enough to poke across the kitchen, no keyboard needed.
+    private func field(_ label: String, value: Binding<Int>, range: ClosedRange<Int>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(.system(size: 11, weight: .heavy)).tracking(0.8).foregroundStyle(WF.ink3)
+            HStack(spacing: 10) {
+                Text("\(value.wrappedValue)")
+                    .font(.system(size: 26, weight: .heavy, design: .rounded)).monospacedDigit()
+                    .foregroundStyle(WF.ink).frame(minWidth: 44, alignment: .leading)
+                Stepper("", value: value, in: range).labelsHidden()
+            }
+        }
+    }
+
+    private func reset() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            open = false
+            minutes = 0
+            seconds = 0
+        }
     }
 }
 
