@@ -1,4 +1,14 @@
-# Waffled — Family Hub
+<p align="center">
+  <img src="website/src/assets/waffled-logo.png" alt="Waffled" width="180">
+</p>
+
+<h1 align="center">Waffled — Family Hub</h1>
+
+<p align="center">
+  <strong><a href="https://docs.waffled.app">📖 Documentation</a></strong>
+  &nbsp;·&nbsp; <a href="#self-hosting-quickstart">Quickstart</a>
+  &nbsp;·&nbsp; <a href="https://github.com/kevinpsites/waffled/releases">Releases</a>
+</p>
 
 A shared family operating system rendered across three surfaces:
 
@@ -29,7 +39,8 @@ attach your own SSO later (see below).
 
 ```bash
 git clone <this-repo> waffled && cd waffled
-./waffled up    # creates .env (with generated secrets), builds images, migrates, starts the stack
+./waffled setup  # optional: pick how devices reach the server (skip for localhost-only)
+./waffled up     # creates .env (generated secrets), pulls prebuilt images, migrates, starts
 ```
 
 That single command is the whole install — no host toolchain, no separate migrate
@@ -37,7 +48,8 @@ step. On first run `./waffled up`:
 
 1. creates `infra/compose/.env` from `.env.example`, generating `LOCAL_JWT_SECRET`,
    `TOKEN_ENCRYPTION_KEY`, and `POSTGRES_PASSWORD` for you (existing `.env` left alone),
-2. builds the `api` + `caddy` images and pulls Postgres + PowerSync,
+2. pulls the prebuilt `api` / `caddy` / `backup` images from GHCR (plus Postgres +
+   PowerSync); use `./waffled up --build` to build from source instead,
 3. runs the one-shot **migrate** service to apply the database schema (so PowerSync's
    replication publication exists before it starts), then
 4. starts everything and prints a health table.
@@ -47,10 +59,11 @@ and, once up, prints the exact URL to open. Open the kiosk at `http://localhost:
 first load you'll get a **setup wizard**: enter a household name + timezone and create
 your **admin account** (name, email, password). That's it — you're in.
 
-> **Using it from a tablet or the iOS app?** Run `./waffled setup` before `./waffled up` — one
-> question (localhost / your LAN IP / a hostname), auto-detects your IP, and writes the
-> address settings so off-device sync works (a `localhost` sync URL is the usual "shows
-> Offline on the tablet" trap).
+> **Using it from a tablet or the iOS app?** Run `./waffled setup` — one question
+> (localhost / your LAN IP / a hostname), auto-detects your IP, and writes the address
+> settings so off-device sync works (a `localhost` sync URL is the usual "shows Offline
+> on the tablet" trap). Run it before `./waffled up`, or any time later and re-run
+> `./waffled up` to apply it (a bare `./waffled restart` won't pick up the change).
 
 ### `.env`
 

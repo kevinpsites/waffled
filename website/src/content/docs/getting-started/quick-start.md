@@ -17,16 +17,24 @@ SSO later (optional).
 
 ## Install
 
+> **Setting this up for a tablet, phone, or another computer?** That's the whole point —
+> an always-on kiosk tablet + the iOS app. Run **`./waffled setup`** *first* (one question,
+> auto-detects your LAN IP) so sync works off-device. You can also run it **any time later**
+> — just re-run `./waffled up` afterward. Skipping it is the #1 cause of the tablet showing
+> "Offline." Details: [Accessing it from other devices](#accessing-it-from-other-devices).
+
 ```bash
 git clone <this-repo> waffled && cd waffled
-./waffled up    # checks prereqs, creates .env (generated secrets), builds, migrates, starts
+./waffled setup   # recommended if other devices will connect (skip for localhost-only)
+./waffled up      # checks prereqs, creates .env (generated secrets), pulls images, migrates, starts
 ```
 
-That single command is the whole install. On first run, `./waffled up`:
+That's the whole install. On first run, `./waffled up`:
 
 1. Creates `infra/compose/.env` from `.env.example`, generating `LOCAL_JWT_SECRET`,
    `TOKEN_ENCRYPTION_KEY`, and `POSTGRES_PASSWORD` for you (an existing `.env` is left alone).
-2. Builds the `api` + `caddy` images and pulls Postgres + PowerSync.
+2. Pulls the prebuilt `api` / `caddy` / `backup` images from GHCR (plus Postgres +
+   PowerSync). Prefer to build from source? Use `./waffled up --build`.
 3. Runs a one-shot **migrate** service to apply the database schema (so PowerSync's
    replication publication exists before it starts).
 4. Starts everything, prints a health table, and tells you **which URL to open**.
@@ -34,11 +42,14 @@ That single command is the whole install. On first run, `./waffled up`:
 Open the kiosk/web app at the URL it prints — **http://localhost:8080** by default.
 
 > **Going to use it from a tablet, phone, or another computer?** (Waffled's whole point is
-> an always-on tablet + the iOS app.) Run **`./waffled setup`** *before* `./waffled up` — it
-> asks one question ("how will devices reach this server?"), auto-detects your machine's
-> LAN IP, and writes the address settings so sync works off-device. Skipping this is the
-> #1 cause of "everything shows Offline on the tablet" (a `localhost` sync URL other
-> devices can't reach). See [Accessing it from other devices](#accessing-it-from-other-devices).
+> an always-on tablet + the iOS app.) Run **`./waffled setup`** — it asks one question
+> ("how will devices reach this server?"), auto-detects your machine's LAN IP, and writes
+> the address settings so sync works off-device. Running it *before* `./waffled up` is
+> simplest, but you can run it **any time later** too — just run `./waffled up` again
+> afterward to apply it (a bare `./waffled restart` reuses the old values and won't pick
+> up the change). Skipping this is the #1 cause of "everything shows Offline on the tablet"
+> (a `localhost` sync URL other devices can't reach). See
+> [Accessing it from other devices](#accessing-it-from-other-devices).
 
 ## First-run setup
 
