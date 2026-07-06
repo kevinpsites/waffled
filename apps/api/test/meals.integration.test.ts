@@ -623,7 +623,10 @@ describe('recipe create / edit / delete api (6.3-edit)', () => {
       '---', 'type: dinner', 'cuisine: Mexican', 'tags: [quick]', '---', '',
       '# Quick Tacos', '', '*2 servings*', '', '## Ingredients', '',
       '### Filling', '- 1 lb ground beef', '- 1 packet taco seasoning', '',
-      '## Instructions', '', '1. Brown the beef.', '2. Add seasoning and serve.', '',
+      '## Instructions', '',
+      '1. Brown the beef.',
+      '   **Timer:** 8 minutes',
+      '2. Add seasoning and serve.', '',
       '## Notes', 'Source: Tuesday nights',
     ].join('\n')
 
@@ -636,6 +639,21 @@ describe('recipe create / edit / delete api (6.3-edit)', () => {
     expect(parsed.ingredients[0].name).toBe('ground beef')
     expect(parsed.steps).toHaveLength(2)
     expect(parsed.steps[0].instruction).toContain('Brown the beef')
+    expect(parsed.steps[0].instruction).not.toMatch(/Timer/i)
+    expect(parsed.steps[0].timerSeconds).toBe(480) // "8 minutes" parsed & stripped
+    expect(parsed.steps[1].timerSeconds).toBeNull()
+
+    // the parsed timer survives a save → detail round-trip
+    const created = await call('POST', '/api/recipes', kevin, {
+      title: parsed.recipe.title,
+      steps: parsed.steps,
+    })
+    expect(created.statusCode).toBe(201)
+    const newId = JSON.parse(created.body).recipe.id
+    const detail = JSON.parse((await call('GET', `/api/recipes/${newId}`, kevin)).body)
+    const savedSteps = detail.steps as Array<{ instruction: string; timerSeconds: number | null }>
+    expect(savedSteps[0].timerSeconds).toBe(480)
+    expect(savedSteps[1].timerSeconds).toBeNull()
 
     // 400 on empty markdown
     expect((await call('POST', '/api/recipes/parse-markdown', kevin, { markdown: '' })).statusCode).toBe(400)
