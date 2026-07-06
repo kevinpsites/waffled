@@ -83,8 +83,11 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   parity too — **Pantry** (Open Food Facts lookup, cook→decrement, Cook-from-pantry, and a
   Settings → Pantry editor), **Calendar Countdowns**, and **Family Night** — plus a
   **customizable iPad nav rail** (a per-device pick + a "More" overflow hub) and a
-  three-tier **Settings** reorg (Account · Family · System). The app is now branded
-  **Kinnook**. Per-surface (iPhone / iPad)
+  three-tier **Settings** reorg (Account · Family · System). The **July 2026 family-hub batch**
+  reached iOS parity too — **list templates** (+ swipe/detail list edit & delete), **on-the-spot
+  cook timer**, **Try New Recipe**, the **never-cooked 🆕 tag**, and **spot-award stars** (person
+  profile + Rewards page) — plus **owner-first family ordering** (only *Countdown tweaks* iOS parity
+  is still pending). Per-surface (iPhone / iPad)
   status — and the remaining mobile gaps — live in the [feature matrix](./features.md).
 
 ## Partial / in progress 🟡
