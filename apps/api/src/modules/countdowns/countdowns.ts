@@ -54,9 +54,25 @@ async function readSleeps(householdId: string): Promise<boolean> {
   return rows[0]?.sleeps === 'true'
 }
 
+// How far ahead a birthday is allowed to surface on the list (days). Past this it's just
+// noise (a whole family's birthdays a year out), and — since nextBirthday() rolls a
+// passed birthday to next year — this also hides a just-passed birthday until it's close.
+// Default ~6 months.
+export const DEFAULT_BIRTHDAY_HORIZON_DAYS = 183
+
+async function readBirthdayHorizonDays(householdId: string): Promise<number> {
+  const { rows } = await query<{ horizon: string | null }>(
+    `select settings->'countdowns'->>'birthdayHorizonDays' as horizon from households where id = $1`,
+    [householdId]
+  )
+  const n = Number(rows[0]?.horizon)
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : DEFAULT_BIRTHDAY_HORIZON_DAYS
+}
+
 // Everything to count down to, soonest first.
 async function listCountdowns(householdId: string): Promise<Countdown[]> {
   const today = await householdToday(householdId)
+  const horizonDays = await readBirthdayHorizonDays(householdId)
   const out: Countdown[] = []
 
   const standalone = await query<{ id: string; title: string; date: string; emoji: string | null; color: string | null }>(
@@ -89,6 +105,9 @@ async function listCountdowns(householdId: string): Promise<Countdown[]> {
   )
   for (const p of people.rows) {
     const date = nextBirthday(p.birthday, today)
+    // Only surface birthdays inside the horizon — keeps far-off (and just-passed,
+    // now-far-off) birthdays off the list.
+    if (daysBetween(today, date) > horizonDays) continue
     out.push({ id: `birthday:${p.id}`, title: `${p.name}'s birthday`, date, daysLeft: daysBetween(today, date), source: 'birthday', emoji: '🎂', color: null, personId: p.id })
   }
 
@@ -97,10 +116,14 @@ async function listCountdowns(householdId: string): Promise<Countdown[]> {
 }
 
 export function registerCountdownRoutes(api: Api): void {
-  // Merged list (standalone + flagged events + birthdays) + the "sleeps" display pref.
+  // Merged list (standalone + flagged events + birthdays) + display prefs.
   api.get('/api/countdowns', tenantRoute(async (tenant: Tenant) => {
-    const [countdowns, sleeps] = await Promise.all([listCountdowns(tenant.householdId), readSleeps(tenant.householdId)])
-    return { countdowns, sleeps }
+    const [countdowns, sleeps, birthdayHorizonDays] = await Promise.all([
+      listCountdowns(tenant.householdId),
+      readSleeps(tenant.householdId),
+      readBirthdayHorizonDays(tenant.householdId),
+    ])
+    return { countdowns, sleeps, birthdayHorizonDays }
   }))
 
   // Create a standalone countdown (any member — collaborative).
@@ -156,17 +179,30 @@ export function registerCountdownRoutes(api: Api): void {
     return res.status(204).send('')
   }))
 
-  // "N sleeps" vs "N days" display preference (household-wide).
+  // Household-wide countdown display prefs: "N sleeps" vs "N days", and how far ahead
+  // birthdays surface. Either field may be sent; each is validated and merged in.
   api.put('/api/countdowns/config', tenantRoute(async (tenant: Tenant, req: Request, res: Response) => {
-    const b = (req.body ?? {}) as { sleeps?: unknown }
-    if (typeof b.sleeps !== 'boolean') return res.status(400).json({ error: 'BadRequest', message: 'sleeps (boolean) is required' })
+    const b = (req.body ?? {}) as { sleeps?: unknown; birthdayHorizonDays?: unknown }
+    const patch: { sleeps?: boolean; birthdayHorizonDays?: number } = {}
+    if ('sleeps' in b) {
+      if (typeof b.sleeps !== 'boolean') return res.status(400).json({ error: 'BadRequest', message: 'sleeps must be a boolean' })
+      patch.sleeps = b.sleeps
+    }
+    if ('birthdayHorizonDays' in b) {
+      const n = Number(b.birthdayHorizonDays)
+      if (!Number.isFinite(n) || n < 1 || n > 366) return res.status(400).json({ error: 'BadRequest', message: 'birthdayHorizonDays must be 1–366' })
+      patch.birthdayHorizonDays = Math.round(n)
+    }
+    if (!('sleeps' in patch) && !('birthdayHorizonDays' in patch)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'sleeps (boolean) or birthdayHorizonDays (number) is required' })
+    }
     await query(
       `update households
           set settings = coalesce(settings, '{}'::jsonb)
                || jsonb_build_object('countdowns', coalesce(settings->'countdowns', '{}'::jsonb) || $2::jsonb)
         where id = $1`,
-      [tenant.householdId, JSON.stringify({ sleeps: b.sleeps })]
+      [tenant.householdId, JSON.stringify(patch)]
     )
-    return { sleeps: b.sleeps }
+    return patch
   }))
 }

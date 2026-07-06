@@ -33,6 +33,12 @@ function inDays(n: number): string {
   return new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10)
 }
 
+// A birthday whose MM-DD lands n days from today (year far in the past so it's a
+// valid persons.birthday). Used to place a birthday inside/outside the horizon.
+function birthdayInDays(n: number): string {
+  return `2010-${inDays(n).slice(5)}`
+}
+
 beforeAll(async () => {
   pg = await new PostgreSqlContainer('postgres:16').start()
   const url = pg.getConnectionUri()
@@ -132,5 +138,56 @@ describe('countdowns', () => {
   it('persists the sleeps display preference', async () => {
     expect((await call('PUT', '/api/countdowns/config', kevin, { sleeps: true })).statusCode).toBe(200)
     expect(JSON.parse((await call('GET', '/api/countdowns', kevin)).body).sleeps).toBe(true)
+  })
+})
+
+// A birthday far off (nearly a year away) is noise on the countdown list. It should
+// only surface once it's inside the horizon (~6 months by default), and a birthday
+// that just passed shouldn't drag next year's occurrence onto the list either.
+describe('countdowns — birthday horizon', () => {
+  const person = (name: string, birthday: string) =>
+    call('POST', '/api/persons', kevin, { name, memberType: 'kid', birthday })
+  const listTitles = async () =>
+    JSON.parse((await call('GET', '/api/countdowns', kevin)).body).countdowns.map((c: { title: string }) => c.title)
+
+  it('excludes a birthday beyond the horizon', async () => {
+    await person('Faraway', birthdayInDays(300)) // ~10 months out
+    expect(await listTitles()).not.toContain("Faraway's birthday")
+  })
+
+  it('includes a birthday within the horizon', async () => {
+    await person('Soon', birthdayInDays(30))
+    expect(await listTitles()).toContain("Soon's birthday")
+  })
+
+  it('hides a just-passed birthday whose next occurrence is far off', async () => {
+    await person('Recent', birthdayInDays(-3)) // 3 days ago → next is ~362 days away
+    expect(await listTitles()).not.toContain("Recent's birthday")
+  })
+
+  it('config can widen birthdayHorizonDays to surface a far-off birthday', async () => {
+    // Faraway (~300 days) is hidden by the default ~183-day horizon…
+    expect(await listTitles()).not.toContain("Faraway's birthday")
+    // …widen the horizon and it appears; sleeps is unchanged.
+    const res = await call('PUT', '/api/countdowns/config', kevin, { birthdayHorizonDays: 365 })
+    expect(res.statusCode).toBe(200)
+    expect(await listTitles()).toContain("Faraway's birthday")
+  })
+
+  it('narrowing birthdayHorizonDays hides an otherwise-visible birthday', async () => {
+    // "Soon" (~30 days out) is visible under a generous horizon…
+    expect(await listTitles()).toContain("Soon's birthday")
+    // …but a 15-day horizon drops it (and keeps Faraway hidden).
+    expect((await call('PUT', '/api/countdowns/config', kevin, { birthdayHorizonDays: 15 })).statusCode).toBe(200)
+    const titles = await listTitles()
+    expect(titles).not.toContain("Soon's birthday")
+    expect(titles).not.toContain("Faraway's birthday")
+  })
+
+  it('config still accepts sleeps and reads back both fields', async () => {
+    expect((await call('PUT', '/api/countdowns/config', kevin, { sleeps: false })).statusCode).toBe(200)
+    const body = JSON.parse((await call('GET', '/api/countdowns', kevin)).body)
+    expect(body.sleeps).toBe(false)
+    expect(typeof body.birthdayHorizonDays).toBe('number')
   })
 })
