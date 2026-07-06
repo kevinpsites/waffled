@@ -13,7 +13,7 @@ import {
   type Recipe,
   type WeekEntry,
 } from '../lib/api'
-import { isEatingOut, isLeftovers } from './components/MealsColumn'
+import { isEatingOut, isLeftovers, isTryNew } from './components/MealsColumn'
 import '../styles/meals.css'
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -85,6 +85,7 @@ function MealPicker({
   onView,
   onEatingOut,
   onLeftovers,
+  onTrySomething,
   onClose,
 }: {
   slot: MealType
@@ -95,6 +96,7 @@ function MealPicker({
   onView?: (recipe: Recipe) => void
   onEatingOut?: () => void
   onLeftovers?: () => void
+  onTrySomething?: () => void
   onClose: () => void
 }) {
   const browse = !onPick
@@ -133,6 +135,7 @@ function MealPicker({
       onView={onView}
       onEatingOut={onEatingOut}
       onLeftovers={onLeftovers}
+      onTrySomething={onTrySomething}
       selectLabel={`Select for ${MEAL_LABEL[slot]}`}
     />
   )
@@ -213,6 +216,13 @@ export function Meals() {
     refetch()
   }
 
+  async function planTrySomething() {
+    if (!picking) return
+    await api.planSlot({ date: picking.date, mealType: picking.mealType, title: 'Try something new' })
+    setPicking(null)
+    refetch()
+  }
+
   function openPicker(d: Date, mealType: MealType) {
     setPicking({
       date: ymd(d),
@@ -265,12 +275,13 @@ export function Meals() {
     if (!entry) return
     const out = isEatingOut(entry)
     const left = isLeftovers(entry)
+    const tryNew = isTryNew(entry)
     pending.current = { key, x: e.clientX, y: e.clientY }
     didDrag.current = false
     // Stash the label for the ghost (only shown once a drag actually starts).
     pendingLabel.current = {
-      emoji: entry.recipe?.emoji ?? (out ? '🍴' : left ? '🥡' : '🍽️'),
-      title: out ? 'Eating out' : left ? 'Leftovers' : entry.recipe?.title ?? entry.title ?? 'Planned',
+      emoji: entry.recipe?.emoji ?? (out ? '🍴' : left ? '🥡' : tryNew ? '✨' : '🍽️'),
+      title: out ? 'Eating out' : left ? 'Leftovers' : tryNew ? 'Try something new' : entry.recipe?.title ?? entry.title ?? 'Planned',
     }
   }
 
@@ -384,6 +395,7 @@ export function Meals() {
         onPick={pick}
         onEatingOut={eatOut}
         onLeftovers={planLeftovers}
+        onTrySomething={planTrySomething}
         onClose={() => setPicking(null)}
       />
     )
@@ -510,8 +522,9 @@ function MonthCell({
 }) {
   const out = entry ? isEatingOut(entry) : false
   const left = entry ? isLeftovers(entry) : false
-  const title = out ? 'Eating out' : entry?.recipe?.title ?? entry?.title ?? null
-  const emoji = entry?.recipe?.emoji ?? (out ? '🍴' : left ? '🥡' : '🍽️')
+  const tryNew = entry ? isTryNew(entry) : false
+  const title = out ? 'Eating out' : tryNew ? 'Try something new' : entry?.recipe?.title ?? entry?.title ?? null
+  const emoji = entry?.recipe?.emoji ?? (out ? '🍴' : left ? '🥡' : tryNew ? '✨' : '🍽️')
   return (
     <div className={`mm-cell ${inMonth ? '' : 'mm-out'} ${isToday ? 'mm-today' : ''}`} data-slot={slotKey} data-planned={entry ? '1' : undefined} onClick={entry ? onOpen : onAdd} role="button" tabIndex={0}>
       <div className="mm-date">{date.getDate()}</div>

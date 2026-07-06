@@ -156,6 +156,22 @@ describe('Meals weekly planner', () => {
     expect(planned[0]).toMatchObject({ mealType: 'dinner', recipeId: 'r1' })
   })
 
+  it('plans a recipe-less "Try something new" night from the picker card', async () => {
+    const planned: unknown[] = []
+    mockApi({ entries: [], recipes: [ravioli], planned })
+    renderMeals()
+
+    const adds = await screen.findAllByRole('button', { name: /^Add dinner/i })
+    fireEvent.click(adds[0])
+
+    // The placeholder "Try something new" card + its Select button.
+    const card = (await screen.findByText('Try something new')).closest('.mp-card') as HTMLElement
+    fireEvent.click(within(card).getByRole('button', { name: 'Select' }))
+    await waitFor(() => expect(planned).toHaveLength(1))
+    expect(planned[0]).toMatchObject({ mealType: 'dinner', title: 'Try something new' })
+    expect((planned[0] as { recipeId?: string }).recipeId).toBeUndefined()
+  })
+
   it('navigates to the recipe detail when tapping a planned meal', async () => {
     mockApi({ entries: [entry(wed, 'dinner', ravioli)], recipes: [ravioli] })
     render(

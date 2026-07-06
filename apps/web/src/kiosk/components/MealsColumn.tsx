@@ -15,6 +15,11 @@ export function isLeftovers(entry: { recipeId: string | null; title: string | nu
   return !entry.recipeId && /^\s*leftovers\s*$/i.test(entry.title ?? '')
 }
 
+// A recipe-less "Try something new" night — a nudge to cook a brand-new dish.
+export function isTryNew(entry: { recipeId: string | null; title: string | null }): boolean {
+  return !entry.recipeId && /try something new|try new/i.test(entry.title ?? '')
+}
+
 // Tonight's dinner — works whether it's a recipe, a recipe-less ("Fish") plan, or
 // an eating-out night. Never vanishes when something is planned.
 function TonightCard({ entry }: { entry: WeekEntry }) {
@@ -23,11 +28,12 @@ function TonightCard({ entry }: { entry: WeekEntry }) {
   const recipeId = entry.recipeId
   const title = recipe?.title ?? entry.title ?? 'Dinner'
   const eatingOut = isEatingOut(entry)
-  const emoji = recipe?.emoji ?? (eatingOut ? '🍴' : '🍽️')
+  const tryNew = isTryNew(entry)
+  const emoji = recipe?.emoji ?? (eatingOut ? '🍴' : tryNew ? '✨' : '🍽️')
 
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ height: 112, background: eatingOut ? 'linear-gradient(135deg,#d9e7f6,#bcd0e9)' : 'linear-gradient(135deg,#f6d9c6,#e9b596)', position: 'relative' }}>
+      <div style={{ height: 112, background: eatingOut ? 'linear-gradient(135deg,#d9e7f6,#bcd0e9)' : tryNew ? 'linear-gradient(135deg,#efdcf3,#d9bce9)' : 'linear-gradient(135deg,#f6d9c6,#e9b596)', position: 'relative' }}>
         <div style={{ position: 'absolute', right: 12, top: 10, fontSize: 34 }}>{emoji}</div>
       </div>
       <div style={{ padding: '14px 16px 15px' }}>
@@ -35,7 +41,7 @@ function TonightCard({ entry }: { entry: WeekEntry }) {
           Tonight · Dinner
         </div>
         <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, margin: '3px 0 6px' }}>
-          {eatingOut ? 'Eating out' : title}
+          {eatingOut ? 'Eating out' : tryNew ? 'Try something new' : title}
         </div>
 
         {recipeId ? (
@@ -56,7 +62,7 @@ function TonightCard({ entry }: { entry: WeekEntry }) {
         ) : (
           <>
             <div className="tiny muted" style={{ paddingBottom: 2 }}>
-              {eatingOut ? 'No cooking tonight 🎉' : 'No recipe attached yet.'}
+              {eatingOut ? 'No cooking tonight 🎉' : tryNew ? 'Time to try a brand-new dish ✨' : 'No recipe attached yet.'}
             </div>
             <div style={{ display: 'flex', gap: 9, paddingTop: 13 }}>
               <button className="btn btn-ghost" onClick={() => navigate('/meals')} style={{ flex: 1, justifyContent: 'center', fontSize: 14, padding: 10, cursor: 'pointer' }}>
@@ -102,6 +108,7 @@ export function WeekDinnersCard() {
       {dinners.map((e: WeekEntry) => {
         const clickable = !!e.recipeId
         const out = isEatingOut(e)
+        const tryNew = isTryNew(e)
         return (
           <div
             key={e.id}
@@ -114,8 +121,8 @@ export function WeekDinnersCard() {
             <div className="tiny" style={{ width: 34, fontWeight: 700, color: 'var(--ink-2)' }}>
               {dayAbbrev(e.date)}
             </div>
-            <div style={{ fontSize: 16, width: 22, textAlign: 'center' }}>{e.recipe?.emoji ?? (out ? '🍴' : '🍽️')}</div>
-            <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{out ? 'Eating out' : e.recipe?.title ?? e.title ?? 'Planned'}</div>
+            <div style={{ fontSize: 16, width: 22, textAlign: 'center' }}>{e.recipe?.emoji ?? (out ? '🍴' : tryNew ? '✨' : '🍽️')}</div>
+            <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{out ? 'Eating out' : tryNew ? 'Try something new' : e.recipe?.title ?? e.title ?? 'Planned'}</div>
             {clickable && <div className="tiny muted" style={{ fontSize: 16 }}>›</div>}
           </div>
         )

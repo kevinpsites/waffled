@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { MealsColumn } from './MealsColumn'
+import { MealsColumn, isTryNew } from './MealsColumn'
 import { localToday } from '../../lib/api'
 
 // TonightCard uses useNavigate (View recipe / Cook Mode), so a router is needed.
@@ -59,5 +59,27 @@ describe('MealsColumn', () => {
     renderCol()
     expect(await screen.findAllByText('Eating out')).toHaveLength(2) // tonight card + week list
     expect(screen.getByText(/No cooking tonight/)).toBeInTheDocument()
+  })
+
+  it('renders a "Try something new" night with its label', async () => {
+    const today = localToday()
+    mockWeek([{ id: `${today}-d`, date: today, mealType: 'dinner', title: 'Try something new', recipeId: null, recipe: null }])
+    renderCol()
+    expect(await screen.findAllByText('Try something new')).toHaveLength(2) // tonight card + week list
+    expect(screen.getByText(/brand-new dish/)).toBeInTheDocument()
+  })
+})
+
+describe('isTryNew', () => {
+  it('classifies a recipe-less "Try something new" entry', () => {
+    expect(isTryNew({ recipeId: null, title: 'Try something new' })).toBe(true)
+    expect(isTryNew({ recipeId: null, title: 'Try new recipe' })).toBe(true)
+  })
+
+  it('does not classify a real recipe or a leftovers night', () => {
+    // A real recipe (has recipeId) even if its title happened to match.
+    expect(isTryNew({ recipeId: 'r1', title: 'Try something new' })).toBe(false)
+    expect(isTryNew({ recipeId: null, title: 'Leftovers' })).toBe(false)
+    expect(isTryNew({ recipeId: null, title: 'Eating out' })).toBe(false)
   })
 })
