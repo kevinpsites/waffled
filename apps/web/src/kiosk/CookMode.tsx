@@ -171,7 +171,7 @@ export function CookMode() {
           )}
           <button className="btn btn-primary" onClick={exit}>Back to recipe</button>
         </div>
-        <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} />
+        <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} onJump={jumpToTimer} />
         <TimerAlarm firing={firingTimers} onDismiss={dismissTimer} onSnooze={snoozeTimer} onJump={jumpToTimer} />
         {sheetOpen && (
           <CookConfirm title={recipe.title} matches={usedMatches} onClose={() => setSheetOpen(false)} />
@@ -246,7 +246,7 @@ export function CookMode() {
         </div>
       )}
 
-      <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} />
+      <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} onJump={jumpToTimer} />
       <TimerAlarm firing={firingTimers} onDismiss={dismissTimer} onSnooze={snoozeTimer} onJump={jumpToTimer} />
     </div>
   )
@@ -359,17 +359,27 @@ function TimerDock({
   timers,
   onToggle,
   onDismiss,
+  onJump,
 }: {
   timers: CookTimer[]
   onToggle: (id: number) => void
   onDismiss: (id: number) => void
+  onJump: (t: CookTimer) => void
 }) {
   if (timers.length === 0) return null
   return (
     <div className="cm-timers" role="status" aria-live="polite">
       {timers.map((t) => (
         <div key={t.id} className={`cm-timer${t.firing ? ' cm-timer-firing' : ''}`}>
-          <div className="cm-timer-info">
+          <div
+            className="cm-timer-info"
+            role="button"
+            tabIndex={0}
+            title="Jump to this step"
+            aria-label={`Jump to this step — ${t.label}`}
+            onClick={() => onJump(t)}
+            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onJump(t)}
+          >
             <div className="cm-timer-label">{t.label}</div>
             <div className="cm-timer-time">{t.firing ? 'Done!' : fmt(t.remainingSeconds)}</div>
           </div>
