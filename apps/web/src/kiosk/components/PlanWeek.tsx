@@ -266,7 +266,7 @@ export function PlanWeek({ startStr, days, onClose, onApplied, initialUseUp }: {
               <span key={u} className="use-chip">{u} <b onClick={() => setWantToTry((x) => x.filter((y) => y !== u))}>×</b></span>
             ))}
             <input
-              className="use-add-input"
+              className="use-add-input wide"
               placeholder="+ e.g. Thai green curry"
               value={wantToTryInput}
               onChange={(e) => setWantToTryInput(e.target.value)}
