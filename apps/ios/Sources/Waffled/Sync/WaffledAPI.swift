@@ -2043,10 +2043,13 @@ struct WaffledAPI: Sendable {
         return try await sendJSON("POST", "/api/lists/grocery/rebuild?weekStart=\(weekStart)", as: Resp.self).board
     }
 
-    /// All lists in the household (for the Lists index).
+    /// All lists in the household (for the Lists index). Templates are excluded
+    /// server-side; we also filter defensively so a `list_type == "template"` row
+    /// never pollutes the normal rail (mirrors the web/server behavior).
     func listSummaries() async throws -> [ListSummary] {
         struct Resp: Decodable { let lists: [ListSummary] }
         return try await getJSON("/api/lists", as: Resp.self).lists
+            .filter { $0.listType.lowercased() != "template" }
     }
 
     /// Create a custom list. Returns the new list summary.
@@ -2099,6 +2102,36 @@ struct WaffledAPI: Sendable {
     /// Remove a list item.
     func deleteListItem(id: String) async throws {
         try await delete("/api/list-items/\(id)")
+    }
+
+    // MARK: List templates (save-as-template / apply)
+    // A template is a `lists` row with listType == "template"; its items are stored
+    // unchecked. Templates are excluded from the normal `GET /api/lists` rail
+    // server-side (and defensively filtered in `listSummaries()`). Save snapshots a
+    // list; apply spins up a fresh custom list with everything unchecked.
+
+    /// Save an existing list as a reusable template (unchecked copies of its items).
+    /// Returns the new template's summary.
+    func saveListAsTemplate(listId: String, name: String? = nil) async throws -> ListSummary {
+        var body: [String: JSONValue] = [:]
+        if let name, !name.isEmpty { body["name"] = .string(name) }
+        struct Resp: Decodable { let template: ListSummary }
+        return try await sendReturning("POST", "/api/lists/\(listId)/save-as-template", body: body, as: Resp.self).template
+    }
+
+    /// The household's saved list templates (hidden from the normal rail).
+    func listTemplates() async throws -> [ListSummary] {
+        struct Resp: Decodable { let templates: [ListSummary] }
+        return try await getJSON("/api/lists/templates", as: Resp.self).templates
+    }
+
+    /// Apply a template → a fresh custom list with everything unchecked. Returns the
+    /// new list's summary (so the caller can open it / refresh the index).
+    func applyListTemplate(templateId: String, name: String? = nil) async throws -> ListSummary {
+        var body: [String: JSONValue] = [:]
+        if let name, !name.isEmpty { body["name"] = .string(name) }
+        struct Resp: Decodable { let list: ListSummary }
+        return try await sendReturning("POST", "/api/lists/templates/\(templateId)/apply", body: body, as: Resp.self).list
     }
 
     // MARK: Goals (lists + goals + log/create; non-synced, fetched over REST)

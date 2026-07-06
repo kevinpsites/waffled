@@ -241,6 +241,18 @@ final class ListDetailModel {
             items = snapshot
         }
     }
+
+    /// Snapshot this list as a reusable template (unchecked copies of its live items).
+    /// Returns true on success so the view can show a brief confirmation.
+    func saveAsTemplate() async -> Bool {
+        do {
+            _ = try await api.saveListAsTemplate(listId: list.id)
+            return true
+        } catch {
+            self.error = true
+            return false
+        }
+    }
 }
 
 struct ListDetailView: View {
@@ -298,6 +310,25 @@ struct ListDetailView: View {
         .background(WF.canvas)
         .navigationTitle(model.list.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // Non-grocery lists can be snapshotted as a reusable template (mirrors the
+            // web "Save as template" header action). Grocery is auto-built, so skip it.
+            if !model.isGrocery {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button {
+                            Task {
+                                if await model.saveAsTemplate() {
+                                    showToast("Saved “\(model.list.name)” as a template")
+                                }
+                            }
+                        } label: { Label("Save as template", systemImage: "doc.on.doc") }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
+            }
+        }
         .task {
             await model.load()
             if DemoHooks.groceryMode == "meal" { mode = .meal }

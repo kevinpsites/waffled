@@ -41,6 +41,21 @@ final class ListsIndexModel {
         do { try await api.deleteList(id: list.id) }
         catch { lists = snapshot; self.error = true }
     }
+
+    /// The household's saved templates (for the "Apply template" picker).
+    func templates() async -> [WaffledAPI.ListSummary] {
+        (try? await api.listTemplates()) ?? []
+    }
+
+    /// Apply a template → a fresh custom list (everything unchecked), reloading the
+    /// index so the new list shows in the rail. Returns it so the caller can open it.
+    func apply(template: WaffledAPI.ListSummary) async -> WaffledAPI.ListSummary? {
+        do {
+            let new = try await api.applyListTemplate(templateId: template.id)
+            await load()
+            return new
+        } catch { self.error = true; return nil }
+    }
 }
 
 struct ListsIndexView: View {
@@ -50,6 +65,7 @@ struct ListsIndexView: View {
     @State private var showCapture = false
     @State private var dictateOnOpen = false
     @State private var creatingList = false
+    @State private var applyingTemplate = false
 
     /// Fire the headless deep-link at most once per process — the index view is
     /// recreated when you pop back to it, so a per-view flag would re-fire and trap
@@ -102,7 +118,14 @@ struct ListsIndexView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { creatingList = true } label: { Image(systemName: "plus") }
+                Menu {
+                    Button { creatingList = true } label: { Label("New list", systemImage: "plus") }
+                    Button { applyingTemplate = true } label: { Label("Apply template", systemImage: "doc.on.doc") }
+                } label: {
+                    Image(systemName: "plus")
+                } primaryAction: {
+                    creatingList = true
+                }
             }
         }
         .task {
@@ -118,6 +141,13 @@ struct ListsIndexView: View {
             NewListSheet { name, emoji in
                 Task { if let new = await model.create(name: name, emoji: emoji) { path.append(.list(new)) } }
             }
+        }
+        .sheet(isPresented: $applyingTemplate) {
+            ApplyTemplateSheet(
+                load: { await model.templates() },
+                onApply: { tpl in
+                    Task { if let new = await model.apply(template: tpl) { path.append(.list(new)) } }
+                })
         }
     }
 
@@ -194,5 +224,72 @@ struct NewListSheet: View {
         .presentationDetents([.height(200), .medium])
         // Land in the name field so you can just start typing.
         .task { try? await Task.sleep(for: .milliseconds(300)); nameFocused = true }
+    }
+}
+
+/// Pick a saved template to spin up a fresh copy of (everything unchecked). Mirrors
+/// the web's Apply-template picker. Loads templates on appear; tapping one applies it
+/// and dismisses.
+struct ApplyTemplateSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let load: () async -> [WaffledAPI.ListSummary]
+    let onApply: (WaffledAPI.ListSummary) -> Void
+
+    @State private var templates: [WaffledAPI.ListSummary] = []
+    @State private var loading = true
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if loading {
+                    WaffledLoading(top: 40)
+                        .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 8, trailing: 18))
+                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                } else if templates.isEmpty {
+                    WaffledEmptyState(
+                        emoji: "📑",
+                        title: "No templates yet",
+                        message: "Open a list and choose “Save as template” to reuse it later.")
+                        .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 8, trailing: 18))
+                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                } else {
+                    SectionLabel(text: "Your templates")
+                        .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 2, trailing: 18))
+                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                    ForEach(templates) { tpl in
+                        Button { onApply(tpl); dismiss() } label: { row(tpl) }
+                            .buttonStyle(.plain)
+                            .listRowInsets(EdgeInsets(top: 5, leading: 18, bottom: 5, trailing: 18))
+                            .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(WF.canvas)
+            .navigationTitle("Apply template")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .task {
+            templates = await load()
+            loading = false
+        }
+    }
+
+    private func row(_ tpl: WaffledAPI.ListSummary) -> some View {
+        WaffledCard(padding: 15) {
+            HStack(spacing: 13) {
+                WaffledEmojiTile(emoji: tpl.emoji ?? "📑")
+                Text(tpl.name).font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink)
+                Spacer(minLength: 8)
+                Text("\(tpl.itemCount)").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.primary)
+            }
+        }
     }
 }
