@@ -86,8 +86,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   three-tier **Settings** reorg (Account · Family · System). The **July 2026 family-hub batch**
   reached iOS parity too — **list templates** (+ swipe/detail list edit & delete), **on-the-spot
   cook timer**, **Try New Recipe**, the **never-cooked 🆕 tag**, and **spot-award stars** (person
-  profile + Rewards page) — plus **owner-first family ordering** (only *Countdown tweaks* iOS parity
-  is still pending). Per-surface (iPhone / iPad)
+  profile + Rewards page) — plus **owner-first family ordering** and a **kid-facing Reward Shop
+  redesign** (wallet hero · category chips/sections off `reward.category` · redeem + confetti
+  celebration). Remaining iOS gaps are minor: **setting** a reward category (the editor picker is
+  web-only; iOS displays/filters), and the **Countdown tweaks** (the birthday-horizon *gating* is
+  backend so it already applies to iOS; only the `birthdayHorizonDays` settings control is unbuilt).
+  Per-surface (iPhone / iPad)
   status — and the remaining mobile gaps — live in the [feature matrix](./features.md).
 
 ## Partial / in progress 🟡
