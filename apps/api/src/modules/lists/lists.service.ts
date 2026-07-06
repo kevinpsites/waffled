@@ -34,7 +34,7 @@ export async function listLists(householdId: string) {
             (select count(*) from list_items i
               where i.list_id = l.id and i.deleted_at is null) as item_count
        from lists l
-      where l.household_id = $1 and l.deleted_at is null
+      where l.household_id = $1 and l.deleted_at is null and l.list_type <> 'template'
       order by (l.list_type = 'grocery') desc, l.sort_order, l.created_at`,
     [householdId]
   )
@@ -108,6 +108,119 @@ export async function softDeleteList(householdId: string, id: string): Promise<b
     }
     await client.query('commit')
     return found
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+// ---- list templates (save-as-template / apply) ------------------------------
+// A template is a `lists` row with list_type='template' whose items are stored
+// unchecked; there's no separate table (Option A). Templates are hidden from the
+// normal rail (listLists filters list_type<>'template').
+
+// The household's saved templates (newest first).
+export async function listTemplates(householdId: string) {
+  const { rows } = await query<ListRow & { item_count: string }>(
+    `select l.id, l.name, l.emoji, l.list_type, l.is_auto_built, l.sort_mode,
+            (select count(*) from list_items i
+              where i.list_id = l.id and i.deleted_at is null) as item_count
+       from lists l
+      where l.household_id = $1 and l.deleted_at is null and l.list_type = 'template'
+      order by l.created_at desc`,
+    [householdId]
+  )
+  return rows.map((r) => ({ ...presentList(r), itemCount: Number(r.item_count) }))
+}
+
+// Save a source list as a reusable template: a new list_type='template' list plus
+// unchecked copies of the source's live items (dropping check state + recipe
+// provenance, since a template is a clean starting point). Returns null if the
+// source list isn't a live list in this household. One transaction (mirrors the
+// softDeleteList cascade).
+export async function saveAsTemplate(
+  tenant: Tenant,
+  sourceListId: string,
+  name?: string
+): Promise<ListRow | null> {
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    const src = await client.query<ListRow>(
+      `select * from lists where household_id = $1 and id = $2 and deleted_at is null and list_type <> 'template'`,
+      [tenant.householdId, sourceListId]
+    )
+    const source = src.rows[0]
+    if (!source) {
+      await client.query('rollback')
+      return null
+    }
+    const created = await client.query<ListRow>(
+      `insert into lists (household_id, name, emoji, list_type, is_auto_built, created_by)
+       values ($1, $2, $3, 'template', false, $4)
+       returning *`,
+      [tenant.householdId, (name && name.trim()) || source.name, source.emoji, tenant.personId]
+    )
+    const template = created.rows[0]
+    // copy the source's live items, unchecked (checked=false, checked_at/by null),
+    // dropping source_recipe_ids — a template is a fresh starting point.
+    await client.query(
+      `insert into list_items
+         (household_id, list_id, name, quantity, category, source, sort_order, created_by, checked)
+       select household_id, $2, name, quantity, category, source, sort_order, $3, false
+         from list_items
+        where household_id = $1 and list_id = $4 and deleted_at is null`,
+      [tenant.householdId, template.id, tenant.personId, sourceListId]
+    )
+    await client.query('commit')
+    return template
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+// Apply a template: spin up a fresh list_type='custom' list from the template's
+// items, all unchecked, recording source_template_id for provenance. Returns null
+// if the template isn't a live template in this household. One transaction.
+export async function applyTemplate(
+  tenant: Tenant,
+  templateId: string,
+  name?: string
+): Promise<ListRow | null> {
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    const tpl = await client.query<ListRow>(
+      `select * from lists where household_id = $1 and id = $2 and deleted_at is null and list_type = 'template'`,
+      [tenant.householdId, templateId]
+    )
+    const template = tpl.rows[0]
+    if (!template) {
+      await client.query('rollback')
+      return null
+    }
+    const created = await client.query<ListRow>(
+      `insert into lists (household_id, name, emoji, list_type, is_auto_built, source_template_id, created_by)
+       values ($1, $2, $3, 'custom', false, $4, $5)
+       returning *`,
+      [tenant.householdId, (name && name.trim()) || template.name, template.emoji, templateId, tenant.personId]
+    )
+    const list = created.rows[0]
+    await client.query(
+      `insert into list_items
+         (household_id, list_id, name, quantity, category, source, sort_order, created_by, checked)
+       select household_id, $2, name, quantity, category, source, sort_order, $3, false
+         from list_items
+        where household_id = $1 and list_id = $4 and deleted_at is null`,
+      [tenant.householdId, list.id, tenant.personId, templateId]
+    )
+    await client.query('commit')
+    return list
   } catch (err) {
     await client.query('rollback')
     throw err
