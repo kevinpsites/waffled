@@ -57,6 +57,7 @@ struct RecipesLibraryView: View {
     @State private var query = ""
     @State private var sort: RecipeSort = .az
     @State private var onlyFavorites = false
+    @State private var onlyNew = false
     @State private var selCuisine: Set<String> = []
     @State private var selProtein: Set<String> = []
     @State private var selDietary: Set<String> = []
@@ -64,11 +65,15 @@ struct RecipesLibraryView: View {
     @FocusState private var searchFocused: Bool
 
     /// Seed `initialProtein` to open the library pre-filtered to one protein (the
-    /// "Cook from your pantry" mains deep-link). Preserves the memberwise call sites.
-    init(model: RecipesModel, initialProtein: String? = nil, onPick: ((WaffledAPI.RecipeSummary) -> Void)? = nil) {
+    /// "Cook from your pantry" mains deep-link), or `initialNewOnly` to open filtered
+    /// to never-cooked recipes (the recipe-detail "🆕 New" tag deep-link). Preserves
+    /// the memberwise call sites.
+    init(model: RecipesModel, initialProtein: String? = nil, initialNewOnly: Bool = false,
+         onPick: ((WaffledAPI.RecipeSummary) -> Void)? = nil) {
         self.model = model
         self.onPick = onPick
         _selProtein = State(initialValue: initialProtein.map { [$0] } ?? [])
+        _onlyNew = State(initialValue: initialNewOnly)
     }
 
     // iPhone: 2 fixed columns. iPad: adaptive — as many ~240pt cards as fit the width.
@@ -162,6 +167,7 @@ struct RecipesLibraryView: View {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         let matched = model.recipes.filter { r in
             if onlyFavorites && !r.isFavorite { return false }
+            if onlyNew && r.cookedCount != 0 { return false }
             if !q.isEmpty && !haystack(r).contains(q) { return false }
             if !selCuisine.isEmpty && !(r.cuisine.map(selCuisine.contains) ?? false) { return false }
             if !selProtein.isEmpty && !(r.protein.map(selProtein.contains) ?? false) { return false }
@@ -181,7 +187,7 @@ struct RecipesLibraryView: View {
     }
 
     private var anyFilter: Bool {
-        onlyFavorites || !selCuisine.isEmpty || !selProtein.isEmpty || !selDietary.isEmpty
+        onlyFavorites || onlyNew || !selCuisine.isEmpty || !selProtein.isEmpty || !selDietary.isEmpty
     }
 
     private func uniqueValues(_ pick: (WaffledAPI.RecipeSummary) -> String?) -> [String] {
@@ -212,6 +218,9 @@ struct RecipesLibraryView: View {
                      text: sort.rawValue, active: anyFilter)
             }
             Spacer()
+            Button { withAnimation(.snappy) { onlyNew.toggle() } } label: {
+                pill(systemImage: "sparkles", text: "New", active: onlyNew)
+            }
             Button { withAnimation(.snappy) { onlyFavorites.toggle() } } label: {
                 pill(systemImage: onlyFavorites ? "heart.fill" : "heart",
                      text: "Favorites", active: onlyFavorites)
@@ -252,6 +261,7 @@ struct RecipesLibraryView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 if onlyFavorites { activeChip("❤️ Favorites") { onlyFavorites = false } }
+                if onlyNew { activeChip("🆕 New") { onlyNew = false } }
                 ForEach(Array(selCuisine).sorted(), id: \.self) { v in
                     activeChip("🌍 \(v.capitalized)") { selCuisine.remove(v) }
                 }
@@ -262,7 +272,7 @@ struct RecipesLibraryView: View {
                     activeChip(v.capitalized) { selDietary.remove(v) }
                 }
                 Button {
-                    withAnimation { onlyFavorites = false; selCuisine = []; selProtein = []; selDietary = [] }
+                    withAnimation { onlyFavorites = false; onlyNew = false; selCuisine = []; selProtein = []; selDietary = [] }
                 } label: {
                     Text("Clear").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
                         .padding(.horizontal, 12).padding(.vertical, 7)
@@ -298,6 +308,12 @@ struct RecipeCard: View {
                 RecipeGradient.forCategory(recipe.category)
                     .overlay(Text(recipe.emoji ?? RecipeGradient.emoji(recipe.category)).font(.system(size: 42)))
                     .frame(height: 104)
+                    .overlay(alignment: .topLeading) {
+                        // Never cooked → a "🆕" corner badge (mirrors the kiosk library).
+                        if recipe.cookedCount == 0 {
+                            Text("🆕").font(.system(size: 15)).padding(7)
+                        }
+                    }
                 if recipe.isFavorite {
                     Text("❤️").font(.system(size: 15)).padding(7)
                 }

@@ -3,6 +3,7 @@ import SwiftUI
 /// A destination within the Meals tab's shared navigation stack.
 enum MealsRoute: Hashable {
     case recipes                      // the full Recipes library (pushed)
+    case recipesNew                   // the library pre-filtered to never-cooked ("🆕 New")
     case recipe(WaffledAPI.RecipeSummary) // one recipe's detail
 }
 
@@ -60,6 +61,7 @@ struct MealsView: View {
             .navigationDestination(for: MealsRoute.self) { route in
                 switch route {
                 case .recipes: RecipesLibraryView(model: model)
+                case .recipesNew: RecipesLibraryView(model: model, initialNewOnly: true)
                 case .recipe(let r): RecipeDetailView(summary: r, model: model)
                 }
             }

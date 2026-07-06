@@ -157,8 +157,16 @@ struct RecipeDetailView: View {
                 if let s = r.sourceName { metaItem("📖", s) }
             }
 
-            if !tagChips.isEmpty {
+            if r.cookedCount == 0 || !tagChips.isEmpty {
                 ChipFlow(spacing: 7, lineSpacing: 7) {
+                    // Never cooked → a tappable "🆕 New" tag that opens the library
+                    // filtered to never-cooked recipes (mirrors the kiosk detail).
+                    if r.cookedCount == 0 {
+                        NavigationLink(value: MealsRoute.recipesNew) {
+                            TagChip(chip: .init(text: "🆕 New", style: .new))
+                        }
+                        .buttonStyle(.plain)
+                    }
                     ForEach(tagChips) { TagChip(chip: $0) }
                 }
             }
@@ -506,7 +514,7 @@ struct TagChip: View {
         let style: Style
         var id: String { "\(style)-\(text)" }
     }
-    enum Style { case plain, collection, dietary, veg, soft }
+    enum Style { case plain, collection, dietary, veg, soft, new }
     let chip: Chip
 
     var body: some View {
@@ -525,6 +533,7 @@ struct TagChip: View {
         case .dietary: return WF.ai
         case .veg: return Color(hex: 0x167A4A)
         case .soft: return WF.ink3
+        case .new: return WF.primary
         }
     }
     private var bg: Color {
@@ -534,6 +543,7 @@ struct TagChip: View {
         case .dietary: return WF.ai.opacity(0.12)
         case .veg: return Color(hex: 0x167A4A).opacity(0.12)
         case .soft: return .clear
+        case .new: return WF.primary.opacity(0.12)
         }
     }
 }
