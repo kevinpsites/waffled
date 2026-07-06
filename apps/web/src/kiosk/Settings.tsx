@@ -1563,41 +1563,39 @@ function CountdownsSettings() {
     countdownsApi.setBirthdayHorizonDays(next).catch(() => setHorizon(prev))
   }
   return (
-    <div className="set-tray" style={{ marginTop: 18 }}>
-      <div className="set-card" style={{ padding: 22 }}>
-        <div className="set-row2-t" style={{ marginBottom: 4 }}>⏳ Countdowns</div>
-        <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 16 }}>
-          Count down to trips, birthdays, and anything you flag on the calendar. Add one from the Today “Countdowns” card, or tick “Show a countdown” when editing an event.
-        </div>
+    <div className="set-card" style={{ marginTop: 18, padding: 22 }}>
+      <div className="set-row2-t" style={{ marginBottom: 4 }}>⏳ Countdowns</div>
+      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 16 }}>
+        Count down to trips, birthdays, and anything you flag on the calendar. Add one from the Today “Countdowns” card, or tick “Show a countdown” when editing an event.
+      </div>
 
-        <label
-          style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', fontWeight: 600 }}
-          onClick={(e) => { e.preventDefault(); toggle(!on) }}
+      <label
+        style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', fontWeight: 600 }}
+        onClick={(e) => { e.preventDefault(); toggle(!on) }}
+      >
+        <span className={`toggle ${on ? 'on' : ''}`} role="switch" aria-checked={on} aria-label="Count in sleeps instead of days" />
+        <span>Count in “sleeps” instead of “days” (kid-friendly)</span>
+      </label>
+
+      <div style={{ marginTop: 18 }}>
+        <div className="set-row2-t" style={{ marginBottom: 4 }}>Show birthdays within</div>
+        <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 10 }}>
+          A birthday only appears on the countdown list once it’s this close — so the whole family’s birthdays don’t crowd it a year out.
+        </div>
+        <select
+          className="sel"
+          value={horizon}
+          aria-label="Show birthdays within"
+          onChange={(e) => pickHorizon(Number(e.target.value))}
+          style={{ maxWidth: 260 }}
         >
-          <span className={`toggle ${on ? 'on' : ''}`} role="switch" aria-checked={on} aria-label="Count in sleeps instead of days" />
-          <span>Count in “sleeps” instead of “days” (kid-friendly)</span>
-        </label>
-
-        <div style={{ marginTop: 18 }}>
-          <div className="set-row2-t" style={{ marginBottom: 4 }}>Show birthdays within</div>
-          <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 10 }}>
-            A birthday only appears on the countdown list once it’s this close — so the whole family’s birthdays don’t crowd it a year out.
-          </div>
-          <select
-            className="sel"
-            value={horizon}
-            aria-label="Show birthdays within"
-            onChange={(e) => pickHorizon(Number(e.target.value))}
-            style={{ maxWidth: 260 }}
-          >
-            {BIRTHDAY_HORIZON_OPTIONS.some((o) => o.days === horizon) ? null : (
-              <option value={horizon}>{horizon} days</option>
-            )}
-            {BIRTHDAY_HORIZON_OPTIONS.map((o) => (
-              <option key={o.days} value={o.days}>{o.label}</option>
-            ))}
-          </select>
-        </div>
+          {BIRTHDAY_HORIZON_OPTIONS.some((o) => o.days === horizon) ? null : (
+            <option value={horizon}>{horizon} days</option>
+          )}
+          {BIRTHDAY_HORIZON_OPTIONS.map((o) => (
+            <option key={o.days} value={o.days}>{o.label}</option>
+          ))}
+        </select>
       </div>
     </div>
   )
