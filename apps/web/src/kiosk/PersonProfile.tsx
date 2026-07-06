@@ -402,36 +402,45 @@ function AwardModal({ person, currencies, defaultCurrency, onClose }: {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 380 }}>
-        <div className="card-h" style={{ marginBottom: 14 }}>Award stars to {person.name}</div>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+        <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
+        <div className="wf-serif" style={{ fontSize: 22, fontWeight: 600, marginBottom: 14 }}>Award stars to {person.name}</div>
 
-        <label className="tiny muted" style={{ fontWeight: 700, display: 'block', marginBottom: 4 }}>AMOUNT</label>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-          <input
-            type="number" min={1} value={amount} aria-label="Amount"
-            onChange={(e) => setAmount(Math.max(0, Math.round(Number(e.target.value) || 0)))}
-            style={{ flex: 1 }}
-          />
+        <div className="field-row">
+          <label className="field" style={{ flex: 1 }}>
+            <span>Amount</span>
+            <input
+              type="number" min={1} value={amount} aria-label="Amount"
+              onChange={(e) => setAmount(Math.max(0, Math.round(Number(e.target.value) || 0)))}
+            />
+          </label>
           {currencies.length > 1 ? (
-            <select aria-label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-              {currencies.map((c) => <option key={c.key} value={c.key}>{c.symbol} {c.label}</option>)}
-            </select>
+            <label className="field" style={{ flex: 1 }}>
+              <span>Currency</span>
+              <select aria-label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                {currencies.map((c) => <option key={c.key} value={c.key}>{c.symbol} {c.label}</option>)}
+              </select>
+            </label>
           ) : (
-            <span className="pill" style={{ alignSelf: 'center' }}>{cur?.symbol ?? '⭐'} {cur?.label ?? 'Stars'}</span>
+            <label className="field" style={{ flex: 1 }}>
+              <span>Currency</span>
+              <span className="pill" style={{ alignSelf: 'flex-start', marginTop: 2 }}>{cur?.symbol ?? '⭐'} {cur?.label ?? 'Stars'}</span>
+            </label>
           )}
         </div>
 
-        <label className="tiny muted" style={{ fontWeight: 700, display: 'block', marginBottom: 4 }}>NOTE (OPTIONAL)</label>
-        <input
-          type="text" value={note} aria-label="Note" placeholder="e.g. so helpful today"
-          onChange={(e) => setNote(e.target.value)}
-          style={{ width: '100%', marginBottom: 18 }}
-        />
+        <label className="field">
+          <span>Note (optional)</span>
+          <input
+            type="text" value={note} aria-label="Note" placeholder="e.g. so helpful today"
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </label>
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button type="button" className="pp-trade" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn-primary" disabled={amount <= 0 || saving} onClick={submit}>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 6 }}>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" disabled={amount <= 0 || saving} onClick={submit}>
             {saving ? 'Awarding…' : `Award ${amount} ${cur?.symbol ?? '⭐'}`}
           </button>
         </div>
