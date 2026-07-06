@@ -922,3 +922,11 @@ button.tick {
 .fn-part-label { flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 7px 10px; border-radius: 9px; border: 1px solid var(--hair); background: var(--card-2, #faf8f4); color: var(--ink); }
 .fn-part-rot { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
 .fn-part-x { flex: none; border: 0; background: none; cursor: pointer; font-size: 19px; line-height: 1; color: var(--ink-3); padding: 2px 4px; }
+
+/* Spot-award modal — family-member picker (chip grid; select one to award to) */
+.sa-people { display: flex; flex-wrap: wrap; gap: 8px; }
+.sa-person { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 999px;
+  border: 1.5px solid var(--hair); background: var(--card-2, #faf8f4); cursor: pointer; font: inherit; }
+.sa-person.on { font-weight: 700; }
+.sa-person-av { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 16px; }
+.sa-person-name { font-size: 14px; font-weight: 700; color: var(--ink); }
