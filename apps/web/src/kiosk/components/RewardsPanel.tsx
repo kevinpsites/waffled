@@ -1,42 +1,68 @@
-import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router'
-import { rewardsApi, useRewardsHub, useHousehold, can, type Reward, type Currency } from '../../lib/api'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { rewardsApi, useRewardsHub, useHousehold, usePersonOverview, can, type Reward, type Currency, type PersonBalance } from '../../lib/api'
+import { SpotAwardModal } from './SpotAwardModal'
+import '../../styles/shop.css'
 
-function Avatar({ emoji, color, name }: { emoji: string | null; color: string | null; name: string | null }) {
+// The five reward-shop categories (backend stores the key; the shop renders the
+// emoji + label + a per-category thumb gradient). `null`/unknown → "Other".
+export const SHOP_CATEGORIES = [
+  { key: 'treats', label: 'Treats', emoji: '🍦', grad: 'linear-gradient(135deg,#FBDCC4,#F3B183)' },
+  { key: 'screen', label: 'Screen time', emoji: '📺', grad: 'linear-gradient(135deg,#D3E2FB,#9DC0F2)' },
+  { key: 'adventures', label: 'Adventures', emoji: '🎢', grad: 'linear-gradient(135deg,#D9EDD2,#A9D59A)' },
+  { key: 'toys', label: 'Toys', emoji: '🧸', grad: 'linear-gradient(135deg,#EEDAF7,#CFA9E8)' },
+  { key: 'privileges', label: 'Privileges', emoji: '👑', grad: 'linear-gradient(135deg,#FBDCC4,#F3B183)' },
+] as const
+
+const CAT_BY_KEY = new Map<string, (typeof SHOP_CATEGORIES)[number]>(SHOP_CATEGORIES.map((c) => [c.key, c]))
+function catOf(key: string | null | undefined) {
+  return (key && CAT_BY_KEY.get(key)) || null
+}
+const DEFAULT_GRAD = 'linear-gradient(135deg,#EEDAF7,#CFA9E8)'
+
+function Avatar({ emoji, color, name, size = 30 }: { emoji: string | null; color: string | null; name: string | null; size?: number }) {
   return (
-    <span className="rw-av" style={{ background: color ? `${color}22` : 'var(--panel)' }} title={name ?? ''}>
+    <span className="shop-av" style={{ width: size, height: size, fontSize: size * 0.55, background: color ? `${color}22` : 'var(--panel)' }} title={name ?? ''}>
       {emoji ?? '🙂'}
     </span>
   )
 }
 
-// A balance/cost rendered with its currency's symbol + color (falls back to ⭐).
-function Coin({ currency, amount }: { currency: Currency | undefined; amount: number }) {
-  return (
-    <span className="rw-coin" style={currency?.color ? { color: currency.color } : undefined}>
-      <span className="rw-coin-sym">{currency?.symbol ?? '⭐'}</span> {amount}
-    </span>
-  )
-}
-
-// The "spend" side of the economy: per-kid balances (per currency), a parent-
-// approval queue, and a rewards catalog kids redeem against. Tap a reward to edit
-// or remove it. Currencies come from the household catalog (Settings → Chores &
-// rewards) — one-currency families just see one balance.
+// The "spend" side of the economy, redesigned as a kid-facing Reward Shop: a
+// per-kid wallet hero + a filterable tile catalog they redeem against. Currencies
+// come from the household catalog (Settings → Chores & rewards). Parents keep the
+// approvals queue, the reward editor, archived rewards, and capability gating.
 export function RewardsPanel() {
   const { rewards, balances, currencies, pending, loading, error, refetch } = useRewardsHub()
   const { person } = useHousehold()
-  // Capability-gated: manage = add/edit/delete + archived; approve = redemption queue.
-  // Members who can't manage still see the catalog and can redeem for themselves.
+  // Capability-gated: manage = add/edit/delete + archived; approve = redemption
+  // queue; grant = spot-award stars. Members who can't manage still shop & redeem.
   const canManage = can(person, 'reward.manage')
   const canApprove = can(person, 'reward.approve')
-  const navigate = useNavigate()
+  const canGrant = can(person, 'reward.grant')
+
+  // Only kids/teens hold wallets in the shop — the roster is everyone with a balance.
+  const kids = balances
+  // Active kid = the logged-in kid if they're in the roster, else the first kid.
+  const [activeKidId, setActiveKidId] = useState<string | null>(null)
+  useEffect(() => {
+    if (kids.length === 0) { setActiveKidId(null); return }
+    setActiveKidId((cur) => {
+      if (cur && kids.some((k) => k.personId === cur)) return cur
+      const mine = person && kids.find((k) => k.personId === person.id)
+      return (mine ?? kids[0]).personId
+    })
+  }, [kids, person])
+  const activeKid = kids.find((k) => k.personId === activeKidId) ?? null
+
+  const [category, setCategory] = useState<string>('all')
   const [redeemFor, setRedeemFor] = useState<Reward | null>(null)
+  const [celebrate, setCelebrate] = useState<{ reward: Reward; pending: boolean } | null>(null)
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<Reward | null>(null)
+  const [awarding, setAwarding] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
 
-  // Archived (soft-deleted) rewards — admin only, shown in a collapsed section.
+  // Archived (soft-deleted) rewards — admin only, collapsed section.
   const [archived, setArchived] = useState<Reward[]>([])
   const [showArchived, setShowArchived] = useState(false)
   const loadArchived = useCallback(() => {
@@ -54,11 +80,29 @@ export function RewardsPanel() {
   const balanceOf = (personId: string, key: string) =>
     balances.find((b) => b.personId === personId)?.balances.find((x) => x.currency === key)?.balance ?? 0
 
-  async function redeem(reward: Reward, personId: string) {
+  // The active kid's wallet, in the default currency (the shop is star-first).
+  const defaultCur = currencies.find((c) => c.isDefault) ?? currencies[0]
+  const walletKey = defaultCur?.key ?? 'stars'
+  const walletBalance = activeKid ? balanceOf(activeKid.personId, walletKey) : 0
+
+  // "Saving toward" comes from the person overview endpoint (balance-derived).
+  const overview = usePersonOverview(activeKidId)
+  const savingToward = overview.data?.savingToward ?? null
+
+  // Which categories actually have rewards → only show chips that filter to something.
+  const presentCats = useMemo(() => {
+    const keys = new Set(rewards.map((r) => r.category).filter(Boolean) as string[])
+    return SHOP_CATEGORIES.filter((c) => keys.has(c.key))
+  }, [rewards])
+  const shown = category === 'all' ? rewards : rewards.filter((r) => r.category === category)
+
+  async function redeem(reward: Reward) {
+    if (!activeKid) return
     setBusy(reward.id)
     try {
-      await rewardsApi.redeem(reward.id, personId)
+      await rewardsApi.redeem(reward.id, activeKid.personId)
       setRedeemFor(null)
+      setCelebrate({ reward, pending: reward.requiresApproval })
       refetch()
     } finally {
       setBusy(null)
@@ -79,132 +123,217 @@ export function RewardsPanel() {
   if (loading) return <div className="muted" style={{ padding: 20 }}>Loading…</div>
   if (error) return <div className="muted" style={{ padding: 20 }}>Couldn't load rewards — try reloading or signing in again.</div>
 
+  const walletSym = defaultCur?.symbol ?? '⭐'
+
   return (
-    <div className="rewards-panel">
-      {/* balances — tap a kid to see how they've earned & spent */}
-      <div className="rw-balances">
-        {balances.map((b) => (
-          <button key={b.personId} type="button" className="rw-bal" onClick={() => navigate(`/person/${b.personId}`)} title={`${b.name}’s history`}>
-            <Avatar emoji={b.avatarEmoji} color={b.colorHex} name={b.name} />
-            <div className="rw-bal-meta">
-              <div className="rw-bal-name">{b.name}</div>
-              <div className="rw-bal-coins">
-                {b.balances.map((cb) => <Coin key={cb.currency} currency={curOf(cb.currency)} amount={cb.balance} />)}
-              </div>
-            </div>
-          </button>
-        ))}
+    <div className="shop">
+      {/* header — title + family chips + parent award button */}
+      <div className="shop-head">
+        <h2 className="shop-title wf-serif">Reward Shop</h2>
+        <div className="shop-head-right">
+          <div className="shop-kids" role="tablist" aria-label="Family members">
+            {kids.map((k) => {
+              const on = k.personId === activeKidId
+              const bal = balanceOf(k.personId, walletKey)
+              return (
+                <button
+                  key={k.personId}
+                  type="button"
+                  role="tab"
+                  aria-selected={on}
+                  className={`shop-kid ${on ? 'on' : ''}`}
+                  onClick={() => setActiveKidId(k.personId)}
+                  title={`${k.name}’s stars`}
+                >
+                  <Avatar emoji={k.avatarEmoji} color={k.colorHex} name={k.name} />
+                  <span className="shop-kid-name">{(k.name ?? '').split(' ')[0]}</span>
+                  <span className="shop-kid-bal">{walletSym} {bal}</span>
+                </button>
+              )
+            })}
+          </div>
+          {canGrant && kids.length > 0 && (
+            <button type="button" className="btn btn-primary shop-award-btn" onClick={() => setAwarding(true)}>
+              ＋ Award stars
+            </button>
+          )}
+        </div>
       </div>
 
       {/* approvals — only for those who can approve redemptions */}
       {canApprove && pending.length > 0 && (
-        <div className="card rw-approvals">
+        <div className="card shop-approvals">
           <div className="card-h" style={{ marginBottom: 10 }}>Needs your OK</div>
           {pending.map((p) => (
-            <div key={p.id} className="rw-appr">
+            <div key={p.id} className="shop-appr">
               <Avatar emoji={p.personAvatar} color={p.personColor} name={p.personName} />
-              <div className="rw-appr-txt">
-                <span className="rw-appr-name">{p.personName}</span> wants{' '}
-                <span className="rw-appr-reward">{p.emoji ? `${p.emoji} ` : ''}{p.title}</span>
-                <span className="rw-appr-cost"><Coin currency={curOf(p.currency)} amount={p.cost} /></span>
+              <div className="shop-appr-txt">
+                <span className="shop-appr-name">{p.personName}</span> wants{' '}
+                <span className="shop-appr-reward">{p.emoji ? `${p.emoji} ` : ''}{p.title}</span>
+                <span className="shop-appr-cost">{curOf(p.currency)?.symbol ?? '⭐'} {p.cost}</span>
               </div>
-              <div className="rw-appr-actions">
-                <button type="button" className="pill" disabled={busy === p.id} onClick={() => decide(p.id, false)}>Deny</button>
-                <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={busy === p.id} onClick={() => decide(p.id, true)}>Approve</button>
+              <div className="shop-appr-actions">
+                <button type="button" className="btn btn-ghost shop-sm" disabled={busy === p.id} onClick={() => decide(p.id, false)}>Deny</button>
+                <button type="button" className="btn btn-primary shop-sm" disabled={busy === p.id} onClick={() => decide(p.id, true)}>Approve</button>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* catalog */}
-      <div className="rw-cat-head">
-        <div className="card-h">Rewards</div>
-        {canManage && (
-          <button type="button" className="pill" style={{ marginLeft: 'auto', cursor: 'pointer' }} onClick={() => setAdding(true)}>＋ Add reward</button>
-        )}
-      </div>
+      {/* hero — active kid's wallet + saving-toward panel */}
+      {activeKid && (
+        <div className="shop-hero">
+          <div className="shop-hero-wallet">
+            <div className="shop-coin" aria-hidden>★</div>
+            <div>
+              <div className="shop-wallet-label">{(activeKid.name ?? 'MY').toUpperCase()}'S STARS</div>
+              <div className="shop-wallet-big">{walletBalance} <span className="shop-wallet-star">★</span> to spend</div>
+              <div className="shop-wallet-sub">Earned from chores this week 🎉</div>
+            </div>
+          </div>
+          <div className="shop-saving">
+            <div className="shop-saving-label">SAVING UP FOR</div>
+            {savingToward ? (
+              <>
+                <div className="shop-saving-row">
+                  <span className="shop-saving-emo">{savingToward.emoji ?? '🎁'}</span>
+                  <span className="shop-saving-title">{savingToward.title}</span>
+                </div>
+                <div className="shop-progress"><div className="shop-progress-fill" style={{ width: `${Math.min(100, savingToward.pct)}%` }} /></div>
+                <div className="shop-saving-go">{savingToward.toGo} ★ to go — keep earning!</div>
+              </>
+            ) : (
+              <div className="shop-saving-empty">No goal picked yet</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* category chips */}
+      {rewards.length > 0 && (
+        <div className="shop-cats" role="tablist" aria-label="Reward categories">
+          <button type="button" role="tab" aria-selected={category === 'all'} className={`shop-cat ${category === 'all' ? 'on' : ''}`} onClick={() => setCategory('all')}>All</button>
+          {presentCats.map((c) => (
+            <button key={c.key} type="button" role="tab" aria-selected={category === c.key} className={`shop-cat ${category === c.key ? 'on' : ''}`} onClick={() => setCategory(c.key)}>
+              <span aria-hidden>{c.emoji}</span> {c.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* catalog manage row */}
+      {canManage && (
+        <div className="shop-manage">
+          <button type="button" className="btn btn-ghost shop-sm" onClick={() => setAdding(true)}>＋ Add reward</button>
+        </div>
+      )}
+
       {rewards.length === 0 ? (
-        <div className="rw-empty">
-          <div className="rw-empty-emo">🎁</div>
-          <div className="rw-empty-h">No rewards yet</div>
-          <div className="rw-empty-b">
+        <div className="shop-empty">
+          <div className="shop-empty-emo">🎁</div>
+          <div className="shop-empty-h">No rewards yet</div>
+          <div className="shop-empty-b">
             {canManage
               ? 'Add something the kids can save up for — movie night, extra screen time, a trip to the park.'
               : 'Once a parent adds rewards, they’ll show up here to save toward.'}
           </div>
           {canManage && (
-            <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} onClick={() => setAdding(true)}>
-              ＋ Add a reward
-            </button>
+            <button type="button" className="btn btn-primary" onClick={() => setAdding(true)}>＋ Add a reward</button>
           )}
         </div>
       ) : (
-        <div className="rw-grid">
-          {rewards.map((r) => (
-            <div key={r.id} className="rw-card">
-              {/* managers tap the card to edit / remove; everyone else just sees it */}
-              {canManage ? (
-                <button type="button" className="rw-card-main" onClick={() => setEditing(r)} title="Edit reward">
-                  <div className="rw-card-emo">{r.emoji ?? '🎁'}</div>
-                  <div className="rw-card-title">{r.title}</div>
-                  <div className="rw-card-cost"><Coin currency={curOf(r.currency)} amount={r.cost} /></div>
-                  <div className="rw-card-edit-hint">Edit</div>
-                </button>
-              ) : (
-                <div className="rw-card-main">
-                  <div className="rw-card-emo">{r.emoji ?? '🎁'}</div>
-                  <div className="rw-card-title">{r.title}</div>
-                  <div className="rw-card-cost"><Coin currency={curOf(r.currency)} amount={r.cost} /></div>
+        <div className="shop-grid">
+          {shown.map((r) => {
+            const cat = catOf(r.category)
+            const cur = curOf(r.currency)
+            const bal = activeKid ? balanceOf(activeKid.personId, r.currency) : 0
+            const affordable = bal >= r.cost
+            const need = Math.max(0, r.cost - bal)
+            const pct = r.cost > 0 ? Math.min(100, Math.round((bal / r.cost) * 100)) : 100
+            return (
+              <div key={r.id} className={`shop-tile ${affordable ? '' : 'locked'}`}>
+                <div className="shop-thumb" style={affordable ? { background: cat?.grad ?? DEFAULT_GRAD } : undefined}>
+                  <span className="shop-thumb-emo">{r.emoji ?? '🎁'}</span>
+                  {!affordable && <span className="shop-lock" aria-hidden>🔒</span>}
+                  <span className="shop-price">{cur?.symbol ?? '★'} {r.cost}</span>
+                  {canManage && (
+                    <button type="button" className="shop-edit" title="Edit reward" aria-label={`Edit ${r.title}`} onClick={() => setEditing(r)}>✎</button>
+                  )}
                 </div>
-              )}
-              {redeemFor?.id === r.id ? (
-                <div className="rw-pick">
-                  {balances.map((b) => {
-                    const bal = balanceOf(b.personId, r.currency)
-                    return (
-                      <button
-                        key={b.personId}
-                        type="button"
-                        className="rw-pick-p"
-                        disabled={busy === r.id || bal < r.cost}
-                        title={bal < r.cost ? `${b.name} needs ${r.cost - bal} more` : `Redeem for ${b.name}`}
-                        onClick={() => redeem(r, b.personId)}
-                      >
-                        {b.avatarEmoji ?? '🙂'}
-                      </button>
-                    )
-                  })}
-                  <button type="button" className="rw-pick-x" onClick={() => setRedeemFor(null)}>×</button>
+                <div className="shop-tile-body">
+                  <div className="shop-tile-name">{r.title}</div>
+                  {cat && <div className="shop-tile-tag">{cat.label}</div>}
+                  {affordable ? (
+                    <button type="button" className="btn btn-primary shop-get" disabled={!activeKid || busy === r.id} onClick={() => setRedeemFor(r)}>
+                      ★ Get it
+                    </button>
+                  ) : (
+                    <div className="shop-locked-foot">
+                      <div className="shop-progress sm"><div className="shop-progress-fill coral" style={{ width: `${pct}%` }} /></div>
+                      <div className="shop-need">{need} more to unlock</div>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <button type="button" className="rw-redeem" onClick={() => setRedeemFor(r)}>Redeem</button>
-              )}
-            </div>
-          ))}
+              </div>
+            )
+          })}
         </div>
       )}
 
-      {/* archived rewards — managers only, collapsed; archiving keeps redemption history */}
+      {/* archived rewards — managers only, collapsed */}
       {canManage && archived.length > 0 && (
-        <div className="rw-archived">
-          <button type="button" className="rw-arch-head" onClick={() => setShowArchived((v) => !v)}>
-            <span className={`rw-arch-caret ${showArchived ? 'open' : ''}`}>›</span>
+        <div className="shop-archived">
+          <button type="button" className="shop-arch-head" onClick={() => setShowArchived((v) => !v)}>
+            <span className={`shop-arch-caret ${showArchived ? 'open' : ''}`}>›</span>
             Archived ({archived.length})
           </button>
           {showArchived && (
-            <div className="rw-arch-list">
+            <div className="shop-arch-list">
               {archived.map((r) => (
-                <div key={r.id} className="rw-arch-row">
-                  <span className="rw-arch-emo">{r.emoji ?? '🎁'}</span>
-                  <span className="rw-arch-t">{r.title}</span>
-                  <span className="rw-arch-cost"><Coin currency={curOf(r.currency)} amount={r.cost} /></span>
-                  <button type="button" className="pill" disabled={busy === r.id} onClick={() => restore(r.id)}>Restore</button>
+                <div key={r.id} className="shop-arch-row">
+                  <span className="shop-arch-emo">{r.emoji ?? '🎁'}</span>
+                  <span className="shop-arch-t">{r.title}</span>
+                  <span className="shop-arch-cost">{curOf(r.currency)?.symbol ?? '⭐'} {r.cost}</span>
+                  <button type="button" className="btn btn-ghost shop-sm" disabled={busy === r.id} onClick={() => restore(r.id)}>Restore</button>
                 </div>
               ))}
             </div>
           )}
         </div>
+      )}
+
+      {/* redeem-confirm sheet */}
+      {redeemFor && activeKid && (
+        <RedeemSheet
+          reward={redeemFor}
+          currency={curOf(redeemFor.currency)}
+          balance={balanceOf(activeKid.personId, redeemFor.currency)}
+          busy={busy === redeemFor.id}
+          onCancel={() => setRedeemFor(null)}
+          onConfirm={() => redeem(redeemFor)}
+        />
+      )}
+
+      {/* celebration */}
+      {celebrate && activeKid && (
+        <Celebration
+          reward={celebrate.reward}
+          pending={celebrate.pending}
+          currency={curOf(celebrate.reward.currency)}
+          balance={balanceOf(activeKid.personId, celebrate.reward.currency)}
+          onClose={() => setCelebrate(null)}
+        />
+      )}
+
+      {/* parent spot-award (user picker) */}
+      {awarding && (
+        <SpotAwardModal
+          people={kids.map((k) => ({ id: k.personId, name: k.name ?? 'Someone', avatarEmoji: k.avatarEmoji, colorHex: k.colorHex }))}
+          currencies={currencies}
+          onClose={() => setAwarding(false)}
+          onAwarded={refetch}
+        />
       )}
 
       {(adding || editing) && (
@@ -215,7 +344,83 @@ export function RewardsPanel() {
           onSaved={afterCatalogChange}
         />
       )}
+    </div>
+  )
+}
 
+// The redeem-confirm sheet: a centered modal with a big gradient well, the price,
+// a "balance → left" line, and Not yet / Redeem it! actions.
+function RedeemSheet({ reward, currency, balance, busy, onCancel, onConfirm }: {
+  reward: Reward; currency: Currency | undefined; balance: number; busy: boolean; onCancel: () => void; onConfirm: () => void
+}) {
+  const cat = catOf(reward.category)
+  const sym = currency?.symbol ?? '★'
+  const left = balance - reward.cost
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal-card shop-sheet" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="modal-close" aria-label="Close" onClick={onCancel}>×</button>
+        <div className="shop-well" style={{ background: cat?.grad ?? DEFAULT_GRAD }}>
+          <span>{reward.emoji ?? '🎁'}</span>
+        </div>
+        <div className="shop-sheet-title wf-serif">Redeem {reward.title}?</div>
+        <div className="shop-sheet-price">{sym} {reward.cost}</div>
+        <div className="shop-sheet-bal">{sym} {balance} → {sym} {left} left</div>
+        <div className="shop-sheet-actions">
+          <button type="button" className="btn btn-ghost" onClick={onCancel}>Not yet</button>
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={onConfirm}>
+            {busy ? 'Redeeming…' : `Redeem it! ${sym}${reward.cost}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const CONFETTI_COLORS = ['#EC6049', '#8A5CF0', '#F3A93B', '#25A368', '#2F7FED', '#E0548B']
+
+// The celebration card after a successful redeem: thumb + emoji, a CSS confetti
+// burst (pure CSS/JS — no library), the balance line, an approval-aware pill, and
+// a "Back to shop" button. When the reward needs approval it's still *pending*, so
+// the copy softens and the balance shows the pending cost.
+function Celebration({ reward, pending, currency, balance, onClose }: {
+  reward: Reward; pending: boolean; currency: Currency | undefined; balance: number; onClose: () => void
+}) {
+  const cat = catOf(reward.category)
+  const sym = currency?.symbol ?? '★'
+  // If it needs approval no debit landed yet — show what it *will* cost. Otherwise
+  // the balance already reflects the spend.
+  const left = balance - reward.cost
+  const confetti = useMemo(
+    () => Array.from({ length: 24 }, (_, i) => ({
+      left: `${Math.round((i * 37 + 11) % 100)}%`,
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      delay: `${(i % 6) * 40}ms`,
+      dx: `${((i % 5) - 2) * 30}px`,
+      rot: `${(i * 47) % 360}deg`,
+    })),
+    []
+  )
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card shop-celebrate" onClick={(e) => e.stopPropagation()}>
+        <div className="shop-confetti" aria-hidden>
+          {confetti.map((c, i) => (
+            <span key={i} className="shop-confetti-bit" style={{ left: c.left, background: c.color, animationDelay: c.delay, '--dx': c.dx, '--rot': c.rot } as React.CSSProperties} />
+          ))}
+        </div>
+        <div className="shop-well" style={{ background: cat?.grad ?? DEFAULT_GRAD }}>
+          <span>{reward.emoji ?? '🎁'}</span>
+        </div>
+        <div className="shop-celebrate-title wf-serif">{reward.title} unlocked! 🎉</div>
+        <div className="shop-sheet-bal">
+          {pending ? `${sym} ${balance} → ${sym} ${balance - reward.cost} when approved` : `${sym} ${balance} → ${sym} ${left} left`}
+        </div>
+        <div className="shop-celebrate-pill">
+          {pending ? '✓ Asked Mom & Dad — coming soon!' : '✓ Enjoy!'}
+        </div>
+        <button type="button" className="btn btn-primary shop-back" onClick={onClose}>Back to shop</button>
+      </div>
     </div>
   )
 }
@@ -227,6 +432,7 @@ function RewardModal({ reward, currencies, onClose, onSaved }: { reward?: Reward
   const [emoji, setEmoji] = useState(reward?.emoji ?? '🎁')
   const [cost, setCost] = useState(reward?.cost ?? 10)
   const [currencyKey, setCurrencyKey] = useState(() => reward?.currency ?? (spendable.find((c) => c.isDefault) ?? spendable[0])?.key ?? 'stars')
+  const [category, setCategory] = useState<string>(reward?.category ?? '')
   const [requiresApproval, setRequiresApproval] = useState(reward?.requiresApproval ?? true)
   const [saving, setSaving] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
@@ -245,7 +451,7 @@ function RewardModal({ reward, currencies, onClose, onSaved }: { reward?: Reward
     if (!title.trim()) return
     setSaving(true)
     try {
-      const body = { title: title.trim(), emoji: emoji.trim() || null, cost: Math.max(0, Math.round(cost || 0)), currency: currencyKey, requiresApproval }
+      const body = { title: title.trim(), emoji: emoji.trim() || null, cost: Math.max(0, Math.round(cost || 0)), currency: currencyKey, category: category || null, requiresApproval }
       if (editing) await rewardsApi.updateReward(reward!.id, body)
       else await rewardsApi.createReward(body)
       onSaved()
@@ -275,6 +481,18 @@ function RewardModal({ reward, currencies, onClose, onSaved }: { reward?: Reward
         <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
           <input className="rw-emoji-in" value={emoji} onChange={(e) => setEmoji(e.target.value)} aria-label="Emoji" maxLength={2} />
           <input className="rw-title-in" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Movie night, 30 min screen time…" aria-label="Reward title" autoFocus />
+        </div>
+        {/* category picker — shared chip styling; None clears it */}
+        <div className="field" style={{ marginBottom: 12 }}>
+          <span>Category</span>
+          <div className="shop-cat-pick" role="radiogroup" aria-label="Category">
+            <button type="button" role="radio" aria-checked={category === ''} className={`shop-cat ${category === '' ? 'on' : ''}`} onClick={() => setCategory('')}>None</button>
+            {SHOP_CATEGORIES.map((c) => (
+              <button key={c.key} type="button" role="radio" aria-checked={category === c.key} className={`shop-cat ${category === c.key ? 'on' : ''}`} onClick={() => setCategory(c.key)}>
+                <span aria-hidden>{c.emoji}</span> {c.label}
+              </button>
+            ))}
+          </div>
         </div>
         {/* currency picker — only when the family has more than one spendable currency */}
         {spendable.length > 1 && (
@@ -315,8 +533,8 @@ function RewardModal({ reward, currencies, onClose, onSaved }: { reward?: Reward
               {confirmDel ? 'Tap again to archive' : 'Archive'}
             </button>
           )}
-          <button type="button" className="pill" style={{ marginLeft: 'auto' }} onClick={onClose}>Cancel</button>
-          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={saving || !title.trim()} onClick={save}>
+          <button type="button" className="btn btn-ghost shop-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary shop-sm" disabled={saving || !title.trim()} onClick={save}>
             {saving ? 'Saving…' : editing ? 'Save' : 'Add reward'}
           </button>
         </div>
@@ -324,3 +542,6 @@ function RewardModal({ reward, currencies, onClose, onSaved }: { reward?: Reward
     </div>
   )
 }
+
+// re-export for tests that build a synthetic roster
+export type { PersonBalance }
