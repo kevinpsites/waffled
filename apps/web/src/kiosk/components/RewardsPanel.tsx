@@ -129,9 +129,7 @@ export function RewardsPanel() {
     <div className="shop">
       {/* header — title + family chips + parent award button */}
       <div className="shop-head">
-        <h2 className="shop-title wf-serif">Reward Shop</h2>
-        <div className="shop-head-right">
-          <div className="shop-kids" role="tablist" aria-label="Family members">
+        <div className="shop-kids" role="tablist" aria-label="Family members">
             {kids.map((k) => {
               const on = k.personId === activeKidId
               const bal = balanceOf(k.personId, walletKey)
@@ -152,12 +150,11 @@ export function RewardsPanel() {
               )
             })}
           </div>
-          {canGrant && kids.length > 0 && (
-            <button type="button" className="btn btn-primary shop-award-btn" onClick={() => setAwarding(true)}>
-              ＋ Award stars
-            </button>
-          )}
-        </div>
+        {canGrant && kids.length > 0 && (
+          <button type="button" className="btn btn-primary shop-award-btn" onClick={() => setAwarding(true)}>
+            ＋ Award stars
+          </button>
+        )}
       </div>
 
       {/* approvals — only for those who can approve redemptions */}

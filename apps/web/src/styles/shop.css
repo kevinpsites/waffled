@@ -27,7 +27,7 @@
 .shop-kid-bal { font-weight: 700; color: var(--gold); }
 .shop-kid.on .shop-kid-bal { color: var(--gold); }
 
-.shop-award-btn { padding: 9px 16px; }
+.shop-award-btn { padding: 9px 16px; margin-left: auto; }
 
 /* --- approvals queue (parents) --- */
 .shop-approvals { padding: 16px; }
