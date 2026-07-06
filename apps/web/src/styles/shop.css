@@ -5,7 +5,7 @@
    (.modal-*, .btn, .field). Shop-specific structure lives here.
    ============================================================ */
 
-.shop { display: flex; flex-direction: column; gap: 18px; }
+.shop { display: flex; flex-direction: column; gap: 18px; padding: 0 30px 28px; }
 
 /* --- header: title + family chips + award button --- */
 .shop-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
