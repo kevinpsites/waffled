@@ -48,7 +48,7 @@ struct HubDestination: View {
         case let .goal(goal):   GoalDetailView(goal: goal, path: $path)
         case let .person(id):   PersonView(personId: id, path: $path)
         case .rewards:          RewardsView(path: $path)
-        case let .rewardShop(id): RewardShopView(personId: id, path: $path)
+        case let .rewardShop(id): RewardShopView(personId: id)
         case .photos:           PhotosView()
         case .settings:         SettingsView(path: $path)
         case .settingsAccount:  AccountSettingsView()

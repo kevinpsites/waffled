@@ -211,6 +211,8 @@ struct RewardsView: View {
     @State private var editor: EditorMode?
     @State private var showArchived = false
     @State private var awarding = false
+    @State private var managing = false                 // "Manage rewards" sheet (add/edit/archive)
+    @State private var activePersonId: String?          // whose shop the tab is showing
 
     /// What the reward editor sheet is doing.
     private enum EditorMode: Identifiable {
@@ -221,57 +223,28 @@ struct RewardsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                if isKiosk {
-                    KioskPageHeader("Rewards", "Spend stars on what your family loves.") {
-                        if sync.can("reward.manage") {
-                            KioskHeaderButton(icon: "plus", label: "New reward") { editor = .new }
-                        }
-                    }
+        // The Rewards tab IS the shop now: person tabs pinned on top (like the calendar
+        // filters), the selected person's shop below. Web-parity.
+        VStack(spacing: 0) {
+            if isKiosk {
+                KioskPageHeader("Rewards", "Spend stars on what your family loves.") {
+                    actionButtons
                 }
-                if sync.can("reward.approve") && !model.pending.isEmpty {
-                    // Cap + center the approval card on iPad so it reads identically to the
-                    // Chores tab's card (same component) instead of stretching full-bleed and
-                    // throwing the Deny/Approve buttons out to the screen edge.
-                    approvalsCard
-                        .frame(maxWidth: isKiosk ? 760 : .infinity)
-                        .frame(maxWidth: .infinity, alignment: isKiosk ? .center : .leading)
-                }
-
-                HStack {
-                    SectionLabel(text: "Family balances")
-                    Spacer()
-                    if sync.can("reward.grant") && !model.people.isEmpty {
-                        Button { awarding = true } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "star.fill").font(.system(size: 11, weight: .bold))
-                                Text("Award").font(.system(size: 13, weight: .bold)).lineLimit(1)
-                            }
-                            .foregroundStyle(WF.gold)
-                            .padding(.horizontal, 11).padding(.vertical, 6)
-                            .background(WF.gold.opacity(0.16)).clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain).fixedSize()
-                    }
-                }
-                if model.people.isEmpty && model.loading {
-                    WaffledLoading(top: 40)
-                } else {
-                    ForEach(model.people) { p in personRow(p) }
-                }
-
-                catalogSection
+                .padding(.horizontal, 24).padding(.top, 18).padding(.bottom, 4)
             }
-            .padding(16).padding(.bottom, 110)
+            personSelector
+            Divider().background(WF.hair)
+            shopArea
         }
-        .scrollBounceBehavior(.always)
         .background(WF.canvas)
         .navigationTitle("Rewards").navigationBarTitleDisplayMode(.inline)
         .toolbar(isKiosk ? .hidden : .visible, for: .navigationBar)
-        .task { await model.load() }
-        .refreshable { await model.load() }
-        .onChange(of: sync.rewardsRev) { _, _ in Task { await model.load() } }
+        .toolbar {
+            if !isKiosk { ToolbarItemGroup(placement: .primaryAction) { actionButtons } }
+        }
+        .task { await model.load(); ensureActive() }
+        .refreshable { await model.load(); ensureActive() }
+        .onChange(of: sync.rewardsRev) { _, _ in Task { await model.load(); ensureActive() } }
         .sheet(item: $editor) { mode in
             RewardEditorSheet(editing: mode.reward, currencies: model.spendableCurrencies) {
                 Task { await model.load() }
@@ -282,6 +255,80 @@ struct RewardsView: View {
                 await model.load()
             }
         }
+        .sheet(isPresented: $managing) {
+            NavigationStack {
+                ScrollView { catalogSection.padding(16).padding(.bottom, 40) }
+                    .background(WF.canvas)
+                    .navigationTitle("Manage rewards").navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { managing = false } } }
+            }
+        }
+    }
+
+    // MARK: person tabs + shop
+
+    /// The person-tab strip at the top of the Rewards tab — pick whose shop to view.
+    private var personSelector: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(model.people) { p in
+                    let on = p.personId == activePersonId
+                    Button { withAnimation(.snappy) { activePersonId = p.personId } } label: {
+                        HStack(spacing: 7) {
+                            Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 26)
+                            Text(p.name ?? "—").font(.system(size: 14, weight: .bold))
+                        }
+                        .foregroundStyle(on ? .white : WF.ink)
+                        .padding(.leading, 6).padding(.trailing, 13).padding(.vertical, 6)
+                        .background(on ? WF.ink : WF.card)
+                        .clipShape(Capsule())
+                        .overlay(Capsule().strokeBorder(on ? Color.clear : WF.hair, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+        }
+        .background(WF.canvas)
+    }
+
+    @ViewBuilder private var shopArea: some View {
+        if let pid = activePersonId {
+            RewardShopView(personId: pid, embedded: true,
+                           canManage: sync.can("reward.manage"),
+                           onEdit: { editor = .edit($0) })
+        } else if model.loading {
+            VStack { WaffledLoading(top: 60); Spacer() }
+        } else {
+            VStack(spacing: 8) {
+                Spacer()
+                Text("🎁").font(.system(size: 40))
+                Text("No family members yet.").font(.system(size: 14)).foregroundStyle(WF.ink3)
+                Spacer()
+            }
+        }
+    }
+
+    /// Award (spot) · Manage · Approvals — shared by the iPhone toolbar + iPad header.
+    @ViewBuilder private var actionButtons: some View {
+        if sync.can("reward.approve") && !model.pending.isEmpty {
+            Button { path.append(.approvals) } label: {
+                Image(systemName: "bell.badge").overlay(alignment: .topTrailing) {
+                    WaffledStatusBadge(text: "\(model.pending.count)", color: WF.primary, size: 11, weight: .heavy).offset(x: 7, y: -7)
+                }
+            }
+        }
+        if sync.can("reward.grant") && !model.people.isEmpty {
+            Button { awarding = true } label: { Image(systemName: "star.fill").foregroundStyle(WF.gold) }
+        }
+        if sync.can("reward.manage") {
+            Button { managing = true } label: { Image(systemName: "slider.horizontal.3") }
+        }
+    }
+
+    private func ensureActive() {
+        if let id = activePersonId, model.people.contains(where: { $0.personId == id }) { return }
+        activePersonId = model.people.first?.personId
     }
 
     // MARK: catalog management
@@ -459,7 +506,9 @@ struct RewardsView: View {
 /// a backend endpoint).
 struct RewardShopView: View {
     let personId: String
-    @Binding var path: [HubRoute]
+    var embedded = false                              // rendered inside the Rewards tab (no own header/navbar)
+    var canManage = false                             // managers get an edit ✎ on tiles
+    var onEdit: ((WaffledAPI.Reward) -> Void)? = nil
     @Environment(SyncManager.self) private var sync
     @Environment(\.dismiss) private var dismiss
     @State private var model = RewardsModel()
@@ -481,10 +530,17 @@ struct RewardShopView: View {
     private let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
     var body: some View {
+        // Standalone (pushed) draws its own header + hides the nav bar; embedded in the
+        // Rewards tab it's just the scroll (the tab owns the chrome + person tabs).
+        if embedded { content }
+        else { content.navigationBarTitleDisplayMode(.inline).toolbar(.hidden, for: .navigationBar) }
+    }
+
+    private var content: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if let p = model.person(personId) {
-                    header(p)
+                    if !embedded { header(p) }
                     heroCard(p)
                     if !presentCategories.isEmpty { categoryChips }
                     if rewards.isEmpty {
@@ -498,13 +554,11 @@ struct RewardShopView: View {
                     WaffledLoading(top: 60)
                 }
             }
-            .padding(16).padding(.bottom, 110)
+            .padding(16).padding(.bottom, embedded ? 32 : 110)
         }
         .scrollBounceBehavior(.always)
         .background(WF.canvas)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .navigationBar)   // the content draws its own header
-        .task { await reload() }
+        .task(id: personId) { await reload() }
         .refreshable { await reload() }
         .onChange(of: sync.rewardsRev) { _, _ in Task { await reload() } }
         .sheet(item: $redeemFor) { r in
@@ -695,6 +749,15 @@ struct RewardShopView: View {
                 .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(.white).clipShape(Capsule())
                 .padding(7)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if canManage, let onEdit {
+                    Button { onEdit(r) } label: {
+                        Image(systemName: "pencil").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink2)
+                            .frame(width: 28, height: 28).background(.white.opacity(0.9)).clipShape(Circle())
+                    }
+                    .buttonStyle(.plain).padding(6)
+                }
             }
             VStack(alignment: .leading, spacing: 7) {
                 Text(r.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
