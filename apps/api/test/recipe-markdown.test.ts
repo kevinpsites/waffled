@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseRecipe, parseIngredient, parseAmount } from '../src/modules/meals/recipe-markdown'
+import { parseRecipe, parseIngredient, parseAmount, parseDuration } from '../src/modules/meals/recipe-markdown'
 
 const SAMPLE = `---
 type: dinner
@@ -36,6 +36,7 @@ tags: [family-favorite, quick]
    - 2 eggs
    - 1 cup breadcrumbs
 2. Pan-fry until golden, about 4 minutes a side.
+   **Timer:** 4 minutes
 3. Top with sauce and cheese, broil until bubbly.
 
 ## Notes
@@ -43,6 +44,20 @@ tags: [family-favorite, quick]
 Kids like it with extra cheese.
 Source: Grandma's kitchen
 `
+
+describe('parseDuration', () => {
+  it('parses minutes, hours, seconds, compound, and short forms', () => {
+    expect(parseDuration('20 minutes')).toBe(1200)
+    expect(parseDuration('1 hour 30 min')).toBe(5400)
+    expect(parseDuration('90s')).toBe(90)
+    expect(parseDuration('2 hrs')).toBe(7200)
+    expect(parseDuration('45 sec')).toBe(45)
+    expect(parseDuration('1h')).toBe(3600)
+    expect(parseDuration('1.5 hours')).toBe(5400)
+    expect(parseDuration('nonsense')).toBeNull()
+    expect(parseDuration('')).toBeNull()
+  })
+})
 
 describe('parseAmount', () => {
   it('parses whole, decimal, fraction, mixed-unicode, and ranges', () => {
@@ -113,6 +128,26 @@ describe('parseRecipe', () => {
     expect(r.steps[0].text).toContain('Bread the chicken')
     expect(r.steps[0].ingredients).toEqual(['2 eggs', '1 cup breadcrumbs'])
     expect(r.steps[1].ingredients).toEqual([])
+  })
+
+  it('parses a **Timer:** sub-line into timerSeconds and strips it from the text', () => {
+    expect(r.steps[1].timerSeconds).toBe(240)
+    expect(r.steps[1].text).toContain('Pan-fry until golden')
+    expect(r.steps[1].text).not.toMatch(/Timer/i)
+    expect(r.steps[1].text).not.toContain('4 minutes\n')
+  })
+
+  it('leaves timerSeconds undefined for a step with no timer', () => {
+    expect(r.steps[0].timerSeconds).toBeUndefined()
+    expect(r.steps[2].timerSeconds).toBeUndefined()
+  })
+
+  it('parses various durations and an inline {timer: …} token', () => {
+    const md = `# T\n\n## Instructions\n\n1. Rest the dough. {timer: 1 hour 30 min}\n2. Simmer.\n   **Timer:** 90s\n`
+    const parsed = parseRecipe(md)
+    expect(parsed.steps[0].timerSeconds).toBe(5400)
+    expect(parsed.steps[0].text).toBe('Rest the dough.')
+    expect(parsed.steps[1].timerSeconds).toBe(90)
   })
 
   it('extracts notes and the source name', () => {

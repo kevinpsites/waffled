@@ -75,8 +75,8 @@ async function importRecipe(householdId: string, r: ParsedRecipe): Promise<void>
     let stepNo = 1
     for (const s of r.steps) {
       await client.query(
-        `insert into recipe_steps (household_id, recipe_id, step_number, instruction, ingredients) values ($1,$2,$3,$4,$5)`,
-        [householdId, recipeId, stepNo++, s.text, JSON.stringify(s.ingredients)]
+        `insert into recipe_steps (household_id, recipe_id, step_number, instruction, ingredients, timer_seconds) values ($1,$2,$3,$4,$5,$6)`,
+        [householdId, recipeId, stepNo++, s.text, JSON.stringify(s.ingredients), s.timerSeconds ?? null]
       )
     }
     await client.query('commit')

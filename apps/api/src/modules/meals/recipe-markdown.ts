@@ -72,6 +72,34 @@ export function parseIngredient(raw: string, section: string | null): ParsedIng 
   return { name, amount, unit, prepNote, display, section, aisle: aisleFor(name || display, unit), isStaple: isStaple(name || display) }
 }
 
+// ---- duration parsing -----------------------------------------------------
+
+// Parse a human-written duration ("20 minutes", "1 hour 30 min", "90s", "1.5 hrs")
+// into total seconds. Sums every unit-tagged number it finds. Returns null when the
+// string carries no recognizable duration.
+const DURATION_UNIT_SECONDS: Array<{ re: RegExp; mult: number }> = [
+  { re: /(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h)\b/gi, mult: 3600 },
+  { re: /(\d+(?:\.\d+)?)\s*(?:minutes?|mins?|m)\b/gi, mult: 60 },
+  { re: /(\d+(?:\.\d+)?)\s*(?:seconds?|secs?|s)\b/gi, mult: 1 },
+]
+
+export function parseDuration(raw: string | null | undefined): number | null {
+  const t = (raw ?? '').trim()
+  if (!t) return null
+  let total = 0
+  let matched = false
+  for (const { re, mult } of DURATION_UNIT_SECONDS) {
+    re.lastIndex = 0
+    let m: RegExpExecArray | null
+    while ((m = re.exec(t)) !== null) {
+      total += parseFloat(m[1]) * mult
+      matched = true
+    }
+  }
+  if (!matched) return null
+  return Math.round(total)
+}
+
 // ---- markdown parsing -----------------------------------------------------
 
 export interface ParsedRecipe {
@@ -94,7 +122,7 @@ export interface ParsedRecipe {
   vegetables: string[]
   collection: string | null
   ingredients: ParsedIng[]
-  steps: Array<{ text: string; ingredients: string[] }>
+  steps: Array<{ text: string; ingredients: string[]; timerSeconds?: number }>
   markdown: string
 }
 
@@ -145,13 +173,28 @@ export function parseRecipe(md: string, collection: string | null = null): Parse
 
   // ## Instructions → numbered steps, each with its own per-step ingredient list
   // (the "**Ingredients:**" sub-block). REQUIRED to keep.
-  const steps: Array<{ text: string; ingredients: string[] }> = []
+  const steps: Array<{ text: string; ingredients: string[]; timerSeconds?: number }> = []
   const insSection = /##\s+Instructions\s*\n([\s\S]*?)(?=\n##\s|\n*$)/i.exec(body)?.[1] ?? ''
   for (const block of insSection.split(/\n(?=\d+\.\s)/)) {
     const num = /^\s*\d+\.\s+([\s\S]*)$/.exec(block)
     if (!num) continue
     const [textPart, ingPart] = num[1].split(/\*\*\s*Ingredients?:?\s*\*\*/i)
-    const text = textPart.replace(/\s+/g, ' ').trim()
+    // A step timer can be declared two ways (either strips out of the display text):
+    //   - a **Timer:** sub-line (mirrors **Ingredients:**), e.g. "**Timer:** 20 minutes"
+    //   - an inline {timer: …} token, e.g. "Rest the dough. {timer: 1 hour 30 min}"
+    let timerSeconds: number | undefined
+    let rawText = textPart
+    const subLine = /\*\*\s*Timer:?\s*\*\*\s*([^\n]+)/i.exec(rawText)
+    if (subLine) {
+      timerSeconds = parseDuration(subLine[1]) ?? undefined
+      rawText = rawText.replace(subLine[0], ' ')
+    }
+    const inline = /\{\s*timer:?\s*([^}]+)\}/i.exec(rawText)
+    if (inline) {
+      timerSeconds = timerSeconds ?? (parseDuration(inline[1]) ?? undefined)
+      rawText = rawText.replace(inline[0], ' ')
+    }
+    const text = rawText.replace(/\s+/g, ' ').trim()
     const ings: string[] = []
     if (ingPart) {
       for (const line of ingPart.split('\n')) {
@@ -159,7 +202,7 @@ export function parseRecipe(md: string, collection: string | null = null): Parse
         if (bl) ings.push(bl[1].trim())
       }
     }
-    if (text) steps.push({ text, ingredients: ings })
+    if (text) steps.push(timerSeconds != null ? { text, ingredients: ings, timerSeconds } : { text, ingredients: ings })
   }
 
   // ## Notes → notes + source
