@@ -27,6 +27,7 @@ tags: [family-favorite]
 
 1. First step.
 2. Second step.
+   **Timer:** 10 minutes
 
 ## Notes
 
@@ -65,6 +66,7 @@ tags: [family-favorite, quick]
 
 1. Bread the chicken: dredge in egg, then breadcrumbs.
 2. Pan-fry until golden, about 4 minutes a side.
+   **Timer:** 4 minutes
 3. Top with sauce and cheese, broil until bubbly.
 
 ## Notes

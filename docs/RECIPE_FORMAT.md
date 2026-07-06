@@ -46,6 +46,7 @@ tags: [family-favorite, quick]
 
 1. Bread the chicken: dredge in egg, then breadcrumbs.
 2. Pan-fry until golden, about 4 minutes a side.
+   **Timer:** 4 minutes
 3. Top with sauce and cheese, broil until bubbly.
 
 ## Notes
@@ -95,6 +96,16 @@ These power the Recipes library's search, filters, and chips.
      - 2 eggs
      - 1 cup breadcrumbs
   ```
+  A step can also declare a **timer** — the cook-mode timer for that step — with a
+  `**Timer:**` sub-line (mirrors `**Ingredients:**`). The duration is written in plain
+  language and parsed into seconds; the markup is stripped from the displayed step:
+  ```markdown
+  2. Pan-fry until golden, about 4 minutes a side.
+     **Timer:** 4 minutes
+  ```
+  Durations accept minutes/hours/seconds and compound/short forms — `20 minutes`,
+  `1 hour 30 min`, `1.5 hrs`, `90s`. You can also drop the timer inline as
+  `{timer: 20 minutes}` anywhere in the step text (equivalent; also stripped).
 - **`## Notes`** — free text. A `Source: …` line is captured as the recipe's source.
 
 ## After you paste
