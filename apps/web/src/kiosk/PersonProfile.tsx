@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
 import { usePersonOverview, useConversions, usePersons, useHousehold, useGoalLists, can, personsApi, rewardsApi, type OverviewGoal, type CategoryBalance, type ShopReward, type SavingToward, type OverviewCurrency, type StreakSummary } from '../lib/api'
 import { TradeModal } from './components/TradeModal'
+import { SpotAwardModal } from './components/SpotAwardModal'
 import { rewardsEnabled } from '../lib/modules'
 import './../styles/overview.css'
 
@@ -364,87 +365,13 @@ export function PersonProfile() {
       )}
 
       {awarding && (
-        <AwardModal
-          person={{ id: person.id, name: person.name ?? 'this person' }}
+        <SpotAwardModal
+          people={[{ id: person.id, name: person.name ?? 'this person', avatarEmoji: person.avatarEmoji, colorHex: person.colorHex }]}
+          presetPersonId={person.id}
           currencies={data.currencies}
-          defaultCurrency={defaultCur?.key ?? 'stars'}
           onClose={() => setAwarding(false)}
         />
       )}
-    </div>
-  )
-}
-
-// A small modal for an ad-hoc "spot-award": pick an amount + currency (+ optional
-// note), then write a positive ledger entry via rewardsApi.awardSpot. Balances/jars
-// refetch automatically (the call taps 'rewards').
-function AwardModal({ person, currencies, defaultCurrency, onClose }: {
-  person: { id: string; name: string }
-  currencies: OverviewCurrency[]
-  defaultCurrency: string
-  onClose: () => void
-}) {
-  const [amount, setAmount] = useState(5)
-  const [currency, setCurrency] = useState(defaultCurrency)
-  const [note, setNote] = useState('')
-  const [saving, setSaving] = useState(false)
-  const cur = currencies.find((c) => c.key === currency)
-
-  async function submit() {
-    if (amount <= 0 || saving) return
-    setSaving(true)
-    try {
-      await rewardsApi.awardSpot(person.id, amount, currency, note.trim() || undefined)
-      onClose()
-    } catch {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
-        <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="wf-serif" style={{ fontSize: 22, fontWeight: 600, marginBottom: 14 }}>Award stars to {person.name}</div>
-
-        <div className="field-row">
-          <label className="field" style={{ flex: 1 }}>
-            <span>Amount</span>
-            <input
-              type="number" min={1} value={amount} aria-label="Amount"
-              onChange={(e) => setAmount(Math.max(0, Math.round(Number(e.target.value) || 0)))}
-            />
-          </label>
-          {currencies.length > 1 ? (
-            <label className="field" style={{ flex: 1 }}>
-              <span>Currency</span>
-              <select aria-label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-                {currencies.map((c) => <option key={c.key} value={c.key}>{c.symbol} {c.label}</option>)}
-              </select>
-            </label>
-          ) : (
-            <label className="field" style={{ flex: 1 }}>
-              <span>Currency</span>
-              <span className="pill" style={{ alignSelf: 'flex-start', marginTop: 2 }}>{cur?.symbol ?? '⭐'} {cur?.label ?? 'Stars'}</span>
-            </label>
-          )}
-        </div>
-
-        <label className="field">
-          <span>Note (optional)</span>
-          <input
-            type="text" value={note} aria-label="Note" placeholder="e.g. so helpful today"
-            onChange={(e) => setNote(e.target.value)}
-          />
-        </label>
-
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 6 }}>
-          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn btn-primary" disabled={amount <= 0 || saving} onClick={submit}>
-            {saving ? 'Awarding…' : `Award ${amount} ${cur?.symbol ?? '⭐'}`}
-          </button>
-        </div>
-      </div>
     </div>
   )
 }

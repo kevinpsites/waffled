@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { Link } from 'react-router'
-import { useChoresToday, useCurrencies, type PersonChores } from '../../lib/api'
+import { useChoresToday, useCurrencies, useHousehold, can, type PersonChores } from '../../lib/api'
+import { SpotAwardModal } from './SpotAwardModal'
 
 // Per-person progress ring, colored by the member's own color. `sym` is the
 // household default currency symbol (renders ⭐ / 💵 / etc. from the catalog).
@@ -48,9 +50,14 @@ function Ring({ person, sym }: { person: PersonChores; sym: string }) {
 
 export function ChoresCard() {
   const { people, loading, error } = useChoresToday()
-  const { defaultCurrency } = useCurrencies()
+  const { defaultCurrency, currencies } = useCurrencies()
+  const { person: me } = useHousehold()
   const sym = defaultCurrency?.symbol ?? '⭐'
   const withChores = people.filter((p) => p.total > 0)
+  // A parent who can hand out ad-hoc stars gets a quick-tap entry point right on
+  // the card — no picker preset, so they choose who in the modal.
+  const canAward = can(me, 'reward.grant')
+  const [awarding, setAwarding] = useState(false)
   return (
     <div className="card" style={{ padding: '18px 20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
@@ -71,6 +78,28 @@ export function ChoresCard() {
       {withChores.map((p) => (
         <Ring key={p.id} person={p} sym={sym} />
       ))}
+      {canAward && (
+        <button
+          type="button"
+          className="chores-card-row"
+          onClick={() => setAwarding(true)}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            width: '100%', marginTop: 8, padding: '10px 12px', border: 0,
+            background: 'var(--card-2, #faf8f4)', borderRadius: 12, cursor: 'pointer',
+            font: 'inherit', fontSize: 14, fontWeight: 700, color: 'var(--ink-2)',
+          }}
+        >
+          ＋ Spot award
+        </button>
+      )}
+      {awarding && (
+        <SpotAwardModal
+          people={people.map((p) => ({ id: p.id, name: p.name, avatarEmoji: p.avatarEmoji, colorHex: p.colorHex }))}
+          currencies={currencies}
+          onClose={() => setAwarding(false)}
+        />
+      )}
     </div>
   )
 }
