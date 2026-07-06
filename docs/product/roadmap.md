@@ -88,10 +88,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   cook timer**, **Try New Recipe**, the **never-cooked 🆕 tag**, and **spot-award stars** (person
   profile + Rewards page) — plus **owner-first family ordering** and a **kid-facing Reward Shop
   redesign** (wallet hero · category chips/sections off `reward.category` · redeem + confetti
-  celebration). Remaining iOS gaps are minor: **setting** a reward category (the editor picker is
-  web-only; iOS displays/filters), and the **Countdown tweaks** (the birthday-horizon *gating* is
-  backend so it already applies to iOS; only the `birthdayHorizonDays` settings control is unbuilt).
-  Per-surface (iPhone / iPad)
+  celebration) whose **tab now shows the shop with person tabs on top** (web-style; iPhone + iPad).
+  Reward **categories** are settable on iOS (editor chip-picker), and the **Countdown tweaks**
+  `birthdayHorizonDays` control shipped in Settings → Calendars — so the July-batch iOS parity is
+  now **complete**. Per-surface (iPhone / iPad)
   status — and the remaining mobile gaps — live in the [feature matrix](./features.md).
 
 ## Partial / in progress 🟡

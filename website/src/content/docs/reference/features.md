@@ -126,7 +126,8 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Stars **earn ledger** (append-only) + balances | ✅ | ✅ | ✅ | ✅ Done |
 | **Rewards catalog** + redeem → parent-approve → ledger debit | ✅ | ✅ | ✅ | ✅ Done |
 | **Reward shop** (kid-facing per-person view) — wallet hero, redeem + celebration | ✅ | ✅ | ✅ | ✅ Done — iOS redesigned to match web: purple wallet hero ("{NAME}'S {CURRENCY}" + "N to go for {saving-toward}"), gradient-thumb tiles with cost badges + locked/affordable states, a **Redeem** confirm sheet and a **confetti Celebration** ("{title} unlocked! 🎉") |
-| **Reward categories** (treats/screen/adventures/toys/privileges) → filterable shop | ✅ | 🟡 | 🟡 | 🟡 iOS **displays + filters** by `reward.category` (chips + "{emoji} {label} · N you can get" sections; mig 0073); **setting** a category is still **web-only** (the iOS reward editor has no category picker yet) |
+| **Rewards tab = the shop** — person tabs on top select whose shop/balance to view | ✅ | ✅ | ✅ | ✅ Done — iOS Rewards tab shows a pinned **person-tab strip** + the selected person's shop inline (was a family-balances list you tapped into); toolbar/iPad-header: Award · Manage rewards · Approvals |
+| **Reward categories** (treats/screen/adventures/toys/privileges) → filterable shop | ✅ | ✅ | ✅ | ✅ Done — iOS **displays + filters** by `reward.category` (chips + "{emoji} {label} · N you can get" sections; mig 0073) **and sets** it (a category chip-picker in the reward editor, threaded through create/updateReward) |
 | Per-kid **balances** + approval queue (Rewards tab) | ✅ | ✅ | ✅ | ✅ Done |
 | **Multi-currency** (custom currencies, symbols, colors) | ✅ | ✅ | ✅ | ✅ Done |
 | **Conversions / "Trade"** (e.g. 10 ⭐ → 1 💵) | ✅ | ✅ | ✅ | ✅ Done |
