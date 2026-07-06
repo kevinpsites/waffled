@@ -7,17 +7,17 @@ import { AuthError } from './auth'
 import { query } from './db'
 import type { Tenant } from '../modules/households/households'
 
-export type Capability = 'chore.manage' | 'chore.approve' | 'reward.manage' | 'reward.approve' | 'goal.manage'
-export const CAPABILITIES: Capability[] = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'goal.manage']
+export type Capability = 'chore.manage' | 'chore.approve' | 'reward.manage' | 'reward.approve' | 'reward.grant' | 'goal.manage'
+export const CAPABILITIES: Capability[] = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'reward.grant', 'goal.manage']
 
 export type MemberRole = 'adult' | 'teen' | 'kid'
 export const ROLES: MemberRole[] = ['adult', 'teen', 'kid']
 
 // adult = full rights; teen/kid = nothing until an admin grants it.
 export const DEFAULT_PERMISSIONS: Record<MemberRole, Record<Capability, boolean>> = {
-  adult: { 'chore.manage': true, 'chore.approve': true, 'reward.manage': true, 'reward.approve': true, 'goal.manage': true },
-  teen: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'goal.manage': false },
-  kid: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'goal.manage': false },
+  adult: { 'chore.manage': true, 'chore.approve': true, 'reward.manage': true, 'reward.approve': true, 'reward.grant': true, 'goal.manage': true },
+  teen: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'goal.manage': false },
+  kid: { 'chore.manage': false, 'chore.approve': false, 'reward.manage': false, 'reward.approve': false, 'reward.grant': false, 'goal.manage': false },
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {

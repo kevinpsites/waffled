@@ -3,7 +3,7 @@
 // baked into person.capabilities server-side, so `can()` needs no special-casing.
 import { apiGet, apiSend } from './client'
 
-export const CAPABILITIES = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'goal.manage'] as const
+export const CAPABILITIES = ['chore.manage', 'chore.approve', 'reward.manage', 'reward.approve', 'reward.grant', 'goal.manage'] as const
 export type Capability = (typeof CAPABILITIES)[number]
 
 export type Role = 'adult' | 'teen' | 'kid'
@@ -15,6 +15,7 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   'chore.approve': 'Approve chores',
   'reward.manage': 'Manage rewards',
   'reward.approve': 'Approve redemptions',
+  'reward.grant': 'Award stars',
   'goal.manage': 'Manage goals',
 }
 export const ROLE_LABELS: Record<Role, string> = { adult: 'Adult', teen: 'Teen', kid: 'Kid' }

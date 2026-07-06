@@ -6,13 +6,17 @@ import createAPI, { type Request, type Response } from 'lambda-api'
 import type { QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
-import { rewardsRoutes } from '../../platform/route-guards'
+import { rewardsRoutes, moduleRoutes } from '../../platform/route-guards'
 import { listCurrencies, getDefaultCurrencyKey, presentCurrency } from '../currencies/currencies'
 
 type Api = ReturnType<typeof createAPI>
 // Rewards is the spend half of the chores economy: these routes require the chores
 // module on AND its rewards sub-toggle (settings.chores.rewards) enabled.
 const { tenantRoute, capRoute } = rewardsRoutes()
+// A spot-award is an *earn* action, not a shop action — it must work even when the
+// rewards shop sub-toggle is off. So it gates on the plain chores module, not the
+// rewards-shop gate above.
+const { capRoute: choresCapRoute } = moduleRoutes('chores')
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 interface RewardRow extends QueryResultRow {
@@ -89,6 +93,26 @@ export async function balanceFor(householdId: string, personId: string, currency
     [householdId, personId, currency]
   )
   return Number(rows[0]?.balance ?? 0)
+}
+
+// Ad-hoc "spot-award": a parent hands a person stars on the spot ("5 stars for
+// being so helpful"), not tied to any chore. A single positive ledger entry
+// (reason 'spot_award', null ref) — no transaction/balance guard, since it only
+// ever adds. `note` is the optional free-text reason ("being so helpful today").
+export async function awardSpot(
+  tenant: Tenant,
+  personId: string,
+  currency: string | undefined,
+  amount: number,
+  note?: string | null
+): Promise<{ id: string }> {
+  const cur = currency?.trim() || (await getDefaultCurrencyKey(tenant.householdId))
+  const { rows } = await query<{ id: string }>(
+    `insert into ledger_entries (household_id, person_id, currency, amount, reason, ref_type, ref_id, note, created_by)
+     values ($1,$2,$3,$4,'spot_award',null,null,$5,$6) returning id`,
+    [tenant.householdId, personId, cur, amount, note?.trim() || null, tenant.personId]
+  )
+  return rows[0]
 }
 
 // Per-person balances (per currency) + recent earn/spend history. Returns the
@@ -339,6 +363,21 @@ export function registerRewardRoutes(api: Api): void {
   // Balances + history
   api.get('/api/balances', tenantRoute(async (tenant) => {
     return balancesSummary(tenant.householdId)
+  }))
+
+  // Spot-award: a parent grants a person stars on the spot (not tied to a chore).
+  // Guarded by the reward.grant capability and the plain chores module — so it
+  // works even when the rewards shop sub-toggle is off (it's an *earn*, not a spend).
+  api.post('/api/persons/:id/award', choresCapRoute('reward.grant', async (tenant, req: Request, res: Response) => {
+    const personId = req.params.id ?? ''
+    if (!UUID_RE.test(personId)) return res.status(404).json({ error: 'NotFound', message: 'person not found' })
+    const body = (req.body ?? {}) as { amount?: number; currency?: string; note?: string }
+    const amount = Math.round(Number(body.amount))
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ error: 'BadRequest', message: 'amount must be a positive number' })
+    }
+    const entry = await awardSpot(tenant, personId, body.currency, amount, body.note)
+    return res.status(201).json({ id: entry.id })
   }))
 
   // Redemptions

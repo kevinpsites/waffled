@@ -67,6 +67,10 @@ export const rewardsApi = {
     apiGet<{ redemptions: Redemption[] }>(`/api/redemptions${status ? `?status=${status}` : ''}`),
   redeem: (rewardId: string, personId: string) =>
     apiSend<{ redemption: Redemption }>('POST', `/api/rewards/${rewardId}/redeem`, { personId }).then((r) => r.redemption).then(tap('rewards')),
+  // Ad-hoc "spot-award": a parent hands a person stars on the spot, not tied to a
+  // chore. Positive ledger entry; taps 'rewards' so balances/jars refetch.
+  awardSpot: (personId: string, amount: number, currency?: string, note?: string) =>
+    apiSend<{ id: string }>('POST', `/api/persons/${personId}/award`, { amount, currency, note }).then(tap('rewards')),
   approve: (id: string) => apiSend<{ redemption: Redemption }>('POST', `/api/redemptions/${id}/approve`).then((r) => r.redemption).then(tap('rewards')),
   deny: (id: string) => apiSend<{ redemption: Redemption }>('POST', `/api/redemptions/${id}/deny`).then((r) => r.redemption).then(tap('rewards')),
   // Household reward-approval policy (Settings → Chores & rewards). Off = kids redeem instantly.
