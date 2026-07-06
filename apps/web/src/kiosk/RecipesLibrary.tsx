@@ -49,6 +49,7 @@ export function RecipesLibrary() {
 
   const [q, setQ] = useState(() => params.get('q') ?? '')
   const [fav, setFav] = useState(false)
+  const [newOnly, setNewOnly] = useState(() => params.get('new') === '1')
   const [collections, setCollections] = useState<string[]>(() => initArr('collection'))
   const [cuisines, setCuisines] = useState<string[]>(() => initArr('cuisine'))
   const [proteins, setProteins] = useState<string[]>(() => initArr('protein'))
@@ -80,6 +81,7 @@ export function RecipesLibrary() {
   const filtered = recipes.filter(
     (r) =>
       (!fav || r.isFavorite) &&
+      (!newOnly || r.cookedCount === 0) &&
       has(collections, r.collection) &&
       has(cuisines, r.cuisine) &&
       has(proteins, r.protein) &&
@@ -94,9 +96,9 @@ export function RecipesLibrary() {
     return a.title.localeCompare(b.title)
   })
 
-  const anyFilter = fav || collections.length || cuisines.length || proteins.length || diets.length || ql
+  const anyFilter = fav || newOnly || collections.length || cuisines.length || proteins.length || diets.length || ql
   function clearAll() {
-    setFav(false); setCollections([]); setCuisines([]); setProteins([]); setDiets([]); setQ('')
+    setFav(false); setNewOnly(false); setCollections([]); setCuisines([]); setProteins([]); setDiets([]); setQ('')
   }
 
   return (
@@ -110,6 +112,9 @@ export function RecipesLibrary() {
         </select>
         <button type="button" className={`pill ${fav ? 'btn-primary' : ''}`} style={{ cursor: 'pointer', color: fav ? '#fff' : undefined, border: fav ? 0 : undefined }} onClick={() => setFav((v) => !v)}>
           {fav ? '❤️' : '🤍'} Favorites
+        </button>
+        <button type="button" className={`pill ${newOnly ? 'btn-primary' : ''}`} style={{ cursor: 'pointer', color: newOnly ? '#fff' : undefined, border: newOnly ? 0 : undefined }} onClick={() => setNewOnly((v) => !v)}>
+          🆕 New
         </button>
       </div>
 
@@ -137,6 +142,7 @@ export function RecipesLibrary() {
             <div className={`rc-img ${gradClass(r)}`}>
               {r.imageUrl ? <img className="rc-img-photo" src={r.imageUrl} alt={r.title} /> : (r.emoji ?? '🍽️')}
               {r.isFavorite && <span className="recipes-fav">❤️</span>}
+              {r.cookedCount === 0 && <span className="recipes-new" title="Never cooked" style={{ position: 'absolute', top: 8, left: 10, fontSize: 16 }}>🆕</span>}
             </div>
             <div className="rc-b" style={{ padding: '12px 14px 14px' }}>
               <div className="rc-t" style={{ fontSize: 16 }}>{r.title}</div>
