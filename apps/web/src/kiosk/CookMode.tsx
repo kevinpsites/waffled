@@ -204,13 +204,18 @@ export function CookMode() {
 
         {step.note && <div className="cm-note">📝 {step.note}</div>}
 
-        {step.timerSeconds != null && step.timerSeconds > 0 && (
+        {step.timerSeconds != null && step.timerSeconds > 0 ? (
           <button
             className="cm-timer-start"
             onClick={() => startTimer(`Step ${i + 1}`, step.timerSeconds!, i)}
           >
             ⏱ Start {fmt(step.timerSeconds)}
           </button>
+        ) : (
+          <AddTimer
+            key={i}
+            onStart={(secs) => startTimer(`Step ${i + 1}`, secs, i)}
+          />
         )}
       </div>
 
@@ -243,6 +248,67 @@ export function CookMode() {
 
       <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} />
       <TimerAlarm firing={firingTimers} onDismiss={dismissTimer} onSnooze={snoozeTimer} onJump={jumpToTimer} />
+    </div>
+  )
+}
+
+// On-the-spot timer for a step the author never gave one. Collapsed to a single
+// "Add timer" button; expands to minute + optional second inputs and starts an
+// ephemeral (runtime-only) timer via the same startTimer path as built-in ones —
+// so it lives in the dock, chimes, and stays tied to its step. `key={i}` resets it
+// per step. No backend: the added timer is never persisted to step.timerSeconds.
+function AddTimer({ onStart }: { onStart: (secs: number) => void }) {
+  const [open, setOpen] = useState(false)
+  const [min, setMin] = useState('')
+  const [sec, setSec] = useState('')
+
+  if (!open) {
+    return (
+      <button className="cm-timer-start cm-timer-add" onClick={() => setOpen(true)}>
+        ⏱ Add timer
+      </button>
+    )
+  }
+
+  const secs = Math.max(0, Math.floor(Number(min) || 0)) * 60 + Math.max(0, Math.floor(Number(sec) || 0))
+  const start = () => {
+    if (secs <= 0) return
+    onStart(secs)
+    setOpen(false)
+    setMin('')
+    setSec('')
+  }
+
+  return (
+    <div className="cm-timer-add-form">
+      <label className="cm-timer-add-field">
+        <span className="cm-timer-add-lbl">Minutes</span>
+        <input
+          type="number"
+          min={0}
+          inputMode="numeric"
+          aria-label="Minutes"
+          value={min}
+          autoFocus
+          onChange={(e) => setMin(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && start()}
+        />
+      </label>
+      <label className="cm-timer-add-field">
+        <span className="cm-timer-add-lbl">Seconds</span>
+        <input
+          type="number"
+          min={0}
+          max={59}
+          inputMode="numeric"
+          aria-label="Seconds"
+          value={sec}
+          onChange={(e) => setSec(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && start()}
+        />
+      </label>
+      <button className="cm-timer-add-go" disabled={secs <= 0} onClick={start}>Start</button>
+      <button className="cm-timer-add-cancel" onClick={() => setOpen(false)}>Cancel</button>
     </div>
   )
 }
