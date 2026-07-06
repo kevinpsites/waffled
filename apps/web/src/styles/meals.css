@@ -590,6 +590,10 @@
   font-weight: 650;
   width: 88px;
 }
+/* Wider variant for inputs whose placeholder shows an example (e.g. "+ e.g. Thai green curry"). */
+.use-add-input.wide {
+  width: 190px;
+}
 .plan-keep {
   border: 0;
   background: var(--panel);

@@ -1,0 +1,193 @@
+/* ============================================================
+   REWARD SHOP — kiosk Tasks → Rewards tab
+   Kid-facing shop: wallet hero + filterable reward tiles.
+   Reuses the shared design tokens (waffled.css) + shared chrome
+   (.modal-*, .btn, .field). Shop-specific structure lives here.
+   ============================================================ */
+
+.shop { display: flex; flex-direction: column; gap: 18px; padding: 0 30px 28px; }
+
+/* --- header: title + family chips + award button --- */
+.shop-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.shop-title { font-size: 26px; font-weight: 600; color: var(--ink); margin: 0; }
+.shop-head-right { margin-left: auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+.shop-av { display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; flex: none; }
+
+.shop-kids { display: flex; gap: 8px; flex-wrap: wrap; }
+.shop-kid {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--card); border: 1.5px solid var(--hair);
+  border-radius: 999px; padding: 5px 12px 5px 6px; cursor: pointer;
+  color: var(--ink-2); font: inherit; font-weight: 600; font-size: 14px;
+  transition: border-color .12s, background .12s, color .12s;
+}
+.shop-kid.on { background: #F0E9FD; border-color: var(--lottie); color: var(--ink); }
+.shop-kid-name { font-weight: 700; }
+.shop-kid-bal { font-weight: 700; color: var(--gold); }
+.shop-kid.on .shop-kid-bal { color: var(--gold); }
+
+.shop-award-btn { padding: 9px 16px; margin-left: auto; }
+
+/* --- approvals queue (parents) --- */
+.shop-approvals { padding: 16px; }
+.shop-appr { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.shop-appr + .shop-appr { border-top: 1px solid var(--hair-2); }
+.shop-appr-txt { flex: 1; color: var(--ink-2); font-size: 14px; }
+.shop-appr-name { font-weight: 700; color: var(--ink); }
+.shop-appr-reward { font-weight: 700; color: var(--ink); }
+.shop-appr-cost { margin-left: 8px; font-weight: 700; color: var(--gold); }
+.shop-appr-actions { display: flex; gap: 8px; }
+
+.shop-sm { padding: 7px 14px; font-size: 14px; }
+
+/* --- hero: wallet + saving-toward --- */
+.shop-hero {
+  display: grid; grid-template-columns: 1.1fr .9fr; gap: 20px;
+  background: linear-gradient(135deg, #8A5CF0, #A47BF5);
+  border-radius: 24px; padding: 24px 26px; color: #fff;
+  box-shadow: var(--sh-2);
+}
+@media (max-width: 720px) { .shop-hero { grid-template-columns: 1fr; } }
+
+.shop-hero-wallet { display: flex; align-items: center; gap: 18px; }
+.shop-coin {
+  width: 72px; height: 72px; border-radius: 999px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.2); font-size: 34px; color: #FFE58A;
+  box-shadow: inset 0 0 0 3px rgba(255,255,255,.25);
+}
+.shop-wallet-label { font-size: 12px; font-weight: 800; letter-spacing: .08em; opacity: .82; }
+.shop-wallet-big { font-size: 30px; font-weight: 800; line-height: 1.1; margin-top: 2px; }
+.shop-wallet-star { color: #FFE58A; }
+.shop-wallet-sub { font-size: 13px; opacity: .85; margin-top: 4px; }
+
+.shop-saving { background: rgba(255,255,255,.16); border-radius: 16px; padding: 16px 18px; }
+.shop-saving-label { font-size: 11px; font-weight: 800; letter-spacing: .08em; opacity: .82; }
+.shop-saving-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.shop-saving-emo { font-size: 22px; }
+.shop-saving-title { font-weight: 700; font-size: 16px; }
+.shop-saving-go { font-size: 13px; opacity: .9; margin-top: 8px; }
+.shop-saving-empty { margin-top: 10px; font-weight: 600; opacity: .8; }
+
+/* progress bar (white track/fill on the hero; coral variant on locked tiles) */
+.shop-progress { height: 8px; border-radius: 999px; background: rgba(255,255,255,.28); overflow: hidden; }
+.shop-progress.sm { height: 6px; background: var(--panel); }
+.shop-progress-fill { height: 100%; border-radius: 999px; background: #fff; transition: width .3s; }
+.shop-progress-fill.coral { background: var(--primary); }
+
+/* --- category chips --- */
+.shop-cats { display: flex; gap: 8px; flex-wrap: wrap; }
+.shop-cat {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--card); border: 1.5px solid var(--hair);
+  border-radius: 999px; padding: 8px 15px; cursor: pointer;
+  color: var(--ink-2); font: inherit; font-weight: 700; font-size: 14px;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.shop-cat.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+
+.shop-manage { display: flex; }
+
+/* --- tile grid --- */
+.shop-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+@media (max-width: 1080px) { .shop-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 820px)  { .shop-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 520px)  { .shop-grid { grid-template-columns: 1fr; } }
+
+.shop-tile {
+  background: var(--card); border-radius: 18px; overflow: hidden;
+  box-shadow: var(--sh-2); display: flex; flex-direction: column;
+}
+
+.shop-thumb {
+  position: relative; aspect-ratio: 16 / 10; display: flex;
+  align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #EEDAF7, #CFA9E8);
+}
+.shop-tile.locked .shop-thumb { background: #F4EFE7; }
+.shop-thumb-emo { font-size: 46px; }
+.shop-tile.locked .shop-thumb-emo { opacity: .5; }
+.shop-lock {
+  position: absolute; top: 10px; left: 10px; font-size: 15px;
+  background: rgba(255,255,255,.85); width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center; border-radius: 999px;
+}
+.shop-price {
+  position: absolute; top: 10px; right: 10px;
+  background: rgba(255,255,255,.92); color: var(--ink);
+  font-weight: 800; font-size: 13px; padding: 4px 10px; border-radius: 999px;
+  box-shadow: var(--sh-1);
+}
+.shop-edit {
+  position: absolute; bottom: 10px; right: 10px;
+  background: rgba(255,255,255,.9); border: 0; cursor: pointer;
+  width: 28px; height: 28px; border-radius: 999px; font-size: 13px;
+  display: flex; align-items: center; justify-content: center; color: var(--ink-2);
+  box-shadow: var(--sh-1);
+}
+
+.shop-tile-body { padding: 14px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.shop-tile-name { font-weight: 700; font-size: 16px; color: var(--ink); }
+.shop-tile-tag { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.shop-get { width: 100%; margin-top: auto; padding: 10px; }
+
+.shop-locked-foot { margin-top: auto; display: flex; flex-direction: column; gap: 6px; }
+.shop-need { font-size: 12px; font-weight: 700; color: var(--ink-2); }
+
+/* --- empty state --- */
+.shop-empty {
+  text-align: center; padding: 48px 20px; display: flex; flex-direction: column;
+  align-items: center; gap: 10px;
+}
+.shop-empty-emo { font-size: 48px; }
+.shop-empty-h { font-weight: 700; font-size: 18px; color: var(--ink); }
+.shop-empty-b { color: var(--ink-2); max-width: 380px; }
+
+/* --- archived --- */
+.shop-archived { margin-top: 4px; }
+.shop-arch-head {
+  display: flex; align-items: center; gap: 8px; background: none; border: 0;
+  cursor: pointer; font: inherit; font-weight: 700; color: var(--ink-2); padding: 6px 0;
+}
+.shop-arch-caret { transition: transform .15s; display: inline-block; }
+.shop-arch-caret.open { transform: rotate(90deg); }
+.shop-arch-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.shop-arch-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--panel); border-radius: var(--r-sm); }
+.shop-arch-emo { font-size: 18px; }
+.shop-arch-t { flex: 1; font-weight: 600; }
+.shop-arch-cost { font-weight: 700; color: var(--gold); }
+
+/* --- redeem sheet + celebration (shared "well") --- */
+.shop-sheet, .shop-celebrate { max-width: 380px; text-align: center; position: relative; overflow: visible; }
+.shop-well {
+  width: 96px; height: 96px; border-radius: 24px; margin: 6px auto 16px;
+  display: flex; align-items: center; justify-content: center; font-size: 48px;
+  box-shadow: var(--sh-1);
+}
+.shop-sheet-title, .shop-celebrate-title { font-size: 22px; font-weight: 600; color: var(--ink); }
+.shop-sheet-price { margin-top: 8px; font-weight: 800; font-size: 20px; color: var(--gold); }
+.shop-sheet-bal { margin-top: 10px; color: var(--ink-2); font-weight: 700; }
+.shop-sheet-actions { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
+.shop-sheet-actions .btn { flex: 1; }
+
+.shop-celebrate-pill {
+  display: inline-block; margin-top: 14px; padding: 8px 16px; border-radius: 999px;
+  background: var(--wally-t); color: var(--wally); font-weight: 700; font-size: 14px;
+}
+.shop-back { margin-top: 18px; width: 100%; }
+
+/* --- confetti burst (pure CSS/JS, no library) --- */
+.shop-confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; border-radius: inherit; }
+.shop-confetti-bit {
+  position: absolute; top: -12px; width: 9px; height: 9px; border-radius: 2px;
+  opacity: 0; animation: shop-confetti-fall 1100ms ease-out forwards;
+}
+@keyframes shop-confetti-fall {
+  0%   { opacity: 1; transform: translate(0, -10px) rotate(0deg); }
+  100% { opacity: 0; transform: translate(var(--dx, 0), 340px) rotate(var(--rot, 360deg)); }
+}
+
+/* --- reward editor: category picker reuses .shop-cat chips --- */
+.shop-cat-pick { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.shop-cat-pick .shop-cat { font-size: 13px; padding: 6px 12px; }

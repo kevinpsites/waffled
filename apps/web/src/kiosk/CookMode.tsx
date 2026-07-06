@@ -120,11 +120,16 @@ export function CookMode() {
   const firingTimers = timers.filter((t) => t.firing)
   const runningTimers = timers.filter((t) => !t.firing)
   // "Jump to step" from the alarm: leave the done screen, go to that step, clear it.
-  const jumpToTimer = useCallback((t: CookTimer) => {
+  // Dock (still-running timer): return to its step but KEEP the timer running.
+  const jumpToStep = useCallback((t: CookTimer) => {
     setDone(false)
     setI(Math.max(0, Math.min(t.stepIndex, steps.length - 1)))
+  }, [steps.length])
+  // Alarm (fired timer): jump to the step and clear the finished alarm.
+  const jumpToTimer = useCallback((t: CookTimer) => {
+    jumpToStep(t)
     dismissTimer(t.id)
-  }, [steps.length, dismissTimer])
+  }, [jumpToStep, dismissTimer])
 
   const total = steps.length
   // Replace (not push) the cook-mode history entry with the recipe so pressing
@@ -171,7 +176,7 @@ export function CookMode() {
           )}
           <button className="btn btn-primary" onClick={exit}>Back to recipe</button>
         </div>
-        <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} />
+        <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} onJump={jumpToStep} />
         <TimerAlarm firing={firingTimers} onDismiss={dismissTimer} onSnooze={snoozeTimer} onJump={jumpToTimer} />
         {sheetOpen && (
           <CookConfirm title={recipe.title} matches={usedMatches} onClose={() => setSheetOpen(false)} />
@@ -246,7 +251,7 @@ export function CookMode() {
         </div>
       )}
 
-      <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} />
+      <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} onJump={jumpToStep} />
       <TimerAlarm firing={firingTimers} onDismiss={dismissTimer} onSnooze={snoozeTimer} onJump={jumpToTimer} />
     </div>
   )
@@ -264,7 +269,7 @@ function AddTimer({ onStart }: { onStart: (secs: number) => void }) {
 
   if (!open) {
     return (
-      <button className="cm-timer-start cm-timer-add" onClick={() => setOpen(true)}>
+      <button type="button" className="re-timer-add cm-timer-add" onClick={() => setOpen(true)}>
         ⏱ Add timer
       </button>
     )
@@ -279,37 +284,40 @@ function AddTimer({ onStart }: { onStart: (secs: number) => void }) {
     setSec('')
   }
 
+  // Mirrors StepTimerControl's expanded look (recipe.css .re-timer-edit row) so the
+  // on-the-spot timer matches the shared timer component instead of raw HTML.
   return (
-    <div className="cm-timer-add-form">
-      <label className="cm-timer-add-field">
-        <span className="cm-timer-add-lbl">Minutes</span>
-        <input
-          type="number"
-          min={0}
-          inputMode="numeric"
-          aria-label="Minutes"
-          value={min}
-          autoFocus
-          onChange={(e) => setMin(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && start()}
-        />
-      </label>
-      <label className="cm-timer-add-field">
-        <span className="cm-timer-add-lbl">Seconds</span>
-        <input
-          type="number"
-          min={0}
-          max={59}
-          inputMode="numeric"
-          aria-label="Seconds"
-          value={sec}
-          onChange={(e) => setSec(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && start()}
-        />
-      </label>
-      <button className="cm-timer-add-go" disabled={secs <= 0} onClick={start}>Start</button>
-      <button className="cm-timer-add-cancel" onClick={() => setOpen(false)}>Cancel</button>
-    </div>
+    <span className="re-timer-edit cm-timer-add-edit">
+      <span className="re-timer-ic" aria-hidden>⏱</span>
+      <input
+        type="number"
+        min={0}
+        inputMode="numeric"
+        className="re-timer-num"
+        aria-label="Minutes"
+        placeholder="0"
+        value={min}
+        autoFocus
+        onChange={(e) => setMin(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && start()}
+      />
+      <span className="re-timer-unit">min</span>
+      <input
+        type="number"
+        min={0}
+        max={59}
+        inputMode="numeric"
+        className="re-timer-num"
+        aria-label="Seconds"
+        placeholder="0"
+        value={sec}
+        onChange={(e) => setSec(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && start()}
+      />
+      <span className="re-timer-unit">sec</span>
+      <button type="button" className="re-timer-done" aria-label="Start timer" disabled={secs <= 0} onClick={start}>✓</button>
+      <button type="button" className="re-timer-cancel" aria-label="Cancel" onClick={() => setOpen(false)}>×</button>
+    </span>
   )
 }
 
@@ -356,17 +364,27 @@ function TimerDock({
   timers,
   onToggle,
   onDismiss,
+  onJump,
 }: {
   timers: CookTimer[]
   onToggle: (id: number) => void
   onDismiss: (id: number) => void
+  onJump: (t: CookTimer) => void
 }) {
   if (timers.length === 0) return null
   return (
     <div className="cm-timers" role="status" aria-live="polite">
       {timers.map((t) => (
         <div key={t.id} className={`cm-timer${t.firing ? ' cm-timer-firing' : ''}`}>
-          <div className="cm-timer-info">
+          <div
+            className="cm-timer-info"
+            role="button"
+            tabIndex={0}
+            title="Jump to this step"
+            aria-label={`Jump to this step — ${t.label}`}
+            onClick={() => onJump(t)}
+            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onJump(t)}
+          >
             <div className="cm-timer-label">{t.label}</div>
             <div className="cm-timer-time">{t.firing ? 'Done!' : fmt(t.remainingSeconds)}</div>
           </div>
