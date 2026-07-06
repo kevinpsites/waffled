@@ -111,4 +111,41 @@ describe('P2.6 admin-gated household creation', () => {
     expect(ctx.household.name).toBe('The Lake House')
     expect(ctx.person).toMatchObject({ isAdmin: true })
   })
+
+  it('pre-seeds a delightful "Waffles" recipe (with a timer step) on a fresh household', async () => {
+    const res = await call('POST', '/api/households', kevinToken, {
+      name: 'The Waffle House',
+      timezone: 'America/Chicago',
+      person: { name: 'Kevin' },
+    })
+    expect(res.statusCode).toBe(201)
+    const { household } = json(res)
+
+    // exactly one recipe, and it's Waffles
+    const recipes = await query(
+      `select id, title from recipes where household_id=$1 and deleted_at is null`,
+      [household.id]
+    )
+    expect(recipes.rows).toHaveLength(1)
+    expect(recipes.rows[0].title).toBe('Waffles')
+    const recipeId = recipes.rows[0].id
+
+    // it has ingredients and steps
+    const ings = await query(
+      `select count(*)::int n from recipe_ingredients where recipe_id=$1 and deleted_at is null`,
+      [recipeId]
+    )
+    expect(ings.rows[0].n).toBeGreaterThan(0)
+
+    const steps = await query(
+      `select instruction, timer_seconds from recipe_steps where recipe_id=$1 and deleted_at is null order by step_number`,
+      [recipeId]
+    )
+    expect(steps.rows.length).toBeGreaterThan(0)
+
+    // at least one step carries a parsed timer (proves the markdown timer path end-to-end)
+    const timed = steps.rows.filter((s: { timer_seconds: number | null }) => s.timer_seconds != null)
+    expect(timed.length).toBeGreaterThan(0)
+    expect(timed[0].timer_seconds).toBeGreaterThan(0)
+  })
 })
