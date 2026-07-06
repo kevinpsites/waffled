@@ -763,6 +763,7 @@ struct RewardEditorSheet: View {
     @State private var title: String
     @State private var cost: Int
     @State private var currencyKey: String
+    @State private var category: String?          // reward-shop category (nil = uncategorised)
     @State private var requiresApproval: Bool
     @State private var busy = false
     @State private var confirmArchive = false
@@ -779,6 +780,7 @@ struct RewardEditorSheet: View {
         _cost = State(initialValue: editing?.cost ?? 10)
         let def = currencies.first(where: { $0.isDefault }) ?? currencies.first
         _currencyKey = State(initialValue: editing?.currency ?? def?.key ?? "stars")
+        _category = State(initialValue: editing?.category)
         // New rewards inherit the household default below (.task); edits keep their value.
         _requiresApproval = State(initialValue: editing?.requiresApproval ?? true)
     }
@@ -822,6 +824,15 @@ struct RewardEditorSheet: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
+
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "Category (for the shop)")
+                        ChipFlow(spacing: 8, lineSpacing: 8) {
+                            categoryChip(nil, "None", "🚫")
+                            ForEach(ShopCategory.all) { c in categoryChip(c.key, c.label, c.emoji) }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                     WaffledCard(padding: 14) {
                         HStack {
@@ -886,6 +897,22 @@ struct RewardEditorSheet: View {
         }
     }
 
+    private func categoryChip(_ key: String?, _ label: String, _ emoji: String) -> some View {
+        let on = category == key
+        return Button { category = key } label: {
+            HStack(spacing: 5) {
+                Text(emoji).font(.system(size: 13))
+                Text(label).font(.system(size: 14, weight: on ? .bold : .medium))
+            }
+            .foregroundStyle(on ? WF.ink : WF.ink2)
+            .padding(.horizontal, 13).padding(.vertical, 8)
+            .background(on ? WF.primary.opacity(0.14) : WF.panel)
+            .clipShape(Capsule())
+            .overlay(Capsule().strokeBorder(on ? WF.primary.opacity(0.5) : .clear, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
     private func save() async {
         let t = title.trimmingCharacters(in: .whitespaces)
         guard !t.isEmpty else { return }
@@ -893,9 +920,9 @@ struct RewardEditorSheet: View {
         let e = emoji.trimmingCharacters(in: .whitespaces)
         let ok: Bool
         if let editing {
-            ok = await sync.updateReward(id: editing.id, title: t, emoji: e.isEmpty ? nil : e, cost: max(0, cost), currency: currencyKey, requiresApproval: requiresApproval)
+            ok = await sync.updateReward(id: editing.id, title: t, emoji: e.isEmpty ? nil : e, cost: max(0, cost), currency: currencyKey, category: category, requiresApproval: requiresApproval)
         } else {
-            ok = await sync.createReward(title: t, emoji: e.isEmpty ? nil : e, cost: max(0, cost), currency: currencyKey, requiresApproval: requiresApproval)
+            ok = await sync.createReward(title: t, emoji: e.isEmpty ? nil : e, cost: max(0, cost), currency: currencyKey, category: category, requiresApproval: requiresApproval)
         }
         busy = false
         if ok { onDone(); dismiss() }

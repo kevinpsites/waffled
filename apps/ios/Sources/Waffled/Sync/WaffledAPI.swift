@@ -1738,18 +1738,20 @@ struct WaffledAPI: Sendable {
     // MARK: rewards catalog admin
 
     /// Create a reward (admins). Returns the new reward.
-    func createReward(title: String, emoji: String?, cost: Int, currency: String, requiresApproval: Bool) async throws -> Reward {
+    func createReward(title: String, emoji: String?, cost: Int, currency: String, category: String?, requiresApproval: Bool) async throws -> Reward {
         struct Resp: Decodable { let reward: Reward }
         var body: [String: JSONValue] = ["title": .string(title), "cost": .int(cost), "currency": .string(currency), "requiresApproval": .bool(requiresApproval)]
         body["emoji"] = emoji.map(JSONValue.string) ?? .null
+        body["category"] = category.map(JSONValue.string) ?? .null
         return try await sendReturning("POST", "/api/rewards", body: body, as: Resp.self).reward
     }
 
-    /// Edit a reward's title/emoji/cost/currency/approval (admins).
-    func updateReward(id: String, title: String, emoji: String?, cost: Int, currency: String, requiresApproval: Bool) async throws -> Reward {
+    /// Edit a reward's title/emoji/cost/currency/category/approval (admins).
+    func updateReward(id: String, title: String, emoji: String?, cost: Int, currency: String, category: String?, requiresApproval: Bool) async throws -> Reward {
         struct Resp: Decodable { let reward: Reward }
         var body: [String: JSONValue] = ["title": .string(title), "cost": .int(cost), "currency": .string(currency), "requiresApproval": .bool(requiresApproval)]
         body["emoji"] = emoji.map(JSONValue.string) ?? .null
+        body["category"] = category.map(JSONValue.string) ?? .null
         return try await sendReturning("PATCH", "/api/rewards/\(id)", body: body, as: Resp.self).reward
     }
 
@@ -2553,10 +2555,10 @@ struct WaffledAPI: Sendable {
     }
 
     /// GET /api/countdowns → the merged list + the household "sleeps" preference.
-    func countdowns() async throws -> (items: [Countdown], sleeps: Bool) {
-        struct Resp: Decodable { let countdowns: [Countdown]; let sleeps: Bool }
+    func countdowns() async throws -> (items: [Countdown], sleeps: Bool, birthdayHorizonDays: Int) {
+        struct Resp: Decodable { let countdowns: [Countdown]; let sleeps: Bool; let birthdayHorizonDays: Int? }
         let r = try await getJSON("/api/countdowns", as: Resp.self)
-        return (r.countdowns, r.sleeps)
+        return (r.countdowns, r.sleeps, r.birthdayHorizonDays ?? 183)
     }
 
     /// Create a standalone countdown. `date` must be YYYY-MM-DD. Returns the new id.
@@ -2587,6 +2589,11 @@ struct WaffledAPI: Sendable {
     /// Toggle the household "N sleeps" vs "N days" wording.
     func setCountdownSleeps(_ sleeps: Bool) async throws {
         try await send("PUT", "/api/countdowns/config", body: ["sleeps": .bool(sleeps)])
+    }
+
+    /// How far ahead (days, 1–366) member birthdays surface on the countdowns list.
+    func setCountdownBirthdayHorizon(_ days: Int) async throws {
+        try await send("PUT", "/api/countdowns/config", body: ["birthdayHorizonDays": .int(days)])
     }
 
     // MARK: - Family Night (weekly gathering with a rotating agenda)

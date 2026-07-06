@@ -45,6 +45,7 @@ struct CalendarsSettingsView: View {
     @State private var hideReadOnly = true
     @State private var syncedOnly = false
     @State private var sleeps = false
+    @State private var birthdayHorizon = 183   // days a member birthday stays hidden until it's close
     @State private var search = ""
     @State private var collapsed: Set<String> = []   // account ids
 
@@ -90,7 +91,14 @@ struct CalendarsSettingsView: View {
             }
         }
         .task { await load() }
-        .task { if let r = try? await api.countdowns() { sleeps = r.sleeps } }
+        .task { if let r = try? await api.countdowns() { sleeps = r.sleeps; birthdayHorizon = r.birthdayHorizonDays } }
+    }
+
+    /// Friendly presets for the birthday-horizon window.
+    private static let horizonOptions: [(label: String, days: Int)] =
+        [("1 month", 31), ("3 months", 92), ("6 months", 183), ("1 year", 366)]
+    private var horizonLabel: String {
+        Self.horizonOptions.min(by: { abs($0.days - birthdayHorizon) < abs($1.days - birthdayHorizon) })?.label ?? "6 months"
     }
 
     /// The household "N sleeps" vs "N days" wording toggle (mirrors the web Countdowns
@@ -107,6 +115,23 @@ struct CalendarsSettingsView: View {
                     Spacer(minLength: 0)
                 }
             }.buttonStyle(.plain)
+
+            Divider().background(WF.hair)
+            HStack(spacing: 8) {
+                Text("Show member birthdays within")
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
+                Spacer(minLength: 0)
+                Menu {
+                    ForEach(Self.horizonOptions, id: \.days) { opt in
+                        Button(opt.label) { setHorizon(opt.days) }
+                    }
+                } label: {
+                    WaffledMenuPill(text: horizonLabel)
+                }
+            }
+            Text("A birthday further out than this stays hidden until it’s close (keeps a year of family birthdays off the list).")
+                .font(.system(size: 12)).foregroundStyle(WF.ink3)
+
             Text("Count down to trips, birthdays, and anything you flag on the calendar. Add one from the Today “Countdowns” card, or tick “Show a countdown” when editing an event.")
                 .font(.system(size: 12)).foregroundStyle(WF.ink3)
         }
@@ -119,6 +144,11 @@ struct CalendarsSettingsView: View {
         sleeps.toggle()
         let v = sleeps
         Task { try? await api.setCountdownSleeps(v) }
+    }
+
+    private func setHorizon(_ days: Int) {
+        birthdayHorizon = days
+        Task { try? await api.setCountdownBirthdayHorizon(days) }
     }
 
     private var filterControls: some View {
