@@ -1702,6 +1702,16 @@ struct WaffledAPI: Sendable {
                                        body: ["personId": .string(personId)], as: Resp.self).redemption
     }
 
+    /// Ad-hoc "spot-award": a parent hands a person stars on the spot (not tied to a
+    /// chore) — gated by the `reward.grant` capability. Whole-number amount; writes a
+    /// positive ledger entry and auto-advances the recipient's saving-toward jar.
+    func awardSpot(personId: String, amount: Int, currency: String? = nil, note: String? = nil) async throws {
+        var body: [String: JSONValue] = ["amount": .int(amount)]
+        if let currency, !currency.isEmpty { body["currency"] = .string(currency) }
+        if let note, !note.isEmpty { body["note"] = .string(note) }
+        try await send("POST", "/api/persons/\(personId)/award", body: body)
+    }
+
     /// Approve a pending redemption (admin) — writes the debit ledger entry.
     func approveRedemption(id: String) async throws -> RewardRedemption {
         struct Resp: Decodable { let redemption: RewardRedemption }

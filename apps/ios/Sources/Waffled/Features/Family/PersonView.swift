@@ -58,6 +58,7 @@ struct PersonView: View {
     @State private var editingEvent: SyncedEvent?
     @State private var showSavingPicker = false
     @State private var showTrade = false
+    @State private var showAward = false
     // Collapse state for the iPad spotlight's grouped sections.
     @State private var dayOpen = true
     @State private var goalsOpen = true
@@ -147,6 +148,10 @@ struct PersonView: View {
                        currencies: model.overview?.currencies ?? [],
                        balances: model.overview?.balances ?? [],
                        conversions: model.conversions) { await model.load() }
+        }
+        .sheet(isPresented: $showAward) {
+            AwardStarsSheet(personName: firstName, personId: personId,
+                            currencies: model.overview?.currencies ?? []) { await model.load() }
         }
     }
 
@@ -438,6 +443,18 @@ struct PersonView: View {
                     }
                 }
                 Spacer(minLength: 8)
+                if sync.can("reward.grant") {
+                    Button { showAward = true } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "star.fill").font(.system(size: 11, weight: .bold))
+                            Text("Award").font(.system(size: 13, weight: .bold))
+                        }
+                        .foregroundStyle(WF.gold)
+                        .padding(.horizontal, 11).padding(.vertical, 7)
+                        .background(WF.gold.opacity(0.16)).clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
                 if !model.conversions.isEmpty {
                     Button { showTrade = true } label: {
                         HStack(spacing: 4) {
@@ -711,5 +728,115 @@ struct TradeSheet: View {
     private func friendly(_ e: String?) -> String {
         guard let e else { return "Couldn’t complete that trade." }
         return e.contains("not enough") ? "Not enough to trade that many times." : "Couldn’t complete that trade."
+    }
+}
+
+/// Ad-hoc "spot-award": a parent hands a person stars on the spot ("5 stars for
+/// being so helpful today"), untied to any chore — the web's AwardModal. Gated by
+/// `reward.grant` at the call site; writes a positive ledger entry and advances the
+/// recipient's saving-toward jar. Whole numbers only.
+struct AwardStarsSheet: View {
+    let personName: String
+    let personId: String
+    let currencies: [WaffledAPI.PersonOverview.Currency]
+    let onDone: () async -> Void
+
+    @Environment(SyncManager.self) private var sync
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var amount = 5
+    @State private var currency: String
+    @State private var note = ""
+    @State private var busy = false
+    @State private var error: String?
+
+    init(personName: String, personId: String,
+         currencies: [WaffledAPI.PersonOverview.Currency], onDone: @escaping () async -> Void) {
+        self.personName = personName; self.personId = personId
+        self.currencies = currencies; self.onDone = onDone
+        let def = currencies.first { $0.isDefault } ?? currencies.first
+        _currency = State(initialValue: def?.key ?? "stars")
+    }
+
+    private var cur: WaffledAPI.PersonOverview.Currency? { currencies.first { $0.key == currency } }
+    private var symbol: String { cur?.symbol ?? "⭐" }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Award stars").font(WF.serif(22)).foregroundStyle(WF.ink)
+                        Text("to \(personName)").font(.system(size: 13)).foregroundStyle(WF.ink3)
+                    }
+
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "How many")
+                        HStack(spacing: 14) {
+                            Button { amount = max(1, amount - 1) } label: { stepGlyph("minus") }
+                            HStack(spacing: 4) {
+                                Text(symbol).font(.system(size: 18))
+                                Text("\(amount)").font(.system(size: 18, weight: .bold)).foregroundStyle(WF.ink).frame(minWidth: 30)
+                            }
+                            Button { amount += 1 } label: { stepGlyph("plus") }
+                            Spacer()
+                            if currencies.count > 1 {
+                                Menu {
+                                    ForEach(currencies) { c in
+                                        Button("\(c.symbol) \(c.label)") { currency = c.key }
+                                    }
+                                } label: {
+                                    HStack(spacing: 5) {
+                                        Text("\(symbol) \(cur?.label ?? "Stars")").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
+                                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).foregroundStyle(WF.ink3)
+                                    }
+                                    .padding(.horizontal, 12).padding(.vertical, 9)
+                                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "Note (optional)")
+                        TextField("e.g. so helpful today", text: $note)
+                            .font(.system(size: 15))
+                            .padding(.horizontal, 14).padding(.vertical, 12)
+                            .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                    }
+
+                    if let error { Text(error).font(.system(size: 13, weight: .medium)).foregroundStyle(WF.primary) }
+
+                    Button { Task { await award() } } label: {
+                        Text(busy ? "Awarding…" : "Award \(amount) \(symbol)")
+                            .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                            .frame(maxWidth: .infinity).padding(.vertical, 14)
+                            .background(amount > 0 ? WF.primary : WF.ink3)
+                            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                    }
+                    .buttonStyle(.plain).disabled(busy || amount <= 0)
+                }
+                .padding(20)
+            }
+            .background(WF.canvas)
+            .navigationTitle("Award stars").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+    }
+
+    private func stepGlyph(_ name: String) -> some View {
+        Image(systemName: name).font(.system(size: 14, weight: .bold)).foregroundStyle(WF.ink)
+            .frame(width: 36, height: 36).background(WF.panel).clipShape(Circle())
+    }
+
+    private func award() async {
+        guard amount > 0 else { return }
+        busy = true; error = nil
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ok = await sync.awardSpot(personId: personId, amount: amount, currency: currency,
+                                      note: trimmed.isEmpty ? nil : trimmed)
+        busy = false
+        if ok { await onDone(); dismiss() }
+        else { error = "Couldn’t award those stars. Try again." }
     }
 }

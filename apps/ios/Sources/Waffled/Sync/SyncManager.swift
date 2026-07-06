@@ -464,6 +464,15 @@ final class SyncManager {
         }
     }
 
+    /// Ad-hoc "spot-award": a parent hands a person stars on the spot (not tied to a
+    /// chore). Gated by `reward.grant`; bumps rewardsRev so balances/jars refetch.
+    @discardableResult
+    func awardSpot(personId: String, amount: Int, currency: String?, note: String?) async -> Bool {
+        let ok = await restCommit { try await api.awardSpot(personId: personId, amount: amount, currency: currency, note: note) }
+        if ok { rewardsRev += 1 }
+        return ok
+    }
+
     /// Approve a pending redemption (e.g. one a kid filed from the web kiosk).
     @discardableResult
     func approveRedemption(id: String) async -> Bool {
