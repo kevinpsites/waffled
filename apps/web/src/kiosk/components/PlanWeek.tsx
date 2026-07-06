@@ -37,6 +37,10 @@ export function PlanWeek({ startStr, days, onClose, onApplied, initialUseUp }: {
   const [useUp, setUseUp] = useState<string[]>(initialUseUp ?? [])
   const [useUpInput, setUseUpInput] = useState('')
   const [keepInMind, setKeepInMind] = useState('')
+  // "Try New Recipe" steering: a novelty toggle + a list of specific dishes to try.
+  const [trySomethingNew, setTrySomethingNew] = useState(false)
+  const [wantToTry, setWantToTry] = useState<string[]>([])
+  const [wantToTryInput, setWantToTryInput] = useState('')
 
   const [cards, setCards] = useState<PlanCard[]>([])
   const [locked, setLocked] = useState<Set<string>>(new Set())
@@ -82,6 +86,8 @@ export function PlanWeek({ startStr, days, onClose, onApplied, initialUseUp }: {
         keepInMind: keepInMind.trim() || null,
         useUp,
         avoidTitles: avoid,
+        trySomethingNew,
+        wantToTry,
       })
       if (r.error) {
         setError(friendlyAiError(r.error))
@@ -151,6 +157,12 @@ export function PlanWeek({ startStr, days, onClose, onApplied, initialUseUp }: {
     if (!v) return
     setUseUp((u) => [...new Set([...u, v])])
     setUseUpInput('')
+  }
+  function addWantToTry() {
+    const v = wantToTryInput.trim()
+    if (!v) return
+    setWantToTry((u) => [...new Set([...u, v])])
+    setWantToTryInput('')
   }
 
   async function applyAll() {
@@ -235,6 +247,68 @@ export function PlanWeek({ startStr, days, onClose, onApplied, initialUseUp }: {
         <div className="plan-card">
           <div className="tiny">Keep in mind</div>
           <textarea className="plan-keep" rows={2} placeholder="e.g. Lottie skips spicy · Tue & Thu are busy — keep under 30 min" value={keepInMind} onChange={(e) => setKeepInMind(e.target.value)} />
+        </div>
+
+        {/* "Try New Recipe": nudge the plan toward novelty + list specific dishes to try. */}
+        <div className="plan-card">
+          <button
+            type="button"
+            aria-pressed={trySomethingNew}
+            onClick={() => setTrySomethingNew((v) => !v)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              width: '100%',
+              padding: '2px 0',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              font: 'inherit',
+              fontWeight: 700,
+              textAlign: 'left',
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 20,
+                height: 20,
+                borderRadius: 6,
+                fontSize: 13,
+                lineHeight: 1,
+                color: '#fff',
+                border: '1.5px solid var(--line, #d7d2c8)',
+                background: trySomethingNew ? 'var(--accent, #E0548B)' : 'transparent',
+                borderColor: trySomethingNew ? 'var(--accent, #E0548B)' : 'var(--line, #d7d2c8)',
+              }}
+            >
+              {trySomethingNew ? '✓' : ''}
+            </span>
+            <span>✨ Try something new this week</span>
+          </button>
+          <div className="tiny muted" style={{ margin: '6px 2px 2px' }}>Adds at least one brand-new dish, even if your library could fill the night.</div>
+          <div className="tiny" style={{ marginTop: 12 }}>Dishes to try</div>
+          <div className="use-up-list">
+            {wantToTry.map((u) => (
+              <span key={u} className="use-chip">{u} <b onClick={() => setWantToTry((x) => x.filter((y) => y !== u))}>×</b></span>
+            ))}
+            <input
+              className="use-add-input"
+              placeholder="+ Dish to try"
+              value={wantToTryInput}
+              onChange={(e) => setWantToTryInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addWantToTry()
+                }
+              }}
+            />
+          </div>
         </div>
       </div>
 
