@@ -337,10 +337,18 @@ describe('spot-award stars', () => {
     ))
     // Shop route is blocked…
     expect((await call('GET', '/api/rewards', kevin)).statusCode).toBe(403)
-    // …but spot-award still lands.
-    const before = await starsOf(kidId)
+    // …but spot-award still lands. (Read the balance from the ledger directly —
+    // /api/balances is itself shop-gated, so it can't be used here.)
+    const ledgerStars = () => withClient(async (c) => {
+      const { rows } = await c.query<{ b: string | null }>(
+        `select coalesce(sum(amount),0) as b from ledger_entries where household_id=$1 and person_id=$2 and currency='stars' and deleted_at is null`,
+        [householdId, kidId]
+      )
+      return Number(rows[0]?.b ?? 0)
+    })
+    const before = await ledgerStars()
     expect((await call('POST', `/api/persons/${kidId}/award`, kevin, { amount: 4 })).statusCode).toBe(201)
-    expect(await starsOf(kidId)).toBe(before + 4)
+    expect(await ledgerStars()).toBe(before + 4)
     // restore
     await withClient((c) => c.query(
       `update households set settings = coalesce(settings,'{}'::jsonb) || jsonb_build_object('chores', jsonb_build_object('rewards', true)) where id=$1`,
