@@ -525,16 +525,22 @@ private struct AddTimerControl: View {
         .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).stroke(WF.hair, lineWidth: 1))
     }
 
-    /// A labeled stepper — big enough to poke across the kitchen, no keyboard needed.
+    /// A labeled wheel picker — flick straight to any value (a stepper would take
+    /// forever to reach, say, 45 seconds), big enough to poke across the kitchen.
     private func field(_ label: String, value: Binding<Int>, range: ClosedRange<Int>) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label).font(.system(size: 11, weight: .heavy)).tracking(0.8).foregroundStyle(WF.ink3)
-            HStack(spacing: 10) {
-                Text("\(value.wrappedValue)")
-                    .font(.system(size: 26, weight: .heavy, design: .rounded)).monospacedDigit()
-                    .foregroundStyle(WF.ink).frame(minWidth: 44, alignment: .leading)
-                Stepper("", value: value, in: range).labelsHidden()
+            Picker(label, selection: value) {
+                ForEach(Array(range), id: \.self) { n in
+                    Text(String(format: "%02d", n))
+                        .font(.system(size: 24, weight: .heavy, design: .rounded)).monospacedDigit()
+                        .foregroundStyle(WF.ink)
+                        .tag(n)
+                }
             }
+            .pickerStyle(.wheel)
+            .frame(width: 92, height: 116)
+            .clipped()
         }
     }
 

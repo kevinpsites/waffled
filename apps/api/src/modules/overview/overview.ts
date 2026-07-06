@@ -170,8 +170,8 @@ export async function personOverview(householdId: string, personId: string) {
     [householdId, personId]
   )
   const balByCurrency = new Map(bal.rows.map((r) => [r.currency, Number(r.b)]))
-  const recent = await query<{ amount: number; reason: string; currency: string; detail: string | null; created_at: string }>(
-    `select le.amount, le.reason, le.currency, le.created_at,
+  const recent = await query<{ amount: number; reason: string; currency: string; detail: string | null; note: string | null; created_at: string }>(
+    `select le.amount, le.reason, le.currency, le.created_at, le.note,
             coalesce(rr.title, ch.title) as detail
        from ledger_entries le
        left join chore_instances ci on le.ref_type = 'chore_instance' and ci.id = le.ref_id
@@ -237,7 +237,7 @@ export async function personOverview(householdId: string, personId: string) {
     goals,
     categoryBalance: balance,
     insight: buildInsight(balance, person.name),
-    recentLedger: recent.rows.map((r) => ({ amount: r.amount, reason: r.reason, currency: r.currency, detail: r.detail ?? null, createdAt: r.created_at })),
+    recentLedger: recent.rows.map((r) => ({ amount: r.amount, reason: r.reason, currency: r.currency, detail: r.detail ?? null, note: r.note ?? null, createdAt: r.created_at })),
     redemptions: redemptions.rows.map((r) => ({ id: r.id, title: r.title, emoji: r.emoji, cost: r.cost, currency: r.currency, status: r.status, createdAt: r.created_at })),
     rewardShop,
     savingToward,

@@ -1879,8 +1879,21 @@ struct WaffledAPI: Sendable {
             let amount: Int
             let reason, currency: String
             let detail: String?
+            let note: String?          // free-text on ad-hoc entries (e.g. a spot award's reason)
             let createdAt: String
             var id: String { createdAt + reason + "\(amount)" + (detail ?? "") }
+
+            /// Human label for the ledger row: a chore/reward title when present, else
+            /// the humanized reason — and for a spot award, append the parent's note
+            /// ("spot award — being so helpful").
+            var label: String {
+                if let d = detail, !d.isEmpty { return d }
+                let base = reason.replacingOccurrences(of: "_", with: " ")
+                if reason == "spot_award", let n = note?.trimmingCharacters(in: .whitespaces), !n.isEmpty {
+                    return "\(base) — \(n)"
+                }
+                return base
+            }
         }
         struct Redemption: Decodable, Sendable, Identifiable {
             let id, title: String

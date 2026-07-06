@@ -434,38 +434,44 @@ struct PersonView: View {
 
     private func starsCard(_ ov: WaffledAPI.PersonOverview) -> some View {
         card("Currencies & chores") {
-            HStack(spacing: 16) {
-                ForEach(balances(ov)) { b in
-                    HStack(spacing: 4) {
-                        Text(b.symbol).font(.system(size: 15))
-                        Text("\(b.amount)").font(.system(size: 20, weight: .heavy)).foregroundStyle(b.color)
-                        Text(b.label.lowercased()).font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
+            // Balances scroll horizontally so the action pills always keep their room
+            // (never squeezed into mid-word wraps like "Awar/d").
+            HStack(spacing: 10) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 16) {
+                        ForEach(balances(ov)) { b in
+                            HStack(spacing: 4) {
+                                Text(b.symbol).font(.system(size: 15))
+                                Text("\(b.amount)").font(.system(size: 20, weight: .heavy)).foregroundStyle(b.color)
+                                Text(b.label.lowercased()).font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(WF.ink3).fixedSize()
+                            }
+                        }
                     }
                 }
-                Spacer(minLength: 8)
                 if sync.can("reward.grant") {
                     Button { showAward = true } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "star.fill").font(.system(size: 11, weight: .bold))
-                            Text("Award").font(.system(size: 13, weight: .bold))
+                            Text("Award").font(.system(size: 13, weight: .bold)).lineLimit(1)
                         }
                         .foregroundStyle(WF.gold)
                         .padding(.horizontal, 11).padding(.vertical, 7)
                         .background(WF.gold.opacity(0.16)).clipShape(Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plain).fixedSize()
                 }
                 if !model.conversions.isEmpty {
                     Button { showTrade = true } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.left.arrow.right").font(.system(size: 12, weight: .bold))
-                            Text("Trade").font(.system(size: 13, weight: .bold))
+                            Text("Trade").font(.system(size: 13, weight: .bold)).lineLimit(1)
                         }
                         .foregroundStyle(WF.ai)
                         .padding(.horizontal, 11).padding(.vertical, 7)
                         .background(WF.ai.opacity(0.12)).clipShape(Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plain).fixedSize()
                 }
             }
             if !ov.recentLedger.isEmpty {
@@ -478,7 +484,7 @@ struct PersonView: View {
                                 .foregroundStyle(e.amount >= 0 ? FamilyColor.wally.solid : WF.primary)
                                 .frame(width: 38, alignment: .leading)
                             Text(symbol(for: e.currency)).font(.system(size: 11))
-                            Text(e.detail ?? e.reason.replacingOccurrences(of: "_", with: " "))
+                            Text(e.label)
                                 .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                             Spacer()
                         }
@@ -749,6 +755,7 @@ struct AwardStarsSheet: View {
     @State private var note = ""
     @State private var busy = false
     @State private var error: String?
+    @FocusState private var noteFocused: Bool
 
     init(personName: String, personId: String,
          currencies: [WaffledAPI.PersonOverview.Currency], onDone: @escaping () async -> Void) {
@@ -801,6 +808,8 @@ struct AwardStarsSheet: View {
                         SectionLabel(text: "Note (optional)")
                         TextField("e.g. so helpful today", text: $note)
                             .font(.system(size: 15))
+                            .focused($noteFocused)
+                            .submitLabel(.done)
                             .padding(.horizontal, 14).padding(.vertical, 12)
                             .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     }
@@ -821,6 +830,8 @@ struct AwardStarsSheet: View {
             .background(WF.canvas)
             .navigationTitle("Award stars").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            // Land in the note so a parent can just type the reason.
+            .task { try? await Task.sleep(for: .milliseconds(350)); noteFocused = true }
         }
     }
 

@@ -39,9 +39,14 @@ struct KioskListsView: View {
         .task { await model.load() }
         .onChange(of: sync.listsRev) { _, _ in Task { await model.load() } }
         .sheet(isPresented: $creating) {
-            NewListSheet { name, emoji in
-                Task { if let new = await model.create(name: name, emoji: emoji) { selectedId = new.id } }
-            }
+            NewListSheet(
+                loadTemplates: { await model.templates() },
+                onCreate: { name, emoji in
+                    Task { if let new = await model.create(name: name, emoji: emoji) { selectedId = new.id } }
+                },
+                onApply: { tpl, name in
+                    Task { if let new = await model.apply(template: tpl, name: name) { selectedId = new.id } }
+                })
         }
     }
 

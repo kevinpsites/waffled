@@ -49,9 +49,10 @@ final class ListsIndexModel {
 
     /// Apply a template → a fresh custom list (everything unchecked), reloading the
     /// index so the new list shows in the rail. Returns it so the caller can open it.
-    func apply(template: WaffledAPI.ListSummary) async -> WaffledAPI.ListSummary? {
+    func apply(template: WaffledAPI.ListSummary, name: String? = nil) async -> WaffledAPI.ListSummary? {
         do {
-            let new = try await api.applyListTemplate(templateId: template.id)
+            let n = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let new = try await api.applyListTemplate(templateId: template.id, name: (n?.isEmpty == false) ? n : nil)
             await load()
             return new
         } catch { self.error = true; return nil }
@@ -65,7 +66,6 @@ struct ListsIndexView: View {
     @State private var showCapture = false
     @State private var dictateOnOpen = false
     @State private var creatingList = false
-    @State private var applyingTemplate = false
 
     /// Fire the headless deep-link at most once per process — the index view is
     /// recreated when you pop back to it, so a per-view flag would re-fire and trap
@@ -118,14 +118,7 @@ struct ListsIndexView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button { creatingList = true } label: { Label("New list", systemImage: "plus") }
-                    Button { applyingTemplate = true } label: { Label("Apply template", systemImage: "doc.on.doc") }
-                } label: {
-                    Image(systemName: "plus")
-                } primaryAction: {
-                    creatingList = true
-                }
+                Button { creatingList = true } label: { Image(systemName: "plus") }
             }
         }
         .task {
@@ -138,15 +131,13 @@ struct ListsIndexView: View {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $creatingList) {
-            NewListSheet { name, emoji in
-                Task { if let new = await model.create(name: name, emoji: emoji) { path.append(.list(new)) } }
-            }
-        }
-        .sheet(isPresented: $applyingTemplate) {
-            ApplyTemplateSheet(
-                load: { await model.templates() },
-                onApply: { tpl in
-                    Task { if let new = await model.apply(template: tpl) { path.append(.list(new)) } }
+            NewListSheet(
+                loadTemplates: { await model.templates() },
+                onCreate: { name, emoji in
+                    Task { if let new = await model.create(name: name, emoji: emoji) { path.append(.list(new)) } }
+                },
+                onApply: { tpl, name in
+                    Task { if let new = await model.apply(template: tpl, name: name) { path.append(.list(new)) } }
                 })
         }
     }
@@ -177,35 +168,80 @@ struct ListsIndexView: View {
     }
 }
 
-/// New custom list — name + optional emoji. WF-styled.
+/// New custom list — name + optional emoji, with an inline "Or apply a template"
+/// section (mirrors the web New-list modal). "Create list" makes an empty list from
+/// the typed name; tapping a template chip spins up a fresh copy (everything
+/// unchecked), honoring the typed name when you entered one.
 struct NewListSheet: View {
     @Environment(\.dismiss) private var dismiss
+    let loadTemplates: () async -> [WaffledAPI.ListSummary]
     let onCreate: (String, String) -> Void
+    let onApply: (WaffledAPI.ListSummary, String) -> Void
+
     @State private var name = ""
     @State private var emoji = ""
+    @State private var templates: [WaffledAPI.ListSummary] = []
     @FocusState private var nameFocused: Bool
+
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 9) {
-                        SectionLabel(text: "List name")
-                        TextField("Camping gear", text: $name)
-                            .font(.system(size: 16, weight: .semibold)).textInputAutocapitalization(.words)
-                            .focused($nameFocused)
-                            .padding(.horizontal, 13).padding(.vertical, 12)
-                            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 9) {
+                            SectionLabel(text: "List name")
+                            TextField("Camping gear", text: $name)
+                                .font(.system(size: 16, weight: .semibold)).textInputAutocapitalization(.words)
+                                .focused($nameFocused)
+                                .submitLabel(.done)
+                                .padding(.horizontal, 13).padding(.vertical, 12)
+                                .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                                    .strokeBorder(nameFocused ? WF.primary : WF.hair, lineWidth: nameFocused ? 2 : 1))
+                        }
+                        VStack(alignment: .leading, spacing: 9) {
+                            SectionLabel(text: "Emoji")
+                            TextField("📝", text: $emoji)
+                                .font(.system(size: 16, weight: .semibold)).multilineTextAlignment(.center)
+                                .frame(width: 60).padding(.vertical, 12)
+                                .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+                                .onChange(of: emoji) { _, v in if v.count > 2 { emoji = String(v.prefix(2)) } }
+                        }
                     }
-                    VStack(alignment: .leading, spacing: 9) {
-                        SectionLabel(text: "Emoji")
-                        TextField("📝", text: $emoji)
-                            .font(.system(size: 16, weight: .semibold)).multilineTextAlignment(.center)
-                            .frame(width: 60).padding(.vertical, 12)
-                            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
-                            .onChange(of: emoji) { _, v in if v.count > 2 { emoji = String(v.prefix(2)) } }
+
+                    Button {
+                        onCreate(trimmedName, emoji.trimmingCharacters(in: .whitespaces)); dismiss()
+                    } label: {
+                        Text("Create list").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                            .frame(maxWidth: .infinity).padding(.vertical, 15)
+                            .background(trimmedName.isEmpty ? WF.ink3 : WF.primary)
+                            .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+                    }
+                    .buttonStyle(.plain).disabled(trimmedName.isEmpty)
+
+                    if !templates.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Or apply a template")
+                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
+                            ChipFlow(spacing: 8, lineSpacing: 8) {
+                                ForEach(templates) { tpl in
+                                    Button { onApply(tpl, trimmedName); dismiss() } label: {
+                                        HStack(spacing: 8) {
+                                            Text(tpl.emoji ?? "📑").font(.system(size: 15))
+                                            Text(tpl.name).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
+                                                .lineLimit(1)
+                                        }
+                                        .padding(.horizontal, 14).padding(.vertical, 10)
+                                        .background(WF.card).clipShape(Capsule())
+                                        .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
                     }
                 }
                 .padding(20)
@@ -215,81 +251,13 @@ struct NewListSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") { onCreate(name, emoji.trimmingCharacters(in: .whitespaces)); dismiss() }
-                        .fontWeight(.semibold).disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-        }
-        .presentationDetents([.height(200), .medium])
-        // Land in the name field so you can just start typing.
-        .task { try? await Task.sleep(for: .milliseconds(300)); nameFocused = true }
-    }
-}
-
-/// Pick a saved template to spin up a fresh copy of (everything unchecked). Mirrors
-/// the web's Apply-template picker. Loads templates on appear; tapping one applies it
-/// and dismisses.
-struct ApplyTemplateSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    let load: () async -> [WaffledAPI.ListSummary]
-    let onApply: (WaffledAPI.ListSummary) -> Void
-
-    @State private var templates: [WaffledAPI.ListSummary] = []
-    @State private var loading = true
-
-    var body: some View {
-        NavigationStack {
-            List {
-                if loading {
-                    WaffledLoading(top: 40)
-                        .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 8, trailing: 18))
-                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
-                } else if templates.isEmpty {
-                    WaffledEmptyState(
-                        emoji: "📑",
-                        title: "No templates yet",
-                        message: "Open a list and choose “Save as template” to reuse it later.")
-                        .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 8, trailing: 18))
-                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
-                } else {
-                    SectionLabel(text: "Your templates")
-                        .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 2, trailing: 18))
-                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
-                    ForEach(templates) { tpl in
-                        Button { onApply(tpl); dismiss() } label: { row(tpl) }
-                            .buttonStyle(.plain)
-                            .listRowInsets(EdgeInsets(top: 5, leading: 18, bottom: 5, trailing: 18))
-                            .listRowBackground(Color.clear).listRowSeparator(.hidden)
-                    }
-                }
-            }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(WF.canvas)
-            .navigationTitle("Apply template")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
         }
         .presentationDetents([.medium, .large])
         .task {
-            templates = await load()
-            loading = false
-        }
-    }
-
-    private func row(_ tpl: WaffledAPI.ListSummary) -> some View {
-        WaffledCard(padding: 15) {
-            HStack(spacing: 13) {
-                WaffledEmojiTile(emoji: tpl.emoji ?? "📑")
-                Text(tpl.name).font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink)
-                Spacer(minLength: 8)
-                Text("\(tpl.itemCount)").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
-                Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 18, weight: .semibold)).foregroundStyle(WF.primary)
-            }
+            templates = await loadTemplates()
+            // Land in the name field so you can just start typing.
+            try? await Task.sleep(for: .milliseconds(300)); nameFocused = true
         }
     }
 }
