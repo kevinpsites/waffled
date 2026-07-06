@@ -231,6 +231,23 @@ describe('reward approval — per-reward flag + household default', () => {
     const upd = JSON.parse((await call('PATCH', `/api/rewards/${r.id}`, kevin, { requiresApproval: false })).body).reward
     expect(upd.requiresApproval).toBe(false)
   })
+
+  it('a reward round-trips its category (create → read → PATCH → clear)', async () => {
+    // Create with a category — it comes back on create and on list.
+    const created = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Cone', emoji: '🍦', cost: 2, category: 'treats' })).body).reward
+    expect(created.category).toBe('treats')
+    const listed = JSON.parse((await call('GET', '/api/rewards', kevin)).body).rewards.find((x: { id: string }) => x.id === created.id)
+    expect(listed.category).toBe('treats')
+    // PATCH swaps the category…
+    const swapped = JSON.parse((await call('PATCH', `/api/rewards/${created.id}`, kevin, { category: 'screen' })).body).reward
+    expect(swapped.category).toBe('screen')
+    // …and an empty/blank category clears it back to null.
+    const cleared = JSON.parse((await call('PATCH', `/api/rewards/${created.id}`, kevin, { category: '' })).body).reward
+    expect(cleared.category).toBeNull()
+    // Uncategorised rewards default to null.
+    const plain = JSON.parse((await call('POST', '/api/rewards', kevin, { title: 'Plain', cost: 1 })).body).reward
+    expect(plain.category).toBeNull()
+  })
 })
 
 describe('reward capability gating (non-admin members)', () => {
