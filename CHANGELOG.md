@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- Generate URL-safe Postgres passwords during first-run env bootstrapping so
+  `./waffled up` migrations do not fail when a base64 password contains `/`.
 
 ## [0.1.0] - 2026-07-05
 
