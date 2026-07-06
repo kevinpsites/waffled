@@ -120,11 +120,16 @@ export function CookMode() {
   const firingTimers = timers.filter((t) => t.firing)
   const runningTimers = timers.filter((t) => !t.firing)
   // "Jump to step" from the alarm: leave the done screen, go to that step, clear it.
-  const jumpToTimer = useCallback((t: CookTimer) => {
+  // Dock (still-running timer): return to its step but KEEP the timer running.
+  const jumpToStep = useCallback((t: CookTimer) => {
     setDone(false)
     setI(Math.max(0, Math.min(t.stepIndex, steps.length - 1)))
+  }, [steps.length])
+  // Alarm (fired timer): jump to the step and clear the finished alarm.
+  const jumpToTimer = useCallback((t: CookTimer) => {
+    jumpToStep(t)
     dismissTimer(t.id)
-  }, [steps.length, dismissTimer])
+  }, [jumpToStep, dismissTimer])
 
   const total = steps.length
   // Replace (not push) the cook-mode history entry with the recipe so pressing
@@ -171,7 +176,7 @@ export function CookMode() {
           )}
           <button className="btn btn-primary" onClick={exit}>Back to recipe</button>
         </div>
-        <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} onJump={jumpToTimer} />
+        <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} onJump={jumpToStep} />
         <TimerAlarm firing={firingTimers} onDismiss={dismissTimer} onSnooze={snoozeTimer} onJump={jumpToTimer} />
         {sheetOpen && (
           <CookConfirm title={recipe.title} matches={usedMatches} onClose={() => setSheetOpen(false)} />
@@ -246,7 +251,7 @@ export function CookMode() {
         </div>
       )}
 
-      <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} onJump={jumpToTimer} />
+      <TimerDock timers={runningTimers} onToggle={toggleTimer} onDismiss={dismissTimer} onJump={jumpToStep} />
       <TimerAlarm firing={firingTimers} onDismiss={dismissTimer} onSnooze={snoozeTimer} onJump={jumpToTimer} />
     </div>
   )
