@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { rewardsApi, useRewardsHub, useHousehold, usePersonOverview, can, type Reward, type Currency, type PersonBalance } from '../../lib/api'
+import { rewardsApi, useRewardsHub, useHousehold, usePersonOverview, can, type Reward, type Currency } from '../../lib/api'
 import { SpotAwardModal } from './SpotAwardModal'
 import '../../styles/shop.css'
 
@@ -542,6 +542,3 @@ function RewardModal({ reward, currencies, onClose, onSaved }: { reward?: Reward
     </div>
   )
 }
-
-// re-export for tests that build a synthetic roster
-export type { PersonBalance }
