@@ -6,6 +6,7 @@ import type { Request } from 'lambda-api'
 import { getPool, query } from '../../platform/db'
 import { AuthError, type Principal } from '../../platform/auth'
 import { config } from '../../platform/config'
+import { seedDefaultRecipe } from '../meals/seed-default-recipe'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -280,6 +281,10 @@ export async function createHouseholdForAccount(
       household.id,
     ])
     household.owner_person_id = person.id
+
+    // Pre-seed the delightful default "Waffles" recipe (Easter egg + canonical
+    // example, incl. a timer step). Atomic with household creation — same tx.
+    await seedDefaultRecipe(client, household.id, person.id)
 
     await client.query('commit')
     return { household, person }
