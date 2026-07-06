@@ -159,7 +159,7 @@ export function registerMealRoutes(api: Api): void {
         prepNote: it.prepNote,
         section: it.section,
       })),
-      steps: r.steps.map((s) => ({ instruction: s.text, ingredients: s.ingredients })),
+      steps: r.steps.map((s) => ({ instruction: s.text, ingredients: s.ingredients, timerSeconds: s.timerSeconds ?? null })),
     }
   }))
 
