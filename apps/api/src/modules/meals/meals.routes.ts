@@ -349,11 +349,15 @@ export function registerMealRoutes(api: Api): void {
       keepInMind?: unknown
       useUp?: unknown
       avoidTitles?: unknown
+      wantToTry?: unknown
+      trySomethingNew?: unknown
     }
     const start = typeof b.start === 'string' && DATE_RE.test(b.start) ? b.start : todayDate()
     const dates = Array.isArray(b.dates) ? b.dates.filter((d): d is string => typeof d === 'string' && DATE_RE.test(d)) : undefined
     const useUp = Array.isArray(b.useUp) ? b.useUp.filter((s): s is string => typeof s === 'string' && !!s.trim()).slice(0, 12) : undefined
     const avoidTitles = Array.isArray(b.avoidTitles) ? b.avoidTitles.filter((s): s is string => typeof s === 'string').slice(0, 40) : undefined
+    const wantToTry = Array.isArray(b.wantToTry) ? b.wantToTry.filter((s): s is string => typeof s === 'string' && !!s.trim()).slice(0, 12) : undefined
+    const trySomethingNew = typeof b.trySomethingNew === 'boolean' ? b.trySomethingNew : undefined
     try {
       return await planWeek(tenant, {
         start,
@@ -363,6 +367,8 @@ export function registerMealRoutes(api: Api): void {
         keepInMind: typeof b.keepInMind === 'string' ? b.keepInMind : null,
         useUp,
         avoidTitles,
+        wantToTry,
+        trySomethingNew,
       })
     } catch (err) {
       const message = (err as Error).message
