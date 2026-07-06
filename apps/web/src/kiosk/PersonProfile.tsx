@@ -184,6 +184,11 @@ export function PersonProfile() {
   const rewardsOn = rewardsEnabled(household)
   const { lists: goalLists } = useGoalLists()
   const [trading, setTrading] = useState(false)
+  const [awarding, setAwarding] = useState(false)
+  // A parent can hand out ad-hoc "spot" stars (not tied to a chore) when they hold
+  // reward.grant. This is an *earn* action, so it stays visible even if the rewards
+  // shop is off — the wallet/ledger is always shown.
+  const canAward = can(me, 'reward.grant')
 
   // "New goal for {name}" must keep its promise: it pre-selects this person by
   // targeting their individual goal list. You can only create a goal for someone
@@ -300,10 +305,13 @@ export function PersonProfile() {
         )}
 
         <div className="card pp-card pp-stars">
-          <div className="card-h" style={{ marginBottom: 8, display: 'flex', alignItems: 'center' }}>
+          <div className="card-h" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
             <span>Wallet &amp; chores</span>
+            {canAward && (
+              <button type="button" className="pp-trade" style={{ marginLeft: 'auto' }} onClick={() => setAwarding(true)}>⭐ Award stars</button>
+            )}
             {conversions.length > 0 && (
-              <button type="button" className="pp-trade" style={{ marginLeft: 'auto' }} onClick={() => setTrading(true)}>⇄ Trade</button>
+              <button type="button" className="pp-trade" style={{ marginLeft: canAward ? 0 : 'auto' }} onClick={() => setTrading(true)}>⇄ Trade</button>
             )}
           </div>
           {/* All currencies are equal — one line, same size, no default-first priority. */}
@@ -354,6 +362,80 @@ export function PersonProfile() {
           onClose={() => setTrading(false)}
         />
       )}
+
+      {awarding && (
+        <AwardModal
+          person={{ id: person.id, name: person.name ?? 'this person' }}
+          currencies={data.currencies}
+          defaultCurrency={defaultCur?.key ?? 'stars'}
+          onClose={() => setAwarding(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// A small modal for an ad-hoc "spot-award": pick an amount + currency (+ optional
+// note), then write a positive ledger entry via rewardsApi.awardSpot. Balances/jars
+// refetch automatically (the call taps 'rewards').
+function AwardModal({ person, currencies, defaultCurrency, onClose }: {
+  person: { id: string; name: string }
+  currencies: OverviewCurrency[]
+  defaultCurrency: string
+  onClose: () => void
+}) {
+  const [amount, setAmount] = useState(5)
+  const [currency, setCurrency] = useState(defaultCurrency)
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const cur = currencies.find((c) => c.key === currency)
+
+  async function submit() {
+    if (amount <= 0 || saving) return
+    setSaving(true)
+    try {
+      await rewardsApi.awardSpot(person.id, amount, currency, note.trim() || undefined)
+      onClose()
+    } catch {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 380 }}>
+        <div className="card-h" style={{ marginBottom: 14 }}>Award stars to {person.name}</div>
+
+        <label className="tiny muted" style={{ fontWeight: 700, display: 'block', marginBottom: 4 }}>AMOUNT</label>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          <input
+            type="number" min={1} value={amount} aria-label="Amount"
+            onChange={(e) => setAmount(Math.max(0, Math.round(Number(e.target.value) || 0)))}
+            style={{ flex: 1 }}
+          />
+          {currencies.length > 1 ? (
+            <select aria-label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+              {currencies.map((c) => <option key={c.key} value={c.key}>{c.symbol} {c.label}</option>)}
+            </select>
+          ) : (
+            <span className="pill" style={{ alignSelf: 'center' }}>{cur?.symbol ?? '⭐'} {cur?.label ?? 'Stars'}</span>
+          )}
+        </div>
+
+        <label className="tiny muted" style={{ fontWeight: 700, display: 'block', marginBottom: 4 }}>NOTE (OPTIONAL)</label>
+        <input
+          type="text" value={note} aria-label="Note" placeholder="e.g. so helpful today"
+          onChange={(e) => setNote(e.target.value)}
+          style={{ width: '100%', marginBottom: 18 }}
+        />
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button type="button" className="pp-trade" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn-primary" disabled={amount <= 0 || saving} onClick={submit}>
+            {saving ? 'Awarding…' : `Award ${amount} ${cur?.symbol ?? '⭐'}`}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
