@@ -24,14 +24,17 @@ final class ListsIndexModel {
     }
 
     /// Create a list and return it (so the caller can open it), reloading the index.
+    /// Reloads **regardless** of the create response — the row may have been created
+    /// even if decoding the reply hiccuped (so the new list still shows without a
+    /// manual pull-to-refresh).
     func create(name: String, emoji: String) async -> WaffledAPI.ListSummary? {
         let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !n.isEmpty else { return nil }
-        do {
-            let new = try await api.addList(name: n, emoji: emoji.isEmpty ? nil : emoji)
-            await load()
-            return new
-        } catch { self.error = true; return nil }
+        var created: WaffledAPI.ListSummary?
+        do { created = try await api.addList(name: n, emoji: emoji.isEmpty ? nil : emoji) }
+        catch { self.error = true }
+        await load()
+        return created
     }
 
     /// Optimistic delete; restore on failure.
@@ -50,12 +53,18 @@ final class ListsIndexModel {
     /// Apply a template → a fresh custom list (everything unchecked), reloading the
     /// index so the new list shows in the rail. Returns it so the caller can open it.
     func apply(template: WaffledAPI.ListSummary, name: String? = nil) async -> WaffledAPI.ListSummary? {
-        do {
-            let n = name?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let new = try await api.applyListTemplate(templateId: template.id, name: (n?.isEmpty == false) ? n : nil)
-            await load()
-            return new
-        } catch { self.error = true; return nil }
+        let n = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        var created: WaffledAPI.ListSummary?
+        do { created = try await api.applyListTemplate(templateId: template.id, name: (n?.isEmpty == false) ? n : nil) }
+        catch { self.error = true }
+        await load()
+        return created
+    }
+
+    /// Delete a saved template (a hidden `list_type='template'` list). Optimistic
+    /// callers drop it from their local copy; this just fires the soft-delete.
+    func deleteTemplate(_ tpl: WaffledAPI.ListSummary) async {
+        do { try await api.deleteList(id: tpl.id) } catch { self.error = true }
     }
 }
 
@@ -73,46 +82,43 @@ struct ListsIndexView: View {
     private static var didDeepLink = false
 
     var body: some View {
-        List {
-            AICaptureBar(placeholder: "Add milk & eggs to groceries…",
-                         onTap: { dictateOnOpen = false; showCapture = true },
-                         onMic: { dictateOnOpen = true; showCapture = true })
-                .listRowInsets(EdgeInsets(top: 8, leading: 18, bottom: 8, trailing: 18))
-                .listRowBackground(Color.clear).listRowSeparator(.hidden)
+        // A ScrollView (not List) to match the app's other hub screens — a List pushed
+        // under FamilyView's hidden nav bar wouldn't scroll to the last row. Delete
+        // moves from swipe to long-press (same idiom as the template chips).
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                AICaptureBar(placeholder: "Add milk & eggs to groceries…",
+                             onTap: { dictateOnOpen = false; showCapture = true },
+                             onMic: { dictateOnOpen = true; showCapture = true })
+                    .padding(.top, 8)
 
-            if !model.lists.isEmpty {
-                SectionLabel(text: "Your lists")
-                    .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 2, trailing: 18))
-                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
-            }
-            if model.loading && model.lists.isEmpty {
-                WaffledLoading(top: 40)
-                    .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 8, trailing: 18))
-                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
-            } else if model.lists.isEmpty {
-                WaffledEmptyState(
-                    emoji: model.error ? "😕" : "🗒️",
-                    title: model.error ? "Couldn’t load your lists" : "No lists yet",
-                    message: model.error ? "Pull to refresh to try again." : "Add one with the ＋ button.")
-                    .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 8, trailing: 18))
-                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
-            }
-            ForEach(model.lists) { list in
-                Button { path.append(.list(list)) } label: { row(list) }
-                    .buttonStyle(.plain)
-                    .listRowInsets(EdgeInsets(top: 5, leading: 18, bottom: 5, trailing: 18))
-                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
-                    .swipeActions(edge: .trailing) {
-                        if list.listType.lowercased() != "grocery" {
-                            Button(role: .destructive) { Task { await model.delete(list) } } label: {
-                                Label("Delete", systemImage: "trash")
+                if !model.lists.isEmpty {
+                    SectionLabel(text: "Your lists").padding(.leading, 2).padding(.top, 2)
+                }
+                if model.loading && model.lists.isEmpty {
+                    WaffledLoading(top: 40)
+                } else if model.lists.isEmpty {
+                    WaffledEmptyState(
+                        emoji: model.error ? "😕" : "🗒️",
+                        title: model.error ? "Couldn’t load your lists" : "No lists yet",
+                        message: model.error ? "Pull to refresh to try again." : "Add one with the ＋ button.")
+                        .padding(.top, 24)
+                }
+                ForEach(model.lists) { list in
+                    Button { path.append(.list(list)) } label: { row(list) }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            if list.listType.lowercased() != "grocery" {
+                                Button(role: .destructive) { Task { await model.delete(list) } } label: {
+                                    Label("Delete list", systemImage: "trash")
+                                }
                             }
                         }
-                    }
+                }
             }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 110)
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
         .background(WF.canvas)
         .navigationTitle("Lists")
         .navigationBarTitleDisplayMode(.large)
@@ -133,12 +139,9 @@ struct ListsIndexView: View {
         .sheet(isPresented: $creatingList) {
             NewListSheet(
                 loadTemplates: { await model.templates() },
-                onCreate: { name, emoji in
-                    Task { if let new = await model.create(name: name, emoji: emoji) { path.append(.list(new)) } }
-                },
-                onApply: { tpl, name in
-                    Task { if let new = await model.apply(template: tpl, name: name) { path.append(.list(new)) } }
-                })
+                onCreate: { name, emoji in Task { _ = await model.create(name: name, emoji: emoji) } },
+                onApply: { tpl, name in Task { _ = await model.apply(template: tpl, name: name) } },
+                onDeleteTemplate: { tpl in await model.deleteTemplate(tpl) })
         }
     }
 
@@ -168,22 +171,26 @@ struct ListsIndexView: View {
     }
 }
 
-/// New custom list — name + optional emoji, with an inline "Or apply a template"
-/// section (mirrors the web New-list modal). "Create list" makes an empty list from
-/// the typed name; tapping a template chip spins up a fresh copy (everything
-/// unchecked), honoring the typed name when you entered one.
+/// New list — name + optional emoji, with an inline "Or start from a template"
+/// picker (mirrors the web New-list modal). You **type a name, optionally pick a
+/// template, then tap Create** — a template is a selection, not an immediate action
+/// (so no accidental list on every tap). Picking a template pre-fills the name if
+/// you haven't typed one; long-press a template to delete it.
 struct NewListSheet: View {
     @Environment(\.dismiss) private var dismiss
     let loadTemplates: () async -> [WaffledAPI.ListSummary]
     let onCreate: (String, String) -> Void
     let onApply: (WaffledAPI.ListSummary, String) -> Void
+    let onDeleteTemplate: (WaffledAPI.ListSummary) async -> Void
 
     @State private var name = ""
     @State private var emoji = ""
     @State private var templates: [WaffledAPI.ListSummary] = []
+    @State private var selectedTemplateId: String?
     @FocusState private var nameFocused: Bool
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var selectedTemplate: WaffledAPI.ListSummary? { templates.first { $0.id == selectedTemplateId } }
 
     var body: some View {
         NavigationStack {
@@ -212,37 +219,30 @@ struct NewListSheet: View {
                         }
                     }
 
+                    if !templates.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Or start from a template")
+                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
+                            ChipFlow(spacing: 8, lineSpacing: 8) {
+                                ForEach(templates) { tpl in templateChip(tpl) }
+                            }
+                            Text("Tap to select · long-press to delete")
+                                .font(.system(size: 11, weight: .medium)).foregroundStyle(WF.ink3)
+                        }
+                    }
+
                     Button {
-                        onCreate(trimmedName, emoji.trimmingCharacters(in: .whitespaces)); dismiss()
+                        if let tpl = selectedTemplate { onApply(tpl, trimmedName) }
+                        else { onCreate(trimmedName, emoji.trimmingCharacters(in: .whitespaces)) }
+                        dismiss()
                     } label: {
-                        Text("Create list").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                        Text(selectedTemplate == nil ? "Create list" : "Create from template")
+                            .font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
                             .frame(maxWidth: .infinity).padding(.vertical, 15)
                             .background(trimmedName.isEmpty ? WF.ink3 : WF.primary)
                             .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
                     }
                     .buttonStyle(.plain).disabled(trimmedName.isEmpty)
-
-                    if !templates.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Or apply a template")
-                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)
-                            ChipFlow(spacing: 8, lineSpacing: 8) {
-                                ForEach(templates) { tpl in
-                                    Button { onApply(tpl, trimmedName); dismiss() } label: {
-                                        HStack(spacing: 8) {
-                                            Text(tpl.emoji ?? "📑").font(.system(size: 15))
-                                            Text(tpl.name).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
-                                                .lineLimit(1)
-                                        }
-                                        .padding(.horizontal, 14).padding(.vertical, 10)
-                                        .background(WF.card).clipShape(Capsule())
-                                        .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                    }
                 }
                 .padding(20)
             }
@@ -258,6 +258,36 @@ struct NewListSheet: View {
             templates = await loadTemplates()
             // Land in the name field so you can just start typing.
             try? await Task.sleep(for: .milliseconds(300)); nameFocused = true
+        }
+    }
+
+    private func templateChip(_ tpl: WaffledAPI.ListSummary) -> some View {
+        let selected = tpl.id == selectedTemplateId
+        return Button {
+            if selected {
+                selectedTemplateId = nil
+            } else {
+                selectedTemplateId = tpl.id
+                if trimmedName.isEmpty { name = tpl.name }   // pre-fill so you can just hit Create
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Text(tpl.emoji ?? "📑").font(.system(size: 15))
+                Text(tpl.name).font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(selected ? .white : WF.ink).lineLimit(1)
+                if selected { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.white) }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(selected ? WF.primary : WF.card).clipShape(Capsule())
+            .overlay(Capsule().strokeBorder(selected ? Color.clear : WF.hair, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button(role: .destructive) {
+                if selectedTemplateId == tpl.id { selectedTemplateId = nil }
+                withAnimation { templates.removeAll { $0.id == tpl.id } }
+                Task { await onDeleteTemplate(tpl) }
+            } label: { Label("Delete template", systemImage: "trash") }
         }
     }
 }

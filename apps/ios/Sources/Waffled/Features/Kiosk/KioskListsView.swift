@@ -46,7 +46,8 @@ struct KioskListsView: View {
                 },
                 onApply: { tpl, name in
                     Task { if let new = await model.apply(template: tpl, name: name) { selectedId = new.id } }
-                })
+                },
+                onDeleteTemplate: { tpl in await model.deleteTemplate(tpl) })
         }
     }
 

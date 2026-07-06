@@ -692,8 +692,10 @@ final class SyncManager {
     private func watchMembers() {
         watchTask = Task { [db] in
             do {
+                // Match Settings → Family & People (API `order by sort_order, created_at`)
+                // so the family row reads owner-first (the owner is created first), not A–Z.
                 let stream = try db.watch(
-                    sql: "SELECT id, name, color_hex, avatar_emoji, member_type FROM persons ORDER BY sort_order, name",
+                    sql: "SELECT id, name, color_hex, avatar_emoji, member_type FROM persons ORDER BY sort_order, created_at",
                     parameters: [],
                     mapper: { cursor in
                         SyncedMember(
