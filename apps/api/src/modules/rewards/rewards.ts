@@ -25,6 +25,7 @@ interface RewardRow extends QueryResultRow {
   emoji: string | null
   cost: number
   currency: string
+  category: string | null
   sort_order: number
   requires_approval: boolean
 }
@@ -45,7 +46,7 @@ interface RedemptionRow extends QueryResultRow {
 }
 
 function presentReward(r: RewardRow) {
-  return { id: r.id, title: r.title, emoji: r.emoji, cost: r.cost, currency: r.currency, sortOrder: r.sort_order, requiresApproval: r.requires_approval }
+  return { id: r.id, title: r.title, emoji: r.emoji, cost: r.cost, currency: r.currency, category: r.category, sortOrder: r.sort_order, requiresApproval: r.requires_approval }
 }
 
 function presentRedemption(r: RedemptionRow & { person_name?: string | null; avatar_emoji?: string | null; color_hex?: string | null }) {
@@ -284,18 +285,19 @@ export function registerRewardRoutes(api: Api): void {
   }))
 
   api.post('/api/rewards', capRoute('reward.manage', async (tenant, req: Request, res: Response) => {
-    const body = (req.body ?? {}) as { title?: string; emoji?: string; cost?: number; currency?: string; requiresApproval?: boolean }
+    const body = (req.body ?? {}) as { title?: string; emoji?: string; cost?: number; currency?: string; category?: string | null; requiresApproval?: boolean }
     const title = body.title?.trim()
     if (!title) return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
     const currency = body.currency?.trim() || (await getDefaultCurrencyKey(tenant.householdId))
+    const category = body.category?.trim() || null
     // Inherit the household default unless the create form set it explicitly.
     const requiresApproval = typeof body.requiresApproval === 'boolean'
       ? body.requiresApproval
       : await getRewardsRequireApproval(tenant.householdId)
     const { rows } = await query<RewardRow>(
-      `insert into rewards (household_id, title, emoji, cost, currency, requires_approval)
-       values ($1,$2,$3,$4,$5,$6) returning *`,
-      [tenant.householdId, title, body.emoji ?? null, Math.max(0, Math.round(body.cost ?? 0)), currency, requiresApproval]
+      `insert into rewards (household_id, title, emoji, cost, currency, category, requires_approval)
+       values ($1,$2,$3,$4,$5,$6,$7) returning *`,
+      [tenant.householdId, title, body.emoji ?? null, Math.max(0, Math.round(body.cost ?? 0)), currency, category, requiresApproval]
     )
     return res.status(201).json({ reward: presentReward(rows[0]) })
   }))
@@ -304,7 +306,7 @@ export function registerRewardRoutes(api: Api): void {
   api.patch('/api/rewards/:id', capRoute('reward.manage', async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'reward not found' })
-    const body = (req.body ?? {}) as { title?: string; emoji?: string | null; cost?: number; currency?: string; requiresApproval?: boolean }
+    const body = (req.body ?? {}) as { title?: string; emoji?: string | null; cost?: number; currency?: string; category?: string | null; requiresApproval?: boolean }
     const sets: string[] = []
     const vals: unknown[] = []
     let i = 1
@@ -315,6 +317,7 @@ export function registerRewardRoutes(api: Api): void {
     if ('emoji' in body) { sets.push(`emoji = $${i++}`); vals.push(body.emoji ?? null) }
     if (typeof body.cost === 'number') { sets.push(`cost = $${i++}`); vals.push(Math.max(0, Math.round(body.cost))) }
     if (typeof body.currency === 'string' && body.currency.trim()) { sets.push(`currency = $${i++}`); vals.push(body.currency.trim()) }
+    if ('category' in body) { sets.push(`category = $${i++}`); vals.push(body.category?.trim() || null) }
     if (typeof body.requiresApproval === 'boolean') { sets.push(`requires_approval = $${i++}`); vals.push(body.requiresApproval) }
     if (sets.length === 0) return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields' })
     vals.push(tenant.householdId, id)
