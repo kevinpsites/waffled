@@ -1,6 +1,6 @@
 {
   "name": "@waffled/api",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "Waffled backend API (lambda-api), written in TS, bundled to JS with esbuild. Same code runs as a container locally (server) and on AWS Lambda (lambda).",
   "main": "dist/lambda.js",
