@@ -18,10 +18,13 @@ export default defineConfig({
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/kevinpsites/waffled' }],
 			sidebar: [
 				{
-					label: 'Getting started',
+					label: 'Overview',
 					items: [
-						{ label: 'Overview', slug: 'getting-started/overview' },
+						{ label: 'Introduction', slug: 'getting-started/overview' },
 						{ label: 'Quick start', slug: 'getting-started/quick-start' },
+						{ label: 'Comparison', slug: 'overview/comparison' },
+						{ label: 'Support the project', slug: 'overview/support' },
+						{ label: 'FAQ', slug: 'overview/faq' },
 					],
 				},
 				{
