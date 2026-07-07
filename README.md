@@ -114,10 +114,31 @@ docker compose -f infra/compose/docker-compose.yml --env-file infra/compose/.env
 
 All three images are multi-arch (amd64 + arm64), so they run on a regular x86 box or an
 ARM SBC (e.g. a Raspberry Pi). They're published by the
-`.github/workflows/publish-images.yml` GitHub Action **when you cut a release** —
-`git tag vX.Y.Z && git push origin vX.Y.Z` — which builds the `X.Y.Z` / `X.Y` /
-`latest` tags (or trigger it manually from the Actions tab for an `sha-…` test build).
-No extra setup beyond the repo's default `GITHUB_TOKEN`.
+`.github/workflows/publish-images.yml` GitHub Action **when you cut a release** (see
+[Cutting a release](#cutting-a-release-maintainers) below), which builds the `X.Y.Z` /
+`X.Y` / `latest` tags (or trigger it manually from the Actions tab for an `sha-…` test
+build). No extra setup beyond the repo's default `GITHUB_TOKEN`.
+
+### Cutting a release (maintainers)
+
+One command bumps **every** place a version lives and tags it:
+
+```bash
+./waffled release 0.3.0
+```
+
+It bumps `apps/api` + `apps/web` `package.json` (and lockfiles), `WAFFLED_VERSION` in
+`infra/compose/.env.example`, and iOS `MARKETING_VERSION` in `apps/ios/project.yml` — all
+in one commit — then creates the `v0.3.0` tag and (after a `y` prompt) pushes. The iOS
+**build number** is left alone; Xcode Cloud auto-increments that.
+
+Run it **locally**, on `main`, with a clean tree. Because the tag is pushed with *your*
+credentials it triggers the right CI on its own — no bot token or PAT: the `main` push
+starts the **Xcode Cloud** iOS build (new marketing version + fresh build number →
+TestFlight), and the `vX.Y.Z` tag starts **publish-images.yml** (the GHCR server images +
+GitHub Release). The push is the only privileged step, so it needs **write access** to the
+repo — cloning the public repo lets anyone run the local bump/commit/tag, but the push
+(and therefore any real release) is rejected without collaborator access.
 
 > For anything other than `localhost`, set `PUBLIC_BASE_URL=https://your.host` so
 > redirect URLs (calendar + OIDC callbacks) are generated correctly.

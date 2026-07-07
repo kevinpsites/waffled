@@ -22,6 +22,8 @@
 #                    make-admin, prune-sessions, …); run './waffled admin help' for the list
 #   ./waffled observability up|down   run a local Grafana/OTEL stack + point the api at it
 #   ./waffled web       run the Vite dev server (HMR) on :5175
+#   ./waffled release X.Y.Z   bump every version site (api, web, compose, iOS) in one
+#                    commit + tag vX.Y.Z; run locally so the tag triggers CI (no PAT)
 #
 # Everything is driven off infra/compose so you never type the long flags.
 set -euo pipefail
@@ -389,6 +391,58 @@ case "$cmd" in
   web)
     # Vite dev server with HMR on :5173 (separate from the stack's :8080 build).
     ( cd "$ROOT/apps/web" && npm run dev ) ;;
+  release)
+    # Cut a release: bump EVERY place a version lives, in ONE commit, then tag it.
+    # Run this LOCALLY (with your own git creds) — the pushed tag then triggers
+    # publish-images.yml and the main push triggers Xcode Cloud, with no PAT/bot
+    # token needed (a tag pushed by CI's GITHUB_TOKEN would NOT trigger either).
+    #   ./waffled release 0.3.0
+    #
+    # Bumps: apps/api + apps/web package.json (+lockfiles), infra/compose/.env.example
+    # WAFFLED_VERSION, and apps/ios/project.yml MARKETING_VERSION. The iOS BUILD number
+    # (CURRENT_PROJECT_VERSION) is left alone — Xcode Cloud auto-increments that.
+    ver="${1:-}"; ver="${ver#v}"
+    if ! printf '%s' "$ver" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+      echo "${c_red}usage: ./waffled release X.Y.Z${c_reset} (semver, no leading v)"; exit 1
+    fi
+    tag="v$ver"
+    if [ -n "$(git -C "$ROOT" status --porcelain)" ]; then
+      echo "${c_red}Working tree is dirty — commit or stash first so the release commit is clean.${c_reset}"; exit 1
+    fi
+    branch="$(git -C "$ROOT" symbolic-ref --short -q HEAD || echo '?')"
+    if [ "$branch" != "main" ]; then
+      printf "${c_ylw}You're on '%s', not main. Release from here anyway? [y/N] ${c_reset}" "$branch"
+      read -r ans; case "$ans" in y|Y) ;; *) echo "Aborted."; exit 1 ;; esac
+    fi
+    if git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+      echo "${c_red}Tag $tag already exists.${c_reset}"; exit 1
+    fi
+    # Portable in-place edit (BSD/macOS + GNU sed): rewrite to a temp file, then move.
+    bump_line() { local f="$1" expr="$2" tmp; tmp="$(mktemp)"; sed -E "$expr" "$f" > "$tmp" && mv "$tmp" "$f"; }
+    echo "${c_dim}Bumping to $ver…${c_reset}"
+    ( cd "$ROOT/apps/api" && npm version "$ver" --no-git-tag-version --allow-same-version >/dev/null )
+    ( cd "$ROOT/apps/web" && npm version "$ver" --no-git-tag-version --allow-same-version >/dev/null )
+    bump_line "$ROOT/infra/compose/.env.example" "s/^WAFFLED_VERSION=.*/WAFFLED_VERSION=$ver/"
+    bump_line "$ROOT/apps/ios/project.yml" "s/^([[:space:]]*MARKETING_VERSION:[[:space:]]*).*/\\1\"$ver\"/"
+    git -C "$ROOT" --no-pager diff -- apps/api/package.json apps/web/package.json \
+      infra/compose/.env.example apps/ios/project.yml
+    git -C "$ROOT" add -A
+    git -C "$ROOT" commit -q -m "release: $tag
+
+Bump api, web, compose (WAFFLED_VERSION), and iOS MARKETING_VERSION to $ver."
+    git -C "$ROOT" tag -a "$tag" -m "Waffled $tag"
+    echo "${c_grn}Committed + tagged $tag locally.${c_reset}"
+    printf "Push '%s' + %s to origin now? [y/N] " "$branch" "$tag"
+    read -r ans
+    case "$ans" in
+      y|Y)
+        git -C "$ROOT" push origin "$branch"
+        git -C "$ROOT" push origin "$tag"
+        echo "${c_grn}Pushed. → Xcode Cloud builds iOS; publish-images.yml builds the server images.${c_reset}"
+        ;;
+      *) echo "Not pushed. When ready:  ${c_dim}git push origin $branch && git push origin $tag${c_reset}" ;;
+    esac
+    ;;
   help|-h|--help|*)
     awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$ROOT/waffled" ;;
 esac
