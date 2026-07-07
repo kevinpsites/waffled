@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import {
-  usePantry, pantryApi, daysUntil, groceryApi, flaggedAllergens, uploadImage, ageLabel, monthsOnHand, ALLERGEN_LABELS, DIETARY_LABELS,
+  usePantry, pantryApi, daysUntil, groceryApi, flaggedAllergens, uploadImage, ageLabel, monthsOnHand, ALLERGEN_LABELS, DIETARY_LABELS, productSourceLabel,
   type PantryItem, type PantryItemInput, type OffProduct, type ItemRecipe,
 } from '../lib/api'
 import { ScanModal } from './components/ScanModal'
@@ -29,17 +29,24 @@ function expiryText(expiresOn: string | null): { text: string; tone: 'past' | 's
   return { text: expiresOn!, tone: 'ok' }
 }
 
-// Best-effort food emoji from the item name (the OFF image is preferred when present).
+// Best-effort emoji from the item name (the product image is preferred when present).
+// Covers the non-food a pantry holds too, so a scanned toilet-paper/soap without an
+// image doesn't fall back to a food can.
 const EMOJI_RULES: [RegExp, string][] = [
   [/beef|steak|burger/i, '🥩'], [/chicken|poultry/i, '🍗'], [/turkey/i, '🦃'], [/pork|bacon|ham|sausage/i, '🥓'],
   [/shrimp|prawn/i, '🦐'], [/fish|salmon|tuna|cod/i, '🐟'], [/pizza/i, '🍕'], [/lasagna|pasta|spaghetti|noodle/i, '🍝'],
   [/pie|pot pie/i, '🥧'], [/burrito|taco|wrap/i, '🌯'], [/bean/i, '🫘'], [/nugget/i, '🍗'], [/waffle|pancake/i, '🧇'],
   [/pea|veg|broccoli|spinach/i, '🥦'], [/berry|berries|fruit/i, '🫐'], [/ice cream|gelato/i, '🍦'], [/cheese/i, '🧀'],
   [/bread|bun|roll|bagel/i, '🍞'], [/milk|cream|yogurt/i, '🥛'], [/egg/i, '🥚'], [/rice/i, '🍚'], [/soup|broth/i, '🍲'],
+  // Non-food
+  [/toilet|tissue|paper towel|kitchen roll|napkin/i, '🧻'], [/laundry|detergent|fabric soften|dish soap|dishwash|cleaner|bleach|surface spray/i, '🧼'],
+  [/shampoo|conditioner|lotion|moisturi|body wash|sunscreen|hand soap/i, '🧴'], [/toothpaste|toothbrush|floss/i, '🪥'],
+  [/deodorant|razor|shav/i, '🪒'], [/diaper|wipe/i, '🧷'], [/trash bag|garbage bag/i, '🗑️'], [/battery|batteries/i, '🔋'],
+  [/dog|cat|pet food|kibble/i, '🐾'], [/foil|wrap|ziploc|sandwich bag|storage bag/i, '📦'],
 ]
 function foodEmoji(name: string): string {
   for (const [re, e] of EMOJI_RULES) if (re.test(name)) return e
-  return '🥫'
+  return '📦'
 }
 
 type SortKey = 'expiring' | 'az' | 'recent' | 'oldest'
@@ -320,6 +327,9 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
   const traceFlag = new Set((item.traces ?? []).filter((a) => avoidAllergens.includes(a) || allergenPeople[a]))
   const n = item.nutrition
   const isOff = item.source === 'openfoodfacts'
+  // Attribution for whichever Open * Facts database this item came from (non-food
+  // items resolve from the beauty/products/pet siblings); null for manual adds.
+  const sourceLabel = productSourceLabel(item.source)
 
   async function replacePhoto(file: File | undefined) {
     if (!file) return
@@ -355,7 +365,7 @@ function PantryDetail({ item, avoidAllergens, allergenPeople, onClose, onEdit, o
       <div className="modal-card pl-detail2" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="modal-close pl-d2-close" aria-label="Close" onClick={onClose}>×</button>
         <div className="pl-d2-img">
-          {isOff && <span className="pl-off-tag">● Open Food Facts</span>}
+          {sourceLabel && <span className="pl-off-tag">● {sourceLabel}</span>}
           {img ? <img src={img} alt="" /> : <span className="pl-d2-emoji">{foodEmoji(item.name)}</span>}
           <button type="button" className="pl-d2-replace" disabled={photoBusy} onClick={() => fileRef.current?.click()}>
             {photoBusy ? 'Uploading…' : '📷 Replace photo'}
@@ -469,7 +479,7 @@ function ItemModal({ item, locations, onClose, onSaved }: {
     setLookupMsg(null)
     const p = await pantryApi.lookup(code)
     setLookingUp(false)
-    if (!p) { setOff(null); setLookupMsg('Not found in Open Food Facts — enter the details below.'); return }
+    if (!p) { setOff(null); setLookupMsg('Not found in a product database — enter the details below.'); return }
     setOff(p)
     if (p.name) setName(p.name)
     setLookupMsg(`Found: ${p.name ?? 'product'}${p.brand ? ` · ${p.brand}` : ''}`)

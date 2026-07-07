@@ -92,6 +92,19 @@ export const ALLERGEN_LABELS: Record<string, string> = {
 }
 export const ALLERGEN_KEYS = Object.keys(ALLERGEN_LABELS)
 
+// Attribution labels for the Open * Facts database a product came from. Non-food
+// items resolve from the sibling databases; we credit whichever answered.
+export const PRODUCT_SOURCE_LABELS: Record<string, string> = {
+  openfoodfacts: 'Open Food Facts',
+  openbeautyfacts: 'Open Beauty Facts',
+  openproductsfacts: 'Open Products Facts',
+  openpetfoodfacts: 'Open Pet Food Facts',
+}
+// A friendly attribution for an item's `source`, or null for manual/unknown adds.
+export function productSourceLabel(source: string | null | undefined): string | null {
+  return source ? PRODUCT_SOURCE_LABELS[source] ?? null : null
+}
+
 // "Cook from your pantry" payload (from /api/pantry/cookable).
 export interface CookReady { recipeId: string; title: string; emoji: string | null; have: string[]; expiringItem: string | null }
 export interface CookMainRecipe { recipeId: string; title: string; have: number; total: number; missing: string[] }

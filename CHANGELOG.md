@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Scan non-food pantry items.** Barcode scanning now falls through to Open Food Facts'
+  sibling databases — Open Beauty Facts (soap, shampoo, detergent), Open Products Facts
+  (paper goods, cleaning supplies), and Open Pet Food Facts — so household and personal-care
+  items resolve a name, brand, and photo instead of only food. The scanner credits whichever
+  database answered, food-only details (nutrition, allergens) are hidden for non-food, and an
+  unrecognized barcode still adds cleanly by name.
 
 ### Changed
 

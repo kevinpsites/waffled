@@ -151,6 +151,7 @@ describe('pantry CRUD', () => {
 describe('pantry Open Food Facts integration', () => {
   const FOUND = '11111111'
   const UNKNOWN = '99999999'
+  const BEAUTY = '22222222' // not in food, but in Open Beauty Facts (non-food)
   const offProduct = {
     product_name: 'Chicken Pot Pie',
     brands: "Marie Callender's",
@@ -163,13 +164,22 @@ describe('pantry Open Food Facts integration', () => {
     nova_group: 4,
     nutriments: { 'energy-kcal_serving': 520, proteins_serving: 13, fat_serving: 31, carbohydrates_serving: 49, sodium_serving: 0.8 },
   }
+  // A non-food product carries no nutrition/allergens/serving — the normalizer must
+  // tolerate that and still return name/brand/image.
+  const beautyProduct = { product_name: 'Gentle Hand Soap', brands: 'Method', quantity: '354 mL', image_front_url: 'https://img/soap.jpg' }
   let fetchMock: ReturnType<typeof vi.fn>
 
   beforeAll(() => {
+    // The stub answers per Open * Facts host so the cascade (food → beauty → …) can
+    // be exercised: FOUND lives in food, BEAUTY only in Open Beauty Facts.
+    const foundBody = (product: unknown) => ({ ok: true, json: async () => ({ status: 'success', result: { id: 'product_found' }, product }) })
+    const notFoundBody = { ok: true, json: async () => ({ status: 'failure', result: { id: 'product_not_found' } }) }
     fetchMock = vi.fn(async (url: string) => {
-      const code = String(url).match(/product\/(\d+)/)?.[1] ?? ''
-      if (code === FOUND) return { ok: true, json: async () => ({ status: 'success', result: { id: 'product_found' }, product: offProduct }) }
-      return { ok: true, json: async () => ({ status: 'failure', result: { id: 'product_not_found' } }) }
+      const u = String(url)
+      const code = u.match(/product\/(\d+)/)?.[1] ?? ''
+      if (code === FOUND && u.includes('openfoodfacts')) return foundBody(offProduct)
+      if (code === BEAUTY && u.includes('openbeautyfacts')) return foundBody(beautyProduct)
+      return notFoundBody
     })
     vi.stubGlobal('fetch', fetchMock)
   })
@@ -195,6 +205,16 @@ describe('pantry Open Food Facts integration', () => {
     const r = await call('GET', `/api/pantry/lookup/${UNKNOWN}`, kevin)
     expect(r.statusCode).toBe(404)
     expect(JSON.parse(r.body).found).toBe(false)
+  })
+
+  it('falls through to a sibling database for a non-food barcode', async () => {
+    const r = await call('GET', `/api/pantry/lookup/${BEAUTY}`, kevin)
+    expect(r.statusCode).toBe(200)
+    const p = JSON.parse(r.body).product
+    // Resolved from Open Beauty Facts, with name/brand/image but no food fields.
+    expect(p).toMatchObject({ name: 'Gentle Hand Soap', brand: 'Method', source: 'openbeautyfacts' })
+    expect(p.nutrition).toEqual({})
+    expect(p.allergens).toEqual([])
   })
 
   it('stores the OFF snapshot on an added item', async () => {

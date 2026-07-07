@@ -13,6 +13,21 @@ export const PRODUCT_TTL_DAYS = 90 // older than this → refetch before serving
 export const PRODUCT_SWR_DAYS = 30 // older than this (but < TTL) → serve + refresh in background
 
 const OFF_BASE = process.env.OFF_API_BASE || 'https://world.openfoodfacts.org'
+
+// Open Food Facts is food-only by policy, but a pantry holds non-food too — paper
+// goods, cleaning supplies, soap/shampoo/detergent, pet food. Its sibling databases
+// cover exactly those and speak the IDENTICAL barcode API (same v3 `product_found`
+// envelope, same field names), so we can reuse the same fetch + normalizer. We try
+// food first (the common case) and fall through to the siblings; the first hit wins,
+// and we record which database answered in `source`. Each base is env-overridable for
+// self-hosters mirroring a subset.
+const OFF_SOURCES: ReadonlyArray<{ base: string; source: string }> = [
+  { base: OFF_BASE, source: 'openfoodfacts' },
+  { base: process.env.OBF_API_BASE || 'https://world.openbeautyfacts.org', source: 'openbeautyfacts' },
+  { base: process.env.OPF_API_BASE || 'https://world.openproductsfacts.org', source: 'openproductsfacts' },
+  { base: process.env.OPFF_API_BASE || 'https://world.openpetfoodfacts.org', source: 'openpetfoodfacts' },
+]
+
 // OFF asks every client to identify itself: "AppName/Version (contact)".
 const USER_AGENT = process.env.OFF_USER_AGENT || 'Waffled-SelfHosted/1.0 (https://github.com/kevinpsites/waffled)'
 const OFF_TIMEOUT_MS = 8000
@@ -79,7 +94,7 @@ function num(v: unknown): number | null {
 // Map OFF's raw `product` object to our normalized shape. Prefers per-serving
 // nutrition when the product declares a serving size (matches a label like
 // "per pie"), otherwise per-100g.
-export function normalizeOffProduct(barcode: string, p: Record<string, unknown>): ProductView {
+export function normalizeOffProduct(barcode: string, p: Record<string, unknown>, source = 'openfoodfacts'): ProductView {
   const brands = typeof p.brands === 'string' ? p.brands.split(',')[0].trim() : null
   const serving = typeof p.serving_size === 'string' ? p.serving_size.trim() : ''
   const per = serving ? 'serving' : '100g'
@@ -120,7 +135,7 @@ export function normalizeOffProduct(barcode: string, p: Record<string, unknown>)
     dietary,
     nutriscore: typeof p.nutriscore_grade === 'string' ? p.nutriscore_grade : null,
     nova: num(p.nova_group),
-    source: 'openfoodfacts',
+    source,
     fetchedAt: new Date().toISOString(),
   }
 }
@@ -148,12 +163,12 @@ function presentRow(r: ProductRow): ProductView {
 // not-found / errors. v3 wraps the result in a `{ result: { id }, status, product }`
 // envelope (found → result.id === 'product_found'); the product fields themselves
 // are the same as v2. Exported so tests can stub it (or stub global fetch).
-export async function fetchFromOff(barcode: string): Promise<Record<string, unknown> | null> {
+export async function fetchFromOff(barcode: string, base: string = OFF_BASE): Promise<Record<string, unknown> | null> {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), OFF_TIMEOUT_MS)
   try {
     const fields = 'product_name,brands,quantity,serving_size,image_url,image_front_url,allergens_tags,traces_tags,ingredients_analysis_tags,nutriscore_grade,nova_group,nutriments'
-    const res = await fetch(`${OFF_BASE}/api/v3/product/${barcode}?fields=${fields}`, {
+    const res = await fetch(`${base}/api/v3/product/${barcode}?fields=${fields}`, {
       headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
       signal: ctrl.signal,
     })
@@ -169,8 +184,15 @@ export async function fetchFromOff(barcode: string): Promise<Record<string, unkn
 // Fetch from OFF + upsert the cache. Caches not-found too. Returns the view (null if
 // the product isn't in OFF).
 async function fetchAndStore(barcode: string): Promise<ProductView | null> {
-  const raw = await fetchFromOff(barcode)
-  if (!raw) {
+  // Try each database in turn (food first); the first product_found wins. A "not
+  // found" from one source (null) falls through to the next; a network error
+  // propagates so the caller can serve a stale cache row.
+  let hit: { raw: Record<string, unknown>; source: string } | null = null
+  for (const s of OFF_SOURCES) {
+    const raw = await fetchFromOff(barcode, s.base)
+    if (raw) { hit = { raw, source: s.source }; break }
+  }
+  if (!hit) {
     await query(
       `insert into products (barcode, status, fetched_at) values ($1, 'not_found', now())
        on conflict (barcode) do update set status = 'not_found', fetched_at = now()`,
@@ -178,7 +200,7 @@ async function fetchAndStore(barcode: string): Promise<ProductView | null> {
     )
     return null
   }
-  const v = normalizeOffProduct(barcode, raw)
+  const v = normalizeOffProduct(barcode, hit.raw, hit.source)
   await query(
     `insert into products
        (barcode, name, brand, image_url, quantity_text, serving_basis, nutrition, allergens, traces, dietary, nutriscore, nova, raw, status, source, fetched_at)
@@ -187,7 +209,7 @@ async function fetchAndStore(barcode: string): Promise<ProductView | null> {
        name=excluded.name, brand=excluded.brand, image_url=excluded.image_url, quantity_text=excluded.quantity_text,
        serving_basis=excluded.serving_basis, nutrition=excluded.nutrition, allergens=excluded.allergens, traces=excluded.traces, dietary=excluded.dietary,
        nutriscore=excluded.nutriscore, nova=excluded.nova, raw=excluded.raw, status='found', source=excluded.source, fetched_at=now()`,
-    [barcode, v.name, v.brand, v.imageUrl, v.quantityText, v.servingBasis, JSON.stringify(v.nutrition), v.allergens, v.traces, v.dietary, v.nutriscore, v.nova, JSON.stringify(raw), v.source]
+    [barcode, v.name, v.brand, v.imageUrl, v.quantityText, v.servingBasis, JSON.stringify(v.nutrition), v.allergens, v.traces, v.dietary, v.nutriscore, v.nova, JSON.stringify(hit.raw), v.source]
   )
   return v
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
-import { pantryApi, flaggedAllergens, ALLERGEN_LABELS, type OffProduct, type PantryItemInput } from '../../lib/api'
+import { pantryApi, flaggedAllergens, ALLERGEN_LABELS, productSourceLabel, type OffProduct, type PantryItemInput } from '../../lib/api'
 import { AllergenBadge } from './Allergens'
 
 // Barcode scan-into-pantry. Uses the device camera (zxing decoder, which works in
@@ -148,8 +148,8 @@ export function ScanModal({ locations, avoidAllergens, allergenPeople, onClose, 
                 {found ? (
                   <>
                     <div className="pl-scan-prod">
-                      {found.source === 'openfoodfacts' && <span className="pl-off-tag">● Open Food Facts</span>}
-                      {found.imageUrl ? <img className="pl-scan-prodimg" src={found.imageUrl} alt="" /> : <span className="pl-scan-prodemoji">🥫</span>}
+                      {productSourceLabel(found.source) && <span className="pl-off-tag">● {productSourceLabel(found.source)}</span>}
+                      {found.imageUrl ? <img className="pl-scan-prodimg" src={found.imageUrl} alt="" /> : <span className="pl-scan-prodemoji">{found.source === 'openfoodfacts' ? '🥫' : '📦'}</span>}
                       <div className="pl-scan-prodname">{found.name}</div>
                       {found.brand && <div className="pl-scan-prodbrand">{found.brand}</div>}
                       {found.allergens.length > 0 && (() => {
@@ -174,7 +174,8 @@ export function ScanModal({ locations, avoidAllergens, allergenPeople, onClose, 
                   </>
                 ) : (
                   <div className="pl-scan-prod">
-                    <div className="pl-scan-prodname">Not in Open Food Facts</div>
+                    <span className="pl-scan-prodemoji">📦</span>
+                    <div className="pl-scan-prodname">Not found in a product database</div>
                     <div className="pl-scan-prodbrand">Barcode {code} — name it and add manually.</div>
                     <input className="pl-scan-nameinput" value={name} autoFocus placeholder="Item name" onChange={(e) => setName(e.target.value)} />
                   </div>
