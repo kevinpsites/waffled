@@ -28,6 +28,16 @@ export default defineConfig({
 					],
 				},
 				{
+					label: 'Install',
+					items: [
+						{ label: 'Requirements', slug: 'install/requirements' },
+						{ label: 'Docker install', slug: 'install/docker' },
+						{ label: 'Environment variables', slug: 'install/environment-variables' },
+						{ label: 'Reverse proxy & TLS', slug: 'install/reverse-proxy' },
+						{ label: 'Upgrading', slug: 'operations/upgrading' },
+					],
+				},
+				{
 					label: 'Features',
 					items: [
 						{ label: 'Feature matrix', slug: 'reference/features' },
@@ -44,7 +54,6 @@ export default defineConfig({
 					label: 'Operations',
 					items: [
 						{ label: 'Backup & restore', slug: 'operations/backup' },
-						{ label: 'Upgrading', slug: 'operations/upgrading' },
 						{ label: 'Troubleshooting', slug: 'operations/troubleshooting' },
 					],
 				},
