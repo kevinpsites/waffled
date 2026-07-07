@@ -294,7 +294,7 @@ struct ListDetailView: View {
     private static let mealTypeLabel = ["breakfast": "Breakfast", "lunch": "Lunch", "dinner": "Dinner", "snack": "Snack"]
     private static let mealTypeEmoji = ["breakfast": "🍳", "lunch": "🥪", "dinner": "🍽️", "snack": "🍎"]
 
-    private enum Field: Hashable { case add, editName, editQty, search }
+    private enum Field: Hashable { case add, addQty, editName, editQty, search }
 
     /// True once the search box has text (focus alone doesn't count — hiding chrome
     /// the instant the field is tapped is jarring). Used to hide non-item chrome
@@ -867,7 +867,7 @@ struct ListDetailView: View {
     }
 
     /// Whether the section picker is revealed (while typing, or once a section is set).
-    private var showSectionPicker: Bool { focus == .add || draftSection != nil }
+    private var showSectionPicker: Bool { focus == .add || focus == .addQty || draftSection != nil }
 
     private var addBar: some View {
         VStack(spacing: 8) {
@@ -885,7 +885,7 @@ struct ListDetailView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .multilineTextAlignment(.trailing)
                     .frame(width: 64)
-                    .focused($focus, equals: .add)
+                    .focused($focus, equals: .addQty)
                     .submitLabel(.done)
                     .onSubmit(submit)
             }
@@ -950,10 +950,20 @@ struct ListDetailView: View {
     }
 
     private func submit() {
+        // Ignore a stray Return on an empty field, but keep the cursor there.
+        guard !draftName.trimmingCharacters(in: .whitespaces).isEmpty else { refocusAdd(); return }
         let name = draftName, qty = draftQty, section = draftSection
         draftName = ""; draftQty = ""
         // Keep draftSection so several items in a row land in the same section.
         Task { await model.add(name: name, quantity: qty, section: section) }
+        refocusAdd()
+    }
+
+    /// Put the cursor back in the "Add item" field after a submit, so you can hit Return
+    /// and keep adding item after item. Deferred to the next runloop: SwiftUI clears focus
+    /// as part of handling the submit, so a synchronous re-set here would just be undone.
+    private func refocusAdd() {
+        DispatchQueue.main.async { focus = .add }
     }
 
     /// Show a transient confirmation banner (auto-dismisses).

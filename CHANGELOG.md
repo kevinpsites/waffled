@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **Adding list items keeps the keyboard up (iPhone + iPad).** After you added an item to a
+  list, the "Add item" field lost focus, so you had to tap it again for every single item. It
+  now stays focused — type an item, hit Return, and keep going.
 
 ## [0.3.1] - 2026-07-07
 
