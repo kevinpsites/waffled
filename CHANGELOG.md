@@ -16,8 +16,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+- **OpenAI now uses the Responses API with strict Structured Outputs.** The OpenAI
+  provider calls `/responses` (OpenAI's current API, replacing the legacy Chat Completions
+  endpoint) with `strict: true`, so the model is *forced* to return schema-valid JSON. This
+  applies everywhere AI is used — the capture bar, meal planning, calendar heads-up/insights,
+  and event→goal matching. Note: the OpenAI provider now requires a Responses-API-compatible
+  backend (OpenAI or Azure OpenAI); use the **Ollama** provider for local models.
+- **AI calls are now logged.** Every provider call records its outcome — provider, model,
+  duration, and on failure the underlying error (e.g. an OpenAI quota or key problem) — so
+  issues surface in `docker logs` instead of silently falling back with no trace.
 
 ### Fixed
+- **AI providers work with a stock `.env`.** Adding an OpenAI or Anthropic key to a `.env`
+  that still had the empty `OPENAI_BASE_URL=` / `OPENAI_MODEL=` placeholder lines used to
+  fail *every* AI request with an opaque error — the empty base URL produced a hostless
+  request ("Failed to parse URL") and the empty model was sent as-is. Empty/blank env vars
+  now correctly fall back to their defaults, and a previously-saved blank model falls back too.
 
 ## [0.2.1] - 2026-07-06
 

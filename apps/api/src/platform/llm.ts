@@ -6,6 +6,7 @@
 // completeJson so they all honor the same toggle and keys.
 import config from './config'
 import { query } from './db'
+import { log } from './logger'
 
 export type Provider = 'anthropic' | 'openai' | 'ollama' | 'heuristic'
 export const PROVIDERS: Provider[] = ['anthropic', 'openai', 'ollama', 'heuristic']
@@ -38,7 +39,10 @@ export async function getAiConfig(householdId: string): Promise<{ provider: Prov
   )
   const ai = rows[0]?.settings?.ai
   const provider = (PROVIDERS as string[]).includes(ai?.provider ?? '') ? (ai!.provider as Provider) : 'heuristic'
-  const model = ai?.model ?? defaultModel(provider)
+  // A stored empty/blank model (e.g. persisted by an earlier build that resolved the
+  // default to "") must fall back to the provider default, not stay "".
+  const stored = ai?.model?.trim()
+  const model = stored ? stored : defaultModel(provider)
   return { provider, model }
 }
 
@@ -100,27 +104,51 @@ async function anthropicJson(req: LlmJsonRequest, model: string): Promise<unknow
   return tool.input
 }
 
+// OpenAI's strict Structured Outputs require EVERY object to set
+// additionalProperties:false and list ALL properties in `required`. Our shared
+// schemas already mark optional fields nullable (type:[...,'null']), so forcing
+// them required is safe — the model emits null. We transform here, in the adapter,
+// so the shared schemas stay provider-agnostic (Ollama/Anthropic never see this).
+export function toStrictSchema(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(toStrictSchema)
+  if (!node || typeof node !== 'object') return node
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(node as Record<string, unknown>)) out[k] = toStrictSchema(v)
+  // A schema object is one with `properties`; pin it closed and mark every key required.
+  if (out.properties && typeof out.properties === 'object') {
+    out.additionalProperties = false
+    out.required = Object.keys(out.properties as Record<string, unknown>)
+  }
+  return out
+}
+
+// OpenAI via the Responses API (the successor to Chat Completions) with strict
+// Structured Outputs — the model is forced to return schema-valid JSON, so callers
+// don't have to defensively re-shape it. Response text lives in output[].content[]
+// (type 'output_text'); a strict-mode refusal comes back as a 'refusal' part.
 async function openaiJson(req: LlmJsonRequest, model: string): Promise<unknown> {
-  const data = (await fetchJson(`${config.ai.openai.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+  const data = (await fetchJson(`${config.ai.openai.baseUrl.replace(/\/$/, '')}/responses`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${config.ai.openai.apiKey ?? ''}` },
     body: JSON.stringify({
       model,
       temperature: 0,
-      max_tokens: req.maxTokens,
-      messages: [
-        { role: 'system', content: req.system },
-        { role: 'user', content: req.user },
-      ],
-      response_format: {
-        type: 'json_schema',
-        json_schema: { name: req.schemaName ?? 'response', schema: req.schema, strict: false },
+      instructions: req.system,
+      input: req.user,
+      max_output_tokens: req.maxTokens,
+      text: {
+        format: { type: 'json_schema', name: req.schemaName ?? 'response', strict: true, schema: toStrictSchema(req.schema) },
       },
     }),
-  }, req.timeoutMs ?? TIMEOUT_MS)) as { choices?: Array<{ message?: { content?: string } }> }
-  const content = data.choices?.[0]?.message?.content
-  if (!content) throw new Error('openai: empty response')
-  return JSON.parse(content)
+  }, req.timeoutMs ?? TIMEOUT_MS)) as {
+    output?: Array<{ type: string; content?: Array<{ type: string; text?: string; refusal?: string }> }>
+  }
+  const message = data.output?.find((o) => o.type === 'message')
+  const refusal = message?.content?.find((c) => c.type === 'refusal')?.refusal
+  if (refusal) throw new Error(`openai refused: ${refusal}`)
+  const text = message?.content?.find((c) => c.type === 'output_text')?.text
+  if (!text) throw new Error('openai: no output_text in response')
+  return JSON.parse(text)
 }
 
 async function ollamaJson(req: LlmJsonRequest, model: string): Promise<unknown> {
@@ -153,11 +181,23 @@ export async function completeJson(householdId: string, req: LlmJsonRequest): Pr
   if (provider === 'heuristic') throw new Error('No AI provider selected — choose one in Settings → AI & capture')
   if (!availability()[provider]) throw new Error(`provider ${provider} is not configured on the server`)
   const m = model ?? defaultModel(provider) ?? ''
-  const data =
-    provider === 'anthropic'
-      ? await anthropicJson(req, m)
-      : provider === 'openai'
-        ? await openaiJson(req, m)
-        : await ollamaJson(req, m)
-  return { data, via: provider }
+  // One place that logs every AI call outcome. Failures below are almost always
+  // swallowed by callers (capture/meals return 200+fallback), so without this the
+  // real reason — the provider's status + body, carried in the thrown message —
+  // never reaches the logs. warn passes the default LOG_LEVEL=info threshold;
+  // the success line is debug so it's silent unless you opt in.
+  const startedAt = Date.now()
+  try {
+    const data =
+      provider === 'anthropic'
+        ? await anthropicJson(req, m)
+        : provider === 'openai'
+          ? await openaiJson(req, m)
+          : await ollamaJson(req, m)
+    log.debug('ai.complete ok', { provider, model: m, schema: req.schemaName, durationMs: Date.now() - startedAt })
+    return { data, via: provider }
+  } catch (err) {
+    log.warn('ai.complete failed', { provider, model: m, schema: req.schemaName, durationMs: Date.now() - startedAt, err })
+    throw err
+  }
 }
