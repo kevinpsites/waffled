@@ -7,7 +7,6 @@ import SwiftUI
 /// the app roots so it can appear over any screen. The upgrade itself runs on the host
 /// (`./waffled upgrade`) — this is the nudge, the same as on web.
 struct ServerUpdateModal: View {
-    @Environment(SyncManager.self) private var sync
     @Environment(\.openURL) private var openURL
 
     @State private var info: WaffledAPI.UpdateInfo?
@@ -28,9 +27,10 @@ struct ServerUpdateModal: View {
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: open)
-        // Keyed to identity: the modal may mount before sign-in resolves, so re-run the
-        // (admin-gated) check once `currentPerson` lands — mirrors the web's `[isAdmin]`.
-        .task(id: sync.currentPersonId) { await check() }
+        // Runs once per mount — and each fresh sign-in remounts AppRoot, so it re-checks
+        // after login. No need to wait on identity: /api/updates is admin-gated, so a 200
+        // means we're an admin and a 403 (→ nil below) means we're not.
+        .task { await check() }
     }
 
     // MARK: card
@@ -115,12 +115,25 @@ struct ServerUpdateModal: View {
     // MARK: logic
 
     private func check() async {
-        guard sync.currentPerson?.isAdmin == true else { return }
-        guard let r = try? await WaffledAPI().updates() else { return }
-        info = r
-        let dismissed = UserDefaults.standard.string(forKey: Self.dismissKey)
-        if r.enabled, r.updateAvailable == true, let tag = r.latest?.tag, dismissed != tag {
-            open = true
+        guard !open else { return }
+        // The modal mounts while the app is still booting, so the first /api/updates call
+        // can fail transiently (auth/network not ready yet). Retry until it answers, then
+        // decide once. Admin-gating is server-side: a 401/403 is a definitive "not you",
+        // so stop; any other error is treated as transient and retried.
+        for _ in 0..<8 {
+            do {
+                let r = try await WaffledAPI().updates()
+                info = r
+                let dismissed = UserDefaults.standard.string(forKey: Self.dismissKey)
+                if r.enabled, r.updateAvailable == true, let tag = r.latest?.tag, dismissed != tag {
+                    open = true
+                }
+                return
+            } catch let WaffledAPI.APIError.http(code, _) where code == 401 || code == 403 {
+                return
+            } catch {
+                try? await Task.sleep(for: .milliseconds(700))
+            }
         }
     }
 
