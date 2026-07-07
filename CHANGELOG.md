@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+- **Redesigned the goal create/edit screen.** A cleaner two-pane editor with a live
+  preview of how the goal will look on the kitchen display, its own "New goal" title bar
+  with Cancel/Create actions. Milestones are now derived from your target — a 300-hour
+  goal suggests 75 / 150 / 225 rather than fixed values — with rewards left blank to fill
+  in only if you want, calendar auto-tracking on by default, and checklists starting from
+  three empty steps.
 
 ### Fixed
 

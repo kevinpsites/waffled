@@ -247,16 +247,178 @@ button.goal-listhead-link:hover {
 }
 
 /* ===== Create-a-goal (full screen, "Create a goal / reporting setup") ===== */
+/* Redesigned goal editor — two panes: a focused, scrolling form on the left and a
+   generous live preview on the right. Both panes scroll independently inside the
+   fixed content height. See GoalCreate.tsx. */
 .goal-create {
   flex: 1;
-  display: grid;
-  grid-template-columns: 1.35fr 1fr;
-  gap: 26px;
-  padding: 6px 30px 24px;
   min-height: 0;
-  overflow-y: auto;
-  align-content: start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 452px;
+  overflow: hidden;
 }
+.ge-formpane { overflow-y: auto; overflow-x: hidden; min-width: 0; }
+.ge-col { max-width: 660px; margin: 0 auto; padding: 8px 48px 64px; }
+
+.ge-pvpane {
+  background: var(--panel);
+  border-left: 1px solid var(--hair);
+  padding: 28px 30px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.ge-pvlabel { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); margin-bottom: 4px; }
+.ge-pvcap { font-size: 12.5px; color: var(--ink-2); font-weight: 550; margin-bottom: 20px; }
+.ge-pvstage { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 16px; }
+
+/* form sections */
+.ge-sec { padding: 22px 0 4px; border-top: 1px solid var(--hair-2); }
+.ge-sec:first-child { border-top: 0; padding-top: 10px; }
+.ge-sec-t { font-size: 15px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 3px; color: var(--ink); }
+.ge-sec-h { font-size: 12.5px; color: var(--ink-3); font-weight: 550; margin-bottom: 14px; line-height: 1.4; }
+
+/* name */
+.ge-name { width: 100%; box-sizing: border-box; border: 1.5px solid var(--hair); background: var(--card); border-radius: var(--r-md); font-family: var(--serif); font-size: 26px; font-weight: 600; letter-spacing: -.01em; color: var(--ink); outline: none; padding: 14px 18px; box-shadow: var(--sh-1); transition: border-color .18s; }
+.ge-name::placeholder { color: var(--ink-3); font-weight: 500; }
+.ge-name:focus { border-color: var(--primary); }
+
+/* who chips */
+.ge-who { display: flex; gap: 8px; flex-wrap: wrap; }
+.ge-who-chip { display: inline-flex; align-items: center; gap: 8px; padding: 7px 15px 7px 7px; border-radius: 999px; background: var(--card); border: 1.5px solid var(--hair); cursor: pointer; font: inherit; font-size: 14px; font-weight: 650; color: var(--ink); box-shadow: var(--sh-1); transition: all .13s; }
+.ge-who-chip:hover { border-color: var(--ink-3); }
+.ge-who-chip.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.ge-who-chip.dashed { border-style: dashed; border-color: var(--hair); box-shadow: none; background: transparent; color: var(--ink-3); font-weight: 700; padding: 7px 14px; }
+.ge-who-chip.dashed:hover { color: var(--ink-2); border-color: var(--ink-3); }
+.ge-avstack { display: inline-flex; }
+.ge-avstack .ge-av:not(:first-child) { margin-left: -8px; }
+.ge-av { width: 26px; height: 26px; border-radius: 999px; display: grid; place-items: center; font-size: 14px; border: 2px solid var(--card); }
+.ge-who-chip.on .ge-av { border-color: var(--ink); }
+
+/* shared / each segmented control */
+.ge-share { display: inline-flex; background: var(--panel); border-radius: 999px; padding: 4px; margin-top: 14px; }
+.ge-share button { border: 0; background: transparent; font: inherit; font-size: 13.5px; font-weight: 650; color: var(--ink-2); padding: 8px 16px; border-radius: 999px; cursor: pointer; }
+.ge-share button.on { background: #fff; color: var(--ink); box-shadow: var(--sh-1); font-weight: 700; }
+
+/* measure cards */
+.ge-measure-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ge-mcard { text-align: left; border: 1.5px solid var(--hair); border-radius: var(--r-md); padding: 14px; cursor: pointer; background: var(--card); display: flex; align-items: flex-start; gap: 12px; transition: border-color .13s, box-shadow .13s; font: inherit; color: var(--ink); }
+.ge-mcard:hover { border-color: var(--ink-3); }
+.ge-mcard.on { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 13%, transparent); }
+.ge-mcard .me { font-size: 22px; line-height: 1; flex: none; }
+.ge-mcard .mt { font-size: 14.5px; font-weight: 700; }
+.ge-mcard .md { font-size: 12px; color: var(--ink-2); margin-top: 2px; font-weight: 550; line-height: 1.3; }
+.ge-mcard .mck { margin-left: auto; width: 20px; height: 20px; border-radius: 999px; flex: none; border: 2px solid var(--hair); display: grid; place-items: center; }
+.ge-mcard.on .mck { background: var(--primary); border-color: var(--primary); }
+.ge-mcard .mck svg { width: 11px; height: 11px; }
+
+/* per-type config row */
+.ge-cfg { margin-top: 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ge-num { display: inline-flex; align-items: center; background: var(--card); border: 1.5px solid var(--hair); border-radius: var(--r-sm); overflow: hidden; }
+.ge-num input { width: 74px; border: 0; background: transparent; text-align: center; outline: none; font-family: var(--serif); font-size: 20px; font-weight: 600; color: var(--ink); padding: 11px 4px; }
+.ge-num-steps { display: flex; flex-direction: column; border-left: 1px solid var(--hair); }
+.ge-num-steps button { border: 0; background: transparent; cursor: pointer; color: var(--ink-2); width: 26px; height: 22px; display: grid; place-items: center; font-size: 9px; }
+.ge-num-steps button:hover { background: var(--panel); color: var(--ink); }
+.ge-unit-input { flex: 1; min-width: 150px; box-sizing: border-box; border: 1.5px solid var(--hair); background: var(--card); border-radius: var(--r-sm); padding: 13px 15px; font: inherit; font-size: 15.5px; font-weight: 600; color: var(--ink); outline: none; }
+.ge-unit-input:focus { border-color: var(--primary); }
+.ge-unit-input::placeholder { color: var(--ink-3); font-weight: 500; }
+.ge-unitsel { display: inline-flex; align-items: center; gap: 6px; background: var(--panel); border-radius: var(--r-sm); padding: 10px 12px; font-size: 14.5px; font-weight: 650; color: var(--ink); }
+.ge-unitsel select { border: 0; background: transparent; font: inherit; font-weight: 700; color: var(--ink); cursor: pointer; outline: none; }
+.ge-lead { font-size: 14px; color: var(--ink-2); font-weight: 600; }
+
+/* deadline */
+.ge-deadline { display: flex; align-items: center; gap: 13px; margin-top: 16px; }
+.ge-deadline-tx { flex: 1; min-width: 0; }
+.ge-deadline-tx .e1 { font-size: 14.5px; font-weight: 650; color: var(--ink); }
+.ge-deadline-tx .e2 { font-size: 12px; color: var(--ink-2); margin-top: 1px; font-weight: 550; }
+.ge-date-input { margin-top: 12px; border: 1.5px solid var(--hair); background: var(--card); border-radius: var(--r-sm); padding: 11px 14px; font: inherit; font-size: 14.5px; font-weight: 600; color: var(--ink); outline: none; }
+.ge-date-input:focus { border-color: var(--primary); }
+
+/* category chips (on-state colors come inline from CATEGORIES) */
+.ge-cats { display: flex; gap: 9px; flex-wrap: wrap; }
+.ge-cat { display: inline-flex; align-items: center; gap: 7px; padding: 9px 15px; border-radius: 999px; background: var(--card); border: 1.5px solid var(--hair); font: inherit; font-size: 14px; font-weight: 700; color: var(--ink); box-shadow: var(--sh-1); cursor: pointer; transition: all .12s; }
+.ge-cat:hover { border-color: var(--ink-3); }
+.ge-cat.on { box-shadow: none; }
+.ge-cat .cemo { font-size: 16px; }
+
+/* checklist steps */
+.ge-steps { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.ge-step { display: flex; align-items: center; gap: 11px; background: var(--card); border: 1px solid var(--hair-2); border-radius: var(--r-md); padding: 11px 14px; }
+.ge-step-dot { width: 18px; height: 18px; border-radius: 6px; border: 2px solid var(--hair); flex: none; }
+.ge-step input { flex: 1; border: 0; background: transparent; outline: none; font: inherit; font-size: 14.5px; font-weight: 600; color: var(--ink); }
+.ge-step-x { border: 0; background: transparent; cursor: pointer; color: var(--ink-3); font-size: 18px; line-height: 1; width: 26px; height: 26px; border-radius: 999px; flex: none; }
+.ge-step-x:hover { background: var(--panel); color: var(--ink); }
+
+/* shared add button (steps + milestones) */
+.ge-add { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; border: 0; background: var(--panel); font: inherit; font-size: 13px; font-weight: 700; color: var(--ink); padding: 9px 15px; border-radius: 999px; cursor: pointer; margin-top: 4px; }
+.ge-add:hover { background: #e9e2d6; }
+
+/* extras rows */
+.ge-extra { display: flex; align-items: center; gap: 13px; padding: 15px 0; border-top: 1px solid var(--hair-2); }
+.ge-extra:first-of-type { border-top: 0; }
+.ge-extra .eic { width: 34px; height: 34px; border-radius: 10px; background: var(--panel); display: grid; place-items: center; font-size: 18px; flex: none; }
+.ge-extra .etx { flex: 1; min-width: 0; }
+.ge-extra .e1 { font-size: 14.5px; font-weight: 650; color: var(--ink); }
+.ge-extra .e2 { font-size: 12px; color: var(--ink-2); margin-top: 1px; font-weight: 550; }
+
+/* milestone editor */
+.ge-ms { padding: 4px 0 8px 47px; display: flex; flex-direction: column; gap: 8px; }
+.ge-ms-hint { font-size: 11.5px; color: var(--ink-3); font-weight: 550; margin: 2px 0 4px; }
+.ge-ms-row { display: flex; align-items: center; gap: 10px; background: var(--card-2); border: 1px solid var(--hair-2); border-radius: var(--r-md); padding: 8px 10px; }
+.ge-ms-emoji { width: 40px; text-align: center; border: 1px solid var(--hair-2); background: #fff; border-radius: 8px; padding: 7px 2px; font: inherit; font-size: 16px; outline: none; flex: none; }
+.ge-ms-n { display: inline-flex; align-items: center; background: #fff; border: 1px solid var(--hair); border-radius: 9px; overflow: hidden; }
+.ge-ms-n input { width: 56px; border: 0; outline: none; text-align: center; font: inherit; font-size: 14px; font-weight: 700; padding: 7px 2px; color: var(--ink); }
+.ge-ms-r { flex: 1; border: 0; background: transparent; outline: none; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink); min-width: 0; }
+.ge-ms-r::placeholder { color: var(--ink-3); font-weight: 550; }
+.ge-ms-x { border: 0; background: transparent; cursor: pointer; color: var(--ink-3); font-size: 15px; width: 26px; height: 26px; border-radius: 999px; flex: none; }
+.ge-ms-x:hover { background: var(--panel); color: var(--ink); }
+
+.ge-foot { font-size: 12px; color: var(--ink-3); line-height: 1.5; font-weight: 550; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--hair-2); }
+.ge-foot b { color: var(--ink-2); font-weight: 700; }
+
+/* ---- live-preview renders ---- */
+.ge-pv-hero { border-radius: var(--r-xl); padding: 24px 26px; color: #fff; position: relative; overflow: hidden; background: linear-gradient(135deg, #ef6a52, var(--primary-d)); box-shadow: var(--sh-3); }
+.ge-pv-hero::after { content: ""; position: absolute; right: -50px; top: -60px; width: 220px; height: 220px; border-radius: 999px; background: rgba(255,255,255,.09); }
+.ge-pv-hero .hrow { position: relative; z-index: 1; display: flex; align-items: center; gap: 18px; }
+.ge-pv-hero .hicon { width: 60px; height: 60px; border-radius: 17px; background: rgba(255,255,255,.18); display: grid; place-items: center; font-size: 30px; flex: none; }
+.ge-pv-hero .htag { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; background: rgba(255,255,255,.2); padding: 3px 9px; border-radius: 999px; }
+.ge-pv-hero .htitle { font-family: var(--serif); font-size: 23px; font-weight: 600; letter-spacing: -.01em; line-height: 1.1; margin: 8px 0 3px; text-transform: capitalize; }
+.ge-pv-hero .hsub { font-size: 12.5px; font-weight: 600; opacity: .92; }
+.ge-pv-hero .hring { flex: none; margin-left: auto; }
+
+.ge-pv-card { background: var(--card); border-radius: var(--r-lg); box-shadow: var(--sh-2); padding: 20px 22px; }
+.ge-pv-card .crow { display: flex; align-items: flex-start; gap: 14px; }
+.ge-pv-card .cicon { width: 52px; height: 52px; border-radius: 15px; background: #fbe7e1; display: grid; place-items: center; font-size: 27px; flex: none; }
+.ge-pv-card .ctag { font-size: 11px; font-weight: 800; color: var(--ink-3); text-transform: uppercase; letter-spacing: .03em; }
+.ge-pv-card .ctitle { font-family: var(--serif); font-size: 20px; font-weight: 600; letter-spacing: -.01em; line-height: 1.12; margin: 4px 0 3px; text-transform: capitalize; }
+.ge-pv-card .csub { font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
+.ge-pv-card .cbar { height: 9px; border-radius: 99px; background: var(--panel); overflow: hidden; margin-top: 18px; }
+.ge-pv-card .cbar > div { height: 100%; border-radius: 99px; background: var(--primary); }
+.ge-pv-card .cmeta { font-size: 12.5px; color: var(--ink-2); font-weight: 650; margin-top: 9px; }
+
+.ge-pv-mtrack { background: var(--card); border-radius: var(--r-lg); box-shadow: var(--sh-2); padding: 18px 18px 16px; }
+.ge-pv-mtrack .mth { font-size: 12.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); margin-bottom: 16px; }
+.ge-pv-track { display: flex; align-items: flex-start; justify-content: space-between; position: relative; padding: 0 2px; }
+.ge-pv-track::before { content: ""; position: absolute; left: 18px; right: 18px; top: 15px; height: 3px; background: var(--hair); border-radius: 99px; }
+.ge-pv-node { display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; z-index: 1; flex: 1; }
+.ge-pv-node .nd { width: 32px; height: 32px; border-radius: 999px; background: var(--panel); display: grid; place-items: center; font-size: 15px; border: 3px solid var(--card); box-shadow: 0 0 0 1px var(--hair); }
+.ge-pv-node .nl { font-size: 11px; font-weight: 800; color: var(--ink); }
+.ge-pv-node .nr { font-size: 10px; color: var(--ink-3); font-weight: 600; text-align: center; line-height: 1.2; }
+
+.ge-pv-where { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); font-weight: 600; justify-content: center; }
+.ge-pv-where svg { width: 14px; height: 14px; stroke: var(--ink-3); fill: none; stroke-width: 1.8; }
+
+/* Goal editor replaces the whole topbar (useTopbarFull) — no date/clock/weather,
+   just its own bar: a big "New goal" title (sized to match the Today date) plus
+   Cancel + Create actions. */
+.ge-topbar { display: flex; align-items: center; gap: 14px; width: 100%; }
+.ge-topbar .ge-sp { flex: 1; }
+.ge-title { font-family: var(--serif); font-size: 30px; font-weight: 600; color: var(--ink); }
+.ge-cancel { font: inherit; font-size: 14.5px; font-weight: 650; color: var(--ink-2); background: transparent; border: 0; cursor: pointer; padding: 9px 12px; border-radius: 999px; }
+.ge-cancel:hover { background: var(--panel); }
+.ge-create { font: inherit; font-size: 14.5px; font-weight: 700; color: #fff; background: var(--primary); border: 0; cursor: pointer; padding: 10px 20px; border-radius: 999px; box-shadow: var(--sh-1); transition: opacity .15s, transform .1s; }
+.ge-create:disabled { opacity: .4; cursor: default; }
+.ge-create:not(:disabled):active { transform: scale(.97); }
 .gc-form {
   display: flex;
   flex-direction: column;
@@ -432,18 +594,16 @@ button.goal-listhead-link:hover {
   flex: 1;
   padding: 7px 10px;
 }
-@media (max-width: 1000px) {
-  .goal-create {
-    grid-template-columns: 1fr;
-  }
+/* Narrow: stack the preview under the form (single scroll). */
+@media (max-width: 1080px) {
+  .goal-create { grid-template-columns: 1fr; overflow-y: auto; overflow-x: hidden; }
+  .ge-formpane { overflow: visible; }
+  .ge-pvpane { border-left: 0; border-top: 1px solid var(--hair); overflow: visible; }
+  .ge-pvstage { justify-content: flex-start; }
 }
-@media (max-width: 720px) {
-  .goal-create {
-    padding: 6px 16px 20px;
-  }
-  .gc-types {
-    grid-template-columns: 1fr;
-  }
+@media (max-width: 620px) {
+  .ge-col { padding: 8px 16px 32px; }
+  .ge-measure-grid { grid-template-columns: 1fr; }
 }
 
 /* ===== Goal detail ("Shared total / 1000 Hours detail") ===== */
