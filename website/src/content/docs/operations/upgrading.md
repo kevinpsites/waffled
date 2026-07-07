@@ -3,9 +3,8 @@ title: Upgrading
 description: Move a self-hosted Waffled to a newer version safely.
 ---
 
-How to move a self-hosted Waffled to a newer version safely. Waffled runs via `docker
-compose`, driven by the root `./waffled` CLI. There are two ways to run it, and the
-upgrade steps differ slightly — pick the one that matches your setup.
+Moving a self-hosted Waffled to a newer version is a single command: **`./waffled
+upgrade`**. This page covers what it does, how versioning works, and how to roll back.
 
 > **⚠️ NEVER wipe your Docker volumes.** `pgdata` (Postgres) and `waffled_media`
 > (uploaded blobs) are irreplaceable. The database also holds the *encrypted*
@@ -13,95 +12,103 @@ upgrade steps differ slightly — pick the one that matches your setup.
 > that **cannot** be recovered, only re-consented. Upgrades never require deleting a
 > volume; if a guide anywhere tells you to `docker volume rm` or `down -v`, stop.
 
-## 0. Before every upgrade
-
-1. **Back up first.** `./waffled backup` (or `./waffled backup && ./waffled backup list` to
-   confirm the dump landed). This is your rollback path — see
-   [Backup & restore](/operations/backup/). Do this *before* pulling any new code or images.
-2. **Read the release notes / `CHANGELOG.md`** for the version you're moving to.
-   Note any env vars you're expected to add and any one-time steps called out.
-
-Migrations run **automatically** on start (a one-shot `migrate` service runs before
-`api` comes up) and are idempotent, so you normally don't run them by hand.
-
-## Which mode am I in?
-
-| Mode | How you know | How you upgrade |
-|---|---|---|
-| **Build-from-source** (default) | `WAFFLED_*_IMAGE` are unset in `infra/compose/.env` — `./waffled up` builds images locally | `git pull`, then `./waffled up` |
-| **Published images (GHCR)** | `WAFFLED_API_IMAGE` / `WAFFLED_CADDY_IMAGE` / `WAFFLED_BACKUP_IMAGE` are set to `ghcr.io/...` tags | bump the tags, `docker compose pull`, then `./waffled up` |
-
-Releases are published to GHCR on every `v*` git tag.
-
-## Build-from-source upgrade
+## The one-command upgrade
 
 ```bash
-./waffled backup            # step 0 — always
-git pull                 # fetch the new source
-./waffled up                # rebuild images + run migrations + start
+./waffled upgrade
 ```
 
-`./waffled up` rebuilds the local images, runs the one-shot `migrate` service
-(applying any new DB migrations), and starts the stack.
+That does the whole thing, in order:
 
-## Published-image (GHCR) upgrade
+1. **Fast-forwards the repo** (`git pull --ff-only`). The tagged repo and the images
+   are a *matched pair* — the compose file, configs, and `./waffled` script must agree
+   with the image you're about to run — so the code is updated first. If the pull can't
+   fast-forward (local changes or diverged history), it **warns and skips** rather than
+   clobbering your tree; resolve it and re-run.
+2. **Bumps `WAFFLED_VERSION` in your `.env`** to match the version this checkout points
+   at. This is the step that used to be manual: `./waffled` only writes `.env` on first
+   run, so an existing `.env` kept its *old* version and a plain `./waffled up` would
+   re-pull the old image.
+3. **Takes a database backup** (via the running backup sidecar) as your rollback point,
+   *before* anything changes. Best-effort — a partial/not-yet-running install just skips it.
+4. **Pulls the new images and restarts** the stack. The one-shot **migrate** service
+   reruns automatically (the image tag changed) and applies any new migrations before
+   `api` comes up.
+5. **Prints a health table** so you can see everything came back healthy.
 
-1. `./waffled backup` (step 0).
-2. In `infra/compose/.env`, bump the image tags to the version you want (or confirm
-   they point where you expect):
+Migrations are **idempotent** — only the ones you don't have yet are applied, and it's
+safe to re-run `upgrade`.
 
-   ```bash
-   WAFFLED_API_IMAGE=ghcr.io/kevinpsites/waffled-api:vX.Y.Z
-   WAFFLED_CADDY_IMAGE=ghcr.io/kevinpsites/waffled-caddy:vX.Y.Z
-   WAFFLED_BACKUP_IMAGE=ghcr.io/kevinpsites/waffled-backup:vX.Y.Z
-   ```
+### You'll be told when there's an update
 
-3. Pull the new images, then start:
+Waffled checks GitHub for new releases and shows **Settings → System Health → "Update
+available — vX.Y.Z"** when you're behind (on by default; toggle per household there, or
+disable outbound checks entirely with `UPDATE_CHECK_ENABLED=false`). That notice names
+the `./waffled upgrade` command, so you don't have to watch the repo.
 
-   ```bash
-   docker compose -f infra/compose/docker-compose.yml pull
-   ./waffled up
-   ```
+## Before you upgrade
 
-   Migrations run automatically on start, same as build-from-source.
+`./waffled upgrade` already snapshots the DB for you, but it's still worth:
+
+1. **Reading the release notes / `CHANGELOG.md`** for the version you're moving to — note
+   any new env vars or one-time steps a release calls out.
+2. **Confirming a good backup** if you want belt-and-suspenders: `./waffled backup && ./waffled
+   backup list`. See [Backup & restore](/operations/backup/).
+
+## How versioning works
+
+`./waffled up` **pulls prebuilt multi-arch images from GHCR by default**, pinned to
+`WAFFLED_VERSION` in `infra/compose/.env` (the single version knob). `./waffled upgrade`
+just moves that pin forward and pulls. A few variations:
+
+- **Pin to a specific release** instead of "latest on this branch": check out the tag
+  first, then upgrade — `git checkout v0.2.0 && ./waffled upgrade`. (`upgrade` reads the
+  target version from the checkout's `.env.example`, so the tag you're on decides it.)
+- **Run bleeding-edge from source** instead of published images: `./waffled up --build`
+  after a `git pull` builds the images locally and stamps the current git SHA.
+- **Point at a custom registry/tag**: an explicit `WAFFLED_API_IMAGE` /
+  `WAFFLED_CADDY_IMAGE` / `WAFFLED_BACKUP_IMAGE` in `.env` overrides the
+  `WAFFLED_VERSION` default entirely.
+
+Images are published to GHCR by `.github/workflows/publish-images.yml` on every `v*` git
+tag (built per-arch on native runners, then merged into one multi-arch manifest).
 
 ## Verifying the upgrade
 
 ```bash
-./waffled doctor            # deep health report — see below
+./waffled doctor            # deep health report
 ./waffled status            # services up / healthy
 ```
 
 `./waffled doctor` should come back **all green**. Specifically check:
 
-- **Migrations:** applied count == available count. If the report flags "schema
-  behind", migrations are pending — run `./waffled migrate` (or just `./waffled up`).
-- **Version:** the reported git sha / build time matches the release you upgraded
-  to (build provenance is surfaced on the health report).
-- **Every component** (db, jobs, calendar, storage, backup) reads healthy. `doctor`
-  exits non-zero if anything is degraded/down.
+- **Migrations:** applied count == available count. If it flags "schema behind",
+  migrations are pending — run `./waffled migrate` (or just `./waffled up`).
+- **Version:** the reported version / git sha / build time matches the release you moved
+  to (build provenance is on the health report).
+- **Every component** (db, jobs, calendar, storage, backup) reads healthy. `doctor` exits
+  non-zero if anything is degraded/down.
 
-You can also open **Settings → System Health** (same data) or hit `GET /healthz`
-(public, shallow: db ping + version).
+You can also open **Settings → System Health** (same data) or hit `GET /healthz` (public,
+shallow: db ping + version).
 
 ## Rolling back
 
-Migrations are **forward-only** — there is no down-migration. To go back to an
-earlier version you must also restore the database as it was *before* the upgrade:
+Migrations are **forward-only** — there is no down-migration. To go back to an earlier
+version you must also restore the database as it was *before* the upgrade:
 
-1. Revert code/images to the previous version (`git checkout <prev tag>` for
-   build-from-source, or restore the old `WAFFLED_*_IMAGE` tags + `docker compose
-   pull` for GHCR).
-2. **Restore the pre-upgrade backup you took in step 0:**
+1. Revert the code/images to the previous version: `git checkout <prev tag>` and set
+   `WAFFLED_VERSION` back (or restore your old `WAFFLED_*_IMAGE` tags), then `./waffled up`.
+2. **Restore the pre-upgrade snapshot** (`upgrade` took one automatically — find it with
+   `./waffled backup list`):
 
    ```bash
    ./waffled restore waffled-<pre-upgrade-timestamp>.sql.gz
    ```
 
    This is destructive (overwrites the current DB) — details in
-   [Backup & restore](/operations/backup/). This is exactly why step 0 is non-negotiable: if you
-   skipped the backup, you cannot cleanly roll back a schema change.
-
+   [Backup & restore](/operations/backup/). This is exactly why the automatic pre-upgrade
+   backup matters: without it you can't cleanly roll back a schema change.
 3. `./waffled doctor` to confirm the rolled-back stack is healthy.
 
 ## Something broke?

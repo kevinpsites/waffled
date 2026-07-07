@@ -17,8 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **One-command upgrades.** `./waffled upgrade` pulls the latest release end-to-end:
   fast-forwards the repo, bumps the pinned `WAFFLED_VERSION` in your `.env` to match the
   checkout (an existing `.env` was previously left on its old version, so a plain `up`
-  re-pulled the old image), pulls the new images, and applies migrations. The in-app
-  "Update available" notice now names the command.
+  re-pulled the old image), **snapshots the database** as a rollback point, pulls the new
+  images, and applies migrations. The in-app "Update available" notice now names the
+  command, and the self-hosting docs have a rewritten [upgrading guide](https://github.com/kevinpsites/waffled/blob/main/website/src/content/docs/operations/upgrading.md).
 
 ### Changed
 

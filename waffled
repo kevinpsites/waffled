@@ -220,6 +220,13 @@ case "$cmd" in
       set_env_var WAFFLED_VERSION "$target"
       echo "${c_grn}WAFFLED_VERSION ${current:-unset} → ${target}${c_reset}"
     fi
+    # Safety: snapshot the DB BEFORE swapping images, while the current stack is still
+    # up — this is your rollback point (migrations are forward-only). Best-effort: a
+    # not-yet-running / partial install just skips it.
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^waffled-backup$'; then
+      echo "${c_dim}Backing up the database first (rollback point)…${c_reset}"
+      docker exec waffled-backup waffled-backup || echo "${c_ylw}⚠ Pre-upgrade backup failed — continuing anyway. You can run './waffled backup' manually first.${c_reset}"
+    fi
     export_build_meta
     echo "${c_dim}Pulling images + restarting stack (applying migrations)…${c_reset}"
     "${DC[@]}" pull || echo "${c_ylw}⚠ Couldn't pull some images — confirm the tag exists on GHCR, or run './waffled up --build' to build from source.${c_reset}"

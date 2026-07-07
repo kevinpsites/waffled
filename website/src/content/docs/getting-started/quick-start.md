@@ -131,23 +131,30 @@ Prefer to edit by hand? The same three vars in `infra/compose/.env` do it:
   backup) — or **Settings → System Health** in the app. Both show the same report.
 - **Backups** run nightly out of the box; see [Backup & restore](/operations/backup/) to
   point them at a folder or S3, and to restore.
-- **Upgrading:** see the [upgrading guide](/operations/upgrading/). **Stuck?**
+- **Upgrading:** run **`./waffled upgrade`** — it fast-forwards the repo, bumps the pinned
+  version, snapshots the DB, pulls the new images, and applies migrations in one step. The
+  app also flags **"Update available"** in Settings → System Health when you're behind. Full
+  details: the [upgrading guide](/operations/upgrading/). **Stuck?**
   [Troubleshooting](/operations/troubleshooting/).
 
-## Pre-built images (optional)
+## Image source (optional)
 
-The stack builds `api` + `caddy` from source by default. To pull from GHCR instead, set
-the overrides in `infra/compose/.env` and pull:
+By default `./waffled up` **pulls** the prebuilt multi-arch `api` / `caddy` / `backup`
+images from GHCR, pinned to `WAFFLED_VERSION` in `infra/compose/.env`. Two alternatives:
 
-```bash
-WAFFLED_API_IMAGE=ghcr.io/kevinpsites/waffled-api:latest
-WAFFLED_CADDY_IMAGE=ghcr.io/kevinpsites/waffled-caddy:latest
-WAFFLED_BACKUP_IMAGE=ghcr.io/kevinpsites/waffled-backup:latest
-```
+- **Build from source** (dev / bleeding-edge): `./waffled up --build`.
+- **Pin a custom registry/tag**: set the overrides in `infra/compose/.env` (these win over
+  `WAFFLED_VERSION`):
+
+  ```bash
+  WAFFLED_API_IMAGE=ghcr.io/kevinpsites/waffled-api:latest
+  WAFFLED_CADDY_IMAGE=ghcr.io/kevinpsites/waffled-caddy:latest
+  WAFFLED_BACKUP_IMAGE=ghcr.io/kevinpsites/waffled-backup:latest
+  ```
 
 Images are multi-arch (amd64 + arm64), so they run on x86 or an ARM SBC (e.g. Raspberry
 Pi). They're published by `.github/workflows/publish-images.yml` when you cut a release
-tag (`git tag v0.1.0 && git push origin v0.1.0`).
+tag (`git tag vX.Y.Z && git push origin vX.Y.Z`).
 
 ## Kiosk mode (the always-on tablet)
 

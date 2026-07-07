@@ -75,11 +75,31 @@ bar, and `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_CALENDAR_REDIRECT
 for 2-way Google Calendar sync. See the comments in `.env.example` for the full list
 (session lifetimes, ports, published-image overrides).
 
-### Pre-built images (optional)
+### Upgrading
 
-The compose stack builds `api` + `caddy` from source by default (tagged
-`waffled-api:local` / `waffled-caddy:local`). To skip the local build and run from the
-registry instead, point the image overrides at the published GHCR tags and pull:
+To move to a newer release, run:
+
+```bash
+./waffled upgrade
+```
+
+One command does the whole update: it fast-forwards the repo (so the compose file,
+configs, and `./waffled` match the new images), bumps the pinned `WAFFLED_VERSION` in
+your `.env`, **snapshots the database** as a rollback point, pulls the new images, and
+runs the one-shot **migrate** service to apply any new migrations — then restarts and
+prints a health table. Migrations are idempotent, so it's safe to re-run.
+
+Waffled also checks GitHub for new releases and shows **Settings → System Health →
+"Update available"** when you're behind (on by default; disable with
+`UPDATE_CHECK_ENABLED=false`). Full details, including pinning a specific version and
+rolling back: the [upgrading guide](website/src/content/docs/operations/upgrading.md).
+
+### Image source (optional)
+
+By default `./waffled up` **pulls** the prebuilt `api` / `caddy` / `backup` images from
+GHCR, pinned to `WAFFLED_VERSION`. To build from source instead (dev / bleeding-edge)
+use `./waffled up --build`. To pin a custom registry/tag, point the image overrides at
+the tags you want (these win over `WAFFLED_VERSION`) and pull:
 
 ```bash
 # in infra/compose/.env
@@ -92,10 +112,10 @@ docker compose -f infra/compose/docker-compose.yml --env-file infra/compose/.env
 ./waffled up
 ```
 
-Both images are multi-arch (amd64 + arm64), so they run on a regular x86 box or an
+All three images are multi-arch (amd64 + arm64), so they run on a regular x86 box or an
 ARM SBC (e.g. a Raspberry Pi). They're published by the
 `.github/workflows/publish-images.yml` GitHub Action **when you cut a release** —
-`git tag v0.1.0 && git push origin v0.1.0` — which builds the `v0.1.0` / `0.1` /
+`git tag vX.Y.Z && git push origin vX.Y.Z` — which builds the `X.Y.Z` / `X.Y` /
 `latest` tags (or trigger it manually from the Actions tab for an `sha-…` test build).
 No extra setup beyond the repo's default `GITHUB_TOKEN`.
 
