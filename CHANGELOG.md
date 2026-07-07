@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Delete pantry items on iOS.** The native app can now remove pantry items, not just mark
   them used up — from the "Used up" list (**＋ Shopping list** to restock, or **Remove**) and
   via a **Delete** action at the bottom of the item editor, matching the web.
+- **New-version notice pops up instead of hiding in Settings.** When a newer Waffled is
+  available, admins now see a modal — the new version, the `./waffled upgrade` command, and
+  links to the changelog and upgrade guide — rather than having to dig into Settings → System
+  Health. It shows once per release (dismiss and it won't return until a newer one), and only
+  to admins, since only they can run the upgrade.
 
 ### Changed
 - **AI calls retry transient provider failures.** A one-off provider blip — an OpenAI

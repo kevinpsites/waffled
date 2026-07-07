@@ -2,6 +2,7 @@ import { Outlet } from 'react-router'
 import { Rail } from './components/Rail'
 import { Topbar } from './components/Topbar'
 import { OfflineBanner } from './components/OfflineBanner'
+import { UpdateModal } from './components/UpdateModal'
 import { TopbarSlotProvider } from './topbar-slot'
 import '../styles/kiosk-profiles.css'
 
@@ -18,6 +19,7 @@ export function KioskLayout() {
           <Topbar />
           <Outlet />
         </div>
+        <UpdateModal />
       </div>
     </TopbarSlotProvider>
   )
