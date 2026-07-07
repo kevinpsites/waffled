@@ -14,12 +14,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## [0.2.1] - 2026-07-06
+
+A maintenance release: a one-command upgrade path, a bulk recipe importer, and fixes
+for Safari, first-run reliability, and image build provenance.
+
+### Added
 - **One-command upgrades.** `./waffled upgrade` pulls the latest release end-to-end:
   fast-forwards the repo, bumps the pinned `WAFFLED_VERSION` in your `.env` to match the
   checkout (an existing `.env` was previously left on its old version, so a plain `up`
   re-pulled the old image), **snapshots the database** as a rollback point, pulls the new
   images, and applies migrations. The in-app "Update available" notice now names the
   command, and the self-hosting docs have a rewritten [upgrading guide](https://github.com/kevinpsites/waffled/blob/main/website/src/content/docs/operations/upgrading.md).
+- **Bulk Markdown recipe importer.** `apps/api/scripts/import-recipes-api.mjs` mass-imports
+  a folder of Markdown recipes into any running server over the API (with an API key),
+  tagging each with its subfolder as the recipe's collection. Idempotent, with a `--dry-run`.
 
 ### Changed
 
@@ -428,6 +442,7 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/kevinpsites/waffled/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/kevinpsites/waffled/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/kevinpsites/waffled/releases/tag/v0.1.0
