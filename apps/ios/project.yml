@@ -14,7 +14,7 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "0.3.0"
+    MARKETING_VERSION: "0.3.1"
     CURRENT_PROJECT_VERSION: "1"
     # Swift 5 language mode for the scaffold — avoids strict-concurrency churn while
     # we stand the app up. Bump to 6 once the sync layer settles.

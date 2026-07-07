@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## [0.3.1] - 2026-07-07
+
+### Added
 - **Swipe a pantry item to edit or delete on iPhone.** Rows in the pantry list now swipe
   left to reveal **Edit** and **Delete** — or keep pulling to delete outright — so you no
   longer have to open an item just to change or remove it.
@@ -559,7 +567,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/kevinpsites/waffled/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/kevinpsites/waffled/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/kevinpsites/waffled/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/kevinpsites/waffled/compare/v0.2.1...v0.2.2
