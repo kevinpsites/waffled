@@ -21,6 +21,15 @@ function addMonths(d: Date, n: number): Date {
   return new Date(d.getFullYear(), d.getMonth() + n, 1)
 }
 
+// Which day the month view's side panel should focus when landing on a month:
+// today if we're looking at the current month, otherwise the 1st (so the panel
+// always shows a day that's actually on screen).
+function defaultDayForMonth(d: Date): string {
+  const now = new Date()
+  if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()) return ymd(now)
+  return ymd(new Date(d.getFullYear(), d.getMonth(), 1))
+}
+
 // The [from,to] date window to fetch for a given view/anchor.
 function rangeFor(view: View, anchor: Date): { from: string; to: string } {
   if (view === 'week') {
@@ -56,6 +65,7 @@ export function Calendar() {
   const navigate = useNavigate()
   const [view, setView] = useState<View>(() => lastCalState.view)
   const [anchor, setAnchor] = useState(() => new Date(lastCalState.anchorTime))
+  const [selectedDay, setSelectedDay] = useState(() => defaultDayForMonth(new Date(lastCalState.anchorTime)))
   const [modal, setModal] = useState<{ date?: string; time?: string } | null>(null)
 
   // Persist view + anchor so returning from an event detail restores this spot.
@@ -79,7 +89,19 @@ export function Calendar() {
   }, [countdowns])
 
   function shift(delta: number) {
-    setAnchor((a) => (view === 'month' ? addMonths(a, delta) : view === 'day' ? addDays(a, delta) : addDays(a, delta * 7)))
+    setAnchor((a) => {
+      if (view === 'month') {
+        const next = addMonths(a, delta)
+        setSelectedDay(defaultDayForMonth(next))
+        return next
+      }
+      return view === 'day' ? addDays(a, delta) : addDays(a, delta * 7)
+    })
+  }
+  function goToday() {
+    const now = new Date()
+    setAnchor(now)
+    if (view === 'month') setSelectedDay(ymd(now))
   }
   const openEvent = (e: AgendaEvent) => navigate(eventDetailPath(e))
   const jumpToWeek = (d: Date) => {
@@ -109,7 +131,7 @@ export function Calendar() {
             <button type="button" className="icon-btn" aria-label={`Previous ${navLabel}`} onClick={() => shift(-1)}>
               <Icon name="cl" />
             </button>
-            <button type="button" className="pill cal-period" onClick={() => setAnchor(new Date())}>
+            <button type="button" className="pill cal-period" onClick={goToday}>
               {periodLabel(view, anchor)}
             </button>
             <button type="button" className="icon-btn" aria-label={`Next ${navLabel}`} onClick={() => shift(1)}>
@@ -131,6 +153,8 @@ export function Calendar() {
           events={events}
           tz={tz}
           countdownsByDate={countdownsByDate}
+          selectedDay={selectedDay}
+          onSelectDay={setSelectedDay}
           onOpenEvent={openEvent}
           onCreateOnDay={(date) => setModal({ date })}
           onMore={(date) => jumpToDay(new Date(`${date}T12:00:00`))}

@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { AgendaEvent, Countdown } from '../../lib/api'
 import { DOW, ymd, localDate } from './cal-utils'
+import { MonthDayPanel } from './MonthDayPanel'
 
 // The visible 6-week (42-cell) grid for a month, including leading/trailing days.
 function monthGrid(year: number, month: number): Date[] {
@@ -19,6 +20,8 @@ export function MonthView({
   events,
   tz,
   countdownsByDate,
+  selectedDay,
+  onSelectDay,
   onOpenEvent,
   onCreateOnDay,
   onMore,
@@ -28,6 +31,8 @@ export function MonthView({
   events: AgendaEvent[]
   tz: string
   countdownsByDate?: Record<string, Countdown[]>
+  selectedDay: string
+  onSelectDay: (date: string) => void
   onOpenEvent: (e: AgendaEvent) => void
   onCreateOnDay: (date: string) => void
   onMore: (date: string) => void
@@ -41,6 +46,7 @@ export function MonthView({
   const today = ymd(new Date())
 
   return (
+    <div className="cal-month">
     <div className="cal">
       <div className="cal-dow">
         {DOW.map((d) => (
@@ -56,8 +62,8 @@ export function MonthView({
           return (
             <div
               key={key}
-              className={`cal-cell ${dim ? 'dim' : ''} ${key === today ? 'today' : ''}`}
-              onClick={() => onCreateOnDay(key)}
+              className={`cal-cell ${dim ? 'dim' : ''} ${key === today ? 'today' : ''} ${key === selectedDay ? 'selected' : ''}`}
+              onClick={() => onSelectDay(key)}
             >
               <div className="dn">{d.getDate()}</div>
               {cds.length > 0 && (
@@ -102,6 +108,8 @@ export function MonthView({
           )
         })}
       </div>
+    </div>
+    <MonthDayPanel day={selectedDay} events={events} tz={tz} onOpenEvent={onOpenEvent} onCreate={onCreateOnDay} />
     </div>
   )
 }

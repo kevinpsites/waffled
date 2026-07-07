@@ -16,13 +16,13 @@ function dayLabel(d: Date, today: Date): string {
 // An event is "past" once its end time (or start + 1h when open-ended) is behind
 // now — used to subtly fade events that should already be done. All-day events
 // aren't time-bound, so they're never faded.
-function isPastEvent(e: AgendaEvent, now: Date): boolean {
+export function isPastEvent(e: AgendaEvent, now: Date): boolean {
   if (e.allDay) return false
   const end = e.endsAt ? new Date(e.endsAt) : new Date(new Date(e.startsAt).getTime() + 60 * 60000)
   return end.getTime() < now.getTime()
 }
 
-function AgendaRow({ event, past = false, onClick }: { event: AgendaEvent; past?: boolean; onClick: () => void }) {
+export function AgendaRow({ event, past = false, onClick }: { event: AgendaEvent; past?: boolean; onClick: () => void }) {
   const color = event.personColor ?? '#A6A29B'
   const people = eventPeople(event)
   const lead = people[0]

@@ -268,6 +268,8 @@ select.cap-edit-sub { cursor: pointer; }
 .cal-cell.dim .dn { color: var(--ink-3); }
 .cal-cell.today .dn { background: var(--primary); color: #fff; width: 26px; height: 26px;
   border-radius: 999px; display: grid; place-items: center; }
+/* the day whose events are showing in the side panel */
+.cal-cell.selected { background: var(--panel); box-shadow: inset 0 0 0 2px var(--primary); }
 .cal-cell { position: relative; }
 /* countdown badge — anticipation marker on the target day (events, standalone, birthdays) */
 .cal-cd { position: absolute; top: 5px; right: 5px; display: inline-flex; align-items: center; gap: 3px;

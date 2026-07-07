@@ -114,6 +114,20 @@
 .dv-now { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--primary); z-index: 5; }
 .dv-now-dot { position: absolute; left: -5px; top: -5px; width: 9px; height: 9px; border-radius: 999px; background: var(--primary); }
 
+/* ============  MONTH VIEW — grid + selected-day panel (iPad parity)  ============ */
+.cal-month { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 340px; gap: 22px; }
+.cal-day-panel { padding-top: 2px; }
+.cal-day-h { display: flex; align-items: flex-start; gap: 10px; margin: 2px 2px 14px; }
+.cal-day-rel { font-size: 22px; font-weight: 600; line-height: 1.1; }
+.cal-day-date { font-size: 13.5px; font-weight: 600; margin-top: 3px; }
+.cal-day-add { flex: none; margin-left: auto; opacity: 1; }
+.cal-day-list { display: flex; flex-direction: column; }
+.cal-day-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  text-align: center; padding: 42px 16px; border: 1.5px dashed var(--hair); border-radius: var(--r-md);
+  background: none; cursor: pointer; font: inherit; color: var(--ink-3); }
+.cal-day-empty:hover { border-color: var(--primary); background: var(--panel); }
+.cal-day-empty-t { font-size: 15px; font-weight: 600; color: var(--ink-2); }
+
 /* =====================  AGENDA VIEW  ===================== */
 .ag-screen { flex: 1; display: grid; grid-template-columns: 1.5fr 1fr; gap: 22px; min-height: 0; }
 .ag-list { overflow-y: auto; padding-right: 4px; }
@@ -266,6 +280,6 @@
 
 /* stack the two-column screens on narrow displays */
 @media (max-width: 980px) {
-  .ag-screen, .ed-screen { grid-template-columns: 1fr; }
+  .ag-screen, .ed-screen, .cal-month { grid-template-columns: 1fr; }
   .ed-screen { padding: 6px 16px 22px; }
 }

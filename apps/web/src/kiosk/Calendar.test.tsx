@@ -54,16 +54,23 @@ describe('Calendar screen', () => {
     ])
     renderCalendar()
 
-    expect(await screen.findByText('Dentist')).toBeInTheDocument()
-    // period label (in the topbar slot) shows the current month
-    expect(screen.getByText(new RegExp(MONTHS[now.getMonth()]))).toBeInTheDocument()
+    // The event shows in the grid (and, if today is the 15th, the day panel too).
+    expect((await screen.findAllByText('Dentist')).length).toBeGreaterThan(0)
+    // period label (in the topbar slot) shows the current month + year. Match the
+    // "Month YYYY" pill specifically — the month name alone now also appears in the
+    // day panel's date line ("Monday, July 7").
+    expect(
+      screen.getByRole('button', { name: new RegExp(`${MONTHS[now.getMonth()]} ${now.getFullYear()}`) })
+    ).toBeInTheDocument()
     // day-of-week header from the month grid
     expect(screen.getByText('Sun')).toBeInTheDocument()
 
     // month navigation works
     const next = new Date(now.getFullYear(), now.getMonth() + 1, 1)
     fireEvent.click(screen.getByRole('button', { name: 'Next month' }))
-    expect(screen.getByText(new RegExp(MONTHS[next.getMonth()]))).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: new RegExp(`${MONTHS[next.getMonth()]} ${next.getFullYear()}`) })
+    ).toBeInTheDocument()
   })
 
   it('switches to the week and agenda views', async () => {

@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The web calendar's month view now has a day panel.** Picking a day in the month grid
+  shows that day's events in a sidebar — the same agenda layout as on iPad — with events
+  that have already finished subtly greyed out, plus a tap-to-add empty state for open days.
 
 ### Changed
 - **System Health shows friendlier backup details.** The backups card now formats the last
