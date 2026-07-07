@@ -4,6 +4,25 @@ High-signal notes for anyone (human or AI) working in this repo. This file is
 auto-loaded by Claude Code in every session. Add a bullet when a mistake bites
 more than once; keep it terse.
 
+## Releasing & the changelog (repo-wide)
+
+1. **Log every user/operator-facing change in `CHANGELOG.md` under `## [Unreleased]` as
+   you land it** — grouped by Keep-a-Changelog category (Added / Changed / Fixed / Removed
+   / Security). `feat:` → Added, `fix:` → Fixed, user-visible `refactor`/`perf`/`chore` →
+   Changed; pure-internal churn (`test`/`docs`/internal `chore`) is omitted. Write a **bold
+   lead + a plain-language sentence**, synthesizing related commits into one feature-level
+   entry — a changelog is for users, not a commit log. Match the existing entries.
+2. **Cut a release ONLY with `./waffled release X.Y.Z`** — never hand-bump versions or
+   hand-edit the changelog heading, and never move a published tag. That one command is the
+   source of truth: it reviews the `[Unreleased]` notes (and **requires ≥1 entry**), dates
+   them `## [X.Y.Z]` + opens a fresh `[Unreleased]` + adds the compare link, bumps **every**
+   version site (`apps/api` + `apps/web` package.json + lockfiles, `WAFFLED_VERSION` in
+   `infra/compose/.env.example`, iOS `MARKETING_VERSION`), commits `release: vX.Y.Z`, tags,
+   and prompts to push. Run it **locally on `main`** — the pushed `v*` tag is what triggers
+   the GHCR publish workflow (+ Xcode Cloud). Miss one version site by hand and repo/images/
+   `.env` silently disagree. After the run, set the GitHub Release notes to that changelog
+   section (`gh release edit vX.Y.Z --notes-file …`).
+
 ## iOS app (SwiftUI, `apps/ios`)
 
 ### Performance — two traps we've hit repeatedly

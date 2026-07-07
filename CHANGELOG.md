@@ -6,9 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!--
-  RELEASING: add bullets under [Unreleased] as work lands, then cut a versioned
-  release by following "Release process" at the bottom (rename the section, bump
-  the versions, tag, push). The `v*` tag builds and publishes the GHCR images.
+  RELEASING: add bullets under [Unreleased] as work lands, then cut a release with
+  `./waffled release X.Y.Z` — it dates this section, bumps every version, commits, tags,
+  and pushes (see "Release process" at the bottom). The `v*` tag publishes the GHCR images.
 -->
 
 ## [Unreleased]
@@ -437,18 +437,22 @@ is for users and operators, not a commit log — **synthesize** related commits 
 feature-level entry, grouped by product area, and **omit pure-internal churn** (docs,
 tests, tooling, and refactors with no user-visible effect).
 
-**To cut a release:**
-1. Rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`.
-2. Add a fresh, empty `## [Unreleased]` section above it (with the category headings).
-3. Bump the version to match the tag in all three places so the repo, the published
-   images, and a fresh clone's generated `.env` agree: `apps/api/package.json`,
-   `apps/web/package.json`, and **`WAFFLED_VERSION`** in `infra/compose/.env.example`
-   (the pinned GHCR image tag that `./waffled up` pulls).
-4. Commit, then tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
-   The `v*` tag triggers [`.github/workflows/publish-images.yml`](.github/workflows/publish-images.yml),
-   which builds and pushes the multi-arch `waffled-api` / `waffled-caddy` / `waffled-backup`
-   images to GHCR (semver + `major.minor` + `latest` tags).
-5. Paste the released section into the GitHub Release notes for the tag.
+**To cut a release:** run **`./waffled release X.Y.Z`** locally on `main`. In one commit it:
+1. Reviews the `[Unreleased]` notes with you (**requires at least one entry**), dates the
+   section `## [X.Y.Z] - YYYY-MM-DD`, opens a fresh `## [Unreleased]` above it, and adds the
+   compare link.
+2. Bumps the version to match the tag everywhere the repo, the published images, and a fresh
+   clone's generated `.env` must agree: `apps/api/package.json`, `apps/web/package.json`,
+   **`WAFFLED_VERSION`** in `infra/compose/.env.example` (the pinned GHCR image tag that
+   `./waffled up` pulls), and iOS `MARKETING_VERSION` in `apps/ios/project.yml`.
+3. Commits `release: vX.Y.Z`, tags it, and prompts to push. The pushed `v*` tag triggers
+   [`.github/workflows/publish-images.yml`](.github/workflows/publish-images.yml), which builds
+   and pushes the multi-arch `waffled-api` / `waffled-caddy` / `waffled-backup` images to GHCR
+   (semver + `major.minor` + `latest` tags); the `main` push triggers the iOS Xcode Cloud build.
+
+After the run, set the GitHub Release notes to the released section:
+`gh release edit vX.Y.Z --notes-file <file>`. Never hand-bump versions or move a published
+tag — the command is the single source of truth so nothing drifts out of sync.
 
 **Versioning** follows [SemVer](https://semver.org/): breaking API/data-model or
 self-host changes bump **MAJOR**, backward-compatible features bump **MINOR**, and
