@@ -788,8 +788,11 @@ struct EventEditSheet: View {
             ) {
                 let del = scopePrompt == .delete
                 Button(del ? "This event" : "Save this event") { applyScope("this") }
-                Button(del ? "This and following events" : "Save this and following") { applyScope("following") }
-                Button(del ? "All events" : "Save all events", role: del ? .destructive : nil) { applyScope("all") }
+                Button(del ? "This and all future events" : "Save this and all future events",
+                       role: del ? .destructive : nil) { applyScope("following") }
+                // "All events" (incl. past) is offered only for edits — needed to change
+                // the recurrence rule — never for delete, so past events can't be wiped.
+                if !del { Button("Save all events") { applyScope("all") } }
                 Button("Cancel", role: .cancel) { scopePrompt = nil }
             } message: {
                 Text(scopePrompt == .delete

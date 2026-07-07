@@ -17,6 +17,9 @@ struct EventDetailView: View {
     @State private var loadingInsight = true
     @State private var editing = false
     @State private var confirmDelete = false
+    /// Recurring occurrences show a this/following chooser instead of tap-again.
+    @State private var scopePrompt = false
+    @State private var deleting = false
     /// The linked goal's emoji + title (when this event counts toward one).
     @State private var linkedGoal: (emoji: String?, title: String)?
 
@@ -26,6 +29,9 @@ struct EventDetailView: View {
     /// master, so we resolve through `seriesId` (mirrors the web's getLocalEvent). For a
     /// single event `seriesId == id`, so this is a no-op there.
     private var seriesId: String { event.seriesId ?? event.id }
+    /// A materialized occurrence of a repeating series (the mirror sets `occurrenceStart`
+    /// only for those). Drives the this/following delete chooser.
+    private var wasRecurring: Bool { event.occurrenceStart != nil }
     private var tint: Color { Color(hexString: detail?.personColor ?? event.colorHex ?? "") ?? WF.ink3 }
     private var title: String { detail?.title ?? event.title }
     private var start: Date? { parseISO(detail?.startsAt) ?? event.startsAt }
@@ -91,14 +97,41 @@ struct EventDetailView: View {
 
     private var deleteButton: some View {
         Button {
-            if confirmDelete { Task { _ = await sync.deleteEvent(id: seriesId); dismiss() } }
+            // A repeating occurrence asks which occurrences to remove; a single event
+            // uses the tap-again confirm.
+            if wasRecurring { scopePrompt = true }
+            else if confirmDelete { performDelete(scope: nil) }
             else { withAnimation { confirmDelete = true } }
         } label: {
-            Text(confirmDelete ? "Tap again to delete this event" : "Delete event")
+            Text(wasRecurring ? "Delete event"
+                 : (confirmDelete ? "Tap again to delete this event" : "Delete event"))
                 .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.primary)
                 .frame(maxWidth: .infinity).padding(.vertical, 12)
         }
         .buttonStyle(.plain).padding(.top, 4)
+        .disabled(deleting)
+        .confirmationDialog("Delete repeating event", isPresented: $scopePrompt, titleVisibility: .visible) {
+            Button("This event") { performDelete(scope: "this") }
+            Button("This and all future events", role: .destructive) { performDelete(scope: "following") }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("This is part of a repeating series.") }
+    }
+
+    /// Delete the event and dismiss. For a repeating occurrence, `scope` is "this"
+    /// (cancel just this one) or "following" (cap the series here, keeping past events),
+    /// routed through REST so the server updates the rule/overrides; a single event
+    /// uses the local mirror delete. We never delete past occurrences here.
+    private func performDelete(scope: String?) {
+        deleting = true
+        Task {
+            if let scope {
+                try? await WaffledAPI().deleteEvent(id: seriesId, scope: scope, occurrenceStart: event.occurrenceStart)
+                sync.touchGoals()
+            } else {
+                _ = await sync.deleteEvent(id: seriesId)
+            }
+            dismiss()
+        }
     }
 
     // MARK: hero

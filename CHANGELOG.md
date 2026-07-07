@@ -42,6 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bad key or malformed request still fails fast. Applies to every AI feature and provider.
 
 ### Fixed
+- **Deleting a repeating event on iOS no longer wipes the whole series.** From an event's
+  detail screen, deleting one occurrence of a recurring event removed *every* event in the
+  series — past and future. It now asks whether to delete just **This event** or **This and
+  all future events** (which keeps past occurrences), matching the editor. Delete never offers
+  an "all events" option, so past events can't be removed by accident; editing still can, since
+  changing the repeat rule needs it.
 - **Pantry items open their detail on iOS again.** Tapping a pantry item on iPhone/iPad did
   nothing — the tap couldn't reach the item detail (or its Edit screen), because the row's
   navigation used a value type the Family hub's navigation stack couldn't route. Tapping now
