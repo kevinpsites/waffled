@@ -19,6 +19,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.2.0] - 2026-07-06
+
+The **July 2026 family-hub batch** — meal-planning, cooking, lists, and rewards
+improvements, shipped across the web/kiosk app and the native iOS/iPadOS app.
+
+### Added
+
+#### Meals & recipes
+- **Try New Recipe.** Steer the AI meal-plan week toward novelty — name dishes you
+  want to try and let the planner favor recipes you haven't cooked yet — plus a
+  **"Try something new"** placeholder dinner you can drop on any day (alongside
+  leftovers / eating out).
+- **🆕 New / never-cooked tag.** Recipes you've never marked cooked are tagged in
+  the library, with a one-tap filter to show only them; the tag on a recipe's detail
+  deep-links back to that filtered view.
+- **On-the-spot cook timers.** Add a timer to a step that doesn't have one right from
+  cook mode — using the same timer controls as the rest of the app — and tap it in
+  the dock to jump back to its step.
+- **Recipe step timers from Markdown.** Steps can declare a timer in plain text
+  (`**Timer:** 20 minutes`, or an inline `{timer:20m}`); it's parsed on import and on
+  paste, and surfaces as a real countdown in cook mode.
+- **A "Waffles" recipe to start with.** Fresh households are pre-seeded with a Waffles
+  recipe so the library isn't empty on day one.
+
+#### Lists
+- **List templates.** Save any list as a reusable template and apply it to spin up a
+  new list from the saved items — handy for recurring shops and packing lists.
+
+#### Rewards
+- **Reward Shop redesign.** The kid-facing shop is rebuilt around a wallet hero
+  (balance + what they're saving toward), category chips, reward tiles with
+  locked/affordable states, a redeem confirmation sheet, and a celebration burst.
+- **Reward categories.** Rewards can be filed under an optional category, filterable in
+  the shop and set from the reward editor.
+- **Spot-award stars.** Parents can hand out ad-hoc stars on the spot — from a family
+  member's profile, from a quick-tap on the **Family Chores** card on Today, and from
+  the Reward Shop with a person picker. Gated by a new `reward.grant` capability
+  (adults on; teens/kids off by default).
+
+#### Countdowns
+- **Birthday horizon.** Upcoming birthdays only surface within a configurable window
+  (about six months by default), so distant birthdays don't crowd the countdowns; the
+  horizon is adjustable in Settings.
+
+#### iOS / iPadOS
+- **Full parity for the July batch.** Everything above ships on the native app too —
+  save/apply list templates (with swipe edit + delete on the list index), on-the-spot
+  cook timers, the 🆕 never-cooked tag and filter, Try New Recipe, spot-award stars,
+  reward categories, the birthday horizon, and the redesigned Rewards-tab shop.
+
+### Changed
+- **Unified section titles.** The Reward Shop and today's-chores headers now share the
+  same large serif title styling.
+
+### Fixed
+- **Goal recap wrapping.** Long event titles in the "Review events" recap now wrap
+  normally instead of breaking one word per line.
+
 ## [0.1.0] - 2026-07-05
 
 Everything below is the initial feature surface, shipped in the first tag
@@ -352,5 +410,6 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/kevinpsites/waffled/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/kevinpsites/waffled/releases/tag/v0.1.0
