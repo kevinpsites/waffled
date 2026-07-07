@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fail *every* AI request with an opaque error — the empty base URL produced a hostless
   request ("Failed to parse URL") and the empty model was sent as-is. Empty/blank env vars
   now correctly fall back to their defaults, and a previously-saved blank model falls back too.
+- **Setup-wizard goals are attached to a goal list.** The onboarding "Set a goal" step
+  created a goal with no group and no participants, leaving it invisible and uneditable on
+  the list-scoped Goals page. It now creates (or reuses) a goal list for the chosen people —
+  "Everyone" means the whole family — and attaches the goal, matching the full goal editor.
 
 ## [0.2.1] - 2026-07-06
 
