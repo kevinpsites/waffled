@@ -10,6 +10,8 @@ struct PantryItemEditor: View {
     let mode: Mode
     let locations: [String]
     let onSave: ([String: JSONValue]) async -> Void
+    /// Edit mode only — deletes the item. Nil (and hidden) when adding.
+    var onDelete: (() async -> Void)?
 
     @State private var name: String
     @State private var amount: String
@@ -22,11 +24,14 @@ struct PantryItemEditor: View {
     @State private var lowAt: String
     @State private var isMeal: Bool
     @State private var saving = false
+    @State private var confirmingDelete = false
 
-    init(mode: Mode, locations: [String], onSave: @escaping ([String: JSONValue]) async -> Void) {
+    init(mode: Mode, locations: [String], onSave: @escaping ([String: JSONValue]) async -> Void,
+         onDelete: (() async -> Void)? = nil) {
         self.mode = mode
         self.locations = locations
         self.onSave = onSave
+        self.onDelete = onDelete
         switch mode {
         case .add:
             _name = State(initialValue: "")
@@ -107,11 +112,29 @@ struct PantryItemEditor: View {
                             Spacer(minLength: 0)
                         }
                     }.buttonStyle(.plain).padding(.top, 2)
+
+                    if onDelete != nil {
+                        Divider().background(WF.hair).padding(.vertical, 4)
+                        Button(role: .destructive) { confirmingDelete = true } label: {
+                            HStack(spacing: 7) {
+                                Image(systemName: "trash")
+                                Text("Delete item").fontWeight(.semibold)
+                            }
+                            .font(.system(size: 15)).foregroundStyle(Color(hex: 0xD8443A))
+                            .frame(maxWidth: .infinity).padding(.vertical, 13)
+                            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(Color(hex: 0xD8443A).opacity(0.4), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain).disabled(saving)
+                    }
                 }
                 .padding(20)
             }
             .background(WF.canvas)
             .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+            .confirmationDialog("Delete this item?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+                Button("Delete", role: .destructive) { deleteItem() }
+                Button("Cancel", role: .cancel) {}
+            } message: { Text("This removes it from your pantry.") }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -167,6 +190,15 @@ struct PantryItemEditor: View {
         ]
         Task {
             await onSave(body)
+            dismiss()
+        }
+    }
+
+    private func deleteItem() {
+        guard let onDelete else { return }
+        saving = true
+        Task {
+            await onDelete()
             dismiss()
         }
     }

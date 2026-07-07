@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name it once, and a later scan recalls your entry — pre-filled and tagged "Saved by your
   family" instead of an empty "name it" card. It's scoped to your household and still works
   when Open Food Facts is unreachable. Applies to the web and native scanners alike.
+- **Delete pantry items on iOS.** The native app can now remove pantry items, not just mark
+  them used up — from the "Used up" list (**＋ Shopping list** to restock, or **Remove**) and
+  via a **Delete** action at the bottom of the item editor, matching the web.
 
 ### Changed
 - **AI calls retry transient provider failures.** A one-off provider blip — an OpenAI

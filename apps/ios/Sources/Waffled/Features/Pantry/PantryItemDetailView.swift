@@ -47,6 +47,10 @@ struct PantryItemDetailView: View {
             if let item {
                 PantryItemEditor(mode: .edit(item), locations: model.locations) { body in
                     if let updated = try? await WaffledAPI().pantryUpdate(id: item.id, body) { model.replace(updated) }
+                } onDelete: {
+                    // Removing the item empties `model.items`, so the detail's `item == nil`
+                    // branch auto-dismisses back to the list.
+                    await model.delete(item)
                 }
             }
         }

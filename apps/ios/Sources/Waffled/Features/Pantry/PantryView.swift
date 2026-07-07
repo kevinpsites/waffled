@@ -268,16 +268,26 @@ struct PantryView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Used up").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3).padding(.top, 6)
             ForEach(filteredUsed) { item in
-                NavigationLink(value: item) {
-                    HStack(spacing: 10) {
-                        Text(item.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
-                        Text("• Used up").font(.system(size: 12)).foregroundStyle(WF.ink3)
-                        Spacer()
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(item.name).font(.system(size: 14.5, weight: .semibold)).foregroundStyle(WF.ink2).lineLimit(1)
+                    // Restock (add to grocery + remove) or just delete — mirrors the web.
+                    HStack(spacing: 8) {
+                        Button { Task { await model.toShoppingList(item) } } label: {
+                            Text("＋ Shopping list").font(.system(size: 12.5, weight: .bold)).foregroundStyle(.white)
+                                .padding(.horizontal, 12).padding(.vertical, 7).background(WF.primary).clipShape(Capsule())
+                        }.buttonStyle(.plain)
+                        Button { Task { await model.delete(item) } } label: {
+                            Text("Remove").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink2)
+                                .padding(.horizontal, 12).padding(.vertical, 7)
+                                .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
+                        }.buttonStyle(.plain)
+                        Spacer(minLength: 0)
                     }
-                    .padding(10).background(WF.card).opacity(0.6)
-                    .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
-                }.buttonStyle(.plain)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12).background(WF.card).opacity(0.9)
+                .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
             }
         }
     }
