@@ -83,6 +83,15 @@ export default defineConfig({
 						{ label: 'Contributing', slug: 'developer/contributing' },
 					],
 				},
+				{
+					label: 'Guides',
+					items: [
+						{ label: 'Set up a kitchen kiosk', slug: 'guides/kitchen-kiosk' },
+						{ label: 'Run AI locally with Ollama', slug: 'guides/local-ai' },
+						{ label: 'Offsite backups (3-2-1)', slug: 'guides/offsite-backups' },
+						{ label: 'Move to new hardware', slug: 'guides/moving-hardware' },
+					],
+				},
 				{ label: 'API reference', slug: 'reference/api' },
 			],
 		}),
