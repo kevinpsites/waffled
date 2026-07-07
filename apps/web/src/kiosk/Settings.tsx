@@ -187,6 +187,33 @@ const HEALTH_TITLE: Record<string, string> = {
 // key=value chips (jobs get a friendlier per-job line).
 type JobSnapshot = { name: string; lastRunAt: string | null; lastError: string | null; runCount: number }
 
+// Raw bytes → "1.0 MB" so a backup size is legible at a glance.
+function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return String(n)
+  if (n < 1024) return `${n} B`
+  const units = ['KB', 'MB', 'GB', 'TB', 'PB']
+  let val = n / 1024
+  let i = 0
+  while (val >= 1024 && i < units.length - 1) { val /= 1024; i++ }
+  return `${val < 10 ? val.toFixed(1) : Math.round(val)} ${units[i]}`
+}
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
+
+// Turn a raw health-check key/value into a friendlier chip: camelCase keys become
+// spaced words, `*Bytes` numbers become "1.0 MB", and ISO timestamps become a local
+// date/time. Everything else falls through to its String() form unchanged.
+function formatHealthField(key: string, value: unknown): { label: string; text: string } {
+  const label = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase()
+  if (typeof value === 'number' && /bytes?$/i.test(key)) {
+    return { label: label.replace(/\s*bytes?$/i, ''), text: formatBytes(value) }
+  }
+  if (typeof value === 'string' && ISO_DATE_RE.test(value)) {
+    return { label, text: new Date(value).toLocaleString() }
+  }
+  return { label, text: typeof value === 'object' ? JSON.stringify(value) : String(value) }
+}
+
 function HealthCheckCard({ name, check }: { name: string; check: { status: HealthStatus } & Record<string, unknown> }) {
   const jobs = check.jobs as JobSnapshot[] | undefined
   const note = check.note as string | undefined
@@ -212,9 +239,10 @@ function HealthCheckCard({ name, check }: { name: string; check: { status: Healt
         </div>
       ) : (
         <div className="health-fields">
-          {fields.map(([k, v]) => (
-            <span key={k} className="health-chip">{k}: {typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
-          ))}
+          {fields.map(([k, v]) => {
+            const f = formatHealthField(k, v)
+            return <span key={k} className="health-chip">{f.label}: {f.text}</span>
+          })}
         </div>
       )}
       {hint && <div className="health-hint">↳ {hint}</div>}

@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+- **System Health shows friendlier backup details.** The backups card now formats the last
+  backup time as a local date/time and its size in KB/MB instead of a raw UTC timestamp and
+  a byte count.
 
 ### Fixed
 
