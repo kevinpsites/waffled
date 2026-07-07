@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## [0.3.0] - 2026-07-07
+
+### Added
 - **Scan non-food pantry items.** Barcode scanning now falls through to Open Food Facts'
   sibling databases — Open Beauty Facts (soap, shampoo, detergent), Open Products Facts
   (paper goods, cleaning supplies), and Open Pet Food Facts — so household and personal-care
@@ -537,7 +545,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/kevinpsites/waffled/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/kevinpsites/waffled/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/kevinpsites/waffled/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/kevinpsites/waffled/compare/v0.2.0...v0.2.1
