@@ -862,7 +862,7 @@ struct GoalCreateSheet: View {
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 48).padding(.top, 8).padding(.bottom, 56)
             }
-            previewPane.frame(width: 400)
+            previewPane.frame(width: 480)
         }
         .background(WF.canvas)
     }
