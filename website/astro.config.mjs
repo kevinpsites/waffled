@@ -83,6 +83,7 @@ export default defineConfig({
 						{ label: 'Contributing', slug: 'developer/contributing' },
 					],
 				},
+				{ label: 'API reference', slug: 'reference/api' },
 			],
 		}),
 	],
