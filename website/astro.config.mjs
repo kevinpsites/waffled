@@ -73,9 +73,14 @@ export default defineConfig({
 					],
 				},
 				{
-					label: 'Concepts',
+					label: 'Developer',
 					items: [
-						{ label: 'Extensibility & modules', slug: 'concepts/extensibility' },
+						{ label: 'Architecture', slug: 'developer/architecture' },
+						{ label: 'Local development', slug: 'developer/local-development' },
+						{ label: 'Database & migrations', slug: 'developer/database' },
+						{ label: 'Building a module', slug: 'concepts/extensibility' },
+						{ label: 'iOS development', slug: 'developer/ios' },
+						{ label: 'Contributing', slug: 'developer/contributing' },
 					],
 				},
 			],
