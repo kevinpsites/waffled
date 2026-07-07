@@ -235,7 +235,7 @@ struct GoalsView: View {
                 Task { await model.log(goalId: g.id, amount: amount, personIds: ids, note: note, loggedOn: loggedOn) }
             }
         }
-        .sheet(isPresented: $creating) {
+        .goalEditor(isPresented: $creating) {
             GoalCreateSheet(lists: model.lists, defaultListId: model.selectedList?.id, members: sync.members) { body, listId in
                 Task { await model.create(body, listId: listId) }
             }
@@ -921,6 +921,9 @@ struct GoalCreateSheet: View {
             content().padding(.top, 12)
         }
         .padding(.top, first ? 8 : 0)
+        // Breathing room before the next section's hairline rule, so fields
+        // (e.g. the deadline picker) don't butt straight up against it.
+        .padding(.bottom, 22)
     }
 
     private func typeCard(_ t: TypeOpt) -> some View {
@@ -1583,7 +1586,7 @@ struct GoalDetailView: View {
                 Task { await model.log(amount: amount, personIds: ids, note: note, loggedOn: loggedOn) }
             }
         }
-        .sheet(isPresented: $editing) {
+        .goalEditor(isPresented: $editing) {
             if let d = model.detail {
                 GoalCreateSheet(lists: model.lists, defaultListId: d.goalListId, members: sync.members, editGoal: d) { body, _ in
                     Task { await model.update(body) }
@@ -1932,6 +1935,21 @@ struct GoalListCreateSheet: View {
                                            colorHex: nil, goalCount: 0, members: mem))
                 dismiss()
             } catch { saving = false }
+        }
+    }
+}
+
+private extension View {
+    /// Presents the goal editor: full-screen on iPad (web-like, so the two-pane
+    /// form + live-preview layout has room), a large sheet on iPhone. The iPad used
+    /// to get `.presentationSizing(.page)`, which floated a cramped modal the two
+    /// columns couldn't fit — full screen matches the web experience.
+    @ViewBuilder
+    func goalEditor<C: View>(isPresented: Binding<Bool>, @ViewBuilder content: @escaping () -> C) -> some View {
+        if DeviceExperience.current == .kiosk {
+            fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            sheet(isPresented: isPresented, content: content)
         }
     }
 }
