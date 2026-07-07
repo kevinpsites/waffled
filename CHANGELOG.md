@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Swipe a pantry item to edit or delete on iPhone.** Rows in the pantry list now swipe
+  left to reveal **Edit** and **Delete** — or keep pulling to delete outright — so you no
+  longer have to open an item just to change or remove it.
 
 ### Changed
 

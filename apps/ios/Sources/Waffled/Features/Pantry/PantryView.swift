@@ -14,6 +14,9 @@ struct PantryView: View {
     /// inert. An id-keyed `.navigationDestination(item:)` pushes independently of that
     /// path (and by id, so stepper edits don't disturb the pushed screen).
     @State private var openItemId: String?
+    /// Swipe-to-edit sheet + which row is currently swiped open (iPhone list).
+    @State private var editingItem: WaffledAPI.PantryItem?
+    @State private var openSwipeId: String?
     @State private var query = ""
     @State private var filter: PantryFilter = .all
     @State private var sort: PantrySort = .expiring
@@ -63,6 +66,13 @@ struct PantryView: View {
         .sheet(isPresented: $addManually) {
             PantryItemEditor(mode: .add, locations: model.locations) { body in
                 _ = try? await WaffledAPI().pantryCreate(body); await model.load()
+            }
+        }
+        .sheet(item: $editingItem) { item in
+            PantryItemEditor(mode: .edit(item), locations: model.locations) { body in
+                if let updated = try? await WaffledAPI().pantryUpdate(id: item.id, body) { model.replace(updated) }
+            } onDelete: {
+                await model.delete(item)
             }
         }
     }
@@ -209,7 +219,22 @@ struct PantryView: View {
 
     // MARK: a card
 
-    private func card(_ item: WaffledAPI.PantryItem) -> some View {
+    @ViewBuilder private func card(_ item: WaffledAPI.PantryItem) -> some View {
+        // iPhone (single column): swipe a row to edit or delete, like a system list.
+        // iPad keeps the plain two-column grid.
+        if isWide {
+            cardBody(item)
+        } else {
+            SwipeActionsRow(
+                id: item.id,
+                openId: $openSwipeId,
+                onEdit: { editingItem = item },
+                onDelete: { Task { await model.delete(item) } }
+            ) { cardBody(item) }
+        }
+    }
+
+    private func cardBody(_ item: WaffledAPI.PantryItem) -> some View {
         HStack(spacing: 10) {
             Button { openItemId = item.id } label: {
                 HStack(spacing: 10) {
