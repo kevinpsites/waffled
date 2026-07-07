@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **iPad in portrait gets an iPhone-style bottom bar.** Stand the iPad up vertically and the
+  side navigation rail moves to a tab bar along the bottom, with the current page filling the
+  space above it; rotate back to landscape and the side rail returns. It switches automatically
+  and keeps your pinned destinations and the profile switcher, so it works either way you mount
+  the iPad.
 
 ### Changed
 
