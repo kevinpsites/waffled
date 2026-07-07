@@ -58,10 +58,13 @@ struct PantryFoundSheet: View {
 
     private var statusBadge: some View {
         let found = product != nil
+        // Credit whichever database answered (Open Food/Beauty/Products/Pet Food Facts);
+        // an unrecognized barcode still adds cleanly by name.
+        let foundText = product?.sourceLabel.map { "Found · \($0)" } ?? "Found · \(result.barcode)"
         return HStack(spacing: 6) {
             Image(systemName: found ? "checkmark.circle.fill" : "questionmark.circle.fill")
                 .font(.system(size: 13, weight: .bold))
-            Text(found ? "Found · \(result.barcode)" : "Not in Open Food Facts · \(result.barcode)")
+            Text(found ? foundText : "Not found in a product database · \(result.barcode)")
                 .font(.system(size: 12.5, weight: .bold))
         }
         .foregroundStyle(found ? Color(hex: 0x167A4A) : WF.ink3)

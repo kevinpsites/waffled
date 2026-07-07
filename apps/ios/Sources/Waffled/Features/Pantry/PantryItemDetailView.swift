@@ -62,7 +62,7 @@ struct PantryItemDetailView: View {
                 .padding(28)
             VStack {
                 HStack {
-                    if item.isOff { offBadge }
+                    if let label = item.sourceLabel { offBadge(label) }
                     Spacer()
                 }
                 Spacer()
@@ -80,10 +80,10 @@ struct PantryItemDetailView: View {
         }
     }
 
-    private var offBadge: some View {
+    private func offBadge(_ label: String) -> some View {
         HStack(spacing: 5) {
             Circle().fill(Color(hex: 0x167A4A)).frame(width: 7, height: 7)
-            Text("OPEN FOOD FACTS").font(.system(size: 10, weight: .heavy)).tracking(0.4).foregroundStyle(WF.ink2)
+            Text(label.uppercased()).font(.system(size: 10, weight: .heavy)).tracking(0.4).foregroundStyle(WF.ink2)
         }
         .padding(.horizontal, 9).padding(.vertical, 5).background(WF.card).clipShape(Capsule())
     }
@@ -104,10 +104,14 @@ struct PantryItemDetailView: View {
             }
             if let dietary = item.dietary, !dietary.isEmpty { DietaryChips(dietary: dietary) }
             if let n = item.nutrition, !n.isEmpty { nutritionCard(item, n) }
-            if item.isOff {
+            if let label = item.sourceLabel {
+                // Food resolves nutrition & allergens; non-food (beauty/products/pet)
+                // just carries a name/brand/photo, so word the credit accordingly.
+                let hasFoodDetail = !(item.nutrition?.isEmpty ?? true) || !(item.allergens?.isEmpty ?? true)
                 HStack(spacing: 6) {
                     Circle().fill(Color(hex: 0x167A4A)).frame(width: 8, height: 8)
-                    Text("Nutrition & allergens from Open Food Facts").font(.system(size: 12)).foregroundStyle(WF.ink3)
+                    Text("\(hasFoodDetail ? "Nutrition & allergens" : "Product info") from \(label)")
+                        .font(.system(size: 12)).foregroundStyle(WF.ink3)
                 }
             }
             actions(item)

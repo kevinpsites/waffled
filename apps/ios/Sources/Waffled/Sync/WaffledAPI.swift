@@ -1171,10 +1171,29 @@ struct WaffledAPI: Sendable {
         /// When the item entered the pantry (YYYY-MM-DD), distinct from `createdAt` (the
         /// row's log time). Drives the "item age" chip + "Been a while" group; backdatable.
         let addedOn: String?
-        var isOff: Bool { source == "openfoodfacts" }
+        /// Friendly attribution for whichever Open * Facts database this item came from
+        /// (nil for manual adds). Non-food items resolve from the beauty/products/pet
+        /// siblings. Mirrors the web `productSourceLabel`.
+        var sourceLabel: String? { WaffledAPI.productSourceLabel(source) }
     }
 
-    /// The normalized Open Food Facts product returned by a barcode lookup.
+    /// Attribution labels for the Open * Facts database a product came from, mirroring the
+    /// web `PRODUCT_SOURCE_LABELS`. Open Food Facts is food-only; the sibling databases
+    /// cover the non-food a pantry holds (personal care, cleaning supplies, pet food).
+    static let productSourceLabels: [String: String] = [
+        "openfoodfacts": "Open Food Facts",
+        "openbeautyfacts": "Open Beauty Facts",
+        "openproductsfacts": "Open Products Facts",
+        "openpetfoodfacts": "Open Pet Food Facts",
+    ]
+    /// A friendly attribution for a product's `source`, or nil for manual/unknown adds.
+    static func productSourceLabel(_ source: String?) -> String? {
+        guard let s = source else { return nil }
+        return productSourceLabels[s]
+    }
+
+    /// The normalized product returned by a barcode lookup (Open Food Facts or a sibling
+    /// database — see `productSourceLabels`).
     struct OffProduct: Decodable, Hashable, Sendable {
         let barcode: String
         let name: String?
@@ -1189,6 +1208,8 @@ struct WaffledAPI: Sendable {
         let nutriscore: String?
         let nova: Double?
         let source: String
+        /// Friendly attribution for whichever database answered (nil if unrecognized).
+        var sourceLabel: String? { WaffledAPI.productSourceLabel(source) }
     }
 
     /// GET /api/pantry payload — the items + the household's pantry config (locations,

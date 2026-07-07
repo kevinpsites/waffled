@@ -46,7 +46,7 @@ struct PantryScanView: View {
         .sheet(isPresented: $manualEntry) {
             ManualBarcodeSheet { code in handle(code) }
         }
-        .alert("Couldn’t reach Open Food Facts", isPresented: Binding(get: { lookupError != nil }, set: { if !$0 { lookupError = nil } })) {
+        .alert("Couldn’t reach the product database", isPresented: Binding(get: { lookupError != nil }, set: { if !$0 { lookupError = nil } })) {
             Button("OK", role: .cancel) { lookupError = nil }
         } message: { Text(lookupError ?? "") }
     }
@@ -214,7 +214,7 @@ struct ManualBarcodeSheet: View {
                     .padding(14).background(WF.card2)
                     .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
-                Text("We’ll look it up on Open Food Facts.").font(.system(size: 12)).foregroundStyle(WF.ink3)
+                Text("We’ll look it up in the product databases.").font(.system(size: 12)).foregroundStyle(WF.ink3)
                 Spacer()
             }
             .onAppear { focused = true }

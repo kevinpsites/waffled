@@ -10,10 +10,15 @@ import SwiftUI
 
 // MARK: - Food emoji (fallback when there's no product photo)
 
-/// A rough name → emoji map, mirroring the web `foodEmoji`. Default 🥫.
+/// A rough name → emoji map, mirroring the web `foodEmoji`. Covers the non-food a
+/// pantry holds too (personal care, cleaning, paper goods, pet food) so a scanned
+/// soap/toilet-paper without a photo doesn't fall back to a food can. Default 📦.
 enum PantryFood {
     private static let rules: [(needles: [String], emoji: String)] = [
-        (["pork", "bacon", "ham", "sausage"], "🥓"),
+        // NB: bare "ham" is intentionally omitted — as a substring it false-matches
+        // "shampoo"/"graham" (the web `foodEmoji` has this bug; we don't). bacon/pork/
+        // sausage still cover cured pork.
+        (["pork", "bacon", "sausage"], "🥓"),
         (["chicken", "turkey", "poultry"], "🍗"),
         (["beef", "steak", "burger"], "🥩"),
         (["salmon", "fish", "tuna", "cod", "shrimp"], "🐟"),
@@ -26,11 +31,21 @@ enum PantryFood {
         (["pie", "pizza"], "🥧"), (["ice cream", "frozen"], "🍨"),
         (["juice", "soda", "drink"], "🧃"), (["water"], "💧"),
         (["cereal"], "🥣"), (["soup", "broth", "stock"], "🍲"),
+        // Non-food (personal care, cleaning, paper goods, pet)
+        (["toilet", "tissue", "paper towel", "kitchen roll", "napkin"], "🧻"),
+        (["laundry", "detergent", "fabric soften", "dish soap", "dishwash", "cleaner", "bleach", "surface spray"], "🧼"),
+        (["shampoo", "conditioner", "lotion", "moisturi", "body wash", "sunscreen", "hand soap"], "🧴"),
+        (["toothpaste", "toothbrush", "floss"], "🪥"),
+        (["deodorant", "razor", "shav"], "🪒"),
+        (["diaper", "wipe"], "🧷"), (["trash bag", "garbage bag"], "🗑️"),
+        (["battery", "batteries"], "🔋"),
+        (["dog", "cat", "pet food", "kibble"], "🐾"),
+        (["foil", "wrap", "ziploc", "sandwich bag", "storage bag"], "📦"),
     ]
     static func emoji(for name: String) -> String {
         let n = name.lowercased()
         for r in rules where r.needles.contains(where: { n.contains($0) }) { return r.emoji }
-        return "🥫"
+        return "📦"
     }
 }
 
