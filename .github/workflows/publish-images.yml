@@ -80,6 +80,12 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/waffled-${{ matrix.image.name }}
 
+      - name: Build provenance (baked into the image → /healthz + /api/health)
+        id: prov
+        run: |
+          echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - name: Build & push by digest
         id: build
         uses: docker/build-push-action@v6
@@ -88,6 +94,12 @@ jobs:
           file: ${{ matrix.image.dockerfile }}
           platforms: ${{ matrix.platform.name }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Only apps/api/Dockerfile declares these ARGs; caddy/backup ignore them
+          # (a harmless "unused build arg" warning). Without this, published images
+          # report the ARG defaults (sha=dev, empty build time).
+          build-args: |
+            GIT_SHA=${{ steps.prov.outputs.sha }}
+            BUILD_TIME=${{ steps.prov.outputs.time }}
           # Push a tagless, digest-addressed image; the merge job attaches the tags.
           outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/waffled-${{ matrix.image.name }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ matrix.image.name }}-${{ env.PLATFORM_PAIR }}

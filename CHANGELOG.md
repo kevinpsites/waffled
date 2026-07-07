@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **Published images report real build provenance.** The release workflow now bakes the
+  git SHA and build time into the GHCR images, so `/healthz` and `/api/health` show the
+  actual release instead of the `dev` placeholder.
 
 ## [0.2.0] - 2026-07-06
 
