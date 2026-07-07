@@ -41,6 +41,12 @@ export default defineConfig({
 					label: 'Features',
 					items: [
 						{ label: 'Feature matrix', slug: 'reference/features' },
+						{ label: 'Calendar & events', slug: 'features/calendar' },
+						{ label: 'Countdowns', slug: 'features/countdowns' },
+						{ label: 'Today dashboard', slug: 'features/today' },
+						{ label: 'Chores & tasks', slug: 'features/chores' },
+						{ label: 'Rewards & economy', slug: 'features/rewards' },
+						{ label: 'Goals', slug: 'features/goals' },
 					],
 				},
 				{
