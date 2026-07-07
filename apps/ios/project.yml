@@ -42,6 +42,13 @@ targets:
       path: Waffled-Info.plist
       properties:
         CFBundleDisplayName: Waffled
+        # Version keys MUST point at the build settings — XcodeGen otherwise writes a
+        # hardcoded default of "1.0"/"1" into the generated plist, so bumping
+        # MARKETING_VERSION (what `./waffled release` does) would silently do nothing
+        # and every TestFlight/App Store build would ship as 1.0. These map the plist
+        # to settings.base's MARKETING_VERSION / CURRENT_PROJECT_VERSION.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         # Export compliance: we use only STANDARD encryption (HTTPS/TLS, Keychain,
         # JWT auth) — exempt — so declare it here to skip the "App Encryption
         # Documentation" prompt on every upload. Critical for automated Xcode Cloud

@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **iOS builds now ship with the real release version.** The generated Info.plist
+  hardcoded `CFBundleShortVersionString` to `1.0`, so every TestFlight / App Store build
+  showed as 1.0 no matter what `./waffled release` bumped `MARKETING_VERSION` to. The plist
+  now maps to `$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)`, so builds carry the
+  actual version (e.g. 0.2.3).
 
 ## [0.2.3] - 2026-07-07
 
