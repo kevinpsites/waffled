@@ -246,6 +246,29 @@ ordering. Insertion points below are from the original scope pass (file:line as 
   person overview now surfaces `ledger_entries.note` so a spot award reads "spot award — <reason>"
   (needs the `api` rebuilt to take effect).
 
+### Reward Shop redesign + reward categories — July 2026 (web/kiosk SHIPPED; iOS parity TBD)
+A follow-on to the Spot-award item above. The kiosk **Rewards tab is now a full "Reward Shop"**
+(`components/RewardsPanel.tsx` + `styles/shop.css`, matching new Figma mockups). **Web SHIPPED:**
+- **Wallet hero** (purple gradient) for the selected kid — big star balance + a **"Saving up for"**
+  progress panel sourced from the person-overview `savingToward`.
+- **Family-member chips** to switch whose shop/wallet you view, and a parent **"＋ Award stars"**
+  header action that opens the shared **`SpotAwardModal`** (family-member picker) — the "award from
+  the Rewards page" ask.
+- **Category chips** + per-tile category tags, backed by a **new nullable `rewards.category`**
+  (**migration `0073_reward_category.sql`**) threaded through the rewards service/routes + a chip
+  picker in the reward editor.
+- **Tile grid** — per-category gradient thumbs, floating price pill, coral "Get it", and a **locked**
+  variant (gray thumb + progress bar + "N more to unlock") derived from balance-vs-cost.
+- **Redeem-confirm sheet** → **CSS confetti celebration** ("… unlocked! 🎉", `34 ★ → 4 ★ left`,
+  approval-aware copy). Preserved: approvals queue, reward editor, archived, all capability gating.
+- Also landed this pass: a **"＋ Spot award" quick-tap on the Today "Family Chores" card** + the
+  reusable **`SpotAwardModal`** (picker + preset modes; PersonProfile reuses it), plus screen-gutter +
+  single-large-serif-title polish to match the rest of the app.
+- Tests: rewards integration (category round-trip) + a shop-panel suite; full web green.
+**iOS parity:** the iPhone/iPad rewards UI is its own design — iOS already gained **spot-award from
+the Rewards page** (see the Spot-award item's iOS notes), but **not** this kiosk shop redesign or the
+`category` filter; parity for those is **TBD** (a later iOS-agent task if wanted).
+
 ### Public API — per-user API keys + scopes (Immich-style integration surface) — SHIPPED 2026-06-29 (build #3)
 Design rationale + the A/B/C pattern model: [`website/src/content/docs/concepts/extensibility.md`](website/src/content/docs/concepts/extensibility.md).
 Build order: ① module framework + Modules tab → ② Pantry module → ③ this (API keys). ✅ all shipped.
