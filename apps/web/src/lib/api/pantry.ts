@@ -99,6 +99,7 @@ export const PRODUCT_SOURCE_LABELS: Record<string, string> = {
   openbeautyfacts: 'Open Beauty Facts',
   openproductsfacts: 'Open Products Facts',
   openpetfoodfacts: 'Open Pet Food Facts',
+  manual: 'Saved by your family', // recalled from a past manual scan-and-name
 }
 // A friendly attribution for an item's `source`, or null for manual/unknown adds.
 export function productSourceLabel(source: string | null | undefined): string | null {

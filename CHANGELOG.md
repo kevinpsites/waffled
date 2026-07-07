@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   database answered, food-only details (nutrition, allergens) are hidden for non-food, and an
   unrecognized barcode still adds cleanly by name. Shipped on the web/kiosk app and the
   native iOS/iPadOS app.
+- **Scanning remembers what you named a barcode.** Scan a barcode that no database knows,
+  name it once, and a later scan recalls your entry — pre-filled and tagged "Saved by your
+  family" instead of an empty "name it" card. It's scoped to your household and still works
+  when Open Food Facts is unreachable. Applies to the web and native scanners alike.
 
 ### Changed
 - **AI calls retry transient provider failures.** A one-off provider blip — an OpenAI

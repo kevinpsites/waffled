@@ -206,12 +206,38 @@ export function registerPantryRoutes(api: Api): void {
     const barcode = String(req.params.barcode ?? '').replace(/\D/g, '')
     if (!barcode) return res.status(400).json({ error: 'BadRequest', message: 'barcode required' })
     let product
+    let offDown = false
     try {
       product = await lookupBarcode(barcode)
     } catch {
-      return res.status(502).json({ error: 'LookupFailed', message: 'Open Food Facts is unreachable — add it manually.' })
+      offDown = true // OFF unreachable — we can still recall a household entry below
     }
-    if (!product) return res.status(404).json({ found: false, barcode })
+    // Not in any Open * Facts database (or OFF is down)? Fall back to what THIS
+    // household named it before — if they scanned + manually entered this barcode
+    // once, recall that so a re-scan prefills their own entry instead of an empty
+    // "name it" card. Scoped to the household (never leaks a name to other tenants).
+    if (!product) {
+      const prior = await query<{ name: string; brand: string | null; image_url: string | null; quantity_text: string | null }>(
+        `select name, brand, image_url, quantity_text from pantry_items
+         where household_id = $1 and barcode = $2 and deleted_at is null
+         order by updated_at desc limit 1`,
+        [tenant.householdId, barcode]
+      )
+      const p = prior.rows[0]
+      if (p) {
+        return {
+          found: true,
+          product: {
+            barcode, name: p.name, brand: p.brand, imageUrl: p.image_url, quantityText: p.quantity_text,
+            servingBasis: null, nutrition: {}, allergens: [], traces: [], dietary: [],
+            nutriscore: null, nova: null, source: 'manual', fetchedAt: new Date().toISOString(),
+          },
+        }
+      }
+      // Nothing remembered: surface the real reason so the UI shows the right card.
+      if (offDown) return res.status(502).json({ error: 'LookupFailed', message: 'Open Food Facts is unreachable — add it manually.' })
+      return res.status(404).json({ found: false, barcode })
+    }
     return { found: true, product }
   }))
 

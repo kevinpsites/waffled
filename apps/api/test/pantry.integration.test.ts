@@ -217,6 +217,17 @@ describe('pantry Open Food Facts integration', () => {
     expect(p.allergens).toEqual([])
   })
 
+  it('recalls a household-entered name for an unknown barcode on a later scan', async () => {
+    const REMEMBER = '33333333' // in no database — only this household knows it
+    // First scan: unknown barcode, manually named + added.
+    const add = await call('POST', '/api/pantry/scan', kevin, { name: 'Costco Toilet Paper', location: 'Pantry', barcode: REMEMBER })
+    expect(add.statusCode).toBe(201)
+    // Re-scan: OFF still doesn't know it, but the household's own entry is recalled.
+    const r = await call('GET', `/api/pantry/lookup/${REMEMBER}`, kevin)
+    expect(r.statusCode).toBe(200)
+    expect(JSON.parse(r.body).product).toMatchObject({ barcode: REMEMBER, name: 'Costco Toilet Paper', source: 'manual' })
+  })
+
   it('stores the OFF snapshot on an added item', async () => {
     const res = await call('POST', '/api/pantry', kevin, {
       name: 'Chicken Pot Pie', location: 'Freezer', barcode: FOUND, brand: "Marie Callender's",
