@@ -138,7 +138,14 @@ export function RecipesLibrary() {
 
       <div className="recipes-grid">
         {sorted.map((r) => (
-          <button key={r.id} type="button" className="rc recipes-card" onClick={() => navigate(`/meals/recipe/${r.id}`)}>
+          <div
+            key={r.id}
+            role="button"
+            tabIndex={0}
+            className="rc recipes-card"
+            onClick={() => navigate(`/meals/recipe/${r.id}`)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/meals/recipe/${r.id}`) } }}
+          >
             <div className={`rc-img ${gradClass(r)}`}>
               {r.imageUrl ? <img className="rc-img-photo" src={r.imageUrl} alt={r.title} /> : (r.emoji ?? '🍽️')}
               {r.isFavorite && <span className="recipes-fav">❤️</span>}
@@ -154,7 +161,7 @@ export function RecipesLibrary() {
               </div>
               {r.collection && <div className="recipes-coll">📁 {r.collection}</div>}
             </div>
-          </button>
+          </div>
         ))}
       </div>
     </div>

@@ -54,7 +54,7 @@ function renderLib() {
 }
 
 function cardFor(title: string): HTMLElement {
-  return screen.getByText(title).closest('button.recipes-card') as HTMLElement
+  return screen.getByText(title).closest('.recipes-card') as HTMLElement
 }
 
 describe('RecipesLibrary — New / never-cooked filter', () => {

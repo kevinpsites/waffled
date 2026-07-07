@@ -254,9 +254,30 @@ function ApiKeysPanel() {
 
   const label = scopeLabeler(catalog)
 
+  const secretRef = useRef<HTMLElement | null>(null)
   async function copySecret() {
     if (!justCreated) return
-    try { await navigator.clipboard.writeText(justCreated.secret); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* clipboard blocked */ }
+    const flash = () => { setCopied(true); setTimeout(() => setCopied(false), 1500) }
+    // navigator.clipboard is undefined in non-secure contexts (Safari over http://),
+    // so fall back to execCommand, then to just selecting the text for a manual copy.
+    try {
+      if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(justCreated.secret); flash(); return }
+    } catch { /* fall through */ }
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = justCreated.secret
+      ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.opacity = '0'
+      document.body.appendChild(ta); ta.focus(); ta.select()
+      const ok = document.execCommand('copy')
+      document.body.removeChild(ta)
+      if (ok) { flash(); return }
+    } catch { /* fall through */ }
+    // Last resort: select the on-screen secret so the user can press ⌘/Ctrl-C.
+    const el = secretRef.current
+    if (el) {
+      const range = document.createRange(); range.selectNodeContents(el)
+      const sel = window.getSelection(); sel?.removeAllRanges(); sel?.addRange(range)
+    }
   }
 
   return (
@@ -275,7 +296,7 @@ function ApiKeysPanel() {
         <div className="apikey-reveal">
           <div className="apikey-reveal-h">🔑 Copy your new key now — you won't be able to see it again.</div>
           <div className="apikey-reveal-row">
-            <code className="apikey-secret">{justCreated.secret}</code>
+            <code className="apikey-secret" ref={secretRef}>{justCreated.secret}</code>
             <button type="button" className="btn btn-ghost apikey-copy" onClick={copySecret}>{copied ? 'Copied ✓' : 'Copy'}</button>
           </div>
           <button type="button" className="btn btn-ghost tiny" style={{ marginTop: 10 }} onClick={() => setJustCreated(null)}>Done</button>
