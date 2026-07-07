@@ -223,15 +223,37 @@ function GoalStep({ onCreated, onNavigateAway }: { onCreated: () => void; onNavi
   const canCreate =
     !!title.trim() && (goalType === 'checklist' ? items.length > 0 : targetValid)
 
+  // A goal MUST belong to a goal list (group) — the full editor enforces this, but
+  // the wizard used to skip it, creating orphaned goals that are invisible and
+  // uneditable on the list-scoped Goals page. Resolve/create a list whose members
+  // exactly match the chosen people, reusing one if it already exists so repeated
+  // wizard goals don't spawn duplicate lists. Names it after the people.
+  async function ensureGoalList(memberIds: string[]): Promise<string> {
+    const key = (ids: string[]) => [...ids].sort().join(',')
+    const { lists } = await goalsApi.goalLists()
+    const match = lists.find((l) => key(l.members.map((m) => m.personId)) === key(memberIds))
+    if (match) return match.id
+    const names = memberIds.map((id) => persons.find((p) => p.id === id)?.name).filter(Boolean) as string[]
+    const everyone = persons.length > 0 && memberIds.length === persons.length
+    const name = everyone ? 'Family goals' : names.length === 1 ? names[0] : names.join(' & ') || 'Family goals'
+    const emoji = everyone ? '👪' : names.length === 1 ? persons.find((p) => p.id === memberIds[0])?.avatarEmoji ?? '🎯' : '🎯'
+    const { list } = await goalsApi.createGoalList({ name, emoji, memberIds, isPrivate: false })
+    return list.id
+  }
+
   async function submit() {
     if (!canCreate || saving) return
     setSaving(true)
     setErr(null)
-    const base: Record<string, unknown> = { title: title.trim(), goalType, trackingMode, participantIds }
+    // "Everyone" (no individuals picked) means the whole family; otherwise the
+    // chosen people. These become both the list members and the goal participants.
+    const memberIds = participantIds.length > 0 ? participantIds : persons.map((p) => p.id)
+    const base: Record<string, unknown> = { title: title.trim(), goalType, trackingMode, participantIds: memberIds }
     if (goalType === 'habit') { base.habitPeriod = 'week'; base.habitTargetPerPeriod = targetNum }
     else if (goalType === 'count' || goalType === 'total') { base.targetValue = targetNum }
     else if (goalType === 'checklist') { base.steps = items.map((label) => ({ label })) }
     try {
+      base.goalListId = await ensureGoalList(memberIds)
       await goalsApi.createGoal(base)
       onCreated()
       load()

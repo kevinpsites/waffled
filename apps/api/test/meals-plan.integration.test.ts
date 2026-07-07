@@ -29,13 +29,15 @@ function call(method: string, path: string, token?: string, body?: unknown) {
   return app.run({ httpMethod: method, path, headers, queryStringParameters: {}, body: body !== undefined ? JSON.stringify(body) : null, isBase64Encoded: false }, {}) as Promise<RunResult>
 }
 
-// Minimal OpenAI-compatible chat/completions stub returning our staged JSON.
+// Minimal OpenAI Responses-API stub returning our staged JSON as output_text
+// (the shape openaiJson now parses — see src/platform/llm.ts).
 function startStub(): Promise<number> {
   return new Promise((resolve) => {
     stub = createServer((req, res) => {
       res.setHeader('content-type', 'application/json')
-      if (req.method === 'POST' && (req.url ?? '').includes('/chat/completions')) {
-        res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ suggestions: nextSuggestions }) } }] }))
+      if (req.method === 'POST' && (req.url ?? '').includes('/responses')) {
+        const text = JSON.stringify({ suggestions: nextSuggestions })
+        res.end(JSON.stringify({ output: [{ type: 'message', content: [{ type: 'output_text', text }] }] }))
       } else {
         res.statusCode = 404
         res.end('{}')
