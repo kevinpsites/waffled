@@ -9,6 +9,11 @@ struct PantryView: View {
     @State private var model = PantryModel()
     @State private var showScan = false
     @State private var addManually = false
+    /// Drives item-detail navigation by id. We can't use `NavigationLink(value:)` here:
+    /// the hub's stack has a typed `[HubRoute]` path, so a `PantryItem`-valued link is
+    /// inert. An id-keyed `.navigationDestination(item:)` pushes independently of that
+    /// path (and by id, so stepper edits don't disturb the pushed screen).
+    @State private var openItemId: String?
     @State private var query = ""
     @State private var filter: PantryFilter = .all
     @State private var sort: PantrySort = .expiring
@@ -49,7 +54,7 @@ struct PantryView: View {
         }
         .background(WF.canvas)
         .navigationTitle("Pantry").navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: WaffledAPI.PantryItem.self) { PantryItemDetailView(itemId: $0.id, model: model) }
+        .navigationDestination(item: $openItemId) { id in PantryItemDetailView(itemId: id, model: model) }
         .task { await model.load() }
         .refreshable { await model.load() }
         .fullScreenCover(isPresented: $showScan) {
@@ -206,7 +211,7 @@ struct PantryView: View {
 
     private func card(_ item: WaffledAPI.PantryItem) -> some View {
         HStack(spacing: 10) {
-            NavigationLink(value: item) {
+            Button { openItemId = item.id } label: {
                 HStack(spacing: 10) {
                     thumb(item).frame(width: 40, height: 40)
                         .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -216,6 +221,7 @@ struct PantryView: View {
                     }
                     Spacer(minLength: 0)
                 }
+                .contentShape(Rectangle())
             }.buttonStyle(.plain)
             stepper(item)
         }
