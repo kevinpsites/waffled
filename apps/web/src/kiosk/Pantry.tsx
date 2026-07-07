@@ -33,13 +33,16 @@ function expiryText(expiresOn: string | null): { text: string; tone: 'past' | 's
 // Covers the non-food a pantry holds too, so a scanned toilet-paper/soap without an
 // image doesn't fall back to a food can.
 const EMOJI_RULES: [RegExp, string][] = [
-  [/beef|steak|burger/i, '🥩'], [/chicken|poultry/i, '🍗'], [/turkey/i, '🦃'], [/pork|bacon|ham|sausage/i, '🥓'],
+  // \bham\b (not bare "ham") so it doesn't false-match "shampoo"/"graham".
+  [/beef|steak|burger/i, '🥩'], [/chicken|poultry/i, '🍗'], [/turkey/i, '🦃'], [/pork|bacon|\bham\b|sausage/i, '🥓'],
   [/shrimp|prawn/i, '🦐'], [/fish|salmon|tuna|cod/i, '🐟'], [/pizza/i, '🍕'], [/lasagna|pasta|spaghetti|noodle/i, '🍝'],
   [/pie|pot pie/i, '🥧'], [/burrito|taco|wrap/i, '🌯'], [/bean/i, '🫘'], [/nugget/i, '🍗'], [/waffle|pancake/i, '🧇'],
   [/pea|veg|broccoli|spinach/i, '🥦'], [/berry|berries|fruit/i, '🫐'], [/ice cream|gelato/i, '🍦'], [/cheese/i, '🧀'],
+  // Paper goods BEFORE bread, so "kitchen roll" isn't caught by /roll/ → 🍞.
+  [/toilet|tissue|paper towel|kitchen roll|napkin/i, '🧻'],
   [/bread|bun|roll|bagel/i, '🍞'], [/milk|cream|yogurt/i, '🥛'], [/egg/i, '🥚'], [/rice/i, '🍚'], [/soup|broth/i, '🍲'],
   // Non-food
-  [/toilet|tissue|paper towel|kitchen roll|napkin/i, '🧻'], [/laundry|detergent|fabric soften|dish soap|dishwash|cleaner|bleach|surface spray/i, '🧼'],
+  [/laundry|detergent|fabric soften|dish soap|dishwash|cleaner|bleach|surface spray/i, '🧼'],
   [/shampoo|conditioner|lotion|moisturi|body wash|sunscreen|hand soap/i, '🧴'], [/toothpaste|toothbrush|floss/i, '🪥'],
   [/deodorant|razor|shav/i, '🪒'], [/diaper|wipe/i, '🧷'], [/trash bag|garbage bag/i, '🗑️'], [/battery|batteries/i, '🔋'],
   [/dog|cat|pet food|kibble/i, '🐾'], [/foil|wrap|ziploc|sandwich bag|storage bag/i, '📦'],

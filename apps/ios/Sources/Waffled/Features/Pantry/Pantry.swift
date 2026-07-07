@@ -26,13 +26,15 @@ enum PantryFood {
         (["tomato"], "🍅"), (["carrot"], "🥕"), (["pepper"], "🫑"),
         (["apple"], "🍎"), (["banana"], "🍌"), (["berry", "berries"], "🫐"),
         (["milk"], "🥛"), (["yogurt", "yoghurt"], "🥛"), (["cheese"], "🧀"),
-        (["butter"], "🧈"), (["egg"], "🥚"), (["bread", "bun", "roll"], "🍞"),
+        (["butter"], "🧈"), (["egg"], "🥚"),
+        // Paper goods before bread, so "kitchen roll" isn't caught by "roll" → 🍞.
+        (["toilet", "tissue", "paper towel", "kitchen roll", "napkin"], "🧻"),
+        (["bread", "bun", "roll"], "🍞"),
         (["rice"], "🍚"), (["pasta", "noodle", "spaghetti"], "🍝"),
         (["pie", "pizza"], "🥧"), (["ice cream", "frozen"], "🍨"),
         (["juice", "soda", "drink"], "🧃"), (["water"], "💧"),
         (["cereal"], "🥣"), (["soup", "broth", "stock"], "🍲"),
-        // Non-food (personal care, cleaning, paper goods, pet)
-        (["toilet", "tissue", "paper towel", "kitchen roll", "napkin"], "🧻"),
+        // Non-food (personal care, cleaning, pet)
         (["laundry", "detergent", "fabric soften", "dish soap", "dishwash", "cleaner", "bleach", "surface spray"], "🧼"),
         (["shampoo", "conditioner", "lotion", "moisturi", "body wash", "sunscreen", "hand soap"], "🧴"),
         (["toothpaste", "toothbrush", "floss"], "🪥"),
