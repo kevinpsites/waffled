@@ -2881,4 +2881,25 @@ struct WaffledAPI: Sendable {
             throw APIError.http(http.statusCode, String(data: data, encoding: .utf8) ?? "")
         }
     }
+
+    // MARK: - Version & update check
+
+    /// Admin-gated server-update check — mirrors the web's `/api/updates`. Compares the
+    /// running build against the newest GitHub release; 403s for non-admins. `current`
+    /// is always present (even when update-checking is disabled), so it also serves as
+    /// the "which server build am I on?" source in About. (`/healthz` carries the version
+    /// too, but Caddy only proxies `/api/*`, so the app can't reach it.)
+    struct UpdateInfo: Decodable, Sendable {
+        struct Release: Decodable, Sendable { let tag: String; let url: String; let publishedAt: String? }
+        struct Current: Decodable, Sendable { let version: String; let sha: String? }
+        let enabled: Bool
+        let current: Current
+        let latest: Release?
+        let updateAvailable: Bool?
+        let checkedAt: String?
+    }
+
+    func updates() async throws -> UpdateInfo {
+        try await getJSON("/api/updates", as: UpdateInfo.self)
+    }
 }

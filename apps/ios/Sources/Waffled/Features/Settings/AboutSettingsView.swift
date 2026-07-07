@@ -5,12 +5,17 @@ import SwiftUI
 /// (`/media`). Real users sign in on the login screen; the developer token here is a
 /// local/dev fallback (the same one `mint-token` prints).
 struct AboutSettingsView: View {
+    @Environment(\.openURL) private var openURL
     @State private var serverAddress = AppConfig.apiBaseURL
     @State private var devToken = AppConfig.storedDevToken
     @State private var savedNote: String?
     @State private var test: TestState = .idle
     @State private var showToken = false
     @State private var tokenSaved = false
+    /// Which server build we're talking to (from `/api/updates`, admin-only) and whether
+    /// a newer public build is on the App Store. Both best-effort — nil just hides the line.
+    @State private var serverVersion: String?
+    @State private var appStore: AppStoreCheck.Result?
 
     private enum TestState: Equatable { case idle, testing, ok(Int), fail }
 
@@ -32,6 +37,7 @@ struct AboutSettingsView: View {
         }
         .background(WF.canvas)
         .navigationTitle("About").navigationBarTitleDisplayMode(.inline)
+        .task { await loadMeta() }
     }
 
     // MARK: app
@@ -46,6 +52,15 @@ struct AboutSettingsView: View {
                     Text("Waffled").font(WF.serif(22)).foregroundStyle(WF.ink)
                     Text("Version \(Self.version) (\(Self.build))")
                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
+                    if let appStore {
+                        Button { openURL(URL(string: appStore.storeURL)!) } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "arrow.up.circle.fill").font(.system(size: 12))
+                                Text("Update to \(appStore.version) on the App Store")
+                                    .font(.system(size: 12.5, weight: .bold))
+                            }.foregroundStyle(WF.primary)
+                        }.buttonStyle(.plain).padding(.top, 1)
+                    }
                 }
                 Spacer(minLength: 0)
             }
@@ -95,6 +110,13 @@ struct AboutSettingsView: View {
                 }
 
                 testResult
+                if let serverVersion {
+                    HStack(spacing: 6) {
+                        Circle().fill(Color(hex: 0x167A4A)).frame(width: 7, height: 7)
+                        Text("Server version \(serverVersion)")
+                            .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink3)
+                    }
+                }
                 if let savedNote {
                     Text(savedNote).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -170,6 +192,17 @@ struct AboutSettingsView: View {
         serverAddress = AppConfig.apiBaseURL
         test = .idle
         savedNote = "Saved. New requests use this address — pull to refresh, or relaunch the app to reload everything."
+        serverVersion = nil
+        Task { serverVersion = try? await WaffledAPI().updates().current.version }
+    }
+
+    /// Best-effort: which server build we're talking to (`/api/updates`, admin-only) and
+    /// whether a newer public build is on the App Store. Failures leave the lines hidden.
+    private func loadMeta() async {
+        serverVersion = try? await WaffledAPI().updates().current.version
+        if let r = await AppStoreCheck.latest(), VersionCompare.isNewer(r.version, than: Self.version) {
+            appStore = r
+        }
     }
 
     private func saveToken() {

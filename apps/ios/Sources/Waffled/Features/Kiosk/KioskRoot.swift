@@ -34,6 +34,8 @@ struct KioskRoot: View {
                     .transition(.opacity)
                 }
             }
+            // App-wide server-update nudge (admin-only), matching the iPhone + web apps.
+            .overlay { ServerUpdateModal() }
             .animation(.easeInOut(duration: 0.4), value: booting)
             .animation(.easeInOut(duration: 0.3), value: bootStalled)
             // Re-armed whenever `booting` toggles: if we're still booting after the grace

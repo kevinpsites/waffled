@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Swipe a pantry item to edit or delete on iPhone.** Rows in the pantry list now swipe
   left to reveal **Edit** and **Delete** — or keep pulling to delete outright — so you no
   longer have to open an item just to change or remove it.
+- **iOS shows your server version and nudges you to update it.** The About screen now shows
+  which Waffled server build the app is connected to, and admins get the same "a newer
+  Waffled is available" pop-up the web app shows — with the `./waffled upgrade` command and
+  links to the changelog and upgrade guide — so a new release doesn't slip by unnoticed.
+- **iOS points you to an App Store update.** About surfaces a tappable "update available"
+  link when a newer public build of the app is live on the App Store (appears once the app
+  is published there).
 
 ### Changed
 

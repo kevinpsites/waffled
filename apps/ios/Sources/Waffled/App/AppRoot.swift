@@ -131,6 +131,8 @@ struct AppRoot: View {
             CaptureSheet()
                 .presentationDragIndicator(.visible)
         }
+        // App-wide "a newer Waffled server is available" nudge (admin-only), like web.
+        .overlay { ServerUpdateModal() }
         .onAppear { if DemoHooks.openCapture { showCapture = true } }
         // Local event reminders (6.7-ios): keep the schedule in step with the synced
         // events, the signed-in person, and permission changes.
