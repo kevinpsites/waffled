@@ -122,12 +122,10 @@ struct KioskBootCover: View {
     }
 }
 
-#Preview("loading") {
+#Preview("loading", traits: .landscapeLeft) {
     KioskBootCover()
-        .previewInterfaceOrientation(.landscapeLeft)
 }
 
-#Preview("stalled") {
+#Preview("stalled", traits: .landscapeLeft) {
     KioskBootCover(stalled: true, detail: "PSYNC_S2101: token signature failed")
-        .previewInterfaceOrientation(.landscapeLeft)
 }

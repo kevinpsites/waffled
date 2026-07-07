@@ -1120,8 +1120,7 @@ struct KioskCard<Content: View>: View {
     }
 }
 
-#Preview {
+#Preview(traits: .landscapeLeft) {
     KioskDashboard()
         .environment(SyncManager())
-        .previewInterfaceOrientation(.landscapeLeft)
 }
