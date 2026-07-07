@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   native iOS/iPadOS app.
 
 ### Changed
+- **AI calls retry transient provider failures.** A one-off provider blip — an OpenAI
+  `500 server_error` ("you can retry"), a rate-limit, or a dropped connection — used to
+  fail the whole action (e.g. a meal plan came back empty). Such calls now retry
+  automatically (short backoff, tunable via `AI_MAX_RETRIES`); a permanent error like a
+  bad key or malformed request still fails fast. Applies to every AI feature and provider.
 
 ### Fixed
 - **iOS builds now ship with the real release version.** The generated Info.plist
