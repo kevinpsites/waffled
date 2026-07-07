@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that have already finished subtly greyed out, plus a tap-to-add empty state for open days.
 
 ### Changed
+- **List templates are now live and editable, in their own section.** Saving a list as a
+  template converts it into an editable template that lives under a new **Templates** group
+  on the Lists page — instead of a frozen snapshot that drifted from the original and piled
+  up duplicates every time you re-saved. Edit a template's items anytime and every list you
+  make from it with **Use template** reflects the latest; **Move to Lists** undoes a convert.
 - **System Health shows friendlier backup details.** The backups card now formats the last
   backup time as a local date/time and its size in KB/MB instead of a raw UTC timestamp and
   a byte count.

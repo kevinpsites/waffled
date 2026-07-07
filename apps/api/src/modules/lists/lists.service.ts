@@ -116,10 +116,13 @@ export async function softDeleteList(householdId: string, id: string): Promise<b
   }
 }
 
-// ---- list templates (save-as-template / apply) ------------------------------
+// ---- list templates (mark-as-template / apply) ------------------------------
 // A template is a `lists` row with list_type='template' whose items are stored
-// unchecked; there's no separate table (Option A). Templates are hidden from the
-// normal rail (listLists filters list_type<>'template').
+// unchecked; there's no separate table (Option A). Templates are filtered out of
+// the normal rail (listLists filters list_type<>'template') and surfaced in their
+// own "Templates" group. Marking a list as a template CONVERTS it in place (it
+// stops being an active list and becomes the reusable one), so there's exactly
+// one editable copy — edit it and every list you spin off it reflects the change.
 
 // The household's saved templates (newest first).
 export async function listTemplates(householdId: string) {
@@ -135,53 +138,53 @@ export async function listTemplates(householdId: string) {
   return rows.map((r) => ({ ...presentList(r), itemCount: Number(r.item_count) }))
 }
 
-// Save a source list as a reusable template: a new list_type='template' list plus
-// unchecked copies of the source's live items (dropping check state + recipe
-// provenance, since a template is a clean starting point). Returns null if the
-// source list isn't a live list in this household. One transaction (mirrors the
-// softDeleteList cascade).
-export async function saveAsTemplate(
-  tenant: Tenant,
-  sourceListId: string,
-  name?: string
-): Promise<ListRow | null> {
+// Mark a list as a reusable template by CONVERTING it in place (list_type ->
+// 'template'), unchecking its items so it reads as a clean starting point. No
+// copy is made, so there's a single editable template — no drift, no duplicates.
+// Only a plain 'custom' list can be converted (the auto grocery list is off
+// limits, and templates/grocery return null). One transaction. Returns the
+// updated row, or null if there's no eligible list.
+export async function convertToTemplate(householdId: string, id: string): Promise<ListRow | null> {
   const client = await getPool().connect()
   try {
     await client.query('begin')
-    const src = await client.query<ListRow>(
-      `select * from lists where household_id = $1 and id = $2 and deleted_at is null and list_type <> 'template'`,
-      [tenant.householdId, sourceListId]
+    const upd = await client.query<ListRow>(
+      `update lists set list_type = 'template'
+         where household_id = $1 and id = $2 and deleted_at is null and list_type = 'custom'
+         returning *`,
+      [householdId, id]
     )
-    const source = src.rows[0]
-    if (!source) {
+    const row = upd.rows[0]
+    if (!row) {
       await client.query('rollback')
       return null
     }
-    const created = await client.query<ListRow>(
-      `insert into lists (household_id, name, emoji, list_type, is_auto_built, created_by)
-       values ($1, $2, $3, 'template', false, $4)
-       returning *`,
-      [tenant.householdId, (name && name.trim()) || source.name, source.emoji, tenant.personId]
-    )
-    const template = created.rows[0]
-    // copy the source's live items, unchecked (checked=false, checked_at/by null),
-    // dropping source_recipe_ids — a template is a fresh starting point.
     await client.query(
-      `insert into list_items
-         (household_id, list_id, name, quantity, category, source, sort_order, created_by, checked)
-       select household_id, $2, name, quantity, category, source, sort_order, $3, false
-         from list_items
-        where household_id = $1 and list_id = $4 and deleted_at is null`,
-      [tenant.householdId, template.id, tenant.personId, sourceListId]
+      `update list_items set checked = false, checked_at = null, checked_by = null
+         where household_id = $1 and list_id = $2 and deleted_at is null`,
+      [householdId, id]
     )
     await client.query('commit')
-    return template
+    return row
   } catch (err) {
     await client.query('rollback')
     throw err
   } finally {
     client.release()
   }
+}
+
+// Move a template back into the active Lists rail (list_type -> 'custom'), e.g.
+// to undo an accidental convert. Returns the updated row, or null if it isn't a
+// template in this household.
+export async function convertToList(householdId: string, id: string): Promise<ListRow | null> {
+  const { rows } = await query<ListRow>(
+    `update lists set list_type = 'custom'
+       where household_id = $1 and id = $2 and deleted_at is null and list_type = 'template'
+       returning *`,
+    [householdId, id]
+  )
+  return rows[0] ?? null
 }
 
 // Apply a template: spin up a fresh list_type='custom' list from the template's

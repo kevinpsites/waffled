@@ -15,7 +15,8 @@ import {
   patchItem,
   softDeleteItem,
   addRecipeToGrocery,
-  saveAsTemplate,
+  convertToTemplate,
+  convertToList,
   applyTemplate,
   listTemplates,
   listPantryStaples,
@@ -71,14 +72,23 @@ export function registerListRoutes(api: Api): void {
     return { template: presentList(tpl), items: items.map(presentListItem) }
   }))
 
-  // Save a list as a reusable template (unchecked copies of its live items).
+  // Mark a list as a reusable template — converts it in place (it leaves the
+  // active rail and becomes the single editable template).
   api.post('/api/lists/:id/save-as-template', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
-    const name = ((req.body ?? {}) as { name?: string }).name
-    const template = await saveAsTemplate(tenant, id, name)
+    const template = await convertToTemplate(tenant.householdId, id)
     if (!template) return res.status(404).json({ error: 'NotFound', message: 'list not found' })
     return res.status(201).json({ template: presentList(template) })
+  }))
+
+  // Move a template back into the active Lists rail (undo a convert).
+  api.post('/api/lists/:id/unmark-template', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'template not found' })
+    const list = await convertToList(tenant.householdId, id)
+    if (!list) return res.status(404).json({ error: 'NotFound', message: 'template not found' })
+    return res.status(201).json({ list: presentList(list) })
   }))
 
   // Apply a template → a fresh custom list with everything unchecked.

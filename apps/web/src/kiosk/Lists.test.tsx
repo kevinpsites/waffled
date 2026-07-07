@@ -51,7 +51,10 @@ function mockApi(opts: { lists?: unknown[]; items?: unknown[]; sent?: Sent[]; cr
     }
     // list templates (must precede the bare /api/lists checks)
     if (/\/api\/lists\/[^/]+\/save-as-template$/.test(u) && method === 'POST') {
-      return { ok: true, json: async () => ({ template: { ...packing, id: 'tpl', name: body?.name ?? 'Beach Day', listType: 'template' } }) }
+      return { ok: true, json: async () => ({ template: { ...packing, listType: 'template' } }) }
+    }
+    if (/\/api\/lists\/[^/]+\/unmark-template$/.test(u) && method === 'POST') {
+      return { ok: true, json: async () => ({ list: { ...packing, listType: 'custom' } }) }
     }
     if (/\/api\/lists\/templates\/[^/]+\/apply$/.test(u) && method === 'POST') {
       return { ok: true, json: async () => ({ list: { ...packing, id: 'applied', name: body?.name ?? 'Applied', listType: 'custom' } }) }
@@ -201,6 +204,34 @@ describe('Lists screen', () => {
     await waitFor(() => expect(sent.some((s) => s.method === 'POST' && /\/save-as-template$/.test(s.url))).toBe(true))
     const post = sent.find((s) => s.method === 'POST' && /\/save-as-template$/.test(s.url))!
     expect(post.url).toContain('/api/lists/pack/save-as-template')
+  })
+
+  it('shows a Templates section and uses one from its header action', async () => {
+    const sent: Sent[] = []
+    const template = { id: 'tpl', name: 'Beach Day', emoji: '🏖️', listType: 'template', isAutoBuilt: false, sortMode: 'manual', itemCount: 4 }
+    mockApi({ lists: [grocery, packing], items: packItems, sent, templates: [template] })
+    renderScreen()
+    await exitBoard()
+
+    // templates get their own rail group; select the template from it
+    expect(await screen.findByText('TEMPLATES')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Beach Day/ }))
+
+    // its header offers "Use template" (not "Save as template") — apply spins up a list
+    fireEvent.click(await screen.findByRole('button', { name: /Use template/i }))
+    await waitFor(() => expect(sent.some((s) => s.method === 'POST' && /\/api\/lists\/templates\/tpl\/apply$/.test(s.url))).toBe(true))
+  })
+
+  it('moves a template back to lists from its header action', async () => {
+    const sent: Sent[] = []
+    const template = { id: 'tpl', name: 'Beach Day', emoji: '🏖️', listType: 'template', isAutoBuilt: false, sortMode: 'manual', itemCount: 4 }
+    mockApi({ lists: [grocery, packing], items: packItems, sent, templates: [template] })
+    renderScreen()
+    await exitBoard()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Beach Day/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Move to Lists/i }))
+    await waitFor(() => expect(sent.some((s) => s.method === 'POST' && /\/api\/lists\/tpl\/unmark-template$/.test(s.url))).toBe(true))
   })
 
   it('applies a template from the New list modal picker', async () => {

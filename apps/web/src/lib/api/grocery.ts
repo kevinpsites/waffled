@@ -107,10 +107,13 @@ export const groceryApi = {
   renameList: (id: string, patch: { name?: string; emoji?: string | null }) =>
     apiSend<{ list: ListSummary }>('PATCH', `/api/lists/${id}`, patch).then((r) => r.list),
   deleteList: (id: string) => apiDelete(`/api/lists/${id}`),
-  // list templates (save a list as a reusable template; apply it into a fresh list)
+  // list templates (mark a list as a template — converts in place; move back;
+  // apply a template into a fresh list)
   templates: () => apiGet<{ templates: ListTemplateSummary[] }>('/api/lists/templates'),
-  saveAsTemplate: (listId: string, name?: string) =>
-    apiSend<{ template: ListTemplateSummary }>('POST', `/api/lists/${listId}/save-as-template`, name ? { name } : {}).then((r) => r.template).then(tap('grocery')),
+  saveAsTemplate: (listId: string) =>
+    apiSend<{ template: ListTemplateSummary }>('POST', `/api/lists/${listId}/save-as-template`, {}).then((r) => r.template).then(tap('grocery')),
+  unmarkTemplate: (id: string) =>
+    apiSend<{ list: ListSummary }>('POST', `/api/lists/${id}/unmark-template`, {}).then((r) => r.list).then(tap('grocery')),
   applyTemplate: (templateId: string, name?: string) =>
     apiSend<{ list: ListSummary }>('POST', `/api/lists/templates/${templateId}/apply`, name ? { name } : {}).then((r) => r.list).then(tap('grocery')),
 
@@ -284,6 +287,9 @@ export function useLists(): ListsState {
       alive = false
     }
   }, [nonce])
+  // Converting a list to/from a template (and item add/remove) taps 'grocery';
+  // refetch so the Lists rail and the Templates group stay in lockstep.
+  useRefetchOn(['grocery'], () => setNonce((n) => n + 1))
   return { lists, loading, error, refetch: () => setNonce((n) => n + 1) }
 }
 

@@ -6,6 +6,7 @@ import { GroceryBoard } from './components/GroceryBoard'
 import {
   groceryApi,
   useLists,
+  useTemplates,
   useListDetail,
   usePersons,
   type ListItem,
@@ -189,6 +190,7 @@ function splitColumns(sections: ReturnType<typeof groupBySection>) {
 
 export function Lists() {
   const { lists, loading: listsLoading, error: listsError, refetch: refetchLists } = useLists()
+  const { templates } = useTemplates()
   const { persons } = usePersons()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -201,7 +203,6 @@ export function Lists() {
   const [filterMenu, setFilterMenu] = useState(false)
   const [itemModal, setItemModal] = useState<{ item: ListItem | null } | null>(null)
   const [groceryOpen, setGroceryOpen] = useState(false)
-  const [savedTemplate, setSavedTemplate] = useState(false)
 
   // On first load, the grocery list opens straight into its auto-built board
   // (its primary view) rather than the plain sectioned list. Without this you'd
@@ -218,12 +219,17 @@ export function Lists() {
   }, [lists, selectedId])
 
   // The hub (sidebar + list view) never renders the grocery list as plain
-  // sections — opening grocery is a full-screen board takeover instead.
+  // sections — opening grocery is a full-screen board takeover instead. A
+  // template can be selected too (from the Templates group); it edits through the
+  // same detail view.
   const selected: ListSummary | null = useMemo(() => {
     const byId = lists.find((l) => l.id === selectedId)
     if (byId && byId.listType !== 'grocery') return byId
+    const tpl = templates.find((t) => t.id === selectedId)
+    if (tpl) return tpl
     return lists.find((l) => l.listType !== 'grocery') ?? byId ?? lists[0] ?? null
-  }, [lists, selectedId])
+  }, [lists, templates, selectedId])
+  const isTemplate = selected?.listType === 'template'
   const { items, loading: itemsLoading, setItems, refetch: refetchItems } = useListDetail(selected?.id ?? null)
 
   // Stable so GroceryBoard's topbar effect (deps: [onBack]) doesn't re-fire every
@@ -300,10 +306,13 @@ export function Lists() {
     addItem(draft).then(() => setDraft(''))
   }
 
-  // Reset selection if the selected list disappears.
+  // Reset selection only if the selected id is gone from BOTH lists and templates
+  // (converting a list to a template moves it between the two — don't clear it).
   useEffect(() => {
-    if (selectedId && !lists.some((l) => l.id === selectedId)) setSelectedId(null)
-  }, [lists, selectedId])
+    if (selectedId && !lists.some((l) => l.id === selectedId) && !templates.some((t) => t.id === selectedId)) {
+      setSelectedId(null)
+    }
+  }, [lists, templates, selectedId])
 
   // Delete the selected list (and, server-side, its items). Two-tap confirm since
   // it discards anything not yet checked off.
@@ -319,15 +328,39 @@ export function Lists() {
     refetchLists()
   }
 
-  // Snapshot the selected list as a reusable template (fresh, unchecked copies of
-  // its items). Brief "Saved ✓" confirmation, then the template is available in
-  // the New list picker.
+  // Convert the selected list into a reusable template: it leaves YOUR LISTS and
+  // moves to the TEMPLATES group (staying selected — the header switches to
+  // template mode). Its items are unchecked server-side.
   async function saveSelectedAsTemplate() {
-    if (!selected) return
+    if (!selected || isTemplate) return
     try {
-      await groceryApi.saveAsTemplate(selected.id)
-      setSavedTemplate(true)
-      setTimeout(() => setSavedTemplate(false), 2000)
+      await groceryApi.saveAsTemplate(selected.id) // taps 'grocery' → both groups refetch
+      refetchLists()
+    } catch {
+      /* keep current state on failure */
+    }
+  }
+
+  // Use the selected template: spin up a fresh list from its CURRENT items (all
+  // unchecked), then jump to that new list.
+  async function useSelectedTemplate() {
+    if (!selected || !isTemplate) return
+    try {
+      const created = await groceryApi.applyTemplate(selected.id)
+      refetchLists()
+      setSelectedId(created.id)
+      setGroceryOpen(false)
+    } catch {
+      /* keep current state on failure */
+    }
+  }
+
+  // Move the selected template back into YOUR LISTS (undo a convert).
+  async function moveTemplateToLists() {
+    if (!selected || !isTemplate) return
+    try {
+      await groceryApi.unmarkTemplate(selected.id) // taps 'grocery' → both groups refetch
+      refetchLists()
     } catch {
       /* keep current state on failure */
     }
@@ -381,15 +414,47 @@ export function Lists() {
           <Icon name="plus" />
           New list
         </button>
+
+        {templates.length > 0 && (
+          <>
+            <div className="lists-rail-label lists-rail-tpl">TEMPLATES</div>
+            <div className="lists-rail-items">
+              {templates.map((t) => {
+                const on = t.id === selected?.id
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className={`list-item ${on ? 'on' : ''}`}
+                    onClick={() => {
+                      setSelectedId(t.id)
+                      setGroceryOpen(false)
+                      setConfirmDel(false)
+                    }}
+                  >
+                    <span className="lemo">{t.emoji ?? '📑'}</span>
+                    {t.name}
+                    <span className="lct">{t.itemCount}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        )}
       </div>
 
       <div className="lists-main">
         {selected && (
           <>
             <div className="lists-head">
-              <div className="lists-head-emoji">{selected.emoji ?? '📝'}</div>
-              <div className="card-h wf-serif lists-head-name">{selected.name}</div>
-              <div className="muted" style={{ fontWeight: 600 }}>{summaryLine(items)}</div>
+              <div className="lists-head-emoji">{selected.emoji ?? (isTemplate ? '📑' : '📝')}</div>
+              <div className="card-h wf-serif lists-head-name">
+                {selected.name}
+                {isTemplate && <span className="lists-tpl-badge">TEMPLATE</span>}
+              </div>
+              <div className="muted" style={{ fontWeight: 600 }}>
+                {isTemplate ? `${items.length} item${items.length === 1 ? '' : 's'}` : summaryLine(items)}
+              </div>
               <div className="filter-wrap" onClick={(e) => e.stopPropagation()}>
                 <button type="button" className="pill filter-pill" onClick={() => setFilterMenu((v) => !v)}>
                   <Icon name="filter" />
@@ -408,16 +473,29 @@ export function Lists() {
                   </div>
                 )}
               </div>
-              <button type="button" className="pill" style={{ cursor: 'pointer' }} title="Rename list" onClick={() => setEditingList({ id: selected.id, name: selected.name, emoji: selected.emoji })}>✎ Rename</button>
-              <button type="button" className="pill" style={{ cursor: 'pointer', color: savedTemplate ? 'var(--primary)' : undefined, borderColor: savedTemplate ? 'var(--primary)' : undefined }} title="Save this list as a reusable template" onClick={saveSelectedAsTemplate}>
-                {savedTemplate ? 'Saved ✓' : '📑 Save as template'}
-              </button>
-              <button type="button" className="pill" style={{ cursor: 'pointer', color: confirmDel ? 'var(--primary)' : undefined, borderColor: confirmDel ? 'var(--primary)' : undefined }} title="Delete list" onClick={deleteSelected}>
-                {confirmDel ? 'Tap again to delete' : '🗑 Delete'}
+              <button type="button" className="pill" style={{ cursor: 'pointer' }} title={isTemplate ? 'Rename template' : 'Rename list'} onClick={() => setEditingList({ id: selected.id, name: selected.name, emoji: selected.emoji })}>✎ Rename</button>
+              {isTemplate ? (
+                <>
+                  <button type="button" className="pill btn-primary" style={{ cursor: 'pointer' }} title="Create a new list from this template (current items, unchecked)" onClick={useSelectedTemplate}>
+                    ▶ Use template
+                  </button>
+                  <button type="button" className="pill" style={{ cursor: 'pointer' }} title="Move this template back into your lists" onClick={moveTemplateToLists}>
+                    ↩ Move to Lists
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="pill" style={{ cursor: 'pointer' }} title="Turn this list into a reusable template" onClick={saveSelectedAsTemplate}>
+                  📑 Save as template
+                </button>
+              )}
+              <button type="button" className="pill" style={{ cursor: 'pointer', color: confirmDel ? 'var(--primary)' : undefined, borderColor: confirmDel ? 'var(--primary)' : undefined }} title={isTemplate ? 'Delete template' : 'Delete list'} onClick={deleteSelected}>
+                {confirmDel ? 'Tap again to delete' : isTemplate ? '🗑 Delete template' : '🗑 Delete'}
               </button>
             </div>
             <div className="tiny muted lists-hint">
-              Tap to check off · tap an avatar to assign · ×2 is the quantity
+              {isTemplate
+                ? 'This is a template · edit its items here and every list you make from it uses the latest'
+                : 'Tap to check off · tap an avatar to assign · ×2 is the quantity'}
             </div>
 
             <form className="ai-bar lists-addbar" onSubmit={onAddSubmit}>
@@ -458,7 +536,7 @@ export function Lists() {
                       <div key={sec.key} className="lists-section">
                         <div className="lists-section-title">{sec.title}</div>
                         {sec.items.map((it) => (
-                          <ItemRow key={it.id} item={it} people={persons} onToggle={toggle} onAssign={assign} onEdit={(i) => setItemModal({ item: i })} onDelete={remove} />
+                          <ItemRow key={it.id} item={it} people={persons} onToggle={isTemplate ? () => {} : toggle} onAssign={assign} onEdit={(i) => setItemModal({ item: i })} onDelete={remove} />
                         ))}
                       </div>
                     ))}
