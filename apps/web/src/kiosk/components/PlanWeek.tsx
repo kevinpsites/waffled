@@ -50,6 +50,7 @@ export function PlanWeek({ startStr, days, onClose, onApplied, initialUseUp }: {
   const { recipes } = useRecipes()
   const [viewRecipeId, setViewRecipeId] = useState<string | null>(null) // RecipeModal (preserves plan state)
   const [pickForDate, setPickForDate] = useState<string | null>(null) // manual recipe picker
+  const [newInfo, setNewInfo] = useState<PlanCard | null>(null) // "this is a new recipe" info sheet
   const [loading, setLoading] = useState(false)
   const [draftingDates, setDraftingDates] = useState<Set<string>>(new Set()) // nights currently being (re)drafted
   const [via, setVia] = useState('')
@@ -340,16 +341,16 @@ export function PlanWeek({ startStr, days, onClose, onApplied, initialUseUp }: {
                 </div>
                 <div
                   className="pd-main clickable"
-                  onClick={() => (c.recipeId ? setViewRecipeId(c.recipeId) : setPickForDate(c.date))}
+                  onClick={() => (c.recipeId ? setViewRecipeId(c.recipeId) : setNewInfo(c))}
                   role="button"
-                  title={c.recipeId ? 'View recipe' : 'Choose a recipe'}
+                  title={c.recipeId ? 'View recipe' : 'New recipe — tap for details'}
                 >
                   <div className="pd-img">{c.emoji ?? '🍽️'}</div>
                   <div className="pd-b">
                     <div className="pd-t">{c.title}</div>
                     <div className="pd-m">
                       {[c.minutes ? `${c.minutes} min` : null, `Serves ${c.servings}`].filter(Boolean).join(' · ')}
-                      {c.recipeId ? ' · from your recipes' : ''}
+                      {c.recipeId ? ' · from your recipes' : ' · new recipe'}
                     </div>
                     {c.note && <div className="reason"><Icon name="spark" />{c.note}</div>}
                   </div>
@@ -382,6 +383,36 @@ export function PlanWeek({ startStr, days, onClose, onApplied, initialUseUp }: {
       </div>
 
       {viewRecipeId && <RecipeModal recipeId={viewRecipeId} onClose={() => setViewRecipeId(null)} />}
+
+      {/* A suggested dish that isn't in the library has no ingredients/steps to show,
+          so tapping it explains that (rather than dumping you into the picker) and
+          offers a web search or a swap to one of your own recipes. */}
+      {newInfo && (
+        <div className="modal-overlay" onClick={() => setNewInfo(null)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400, textAlign: 'center', padding: 28 }}>
+            <button type="button" className="modal-close" aria-label="Close" onClick={() => setNewInfo(null)}>×</button>
+            <div style={{ fontSize: 46, lineHeight: 1 }}>{newInfo.emoji ?? '🍽️'}</div>
+            <div className="wf-serif" style={{ fontSize: 22, fontWeight: 600, margin: '10px 0 6px' }}>{newInfo.title}</div>
+            <div className="tiny muted" style={{ margin: '0 auto 20px', maxWidth: 320, lineHeight: 1.5 }}>
+              A brand-new recipe Waffled suggested — it isn’t in your library, so the ingredients and steps aren’t known yet. Add the week and it’s saved as a title you can flesh out anytime.
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <a
+                className="btn btn-ghost"
+                href={`https://www.google.com/search?q=${encodeURIComponent(`${newInfo.title} recipe`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ textDecoration: 'none' }}
+              >
+                🔍 Search the web
+              </a>
+              <button type="button" className="btn btn-primary" onClick={() => { const d = newInfo.date; setNewInfo(null); setPickForDate(d) }}>
+                Use one of my recipes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Manual swap: reuse the full recipe browser (filters + grid + View) in an
           overlay so the plan state stays intact behind it. */}

@@ -66,3 +66,39 @@ describe('PlanWeek — Try New Recipe steering', () => {
     expect(planned[0]).toMatchObject({ trySomethingNew: true, wantToTry: ['Shakshuka'] })
   })
 })
+
+describe('PlanWeek — tapping a suggested new recipe', () => {
+  function mockApiWithSuggestion() {
+    globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
+      const u = String(url)
+      if (u.includes('/api/meals/plan-week') && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: async () => ({
+            start: '', mealType: 'dinner', via: 'test',
+            // recipeId:null → a brand-new dish not in the library.
+            suggestions: [{ date: '2026-06-08', mealType: 'dinner', title: 'Thai Green Curry', recipeId: null, emoji: '🍛', minutes: 30, servings: 4, note: 'Something new' }],
+          }),
+        }
+      }
+      return { ok: true, json: async () => ({ persons: [], recipes: [] }) }
+    }) as unknown as typeof fetch
+  }
+
+  it('opens the "new recipe" info modal with a web-search link, not the recipe picker', async () => {
+    mockApiWithSuggestion()
+    renderPlanWeek()
+    fireEvent.click(await screen.findByRole('button', { name: /plan my week/i }))
+
+    // Tap the drafted card's title.
+    fireEvent.click(await screen.findByText('Thai Green Curry'))
+
+    // The info sheet explains it's new — not the "Choose a recipe" picker.
+    expect(await screen.findByText(/isn.t in your library/i)).toBeInTheDocument()
+    expect(screen.queryByText(/choose a recipe ·/i)).not.toBeInTheDocument()
+
+    const link = screen.getByRole('link', { name: /search the web/i })
+    expect(link.getAttribute('href')).toContain('google.com/search')
+    expect(link.getAttribute('href')).toContain(encodeURIComponent('Thai Green Curry recipe'))
+  })
+})

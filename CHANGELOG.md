@@ -34,6 +34,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bad key or malformed request still fails fast. Applies to every AI feature and provider.
 
 ### Fixed
+- **A suggested new recipe explains itself instead of dumping you into the picker.** In
+  "Plan my week", tapping the title of an AI-suggested dish that isn't in your library used
+  to open the full recipe-selection screen. It now shows a short sheet — a new recipe whose
+  ingredients aren't known yet — with a one-tap web search for the dish and a "use one of my
+  recipes" option if you'd rather swap it.
 - **iOS builds now ship with the real release version.** The generated Info.plist
   hardcoded `CFBundleShortVersionString` to `1.0`, so every TestFlight / App Store build
   showed as 1.0 no matter what `./waffled release` bumped `MARKETING_VERSION` to. The plist
