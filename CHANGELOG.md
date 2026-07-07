@@ -16,20 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
-- **Redesigned the goal create/edit screen.** A cleaner two-pane editor with a live
-  preview of how the goal will look on the kitchen display, its own "New goal" title bar
-  with Cancel/Create actions. Milestones are now derived from your target — a 300-hour
-  goal suggests 75 / 150 / 225 rather than fixed values — with rewards left blank to fill
-  in only if you want, calendar auto-tracking on by default, and checklists starting from
+- **Redesigned the goal create/edit screen (web + iOS).** A cleaner editor with a live
+  preview of how the goal will appear on the family hub, plus its own "New goal" title bar
+  with Cancel/Create actions. Web and iPad use a full-screen two-pane layout (form on the
+  left, live preview on the right); iPhone uses a single scrolling column with the preview
+  pinned to the top and a full-width **Create goal** button pinned to the bottom. Milestones
+  now derive from your target instead of fixed values — with reward text left blank to fill
+  in only if you want — calendar auto-tracking is on by default, and checklists start from
   three empty steps.
-
-- **iOS goal editor redesign.** Creating or editing a goal on iPhone/iPad now follows
-  the new design: a single scrolling column on iPhone with a live "featured" preview
-  pinned to the top and a full-width **Create goal** button pinned to the bottom, and a
-  full-screen two-pane layout on iPad (matching the web) with the form on the left and a
-  generous live preview on the right. Starter milestones now derive from the goal's own target (e.g. a 300-hour goal
-  suggests 100/200/300 instead of fixed 250/500/1000) with reward text left blank, and
-  calendar auto-counting now defaults on for amount/count/habit goals.
 
 ### Fixed
 
