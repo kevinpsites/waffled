@@ -160,6 +160,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **Shared album import** for Photos (Google Photos / iCloud).
 - **Server-side fuzzy person resolution** for capture (nicknames/aliases).
 - **Milestone reward payouts** — deferred by design (needs idempotency + attribution rules).
+- **Goal weekly check-in (Sunday recap)** — the goal-editor mock shows a "🔔 Weekly check-in"
+  toggle, but there's no backend for it (it's a decorative, unpersisted toggle in the web
+  editor and is intentionally omitted from the iOS goal editor). Needs a persisted per-goal
+  flag + the actual Sunday recap surface on the kiosk before the toggle should reappear.
 - **Soft "kids' list additions need an OK" toggle** — floated, *not committed*. Attribution
   already covers the real need; a per-role lists matrix is more machinery than a family hub
   wants. Recorded so the rationale isn't lost (see [permission model](./permissions.md)).
