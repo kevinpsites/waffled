@@ -12,9 +12,10 @@ struct AboutSettingsView: View {
     @State private var test: TestState = .idle
     @State private var showToken = false
     @State private var tokenSaved = false
-    /// Which server build we're talking to (from `/api/updates`, admin-only) and whether
-    /// a newer public build is on the App Store. Both best-effort — nil just hides the line.
-    @State private var serverVersion: String?
+    /// Which server build we're talking to + whether a newer one is available (from
+    /// `/api/updates`, admin-only), and whether a newer public app build is on the App
+    /// Store. Both best-effort — nil just hides the line.
+    @State private var update: WaffledAPI.UpdateInfo?
     @State private var appStore: AppStoreCheck.Result?
 
     private enum TestState: Equatable { case idle, testing, ok(Int), fail }
@@ -110,11 +111,14 @@ struct AboutSettingsView: View {
                 }
 
                 testResult
-                if let serverVersion {
+                if let update {
                     HStack(spacing: 6) {
                         Circle().fill(Color(hex: 0x167A4A)).frame(width: 7, height: 7)
-                        Text("Server version \(serverVersion)")
+                        Text("Server version \(update.current.version)")
                             .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink3)
+                    }
+                    if update.updateAvailable == true, let latest = update.latest {
+                        updateBanner(latest, current: update.current.version)
                     }
                 }
                 if let savedNote {
@@ -192,17 +196,56 @@ struct AboutSettingsView: View {
         serverAddress = AppConfig.apiBaseURL
         test = .idle
         savedNote = "Saved. New requests use this address — pull to refresh, or relaunch the app to reload everything."
-        serverVersion = nil
-        Task { serverVersion = try? await WaffledAPI().updates().current.version }
+        update = nil
+        Task { await loadMeta() }
     }
 
-    /// Best-effort: which server build we're talking to (`/api/updates`, admin-only) and
-    /// whether a newer public build is on the App Store. Failures leave the lines hidden.
+    /// Best-effort: the server build + whether one's newer (`/api/updates`, admin-only),
+    /// and whether a newer public build is on the App Store. Retries a few times so a
+    /// transient failure doesn't leave the lines blank; a 401/403 (non-admin) just stops.
     private func loadMeta() async {
-        serverVersion = try? await WaffledAPI().updates().current.version
+        for _ in 0..<6 {
+            do { update = try await WaffledAPI().updates(); break }
+            catch let WaffledAPI.APIError.http(code, _) where code == 401 || code == 403 { break }
+            catch { try? await Task.sleep(for: .milliseconds(600)) }
+        }
         if let r = await AppStoreCheck.latest(), VersionCompare.isNewer(r.version, than: Self.version) {
             appStore = r
         }
+    }
+
+    /// A newer server release is out — nudge the operator (the upgrade runs on the host).
+    private func updateBanner(_ latest: WaffledAPI.UpdateInfo.Release, current: String) -> some View {
+        let display = latest.tag.hasPrefix("v") || latest.tag.hasPrefix("V")
+            ? String(latest.tag.dropFirst()) : latest.tag
+        return VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 7) {
+                Text("🧇").font(.system(size: 15))
+                Text("Update available").font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.primary)
+                Spacer(minLength: 0)
+                Text("Waffled \(display)").font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
+            }
+            Text("A newer Waffled is out — you’re on \(current). Run `./waffled upgrade` on the server that hosts Waffled.")
+                .font(.system(size: 12)).foregroundStyle(WF.ink3)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Button { openURL(URL(string: latest.url)!) } label: {
+                    Text("Changelog").font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
+                        .padding(.horizontal, 13).padding(.vertical, 7)
+                        .overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
+                }.buttonStyle(.plain)
+                Button { openURL(URL(string: "https://docs.waffled.app/operations/upgrading/")!) } label: {
+                    Text("How to upgrade").font(.system(size: 12.5, weight: .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 13).padding(.vertical, 7).background(WF.primary).clipShape(Capsule())
+                }.buttonStyle(.plain)
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(WF.primary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.primary.opacity(0.25), lineWidth: 1))
     }
 
     private func saveToken() {
