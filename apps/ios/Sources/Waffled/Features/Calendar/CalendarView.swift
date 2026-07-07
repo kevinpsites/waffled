@@ -1279,15 +1279,15 @@ struct EventEditSheet: View {
         // Editing an already-recurring event first asks which occurrences to change.
         if wasRecurring { scopePrompt = .save; return }
         performSave(scope: nil)
-        dismiss()
+        // performSave dismisses once the write lands, so the detail screen's reload
+        // (on our dismiss) sees fresh data instead of racing the in-flight write.
     }
 
-    /// The scope chooser picked an option — run the right action and dismiss.
+    /// The scope chooser picked an option — run the right action; it dismisses when done.
     private func applyScope(_ scope: String) {
         let mode = scopePrompt
         scopePrompt = nil
         if mode == .delete { performDelete(scope: scope) } else { performSave(scope: scope) }
-        dismiss()
     }
 
     private func performSave(scope: String?) {
@@ -1345,6 +1345,7 @@ struct EventEditSheet: View {
                                                    allDay: allDay, location: d.loc, personIds: d.ids, calendarId: d.chosenCal,
                                                    isCountdown: isCountdown)
             }
+            dismiss()   // after the write, so the caller's reload picks up fresh data
         }
     }
 
@@ -1359,6 +1360,7 @@ struct EventEditSheet: View {
             } else {
                 _ = await sync.deleteEvent(id: id)
             }
+            dismiss()
         }
     }
 

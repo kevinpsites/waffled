@@ -48,6 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   all future events** (which keeps past occurrences), matching the editor. Delete never offers
   an "all events" option, so past events can't be removed by accident; editing still can, since
   changing the repeat rule needs it.
+- **Editing an event updates its detail screen immediately on iOS.** After saving an edit, the
+  event detail you opened it from now reflects the change right away, instead of only after you
+  closed and reopened it — the reload no longer races the in-flight save.
 - **Pantry items open their detail on iOS again.** Tapping a pantry item on iPhone/iPad did
   nothing — the tap couldn't reach the item detail (or its Edit screen), because the row's
   navigation used a value type the Family hub's navigation stack couldn't route. Tapping now
