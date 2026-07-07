@@ -34,7 +34,7 @@ describe('UpdateModal', () => {
     expect(await screen.findByText(/Waffled 0\.2\.4 is here/i)).toBeInTheDocument()
     expect(screen.getByText('./waffled upgrade')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /view changelog/i }).getAttribute('href')).toContain('/releases/tag/v0.2.4')
-    expect(screen.getByRole('link', { name: /how to upgrade/i }).getAttribute('href')).toContain('upgrading.md')
+    expect(screen.getByRole('link', { name: /how to upgrade/i }).getAttribute('href')).toContain('docs.waffled.app/operations/upgrading')
   })
 
   it('stays hidden when already up to date', async () => {
