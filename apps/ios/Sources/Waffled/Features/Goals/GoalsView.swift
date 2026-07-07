@@ -235,7 +235,7 @@ struct GoalsView: View {
                 Task { await model.log(goalId: g.id, amount: amount, personIds: ids, note: note, loggedOn: loggedOn) }
             }
         }
-        .sheet(isPresented: $creating) {
+        .goalEditor(isPresented: $creating) {
             GoalCreateSheet(lists: model.lists, defaultListId: model.selectedList?.id, members: sync.members) { body, listId in
                 Task { await model.create(body, listId: listId) }
             }
@@ -708,26 +708,52 @@ struct GoalCreateSheet: View {
 
     struct Milestone: Identifiable { let id = UUID(); var emoji: String; var threshold: String; var reward: String }
 
-    /// Sensible starter milestones per goal type (thresholds mean different things —
-    /// streak days for habit, % for checklist, amount otherwise). Mirrors the web.
-    static func defaultMilestones(for type: String) -> [Milestone] {
+    /// Auto-derived starter milestones. Per product note: split the goal's *number*
+    /// into sensible checkpoints and leave the reward text BLANK — goals stay about
+    /// growth, so the family fills in a reward only if they want one. Amount goals get
+    /// three nice-rounded thirds of the target (last node = the target itself); streak
+    /// and percent types get their own natural checkpoints.
+    static func derivedMilestones(type: String, target: Int) -> [Milestone] {
         switch type {
-        case "count":
-            return [.init(emoji: "🌱", threshold: "5", reward: "+5 ★ bonus"),
-                    .init(emoji: "⛺", threshold: "10", reward: "Treat"),
-                    .init(emoji: "🏆", threshold: "25", reward: "Big reward")]
-        case "habit":
-            return [.init(emoji: "🌱", threshold: "7", reward: "+10 ★ bonus"),
-                    .init(emoji: "🔥", threshold: "30", reward: "Movie night"),
-                    .init(emoji: "🏆", threshold: "100", reward: "Big reward")]
-        case "checklist":
-            return [.init(emoji: "🌱", threshold: "50", reward: "Halfway treat"),
-                    .init(emoji: "🏆", threshold: "100", reward: "All done — big reward")]
-        default: // total
-            return [.init(emoji: "🌱", threshold: "250", reward: "+25 ★ bonus"),
-                    .init(emoji: "⛺", threshold: "500", reward: "Family movie night"),
-                    .init(emoji: "🏆", threshold: "1000", reward: "Big reward")]
+        case "habit": // threshold = 🔥 streak days
+            return zip(["🌱", "🔥", "🏆"], [7, 30, 100]).map { .init(emoji: $0.0, threshold: String($0.1), reward: "") }
+        case "checklist": // threshold = % complete
+            return zip(["🌱", "🏆"], [50, 100]).map { .init(emoji: $0.0, threshold: String($0.1), reward: "") }
+        default: // total | count — three nice thirds of the target
+            let vals = niceThirds(target)
+            let emojis = vals.count >= 3 ? ["🌱", "⛺", "🏆"] : (vals.count == 2 ? ["🌱", "🏆"] : ["🏆"])
+            return zip(emojis, vals).map { .init(emoji: $0.0, threshold: String($0.1), reward: "") }
         }
+    }
+
+    /// Three ascending checkpoints for a numeric target: two nice-rounded thirds plus
+    /// the target itself. 300 → 100/200/300, 750 → 250/500/750, 1000 → 250/500/1000.
+    static func niceThirds(_ target: Int) -> [Int] {
+        guard target > 1 else { return [max(target, 1)] }
+        var out: [Int] = []
+        for v in [niceRound(Double(target) / 3), niceRound(Double(target) * 2 / 3), target] {
+            let x = min(v, target)
+            if let last = out.last { if x > last { out.append(x) } } else if x > 0 { out.append(x) }
+        }
+        if out.last != target { out.append(target) }
+        return out
+    }
+
+    /// Round to a "nice" number — the leading digit snapped to 1 / 2 / 2.5 / 5 / 10.
+    /// (Hand-rolled base extraction so we don't lean on `pow`/`log10`.)
+    static func niceRound(_ v: Double) -> Int {
+        guard v > 0 else { return 0 }
+        var n = v, base = 1.0
+        while n >= 10 { n /= 10; base *= 10 }   // n ∈ [1, 10), base = the leading place
+        while n < 1  { n *= 10; base /= 10 }
+        let nice: Double = n < 1.5 ? 1 : (n < 2.25 ? 2 : (n < 3.5 ? 2.5 : (n < 7.5 ? 5 : 10)))
+        return Int((nice * base).rounded())
+    }
+
+    /// Stable signature of a milestone set — lets us tell whether the user has
+    /// hand-edited the auto-derived milestones (if so we stop re-deriving them).
+    static func signature(_ ms: [Milestone]) -> String {
+        ms.map { "\($0.emoji)|\($0.threshold)|\($0.reward)" }.joined(separator: ";")
     }
     /// A checklist step. `existingId` is the server id when editing (so steps are
     /// updated, not recreated); nil for newly added rows.
@@ -746,12 +772,14 @@ struct GoalCreateSheet: View {
     @State private var deadline = Date()
     @State private var isFeatured = true
     @State private var hasRewards = false
-    @State private var autoFromCalendar = false
-    @State private var milestones: [Milestone] = [
-        .init(emoji: "🌱", threshold: "250", reward: "+25 ★ bonus"),
-        .init(emoji: "⛺", threshold: "500", reward: "Family movie night"),
-        .init(emoji: "🏆", threshold: "1000", reward: "Big reward"),
-    ]
+    // Calendar auto-count defaults ON (product decision): most goals benefit from
+    // matching events adding progress, and it's still one tap to turn off.
+    @State private var autoFromCalendar = true
+    @State private var milestones: [Milestone] = GoalCreateSheet.derivedMilestones(type: "total", target: 1000)
+    // Signature of the last auto-derived milestone set. While `milestones` still
+    // matches it, changing the target/type re-derives them; once the user hand-edits
+    // a milestone the signature diverges and auto-derivation stops.
+    @State private var lastDerivedSig = GoalCreateSheet.signature(GoalCreateSheet.derivedMilestones(type: "total", target: 1000))
     @State private var steps: [Step] = [
         .init(existingId: nil, label: ""), .init(existingId: nil, label: ""), .init(existingId: nil, label: ""),
     ]
@@ -772,117 +800,30 @@ struct GoalCreateSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    section("What’s the goal?") {
-                        TextField("1,000 Hours Outside", text: $title)
-                            .font(WF.serif(20)).textInputAutocapitalization(.words)
-                            .focused($titleFocused)
-                            .padding(.horizontal, 15).padding(.vertical, 13)
-                            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
-                    }
-
-                    section("Who’s it for?") {
-                        ChipFlow(spacing: 8, lineSpacing: 8) {
-                            ForEach(localLists) { l in
-                                let on = goalListId == l.id
-                                Button { goalListId = l.id } label: {
-                                    Text("\(l.members.first?.avatarEmoji ?? l.emoji ?? "👥") \(l.name)")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(on ? WF.ink : WF.ink2)
-                                        .padding(.horizontal, 12).padding(.vertical, 7)
-                                        .wfChip(selected: on)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            Button { creatingList = true } label: {
-                                HStack(spacing: 5) {
-                                    Image(systemName: "plus").font(.system(size: 10, weight: .heavy))
-                                    Text("New group").font(.system(size: 13, weight: .semibold))
-                                }
-                                .foregroundStyle(WF.ink3)
-                                .padding(.horizontal, 12).padding(.vertical, 7)
-                                .overlay(Capsule().strokeBorder(WF.hair, style: StrokeStyle(lineWidth: 1.5, dash: [4])))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    section("Shared, or each on their own?") {
-                        Picker("Tracking", selection: $trackingMode) {
-                            Text("One shared total").tag("shared_total")
-                            Text("Each tracks own").tag("each_tracks")
-                        }
-                        .pickerStyle(.segmented)
-                    }
-
-                    section("How do you measure it?") {
-                        VStack(spacing: 8) {
-                            ForEach(Self.types, id: \.key) { t in typeCard(t) }
-                        }
-                        measureRow.padding(.top, 4)
-                    }
-
-                    section("Category") {
-                        ChipFlow(spacing: 8, lineSpacing: 8) {
-                            ForEach(Self.categories, id: \.self) { k in
-                                let on = category == k
-                                let c = GoalStyle.color(k)
-                                Button { category = k } label: {
-                                    Text("\(GoalStyle.emoji(k)) \(Self.categoryLabel[k] ?? k)")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(on ? c : WF.ink2)
-                                        .padding(.horizontal, 12).padding(.vertical, 7)
-                                        .wfChip(selected: on, tint: c)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-
-                    // Calendar auto-count is offered for total/count/habit only — a
-                    // checklist's progress comes from ticking steps, not from events.
-                    if !isChecklist {
-                        section("How is progress logged?") {
-                            Text("You can always log it yourself, anytime. Optionally let the calendar count too:")
-                                .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
-                                .fixedSize(horizontal: false, vertical: true)
-                            toggleRow("📅", "Also auto-count from calendar ✦", "Matching calendar events add progress automatically", $autoFromCalendar)
-                            if autoFromCalendar {
-                                Text("✦ Calendar events you link to this goal show up on Today to confirm — and you can schedule time for it right from the goal.")
-                                    .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                    }
-                    toggleRow("⭐", "Feature on the home screen", "Shows big on the family hub", $isFeatured)
-                    toggleRow("🏆", "Milestones & rewards", "Bonus stars at custom thresholds", $hasRewards)
-                    if hasRewards { milestoneEditor }
-
-                    Text("Rewards are off by default — goals stay about growth, not points. Turn them on per goal when a little extra motivation helps.")
-                        .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(20)
+            Group {
+                if isKiosk { iPadBody } else { iPhoneBody }
             }
             .background(WF.canvas)
             .navigationTitle(editGoal == nil ? "New goal" : "Edit goal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(editGoal == nil ? "Create" : "Save") { submit() }.fontWeight(.semibold).disabled(!canSave)
+                // iPad keeps Create in the nav bar; iPhone moves it to the pinned
+                // bottom bar (matching the mobile mock), so no confirmationAction there.
+                if isKiosk {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(editGoal == nil ? "Create" : "Save") { submit() }.fontWeight(.semibold).disabled(!canSave)
+                    }
                 }
             }
             .onAppear(perform: prefill)
             // New goal: land in the name field. (Edits keep the keyboard down.)
             .task { if editGoal == nil { try? await Task.sleep(for: .milliseconds(300)); titleFocused = true } }
-            // Switching type swaps in that type's starter milestones (thresholds mean
-            // different things per type). Only in create — edits keep the goal's own.
-            .onChange(of: goalType) { _, t in
-                if editGoal == nil { milestones = Self.defaultMilestones(for: t) }
-            }
+            // Auto-derived milestones track the target/type until the user hand-edits
+            // them (see `reDeriveIfUntouched`). Create only — edits keep the goal's own.
+            .onChange(of: goalType) { _, _ in reDeriveIfUntouched() }
+            .onChange(of: target) { _, _ in reDeriveIfUntouched() }
+            .onChange(of: hasRewards) { _, on in if on { reDeriveIfUntouched() } }
             .sheet(isPresented: $creatingList) {
                 GoalListCreateSheet(members: members) { list in
                     localLists.append(list)
@@ -893,10 +834,96 @@ struct GoalCreateSheet: View {
         .modifier(KioskSheetPresentation(kiosk: isKiosk))
     }
 
-    // MARK: pieces
+    // MARK: layout — iPhone (single column, sticky preview, pinned CTA) vs iPad (two-pane)
 
-    private func section<V: View>(_ label: String, @ViewBuilder _ content: () -> V) -> some View {
-        VStack(alignment: .leading, spacing: 10) { SectionLabel(text: label); content() }
+    /// iPhone: a scrolling single column with the compact live preview pinned to the
+    /// top and a full-width "Create goal" button pinned to the bottom (mobile mock).
+    private var iPhoneBody: some View {
+        ScrollView {
+            formColumn(showNameHint: false)
+                .padding(.horizontal, 18).padding(.top, 4).padding(.bottom, 24)
+        }
+        .background(WF.canvas)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            compactPreview
+                .padding(.horizontal, 18).padding(.top, 6).padding(.bottom, 12)
+                .background(WF.canvas)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
+    }
+
+    /// iPad: a focused form column on the left, a generous live-preview stage on the
+    /// right (the "web" redesign layout). Create stays in the nav bar.
+    private var iPadBody: some View {
+        HStack(spacing: 0) {
+            ScrollView {
+                formColumn(showNameHint: true)
+                    .frame(maxWidth: 620, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 48).padding(.top, 8).padding(.bottom, 56)
+            }
+            previewPane.frame(width: 480)
+        }
+        .background(WF.canvas)
+    }
+
+    private var previewPane: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionLabel(text: "Live preview")
+            Text("How this goal appears on the family hub.")
+                .font(.system(size: 12.5, weight: .medium)).foregroundStyle(WF.ink2).padding(.top, 4)
+            Spacer(minLength: 24)
+            generousPreview
+            Spacer(minLength: 24)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(28)
+        .background(WF.panel)
+        .overlay(alignment: .leading) { Rectangle().fill(WF.hair).frame(width: 1) }
+    }
+
+    /// The shared form sections. `showNameHint` adds the extra name subtitle the iPad
+    /// mock carries; the iPhone mock omits it.
+    private func formColumn(showNameHint: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            mockSection("Name your goal", hint: showNameHint ? "A short, motivating title your family will see." : nil, first: true) {
+                TextField("1,000 Hours Outside", text: $title)
+                    .font(WF.serif(showNameHint ? 24 : 20)).textInputAutocapitalization(.words)
+                    .focused($titleFocused)
+                    .padding(.horizontal, 16).padding(.vertical, 14)
+                    .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1.5))
+                    .wfShadow1()
+            }
+            mockSection("Who’s it for?", hint: "Pick a goal list. Share one total, or each tracks their own.") {
+                whoChips
+                shareSegment.padding(.top, 4)
+            }
+            mockSection("How do you measure it?", hint: "This shapes how progress is logged and shown.") {
+                measureCards
+                measureRow.padding(.top, 4)
+            }
+            mockSection("Category", hint: "Where this counts toward a balanced life.") { categoryChips }
+            mockSection("Extras", hint: "All optional. Turn on only what this goal needs.") { extras }
+        }
+    }
+
+    /// A form section in the redesign style: a hairline top rule (except the first),
+    /// a bold sentence-case title, an optional gray hint, then content.
+    private func mockSection<V: View>(_ title: String, hint: String?, first: Bool = false, @ViewBuilder _ content: () -> V) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if !first { Rectangle().fill(WF.hair2).frame(height: 1).padding(.bottom, 18) }
+            Text(title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
+            if let hint {
+                Text(hint).font(.system(size: 12.5, weight: .medium)).foregroundStyle(WF.ink3)
+                    .fixedSize(horizontal: false, vertical: true).padding(.top, 3)
+            }
+            content().padding(.top, 12)
+        }
+        .padding(.top, first ? 8 : 0)
+        // Breathing room before the next section's hairline rule, so fields
+        // (e.g. the deadline picker) don't butt straight up against it.
+        .padding(.bottom, 22)
     }
 
     private func typeCard(_ t: TypeOpt) -> some View {
@@ -995,19 +1022,305 @@ struct GoalCreateSheet: View {
             .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
     }
 
-    private func toggleRow(_ icon: String, _ title: String, _ sub: String, _ on: Binding<Bool>) -> some View {
-        HStack(spacing: 12) {
-            Text(icon).font(.system(size: 22)).frame(width: 38)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 14.5, weight: .bold)).foregroundStyle(WF.ink)
-                Text(sub).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+    // MARK: form pieces — who / share / category / measure cards
+
+    private var whoChips: some View {
+        ChipFlow(spacing: 8, lineSpacing: 8) {
+            ForEach(localLists) { l in
+                let on = goalListId == l.id
+                Button { goalListId = l.id } label: {
+                    HStack(spacing: 7) {
+                        AvatarStack(members: l.members, size: 20)
+                        Text(l.name).font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundStyle(on ? WF.ink : WF.ink2)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .wfChip(selected: on)
+                }
+                .buttonStyle(.plain)
             }
-            Spacer()
-            Toggle("", isOn: on.animation()).labelsHidden().tint(FamilyColor.wally.solid)
+            Button { creatingList = true } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "plus").font(.system(size: 10, weight: .heavy))
+                    Text("New group").font(.system(size: 13, weight: .semibold))
+                }
+                .foregroundStyle(WF.ink3)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .overlay(Capsule().strokeBorder(WF.hair, style: StrokeStyle(lineWidth: 1.5, dash: [4])))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var shareSegment: some View {
+        HStack(spacing: 4) {
+            segButton("One shared total", "shared_total")
+            segButton("Each tracks own", "each_tracks")
+        }
+        .padding(4).background(WF.panel).clipShape(Capsule())
+    }
+    private func segButton(_ label: String, _ value: String) -> some View {
+        let on = trackingMode == value
+        return Button { withAnimation(.easeOut(duration: 0.15)) { trackingMode = value } } label: {
+            Text(label)
+                .font(.system(size: 12.5, weight: on ? .bold : .semibold))
+                .foregroundStyle(on ? WF.ink : WF.ink2)
+                .frame(maxWidth: .infinity).padding(.vertical, 9)
+                .background { if on { Capsule().fill(WF.card).wfShadow1() } }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var categoryChips: some View {
+        ChipFlow(spacing: 8, lineSpacing: 8) {
+            ForEach(Self.categories, id: \.self) { k in
+                let on = category == k
+                let c = GoalStyle.color(k)
+                Button { category = k } label: {
+                    Text("\(GoalStyle.emoji(k)) \(Self.categoryLabel[k] ?? k)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(on ? c : WF.ink2)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .wfChip(selected: on, tint: c)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    /// Measure type cards — a single column on iPhone, a 2-up grid on iPad.
+    @ViewBuilder private var measureCards: some View {
+        if isKiosk {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], alignment: .leading, spacing: 10) {
+                ForEach(Self.types, id: \.key) { typeCard($0) }
+            }
+        } else {
+            VStack(spacing: 9) {
+                ForEach(Self.types, id: \.key) { typeCard($0) }
+            }
+        }
+    }
+
+    // MARK: Extras (flat, hairline-divided rows — matching the mock's "Extras" group)
+
+    private var extras: some View {
+        VStack(spacing: 0) {
+            extraRow("⭐", "Feature on the home screen", "Shows big on the family hub", $isFeatured, first: true)
+            extraRow("🏆", "Milestones & rewards", "Bonus stars at thresholds you set", $hasRewards)
+            if hasRewards { milestoneEditor.padding(.top, 4).padding(.bottom, 10) }
+            // Auto-count is offered for total/count/habit only — a checklist's progress
+            // comes from ticking steps, not from calendar events.
+            if !isChecklist {
+                extraRow("📅", "Auto-count from calendar", "Matching events add progress automatically", $autoFromCalendar)
+            }
+            // NOTE: the mock's "🔔 Weekly check-in" toggle is intentionally omitted —
+            // there's no backend for it yet (tracked in docs/product/roadmap.md).
+            Text("Rewards are off by default — goals stay about growth, not points. Turn them on per goal when a little extra motivation helps.")
+                .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 16)
+        }
+    }
+
+    private func extraRow(_ icon: String, _ title: String, _ sub: String, _ on: Binding<Bool>, first: Bool = false) -> some View {
+        VStack(spacing: 0) {
+            if !first { Rectangle().fill(WF.hair2).frame(height: 1) }
+            HStack(spacing: 12) {
+                WaffledEmojiTile(emoji: icon, size: 17, frame: 34, cornerRadius: 10)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.system(size: 14.5, weight: .semibold)).foregroundStyle(WF.ink)
+                    Text(sub).font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
+                }
+                Spacer(minLength: 8)
+                Toggle("", isOn: on.animation()).labelsHidden().tint(FamilyColor.wally.solid)
+            }
+            .padding(.vertical, 14)
+        }
+    }
+
+    /// Re-derive the starter milestones from the current target/type — but only while
+    /// the user hasn't hand-edited them (signature still matches the last derived set).
+    private func reDeriveIfUntouched() {
+        guard editGoal == nil else { return }
+        guard Self.signature(milestones) == lastDerivedSig else { return }
+        let d = Self.derivedMilestones(type: goalType, target: Int(target) ?? 0)
+        milestones = d
+        lastDerivedSig = Self.signature(d)
+    }
+
+    // MARK: live preview
+
+    private static let coralGradient = LinearGradient(colors: [Color(hex: 0xEF6A52), WF.primaryD],
+                                                      startPoint: .topLeading, endPoint: .bottomTrailing)
+    private static let previewDF: DateFormatter = { let f = DateFormatter(); f.dateFormat = "MMM d"; return f }()
+
+    private var previewTitle: String {
+        title.trimmingCharacters(in: .whitespaces).isEmpty ? "Name your goal" : title
+    }
+
+    private func previewSubtitle(shared: Bool) -> String {
+        let u = unit.trimmingCharacters(in: .whitespaces).isEmpty ? "units" : unit.trimmingCharacters(in: .whitespaces)
+        let dl = hasDeadline ? " · by \(Self.previewDF.string(from: deadline))" : ""
+        let base: String
+        switch goalType {
+        case "count": base = "Count to \(target) \(u)\(dl)"
+        case "habit": base = "\(habitPer)× a \(habitPeriod) · keep the streak going"
+        case "checklist": base = "A checklist of steps you tick off"
+        default: base = "Adds up in \(u)\(dl)"
+        }
+        if goalType == "habit" || goalType == "checklist" { return base }
+        return base + (shared ? " · shared" : " · each their own")
+    }
+
+    private func previewRing(size: CGFloat, featured: Bool) -> some View {
+        GoalRing(value: 0, size: size, lineWidth: max(3, size * 0.1),
+                 stroke: .clear, track: featured ? Color.white.opacity(0.3) : WF.panel) {
+            Text("0").font(WF.serif(size * 0.32)).foregroundStyle(featured ? Color.white : WF.ink3)
+        }
+    }
+
+    /// The pinned compact preview at the top of the iPhone form.
+    private var compactPreview: some View {
+        let shared = trackingMode == "shared_total"
+        let feat = isFeatured
+        return HStack(spacing: 13) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(feat ? AnyShapeStyle(Color.white.opacity(0.18)) : AnyShapeStyle(Color(hex: 0xFBE7E1)))
+                Text("🎯").font(.system(size: 24))
+            }
+            .frame(width: 46, height: 46)
+            VStack(alignment: .leading, spacing: 2) {
+                if feat {
+                    Text("★ FEATURED").font(.system(size: 9.5, weight: .heavy)).tracking(0.3).foregroundStyle(.white)
+                        .padding(.horizontal, 7).padding(.vertical, 2).background(Color.white.opacity(0.2), in: Capsule())
+                }
+                Text(previewTitle).font(WF.serif(17)).lineLimit(1)
+                    .foregroundStyle(feat ? Color.white : (title.trimmingCharacters(in: .whitespaces).isEmpty ? WF.ink3 : WF.ink))
+                Text(previewSubtitle(shared: shared)).font(.system(size: 11.5, weight: .semibold)).lineLimit(1)
+                    .foregroundStyle(feat ? Color.white.opacity(0.9) : WF.ink2)
+            }
+            Spacer(minLength: 0)
+            if !isChecklist { previewRing(size: 40, featured: feat) }
         }
         .padding(13)
-        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+        .background(feat ? AnyShapeStyle(Self.coralGradient) : AnyShapeStyle(WF.card))
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous).strokeBorder(feat ? Color.clear : WF.hair2, lineWidth: 1))
+        .wfShadow1()
+    }
+
+    private var bottomBar: some View {
+        WaffledPrimaryCTA(label: editGoal == nil ? "Create goal" : "Save changes",
+                          tint: WF.primary, isDisabled: !canSave) { submit() }
+            .padding(.horizontal, 18).padding(.top, 12).padding(.bottom, 10)
+            .background(WF.canvas)
+            .overlay(alignment: .top) { Rectangle().fill(WF.hair).frame(height: 1) }
+    }
+
+    /// The generous iPad preview: hero (featured) or plain card, an optional milestone
+    /// track, and a "where it lives" caption.
+    private var generousPreview: some View {
+        let shared = trackingMode == "shared_total"
+        return VStack(alignment: .leading, spacing: 16) {
+            if isFeatured { featuredHero(shared: shared) } else { plainPreviewCard(shared: shared) }
+            if hasRewards {
+                let nodes = Array(milestones.filter { !$0.threshold.isEmpty }.prefix(4))
+                if !nodes.isEmpty { milestoneTrack(nodes) }
+            }
+            HStack(spacing: 8) {
+                Image(systemName: "display").font(.system(size: 13, weight: .semibold))
+                Text(isFeatured ? "Featured big on the home screen" : "Lives in the goals list")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(WF.ink3)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func featuredHero(shared: Bool) -> some View {
+        HStack(alignment: .center, spacing: 16) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 17, style: .continuous).fill(Color.white.opacity(0.18))
+                Text("🎯").font(.system(size: 30))
+            }
+            .frame(width: 60, height: 60)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("★ FEATURED · \(shared ? "SHARED" : "EACH TRACKS")")
+                    .font(.system(size: 10.5, weight: .heavy)).tracking(0.4).foregroundStyle(.white)
+                    .padding(.horizontal, 9).padding(.vertical, 3).background(Color.white.opacity(0.2), in: Capsule())
+                Text(previewTitle).font(WF.serif(23)).foregroundStyle(.white).lineLimit(2)
+                Text(previewSubtitle(shared: shared)).font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.92)).lineLimit(2)
+            }
+            Spacer(minLength: 0)
+            if !isChecklist { previewRing(size: 60, featured: true) }
+        }
+        .padding(22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Self.coralGradient)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rXL, style: .continuous))
+        .wfShadow3()
+    }
+
+    private func plainPreviewCard(shared: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 15, style: .continuous).fill(Color(hex: 0xFBE7E1))
+                    Text("🎯").font(.system(size: 27))
+                }
+                .frame(width: 52, height: 52)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(shared ? "SHARED GOAL" : "EACH TRACKS OWN")
+                        .font(.system(size: 11, weight: .heavy)).tracking(0.3).foregroundStyle(WF.ink3)
+                    Text(previewTitle).font(WF.serif(20)).foregroundStyle(WF.ink).lineLimit(2)
+                    Text(previewSubtitle(shared: shared)).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink2).lineLimit(2)
+                }
+                Spacer(minLength: 0)
+            }
+            if !isChecklist {
+                Capsule().fill(WF.panel).frame(height: 9).padding(.top, 18)
+                Text("0 of \(target) \(unit.trimmingCharacters(in: .whitespaces)) · just getting started")
+                    .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink2).padding(.top, 9)
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(WF.card)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+        .wfShadow1()
+    }
+
+    private func milestoneTrack(_ nodes: [Milestone]) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("MILESTONES & REWARDS").font(.system(size: 12, weight: .heavy)).tracking(0.4).foregroundStyle(WF.ink3)
+            ZStack(alignment: .top) {
+                Capsule().fill(WF.hair).frame(height: 3).padding(.horizontal, 20).padding(.top, 15)
+                HStack(alignment: .top, spacing: 0) {
+                    ForEach(nodes) { m in
+                        VStack(spacing: 6) {
+                            ZStack {
+                                Circle().fill(WF.panel).overlay(Circle().strokeBorder(WF.card, lineWidth: 3))
+                                Text(m.emoji).font(.system(size: 15))
+                            }
+                            .frame(width: 32, height: 32)
+                            Text(m.threshold).font(.system(size: 11, weight: .heavy)).foregroundStyle(WF.ink)
+                            if !m.reward.isEmpty {
+                                Text(m.reward).font(.system(size: 10, weight: .semibold)).foregroundStyle(WF.ink3)
+                                    .multilineTextAlignment(.center).lineLimit(2)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(WF.card)
+        .clipShape(RoundedRectangle(cornerRadius: WF.rLG, style: .continuous))
+        .wfShadow1()
     }
 
     /// What a milestone's "number" means for the current goal type (mirrors the web).
@@ -1273,7 +1586,7 @@ struct GoalDetailView: View {
                 Task { await model.log(amount: amount, personIds: ids, note: note, loggedOn: loggedOn) }
             }
         }
-        .sheet(isPresented: $editing) {
+        .goalEditor(isPresented: $editing) {
             if let d = model.detail {
                 GoalCreateSheet(lists: model.lists, defaultListId: d.goalListId, members: sync.members, editGoal: d) { body, _ in
                     Task { await model.update(body) }
@@ -1622,6 +1935,21 @@ struct GoalListCreateSheet: View {
                                            colorHex: nil, goalCount: 0, members: mem))
                 dismiss()
             } catch { saving = false }
+        }
+    }
+}
+
+private extension View {
+    /// Presents the goal editor: full-screen on iPad (web-like, so the two-pane
+    /// form + live-preview layout has room), a large sheet on iPhone. The iPad used
+    /// to get `.presentationSizing(.page)`, which floated a cramped modal the two
+    /// columns couldn't fit — full screen matches the web experience.
+    @ViewBuilder
+    func goalEditor<C: View>(isPresented: Binding<Bool>, @ViewBuilder content: @escaping () -> C) -> some View {
+        if DeviceExperience.current == .kiosk {
+            fullScreenCover(isPresented: isPresented, content: content)
+        } else {
+            sheet(isPresented: isPresented, content: content)
         }
     }
 }
