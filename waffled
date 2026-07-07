@@ -4,6 +4,8 @@
 #   ./waffled up        start everything (checks prereqs, creates .env on first run, PULLS
 #                    the published images, runs migrations), then status + what's-next
 #   ./waffled up --build   same, but build the images from source (dev / bleeding-edge)
+#   ./waffled upgrade   pull the latest release: fast-forward the repo, bump the pinned
+#                    version in .env, pull the new images, and apply migrations
 #   ./waffled setup     guided: how devices reach this server (localhost / LAN IP / hostname)
 #   ./waffled status    show each container's state + health (✓/✗)
 #   ./waffled down      stop & remove the stack
@@ -189,6 +191,40 @@ case "$cmd" in
     fi
     echo; status || true
     next_steps
+    ;;
+  upgrade)
+    # One-command upgrade to the latest published release. Closes the gap where an
+    # existing .env keeps its old WAFFLED_VERSION (ensure_env only writes .env once),
+    # so a plain `up` would re-pull the old image. Steps: fast-forward the repo (the
+    # tagged repo + image tag are a matched pair — compose/configs/./waffled must agree
+    # with the image), sync WAFFLED_VERSION in .env to this checkout's .env.example,
+    # then pull + up (the one-shot `migrate` reruns because the image tag changed).
+    preflight || exit 1
+    ensure_env
+    if git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+      branch="$(git -C "$ROOT" symbolic-ref --short -q HEAD || true)"
+      if [ -n "$branch" ]; then
+        echo "${c_dim}Updating repo ($branch)…${c_reset}"
+        git -C "$ROOT" pull --ff-only || echo "${c_ylw}⚠ Couldn't fast-forward the repo (local changes or diverged history). Resolve it, then re-run './waffled upgrade'.${c_reset}"
+      else
+        echo "${c_ylw}⚠ Detached HEAD — skipping repo update. Check out a branch or a release tag to update the code, then re-run.${c_reset}"
+      fi
+    fi
+    target="$(grep -E '^WAFFLED_VERSION=' "$ROOT/infra/compose/.env.example" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+    current="$(env_val WAFFLED_VERSION)"
+    if [ -z "$target" ]; then
+      echo "${c_ylw}⚠ No WAFFLED_VERSION in .env.example — leaving .env unchanged.${c_reset}"
+    elif [ "$target" = "$current" ]; then
+      echo "${c_grn}Already pinned to ${target}.${c_reset}"
+    else
+      set_env_var WAFFLED_VERSION "$target"
+      echo "${c_grn}WAFFLED_VERSION ${current:-unset} → ${target}${c_reset}"
+    fi
+    export_build_meta
+    echo "${c_dim}Pulling images + restarting stack (applying migrations)…${c_reset}"
+    "${DC[@]}" pull || echo "${c_ylw}⚠ Couldn't pull some images — confirm the tag exists on GHCR, or run './waffled up --build' to build from source.${c_reset}"
+    "${DC[@]}" up -d
+    echo; status || true
     ;;
   down)    "${DC[@]}" down "$@" ;;
   restart) "${DC[@]}" restart "$@"; echo; status || true ;;

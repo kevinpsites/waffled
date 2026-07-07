@@ -478,6 +478,9 @@ function UpdateBanner({ upd, onToggle, toggling }: { upd: UpdateInfo; onToggle: 
                 You're on {upd.current.version} ({upd.current.sha}).{' '}
                 <a href={upd.latest.url} target="_blank" rel="noreferrer">View release ↗</a>
               </div>
+              <div className="tiny muted" style={{ fontWeight: 600, marginTop: 2 }}>
+                On the server, run <code>./waffled upgrade</code> to update.
+              </div>
             </>
           ) : upd.enabled && upd.latest ? (
             <>
