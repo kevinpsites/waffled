@@ -419,35 +419,35 @@ case "$cmd" in
     if git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
       echo "${c_red}Tag $tag already exists.${c_reset}"; exit 1
     fi
-    # Review the notes that become this release's section. The convention is to accrue
-    # them under ## [Unreleased] as work lands; this is the last chance to add or fix
-    # them (opens $EDITOR on request) before they're dated and committed. Runs before
-    # any file change, so aborting here leaves the tree untouched.
+    # Review the notes that become this release's section. Convention: accrue them under
+    # ## [Unreleased] as user-facing work lands (see CONTRIBUTING.md / CLAUDE.md). At least
+    # ONE entry is REQUIRED — a release with no notes is refused; this is the last chance to
+    # add or fix them ($EDITOR on request). Runs before any file change, so aborting here
+    # leaves the tree untouched. Only 'a' aborts; anything unrecognized just re-prompts.
     CL="$ROOT/CHANGELOG.md"
-    if [ -f "$CL" ] && grep -q '^## \[Unreleased\]' "$CL"; then
-      while :; do
-        body="$(awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' "$CL")"
-        n="$(printf '%s\n' "$body" | grep -cE '^[[:space:]]*-[[:space:]]' || true)"
-        echo "${c_dim}—— CHANGELOG [Unreleased] → will become [$ver] ——${c_reset}"
-        printf '%s\n' "$body"
-        echo "${c_dim}————————————————————————————————————————————${c_reset}"
-        if [ "$n" -eq 0 ]; then
-          printf "${c_ylw}No entries yet.${c_reset}  [${c_grn}e${c_reset}]dit in \$EDITOR   [${c_ylw}c${c_reset}]ontinue with an empty section   [${c_red}a${c_reset}]bort: "
-        else
-          printf "Use these %s entr%s as the %s notes?  [${c_grn}Enter${c_reset}] yes   [e]dit   [${c_red}a${c_reset}]bort: " "$n" "$([ "$n" -eq 1 ] && echo y || echo ies)" "$tag"
-        fi
-        read -r ans
-        case "$ans" in
-          e|E) "${EDITOR:-vi}" "$CL" ;;
-          a|A) echo "Aborted — nothing changed."; exit 1 ;;
-          c|C) [ "$n" -eq 0 ] && break ;;
-          '') [ "$n" -gt 0 ] && break ;;
-        esac
-      done
-    else
-      printf "${c_ylw}No CHANGELOG [Unreleased] section.${c_reset} Release without notes? [y/N] "
-      read -r ans; case "$ans" in y|Y) ;; *) echo "Aborted."; exit 1 ;; esac
-    fi
+    while :; do
+      if [ ! -f "$CL" ] || ! grep -q '^## \[Unreleased\]' "$CL"; then
+        printf "${c_ylw}No CHANGELOG [Unreleased] section — add one with your notes.${c_reset}  [${c_grn}e${c_reset}]dit   [${c_red}a${c_reset}]bort: "
+        read -r ans; case "$ans" in a|A) echo "Aborted — nothing changed."; exit 1 ;; e|E) "${EDITOR:-vi}" "$CL" ;; esac
+        continue
+      fi
+      body="$(awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' "$CL")"
+      n="$(printf '%s\n' "$body" | grep -cE '^[[:space:]]*-[[:space:]]' || true)"
+      echo "${c_dim}—— CHANGELOG [Unreleased] → will become [$ver] ——${c_reset}"
+      printf '%s\n' "$body"
+      echo "${c_dim}————————————————————————————————————————————${c_reset}"
+      if [ "$n" -eq 0 ]; then
+        printf "${c_ylw}At least one entry is required to release.${c_reset}  [${c_grn}e${c_reset}]dit in \$EDITOR   [${c_red}a${c_reset}]bort: "
+      else
+        printf "Use these %s entr%s as the %s notes?  [${c_grn}Enter${c_reset}] yes   [e]dit   [${c_red}a${c_reset}]bort: " "$n" "$([ "$n" -eq 1 ] && echo y || echo ies)" "$tag"
+      fi
+      read -r ans
+      case "$ans" in
+        e|E) "${EDITOR:-vi}" "$CL" ;;
+        a|A) echo "Aborted — nothing changed."; exit 1 ;;
+        '') [ "$n" -gt 0 ] && break ;;
+      esac
+    done
     # Portable in-place edit (BSD/macOS + GNU sed): rewrite to a temp file, then move.
     bump_line() { local f="$1" expr="$2" tmp; tmp="$(mktemp)"; sed -E "$expr" "$f" > "$tmp" && mv "$tmp" "$f"; }
     echo "${c_dim}Bumping to ${ver}…${c_reset}"
