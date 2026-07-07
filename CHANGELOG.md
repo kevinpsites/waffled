@@ -20,8 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **iOS goal editor redesign.** Creating or editing a goal on iPhone/iPad now follows
   the new design: a single scrolling column on iPhone with a live "featured" preview
   pinned to the top and a full-width **Create goal** button pinned to the bottom, and a
-  two-pane layout on iPad with the form on the left and a generous live preview on the
-  right. Starter milestones now derive from the goal's own target (e.g. a 300-hour goal
+  full-screen two-pane layout on iPad (matching the web) with the form on the left and a
+  generous live preview on the right. Starter milestones now derive from the goal's own target (e.g. a 300-hour goal
   suggests 100/200/300 instead of fixed 250/500/1000) with reward text left blank, and
   calendar auto-counting now defaults on for amount/count/habit goals.
 
