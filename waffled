@@ -401,6 +401,8 @@ case "$cmd" in
     # Bumps: apps/api + apps/web package.json (+lockfiles), infra/compose/.env.example
     # WAFFLED_VERSION, and apps/ios/project.yml MARKETING_VERSION. The iOS BUILD number
     # (CURRENT_PROJECT_VERSION) is left alone — Xcode Cloud auto-increments that.
+    # Also finalizes CHANGELOG.md: dates the [Unreleased] notes as this version, opens a
+    # fresh [Unreleased], and adds the compare link — so the tag carries the release notes.
     ver="${1:-}"; ver="${ver#v}"
     if ! printf '%s' "$ver" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
       echo "${c_red}usage: ./waffled release X.Y.Z${c_reset} (semver, no leading v)"; exit 1
@@ -424,12 +426,35 @@ case "$cmd" in
     ( cd "$ROOT/apps/web" && npm version "$ver" --no-git-tag-version --allow-same-version >/dev/null )
     bump_line "$ROOT/infra/compose/.env.example" "s/^WAFFLED_VERSION=.*/WAFFLED_VERSION=$ver/"
     bump_line "$ROOT/apps/ios/project.yml" "s/^([[:space:]]*MARKETING_VERSION:[[:space:]]*).*/\\1\"$ver\"/"
-    git -C "$ROOT" --no-pager diff -- apps/api/package.json apps/web/package.json \
+    # Finalize the CHANGELOG so the release commit (and its tag) carries the notes:
+    # date the [Unreleased] entries as this version, open a fresh [Unreleased], and add
+    # the compare link. Repo URL + previous tag are derived (nothing hard-coded); a no-op
+    # (with a warning) if there's no [Unreleased] section.
+    CL="$ROOT/CHANGELOG.md"
+    if [ -f "$CL" ] && grep -q '^## \[Unreleased\]' "$CL"; then
+      cl_date="$(date +%F)"
+      prev="$(git -C "$ROOT" tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -vx "$tag" | head -1)"
+      entries="$(awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f && /^[[:space:]]*-[[:space:]]/{c++} END{print c+0}' "$CL")"
+      [ "${entries:-0}" -eq 0 ] && echo "${c_ylw}⚠ CHANGELOG [Unreleased] has no entries — the $tag section will be empty.${c_reset}"
+      tmp="$(mktemp)"
+      awk -v ver="$ver" -v date="$cl_date" '
+        !d && /^## \[Unreleased\]/ { print "## [Unreleased]"; print ""; print "### Added"; print ""; print "### Changed"; print ""; print "### Fixed"; print ""; print "## [" ver "] - " date; d=1; next }
+        { print }' "$CL" > "$tmp" && mv "$tmp" "$CL"
+      tmp="$(mktemp)"
+      awk -v ver="$ver" -v prev="$prev" '
+        /^\[Unreleased\]:/ { match($0, /https:\/\/[^ ]*\/compare\//); base=substr($0,RSTART,RLENGTH); print "[Unreleased]: " base "v" ver "...HEAD"; if (prev!="") print "[" ver "]: " base prev "...v" ver; next }
+        { print }' "$CL" > "$tmp" && mv "$tmp" "$CL"
+      echo "${c_dim}Finalized CHANGELOG → [$ver] - $cl_date${c_reset}"
+    else
+      echo "${c_ylw}⚠ No CHANGELOG [Unreleased] section — skipping changelog finalize.${c_reset}"
+    fi
+    git -C "$ROOT" --no-pager diff -- CHANGELOG.md apps/api/package.json apps/web/package.json \
       infra/compose/.env.example apps/ios/project.yml
     git -C "$ROOT" add -A
     git -C "$ROOT" commit -q -m "release: $tag
 
-Bump api, web, compose (WAFFLED_VERSION), and iOS MARKETING_VERSION to $ver."
+Bump api, web, compose (WAFFLED_VERSION), and iOS MARKETING_VERSION to $ver,
+and finalize the CHANGELOG [$ver] section."
     git -C "$ROOT" tag -a "$tag" -m "Waffled $tag"
     echo "${c_grn}Committed + tagged $tag locally.${c_reset}"
     printf "Push '%s' + %s to origin now? [y/N] " "$branch" "$tag"
