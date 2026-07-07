@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **Recipe cards render correctly in Safari.** The library card was a `<button>` acting as
+  a flex container, which Safari/WebKit doesn't lay out — the image collapsed to a narrow
+  strip. It's now a `<div role="button">` (keyboard-accessible), matching the other cards.
+- **API key is copyable and selectable.** The "Copy" button now falls back when the
+  clipboard API is unavailable (Safari over plain http), and the key text overrides the
+  kiosk's global no-select rule so it can be highlighted and copied manually.
 - **Published images report real build provenance.** The release workflow now bakes the
   git SHA and build time into the GHCR images, so `/healthz` and `/api/health` show the
   actual release instead of the `dev` placeholder.
