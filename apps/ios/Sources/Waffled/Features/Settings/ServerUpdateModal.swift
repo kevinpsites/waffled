@@ -15,6 +15,7 @@ struct ServerUpdateModal: View {
     @State private var copied = false
 
     private static let dismissKey = "waffled.update.dismissed"
+    private static let upgradeGuideURL = "https://docs.waffled.app/operations/upgrading/"
 
     var body: some View {
         ZStack {
@@ -68,7 +69,7 @@ struct ServerUpdateModal: View {
                         .frame(maxWidth: .infinity).padding(.vertical, 13)
                         .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                 }.buttonStyle(.plain)
-                Button { openURL(URL(string: upgradeGuideURL(from: latest.url))!) } label: {
+                Button { openURL(URL(string: Self.upgradeGuideURL)!) } label: {
                     Text("How to upgrade").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
                         .frame(maxWidth: .infinity).padding(.vertical, 13)
                         .background(WF.primary).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
@@ -131,13 +132,4 @@ struct ServerUpdateModal: View {
 
     /// "Remind me later": close for this launch only (reappears next cold start).
     private func snooze() { open = false }
-
-    /// Derive the upgrade-guide URL from the release URL so forks point at their own repo,
-    /// falling back to the release page itself. Mirrors the web modal.
-    private func upgradeGuideURL(from releaseURL: String) -> String {
-        if let range = releaseURL.range(of: #"^https://github\.com/[^/]+/[^/]+"#, options: .regularExpression) {
-            return String(releaseURL[range]) + "/blob/main/website/src/content/docs/operations/upgrading.md"
-        }
-        return releaseURL
-    }
 }

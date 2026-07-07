@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is published there).
 
 ### Changed
+- **The update pop-up's "How to upgrade" opens the docs site.** Both the web and iOS
+  new-version modals now link to https://docs.waffled.app/operations/upgrading/ instead of
+  a raw file on GitHub.
 
 ### Fixed
 

@@ -38,10 +38,7 @@ export function UpdateModal() {
   if (!open || !info?.latest) return null
   const { tag, url } = info.latest
   const display = tag.replace(/^v/i, '')
-  // Follow the actual repo (handles forks): derive the upgrade-guide URL from the
-  // release URL, falling back to the release page itself.
-  const repoBase = url.match(/^(https:\/\/github\.com\/[^/]+\/[^/]+)/)?.[1]
-  const upgradeUrl = repoBase ? `${repoBase}/blob/main/website/src/content/docs/operations/upgrading.md` : url
+  const upgradeUrl = 'https://docs.waffled.app/operations/upgrading/'
 
   // "Remind me later" just closes for this session (reappears on next load);
   // the × / next-version logic remembers the tag so it won't return for this one.
