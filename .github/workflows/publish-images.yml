@@ -170,11 +170,14 @@ jobs:
           docker buildx imagetools inspect \
             ghcr.io/${{ github.repository_owner }}/waffled-${{ matrix.image }}:${{ steps.meta.outputs.version }}
 
-  # On a version tag, cut a GitHub Release: auto-generated notes + the env template so
-  # operators have a canonical, version-matched starting point. Waffled mounts host config
-  # (Caddyfile, powersync, postgres/init), so the runnable "matched pair" is the tagged
-  # repo itself (`git checkout <tag>` → the compose, configs, and ./waffled that match these
-  # images) — hence we attach example.env, not a standalone compose.
+  # On a version tag, cut a GitHub Release: the CHANGELOG section for this version as the
+  # notes + the env template so operators have a canonical, version-matched starting point.
+  # The tagged commit already carries the finalized `## [X.Y.Z]` section (the notes reviewed
+  # and approved during `./waffled release`), so we lift it verbatim instead of GitHub's
+  # auto-generated commit list. Waffled mounts host config (Caddyfile, powersync,
+  # postgres/init), so the runnable "matched pair" is the tagged repo itself
+  # (`git checkout <tag>` → the compose, configs, and ./waffled that match these images) —
+  # hence we attach example.env, not a standalone compose.
   release:
     needs: merge
     if: startsWith(github.ref, 'refs/tags/v')
@@ -188,8 +191,47 @@ jobs:
       - name: Stage release assets
         run: cp infra/compose/.env.example example.env
 
+      # Extract this version's CHANGELOG section into RELEASE_NOTES.md. Falls back to
+      # GitHub's auto-generated notes only if the section is missing/empty (see below).
+      - name: Build release notes from CHANGELOG
+        id: notes
+        run: |
+          python3 - "$GITHUB_REF_NAME" <<'PY'
+          import sys, re, pathlib
+          tag = sys.argv[1]
+          ver = tag[1:] if tag.startswith('v') else tag
+          lines = pathlib.Path('CHANGELOG.md').read_text().splitlines()
+          grabbed, grab = [], False
+          for line in lines:
+              if re.match(r'^## \[', line):
+                  grab = line.startswith(f'## [{ver}]')
+                  continue
+              if grab:
+                  grabbed.append(line)
+          # Drop any ### subsection with no bullets under it, then trim blank edges.
+          cleaned = []
+          for i, line in enumerate(grabbed):
+              if re.match(r'^### ', line):
+                  j, has = i + 1, False
+                  while j < len(grabbed) and not re.match(r'^### ', grabbed[j]):
+                      if grabbed[j].strip():
+                          has = True; break
+                      j += 1
+                  if not has:
+                      continue
+              cleaned.append(line)
+          body = '\n'.join(cleaned).strip()
+          pathlib.Path('RELEASE_NOTES.md').write_text(body + '\n' if body else '')
+          # Tell the next step whether we found real notes (else fall back to auto-gen).
+          out = pathlib.Path(__import__('os').environ['GITHUB_OUTPUT'])
+          out.write_text(f"found={'true' if body else 'false'}\n")
+          print(f"[release notes] {'using CHANGELOG section' if body else 'CHANGELOG section empty — falling back to auto-generated notes'} for {tag}")
+          PY
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          # Prefer the approved CHANGELOG section; if it was empty, let GitHub auto-generate.
+          body_path: ${{ steps.notes.outputs.found == 'true' && 'RELEASE_NOTES.md' || '' }}
+          generate_release_notes: ${{ steps.notes.outputs.found != 'true' }}
           files: example.env

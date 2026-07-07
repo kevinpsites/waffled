@@ -20,8 +20,11 @@ more than once; keep it terse.
    `infra/compose/.env.example`, iOS `MARKETING_VERSION`), commits `release: vX.Y.Z`, tags,
    and prompts to push. Run it **locally on `main`** — the pushed `v*` tag is what triggers
    the GHCR publish workflow (+ Xcode Cloud). Miss one version site by hand and repo/images/
-   `.env` silently disagree. After the run, set the GitHub Release notes to that changelog
-   section (`gh release edit vX.Y.Z --notes-file …`).
+   `.env` silently disagree. The GitHub Release notes are set **automatically** by the
+   `release` job in `publish-images.yml`, which lifts the `## [X.Y.Z]` section out of the
+   tagged `CHANGELOG.md` (so the notes you approved during `./waffled release` *are* the
+   release body) — no manual `gh release edit` needed. It only falls back to GitHub's
+   auto-generated notes if that section is missing/empty.
 
 ## iOS app (SwiftUI, `apps/ios`)
 
