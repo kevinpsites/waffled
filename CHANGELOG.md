@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Published images report real build provenance.** The release workflow now bakes the
   git SHA and build time into the GHCR images, so `/healthz` and `/api/health` show the
   actual release instead of the `dev` placeholder.
+- **URL-safe generated Postgres password.** First-run `.env` bootstrap now generates
+  `POSTGRES_PASSWORD` as hex instead of base64, so a `/` in the password can't break the
+  `postgres://` connection URL and fail the one-shot `migrate` on a fresh install.
 
 ## [0.2.0] - 2026-07-06
 
