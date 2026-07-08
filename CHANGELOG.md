@@ -25,8 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on your own device. Toggle it per calendar in Settings → Calendars; a newly connected
   account defaults your primary calendar to family and the rest to personal. The local Nook
   calendar is always family.
+- **Give a chore a due time, not just a due date (web + iOS).** The new-chore form now has an
+  optional **Due time** field, so a task can be due "Wednesday at 4:30 PM" rather than just
+  "Wednesday." The time shows on the chore in the Tasks view and orders the day's list by when
+  things are due.
 
 ### Changed
+- **The "Needs a parent's OK" option only shows when it makes sense (web + iOS).** When a chore
+  is assigned to an adult, the parent-approval toggle is now hidden — a parent doesn't need
+  another parent's sign-off. It still appears for kids, teens, and up-for-grabs chores.
 
 ### Fixed
 

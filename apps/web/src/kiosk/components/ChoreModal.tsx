@@ -9,6 +9,7 @@ export interface ChoreDraft {
   rewardAmount: number | null
   rewardCurrency?: string | null
   rrule?: string | null
+  dueTime?: string | null
   requiresApproval?: boolean
   requiresPhoto?: boolean
 }
@@ -55,6 +56,9 @@ function initialForm(chore?: ChoreDraft, personId?: string | null, canAssignOthe
     // One-off (freq === 'once') only: which day the single task lands on. New
     // one-offs default to today; editing can't move an already-materialized one.
     dueOn: localToday(),
+    // Optional time-of-day the chore is due (HH:MM). Applies to one-offs and each
+    // recurring occurrence; empty = no specific time.
+    dueTime: (chore?.dueTime ?? '').slice(0, 5),
     requiresApproval: chore?.requiresApproval ?? false,
     requiresPhoto: chore?.requiresPhoto ?? false,
   }
@@ -83,6 +87,11 @@ export function ChoreModal({
   const [form, setForm] = useState(() => initialForm(chore, personId, canAssignOthers, selfPersonId))
   // Restricted users see only themselves; everyone else sees the full member list.
   const pickable = canAssignOthers ? persons : persons.filter((p) => p.id === selfPersonId)
+  // A parent doesn't need another parent's OK: hide the approval toggle when the
+  // chore is assigned to an adult/admin. Still shown for kids, teens, and
+  // "up for grabs" (unknown claimer), where a sign-off makes sense.
+  const assignee = persons.find((p) => p.id === form.personId)
+  const assigneeIsAdult = !!assignee && (assignee.memberType === 'adult' || assignee.isAdmin)
   const curKey = form.rewardCurrency || defaultCurrency?.key || 'stars'
   const selectedCur = currencies.find((c) => c.key === curKey)
   const [saving, setSaving] = useState(false)
@@ -100,7 +109,9 @@ export function ChoreModal({
       rewardAmount: Number(form.rewardAmount) || 0,
       rewardCurrency: curKey,
       rrule: buildRrule(form.freq, form.days),
-      requiresApproval: form.requiresApproval,
+      dueTime: form.dueTime || null,
+      // Approval is meaningless for an adult assignee — never persist it there.
+      requiresApproval: assigneeIsAdult ? false : form.requiresApproval,
       requiresPhoto: form.requiresPhoto,
     }
     try {
@@ -185,6 +196,11 @@ export function ChoreModal({
             )}
           </div>
 
+          <label className="field" style={{ marginBottom: 10 }}>
+            <span>Due time <span className="tiny muted" style={{ fontWeight: 400 }}>· optional</span></span>
+            <input type="time" value={form.dueTime} onChange={(e) => set('dueTime', e.target.value)} />
+          </label>
+
           <div className="field-row">
             <label className="field">
               <span>Who</span>
@@ -229,17 +245,19 @@ export function ChoreModal({
             </div>
           )}
 
-          <button
-            type="button"
-            className={`chore-approval ${form.requiresApproval ? 'on' : ''}`}
-            onClick={() => set('requiresApproval', !form.requiresApproval)}
-          >
-            <span className="chore-approval-check" aria-hidden>{form.requiresApproval ? '✓' : ''}</span>
-            <span>
-              <span className="chore-approval-t">Needs a parent’s OK</span>
-              <span className="chore-approval-s">Stars are awarded only after a parent approves.</span>
-            </span>
-          </button>
+          {!assigneeIsAdult && (
+            <button
+              type="button"
+              className={`chore-approval ${form.requiresApproval ? 'on' : ''}`}
+              onClick={() => set('requiresApproval', !form.requiresApproval)}
+            >
+              <span className="chore-approval-check" aria-hidden>{form.requiresApproval ? '✓' : ''}</span>
+              <span>
+                <span className="chore-approval-t">Needs a parent’s OK</span>
+                <span className="chore-approval-s">Stars are awarded only after a parent approves.</span>
+              </span>
+            </button>
+          )}
 
           <button
             type="button"

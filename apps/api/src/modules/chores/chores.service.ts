@@ -267,7 +267,7 @@ export async function listTodayInstances(householdId: string, dueOn: string): Pr
   const { rows } = await query<QueryResultRow>(
     `select ci.id, ci.status, ci.reward_amount, ci.reward_currency, ci.person_id, ci.requires_approval,
             ci.requires_photo, ci.proof_storage_key, ci.had_proof, ci.due_on::text as due_on,
-            c.id as chore_id, c.title as chore_title, c.emoji, c.rrule,
+            c.id as chore_id, c.title as chore_title, c.emoji, c.rrule, c.due_time::text as due_time,
             p.name as person_name, p.avatar_emoji, p.color_hex
        from chore_instances ci
        join chores c on c.id = ci.chore_id and c.deleted_at is null
@@ -289,6 +289,7 @@ export async function listTodayInstances(householdId: string, dueOn: string): Pr
     personAvatar: r.avatar_emoji,
     personColor: r.color_hex,
     dueOn: r.due_on,
+    dueTime: r.due_time ? String(r.due_time).slice(0, 5) : null,
     status: r.status,
     rewardAmount: r.reward_amount,
     rewardCurrency: r.reward_currency,
@@ -307,7 +308,7 @@ export async function listAwaitingInstances(householdId: string): Promise<TodayI
   const { rows } = await query<QueryResultRow>(
     `select ci.id, ci.status, ci.reward_amount, ci.reward_currency, ci.person_id, ci.requires_approval,
             ci.requires_photo, ci.proof_storage_key, ci.had_proof, ci.due_on::text as due_on,
-            c.id as chore_id, c.title as chore_title, c.emoji, c.rrule,
+            c.id as chore_id, c.title as chore_title, c.emoji, c.rrule, c.due_time::text as due_time,
             p.name as person_name, p.avatar_emoji, p.color_hex
        from chore_instances ci
        join chores c on c.id = ci.chore_id and c.deleted_at is null
@@ -326,6 +327,7 @@ export async function listAwaitingInstances(householdId: string): Promise<TodayI
     personAvatar: r.avatar_emoji,
     personColor: r.color_hex,
     dueOn: r.due_on,
+    dueTime: r.due_time ? String(r.due_time).slice(0, 5) : null,
     status: r.status,
     rewardAmount: r.reward_amount,
     rewardCurrency: r.reward_currency,

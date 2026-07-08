@@ -811,6 +811,8 @@ struct WaffledAPI: Sendable {
         /// that has rolled over, it keeps its ORIGINAL due day — so the client can show
         /// how overdue it is. nil on older payloads.
         let dueOn: String?
+        /// Optional time-of-day the chore is due, as "HH:mm" (24h). nil = no set time.
+        let dueTime: String?
         let requiresApproval: Bool
         let streak: Int
         /// Photo-proof: the chore needs a snapshot to complete; the (resolved, maybe
@@ -824,7 +826,7 @@ struct WaffledAPI: Sendable {
 
         private enum CodingKeys: String, CodingKey {
             case id, choreId, choreTitle, emoji, personId, personName, status
-            case rewardAmount, rewardCurrency, rrule, dueOn, requiresApproval, streak
+            case rewardAmount, rewardCurrency, rrule, dueOn, dueTime, requiresApproval, streak
             case requiresPhoto, proofUrl, hadProof
         }
 
@@ -841,6 +843,7 @@ struct WaffledAPI: Sendable {
             rewardCurrency = try c.decodeIfPresent(String.self, forKey: .rewardCurrency)
             rrule = try c.decodeIfPresent(String.self, forKey: .rrule)
             dueOn = try c.decodeIfPresent(String.self, forKey: .dueOn)
+            dueTime = try? c.decodeIfPresent(String.self, forKey: .dueTime)
             requiresApproval = (try? c.decode(Bool.self, forKey: .requiresApproval)) ?? false
             streak = (try? c.decode(Int.self, forKey: .streak)) ?? 0
             requiresPhoto = (try? c.decode(Bool.self, forKey: .requiresPhoto)) ?? false

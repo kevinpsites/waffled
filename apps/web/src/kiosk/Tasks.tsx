@@ -22,6 +22,16 @@ function dayMeta(d: string): { rel: string; full: string; diff: number; weekday:
   return { rel, full, diff, weekday }
 }
 
+// Format an "HH:MM" due time as a friendly "4:30 PM". Returns '' for empty input.
+function fmtTime(hhmm: string | null): string {
+  if (!hhmm) return ''
+  const [h, m] = hhmm.split(':').map(Number)
+  if (Number.isNaN(h) || Number.isNaN(m)) return ''
+  const ampm = h < 12 ? 'AM' : 'PM'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`
+}
+
 // A carried-forward one-off keeps its original due date, so when it shows up on a
 // later day it's overdue. Describe how long ago it was due ("since Mon", or a date
 // once it's more than a week old). Returns null when it's not actually overdue.
@@ -68,7 +78,7 @@ function buildColumns(instances: ChoreInstance[], persons: PersonLite[]): Column
 }
 
 function draftFrom(i: ChoreInstance): ChoreDraft {
-  return { id: i.choreId, title: i.choreTitle, emoji: i.emoji, personId: i.personId, rewardAmount: i.rewardAmount, rewardCurrency: i.rewardCurrency, rrule: i.rrule, requiresApproval: i.requiresApproval, requiresPhoto: i.requiresPhoto }
+  return { id: i.choreId, title: i.choreTitle, emoji: i.emoji, personId: i.personId, rewardAmount: i.rewardAmount, rewardCurrency: i.rewardCurrency, rrule: i.rrule, dueTime: i.dueTime, requiresApproval: i.requiresApproval, requiresPhoto: i.requiresPhoto }
 }
 
 // The Tasks screen: today's chores per person. Tick to complete/uncomplete;
@@ -322,6 +332,7 @@ export function Tasks() {
                       </div>
                       <div className="star">
                         <span style={{ fontSize: 12 }}>{(i.rewardCurrency ? cur.byKey[i.rewardCurrency] : cur.defaultCurrency)?.symbol ?? '⭐'}</span> {i.rewardAmount ?? 0}
+                        {i.dueTime && <span className="chore-time" title={`Due at ${fmtTime(i.dueTime)}`}>🕒 {fmtTime(i.dueTime)}</span>}
                         {isAwaiting && <span className="chore-awaiting-tag">Needs OK</span>}
                       </div>
                     </div>

@@ -727,6 +727,11 @@ button.tick {
   margin-left: 8px; font-size: 11px; font-weight: 800; color: #b07d00;
   background: #fff5e0; padding: 2px 7px; border-radius: 999px;
 }
+/* optional due time-of-day — a quiet nudge next to the reward */
+.chore-time {
+  margin-left: 8px; font-size: 11px; font-weight: 700; color: var(--ink-3);
+  white-space: nowrap;
+}
 .chore-approve { display: flex; gap: 7px; flex: none; align-items: center; }
 /* photo-proof thumbnail (Tasks awaiting row + Approvals card) — a button that
    opens the review modal */
