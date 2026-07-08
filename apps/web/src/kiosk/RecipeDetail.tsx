@@ -1,13 +1,11 @@
-import { useParams, useNavigate } from 'react-router'
-import { useTopbarFull } from './topbar-slot'
+import { useParams } from 'react-router'
 import { RecipeView } from './components/RecipeView'
 
-// Full-screen recipe route: just the back-button chrome around the shared
-// RecipeView (the same view used in the modal preview everywhere else).
+// Full-screen recipe route: the shared RecipeView renders its own topbar row
+// (back button + favorite/edit/schedule icons) when `fullScreen` is set. The
+// modal preview uses the same view with the actions inline instead.
 export function RecipeDetail() {
   const { id } = useParams()
-  const navigate = useNavigate()
-  useTopbarFull(() => <button className="pill" onClick={() => navigate(-1)}>‹ Recipes</button>, [navigate])
   if (!id) return <div className="muted" style={{ padding: 30 }}>Recipe not found.</div>
-  return <RecipeView id={id} />
+  return <RecipeView id={id} fullScreen />
 }

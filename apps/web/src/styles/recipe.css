@@ -239,6 +239,231 @@
   color: #fff;
 }
 
+/* ===== Recipe detail redesign: hierarchy over volume ===== */
+/* Toolbar: icon actions instead of a row of labelled pills. */
+.rd-actions .icon-btn,
+.rd-topbar-actions .icon-btn {
+  cursor: pointer;
+  padding: 0;
+}
+.rd-actions .rd-select {
+  margin-right: auto;
+}
+/* Full-screen route: icon actions ride the topbar's back-button row, pinned right. */
+.rd-topbar-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rd-cookbar-emoji {
+  font-size: 20px;
+  line-height: 1;
+}
+.rd-fav.on svg {
+  fill: var(--primary);
+  stroke: none;
+}
+
+/* Tags: 3 chips + a "+N more" toggle; #hashtags drop to a quiet muted line. */
+.rd-tagrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-top: 2px;
+}
+.rd-tag.fav {
+  background: #fdecec;
+  color: var(--primary-d);
+}
+.rd-tag-more {
+  background: transparent;
+  border: 1.5px dashed var(--hair);
+  color: var(--ink-3);
+  font-weight: 700;
+}
+.rd-hashtags {
+  font-size: 12px;
+  color: var(--ink-3);
+  font-weight: 600;
+  margin-top: 8px;
+  letter-spacing: 0.01em;
+}
+
+/* Cook Mode: the single primary action, full-width and black, right under the tags. */
+.rd-cookbar {
+  margin-top: 16px;
+  width: 100%;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff;
+  padding: 15px 0;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  box-shadow: var(--sh-2);
+}
+.rd-cookbar svg {
+  width: 19px;
+  height: 19px;
+}
+
+/* Status row: cooked state + mark-cooked, quiet. */
+.rd-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 14px 2px 0;
+}
+.rd-status-row .st-lbl {
+  font-size: 13px;
+  color: var(--ink-3);
+  font-weight: 650;
+}
+.rd-markbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--panel);
+  border: 0;
+  padding: 8px 15px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.rd-markbtn svg {
+  width: 13px;
+  height: 13px;
+}
+.rd-left .rd-ings {
+  margin-top: 14px;
+}
+
+/* On-hand banner: one line, one action, matched to card tone (not a loud gradient). */
+.rd-ai {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 15px;
+  border-radius: var(--r-md);
+  background: var(--card-2);
+  border: 1px solid var(--hair-2);
+  margin-bottom: 12px;
+}
+.rd-ai-sp {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--ai-2), var(--ai));
+}
+.rd-ai-sp svg {
+  width: 15px;
+  height: 15px;
+  stroke: #fff;
+  fill: #fff;
+}
+.rd-ai-tx {
+  flex: 1;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--ink);
+}
+.rd-ai-tx b {
+  color: var(--ai);
+  font-weight: 800;
+}
+.rd-ai-go {
+  flex: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--primary-d);
+  cursor: pointer;
+}
+.rd-added {
+  color: var(--ink-3);
+  font-weight: 650;
+  margin: -4px 2px 12px;
+}
+
+/* Step meta: "Uses: …" as one quiet line, an inline clock timer, and a small note button. */
+.rd-step-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 7px;
+}
+.rd-uses {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--ink-3);
+  font-weight: 600;
+}
+.rd-uses b {
+  color: var(--ink-2);
+  font-weight: 700;
+}
+.rd-timer {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+.rd-timer svg {
+  width: 12px;
+  height: 12px;
+  stroke: var(--ink-2);
+  fill: none;
+  stroke-width: 2;
+}
+.rd-note-btn {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.rd-note-btn:hover {
+  background: var(--panel);
+  color: var(--ink);
+}
+.rd-note-btn svg {
+  width: 13px;
+  height: 13px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
 @media (max-width: 1000px) {
   .recipe-detail {
     grid-template-columns: 1fr;
