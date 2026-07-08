@@ -1,6 +1,6 @@
 {
   "name": "@waffled/web",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "Waffled web app + counter-kiosk (Vite + React + TS). Static SPA served by Caddy/CloudFront.",
