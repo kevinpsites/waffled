@@ -542,7 +542,7 @@ select.cap-edit-sub { cursor: pointer; }
 .ph-tile .heart { position: absolute; top: 11px; right: 12px; font-size: 16px; }
 
 /* ===== settings =============================================== */
-.set-card { background: var(--card); border-radius: var(--r-lg); box-shadow: var(--sh-2); padding: 4px 20px; }
+/* .set-card lives in settings.css (single source of truth for card padding). */
 .set-row { display: flex; align-items: center; gap: 14px; padding: 15px 0; border-bottom: 1px solid var(--hair-2); }
 .set-row:last-child { border-bottom: 0; }
 .set-ic { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; font-size: 19px;

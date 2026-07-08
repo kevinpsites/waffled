@@ -107,24 +107,23 @@
   font-weight: 600;
 }
 
+/* The one settings box. Uniform 20px padding on all four sides — the single
+   source of a card's breathing room. Prefer the <SettingCard> component over a
+   hand-rolled `<div className="set-card">` so this stays the only padding. */
 .set-card {
   background: var(--card);
   border-radius: var(--r-lg);
   box-shadow: var(--sh-1);
-  padding: 6px 20px;
+  padding: 20px;
 }
-
-/* A warm "tray" that boxes related cards into one widget so it reads as a
-   single group — e.g. the economy (currencies + their conversions), set apart
-   from the separate reward-approval policy. Mirrors the iOS settings grouping. */
-.set-tray {
-  background: var(--panel);
-  border: 1px solid var(--hair);
-  border-radius: var(--r-lg);
-  padding: 12px;
-  margin-top: 14px;
-}
-.set-tray > .set-card:first-child { margin-top: 0; }
+/* Rows and header blocks carry their own vertical padding for the *inter*-row
+   rhythm; at the card's edges that would double the 20px, so zero it out on the
+   first/last child. Net: every card reads a clean 20px on all sides regardless
+   of whether it leads/ends with a row, a header, or a chip grid. */
+.set-card > .set-row2:first-child,
+.set-card > .set-card-head:first-child { padding-top: 0; }
+.set-card > .set-row2:last-child,
+.set-card > .set-card-head:last-child { padding-bottom: 0; }
 
 /* member rows */
 .set-member {
@@ -313,11 +312,11 @@
   font-weight: 600;
   color: var(--muted);
 }
-/* Chip / staple grids at the bottom of a card need the card's bottom breathing
-   room too — rows supply their own padding, a bare grid doesn't. */
+/* Chip / staple grids carry a little inner padding; at a card's bottom edge the
+   card's own 20px supplies the breathing room, so drop theirs to avoid doubling. */
 .set-card > .meal-chips:last-child,
 .set-card > .grocery-staples:last-child {
-  padding-bottom: 15px;
+  padding-bottom: 0;
 }
 .sel {
   display: inline-flex;
@@ -440,10 +439,12 @@ select.sel {
 
 /* ===== Role permissions grid (Family & People) ===== */
 .perm-grid { display: flex; flex-direction: column; }
-.perm-row { display: grid; grid-template-columns: 1.2fr repeat(5, 1fr); align-items: center; gap: 6px;
+.perm-row { display: grid; grid-template-columns: 1.2fr repeat(6, 1fr); align-items: center; gap: 6px;
   padding: 9px 0; border-bottom: 1px solid var(--hair-2); }
 .perm-row:last-child { border-bottom: 0; }
-.perm-head { border-bottom: 1px solid var(--hair); }
+/* Column headers: bottom-align so single- and two-line labels sit on the same
+   baseline just above the checkbox rows (was center → short labels floated low). */
+.perm-head { border-bottom: 1px solid var(--hair); align-items: end; }
 .perm-role { font-size: 14.5px; font-weight: 700; color: var(--ink); }
 .perm-cap { font-size: 11.5px; font-weight: 700; color: var(--ink-3); text-align: center; line-height: 1.2; }
 .perm-cell { display: flex; justify-content: center; }

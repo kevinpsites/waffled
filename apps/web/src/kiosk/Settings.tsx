@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router'
 import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
 import { PersonModal } from './components/PersonModal'
+import { SettingCard } from './components/SettingCard'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { Screensaver, screensaverPhotos } from './components/Screensaver'
 import '../styles/settings.css'
@@ -148,11 +149,8 @@ function PermissionsCard() {
 
   if (error) return null // non-admins (403) simply don't see this card
   return (
-    <div className="set-card" style={{ marginTop: 18, padding: 18 }}>
-      <div className="card-h" style={{ marginBottom: 4 }}>Permissions</div>
-      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
-        Choose what each role can do. Admins can always do everything. Everyone can always complete their own chores, redeem their own rewards, and log their own goals.
-      </div>
+    <SettingCard style={{ marginTop: 18 }}>
+      <CardHeader title="Permissions" sub="Choose what each role can do. Admins can always do everything. Everyone can always complete their own chores, redeem their own rewards, and log their own goals." />
       {matrix === null ? (
         <div className="tiny muted" style={{ fontWeight: 600 }}>Loading…</div>
       ) : (
@@ -182,7 +180,7 @@ function PermissionsCard() {
           ))}
         </div>
       )}
-    </div>
+    </SettingCard>
   )
 }
 
@@ -190,9 +188,9 @@ const HEALTH_ICON: Record<HealthStatus, string> = { ok: '✓', degraded: '⚠', 
 const HEALTH_TITLE: Record<string, string> = {
   db: 'Database',
   migrations: 'Migrations',
-  schedulers: 'Background jobs',
-  calendar: 'Calendar sync',
-  storage: 'Media storage',
+  schedulers: 'Background Jobs',
+  calendar: 'Calendar Sync',
+  storage: 'Media Storage',
   backup: 'Backups',
 }
 
@@ -233,10 +231,10 @@ function HealthCheckCard({ name, check }: { name: string; check: { status: Healt
   const hint = check.hint as string | undefined
   const fields = Object.entries(check).filter(([k]) => k !== 'status' && k !== 'hint')
   return (
-    <div className="set-card health-card" style={{ padding: 16 }}>
+    <SettingCard className="health-card">
       <div className="health-card-h">
         <span className={`health-badge health-${check.status}`}>{HEALTH_ICON[check.status]}</span>
-        <span className="card-h" style={{ margin: 0 }}>{HEALTH_TITLE[name] ?? name}</span>
+        <CardHeader title={HEALTH_TITLE[name] ?? name} />
       </div>
       {name === 'schedulers' && Array.isArray(jobs) ? (
         <div className="health-fields">
@@ -259,7 +257,7 @@ function HealthCheckCard({ name, check }: { name: string; check: { status: Healt
         </div>
       )}
       {hint && <div className="health-hint">↳ {hint}</div>}
-    </div>
+    </SettingCard>
   )
 }
 
@@ -530,7 +528,7 @@ function SystemHealthPanel() {
 function UpdateBanner({ upd, onToggle, toggling }: { upd: UpdateInfo; onToggle: (v: boolean) => void; toggling: boolean }) {
   const envOff = !upd.enabled && upd.reason === 'env'
   return (
-    <div className="set-card" style={{ padding: 14, marginBottom: 14 }}>
+    <SettingCard style={{ marginBottom: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ flex: 1 }}>
           {upd.updateAvailable && upd.latest ? (
@@ -569,7 +567,7 @@ function UpdateBanner({ upd, onToggle, toggling }: { upd: UpdateInfo; onToggle: 
         </div>
         {!envOff && <Switch checked={upd.enabled} disabled={toggling} onChange={onToggle} ariaLabel="Check for updates" />}
       </div>
-    </div>
+    </SettingCard>
   )
 }
 
@@ -651,7 +649,7 @@ function MyProfilePanel() {
         <div className="tiny muted" style={{ fontWeight: 600 }}>How you appear on the kiosk</div>
       </div>
 
-      <div className="set-card" style={{ padding: 18 }}>
+      <SettingCard>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
           <div className="av md" style={{ background: `${colorHex}22`, fontSize: 26 }}>{avatarEmoji || '🙂'}</div>
           <div className="field" style={{ flex: 1, marginBottom: 0 }}>
@@ -691,7 +689,7 @@ function MyProfilePanel() {
           {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
         </div>
         {saveErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10 }}>{saveErr}</div>}
-      </div>
+      </SettingCard>
     </div>
   )
 }
@@ -772,17 +770,17 @@ function MyAccountPanel() {
       </div>
 
       {oidc ? (
-        <div className="set-card" style={{ padding: 18 }}>
+        <SettingCard>
           <div className="set-row2-t" style={{ marginBottom: 4 }}>Email</div>
           <div style={{ fontWeight: 700, fontSize: 15 }}>{info.email}</div>
           <div className="tiny muted" style={{ fontWeight: 600, marginTop: 8 }}>
             Managed by your SSO provider — change it there.
           </div>
-        </div>
+        </SettingCard>
       ) : (
         <>
-          <div className="set-card" style={{ padding: 18 }}>
-            <div className="set-row2-t" style={{ marginBottom: 12 }}>Change email</div>
+          <SettingCard>
+            <div className="set-row2-t" style={{ marginBottom: 12 }}>Change Email</div>
             <label className="field" style={{ marginBottom: 10 }}>
               <span>Email</span>
               <input type="email" autoComplete="off" value={email} onChange={(e) => { setEmail(e.target.value); setEmailOk(false) }} placeholder="name@example.com" />
@@ -798,10 +796,10 @@ function MyAccountPanel() {
               {emailOk && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
             </div>
             {emailErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10 }}>{emailErr}</div>}
-          </div>
+          </SettingCard>
 
-          <div className="set-card" style={{ padding: 18, marginTop: 16 }}>
-            <div className="set-row2-t" style={{ marginBottom: 12 }}>Change password</div>
+          <SettingCard style={{ marginTop: 16 }}>
+            <div className="set-row2-t" style={{ marginBottom: 12 }}>Change Password</div>
             <label className="field" style={{ marginBottom: 10 }}>
               <span>Current password</span>
               <input type="password" autoComplete="current-password" value={curPw} onChange={(e) => { setCurPw(e.target.value); setPwOk(false) }} placeholder="Enter your current password" />
@@ -821,7 +819,7 @@ function MyAccountPanel() {
               {pwOk && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
             </div>
             {pwErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10 }}>{pwErr}</div>}
-          </div>
+          </SettingCard>
         </>
       )}
 
@@ -853,7 +851,7 @@ function KioskPinCard({ personId, hasPin }: { personId: string; hasPin: boolean 
     finally { setBusy(false) }
   }
   return (
-    <div className="set-card" style={{ padding: 18, marginTop: 16 }}>
+    <SettingCard style={{ marginTop: 16 }}>
       <div className="set-row2-t" style={{ marginBottom: 4 }}>Kiosk PIN</div>
       <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 12 }}>
         An optional 4–8 digit PIN to open your profile on the shared kiosk. {pinSet ? 'A PIN is set.' : 'No PIN set.'}
@@ -877,7 +875,7 @@ function KioskPinCard({ personId, hasPin }: { personId: string; hasPin: boolean 
         {ok && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
       </div>
       {err && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10 }}>{err}</div>}
-    </div>
+    </SettingCard>
   )
 }
 
@@ -904,14 +902,14 @@ function FamilyPanel() {
         <div className="tiny muted" style={{ fontWeight: 600 }}>{members.length} {members.length === 1 ? 'person' : 'people'}</div>
       </div>
 
-      <div className="set-card">
+      <SettingCard>
         {members.map((m) => (
           <MemberRow key={m.id} m={m} onClick={() => setEditing(m)} />
         ))}
-      </div>
+      </SettingCard>
       <button type="button" className="btn btn-ghost set-add" onClick={() => setAdding(true)}>＋ Add a person</button>
 
-      <div className="set-card" style={{ marginTop: 18 }}>
+      <SettingCard style={{ marginTop: 18 }}>
         <SettingRow icon="🏡" title="Household name" sub="Shows on the kiosk &amp; invites">
           {nameDraft === null ? (
             <button type="button" className="sel" onClick={() => setNameDraft(household.name)}>{household.name} ▾</button>
@@ -962,7 +960,7 @@ function FamilyPanel() {
             />
           )}
         </SettingRow>
-      </div>
+      </SettingCard>
 
       <PermissionsCard />
 
@@ -1003,8 +1001,8 @@ function LearnedMatches() {
   if (groups === null) return null
 
   return (
-    <div className="set-card" style={{ marginTop: 18 }}>
-      <div className="set-row2-t" style={{ marginBottom: 4 }}>Smart matching</div>
+    <SettingCard style={{ marginTop: 18 }}>
+      <div className="set-row2-t" style={{ marginBottom: 4 }}>Smart Matching</div>
       <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 12 }}>
         Words Waffled has learned to link to a goal, from the events you’ve linked. Remove any that look wrong.
       </div>
@@ -1033,7 +1031,7 @@ function LearnedMatches() {
           {confirmClear ? 'Tap again to reset everything' : 'Reset learned matches'}
         </button>
       )}
-    </div>
+    </SettingCard>
   )
 }
 
@@ -1097,7 +1095,7 @@ function AiPanel() {
         <div className="tiny muted" style={{ fontWeight: 600 }}>Powers the “Add anything” bar</div>
       </div>
 
-      <div className="set-card">
+      <SettingCard>
         {PROVIDER_ORDER.map((p) => {
           const meta = PROVIDER_META[p]
           const on = provider === p
@@ -1124,10 +1122,10 @@ function AiPanel() {
             </button>
           )
         })}
-      </div>
+      </SettingCard>
 
       {provider !== 'heuristic' && (
-        <div className="set-card" style={{ marginTop: 16 }}>
+        <SettingCard style={{ marginTop: 16 }}>
           <SettingRow icon="🧠" title="Model" sub="Overrides the server default for this provider">
             <input
               className="set-inline-input"
@@ -1137,7 +1135,7 @@ function AiPanel() {
               style={{ minWidth: 200 }}
             />
           </SettingRow>
-        </div>
+        </SettingCard>
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
@@ -1180,7 +1178,7 @@ function StaplesEditor() {
   }
   async function remove(id: string) { await groceryApi.removeStaple(id); await load() }
   return (
-    <div className="set-card" style={{ marginTop: 16 }}>
+    <SettingCard style={{ marginTop: 16 }}>
       <CardHeader title="Pantry Staples" sub="Assumed in the house — the grocery list leaves these off. Manage them here or from the Lists grocery board." />
       <form onSubmit={add} style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
         <input className="set-inline-input" style={{ flex: 1, width: 'auto' }} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add a staple… (e.g. Soy sauce)" />
@@ -1197,7 +1195,7 @@ function StaplesEditor() {
           <div className="tiny muted" style={{ fontWeight: 600 }}>No staples yet — add the things you always have.</div>
         )}
       </div>
-    </div>
+    </SettingCard>
   )
 }
 
@@ -1262,7 +1260,7 @@ function MealsPanel() {
         <span className="tiny muted" style={{ marginLeft: 'auto', fontWeight: 600 }}>Changes save automatically</span>
       </div>
 
-      <div className="set-card">
+      <SettingCard>
         <SettingRow icon="📅" title="Add planned meals to the calendar" sub="Each meal you plan shows on the Waffled calendar, linked to its recipe.">
           <input type="checkbox" className="set-check" checked={cfg.addToCalendar} onChange={(e) => update({ addToCalendar: e.target.checked })} />
         </SettingRow>
@@ -1277,9 +1275,9 @@ function MealsPanel() {
             ))}
           </select>
         </SettingRow>
-      </div>
+      </SettingCard>
 
-      <div className="set-card" style={{ marginTop: 16 }}>
+      <SettingCard style={{ marginTop: 16 }}>
         <SettingRow icon="🧑‍🤝‍🧑" title="Who’s invited" sub={cfg.participantIds === null ? 'The whole family' : `${selected.length} ${selected.length === 1 ? 'person' : 'people'}`}>
           <div />
         </SettingRow>
@@ -1291,11 +1289,11 @@ function MealsPanel() {
             </button>
           ))}
         </div>
-      </div>
+      </SettingCard>
 
       {/* Meal times & reminders — the "when" of planned meals, in two sections:
           the per-meal-type times, and the optional same-day thaw reminder. */}
-      <div className="set-card" style={{ marginTop: 16 }}>
+      <SettingCard style={{ marginTop: 16 }}>
         <CardHeader title="Meal Times & Reminders" />
 
         {/* Section 1 — the time each meal type lands on the calendar. */}
@@ -1349,7 +1347,7 @@ function MealsPanel() {
             )
           })}
         </div>
-      </div>
+      </SettingCard>
 
       <StaplesEditor />
     </div>
@@ -1509,13 +1507,13 @@ function CalendarsPanel() {
     return (
       <div className="set-panel">
         <div className="set-head"><div className="wf-serif set-head-t">Calendars</div></div>
-        <div className="set-card" style={{ padding: 22 }}>
+        <SettingCard>
           <div className="muted" style={{ fontWeight: 600 }}>
             Google Calendar isn’t configured on the server yet. Set <code>GOOGLE_CLIENT_ID</code>,{' '}
             <code>GOOGLE_CLIENT_SECRET</code>, <code>GOOGLE_CALENDAR_REDIRECT_URI</code> and{' '}
             <code>TOKEN_ENCRYPTION_KEY</code> in the server environment, then reload.
           </div>
-        </div>
+        </SettingCard>
       </div>
     )
   }
@@ -1534,15 +1532,15 @@ function CalendarsPanel() {
       {syncMsg && <div className="tiny" style={{ fontWeight: 700, margin: '0 2px 12px', color: 'var(--ink, #2b2b2b)' }}>{syncMsg}</div>}
 
       {!status.connected ? (
-        <div className="set-card" style={{ padding: 22 }}>
-          <div className="set-row2-t" style={{ marginBottom: 6 }}>Connect a Google account</div>
+        <SettingCard>
+          <div className="set-row2-t" style={{ marginBottom: 6 }}>Connect a Google Account</div>
           <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 16 }}>
             Bring your family’s Google calendars into Waffled. You’ll pick which ones sync and who each one belongs to.
           </div>
           <button type="button" className="btn btn-primary" onClick={connect} disabled={connecting}>
             {connecting ? 'Opening Google…' : 'Connect Google Calendar'}
           </button>
-        </div>
+        </SettingCard>
       ) : (
         <>
           {status.calendars.length > 6 && (
@@ -1577,7 +1575,7 @@ function CalendarsPanel() {
             const open = q ? true : !collapsed[acct.id] // searching forces sections open
 
             return (
-              <div className="set-card cal-acct" key={acct.id}>
+              <SettingCard className="cal-acct" key={acct.id}>
                 <div
                   className="cal-acct-head"
                   role="button"
@@ -1628,7 +1626,7 @@ function CalendarsPanel() {
                     )}
                   </div>
                 )}
-              </div>
+              </SettingCard>
             )
           })}
 
@@ -1667,7 +1665,7 @@ function CountdownsSettings() {
     countdownsApi.setBirthdayHorizonDays(next).catch(() => setHorizon(prev))
   }
   return (
-    <div className="set-card" style={{ marginTop: 18, padding: 22 }}>
+    <SettingCard style={{ marginTop: 18 }}>
       <div className="set-row2-t" style={{ marginBottom: 4 }}>⏳ Countdowns</div>
       <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 16 }}>
         Count down to trips, birthdays, and anything you flag on the calendar. Add one from the Today “Countdowns” card, or tick “Show a countdown” when editing an event.
@@ -1701,14 +1699,14 @@ function CountdownsSettings() {
           ))}
         </select>
       </div>
-    </div>
+    </SettingCard>
   )
 }
 
 // Sub-tabs that depend on integrations we haven't built yet render their section
 // honestly rather than faking data. (Defended in the build report.)
 const PLACEHOLDERS: Record<string, { title: string; note: string }> = {
-  chores: { title: 'Chores & rewards', note: 'Reward styles & the reward shop build on the chores ledger (6.1 / 6.4).' },
+  chores: { title: 'Chores & Rewards', note: 'Reward styles & the reward shop build on the chores ledger (6.1 / 6.4).' },
   meals: { title: 'Meals', note: 'Meal preferences & dietary defaults pair with the Meals screen.' },
   lists: { title: 'Lists', note: 'List defaults & sharing pair with the Lists screen.' },
   display: { title: 'Display & Kiosk', note: 'Brightness & screensaver timing land here. Kiosk device pairing moved to Sign-in & Security.' },
@@ -1722,9 +1720,9 @@ function Placeholder({ tab }: { tab: string }) {
       <div className="set-head">
         <div className="wf-serif set-head-t">{p.title}</div>
       </div>
-      <div className="set-card" style={{ padding: 22 }}>
+      <SettingCard>
         <div className="muted" style={{ fontWeight: 600 }}>{p.note}</div>
-      </div>
+      </SettingCard>
     </div>
   )
 }
@@ -1779,17 +1777,14 @@ function RewardApprovalCard() {
     finally { setSaving(false) }
   }
   return (
-    <div className="set-card" style={{ padding: 18, marginTop: 14 }}>
-      <div className="card-h" style={{ marginBottom: 4 }}>Reward approvals</div>
-      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
-        Sets the default for <b>new</b> rewards. On = a parent OKs the purchase; off = the kid redeems instantly with what they’ve earned. Even if off, each reward can have an override to explicitly require approval.
-      </div>
+    <SettingCard style={{ marginTop: 14 }}>
+      <CardHeader title="Reward Approvals" sub={<>Sets the default for <b>new</b> rewards. On = a parent OKs the purchase; off = the kid redeems instantly with what they’ve earned. Even if off, each reward can have an override to explicitly require approval.</>} />
       <SettingRow icon="✅" title="New rewards need a parent’s OK by default"
         sub={requireApproval === false ? 'Off — new rewards are instant unless you switch them on.' : 'On — new rewards wait in the approval queue unless you switch them off.'}>
         <input type="checkbox" className="set-check" checked={requireApproval ?? true}
           disabled={requireApproval === null || saving} onChange={toggle} />
       </SettingRow>
-    </div>
+    </SettingCard>
   )
 }
 
@@ -1831,11 +1826,8 @@ function ChoreProofCard() {
       : `Proof photos are deleted ${ttl ?? 3} day${(ttl ?? 3) === 1 ? '' : 's'} after a chore is approved.`
   const count = proofs?.length ?? 0
   return (
-    <div className="set-card" style={{ padding: 18, marginTop: 14 }}>
-      <div className="card-h" style={{ marginBottom: 4 }}>Photo proof</div>
-      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
-        Some chores require a photo to complete. These are quick proof shots, not memories — Waffled deletes them automatically after the chore is settled (a note that a photo was attached stays). Rejected chores’ photos are removed right away.
-      </div>
+    <SettingCard style={{ marginTop: 14 }}>
+      <CardHeader title="Photo Proof" sub="Some chores require a photo to complete. These are quick proof shots, not memories — Waffled deletes them automatically after the chore is settled (a note that a photo was attached stays). Rejected chores’ photos are removed right away." />
       <SettingRow icon="📸" title="Keep proof photos for" sub={sub}>
         <select className="sel" value={ttl ?? 3} disabled={ttl === null || saving}
           onChange={(e) => update(Number(e.target.value))}>
@@ -1852,7 +1844,7 @@ function ChoreProofCard() {
       {drawerOpen && (
         <ChoreProofsDrawer proofs={proofs} onChanged={setProofs} onClose={() => setDrawerOpen(false)} />
       )}
-    </div>
+    </SettingCard>
   )
 }
 
@@ -1980,27 +1972,23 @@ function RewardsSettingsPanel() {
         <div className="tiny muted" style={{ fontWeight: 600 }}>The currencies your family earns &amp; spends</div>
       </div>
       {/* Economy widget — the currencies a family earns/spends and the trades
-          between them belong together, so box them into one tray. */}
-      <div className="set-tray">
-        <div className="set-card" style={{ padding: 18 }}>
-          <div className="card-h" style={{ marginBottom: 4 }}>Currencies</div>
-          <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
-            Rename stars, add your own, or run several. The <b>default</b> is what new chores award; <b>spendable</b> ones can buy rewards. Set up trades between them under <b>Conversions</b> below.
-          </div>
-          {loading ? (
-            <div className="muted" style={{ fontWeight: 600 }}>Loading…</div>
-          ) : (
-            currencies.map((c) => <CurrencyRow key={c.id} c={c} canDelete={currencies.length > 1} />)
-          )}
-          <div className="cur-add">
-            <input className="cur-sym" value={newSymbol} maxLength={2} placeholder="⭐" aria-label="New symbol" onChange={(e) => setNewSymbol(e.target.value)} />
-            <input className="cur-label" value={newLabel} placeholder="Add a currency (e.g. Family Dollars)" aria-label="New label" onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
-            <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={adding || !newLabel.trim()} onClick={add}>＋ Add</button>
-          </div>
+          between them belong together, so box them into one card with two
+          subsections. */}
+      <SettingCard>
+        <CardHeader title="Currencies & Conversions" />
+        <CardHeader title="Currencies" sub={<>Rename stars, add your own, or run several. The <b>default</b> is what new chores award; <b>spendable</b> ones can buy rewards. Set up trades between them under <b>Conversions</b> below.</>} mid />
+        {loading ? (
+          <div className="muted" style={{ fontWeight: 600 }}>Loading…</div>
+        ) : (
+          currencies.map((c) => <CurrencyRow key={c.id} c={c} canDelete={currencies.length > 1} />)
+        )}
+        <div className="cur-add">
+          <input className="cur-sym" value={newSymbol} maxLength={2} placeholder="⭐" aria-label="New symbol" onChange={(e) => setNewSymbol(e.target.value)} />
+          <input className="cur-label" value={newLabel} placeholder="Add a currency (e.g. Family Dollars)" aria-label="New label" onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
+          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={adding || !newLabel.trim()} onClick={add}>＋ Add</button>
         </div>
-
         {currencies.length > 1 && <ConversionsSection currencies={currencies} />}
-      </div>
+      </SettingCard>
 
       {/* Redemption policy — its own concern, so it sits apart from the economy. */}
       <RewardApprovalCard />
@@ -2030,11 +2018,8 @@ function ConversionsSection({ currencies }: { currencies: Currency[] }) {
     }
   }
   return (
-    <div className="set-card" style={{ padding: 18, marginTop: 14 }}>
-      <div className="card-h" style={{ marginBottom: 4 }}>Conversions</div>
-      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
-        Let the family trade up a tier — e.g. <b>10 ⭐ → 1 💵</b>. Anyone can convert their own balance on the Rewards tab.
-      </div>
+    <>
+      <CardHeader title="Conversions" sub={<>Let the family trade up a tier — e.g. <b>10 ⭐ → 1 💵</b>. Anyone can convert their own balance on the Rewards tab.</>} mid />
       {conversions.map((c) => (
         <div key={c.id} className="conv-row">
           <span className="conv-rate">
@@ -2057,7 +2042,7 @@ function ConversionsSection({ currencies }: { currencies: Currency[] }) {
         </select>
         <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={busy || fromCur === toCur} onClick={add}>＋ Add</button>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -2361,7 +2346,7 @@ function FamilyNightSettings() {
         Adds a weekly “🏡 Family Night” event to the family calendar (syncs to Google if that calendar is connected). Changing the day or time re-schedules it.
       </div>
 
-      <div className="set-row2-t" style={{ marginTop: 6, marginBottom: 4 }}>Agenda parts</div>
+      <div className="set-row2-t" style={{ marginTop: 6, marginBottom: 4 }}>Agenda Parts</div>
       <div className="set-module-desc" style={{ marginBottom: 8 }}>
         Roles that rotate among family members each week. Turn off “Rotate” for a part someone always does.
       </div>
@@ -2386,19 +2371,19 @@ function AboutPanel() {
   return (
     <div className="set-panel">
       <div className="set-head"><div className="wf-serif set-head-t">About</div></div>
-      <div className="set-card" style={{ padding: 22 }}>
+      <SettingCard>
         <div className="set-row2-t" style={{ marginBottom: 4 }}>Waffled — Family Hub</div>
         <div className="tiny muted" style={{ fontWeight: 600 }}>
           Self-hosted{household?.name ? ` · ${household.name}` : ''}. Version and storage info land here.
         </div>
-      </div>
-      <div className="set-card" style={{ marginTop: 18, padding: 22 }}>
+      </SettingCard>
+      <SettingCard style={{ marginTop: 18 }}>
         <div className="set-row2-t" style={{ marginBottom: 4 }}>Account</div>
         <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 16 }}>
           Sign this kiosk out to switch to another family member's account.
         </div>
         <SignOutButton className="btn btn-primary" />
-      </div>
+      </SettingCard>
     </div>
   )
 }
@@ -2436,8 +2421,8 @@ function HouseholdsPanel() {
   return (
     <div className="set-panel">
       <div className="set-head"><div className="wf-serif set-head-t">Households</div></div>
-      <div className="set-card" style={{ padding: 22 }}>
-        <div className="set-row2-t" style={{ marginBottom: 4 }}>Your households</div>
+      <SettingCard>
+        <div className="set-row2-t" style={{ marginBottom: 4 }}>Your Households</div>
         <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 16 }}>
           {soloAndNoInvites
             ? 'You belong to one household. Invitations to join others will show up here.'
@@ -2458,10 +2443,10 @@ function HouseholdsPanel() {
             </div>
           )
         })}
-      </div>
+      </SettingCard>
       {pendingInvites.length > 0 && (
-        <div className="set-card" style={{ marginTop: 18, padding: 22 }}>
-          <div className="set-row2-t" style={{ marginBottom: 4 }}>Pending invitations</div>
+        <SettingCard style={{ marginTop: 18 }}>
+          <div className="set-row2-t" style={{ marginBottom: 4 }}>Pending Invitations</div>
           <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 16 }}>
             Accept an invitation to join another household. It then appears above.
           </div>
@@ -2473,7 +2458,7 @@ function HouseholdsPanel() {
               </button>
             </div>
           ))}
-        </div>
+        </SettingCard>
       )}
     </div>
   )
@@ -2511,7 +2496,7 @@ function SecurityPanel() {
     authApi.getConfig().then(hydrate).catch(() => setForbidden(true))
   }, [])
 
-  if (forbidden) return <div className="set-panel"><div className="set-head"><div className="wf-serif set-head-t">Sign-in &amp; Security</div></div><div className="set-card" style={{ padding: 22 }}><div className="muted" style={{ fontWeight: 600 }}>Only an admin can manage sign-in settings.</div></div></div>
+  if (forbidden) return <div className="set-panel"><div className="set-head"><div className="wf-serif set-head-t">Sign-in &amp; Security</div></div><SettingCard><div className="muted" style={{ fontWeight: 600 }}>Only an admin can manage sign-in settings.</div></SettingCard></div>
   if (!cfg) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
 
   async function test() {
@@ -2564,14 +2549,14 @@ function SecurityPanel() {
       </div>
 
       {!cfg.encryptionAvailable && (
-        <div className="set-card" style={{ padding: 18, marginBottom: 16 }}>
+        <SettingCard style={{ marginBottom: 16 }}>
           <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary, #e0653f)' }}>
             Set <code>TOKEN_ENCRYPTION_KEY</code> in the server environment to store the OIDC client secret securely. OIDC can't be enabled until then.
           </div>
-        </div>
+        </SettingCard>
       )}
 
-      <div className="set-card" style={{ padding: 18 }}>
+      <SettingCard>
         <SettingRow icon="🔐" title="Single sign-on (OIDC)" sub="Let family members sign in through your identity provider (Authentik, Keycloak, Google, …).">
           <input type="checkbox" className="set-check" checked={enabled} disabled={!cfg.encryptionAvailable} onChange={(e) => setEnabled(e.target.checked)} />
         </SettingRow>
@@ -2602,9 +2587,9 @@ function SecurityPanel() {
           {error && <div className="auth-error">{error}</div>}
           <button type="button" className="btn btn-primary" style={{ marginTop: 14 }} onClick={saveOidc} disabled={busy}>Save SSO settings</button>
         </div>
-      </div>
+      </SettingCard>
 
-      <div className="set-card" style={{ marginTop: 16 }}>
+      <SettingCard style={{ marginTop: 16 }}>
         <SettingRow icon="🔑" title="Password login" sub={canDisablePw ? 'Turn off to require everyone to use SSO.' : 'Enable & save SSO before you can turn this off.'}>
           <input
             type="checkbox"
@@ -2614,7 +2599,7 @@ function SecurityPanel() {
             onChange={(e) => { setPwEnabled(e.target.checked); save({ passwordLoginEnabled: e.target.checked }) }}
           />
         </SettingRow>
-      </div>
+      </SettingCard>
 
       <KioskDevicesSection />
     </div>
@@ -2696,20 +2681,17 @@ function KioskDevicesSection() {
   }
 
   return (
-    <div className="set-card" style={{ marginTop: 16, padding: 18 }}>
-      <div className="card-h" style={{ marginBottom: 4 }}>Kiosk devices</div>
-      <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 14 }}>
-        Turn a tablet into a shared family display with a profile picker. Pair it from here, or set up the tablet itself with a code.
-      </div>
+    <SettingCard style={{ marginTop: 16 }}>
+      <CardHeader title="Kiosk Devices" sub="Turn a tablet into a shared family display with a profile picker. Pair it from here, or set up the tablet itself with a code." />
 
       {adminsNoPin.length > 0 && (
-        <div className="set-card" style={{ padding: 14, marginBottom: 14, borderLeft: '3px solid var(--primary, #e0653f)' }}>
+        <SettingCard style={{ marginBottom: 14, borderLeft: '3px solid var(--primary, #e0653f)' }}>
           <div className="set-row2-t" style={{ marginBottom: 4 }}>⚠️ Set a PIN for your admins</div>
           <div className="tiny muted" style={{ fontWeight: 600 }}>
             On a shared kiosk, anyone can tap an admin profile with no PIN and gain full control.
             Add a PIN for {adminsNoPin.map((m) => m.name).join(', ')} in Family &amp; People.
           </div>
-        </div>
+        </SettingCard>
       )}
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -2734,7 +2716,7 @@ function KioskDevicesSection() {
       {err && <div className="auth-error" style={{ marginTop: 12 }}>{err}</div>}
 
       <div style={{ marginTop: 16 }}>
-        <div className="set-row2-t" style={{ margin: '2px 2px 4px' }}>Paired devices</div>
+        <div className="set-row2-t" style={{ margin: '2px 2px 4px' }}>Paired Devices</div>
         {devices === null ? (
           <div className="tiny muted" style={{ fontWeight: 600, padding: '8px 2px' }}>Loading…</div>
         ) : devices.length === 0 ? (
@@ -2777,7 +2759,7 @@ function KioskDevicesSection() {
           onClose={() => setDialog(null)}
         />
       )}
-    </div>
+    </SettingCard>
   )
 }
 
@@ -2861,7 +2843,7 @@ function DisplayKioskPanel() {
         <span className="tiny muted" style={{ marginLeft: 'auto', fontWeight: 600 }}>Screensaver settings save automatically</span>
       </div>
 
-      <div className="set-card">
+      <SettingCard>
         <SettingRow icon="🖥️" title="Use this browser as the family display" sub={paired ? 'On — this device is paired as a kiosk.' : 'This device only. Enables the screensaver & keeps the screen awake.'}>
           <input type="checkbox" className="set-check" checked={displayOn} disabled={paired} onChange={toggleDisplay} />
         </SettingRow>
@@ -2870,12 +2852,12 @@ function DisplayKioskPanel() {
             The screensaver, keep-awake and reset-to-Today below only run on a browser that’s set as the display. Turn this on to test them here.
           </div>
         )}
-      </div>
+      </SettingCard>
 
-      {error && <div className="set-card" style={{ padding: 18, marginTop: 16 }}><div className="muted" style={{ fontWeight: 600 }}>Couldn’t load display settings.</div></div>}
+      {error && <SettingCard style={{ marginTop: 16 }}><div className="muted" style={{ fontWeight: 600 }}>Couldn’t load display settings.</div></SettingCard>}
       {cfg && (
         <>
-          <div className="set-card" style={{ marginTop: 16 }}>
+          <SettingCard style={{ marginTop: 16 }}>
             <div className="flabel" style={{ padding: '14px 16px 4px' }}>SCREENSAVER</div>
             <SettingRow icon="🌅" title="Screensaver after" sub="Minutes of inactivity before the screensaver appears.">
               <input type="number" min={1} max={120} className="set-inline-input" style={{ width: 80 }} value={cfg.screensaverMinutes} onChange={(e) => update({ screensaverMinutes: Number(e.target.value) || 1 })} />
@@ -2956,15 +2938,15 @@ function DisplayKioskPanel() {
                 </SettingRow>
               </>
             )}
-          </div>
+          </SettingCard>
 
-          <div className="set-card" style={{ marginTop: 16 }}>
+          <SettingCard style={{ marginTop: 16 }}>
             <SettingRow icon="🏠" title="Return to Today when idle" sub="Minutes before an idle screen resets to the dashboard (0 = never).">
               <input type="number" min={0} max={60} className="set-inline-input" style={{ width: 80 }} value={cfg.resetHomeMinutes} onChange={(e) => update({ resetHomeMinutes: Math.max(0, Number(e.target.value) || 0) })} />
             </SettingRow>
-          </div>
+          </SettingCard>
 
-          <div className="set-card" style={{ marginTop: 16 }}>
+          <SettingCard style={{ marginTop: 16 }}>
             <SettingRow icon="🌙" title="Night dimming" sub="Dim the display on a schedule (overnight).">
               <input type="checkbox" className="set-check" checked={cfg.nightDim.enabled} onChange={(e) => updateDim({ enabled: e.target.checked })} />
             </SettingRow>
@@ -2977,7 +2959,7 @@ function DisplayKioskPanel() {
                 </div>
               </SettingRow>
             )}
-          </div>
+          </SettingCard>
         </>
       )}
 
