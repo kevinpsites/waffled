@@ -7,9 +7,10 @@ compose := "docker compose -f infra/compose/docker-compose.yml --env-file infra/
 default:
     @just --list
 
-# first-time: create your local .env from the template
+# first-time: create your local .env from the template + enable the git hooks
 setup:
     @test -f infra/compose/.env && echo "infra/compose/.env already exists" || (cp infra/compose/.env.example infra/compose/.env && echo "→ created infra/compose/.env")
+    @git config core.hooksPath .githooks && echo "→ git hooks enabled (.githooks): pre-push runs typechecks + web tests"
 
 # build images (api)
 build:

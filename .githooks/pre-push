@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+#
+# Pre-push gate: run the fast, deterministic checks before code can reach the
+# remote (and CI). Catches genuinely-broken tests / typecheck errors — the class
+# of failure a human would otherwise only discover on a red CI run.
+#
+# Deliberately does NOT run the api Testcontainers suite (it needs Docker and
+# builds the Dockerfile — minutes per run). That stays CI-only; putting it here
+# would just train everyone to reach for --no-verify.
+#
+# Enable once per clone:  git config core.hooksPath .githooks   (or: just setup)
+# Bypass in a pinch:      git push --no-verify
+#
+set -uo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT" || exit 1
+
+c_red=$'\033[31m'; c_grn=$'\033[32m'; c_dim=$'\033[2m'; c_reset=$'\033[0m'
+fail=0
+
+# Skip cleanly (with a hint) if deps aren't installed — a fresh clone shouldn't
+# be blocked from pushing before it's ever been set up.
+if [ ! -d apps/web/node_modules ] || [ ! -d apps/api/node_modules ]; then
+  echo "${c_dim}pre-push: node_modules missing — skipping checks (run npm ci in apps/web + apps/api to enable).${c_reset}"
+  exit 0
+fi
+
+run() { # <label> <dir> <cmd...>
+  local label="$1" dir="$2"; shift 2
+  echo "${c_dim}pre-push ▸ ${label}…${c_reset}"
+  if ! ( cd "$dir" && "$@" ); then
+    echo "${c_red}pre-push ✗ ${label} failed${c_reset}"
+    fail=1
+  fi
+}
+
+run "typecheck (web)" apps/web npm run --silent typecheck
+run "typecheck (api)" apps/api npm run --silent typecheck
+run "web tests"       apps/web npm test --silent
+
+if [ "$fail" -ne 0 ]; then
+  echo
+  echo "${c_red}Push blocked — fix the above, or bypass with ${c_reset}${c_dim}git push --no-verify${c_reset}"
+  exit 1
+fi
+
+echo "${c_grn}pre-push ✓ all checks passed${c_reset}"
+exit 0
