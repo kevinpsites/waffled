@@ -287,6 +287,29 @@
   font-size: 15px;
   font-weight: 650;
 }
+/* Header block (title + optional sub) at the top of — or as a labelled section
+   within — a settings card. Horizontally flush with .set-row2 rows and matched
+   to their 15px vertical rhythm, so header-led cards (Meal times, Pantry
+   staples, Thaw reminder…) get the same top/left/right/bottom feel as row-led
+   cards instead of hugging the top edge. */
+.set-card-head {
+  padding: 15px 0 13px;
+}
+.set-card-head > .tiny {
+  margin-top: 2px;
+}
+/* A subtle section label sitting between rows / above a grid (e.g. "For which
+   meals") — flush like the leading header, but tighter since the row above
+   already supplies its own bottom padding. */
+.set-card-head--mid {
+  padding: 6px 0 10px;
+}
+/* Chip / staple grids at the bottom of a card need the card's bottom breathing
+   room too — rows supply their own padding, a bare grid doesn't. */
+.set-card > .meal-chips:last-child,
+.set-card > .grocery-staples:last-child {
+  padding-bottom: 15px;
+}
 .sel {
   display: inline-flex;
   align-items: center;
@@ -341,7 +364,7 @@ select.sel {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 4px 2px 4px;
+  padding: 4px 0;
 }
 .meal-chips .tag {
   font-size: 13px;

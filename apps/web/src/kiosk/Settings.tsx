@@ -105,6 +105,19 @@ function SettingRow({ icon, title, sub, children }: { icon: string; title: strin
   )
 }
 
+// A title (+ optional sub) heading a settings card, or a labelled section within
+// one (`mid` when it follows rows). Uses the shared `.set-card-head` spacing so
+// header-led cards keep the same top/left/right/bottom padding as row-led cards
+// instead of hugging the top edge. Prefer this over ad-hoc inline margins.
+function CardHeader({ title, sub, mid }: { title: React.ReactNode; sub?: React.ReactNode; mid?: boolean }) {
+  return (
+    <div className={`set-card-head${mid ? ' set-card-head--mid' : ''}`}>
+      <div className="set-row2-t">{title}</div>
+      {sub && <div className="tiny muted" style={{ fontWeight: 600 }}>{sub}</div>}
+    </div>
+  )
+}
+
 // Role-based permissions grid (admin-only). Rows = roles (Adult/Teen/Kid),
 // columns = the capabilities. Saves the whole matrix on each toggle (optimistic,
 // reverts on failure) — matches the auto-save feel of the other settings cards.
@@ -1168,10 +1181,7 @@ function StaplesEditor() {
   async function remove(id: string) { await groceryApi.removeStaple(id); await load() }
   return (
     <div className="set-card" style={{ marginTop: 16 }}>
-      <div className="set-row2-t" style={{ margin: '2px 2px 4px' }}>Pantry staples</div>
-      <div className="tiny muted" style={{ fontWeight: 600, margin: '0 2px 12px' }}>
-        Assumed in the house — the grocery list leaves these off. Manage them here or from the Lists grocery board.
-      </div>
+      <CardHeader title="Pantry staples" sub="Assumed in the house — the grocery list leaves these off. Manage them here or from the Lists grocery board." />
       <form onSubmit={add} style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
         <input className="set-inline-input" style={{ flex: 1, width: 'auto' }} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add a staple… (e.g. Soy sauce)" />
         <button type="submit" className="btn btn-primary" disabled={!draft.trim() || busy}>Add</button>
@@ -1284,8 +1294,7 @@ function MealsPanel() {
       </div>
 
       <div className="set-card" style={{ marginTop: 16 }}>
-        <div className="set-row2-t" style={{ margin: '2px 2px 4px' }}>Meal times</div>
-        <div className="tiny muted" style={{ fontWeight: 600, margin: '0 2px 12px' }}>When each meal lands on the calendar.</div>
+        <CardHeader title="Meal times" sub="When each meal lands on the calendar." />
         {MEAL_TIME_ROWS.map((m) => (
           <SettingRow key={m.key} icon={m.icon} title={m.label}>
             <input
@@ -1312,7 +1321,7 @@ function MealsPanel() {
             onChange={(e) => update({ prepReminderTime: e.target.value })}
           />
         </SettingRow>
-        <div className="set-row2-t" style={{ margin: '8px 2px 4px' }}>For which meals</div>
+        <CardHeader title="For which meals" mid />
         <div className="meal-chips">
           {MEAL_TIME_ROWS.map((m) => {
             const on = cfg.prepReminderMealTypes.includes(m.key)
