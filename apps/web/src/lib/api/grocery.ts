@@ -106,7 +106,7 @@ export const groceryApi = {
     apiSend<{ list: ListSummary }>('POST', '/api/lists', input).then((r) => r.list),
   renameList: (id: string, patch: { name?: string; emoji?: string | null }) =>
     apiSend<{ list: ListSummary }>('PATCH', `/api/lists/${id}`, patch).then((r) => r.list),
-  deleteList: (id: string) => apiDelete(`/api/lists/${id}`),
+  deleteList: (id: string) => apiDelete(`/api/lists/${id}`).then(tap('grocery')),
   // list templates (mark a list as a template — converts in place; move back;
   // apply a template into a fresh list)
   templates: () => apiGet<{ templates: ListTemplateSummary[] }>('/api/lists/templates'),

@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **Deleting a list template updates the page right away (web).** Removing a template used
+  to leave it on screen until you reloaded — it now disappears from the Templates section
+  the moment you delete it.
 - **Goal progress numbers stay inside the ring (web + iOS).** A long or fractional total
   (for example one produced by splitting a backfill across the family) used to overflow the
   progress ring. It now fits: on the web the value scales down to sit inside the stroke and the
