@@ -15,6 +15,14 @@ function pctOf(progress: number, target: number | null): number {
 function fmtNum(n: number | null): string {
   return n == null ? '—' : n.toLocaleString('en-US')
 }
+// Shrink the ring's hero number so long/fractional values (e.g. a split-backfill
+// "295.99" or "1,234") stay inside the inner circle instead of clipping the ring
+// stroke. `base` is the CSS font-size for a short value.
+function ringNumFont(s: string, base: number): number {
+  const n = s.length
+  const scale = n <= 4 ? 1 : n <= 5 ? 0.84 : n <= 6 ? 0.72 : n <= 8 ? 0.6 : 0.5
+  return Math.round(base * scale)
+}
 function fmtDay(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { weekday: 'short' })
 }
@@ -197,7 +205,7 @@ export function GoalDetail() {
         <div className="detail-hero-row">
           <Ring value={pctOf(dProg, dTarget) / 100}>
             <div>
-              <div className="hero-ring-num" style={{ fontSize: 33 }}>{fmtNum(dProg)}</div>
+              <div className="hero-ring-num" style={{ fontSize: ringNumFont(fmtNum(dProg), 33) }}>{fmtNum(dProg)}</div>
               <div className="hero-ring-sub">{isHabit ? dUnit : `of ${fmtNum(dTarget)}${isChecklist ? ' steps' : goal.unit ? ` ${goal.unit}` : ''}`}</div>
             </div>
           </Ring>

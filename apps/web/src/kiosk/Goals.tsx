@@ -28,6 +28,14 @@ function dispTarget(g: Goal): number | null {
 function fmtNum(n: number | null): string {
   return n == null ? '—' : n.toLocaleString('en-US')
 }
+// Shrink the ring's hero number so long/fractional values (e.g. a split-backfill
+// "295.99" or "1,234") stay inside the inner circle instead of clipping the ring
+// stroke. `base` is the CSS font-size for a short value.
+function ringNumFont(s: string, base: number): number {
+  const n = s.length
+  const scale = n <= 4 ? 1 : n <= 5 ? 0.84 : n <= 6 ? 0.72 : n <= 8 ? 0.6 : 0.5
+  return Math.round(base * scale)
+}
 function fmtDeadline(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
@@ -108,7 +116,7 @@ function SharedHero({ goal, onLog, onOpen }: { goal: Goal; onLog: (g: Goal) => v
       <div className="ch-row">
         <Ring value={frac(dispProgress(goal), dispTarget(goal))} px={130} stroke="#fff" track="rgba(255,255,255,.25)">
           <div>
-            <div className="hero-ring-num">{fmtNum(dispProgress(goal))}</div>
+            <div className="hero-ring-num" style={{ fontSize: ringNumFont(fmtNum(dispProgress(goal)), 30) }}>{fmtNum(dispProgress(goal))}</div>
             <div className="hero-ring-sub">
               {goal.goalType === 'habit' ? `${goal.habitPeriod === 'day' ? 'today' : `this ${goal.habitPeriod ?? 'week'}`}` : `of ${fmtNum(dispTarget(goal))}${goal.unit ? ` ${goal.unit}` : ''}`}
             </div>

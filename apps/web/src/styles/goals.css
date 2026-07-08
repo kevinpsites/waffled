@@ -618,6 +618,11 @@ button.goal-listhead-link:hover {
 }
 .detail-hero {
   padding: 24px 30px;
+  /* `.challenge` sets overflow:hidden, which zeroes this flex item's automatic
+     min-size — so in the scrolling `.goal-detail` column a short viewport would
+     shrink the hero toward nothing and clip the ring. Don't let it shrink; let
+     the column scroll instead. */
+  flex-shrink: 0;
 }
 .detail-hero-row {
   display: flex;

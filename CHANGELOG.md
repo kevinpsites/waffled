@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Goal progress ring displays correctly on the goal detail page.** A long or
+  fractional total (for example one produced by splitting a backfill across the
+  family) now scales down to sit inside the ring instead of overlapping its
+  stroke, and the detail hero no longer collapses and clips the ring on shorter
+  browser windows.
+
 ## [0.4.0] - 2026-07-07
 
 ### Added
