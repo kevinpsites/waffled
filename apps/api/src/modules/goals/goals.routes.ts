@@ -83,6 +83,9 @@ export function registerGoalRoutes(api: Api): void {
     if (body.healthMetric != null && !HEALTH_METRICS.has(String(body.healthMetric))) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid healthMetric' })
     }
+    if (body.healthDailyTarget != null && !(Number(body.healthDailyTarget) >= 0)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'healthDailyTarget must be a non-negative number' })
+    }
     // Carve-out: a goal that assigns no one else (nobody, or only the caller) is
     // self-scoped. Assigning another participant takes goal.manage.
     const assigned = Array.isArray(body.participantIds) ? body.participantIds.filter(Boolean) : []
@@ -109,7 +112,7 @@ export function registerGoalRoutes(api: Api): void {
   api.patch('/api/goals/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
-    const body = (req.body ?? {}) as { goalType?: string; trackingMode?: string; healthMetric?: unknown }
+    const body = (req.body ?? {}) as { goalType?: string; trackingMode?: string; healthMetric?: unknown; healthDailyTarget?: unknown }
     if (body.goalType && !GOAL_TYPES.has(body.goalType)) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid goalType' })
     }
@@ -118,6 +121,9 @@ export function registerGoalRoutes(api: Api): void {
     }
     if (body.healthMetric != null && !HEALTH_METRICS.has(String(body.healthMetric))) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid healthMetric' })
+    }
+    if (body.healthDailyTarget != null && !(Number(body.healthDailyTarget) >= 0)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'healthDailyTarget must be a non-negative number' })
     }
     // Carve-out: a goal whose sole participant is the caller is their own personal
     // goal — editable freely. Anything else (shared, others', or a family goal with

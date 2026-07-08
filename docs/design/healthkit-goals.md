@@ -94,11 +94,16 @@ and every surface (iPhone/iPad/web) sees the aggregated number, never the raw he
 - Migration: **`health_goal_logs`** idempotency table (mirror `event_goal_logs`), unique on
   `(goal_id, person_id, metric, day)` → the `goal_logs.id` it produced. Lets a re-sync
   **replace** the day's number instead of appending.
-- Endpoint `POST /api/goals/:id/health-sync` `{ metric, day, value }`:
-  - numeric → upsert (update-or-replace the prior day's `auto_healthkit` log) via the dedup
-    table, `source='auto_healthkit'`.
-  - habit (rings/mood/mindful) → reuse the built-in per-day dedupe; just log `amount=1`
-    when the day's condition is met (no dedup table row needed).
+- Endpoint `POST /api/goals/:id/health-sync` `{ metric, day, value }` — the server picks the
+  counting by `goal_type` (**SHIPPED**):
+  - **total / count** → upsert the day's raw total via the dedup table (`source='auto_healthkit'`);
+    it **accumulates** toward `target_value` ("1,000,000 steps this year").
+  - **habit** → a **daily threshold** (`goals.health_daily_target`, migration `0075`): the day's
+    total counts as **one completion** (`amount=1`) when it clears the threshold — "2,000 steps a
+    day, 5 days a week" — paired with the existing `habit_target_per_period` cadence. Below the
+    threshold the day doesn't count, and a previously-counted day that no longer qualifies is undone.
+    The habit's `count(distinct date)` progress means a manual + auto completion on the same day is
+    still one day.
 
 **iOS**
 - Goal editor gains **"Link to Apple Health → \<metric\>"** (only for compatible goal
