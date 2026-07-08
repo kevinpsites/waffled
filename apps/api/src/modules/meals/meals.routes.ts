@@ -6,6 +6,8 @@ import { moduleRoutes } from '../../platform/route-guards'
 import {
   syncMealEventForEntry,
   removeMealEventForEntry,
+  syncPrepReminderForEntry,
+  removePrepReminderForEntry,
   getMealSettings,
   setMealSettings,
   resyncMealEvents,
@@ -264,6 +266,7 @@ export function registerMealRoutes(api: Api): void {
     // Mirror the meal onto the calendar (and Google, if opted in). Never fail the
     // plan write if the calendar sync hiccups.
     await syncMealEventForEntry(tenant, entry.id).catch((err) => console.error('meal event sync failed', err))
+    await syncPrepReminderForEntry(tenant, entry.id).catch((err) => console.error('prep reminder sync failed', err))
     return res.status(200).json({ entry: presentEntry(entry) })
   }))
 
@@ -281,7 +284,10 @@ export function registerMealRoutes(api: Api): void {
       `select id from meal_plan_entries where household_id=$1 and date=$2 and meal_type=$3 and deleted_at is null`,
       [tenant.householdId, date, mealType]
     )
-    if (existing.rows[0]) await removeMealEventForEntry(tenant.householdId, existing.rows[0].id).catch((err) => console.error('meal event remove failed', err))
+    if (existing.rows[0]) {
+      await removeMealEventForEntry(tenant.householdId, existing.rows[0].id).catch((err) => console.error('meal event remove failed', err))
+      await removePrepReminderForEntry(tenant.householdId, existing.rows[0].id).catch((err) => console.error('prep reminder remove failed', err))
+    }
     const cleared = await clearEntry(tenant, date, mealType)
     if (!cleared) return res.status(404).json({ error: 'NotFound', message: 'nothing planned in that slot' })
     return res.status(204).send('')
@@ -309,6 +315,11 @@ export function registerMealRoutes(api: Api): void {
       if (Object.keys(t).length) patch.times = t
     }
     if (typeof b.durationMinutes === 'number' && b.durationMinutes > 0 && b.durationMinutes <= 600) patch.durationMinutes = Math.round(b.durationMinutes)
+    if (typeof b.prepReminder === 'boolean') patch.prepReminder = b.prepReminder
+    if (typeof b.prepReminderTime === 'string' && /^\d{2}:\d{2}$/.test(b.prepReminderTime)) patch.prepReminderTime = b.prepReminderTime
+    if (Array.isArray(b.prepReminderMealTypes) && b.prepReminderMealTypes.every((t) => typeof t === 'string' && MEAL_TYPES.has(t))) {
+      patch.prepReminderMealTypes = [...new Set(b.prepReminderMealTypes as string[])]
+    }
     const settings = await setMealSettings(tenant.householdId, patch)
     // Apply the new settings to meals already on the plan.
     await resyncMealEvents(tenant).catch((err) => console.error('meal event resync failed', err))

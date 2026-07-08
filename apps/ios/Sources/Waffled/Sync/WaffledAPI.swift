@@ -764,6 +764,10 @@ struct WaffledAPI: Sendable {
         let participantIds: [String]?
         let times: [String: String]
         let durationMinutes: Int
+        // Same-day "pull it out of the freezer" reminder for planned meals.
+        let prepReminder: Bool
+        let prepReminderTime: String   // "HH:MM"
+        let prepReminderMealTypes: [String]
     }
     func mealCalendarSettings() async throws -> MealCalendarSettings {
         struct Resp: Decodable { let settings: MealCalendarSettings }

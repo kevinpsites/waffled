@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Thaw reminders for planned meals.** A new Meals setting adds a same-day calendar reminder —
+  at a time you choose (default 8:00 am) — to pull the protein/ingredients out of the freezer for
+  that day's planned meal. It's off by default and applies to dinners out of the box (you can pick
+  which meal slots), works on web, iPad, and iPhone, and pushes to Google Calendar when meal-calendar
+  sync is on.
 
 ### Changed
 

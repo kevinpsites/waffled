@@ -738,6 +738,73 @@ describe('recipe images (blob storage)', () => {
   })
 })
 
+// Thaw / "get it out of the freezer" reminder — a same-day derived event
+// (origin='meal_prep', origin_ref_id=entry.id) generated alongside the meal
+// event when settings.meals.prepReminder is on for the meal's slot.
+describe('meal prep / thaw reminder', () => {
+  let recipeId = ''
+
+  // All prep events for entries on a given date (joined back to the entry).
+  async function prepEvents(date: string) {
+    return withClient((c) =>
+      c.query<{ title: string; local: string; meal_type: string }>(
+        `select e.title, mpe.meal_type,
+                to_char(e.starts_at at time zone 'America/Chicago','YYYY-MM-DD HH24:MI') as local
+           from events e
+           join meal_plan_entries mpe on mpe.id = e.origin_ref_id
+          where e.origin = 'meal_prep' and e.deleted_at is null and mpe.date = $1
+          order by e.created_at`,
+        [date]
+      )
+    )
+  }
+
+  beforeAll(async () => {
+    const r = await call('POST', '/api/recipes', kevin, { title: 'Garlic Chicken', emoji: '🍗' })
+    recipeId = JSON.parse(r.body).recipe.id
+    const put = await call('PUT', '/api/meals/calendar-settings', kevin, {
+      prepReminder: true,
+      prepReminderTime: '08:00',
+      prepReminderMealTypes: ['dinner'],
+    })
+    expect(put.statusCode).toBe(200)
+    expect(JSON.parse(put.body).settings).toMatchObject({
+      prepReminder: true,
+      prepReminderTime: '08:00',
+      prepReminderMealTypes: ['dinner'],
+    })
+  })
+
+  it('creates a morning-of thaw reminder for a planned dinner', async () => {
+    const plan = await call('POST', '/api/meals/plan', kevin, { date: '2026-07-16', mealType: 'dinner', recipeId })
+    expect([200, 201]).toContain(plan.statusCode)
+    const rows = (await prepEvents('2026-07-16')).rows
+    expect(rows).toHaveLength(1)
+    expect(rows[0].title).toBe('🧊 Thaw for Dinner · Garlic Chicken')
+    expect(rows[0].local).toBe('2026-07-16 08:00') // morning-of, household tz
+  })
+
+  it('does not create one for a meal type that is not opted in (lunch)', async () => {
+    await call('POST', '/api/meals/plan', kevin, { date: '2026-07-16', mealType: 'lunch', recipeId })
+    const lunch = (await prepEvents('2026-07-16')).rows.filter((r) => r.meal_type === 'lunch')
+    expect(lunch).toHaveLength(0)
+  })
+
+  it('removes the reminder when the slot is cleared', async () => {
+    expect((await call('DELETE', '/api/meals/plan?date=2026-07-16&mealType=dinner', kevin)).statusCode).toBe(204)
+    const dinner = (await prepEvents('2026-07-16')).rows.filter((r) => r.meal_type === 'dinner')
+    expect(dinner).toHaveLength(0)
+  })
+
+  it('turning the setting off resyncs and drops existing reminders', async () => {
+    await call('POST', '/api/meals/plan', kevin, { date: '2026-07-17', mealType: 'dinner', recipeId })
+    expect((await prepEvents('2026-07-17')).rows).toHaveLength(1)
+    const off = await call('PUT', '/api/meals/calendar-settings', kevin, { prepReminder: false })
+    expect(off.statusCode).toBe(200)
+    expect((await prepEvents('2026-07-17')).rows).toHaveLength(0)
+  })
+})
+
 // Helper: the household id for Kevin's tenant (used to seed an "imported" recipe).
 async function householdOf(c: Client): Promise<string> {
   const r = await c.query<{ household_id: string }>(

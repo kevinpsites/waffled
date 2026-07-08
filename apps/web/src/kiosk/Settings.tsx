@@ -1299,6 +1299,44 @@ function MealsPanel() {
         ))}
       </div>
 
+      <div className="set-card" style={{ marginTop: 16 }}>
+        <SettingRow icon="🧊" title="Thaw reminder" sub="Adds a same-day calendar reminder to pull the protein/ingredients out of the freezer for that day’s planned meal.">
+          <input type="checkbox" className="set-check" checked={cfg.prepReminder} onChange={(e) => update({ prepReminder: e.target.checked })} />
+        </SettingRow>
+        <SettingRow icon="⏰" title="Remind me at" sub="Time the reminder lands, on the meal’s own day.">
+          <input
+            type="time"
+            className="set-inline-input"
+            disabled={!cfg.prepReminder}
+            value={cfg.prepReminderTime ?? ''}
+            onChange={(e) => update({ prepReminderTime: e.target.value })}
+          />
+        </SettingRow>
+        <div className="set-row2-t" style={{ margin: '8px 2px 4px' }}>For which meals</div>
+        <div className="meal-chips">
+          {MEAL_TIME_ROWS.map((m) => {
+            const on = cfg.prepReminderMealTypes.includes(m.key)
+            return (
+              <button
+                key={m.key}
+                type="button"
+                className={`tag ${on ? 'on' : ''}`}
+                disabled={!cfg.prepReminder}
+                onClick={() =>
+                  update({
+                    prepReminderMealTypes: on
+                      ? cfg.prepReminderMealTypes.filter((t) => t !== m.key)
+                      : [...cfg.prepReminderMealTypes, m.key],
+                  })
+                }
+              >
+                {m.icon} {m.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
       <StaplesEditor />
     </div>
   )

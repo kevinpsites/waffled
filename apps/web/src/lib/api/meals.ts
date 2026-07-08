@@ -251,6 +251,10 @@ export interface MealCalendarSettings {
   participantIds: string[] | null
   times: Record<string, string>
   durationMinutes: number
+  // Same-day "pull it out of the freezer" reminder for planned meals.
+  prepReminder: boolean
+  prepReminderTime: string // 'HH:MM'
+  prepReminderMealTypes: string[]
 }
 
 export const mealsApi = {
