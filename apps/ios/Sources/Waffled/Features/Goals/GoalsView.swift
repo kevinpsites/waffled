@@ -515,6 +515,9 @@ struct GoalLogSheet: View {
     @State private var note = ""
     /// The day this entry counts for — defaults to today, backdate to catch up a streak.
     @State private var loggedOn = Date()
+    /// Tier-0 Apple Health read-&-suggest: today's total for a metric this goal's unit
+    /// matches, offered as a one-tap pre-fill. iPhone-only; nil = nothing to suggest.
+    @State private var healthSuggestion: (metric: HealthKitBridge.Metric, value: Double)?
 
     private static let hourUnits: Set<String> = ["hour", "hours", "hr", "hrs"]
     private static let activityChips = ["Bike ride", "Park", "Sports", "Outside play", "Reading", "Art"]
@@ -541,10 +544,51 @@ struct GoalLogSheet: View {
         _who = State(initialValue: goal.participants.count == 1 ? [goal.participants[0].personId] : [])
     }
 
+    /// Tier-0 read-&-suggest: if HealthKit is available and this goal's unit maps to a
+    /// metric, pre-fetch today's total once. Denied/empty reads just leave it nil.
+    private func loadHealthSuggestion() async {
+        let hk = HealthKitBridge.shared
+        guard hk.isAvailable, let metric = HealthKitBridge.Metric.matching(unit: goal.unit) else { return }
+        try? await hk.requestReadAuthorization()
+        if let value = await hk.todayTotal(for: metric), value > 0 {
+            healthSuggestion = (metric, value)
+        }
+    }
+
+    /// One-tap pre-fill from Apple Health — sets the amount; the user still credits + logs.
+    private func healthSuggestionCard(_ s: (metric: HealthKitBridge.Metric, value: Double)) -> some View {
+        Button {
+            amount = s.value
+            amountText = goalFmt(s.value)
+        } label: {
+            HStack(spacing: 11) {
+                ZStack {
+                    Circle().fill(WF.ai.opacity(0.14)).frame(width: 34, height: 34)
+                    Image(systemName: "heart.fill").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ai)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Apple Health · today").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                    Text("\(goalFmt(s.value)) \(s.metric.label)").font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
+                }
+                Spacer()
+                Text("Use").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(Capsule().fill(WF.ai))
+            }
+            .padding(12)
+            .background(WF.card2)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    if let s = healthSuggestion { healthSuggestionCard(s) }
+
                     VStack(alignment: .leading, spacing: 9) {
                         SectionLabel(text: isHours ? "How long?" : "How much?")
                         chipRow
@@ -603,6 +647,7 @@ struct GoalLogSheet: View {
                 .padding(20)
             }
             .background(WF.canvas)
+            .task { await loadHealthSuggestion() }
             .navigationTitle("Log progress")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -79,6 +79,10 @@ targets:
         # Camera: chore photo-proof + pantry barcode scanning (Open Food Facts lookup).
         NSCameraUsageDescription: Waffled uses the camera to snap chore photo-proof and to scan grocery barcodes into your pantry.
         NSSpeechRecognitionUsageDescription: Waffled transcribes your speech on-device to add events by voice.
+        # HealthKit (iPhone only): read-only access to step/flight/exercise/energy totals
+        # so a goal can auto-fill its progress from Apple Health / Apple Watch. We never
+        # write to Health, so only the Share (read) string is needed.
+        NSHealthShareUsageDescription: Waffled reads your step, flight, exercise, and energy totals from Apple Health so a goal can fill in its own progress.
         # Dev only: allow plain-HTTP to localhost/the tailnet (no TLS in local stack).
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
@@ -89,6 +93,14 @@ targets:
             UTTypeDescription: Waffled recipe ingredient row
             UTTypeConformsTo:
               - public.data
+    # HealthKit capability. Required for the read-authorization prompt to work at runtime
+    # (the framework itself autolinks from `import HealthKit`). iPhone-only feature, but the
+    # entitlement lives on the single universal target; code guards on isHealthDataAvailable().
+    entitlements:
+      path: Waffled.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access: []
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.waffled
