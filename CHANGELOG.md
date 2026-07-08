@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Delete a recipe on iOS.** A recipe's **⋯** menu now has a **Delete recipe** action (with a
+  confirm) alongside Edit. Deleting it removes it from your library and pops you back.
 
 ### Changed
 - **The Lists page is cleaner and easier to use (web).** The list header is decluttered into a
@@ -24,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **"Use template" lets you name the new list first (web).** Choosing **Use template** now
   opens the New-list dialog pre-pointed at that template, so you give the new list its own
   name before it's created — instead of it silently spinning up a list named after the template.
+- **Pantry swipe matches the Lists swipe on iPhone.** Swiping a pantry item now reveals the
+  same native **Edit** / **Delete** actions you get on a list item, instead of a one-off
+  custom control.
 
 ### Fixed
 - **Recipe ingredients don't get chopped up on the grocery list.** An ingredient with a

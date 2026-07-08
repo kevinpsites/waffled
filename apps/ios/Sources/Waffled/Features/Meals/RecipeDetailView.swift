@@ -7,6 +7,7 @@ import SwiftUI
 /// blob — see `WaffledAPI.updateRecipe`). Mirrors the kiosk `RecipeView`.
 struct RecipeDetailView: View {
     let model: RecipesModel
+    @Environment(\.dismiss) private var dismiss
 
     @State private var recipe: WaffledAPI.RecipeSummary
     @State private var ingredients: [WaffledAPI.RecipeIngredientDTO] = []
@@ -15,6 +16,7 @@ struct RecipeDetailView: View {
     @State private var error = false
     @State private var servings: Int?
     @State private var cookedMessage: String?
+    @State private var confirmingDelete = false
     @State private var userNotesDraft = ""
     @State private var editing = false
     @State private var cookMode = false
@@ -60,6 +62,9 @@ struct RecipeDetailView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button { editing = true } label: { Label("Edit recipe", systemImage: "pencil") }
+                    Button(role: .destructive) { confirmingDelete = true } label: {
+                        Label("Delete recipe", systemImage: "trash")
+                    }
                 } label: { Image(systemName: "ellipsis.circle").foregroundStyle(WF.ink2) }
             }
         }
@@ -73,6 +78,12 @@ struct RecipeDetailView: View {
                 model.apply(updated)
                 Task { await loadDetail() }
             }
+        }
+        .confirmationDialog("Delete this recipe?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("Delete recipe", role: .destructive) { deleteRecipe() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes “\(r.title)” from your recipe library. This can’t be undone.")
         }
         .fullScreenCover(isPresented: $cookMode) {
             CookModeView(title: r.title, steps: steps, ingredients: ingredients) { markCooked() }
@@ -479,6 +490,19 @@ struct RecipeDetailView: View {
     private func apply(_ updated: WaffledAPI.RecipeSummary) {
         recipe = updated
         model.apply(updated)
+    }
+
+    /// Delete the recipe, drop it from the library, and pop back to it.
+    private func deleteRecipe() {
+        Task {
+            do {
+                try await api.deleteRecipe(id: r.id)
+                model.remove(id: r.id)
+                dismiss()
+            } catch {
+                withAnimation { cookedMessage = "Couldn’t delete the recipe. Try again." }
+            }
+        }
     }
 
     private struct StepNoteEdit: Identifiable { let step: Int; var id: Int { step } }

@@ -30,6 +30,11 @@ final class RecipesModel {
     func apply(_ updated: WaffledAPI.RecipeSummary) {
         if let i = recipes.firstIndex(where: { $0.id == updated.id }) { recipes[i] = updated }
     }
+
+    /// Drop a deleted recipe from the library without a full reload.
+    func remove(id: String) {
+        recipes.removeAll { $0.id == id }
+    }
 }
 
 enum RecipeSort: String, CaseIterable, Identifiable {

@@ -28,6 +28,24 @@ more than once; keep it terse.
 
 ## iOS app (SwiftUI, `apps/ios`)
 
+### Reuse before you hand-roll (same rule as the web app)
+
+Before building a custom view or control, use what already exists — in this order:
+
+1. **A native SwiftUI control.** `List` + `.swipeActions` for swipe-to-edit/delete,
+   `Menu` / `confirmationDialog` for actions, `.searchable`, `.refreshable`, etc. If a
+   native control seems not to fit (e.g. `.swipeActions` needs a `List` but you have a
+   `LazyVGrid`), first try **restructuring** — use a `List` — before writing a bespoke
+   gesture or control.
+2. **The app's shared components + tokens.** `Features/DesignSystem/Components.swift`,
+   `PlanShared.swift`, `WaffledCard`, `SectionLabel`, the `WF.*` colors/radii. Match the
+   neighbours; don't invent a parallel look. Two menu families exist by design — see the
+   "iOS UI consistency" memory before adding a third.
+
+Only hand-roll when a native/shared option genuinely can't do the job — and say **why**
+in a comment. (This bit us: a custom pantry swipe-control drifted from the Lists' native
+swipe until it was reworked to `List.swipeActions`.)
+
 ### Performance — two traps we've hit repeatedly
 
 1. **Don't use `AsyncImage` for images in a `List` / `LazyVGrid`.** It re-fetches
