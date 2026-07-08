@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { personsApi, kioskApi, ALLERGEN_KEYS, ALLERGEN_LABELS, type SettingsMember } from '../../lib/api'
+import { SettingCard } from './SettingCard'
 
 const SWATCHES = ['#2F7FED', '#EC6049', '#25A368', '#8B5CF6', '#E0A500', '#EC4899', '#14B8A6', '#6B7280']
 const MEMBER_TYPES = [
@@ -237,7 +238,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
             </div>
           </div>
 
-          <div className="set-card" style={{ padding: '2px 16px', marginBottom: 14 }}>
+          <SettingCard style={{ marginBottom: 14 }}>
             <div className="set-row" style={{ padding: '12px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>Admin (full management)</div>
@@ -247,12 +248,12 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
             </div>
             <div className="set-row" style={{ padding: '12px 0', borderTop: '1px solid var(--hair-2)', display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>Show on kiosk</div>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>Show on Kiosk</div>
                 <div className="tiny muted" style={{ fontWeight: 600 }}>Appears on the family display</div>
               </div>
               <Toggle on={form.showOnKiosk} onClick={() => toggleField('showOnKiosk')} />
             </div>
-          </div>
+          </SettingCard>
 
           <button type="submit" className="btn btn-primary" disabled={!form.name.trim() || saving} style={{ width: '100%', justifyContent: 'center' }}>
             {saving ? 'Saving…' : editing ? 'Save changes' : 'Add person'}
@@ -274,7 +275,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
         <>
         {/* Login + Kiosk PIN — each with its own buttons, outside the profile form. */}
         {editing && (
-          <div className="set-card" style={{ padding: 16, marginTop: 14 }}>
+          <SettingCard style={{ marginTop: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: hasLoginLocal ? 12 : 8 }}>
               <div style={{ fontSize: 21, width: 30, textAlign: 'center', flex: 'none' }}>🔑</div>
               <div style={{ flex: 1 }}>
@@ -309,12 +310,12 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
                 </button>
               )}
             </div>
-          </div>
+          </SettingCard>
         )}
 
         {/* Kiosk PIN — optional per-person protection for switching profiles. */}
         {editing && (
-          <div className="set-card" style={{ padding: 16, marginTop: 14 }}>
+          <SettingCard style={{ marginTop: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
               <div style={{ fontSize: 21, width: 30, textAlign: 'center', flex: 'none' }}>🔒</div>
               <div style={{ flex: 1 }}>
@@ -349,7 +350,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
                 </button>
               )}
             </div>
-          </div>
+          </SettingCard>
         )}
 
         </>

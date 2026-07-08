@@ -205,7 +205,7 @@ describe('Settings screen', () => {
     fireEvent.click(screen.getByText('System Health'))
 
     expect(await screen.findByText('Database')).toBeInTheDocument()
-    expect(screen.getByText('Calendar sync')).toBeInTheDocument()
+    expect(screen.getByText('Calendar Sync')).toBeInTheDocument()
     expect(screen.getByText(/Build abc123/)).toBeInTheDocument()
     expect(screen.getByText(/DEGRADED/)).toBeInTheDocument()
   })
