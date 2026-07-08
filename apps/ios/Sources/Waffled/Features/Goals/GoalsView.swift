@@ -65,6 +65,27 @@ final class GoalsModel {
         } catch { self.error = true }
     }
 
+    /// Push today's Apple Health total for every health-linked goal in the current list,
+    /// then refresh so the filled-in progress shows. iPhone-only; a no-op when HealthKit
+    /// is unavailable or nothing is linked. Best-effort — a failed read/sync just leaves
+    /// manual progress as-is. The server upsert is idempotent, so re-running is safe.
+    func syncHealth() async {
+        guard HealthKitBridge.shared.isAvailable else { return }
+        let linked = goals.compactMap { g in
+            HealthKitBridge.Metric(key: g.healthMetric).map { (id: g.id, metric: $0) }
+        }
+        guard !linked.isEmpty else { return }
+        try? await HealthKitBridge.shared.requestReadAuthorization()
+        let day = DateFmt.string(Date(), "yyyy-MM-dd", .current)
+        var didSync = false
+        for l in linked {
+            guard let value = await HealthKitBridge.shared.todayTotal(for: l.metric), value > 0 else { continue }
+            do { try await api.syncGoalHealth(goalId: l.id, metric: l.metric.key, day: day, value: value); didSync = true }
+            catch { /* best-effort; leave manual progress intact */ }
+        }
+        if didSync { await loadGoals() }
+    }
+
     /// Create a goal, then reselect its list so it shows up. Returns success.
     func create(_ body: [String: JSONValue], listId: String?) async -> Bool {
         do {
@@ -242,12 +263,13 @@ struct GoalsView: View {
         }
         .task {
             if model.lists.isEmpty { await model.loadLists() }
+            await model.syncHealth()
             if DemoHooks.openGoal, !Self.didOpenGoal, let f = model.featured {
                 Self.didOpenGoal = true; path.append(.goal(f))
             }
             if DemoHooks.newGoal, !Self.didOpenGoal { Self.didOpenGoal = true; creating = true }
         }
-        .refreshable { await model.loadLists() }
+        .refreshable { await model.loadLists(); await model.syncHealth() }
         .sheet(item: $logging) { g in
             GoalLogSheet(goal: g) { amount, ids, note, loggedOn in
                 Task { await model.log(goalId: g.id, amount: amount, personIds: ids, note: note, loggedOn: loggedOn) }
@@ -1531,10 +1553,10 @@ struct GoalCreateSheet: View {
         if !g.steps.isEmpty {
             steps = g.steps.map { .init(existingId: $0.id, label: $0.label) }
         }
-        // Restore the health auto-fill selection if this goal's unit maps to a metric.
-        // Set the @State directly (not via the toggle's binding) so the saved target isn't
-        // overwritten by the suggested one.
-        healthMetric = HealthKitBridge.Metric.matching(unit: unit)
+        // Restore the health auto-fill selection from the persisted link (falling back to
+        // unit-matching for goals created before health_metric existed). Set the @State
+        // directly (not via the toggle's binding) so the saved target isn't overwritten.
+        healthMetric = HealthKitBridge.Metric(key: g.healthMetric) ?? HealthKitBridge.Metric.matching(unit: unit)
         autoFromHealth = healthMetric != nil
     }
 
@@ -1556,6 +1578,9 @@ struct GoalCreateSheet: View {
             // Checklist progress comes from steps, never from the calendar.
             "autoFromCalendar": .bool(isChecklist ? false : autoFromCalendar),
             "unit": (isHabit || isChecklist) ? .null : (unit.trimmingCharacters(in: .whitespaces).isEmpty ? .null : .string(unit.trimmingCharacters(in: .whitespaces))),
+            // Apple Health link (numeric goals only). Null when off/manual — including on
+            // edit, so turning the toggle off clears the stored link server-side.
+            "healthMetric": (canAutoFromHealth && autoFromHealth) ? (healthMetric.map { .string($0.key) } ?? .null) : .null,
             "deadline": hasDeadline ? .string(isoDay(deadline)) : .null,
         ]
         if isHabit {
@@ -1672,7 +1697,7 @@ struct GoalDetailView: View {
                      trackingMode: goal.trackingMode, deadline: goal.deadline, isFeatured: goal.isFeatured,
                      target: target, totalProgress: progress, milestoneTotal: goal.milestoneTotal,
                      milestoneReached: goal.milestoneReached, streakDays: goal.streakDays,
-                     autoFromCalendar: goal.autoFromCalendar, participants: participants)
+                     autoFromCalendar: goal.autoFromCalendar, healthMetric: goal.healthMetric, participants: participants)
     }
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }

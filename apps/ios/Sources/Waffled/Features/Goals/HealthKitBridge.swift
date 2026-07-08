@@ -25,6 +25,27 @@ final class HealthKitBridge {
     enum Metric: CaseIterable {
         case steps, flights, exerciseMinutes, activeEnergy
 
+        /// Canonical key persisted server-side (goals.health_metric) and sent to
+        /// /health-sync. Must match the API's HEALTH_METRICS set.
+        var key: String {
+            switch self {
+            case .steps:           return "steps"
+            case .flights:         return "flights"
+            case .exerciseMinutes: return "exercise_minutes"
+            case .activeEnergy:    return "active_energy"
+            }
+        }
+
+        init?(key: String?) {
+            switch key {
+            case "steps":           self = .steps
+            case "flights":         self = .flights
+            case "exercise_minutes": self = .exerciseMinutes
+            case "active_energy":   self = .activeEnergy
+            default:                return nil
+            }
+        }
+
         /// Light a suggestion up on an *existing* goal by matching its free-text `unit`,
         /// so "10,000 steps" works today with no stored link (the link lands in Tier 1).
         static func matching(unit: String?) -> Metric? {
