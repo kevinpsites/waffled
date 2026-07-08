@@ -195,6 +195,9 @@ export function Lists() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [editingList, setEditingList] = useState<{ id: string; name: string; emoji: string | null } | null>(null)
+  // A template the user chose "Use template" on — opens the create modal pre-pointed
+  // at it so they can name the new list before it's created.
+  const [templateModal, setTemplateModal] = useState<{ id: string; name: string; emoji: string | null } | null>(null)
   const [confirmDel, setConfirmDel] = useState(false)
   const [draft, setDraft] = useState('')
   const addingRef = useRef(false)
@@ -341,18 +344,12 @@ export function Lists() {
     }
   }
 
-  // Use the selected template: spin up a fresh list from its CURRENT items (all
-  // unchecked), then jump to that new list.
-  async function useSelectedTemplate() {
+  // Use the selected template: open the create modal pre-pointed at it so the
+  // user names the new list (a fresh list from the template's CURRENT items, all
+  // unchecked, is created on submit).
+  function useSelectedTemplate() {
     if (!selected || !isTemplate) return
-    try {
-      const created = await groceryApi.applyTemplate(selected.id)
-      refetchLists()
-      setSelectedId(created.id)
-      setGroceryOpen(false)
-    } catch {
-      /* keep current state on failure */
-    }
+    setTemplateModal({ id: selected.id, name: selected.name, emoji: selected.emoji })
   }
 
   // Move the selected template back into YOUR LISTS (undo a convert).
@@ -565,6 +562,16 @@ export function Lists() {
           list={editingList}
           onClose={() => setEditingList(null)}
           onSaved={refetchLists}
+        />
+      )}
+      {templateModal && (
+        <ListsModal
+          fromTemplate={templateModal}
+          onClose={() => setTemplateModal(null)}
+          onCreated={(id) => {
+            setSelectedId(id)
+            setGroceryOpen(false)
+          }}
         />
       )}
       {itemModal && selected && (

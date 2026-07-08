@@ -1,20 +1,26 @@
 import { useState, type FormEvent } from 'react'
 import { groceryApi, useTemplates } from '../../lib/api'
 
-// Create OR rename a named list (name + emoji). Pass `list` to edit; omit to create.
+// Create OR rename a named list (name + emoji). Pass `list` to edit; pass
+// `fromTemplate` to open the create form pre-pointed at a template (the user
+// still names the new list); omit both to create a blank list.
 export function ListsModal({
   list,
+  fromTemplate,
   onClose,
   onCreated,
   onSaved,
 }: {
   list?: { id: string; name: string; emoji: string | null }
+  fromTemplate?: { id: string; name: string; emoji: string | null }
   onClose: () => void
   onCreated?: (id: string) => void
   onSaved?: () => void
 }) {
   const editing = !!list
-  const [name, setName] = useState(list?.name ?? '')
+  // Pre-point at a template? Seed the name from it as a starting point (the user
+  // can rename); the new list's emoji comes from the template server-side.
+  const [name, setName] = useState(list?.name ?? fromTemplate?.name ?? '')
   const [emoji, setEmoji] = useState(list?.emoji ?? '')
   const [saving, setSaving] = useState(false)
   // Saved templates to start a fresh list from (create flow only).
@@ -41,6 +47,9 @@ export function ListsModal({
       if (editing) {
         await groceryApi.renameList(list.id, { name: name.trim(), emoji: emoji.trim() || null })
         onSaved?.()
+      } else if (fromTemplate) {
+        const created = await groceryApi.applyTemplate(fromTemplate.id, name.trim())
+        onCreated?.(created.id)
       } else {
         const created = await groceryApi.createList({ name: name.trim(), emoji: emoji.trim() || null })
         onCreated?.(created.id)
@@ -55,17 +64,24 @@ export function ListsModal({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
         <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
-        <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>{editing ? 'Rename list' : 'New list'}</div>
+        <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: fromTemplate ? 6 : 14 }}>{editing ? 'Rename list' : fromTemplate ? 'New list from template' : 'New list'}</div>
+        {fromTemplate && (
+          <div className="tiny muted" style={{ marginBottom: 14 }}>
+            From <strong>{fromTemplate.emoji ?? '📑'} {fromTemplate.name}</strong> — name your new list.
+          </div>
+        )}
         <form onSubmit={submit}>
           <div className="field-row">
             <label className="field" style={{ flex: 3 }}>
               <span>List name</span>
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Lake trip packing" autoFocus />
             </label>
-            <label className="field" style={{ flex: 1 }}>
-              <span>Emoji</span>
-              <input value={emoji} onChange={(e) => setEmoji(e.target.value)} placeholder="🧳" maxLength={4} />
-            </label>
+            {!fromTemplate && (
+              <label className="field" style={{ flex: 1 }}>
+                <span>Emoji</span>
+                <input value={emoji} onChange={(e) => setEmoji(e.target.value)} placeholder="🧳" maxLength={4} />
+              </label>
+            )}
           </div>
           <button
             type="submit"
@@ -73,11 +89,11 @@ export function ListsModal({
             disabled={!name.trim() || saving}
             style={{ width: '100%', justifyContent: 'center', marginTop: 6 }}
           >
-            {saving ? 'Saving…' : editing ? 'Save changes' : 'Create list'}
+            {saving ? 'Saving…' : editing ? 'Save changes' : fromTemplate ? 'Create from template' : 'Create list'}
           </button>
         </form>
 
-        {!editing && templates.length > 0 && (
+        {!editing && !fromTemplate && templates.length > 0 && (
           <div style={{ marginTop: 16 }}>
             <div className="tiny muted" style={{ fontWeight: 600, marginBottom: 8 }}>Or apply a template</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>

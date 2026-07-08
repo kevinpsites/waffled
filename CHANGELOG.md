@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+- **"Use template" lets you name the new list first (web).** Choosing **Use template** now
+  opens the New-list dialog pre-pointed at that template, so you give the new list its own
+  name before it's created — instead of it silently spinning up a list named after the template.
 
 ### Fixed
 - **Deleting a list template updates the page right away (web).** Removing a template used

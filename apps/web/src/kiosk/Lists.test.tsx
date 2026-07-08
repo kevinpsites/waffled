@@ -217,8 +217,10 @@ describe('Lists screen', () => {
     expect(await screen.findByText('TEMPLATES')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Beach Day/ }))
 
-    // its header offers "Use template" (not "Save as template") — apply spins up a list
+    // its header offers "Use template" (not "Save as template") — it opens the
+    // create modal pre-pointed at the template (name prefilled); submitting applies it
     fireEvent.click(await screen.findByRole('button', { name: /Use template/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /Create from template/i }))
     await waitFor(() => expect(sent.some((s) => s.method === 'POST' && /\/api\/lists\/templates\/tpl\/apply$/.test(s.url))).toBe(true))
   })
 
