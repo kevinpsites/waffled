@@ -59,6 +59,7 @@ interface CalendarRow extends QueryResultRow {
   is_primary: boolean
   selected: boolean
   is_write_target: boolean
+  visibility: string
   last_synced_at: Date | null
 }
 
@@ -102,8 +103,8 @@ async function storeConnection(opts: {
       await client.query(
         `insert into calendars
            (household_id, account_id, person_id, google_calendar_id, summary, description,
-            timezone, access_role, color_hex, is_primary)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+            timezone, access_role, color_hex, is_primary, visibility)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
          on conflict (account_id, google_calendar_id) do update set
            summary = excluded.summary,
            description = excluded.description,
@@ -112,6 +113,8 @@ async function storeConnection(opts: {
            color_hex = excluded.color_hex,
            is_primary = excluded.is_primary,
            deleted_at = null`,
+        // visibility is set ONLY on first insert (smart default: primary → family,
+        // everything else → personal); a re-sync never overwrites the household's choice.
         [
           householdId,
           accountId,
@@ -123,6 +126,7 @@ async function storeConnection(opts: {
           c.accessRole,
           c.backgroundColor,
           c.primary,
+          c.primary ? 'family' : 'personal',
         ]
       )
     }
@@ -149,7 +153,8 @@ async function listAccounts(householdId: string): Promise<AccountRow[]> {
 async function listHouseholdCalendars(householdId: string): Promise<CalendarRow[]> {
   const { rows } = await query<CalendarRow>(
     `select c.id, c.account_id, c.person_id, c.google_calendar_id, c.summary, c.timezone,
-            c.access_role, c.color_hex, c.is_primary, c.selected, c.is_write_target, c.last_synced_at,
+            c.access_role, c.color_hex, c.is_primary, c.selected, c.is_write_target, c.visibility,
+            c.last_synced_at,
             p.name as person_name, p.color_hex as person_color
        from calendars c
        left join persons p on p.id = c.person_id and p.deleted_at is null
@@ -186,6 +191,7 @@ function presentCalendar(c: CalendarRow) {
     isPrimary: c.is_primary,
     selected: c.selected,
     isWriteTarget: c.is_write_target,
+    visibility: c.visibility,
     personId: c.person_id,
     personName: c.person_name ?? null,
     personColor: c.person_color ?? null,
@@ -302,7 +308,11 @@ export function registerCalendarRoutes(api: Api): void {
   api.patch('/api/calendar/google/calendars/:id', adminRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'calendar not found' })
-    const body = (req.body ?? {}) as { personId?: string | null; selected?: boolean; isWriteTarget?: boolean }
+    const body = (req.body ?? {}) as { personId?: string | null; selected?: boolean; isWriteTarget?: boolean; visibility?: string }
+
+    if ('visibility' in body && body.visibility !== 'family' && body.visibility !== 'personal') {
+      return res.status(400).json({ error: 'BadRequest', message: "visibility must be 'family' or 'personal'" })
+    }
 
     const sets: string[] = []
     const values: unknown[] = []
@@ -319,8 +329,12 @@ export function registerCalendarRoutes(api: Api): void {
       sets.push(`is_write_target = $${i++}`)
       values.push(!!body.isWriteTarget)
     }
+    if ('visibility' in body) {
+      sets.push(`visibility = $${i++}`)
+      values.push(body.visibility)
+    }
     if (sets.length === 0) {
-      return res.status(400).json({ error: 'BadRequest', message: 'personId, selected, or isWriteTarget required' })
+      return res.status(400).json({ error: 'BadRequest', message: 'personId, selected, isWriteTarget, or visibility required' })
     }
     values.push(tenant.householdId, id)
     const { rowCount } = await query(
@@ -341,6 +355,23 @@ export function registerCalendarRoutes(api: Api): void {
     }
     const calendars = await listHouseholdCalendars(tenant.householdId)
     const updated = calendars.find((c) => c.id === id)
+    // Re-stamp the denormalized visibility/owner onto this calendar's events +
+    // occurrences whenever the calendar's visibility or owner changed, so clients'
+    // local filter (visibility='family' OR owner_person_id=viewer) stays correct.
+    if (updated && ('visibility' in body || 'personId' in body)) {
+      await query(
+        `update events set visibility = $1, owner_person_id = $2
+          where household_id = $3 and calendar_id = $4 and deleted_at is null`,
+        [updated.visibility, updated.person_id, tenant.householdId, id]
+      )
+      await query(
+        `update event_occurrences o set visibility = $1, owner_person_id = $2
+           from events e
+          where o.event_id = e.id and e.calendar_id = $3
+            and o.household_id = $4 and o.deleted_at is null`,
+        [updated.visibility, updated.person_id, id, tenant.householdId]
+      )
+    }
     return { calendar: updated ? presentCalendar(updated) : null }
   }))
 

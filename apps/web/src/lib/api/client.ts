@@ -107,6 +107,19 @@ export function clearProfileSession(): void {
   window.dispatchEvent(new Event('waffled:auth-changed'))
 }
 
+// The person whose session is currently active (the claimed kiosk profile, or the
+// logged-in user) — used to decide whose PERSONAL calendar events are visible on
+// this device right now. null = no profile claimed (a bare kiosk) → family only.
+// Kept in a module so the offline agenda reads (events-local) can filter locally
+// without every call site threading it through; useHousehold() keeps it current.
+let viewerPersonId: string | null = null
+export function currentViewerPersonId(): string | null {
+  return viewerPersonId
+}
+export function setCurrentViewerPersonId(id: string | null): void {
+  viewerPersonId = id
+}
+
 export function getAccessToken(): string | undefined {
   try {
     return localStorage.getItem(ACCESS_KEY) || localStorage.getItem('waffled.token') || undefined
