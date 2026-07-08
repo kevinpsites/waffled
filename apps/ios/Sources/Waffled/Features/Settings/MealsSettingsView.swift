@@ -18,6 +18,9 @@ struct MealsSettingsView: View {
     @State private var participantIds: [String]?   // nil = whole family
     @State private var times: [String: String] = [:]
     @State private var durationMinutes = 60
+    @State private var prepReminder = false
+    @State private var prepReminderTime = "08:00"
+    @State private var prepReminderMealTypes: [String] = ["dinner"]
 
     private let api = WaffledAPI()
     private static let mealRows: [(key: String, label: String, icon: String)] = [
@@ -32,6 +35,7 @@ struct MealsSettingsView: View {
                     calendarCard
                     invitedCard
                     timesCard
+                    prepCard
                     saveRow
                 } else if failed {
                     Text("Couldn’t load meal settings.").font(.system(size: 14)).foregroundStyle(WF.ink3).padding(.vertical, 30)
@@ -116,6 +120,36 @@ struct MealsSettingsView: View {
         }
     }
 
+    private var prepCard: some View {
+        WaffledCard(padding: 4) {
+            VStack(spacing: 0) {
+                toggleRow("🧊", "Thaw reminder",
+                          "Adds a same-day calendar reminder to pull the protein/ingredients out of the freezer for that day’s planned meal.",
+                          isOn: Binding(get: { prepReminder }, set: { prepReminder = $0; mark() }))
+                Divider().background(WF.hair)
+                settingRow("⏰", "Remind me at", "Time it lands, on the meal’s own day.") {
+                    DatePicker("", selection: prepTimeBinding, displayedComponents: .hourAndMinute)
+                        .labelsHidden().disabled(!prepReminder)
+                }
+                Divider().background(WF.hair)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("For which meals").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
+                    ChipFlow(spacing: 8, lineSpacing: 8) {
+                        ForEach(Self.mealRows, id: \.key) { m in
+                            chip("\(m.icon) \(m.label)", on: prepReminderMealTypes.contains(m.key)) {
+                                togglePrepMealType(m.key)
+                            }
+                        }
+                    }
+                    .opacity(prepReminder ? 1 : 0.4)
+                    .disabled(!prepReminder)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 11).padding(.vertical, 11)
+            }
+        }
+    }
+
     private var saveRow: some View {
         HStack(spacing: 12) {
             Button { Task { await save() } } label: {
@@ -183,6 +217,19 @@ struct MealsSettingsView: View {
         )
     }
 
+    private var prepTimeBinding: Binding<Date> {
+        Binding(
+            get: { Self.parseTime(prepReminderTime) },
+            set: { prepReminderTime = Self.fmtTime($0); mark() }
+        )
+    }
+
+    private func togglePrepMealType(_ key: String) {
+        if prepReminderMealTypes.contains(key) { prepReminderMealTypes.removeAll { $0 == key } }
+        else { prepReminderMealTypes.append(key) }
+        mark()
+    }
+
     private func mark() { dirty = true; saved = false }
 
     private func load() async {
@@ -192,6 +239,7 @@ struct MealsSettingsView: View {
             addToCalendar = s.addToCalendar; pushToGoogle = s.pushToGoogle
             calendarPersonId = s.calendarPersonId; participantIds = s.participantIds
             times = s.times; durationMinutes = s.durationMinutes
+            prepReminder = s.prepReminder; prepReminderTime = s.prepReminderTime; prepReminderMealTypes = s.prepReminderMealTypes
             loaded = true
         } catch { failed = true }
     }
@@ -203,6 +251,9 @@ struct MealsSettingsView: View {
             "pushToGoogle": .bool(pushToGoogle),
             "durationMinutes": .int(durationMinutes),
             "times": .object(times.mapValues { .string($0) }),
+            "prepReminder": .bool(prepReminder),
+            "prepReminderTime": .string(prepReminderTime),
+            "prepReminderMealTypes": .array(prepReminderMealTypes.map(JSONValue.string)),
         ]
         body["calendarPersonId"] = calendarPersonId.map(JSONValue.string) ?? .null
         body["participantIds"] = participantIds.map { .array($0.map(JSONValue.string)) } ?? .null
@@ -211,6 +262,7 @@ struct MealsSettingsView: View {
             addToCalendar = s.addToCalendar; pushToGoogle = s.pushToGoogle
             calendarPersonId = s.calendarPersonId; participantIds = s.participantIds
             times = s.times; durationMinutes = s.durationMinutes
+            prepReminder = s.prepReminder; prepReminderTime = s.prepReminderTime; prepReminderMealTypes = s.prepReminderMealTypes
             dirty = false; saved = true
         } catch { failed = false }
         saving = false

@@ -29,9 +29,30 @@ Meals is your recipe library and your planner in one — pick what's for dinner 
 
 Recipe delete and paste-markdown import are web-forward; mobile edits most fields and cooks fine. On **iPad**, tapping a meal from the Today view opens the recipe full-screen.
 
+## Recipe markdown & timers
+
+Paste-markdown import (**Use template** / **See example** in the editor) reads a plain-markdown recipe. Two step-level extras are worth knowing:
+
+- **Per-step ingredients** — an `**Ingredients:**` sub-line under a step lists just what that step needs.
+- **Per-step timers** — a `**Timer:**` sub-line (mirrors `**Ingredients:**`) declares the cook-mode timer for that step. The duration is written in plain language and parsed into seconds; the `**Timer:**` markup is stripped from the displayed step.
+
+```markdown
+1. Bread the chicken.
+   **Ingredients:**
+   - 2 eggs
+   - 1 cup breadcrumbs
+
+2. Pan-fry until golden, about 4 minutes a side.
+   **Timer:** 4 minutes
+```
+
+Durations accept minutes / hours / seconds and compound or short forms — `20 minutes`, `1 hour 30 min`, `1.5 hrs`, `90s`. You can also drop a timer **inline** anywhere in the step text as `{timer: 20 minutes}` (equivalent, also stripped). Parsed timers become the per-step timer in [cook mode](#highlights), and the in-editor **Use template** / **See example** both include a `**Timer:**` line to copy. This works the same on web and iOS (iOS uses the same server-side parser).
+
 ## Settings
 
 **Settings → Meals** holds the meal-calendar toggle (`addToCalendar`), push-to-Google (`pushToGoogle`), and your per-meal-type default times — breakfast 08:00, lunch 12:00, dinner 18:00, snack 15:00.
+
+It also has an optional **thaw reminder** (`prepReminder`, off by default): a same-day calendar nudge — at a time you choose (default 08:00), for the meal slots you pick (dinner out of the box) — to pull the protein/ingredients out of the freezer for that day's planned meal. When meal-calendar push-to-Google is on, the reminder syncs to Google too.
 
 ## Module
 
