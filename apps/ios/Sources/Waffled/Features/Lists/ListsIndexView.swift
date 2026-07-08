@@ -7,6 +7,9 @@ import Observation
 @Observable
 final class ListsIndexModel {
     private(set) var lists: [WaffledAPI.ListSummary] = []
+    /// Saved templates, shown in their own "Templates" group and editable via the
+    /// same detail view (they're `listType == "template"`, hidden from the rail).
+    private(set) var templateList: [WaffledAPI.ListSummary] = []
     private(set) var loading = true
     private(set) var error = false
 
@@ -15,7 +18,10 @@ final class ListsIndexModel {
     func load() async {
         loading = true
         do {
-            lists = try await api.listSummaries()
+            async let ls = api.listSummaries()
+            async let ts = api.listTemplates()
+            lists = try await ls
+            templateList = (try? await ts) ?? []
             error = false
         } catch {
             self.error = true
@@ -70,10 +76,13 @@ final class ListsIndexModel {
         return created
     }
 
-    /// Delete a saved template (a hidden `list_type='template'` list). Optimistic
-    /// callers drop it from their local copy; this just fires the soft-delete.
+    /// Delete a saved template (a `list_type='template'` list). Optimistic; restore
+    /// on failure.
     func deleteTemplate(_ tpl: WaffledAPI.ListSummary) async {
-        do { try await api.deleteList(id: tpl.id) } catch { self.error = true }
+        let snapshot = templateList
+        withAnimation { templateList.removeAll { $0.id == tpl.id } }
+        do { try await api.deleteList(id: tpl.id) }
+        catch { templateList = snapshot; self.error = true }
     }
 }
 
@@ -138,6 +147,27 @@ struct ListsIndexView: View {
                         }
                     }
             }
+
+            // Templates — their own group beneath Your Lists. Tapping one opens the same
+            // detail view in template mode (edit its items, or use it to spin off a list).
+            if !model.templateList.isEmpty {
+                SectionLabel(text: "Templates")
+                    .listRowInsets(EdgeInsets(top: 14, leading: 20, bottom: 2, trailing: 18))
+                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                ForEach(model.templateList) { tpl in
+                    Button { path.append(.list(tpl)) } label: { row(tpl) }
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 5, leading: 18, bottom: 5, trailing: 18))
+                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) { Task { await model.deleteTemplate(tpl) } } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                            Button { editing = tpl } label: { Label("Edit", systemImage: "pencil") }
+                                .tint(WF.ai)
+                        }
+                }
+            }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -176,7 +206,7 @@ struct ListsIndexView: View {
     private func row(_ list: WaffledAPI.ListSummary) -> some View {
         WaffledCard(padding: 15) {
             HStack(spacing: 13) {
-                WaffledEmojiTile(emoji: list.emoji ?? "📝")
+                WaffledEmojiTile(emoji: list.emoji ?? (list.listType.lowercased() == "template" ? "📑" : "📝"))
                 Text(list.name).font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ink)
                 Spacer(minLength: 8)
                 Text("\(list.itemCount)").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink3)

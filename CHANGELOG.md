@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the iPad.
 
 ### Changed
+- **List templates are now live and editable on iOS (matching the web).** "Save as template"
+  turns a list into a single editable template in place — no more drifting one-time snapshots —
+  and templates get their own **Templates** group in Lists. Open one to edit its items (every
+  list you spin off with **Use template** uses the latest), or **Move to Lists** to turn it back
+  into a normal list.
 
 ### Fixed
 - **Adding list items keeps the keyboard up (iPhone + iPad).** After you added an item to a

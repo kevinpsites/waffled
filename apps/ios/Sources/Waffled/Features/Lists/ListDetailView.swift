@@ -20,7 +20,9 @@ struct MealGroup: Identifiable {
 @MainActor
 @Observable
 final class ListDetailModel {
-    let list: WaffledAPI.ListSummary
+    /// Mutable so converting to/from a template flips the detail into template mode
+    /// in place (the returned row carries the new listType).
+    private(set) var list: WaffledAPI.ListSummary
     private(set) var items: [WaffledAPI.ListItemDTO] = []
     /// Checked items still shown in place (before they settle into Completed).
     private(set) var settling: Set<String> = []
@@ -39,6 +41,9 @@ final class ListDetailModel {
     private let api = WaffledAPI()
     /// Grocery gets the richer board (aisle/meal toggle + meal dots).
     var isGrocery: Bool { list.listType.lowercased() == "grocery" }
+    /// A template — edited through this same view, but with its own header actions
+    /// (Use / Move to Lists), a badge, and check-off disabled.
+    var isTemplate: Bool { list.listType.lowercased() == "template" }
 
     init(list: WaffledAPI.ListSummary) { self.list = list }
 
@@ -242,11 +247,32 @@ final class ListDetailModel {
         }
     }
 
-    /// Snapshot this list as a reusable template (unchecked copies of its live items).
-    /// Returns true on success so the view can show a brief confirmation.
-    func saveAsTemplate() async -> Bool {
+    /// Turn this list into a reusable template — converts it in place (it leaves the
+    /// rail and becomes the template) and unchecks its items. Flips this view into
+    /// template mode. Returns true on success.
+    func convertToTemplate() async -> Bool {
         do {
-            _ = try await api.saveListAsTemplate(listId: list.id)
+            list = try await api.saveListAsTemplate(listId: list.id)
+            await load()   // items came back unchecked server-side
+            return true
+        } catch {
+            self.error = true
+            return false
+        }
+    }
+
+    /// Use this template — spin up a fresh list from its current items (all unchecked).
+    /// Returns the new list so the caller can surface / open it.
+    func useTemplate() async -> WaffledAPI.ListSummary? {
+        do { return try await api.applyListTemplate(templateId: list.id) }
+        catch { self.error = true; return nil }
+    }
+
+    /// Move this template back into the active Lists rail (undo a convert). Flips the
+    /// view back into normal-list mode. Returns true on success.
+    func moveToLists() async -> Bool {
+        do {
+            list = try await api.unmarkTemplate(id: list.id)
             return true
         } catch {
             self.error = true
@@ -318,21 +344,47 @@ struct ListDetailView: View {
         .background(WF.canvas)
         .navigationTitle(model.list.name)
         .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if model.isTemplate { templateBanner }
+        }
         .toolbar {
-            // Non-grocery lists can be snapshotted as a reusable template (mirrors the
-            // web "Save as template" header action). Grocery is auto-built, so skip it.
+            // Grocery is auto-built, so it has no template/delete menu. A template gets
+            // Use / Move to Lists / Delete; a normal list gets Save as template / Delete.
             if !model.isGrocery {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
-                        Button {
-                            Task {
-                                if await model.saveAsTemplate() {
-                                    showToast("Saved “\(model.list.name)” as a template")
+                        if model.isTemplate {
+                            Button {
+                                Task {
+                                    if let created = await model.useTemplate() {
+                                        sync.bumpLists()
+                                        showToast("Made “\(created.name)” from this template")
+                                    }
                                 }
+                            } label: { Label("Use template", systemImage: "plus.square.on.square") }
+                            Button {
+                                Task {
+                                    if await model.moveToLists() {
+                                        sync.bumpLists()
+                                        showToast("Moved “\(model.list.name)” back to Lists")
+                                    }
+                                }
+                            } label: { Label("Move to Lists", systemImage: "arrow.uturn.left") }
+                            Button(role: .destructive) { confirmingDelete = true } label: {
+                                Label("Delete template", systemImage: "trash")
                             }
-                        } label: { Label("Save as template", systemImage: "doc.on.doc") }
-                        Button(role: .destructive) { confirmingDelete = true } label: {
-                            Label("Delete list", systemImage: "trash")
+                        } else {
+                            Button {
+                                Task {
+                                    if await model.convertToTemplate() {
+                                        sync.bumpLists()
+                                        showToast("Turned “\(model.list.name)” into a template")
+                                    }
+                                }
+                            } label: { Label("Save as template", systemImage: "doc.on.doc") }
+                            Button(role: .destructive) { confirmingDelete = true } label: {
+                                Label("Delete list", systemImage: "trash")
+                            }
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
@@ -800,18 +852,21 @@ struct ListDetailView: View {
 
     @ViewBuilder private func row(_ item: WaffledAPI.ListItemDTO) -> some View {
         HStack(spacing: 12) {
-            // Circle: tap to complete (separate hit target).
+            // Circle: tap to complete (separate hit target). Disabled on a template —
+            // its items are the starting content, not a checklist to tick off.
             Button {
                 if editingId != nil { commitEdit() }
-                Task { await model.toggle(item.id) }
+                if !model.isTemplate { Task { await model.toggle(item.id) } }
             } label: {
                 Image(systemName: item.checked ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 21))
                     .foregroundStyle(item.checked ? WF.primary : WF.ink3)
                     .frame(width: 32, height: 32)
                     .contentShape(Rectangle())
+                    .opacity(model.isTemplate ? 0.4 : 1)
             }
             .buttonStyle(.plain)
+            .disabled(model.isTemplate)
 
             if editingId == item.id {
                 TextField("Name", text: $editName)
@@ -868,6 +923,24 @@ struct ListDetailView: View {
 
     /// Whether the section picker is revealed (while typing, or once a section is set).
     private var showSectionPicker: Bool { focus == .add || focus == .addQty || draftSection != nil }
+
+    /// A strip under the nav bar on a template — explains that edits here flow into
+    /// every list made from it (mirrors the web's TEMPLATE badge + hint).
+    private var templateBanner: some View {
+        HStack(spacing: 8) {
+            Text("TEMPLATE").font(.system(size: 10, weight: .heavy)).tracking(0.5).foregroundStyle(.white)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(WF.primary).clipShape(Capsule())
+            Text("Edit its items — every list you make from it uses the latest.")
+                .font(.system(size: 12.5, weight: .medium)).foregroundStyle(WF.ink2)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(WF.primary.opacity(0.08))
+        .overlay(WF.hair.frame(height: 1), alignment: .bottom)
+    }
 
     private var addBar: some View {
         VStack(spacing: 8) {
