@@ -37,6 +37,9 @@ enum SyncSchema {
             .text("origin"),
             // non-null marks a recurring master (its occurrences render instead)
             .text("rrule"),
+            // 'family' (shared kiosk) | 'personal' (only owner_person_id sees it)
+            .text("visibility"),
+            .text("owner_person_id"),
             .text("updated_at"),
         ]),
         Table(name: "event_participants", columns: [
@@ -59,6 +62,8 @@ enum SyncSchema {
             .text("ends_at"),
             .integer("all_day"),
             .text("starts_on"),
+            .text("visibility"),
+            .text("owner_person_id"),
         ]),
     ])
 }

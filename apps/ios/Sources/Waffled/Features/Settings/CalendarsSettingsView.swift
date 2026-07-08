@@ -321,6 +321,18 @@ struct CalendarsSettingsView: View {
                     .padding(.horizontal, 10).padding(.vertical, 6).background(WF.panel).clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                // kiosk (family) vs personal (owner-only) — only meaningful when synced
+                if c.selected {
+                    Button { Task { await patch(c.id, ["visibility": .string(c.visibility == "personal" ? "family" : "personal")]) } } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: c.visibility == "personal" ? "circle" : "checkmark.circle.fill")
+                                .font(.system(size: 14)).foregroundStyle(c.visibility == "personal" ? WF.ink3 : WF.primary)
+                            Text("Kiosk").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink2)
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 6).background(WF.panel).clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
                 // person assign
                 Menu {
                     Button("Unassigned") { Task { await patch(c.id, ["personId": .null]) } }
@@ -352,6 +364,7 @@ struct CalendarsSettingsView: View {
         var parts: [String] = []
         parts.append(c.selected ? (c.lastSyncedAt.map { "Synced \(when($0))" } ?? "Will sync") : "Sync off")
         if let r = c.accessRole { parts.append(r) }
+        if c.selected && c.visibility == "personal" { parts.append("🔒 personal") }
         if c.isWriteTarget { parts.append("★ new events go here") }
         return parts.joined(separator: " · ")
     }

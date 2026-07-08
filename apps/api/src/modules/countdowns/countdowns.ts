@@ -70,7 +70,7 @@ async function readBirthdayHorizonDays(householdId: string): Promise<number> {
 }
 
 // Everything to count down to, soonest first.
-async function listCountdowns(householdId: string): Promise<Countdown[]> {
+async function listCountdowns(householdId: string, viewerPersonId: string | null): Promise<Countdown[]> {
   const today = await householdToday(householdId)
   const horizonDays = await readBirthdayHorizonDays(householdId)
   const out: Countdown[] = []
@@ -90,8 +90,9 @@ async function listCountdowns(householdId: string): Promise<Countdown[]> {
     `select e.id, e.title, (e.starts_at at time zone h.timezone)::date::text as date
        from events e join households h on h.id = e.household_id
       where e.household_id = $1 and e.deleted_at is null and e.is_countdown = true
+        and (e.visibility = 'family' or e.owner_person_id = $3)
         and (e.starts_at at time zone h.timezone)::date >= $2::date`,
-    [householdId, today]
+    [householdId, today, viewerPersonId]
   )
   for (const r of events.rows) {
     out.push({ id: r.id, title: r.title, date: r.date, daysLeft: daysBetween(today, r.date), source: 'event', emoji: null, color: null, personId: null })
@@ -119,7 +120,7 @@ export function registerCountdownRoutes(api: Api): void {
   // Merged list (standalone + flagged events + birthdays) + display prefs.
   api.get('/api/countdowns', tenantRoute(async (tenant: Tenant) => {
     const [countdowns, sleeps, birthdayHorizonDays] = await Promise.all([
-      listCountdowns(tenant.householdId),
+      listCountdowns(tenant.householdId, tenant.personId ?? null),
       readSleeps(tenant.householdId),
       readBirthdayHorizonDays(tenant.householdId),
     ])
