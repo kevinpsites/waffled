@@ -153,7 +153,7 @@ struct PhotoAddSheet: View {
         // Reset the picker selection token so the next pick fires onChange again.
         defer { picks = [] }
         for item in items {
-            var row = Row()
+            let row = Row()
             rows.append(row)
             let index = rows.count - 1
             do {

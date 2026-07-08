@@ -17,18 +17,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The web calendar's month view now has a day panel.** Picking a day in the month grid
   shows that day's events in a sidebar — the same agenda layout as on iPad — with events
   that have already finished subtly greyed out, plus a tap-to-add empty state for open days.
+- **iPad in portrait gets an iPhone-style bottom bar.** Stand the iPad up vertically and the
+  side navigation rail moves to a tab bar along the bottom, with the current page filling the
+  space above it; rotate back to landscape and the side rail returns. It switches automatically
+  and keeps your pinned destinations and the profile switcher, so it works either way you mount
+  the iPad.
 
 ### Changed
-- **List templates are now live and editable, in their own section.** Saving a list as a
-  template converts it into an editable template that lives under a new **Templates** group
-  on the Lists page — instead of a frozen snapshot that drifted from the original and piled
-  up duplicates every time you re-saved. Edit a template's items anytime and every list you
-  make from it with **Use template** reflects the latest; **Move to Lists** undoes a convert.
+- **List templates are now live and editable, in their own section (web + iOS).** Saving a list
+  as a template converts it into an editable template that lives under a new **Templates** group
+  on the Lists page — instead of a frozen snapshot that drifted from the original and piled up
+  duplicates every time you re-saved. Edit a template's items anytime and every list you make
+  from it with **Use template** reflects the latest; **Move to Lists** undoes a convert. Shipped
+  on the web/kiosk app and the native iOS/iPadOS app.
 - **System Health shows friendlier backup details.** The backups card now formats the last
   backup time as a local date/time and its size in KB/MB instead of a raw UTC timestamp and
   a byte count.
 
 ### Fixed
+- **Adding list items keeps the keyboard up (iPhone + iPad).** After you added an item to a
+  list, the "Add item" field lost focus, so you had to tap it again for every single item. It
+  now stays focused — type an item, hit Return, and keep going.
 
 ## [0.3.1] - 2026-07-07
 

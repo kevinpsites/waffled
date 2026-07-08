@@ -41,11 +41,26 @@ struct KioskShell: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            rail
-            Rectangle().fill(WF.hair).frame(width: 1).ignoresSafeArea()
-            detail
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Landscape (the usual wall/counter mount) keeps the side rail; portrait — for
+        // people who stand the iPad up vertically — moves the nav to a bottom bar like the
+        // iPhone, with the page filling the space above it. Switches live on rotation.
+        GeometryReader { geo in
+            let portrait = geo.size.height > geo.size.width
+            Group {
+                if portrait {
+                    VStack(spacing: 0) {
+                        detail.frame(maxWidth: .infinity, maxHeight: .infinity)
+                        bottomBar
+                    }
+                } else {
+                    HStack(spacing: 0) {
+                        rail
+                        Rectangle().fill(WF.hair).frame(width: 1).ignoresSafeArea()
+                        detail.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(WF.canvas)
         .task { await sync.loadIdentity(); correctSelection() }
@@ -179,6 +194,103 @@ struct KioskShell: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: bottom bar (portrait)
+
+    /// The same destinations as the rail, in the same order, laid out horizontally with the
+    /// capture button raised in the middle — so pins stay consistent whichever way you hold it.
+    private var bottomBarItems: [KioskNav] {
+        [.today, .calendar] + pinnedRailItems + [.more, .settings]
+    }
+
+    /// One slot in the bottom bar — a nav destination, or the signed-in user (the rail's
+    /// "who's logged in" chip, which on a shared kiosk swaps back to the profile picker).
+    private enum BarEntry: Identifiable {
+        case nav(KioskNav)
+        case user(SyncedMember)
+        var id: String { if case .nav(let n) = self { return n.rawValue }; return "__user" }
+    }
+
+    private var bottomBar: some View {
+        var entries = bottomBarItems.map(BarEntry.nav)
+        if let m = currentMember { entries.append(.user(m)) }   // user chip rides at the end, like the rail
+        let mid = (entries.count + 1) / 2   // capture FAB sits at the center, splitting the row
+        return HStack(alignment: .bottom, spacing: 0) {
+            ForEach(entries[..<mid]) { barEntry($0) }
+            captureBarButton
+            ForEach(entries[mid...]) { barEntry($0) }
+        }
+        .padding(.horizontal, 6)
+        .padding(.top, 8)
+        .background(
+            WF.card
+                .overlay(WF.hair.frame(height: 1), alignment: .top)
+                .ignoresSafeArea(edges: .bottom)
+        )
+    }
+
+    @ViewBuilder private func barEntry(_ entry: BarEntry) -> some View {
+        switch entry {
+        case .nav(let item): barItem(item)
+        case .user(let m): bottomUserChip(m)
+        }
+    }
+
+    /// The bottom-bar twin of `currentUserChip` — a compact avatar; a tap returns to the
+    /// profile picker on a shared kiosk (with the swap badge), a plain indicator otherwise.
+    @ViewBuilder private func bottomUserChip(_ m: SyncedMember) -> some View {
+        let firstName = m.name.split(separator: " ").first.map(String.init) ?? m.name
+        let chip = VStack(spacing: 3) {
+            ZStack(alignment: .bottomTrailing) {
+                Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 25)
+                if kiosk.isShared {
+                    Image(systemName: "arrow.left.arrow.right.circle.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(WF.primary)
+                        .background(Circle().fill(WF.card).frame(width: 13, height: 13))
+                        .offset(x: 2, y: 1)
+                }
+            }
+            Text(firstName).font(.system(size: 10.5, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 5)
+        .contentShape(Rectangle())
+
+        if kiosk.isShared {
+            Button { Task { await kiosk.returnToPicker(sync: sync) } } label: { chip }.buttonStyle(.plain)
+        } else {
+            chip
+        }
+    }
+
+    private func barItem(_ item: KioskNav) -> some View {
+        let on = selection == item
+        return Button { tapRail(item) } label: {
+            VStack(spacing: 3) {
+                Image(systemName: item.icon).font(.system(size: 20, weight: .semibold))
+                Text(item.label).font(.system(size: 10.5, weight: .semibold)).lineLimit(1)
+            }
+            .foregroundStyle(on ? WF.primary : WF.ink3)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The raised coral ✨ capture FAB — the bottom-bar twin of `captureRailButton`.
+    private var captureBarButton: some View {
+        Button { dictateOnOpen = false; showCapture = true } label: {
+            Image(systemName: "sparkles").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 54, height: 54)
+                .background(WF.primary).clipShape(Circle())
+                .wfShadow1()
+        }
+        .buttonStyle(.plain)
+        .offset(y: -16)
+        .padding(.horizontal, 8)
+    }
+
     // MARK: detail pages
 
     @ViewBuilder private var detail: some View {
@@ -282,8 +394,7 @@ private extension View {
     }
 }
 
-#Preview {
+#Preview(traits: .landscapeLeft) {
     KioskShell()
         .environment(SyncManager())
-        .previewInterfaceOrientation(.landscapeLeft)
 }

@@ -83,8 +83,7 @@ struct KioskMoreView: View {
     }
 }
 
-#Preview {
+#Preview(traits: .landscapeLeft) {
     KioskMoreView()
         .environment(SyncManager())
-        .previewInterfaceOrientation(.landscapeLeft)
 }

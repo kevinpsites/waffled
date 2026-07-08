@@ -2158,16 +2158,23 @@ struct WaffledAPI: Sendable {
     // MARK: List templates (save-as-template / apply)
     // A template is a `lists` row with listType == "template"; its items are stored
     // unchecked. Templates are excluded from the normal `GET /api/lists` rail
-    // server-side (and defensively filtered in `listSummaries()`). Save snapshots a
-    // list; apply spins up a fresh custom list with everything unchecked.
+    // server-side (and defensively filtered in `listSummaries()`) and surfaced in
+    // their own group. Marking a list as a template CONVERTS it in place (no copy),
+    // so there's one editable template — edit it and every list you spin off reflects
+    // the change. `apply` spins up a fresh custom list with everything unchecked.
 
-    /// Save an existing list as a reusable template (unchecked copies of its items).
-    /// Returns the new template's summary.
-    func saveListAsTemplate(listId: String, name: String? = nil) async throws -> ListSummary {
-        var body: [String: JSONValue] = [:]
-        if let name, !name.isEmpty { body["name"] = .string(name) }
+    /// Mark a list as a reusable template — converts it in place (only a plain
+    /// 'custom' list; grocery is protected). Returns the now-template summary.
+    func saveListAsTemplate(listId: String) async throws -> ListSummary {
         struct Resp: Decodable { let template: ListSummary }
-        return try await sendReturning("POST", "/api/lists/\(listId)/save-as-template", body: body, as: Resp.self).template
+        return try await sendReturning("POST", "/api/lists/\(listId)/save-as-template", body: [:], as: Resp.self).template
+    }
+
+    /// Move a template back into the active Lists rail (undo a convert). Returns the
+    /// now-custom list summary.
+    func unmarkTemplate(id: String) async throws -> ListSummary {
+        struct Resp: Decodable { let list: ListSummary }
+        return try await sendReturning("POST", "/api/lists/\(id)/unmark-template", body: [:], as: Resp.self).list
     }
 
     /// The household's saved list templates (hidden from the normal rail).
