@@ -24,12 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   leave the recipe, the same as the web).
 
 ### Changed
-- **The recipe page leads with one clear action (web).** The detail screen was redesigned for
-  hierarchy: the toolbar drops from five buttons to small favorite/edit/schedule icons, and
-  **Cook Mode** becomes a single full-width button right under the title. Tags show the first
-  few with a **"+N more"** toggle (hashtags move to a quiet line), method steps reference their
-  ingredients as a short **"Uses: …"** line with an inline timer instead of a wall of chips, and
-  the on-hand banner is one calm line with an **Add to grocery** action.
+- **The recipe screen leads with one clear action (web + iOS).** The detail screen was redesigned
+  for hierarchy on both the web/kiosk app and native iOS/iPadOS: **Cook Mode** becomes a single
+  prominent button right under the title, the toolbar/top bar collapses to small favorite / edit /
+  schedule (or **⋯**) icons, tags show the first few with a **"+N more"** toggle (hashtags drop to
+  a quiet line), each method step references its ingredients as a short **"Uses: …"** line with an
+  inline timer instead of a wall of chips, and the on-hand banner is one calm line with an
+  **Add to grocery** action. On iOS you can also tick ingredients off and **Schedule** the recipe
+  onto the plan from the same screen.
 - **The Lists page is cleaner and easier to use (web).** The list header is decluttered into a
   single **⋯** menu (Rename · Save as template / Move to Lists · Delete) beside the Everyone
   filter, with **Use template** kept as the primary action on templates. Item rows now behave
@@ -41,11 +43,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pantry swipe matches the Lists swipe on iPhone.** Swiping a pantry item now reveals the
   same native **Edit** / **Delete** actions you get on a list item, instead of a one-off
   custom control.
-- **The iOS recipe screen is redesigned around one clear action.** Cook Mode is now the single
-  prominent black button; the pile of tags collapses to three plus a **"+N more"** toggle with
-  hashtags on a quiet line beneath; each method step shows a light **"Uses: …"** line and a
-  small inline timer instead of a wall of colored chips; and the on-hand banner is one compact
-  line with an **Add to grocery** action. The top bar drops to favorite + a **⋯** menu.
 
 ### Fixed
 - **Recipe ingredients don't get chopped up on the grocery list.** An ingredient with a
