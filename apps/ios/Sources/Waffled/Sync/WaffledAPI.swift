@@ -2277,6 +2277,8 @@ struct WaffledAPI: Sendable {
         let thisWeek: Double
         let autoFromCalendar: Bool
         let healthMetric: String?
+        /// Daily threshold for a health-linked habit ("2,000 steps a day"); nil otherwise.
+        let healthDailyTarget: Double?
         let participants: [Goal.Participant]
         let milestones: [Milestone]
         let steps: [Step]

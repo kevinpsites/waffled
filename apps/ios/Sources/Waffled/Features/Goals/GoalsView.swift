@@ -882,10 +882,13 @@ struct GoalCreateSheet: View {
     /// health_metric column + auto-sync are the next slice (see docs/design/healthkit-goals.md).
     @State private var healthMetric: HealthKitBridge.Metric?
     @State private var autoFromHealth = false
+    /// Daily threshold for a health-linked *habit* ("2,000 steps a day"). Unused by
+    /// total/count goals, which accumulate toward `target` instead.
+    @State private var healthDailyTarget = ""
     private var healthAvailable: Bool { HealthKitBridge.shared.isAvailable }
-    /// Health auto-fill only applies to numeric goals (steps/flights/etc.), not habits
-    /// or checklists — and only on a device with HealthKit (iPhone).
-    private var canAutoFromHealth: Bool { healthAvailable && !isHabit && !isChecklist }
+    /// Health auto-fill applies to numeric goals (accumulate) and habits (daily
+    /// threshold), but not checklists — and only on a device with HealthKit (iPhone).
+    private var canAutoFromHealth: Bool { healthAvailable && !isChecklist }
 
     /// Mirrors the web's per-type validation: a name, plus a valid measure.
     private var canSave: Bool {
@@ -1091,6 +1094,16 @@ struct GoalCreateSheet: View {
                 Text(m.explanation)
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
                     .fixedSize(horizontal: false, vertical: true)
+                // A habit counts a day when it clears a daily threshold ("2,000 steps a
+                // day"), paired with the "N× a week" cadence in the measure section above.
+                if isHabit {
+                    HStack(spacing: 8) {
+                        Text("Reach").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
+                        numField($healthDailyTarget, width: 90)
+                        Text("\(m.label) a day").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
+                    }
+                    .padding(.top, 2)
+                }
             }
             // iOS never re-prompts once a choice is made — the only recovery is Settings.
             Button {
@@ -1116,12 +1129,18 @@ struct GoalCreateSheet: View {
         .buttonStyle(.plain)
     }
 
-    /// Picking a metric fills the unit + a suggested target and requests read access now
-    /// (so consent happens at opt-in).
+    /// Picking a metric fills a sensible default (a habit's daily threshold, or a numeric
+    /// goal's unit + target) and requests read access now (so consent happens at opt-in).
     private func selectHealthMetric(_ m: HealthKitBridge.Metric) {
         healthMetric = m
-        unit = m.label
-        target = String(m.suggestedTarget)
+        if isHabit {
+            if healthDailyTarget.trimmingCharacters(in: .whitespaces).isEmpty {
+                healthDailyTarget = String(m.suggestedTarget)
+            }
+        } else {
+            unit = m.label
+            target = String(m.suggestedTarget)
+        }
         Task { try? await HealthKitBridge.shared.requestReadAuthorization() }
     }
 
@@ -1567,6 +1586,7 @@ struct GoalCreateSheet: View {
         // directly (not via the toggle's binding) so the saved target isn't overwritten.
         healthMetric = HealthKitBridge.Metric(key: g.healthMetric) ?? HealthKitBridge.Metric.matching(unit: unit)
         autoFromHealth = healthMetric != nil
+        if let t = g.healthDailyTarget { healthDailyTarget = goalFmt(t) }
     }
 
     private static func parseDay(_ iso: String) -> Date? {
@@ -1590,6 +1610,9 @@ struct GoalCreateSheet: View {
             // Apple Health link (numeric goals only). Null when off/manual — including on
             // edit, so turning the toggle off clears the stored link server-side.
             "healthMetric": (canAutoFromHealth && autoFromHealth) ? (healthMetric.map { .string($0.key) } ?? .null) : .null,
+            // Daily threshold only for a health-linked habit; null everywhere else.
+            "healthDailyTarget": (canAutoFromHealth && autoFromHealth && isHabit)
+                ? (Double(healthDailyTarget).map(JSONValue.double) ?? .null) : .null,
             "deadline": hasDeadline ? .string(isoDay(deadline)) : .null,
         ]
         if isHabit {
