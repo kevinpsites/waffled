@@ -118,6 +118,17 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   cooked. We deliberately confirm rather than subtract exact amounts (units don't reconcile
   cleanly). **Later:** true unit/quantity reconciliation; vegetable-based "mains" + recipe filter.
 
+- **Assign & show a cook per meal (web + iPad + iPhone).** The `meal_plan_entries.cook_person_id`
+  column and the API's `cook` DTO already exist — and the demo seed even populates cooks (Jerry,
+  Kramer) — but **no UI actually assigns it**, so the data is running ahead of the product. Build
+  the real feature on all three surfaces: a **"who's cooking?" picker** when planning/editing a
+  meal (pick a household member, or leave it to the whole family) wired to the existing
+  `planMeal(…, cookPersonId:)` / `/api/meals/plan`, and a consistent **cook badge** (👩‍🍳 +
+  avatar/name) on the planner grid, the Today "meals" card, and the recipe detail. Today the phone
+  only *displays* the cook (`WeekPlannerView`) and web ignores `cook_person_id` entirely; re-planning
+  should preserve the existing cook. Keep it un-gated (collaborative/attribution-style, like list
+  authorship — no capability needed to volunteer or reassign a cook).
+
 - **Multi-household identity** — one email/account that belongs to many households (separate
   profile + role per household, switch after login). Design spike written + product decisions
   aligned: [`docs/design/multi-household-identity.md`](../design/multi-household-identity.md).
