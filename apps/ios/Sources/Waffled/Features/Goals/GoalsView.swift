@@ -1,5 +1,6 @@
 import SwiftUI
 import Observation
+import UIKit
 
 /// Goals — the membership model from the web kiosk, folded onto one phone screen:
 /// a horizontal list-picker (Family / each person) up top, an All/Shared/Each
@@ -1091,6 +1092,14 @@ struct GoalCreateSheet: View {
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            // iOS never re-prompts once a choice is made — the only recovery is Settings.
+            Button {
+                if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+            } label: {
+                Text("Not seeing your data? Manage access in Settings")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ai)
+            }
+            .buttonStyle(.plain)
         }
     }
 

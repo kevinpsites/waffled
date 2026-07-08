@@ -21,6 +21,7 @@ enum HubRoute: Hashable {
     case settingsFamilyNight         // Settings → Family Night (agenda, day/time, calendar)
     case settingsDisplay             // Settings → Display & Kiosk (family-display screensaver)
     case settingsNotifications       // Settings → Notifications (local event reminders)
+    case settingsPermissions         // Settings → Permissions (device access: Apple Health, etc.)
     case settingsAbout               // Settings → About (version + server address)
     case reviewEvents                // Today → review calendar events that tie to goals
     case approvals                   // Today → pending reward purchases + chore check-offs
@@ -62,6 +63,7 @@ struct HubDestination: View {
         case .settingsFamilyNight: FamilyNightSettingsView()
         case .settingsDisplay: DisplayKioskSettingsView()
         case .settingsNotifications: NotificationsSettingsView()
+        case .settingsPermissions: PermissionsSettingsView()
         case .settingsAbout: AboutSettingsView()
         case .reviewEvents: ReviewEventsView(path: $path)
         case .approvals: ApprovalsView()
