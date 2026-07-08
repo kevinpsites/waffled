@@ -14,6 +14,23 @@ import { aisleFor, isStaple } from '../lists/aisles'
 const FRACTIONS: Record<string, number> = { '½': 0.5, '¼': 0.25, '¾': 0.75, '⅓': 1 / 3, '⅔': 2 / 3, '⅛': 0.125, '⅜': 0.375, '⅝': 0.625, '⅞': 0.875, '⅕': 0.2, '⅖': 0.4 }
 const UNITS = new Set(['oz', 'oz.', 'lb', 'lbs', 'g', 'kg', 'ml', 'l', 'tsp', 'tsp.', 'teaspoon', 'teaspoons', 'tbsp', 'tbsp.', 'tablespoon', 'tablespoons', 'cup', 'cups', 'clove', 'cloves', 'can', 'cans', 'jar', 'jars', 'bunch', 'bunches', 'sprig', 'sprigs', 'ct', 'count', 'package', 'packages', 'pkg', 'bottle', 'bottles', 'slice', 'slices', 'pinch', 'stick', 'sticks', 'head', 'heads'])
 
+// Leading modifiers that describe an ingredient but never stand alone as one, e.g.
+// "boneless, skinless chicken breast". A comma right after a run of these is part of
+// the name, not the start of the prep note — otherwise the name collapses to
+// "boneless". Everything else keeps the normal "name, prep note" split.
+export const INGREDIENT_MODIFIERS = new Set([
+  'boneless', 'skinless', 'bone-in', 'skin-on', 'fresh', 'frozen', 'organic',
+  'ripe', 'lean', 'large', 'medium', 'small', 'jumbo', 'extra-large', 'x-large',
+  'unsalted', 'salted', 'sweet', 'baby', 'whole', 'free-range', 'wild-caught',
+])
+
+// True when every word of `s` is a leading modifier (so "boneless" / "boneless
+// skinless" → true, "scallions" / "chicken breast" → false).
+export function isAllModifiers(s: string): boolean {
+  const words = s.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  return words.length > 0 && words.every((w) => INGREDIENT_MODIFIERS.has(w))
+}
+
 export function parseAmount(token: string): number | null {
   // mixed unicode like "4½", or "4 1/2", or plain "1.5", or fraction "1/2", or "½"
   const t = token.trim()
@@ -60,12 +77,20 @@ export function parseIngredient(raw: string, section: string | null): ParsedIng 
   }
   // a parenthetical size like "(15 oz.)" — drop from the name (kept in display)
   rest = rest.replace(/\([^)]*\)/g, '').replace(/\s{2,}/g, ' ').trim()
-  // prep note after a comma
+  // Prep note after a comma. Normally the first comma is the name↔prep boundary
+  // ("mozzarella, shredded"), but a comma that merely follows a run of leading
+  // modifiers ("boneless," / "boneless, skinless,") is part of the name — skip it,
+  // or the name collapses to "boneless". Split at the first NON-modifier comma.
   let prepNote: string | null = null
-  const commaIdx = rest.indexOf(',')
-  if (commaIdx >= 0) {
-    prepNote = rest.slice(commaIdx + 1).trim() || null
-    rest = rest.slice(0, commaIdx).trim()
+  let segStart = 0
+  for (let ci = rest.indexOf(','); ci >= 0; ci = rest.indexOf(',', ci + 1)) {
+    if (isAllModifiers(rest.slice(segStart, ci))) {
+      segStart = ci + 1
+      continue
+    }
+    prepNote = rest.slice(ci + 1).trim() || null
+    rest = rest.slice(0, ci).trim()
+    break
   }
   // strip a leading size word that isn't a unit ("large sweet onion" → "sweet onion")
   const name = rest.replace(/^(large|medium|small|jumbo|x-?large)\s+/i, '').replace(/\.$/, '').trim()

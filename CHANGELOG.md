@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name before it's created — instead of it silently spinning up a list named after the template.
 
 ### Fixed
+- **Recipe ingredients don't get chopped up on the grocery list.** An ingredient with a
+  leading modifier like "boneless, skinless chicken breast" was truncated at the first
+  comma, so the auto-built grocery list showed a stray item named just "boneless". The
+  importer now keeps the modifier attached to the ingredient name. Existing recipes can be
+  re-normalized in place with `apps/api/scripts/reparse-ingredients.ts`.
 - **Deleting a list template updates the page right away (web).** Removing a template used
   to leave it on screen until you reloaded — it now disappears from the Templates section
   the moment you delete it.

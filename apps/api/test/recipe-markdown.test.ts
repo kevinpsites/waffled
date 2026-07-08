@@ -92,6 +92,19 @@ describe('parseIngredient', () => {
   it('strips a leading size word that is not a unit', () => {
     expect(parseIngredient('1 large sweet onion', null).name).toBe('sweet onion')
   })
+
+  it('keeps a leading-modifier name whole, splitting after the noun', () => {
+    // Regression: the old first-comma split collapsed this to name "boneless".
+    const ing = parseIngredient('3 boneless, skinless chicken breast halves, cut into 1-inch pieces', null)
+    expect(ing.name).toBe('boneless, skinless chicken breast halves')
+    expect(ing.prepNote).toBe('cut into 1-inch pieces')
+  })
+
+  it('still splits a normal name from its prep note at the first comma', () => {
+    const ing = parseIngredient('3 scallions, whites and greens separated', null)
+    expect(ing.name).toBe('scallions')
+    expect(ing.prepNote).toBe('whites and greens separated')
+  })
 })
 
 describe('parseRecipe', () => {
