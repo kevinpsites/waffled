@@ -7,6 +7,15 @@
   // Build command (in the Cloudflare project): cd website && npm ci && npm run build
   "name": "waffled-docs",
   "compatibility_date": "2025-06-01",
+  // Serve on the custom domain, not a workers.dev subdomain. Without a route +
+  // workers_dev:false, `wrangler deploy` falls back to workers.dev and fails in CI
+  // ("You need to register a workers.dev subdomain"). custom_domain:true provisions
+  // the DNS + cert for docs.waffled.app automatically (the waffled.app zone must be
+  // on this Cloudflare account).
+  "workers_dev": false,
+  "routes": [
+    { "pattern": "docs.waffled.app", "custom_domain": true }
+  ],
   "assets": {
     "directory": "./website/dist"
   }
