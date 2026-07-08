@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+- **Pantry swipe matches the Lists swipe on iPhone.** Swiping a pantry item now reveals the
+  same native **Edit** / **Delete** actions you get on a list item, instead of a one-off
+  custom control.
 
 ### Fixed
 - **Goal progress numbers stay inside the ring (web + iOS).** A long or fractional total

@@ -14,9 +14,8 @@ struct PantryView: View {
     /// inert. An id-keyed `.navigationDestination(item:)` pushes independently of that
     /// path (and by id, so stepper edits don't disturb the pushed screen).
     @State private var openItemId: String?
-    /// Swipe-to-edit sheet + which row is currently swiped open (iPhone list).
+    /// Swipe-to-edit sheet (iPhone list).
     @State private var editingItem: WaffledAPI.PantryItem?
-    @State private var openSwipeId: String?
     @State private var query = ""
     @State private var filter: PantryFilter = .all
     @State private var sort: PantrySort = .expiring
@@ -51,7 +50,7 @@ struct PantryView: View {
             } else {
                 VStack(spacing: 0) {
                     filterChips
-                    mainScroll
+                    mainList
                 }
             }
         }
@@ -188,7 +187,7 @@ struct PantryView: View {
                         .frame(maxWidth: .infinity).padding(.vertical, 30)
                 } else {
                     LazyVGrid(columns: gridColumns, alignment: .leading, spacing: 12) {
-                        ForEach(shown) { card($0) }
+                        ForEach(shown) { cardBody($0) }
                     }
                     if !filteredUsed.isEmpty { usedUpSection }
                 }
@@ -217,22 +216,58 @@ struct PantryView: View {
         }
     }
 
-    // MARK: a card
+    // MARK: iPhone list — native swipe (Edit + Delete), matching the Lists rows
 
-    @ViewBuilder private func card(_ item: WaffledAPI.PantryItem) -> some View {
-        // iPhone (single column): swipe a row to edit or delete, like a system list.
-        // iPad keeps the plain two-column grid.
-        if isWide {
-            cardBody(item)
-        } else {
-            SwipeActionsRow(
-                id: item.id,
-                openId: $openSwipeId,
-                onEdit: { editingItem = item },
-                onDelete: { Task { await model.delete(item) } }
-            ) { cardBody(item) }
+    private var mainList: some View {
+        List {
+            Group {
+                CookFromPantryCard(model: model)
+                mainHead
+            }
+            .listRowInsets(EdgeInsets(top: 7, leading: 16, bottom: 7, trailing: 16))
+            .listRowBackground(Color.clear).listRowSeparator(.hidden)
+
+            if shown.isEmpty && model.usedUp.isEmpty {
+                Text(query.isEmpty ? "Nothing here yet. Add what’s on hand." : "Nothing matches your search.")
+                    .font(.system(size: 14)).foregroundStyle(WF.ink3)
+                    .frame(maxWidth: .infinity).padding(.vertical, 30)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
+            } else {
+                ForEach(shown) { item in
+                    cardBody(item)
+                        .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
+                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                        // The same trailing swipe as a list item — Edit + Delete.
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) { Task { await model.delete(item) } } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                            Button { editingItem = item } label: { Label("Edit", systemImage: "pencil") }
+                                .tint(WF.ai)
+                        }
+                }
+                if !filteredUsed.isEmpty {
+                    usedUpSection
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 7, trailing: 16))
+                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                }
+            }
+            if !model.avoidSet.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Rectangle().fill(WF.hair).frame(height: 1)
+                    AllergenKey(avoid: model.avoidSet)
+                }
+                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 7, trailing: 16))
+                .listRowBackground(Color.clear).listRowSeparator(.hidden)
+            }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .contentMargins(.bottom, 110, for: .scrollContent)
     }
+
+    // MARK: a card
 
     private func cardBody(_ item: WaffledAPI.PantryItem) -> some View {
         HStack(spacing: 10) {
