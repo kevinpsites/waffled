@@ -4,6 +4,22 @@ High-signal notes for anyone (human or AI) working in this repo. This file is
 auto-loaded by Claude Code in every session. Add a bullet when a mistake bites
 more than once; keep it terse.
 
+## How we develop — TDD is not optional (repo-wide)
+
+**Test-driven development is the way we build here, not a QA step at the end.** For every
+behavior change — a new endpoint, a service function, a bug fix, a counting rule — the flow is
+always: **write the failing test first → watch it fail → write the minimum logic to make it
+pass → refactor.** Do not write implementation before its test exists. Retrofitting a test onto
+already-written code is a fallback for closing an *existing* gap, not the workflow — and when you
+do it, say so explicitly.
+
+**Prefer integration tests, strongly; unit tests second.** For the API, integration = drive the
+real HTTP routes against a throwaway Postgres (`@testcontainers/postgresql` + `runMigrations`,
+`app.run(...)`), asserting on responses — the harness in `apps/api/test/*.integration.test.ts`
+(e.g. `goals.integration.test.ts`, `goals-health.integration.test.ts`). Reach for a unit test
+(`*.unit.test.ts`) only when the logic is genuinely isolated (pure helpers). Run with `npm test`
+(vitest) in `apps/api`.
+
 ## Releasing & the changelog (repo-wide)
 
 1. **Log every user/operator-facing change in `CHANGELOG.md` under `## [Unreleased]` as
