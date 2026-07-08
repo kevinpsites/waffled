@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Delete a recipe on iOS.** A recipe's **⋯** menu now has a **Delete recipe** action (with a
+  confirm) alongside Edit. Deleting it removes it from your library and pops you back.
 
 ### Changed
 - **Pantry swipe matches the Lists swipe on iPhone.** Swiping a pantry item now reveals the

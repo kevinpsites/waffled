@@ -533,6 +533,11 @@ struct WaffledAPI: Sendable {
         return try await sendReturning("PATCH", "/api/recipes/\(id)", body: body, as: Resp.self).recipe
     }
 
+    /// Delete a recipe (and its ingredients/steps, server-side).
+    func deleteRecipe(id: String) async throws {
+        try await delete("/api/recipes/\(id)")
+    }
+
     /// AI Details auto-fill: infer cuisine/protein/tags/etc. from the title + ingredient
     /// names + step texts. Returns nil when no AI provider is configured or it fails (the
     /// editor just shows no suggestions then).
