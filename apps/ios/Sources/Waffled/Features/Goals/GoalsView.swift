@@ -111,6 +111,19 @@ func goalFmt(_ n: Double?) -> String {
     return n == n.rounded() ? String(Int(n)) : String(format: "%g", n)
 }
 
+/// Compact, rounded formatting for the tight goal ring: values under 1,000 round to a
+/// whole number (295.99 → "296") and larger ones abbreviate (10,000 → "10K",
+/// 1,234,567 → "1.2M"), so the big number stays short and readable at any magnitude
+/// instead of shrinking to nothing. Ring-only — `goalFmt` still feeds the exact figures
+/// elsewhere (subtitles, milestones, cards).
+func ringFmt(_ n: Double?) -> String {
+    guard let n else { return "—" }
+    if abs(n) >= 1000 {
+        return n.formatted(.number.notation(.compactName).precision(.fractionLength(0...1)))
+    }
+    return String(Int(n.rounded()))
+}
+
 /// "Count · in books", "Habit · 5× a week", "Count · each logs visits".
 func goalDescriptor(_ g: WaffledAPI.Goal) -> String {
     let label = ["count": "Count", "total": "Total", "habit": "Habit", "checklist": "Milestones"][g.goalType] ?? g.goalType
@@ -138,7 +151,12 @@ struct GoalRing<Center: View>: View {
             Circle().inset(by: lineWidth / 2).trim(from: 0, to: max(0, min(value, 1)))
                 .stroke(stroke, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
+            // Keep the centered label inside the ring: cap it to (just under) the inner
+            // diameter so a long value (e.g. "295.99") shrinks to fit instead of spilling
+            // past the stroke. Paired with `.minimumScaleFactor` on the value text.
             center()
+                .frame(width: max(0, size - lineWidth * 2 - 10))
+                .multilineTextAlignment(.center)
         }
         .frame(width: size, height: size)
     }
@@ -331,8 +349,9 @@ struct GoalsView: View {
             HStack(alignment: .top, spacing: 14) {
                 GoalRing(value: frac, size: 96, lineWidth: 9, stroke: .white, track: .white.opacity(0.25)) {
                     VStack(spacing: 0) {
-                        Text(goalFmt(g.totalProgress)).font(.system(size: 23, weight: .heavy)).foregroundStyle(.white)
-                        Text("of \(goalFmt(g.target))\(g.unit.map { " \($0)" } ?? "")")
+                        Text(ringFmt(g.totalProgress)).font(.system(size: 23, weight: .heavy)).foregroundStyle(.white)
+                            .lineLimit(1).minimumScaleFactor(0.5)
+                        Text("of \(ringFmt(g.target))\(g.unit.map { " \($0)" } ?? "")")
                             .font(.system(size: 9, weight: .bold)).foregroundStyle(.white.opacity(0.85))
                             .lineLimit(1).minimumScaleFactor(0.8)
                     }
@@ -1658,8 +1677,9 @@ struct GoalDetailView: View {
         return HStack(alignment: .top, spacing: 14) {
             GoalRing(value: frac, size: 104, lineWidth: 9, stroke: .white, track: .white.opacity(0.25)) {
                 VStack(spacing: 0) {
-                    Text(goalFmt(progress)).font(.system(size: 26, weight: .heavy)).foregroundStyle(.white)
-                    Text("of \(goalFmt(target))\(unit.map { " \($0)" } ?? "")")
+                    Text(ringFmt(progress)).font(.system(size: 26, weight: .heavy)).foregroundStyle(.white)
+                        .lineLimit(1).minimumScaleFactor(0.5)
+                    Text("of \(ringFmt(target))\(unit.map { " \($0)" } ?? "")")
                         .font(.system(size: 9, weight: .bold)).foregroundStyle(.white.opacity(0.85))
                         .lineLimit(1).minimumScaleFactor(0.7)
                 }
