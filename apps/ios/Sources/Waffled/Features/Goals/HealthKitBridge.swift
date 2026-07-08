@@ -54,13 +54,47 @@ final class HealthKitBridge {
             }
         }
 
-        /// Short label shown next to the value ("7,340 steps").
+        /// The goal `unit` stored when this metric is picked — also what
+        /// `matching(unit:)` keys off, and the label shown next to a value
+        /// ("7,340 steps"). Keep the two in sync.
         var label: String {
             switch self {
             case .steps:           return "steps"
             case .flights:         return "flights"
             case .exerciseMinutes: return "min"
             case .activeEnergy:    return "cal"
+            }
+        }
+
+        /// Short label for the editor's picker chip.
+        var chipLabel: String {
+            switch self {
+            case .steps:           return "Steps"
+            case .flights:         return "Flights"
+            case .exerciseMinutes: return "Exercise"
+            case .activeEnergy:    return "Energy"
+            }
+        }
+
+        /// A sensible starting target to pre-fill when the metric is picked, so the
+        /// user isn't staring at an empty number field.
+        var suggestedTarget: Int {
+            switch self {
+            case .steps:           return 10000
+            case .flights:         return 10
+            case .exerciseMinutes: return 30
+            case .activeEnergy:    return 500
+            }
+        }
+
+        /// Plain-language "what is this?" shown under the picker so the user knows what
+        /// Apple Health actually tracks for each choice.
+        var explanation: String {
+            switch self {
+            case .steps:           return "Steps counted by your iPhone and Apple Watch."
+            case .flights:         return "Flights of stairs climbed, tracked by your iPhone."
+            case .exerciseMinutes: return "Apple Watch exercise minutes — the green ring."
+            case .activeEnergy:    return "Active calories burned — the Apple Watch move ring."
             }
         }
     }

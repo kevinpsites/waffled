@@ -852,6 +852,18 @@ struct GoalCreateSheet: View {
     private var isChecklist: Bool { goalType == "checklist" }
     private var filledSteps: [Step] { steps.filter { !$0.label.trimmingCharacters(in: .whitespaces).isEmpty } }
 
+    /// Apple Health metric this goal auto-tracks (Tier 1 discoverable picker). Picking one
+    /// sets the unit + a suggested target — no typing — and, since the unit then matches,
+    /// the Log sheet's read-&-suggest card lights up. iPhone-only (HealthKit is absent on
+    /// iPad); `nil` = "Manual". The link is carried by the unit today; a persisted
+    /// health_metric column + auto-sync are the next slice (see docs/design/healthkit-goals.md).
+    @State private var healthMetric: HealthKitBridge.Metric?
+    @State private var autoFromHealth = false
+    private var healthAvailable: Bool { HealthKitBridge.shared.isAvailable }
+    /// Health auto-fill only applies to numeric goals (steps/flights/etc.), not habits
+    /// or checklists — and only on a device with HealthKit (iPhone).
+    private var canAutoFromHealth: Bool { healthAvailable && !isHabit && !isChecklist }
+
     /// Mirrors the web's per-type validation: a name, plus a valid measure.
     private var canSave: Bool {
         guard !title.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
@@ -1042,6 +1054,46 @@ struct GoalCreateSheet: View {
         }
     }
 
+    /// Metric chooser revealed when "Auto-fill from Apple Health" is on (Extras). No
+    /// "Manual" chip — off = manual. Each choice fills the unit + a suggested target and
+    /// explains what Apple Health tracks for it.
+    private var healthMetricChips: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ChipFlow(spacing: 8, lineSpacing: 8) {
+                ForEach(HealthKitBridge.Metric.allCases, id: \.self) { m in
+                    healthChip(m, m.chipLabel)
+                }
+            }
+            if let m = healthMetric {
+                Text(m.explanation)
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func healthChip(_ m: HealthKitBridge.Metric, _ label: String) -> some View {
+        let on = healthMetric == m
+        return Button { selectHealthMetric(m) } label: {
+            Text(label).font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(on ? .white : WF.ink2)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(on ? WF.ai : WF.card)
+                .overlay(Capsule().strokeBorder(on ? Color.clear : WF.hair, lineWidth: 1))
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Picking a metric fills the unit + a suggested target and requests read access now
+    /// (so consent happens at opt-in).
+    private func selectHealthMetric(_ m: HealthKitBridge.Metric) {
+        healthMetric = m
+        unit = m.label
+        target = String(m.suggestedTarget)
+        Task { try? await HealthKitBridge.shared.requestReadAuthorization() }
+    }
+
     /// Named checklist steps (matches the web): numbered rows you edit + add to.
     private var stepsEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1176,6 +1228,19 @@ struct GoalCreateSheet: View {
             // comes from ticking steps, not from calendar events.
             if !isChecklist {
                 extraRow("📅", "Auto-count from calendar", "Matching events add progress automatically", $autoFromCalendar)
+            }
+            // Apple Health auto-fill — an opt-in enhancement alongside calendar auto-count.
+            // Off = you log manually; on = pick a metric and progress fills from Health.
+            // iPhone-only + numeric goals only. The custom binding runs the pick/clear only
+            // on a real user toggle (prefill sets the @State directly, so it can't clobber
+            // a saved target).
+            if canAutoFromHealth {
+                extraRow("⌚", "Auto-fill from Apple Health", "Progress fills from your iPhone & Apple Watch",
+                         Binding(get: { autoFromHealth }, set: { on in
+                             autoFromHealth = on
+                             if on { selectHealthMetric(healthMetric ?? .steps) } else { healthMetric = nil }
+                         }))
+                if autoFromHealth { healthMetricChips.padding(.top, 4).padding(.bottom, 10) }
             }
             // NOTE: the mock's "🔔 Weekly check-in" toggle is intentionally omitted —
             // there's no backend for it yet (tracked in docs/product/roadmap.md).
@@ -1466,6 +1531,11 @@ struct GoalCreateSheet: View {
         if !g.steps.isEmpty {
             steps = g.steps.map { .init(existingId: $0.id, label: $0.label) }
         }
+        // Restore the health auto-fill selection if this goal's unit maps to a metric.
+        // Set the @State directly (not via the toggle's binding) so the saved target isn't
+        // overwritten by the suggested one.
+        healthMetric = HealthKitBridge.Metric.matching(unit: unit)
+        autoFromHealth = healthMetric != nil
     }
 
     private static func parseDay(_ iso: String) -> Date? {
