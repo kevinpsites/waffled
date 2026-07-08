@@ -1477,7 +1477,12 @@ function CalendarsPanel() {
           <div className="tiny muted" style={{ fontWeight: 600 }}>
             {cal.selected ? `Last synced ${fmtWhen(cal.lastSyncedAt)}` : 'Sync off'}
             {cal.accessRole ? ` · ${cal.accessRole}` : ''}
-            {cal.selected && cal.visibility === 'personal' && <span style={{ fontWeight: 700 }}> · 🔒 personal</span>}
+            {cal.selected && (
+              <span style={{ fontWeight: 700 }}>
+                {' · '}
+                {cal.visibility === 'personal' ? '🔒 Private (only you)' : '👪 Family viewable'}
+              </span>
+            )}
             {cal.isWriteTarget && <span style={{ color: 'var(--accent, #4c8bf5)' }}> · ★ new events go here</span>}
           </div>
         </div>
@@ -1508,12 +1513,12 @@ function CalendarsPanel() {
             className="cal-sync"
             title={
               cal.visibility === 'personal'
-                ? 'Personal — only its owner sees these events (not on the shared kiosk)'
-                : 'On the shared family kiosk. Uncheck to keep it personal (owner-only).'
+                ? 'Private — only you see this calendar. Uncheck to show it to the whole family (on the shared kiosk).'
+                : 'Visible to the whole family, including the shared kiosk. Check to keep it private (only you).'
             }
           >
-            <input type="checkbox" checked={cal.visibility !== 'personal'} onChange={() => toggleVisibility(cal)} />
-            Kiosk
+            <input type="checkbox" checked={cal.visibility === 'personal'} onChange={() => toggleVisibility(cal)} />
+            Private
           </label>
         )}
         <label className="cal-sync" title="Sync this calendar into Waffled">
