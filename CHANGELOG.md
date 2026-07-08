@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## [0.5.0] - 2026-07-08
+
+### Added
 - **Delete a recipe on iOS.** A recipe's **⋯** menu now has a **Delete recipe** action (with a
   confirm) alongside Edit. Deleting it removes it from your library and pops you back.
 - **Schedule a recipe onto your meal plan from iOS.** A recipe's **⋯** menu now has a
@@ -636,7 +644,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/kevinpsites/waffled/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/kevinpsites/waffled/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/kevinpsites/waffled/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/kevinpsites/waffled/compare/v0.2.3...v0.3.0
