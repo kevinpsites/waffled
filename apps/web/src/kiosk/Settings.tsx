@@ -1181,7 +1181,7 @@ function StaplesEditor() {
   async function remove(id: string) { await groceryApi.removeStaple(id); await load() }
   return (
     <div className="set-card" style={{ marginTop: 16 }}>
-      <CardHeader title="Pantry staples" sub="Assumed in the house — the grocery list leaves these off. Manage them here or from the Lists grocery board." />
+      <CardHeader title="Pantry Staples" sub="Assumed in the house — the grocery list leaves these off. Manage them here or from the Lists grocery board." />
       <form onSubmit={add} style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
         <input className="set-inline-input" style={{ flex: 1, width: 'auto' }} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add a staple… (e.g. Soy sauce)" />
         <button type="submit" className="btn btn-primary" disabled={!draft.trim() || busy}>Add</button>
@@ -1293,8 +1293,13 @@ function MealsPanel() {
         </div>
       </div>
 
+      {/* Meal times & reminders — the "when" of planned meals, in two sections:
+          the per-meal-type times, and the optional same-day thaw reminder. */}
       <div className="set-card" style={{ marginTop: 16 }}>
-        <CardHeader title="Meal times" sub="When each meal lands on the calendar." />
+        <CardHeader title="Meal Times & Reminders" />
+
+        {/* Section 1 — the time each meal type lands on the calendar. */}
+        <CardHeader title="Meal Times" sub="When each meal lands on the calendar." mid />
         {MEAL_TIME_ROWS.map((m) => (
           <SettingRow key={m.key} icon={m.icon} title={m.label}>
             <input
@@ -1306,10 +1311,10 @@ function MealsPanel() {
             />
           </SettingRow>
         ))}
-      </div>
 
-      <div className="set-card" style={{ marginTop: 16 }}>
-        <SettingRow icon="🧊" title="Thaw reminder" sub="Adds a same-day calendar reminder to pull the protein/ingredients out of the freezer for that day’s planned meal.">
+        {/* Section 2 — the same-day "get it out of the freezer" nudge. */}
+        <CardHeader title="Thaw Reminder" sub="A same-day calendar reminder to pull the protein/ingredients out of the freezer for that day’s planned meal." mid />
+        <SettingRow icon="🧊" title="Remind me to thaw" sub="Off by default — turn on to add the reminder.">
           <input type="checkbox" className="set-check" checked={cfg.prepReminder} onChange={(e) => update({ prepReminder: e.target.checked })} />
         </SettingRow>
         <SettingRow icon="⏰" title="Remind me at" sub="Time the reminder lands, on the meal’s own day.">
@@ -1321,7 +1326,7 @@ function MealsPanel() {
             onChange={(e) => update({ prepReminderTime: e.target.value })}
           />
         </SettingRow>
-        <CardHeader title="For which meals" mid />
+        <div className="set-field-label">For Which Meals</div>
         <div className="meal-chips">
           {MEAL_TIME_ROWS.map((m) => {
             const on = cfg.prepReminderMealTypes.includes(m.key)

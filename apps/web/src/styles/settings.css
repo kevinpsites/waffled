@@ -298,11 +298,20 @@
 .set-card-head > .tiny {
   margin-top: 2px;
 }
-/* A subtle section label sitting between rows / above a grid (e.g. "For which
-   meals") — flush like the leading header, but tighter since the row above
-   already supplies its own bottom padding. */
+/* A labelled subsection *within* a card (e.g. "Meal times" / "Thaw reminder"
+   inside "Meal times & reminders"): a hairline divider from the block above,
+   then the header — so the two sections read as distinct. */
 .set-card-head--mid {
-  padding: 6px 0 10px;
+  padding: 14px 0 12px;
+  border-top: 1px solid var(--hair-2);
+}
+/* A light control label above a grid/field (e.g. "For which meals") —
+   subordinate to a section header, flush with the rows. */
+.set-field-label {
+  padding: 2px 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
 }
 /* Chip / staple grids at the bottom of a card need the card's bottom breathing
    room too — rows supply their own padding, a bare grid doesn't. */
