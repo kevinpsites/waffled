@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Delete a recipe on iOS.** A recipe's **⋯** menu now has a **Delete recipe** action (with a
   confirm) alongside Edit. Deleting it removes it from your library and pops you back.
+- **Schedule a recipe onto your meal plan from iOS.** A recipe's **⋯** menu now has a
+  **Schedule…** action that opens a day-and-meal picker (Breakfast / Lunch / Dinner / Snack,
+  this week or next) — tap a day to drop the recipe onto the plan, matching the web.
+- **Check ingredients off on iOS.** Each ingredient row now has a tap-to-tick checkbox that
+  strikes it through — a quick "what's left" tracker as you shop or cook (it clears when you
+  leave the recipe, the same as the web).
 
 ### Changed
 - **The recipe page leads with one clear action (web).** The detail screen was redesigned for
@@ -35,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pantry swipe matches the Lists swipe on iPhone.** Swiping a pantry item now reveals the
   same native **Edit** / **Delete** actions you get on a list item, instead of a one-off
   custom control.
+- **The iOS recipe screen is redesigned around one clear action.** Cook Mode is now the single
+  prominent black button; the pile of tags collapses to three plus a **"+N more"** toggle with
+  hashtags on a quiet line beneath; each method step shows a light **"Uses: …"** line and a
+  small inline timer instead of a wall of colored chips; and the on-hand banner is one compact
+  line with an **Add to grocery** action. The top bar drops to favorite + a **⋯** menu.
 
 ### Fixed
 - **Recipe ingredients don't get chopped up on the grocery list.** An ingredient with a

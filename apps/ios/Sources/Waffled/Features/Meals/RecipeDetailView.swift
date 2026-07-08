@@ -17,6 +17,13 @@ struct RecipeDetailView: View {
     @State private var servings: Int?
     @State private var cookedMessage: String?
     @State private var confirmingDelete = false
+    /// Redesign: tags collapse to 3 + "+N more"; the on-hand banner adds the missing
+    /// ingredients to the grocery list.
+    @State private var tagsExpanded = false
+    @State private var groceryAdded = false
+    /// Local check-off (like the web) — tick ingredients as you shop/cook; not persisted.
+    @State private var checkedIngredients: Set<String> = []
+    @State private var scheduling = false
     @State private var userNotesDraft = ""
     @State private var editing = false
     @State private var cookMode = false
@@ -61,6 +68,7 @@ struct RecipeDetailView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Button { scheduling = true } label: { Label("Schedule…", systemImage: "calendar") }
                     Button { editing = true } label: { Label("Edit recipe", systemImage: "pencil") }
                     Button(role: .destructive) { confirmingDelete = true } label: {
                         Label("Delete recipe", systemImage: "trash")
@@ -102,6 +110,12 @@ struct RecipeDetailView: View {
             CookConfirmSheet(title: recipe.title, matches: cookMatches) { n in
                 if n > 0 { withAnimation { cookedMessage = "Marked as cooked — pantry updated." } }
             }
+        }
+        .sheet(isPresented: $scheduling) {
+            RecipeScheduleSheet(title: r.title, recipeId: recipe.id) { label in
+                withAnimation { cookedMessage = "Scheduled for \(label)." }
+            }
+            .presentationDetents([.medium, .large])
         }
     }
 
@@ -168,17 +182,36 @@ struct RecipeDetailView: View {
                 if let s = r.sourceName { metaItem("📖", s) }
             }
 
-            if r.cookedCount == 0 || !tagChips.isEmpty {
-                ChipFlow(spacing: 7, lineSpacing: 7) {
-                    // Never cooked → a tappable "🆕 New" tag that opens the library
-                    // filtered to never-cooked recipes (mirrors the kiosk detail).
-                    if r.cookedCount == 0 {
-                        NavigationLink(value: MealsRoute.recipesNew) {
-                            TagChip(chip: .init(text: "🆕 New", style: .new))
+            tagsSection
+        }
+    }
+
+    /// Progressive disclosure: show 3 tags + a "+N more" toggle, with #hashtags on a
+    /// quiet muted line beneath — so the tags stop shouting over the recipe.
+    @ViewBuilder private var tagsSection: some View {
+        let all = chipTags
+        let shown = tagsExpanded ? all : Array(all.prefix(3))
+        let overflow = all.count - shown.count
+        if !all.isEmpty || !hashtags.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                if !all.isEmpty {
+                    ChipFlow(spacing: 7, lineSpacing: 7) {
+                        ForEach(shown) { TagChip(chip: $0) }
+                        if overflow > 0 || tagsExpanded {
+                            Button { withAnimation(.easeInOut(duration: 0.2)) { tagsExpanded.toggle() } } label: {
+                                Text(tagsExpanded ? "Show less" : "+\(overflow) more")
+                                    .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(WF.ink3)
+                                    .padding(.horizontal, 11).padding(.vertical, 6)
+                                    .overlay(Capsule().strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+                                        .foregroundStyle(WF.hair))
+                            }.buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
-                    ForEach(tagChips) { TagChip(chip: $0) }
+                }
+                if !hashtags.isEmpty {
+                    Text(hashtags.map { "#\($0)" }.joined(separator: " · "))
+                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -188,14 +221,17 @@ struct RecipeDetailView: View {
         Text("\(icon) \(text)").font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink2).lineLimit(1)
     }
 
+    /// The one primary action — a prominent black pill, the first thing your eye lands on
+    /// after the title/tags.
     private var cookButton: some View {
         Button { cookMode = true } label: {
-            HStack(spacing: 7) {
-                Text("👨‍🍳").font(.system(size: 16))
-                Text("Cook mode").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+            HStack(spacing: 9) {
+                Text("👨‍🍳").font(.system(size: 18))
+                Text("Cook Mode").font(.system(size: 16.5, weight: .heavy)).foregroundStyle(.white)
             }
-            .frame(maxWidth: .infinity).padding(.vertical, 13)
-            .background(WF.ink).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .frame(maxWidth: .infinity).padding(.vertical, 16)
+            .background(WF.ink).clipShape(Capsule())
+            .shadow(color: .black.opacity(0.18), radius: 12, y: 5)
         }
         .buttonStyle(.plain)
     }
@@ -250,17 +286,31 @@ struct RecipeDetailView: View {
 
     private func ingredientRow(_ ing: WaffledAPI.RecipeIngredientDTO) -> some View {
         let sub = subFor(ing)
-        return HStack(alignment: .top, spacing: 12) {
-            Text(amountText(ing)).font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(WF.ink2).frame(width: 62, alignment: .trailing)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(sub ?? nameText(ing)).font(.system(size: 15)).foregroundStyle(WF.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                if sub != nil {
-                    Text("↺ instead of \(ing.name)").font(.system(size: 12)).foregroundStyle(WF.ink3)
-                }
+        let checked = checkedIngredients.contains(ing.id)
+        return HStack(alignment: .top, spacing: 11) {
+            Button { toggleChecked(ing.id) } label: {
+                Image(systemName: checked ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20)).foregroundStyle(checked ? WF.primary : WF.ink3.opacity(0.55))
             }
-            Spacer(minLength: 0)
+            .buttonStyle(.plain)
+            // Tapping the amount/name also toggles — bigger target, like the web row.
+            Button { toggleChecked(ing.id) } label: {
+                HStack(alignment: .top, spacing: 12) {
+                    Text(amountText(ing)).font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(WF.ink2).frame(width: 58, alignment: .trailing)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(sub ?? nameText(ing)).font(.system(size: 15)).foregroundStyle(WF.ink)
+                            .strikethrough(checked, color: WF.ink3)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if sub != nil {
+                            Text("↺ instead of \(ing.name)").font(.system(size: 12)).foregroundStyle(WF.ink3)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
             Button { subEdit = SubEdit(name: ing.name, current: sub) } label: {
                 Image(systemName: "arrow.left.arrow.right")
                     .font(.system(size: 12, weight: .bold))
@@ -271,6 +321,12 @@ struct RecipeDetailView: View {
             }
             .buttonStyle(.plain)
         }
+        .opacity(checked ? 0.6 : 1)
+    }
+
+    private func toggleChecked(_ id: String) {
+        if checkedIngredients.contains(id) { checkedIngredients.remove(id) }
+        else { checkedIngredients.insert(id) }
     }
 
     private func amountText(_ ing: WaffledAPI.RecipeIngredientDTO) -> String {
@@ -283,26 +339,47 @@ struct RecipeDetailView: View {
         return ing.name
     }
 
+    /// One quiet line in card tone: how many are on hand + what's missing, with a single
+    /// "Add to grocery" action for the rest — instead of a loud two-line block.
     private var onHandBanner: some View {
         let onHand = ingredients.filter { $0.isStaple }.count
         let total = ingredients.count
         let missing = ingredients.filter { !$0.isStaple }.map(\.name)
-        let subtitle: String = {
-            if missing.isEmpty { return "You’ve got everything — happy cooking." }
-            let shown = missing.prefix(4).joined(separator: ", ")
-            return "Need \(missing.count): \(shown)\(missing.count > 4 ? "…" : "")"
+        let tail: String = {
+            if missing.isEmpty { return " on hand — you’ve got everything" }
+            let shown = missing.prefix(3).joined(separator: ", ")
+            let extra = missing.count > 3 ? " +\(missing.count - 3) more" : ""
+            return " on hand — need \(shown)\(extra)"
         }()
-        return HStack(alignment: .top, spacing: 11) {
-            Text("✦").font(.system(size: 16, weight: .bold)).foregroundStyle(WF.ai)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("\(onHand) of \(total) ingredient\(total == 1 ? "" : "s") already on hand")
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink)
-                Text(subtitle).font(.system(size: 12)).foregroundStyle(WF.ink2)
+        return HStack(spacing: 11) {
+            ZStack {
+                Circle().fill(WF.ai)
+                Image(systemName: "sparkles").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
             }
-            Spacer(minLength: 0)
+            .frame(width: 28, height: 28)
+            (Text("\(onHand) of \(total)").font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.ai)
+                + Text(tail).font(.system(size: 13, weight: .medium)).foregroundStyle(WF.ink2))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            if !missing.isEmpty {
+                Button { addMissingToGrocery(missing) } label: {
+                    Text(groceryAdded ? "Added ✓" : "Add to grocery")
+                        .font(.system(size: 12.5, weight: .heavy)).foregroundStyle(WF.primaryD)
+                }
+                .buttonStyle(.plain).disabled(groceryAdded)
+            }
         }
-        .padding(14).background(WF.ai.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .padding(13)
+        .background(WF.card2).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+    }
+
+    private func addMissingToGrocery(_ names: [String]) {
+        groceryAdded = true
+        Task {
+            for name in names { try? await api.addGroceryItem(name: name) }
+            withAnimation { cookedMessage = "Added \(names.count) to your grocery list." }
+        }
     }
 
     private var methodCard: some View {
@@ -317,18 +394,19 @@ struct RecipeDetailView: View {
                             Text(step.instruction).font(.system(size: 15)).foregroundStyle(WF.ink)
                                 .fixedSize(horizontal: false, vertical: true)
                             if !step.ingredients.isEmpty || (step.timerSeconds ?? 0) > 0 {
-                                ChipFlow(spacing: 6, lineSpacing: 6) {
-                                    if let secs = step.timerSeconds, secs > 0 {
-                                        Text("⏱ \(CookTimer.mmss(secs))").font(.system(size: 12, weight: .semibold))
-                                            .foregroundStyle(WF.primaryD)
-                                            .padding(.horizontal, 9).padding(.vertical, 4)
-                                            .background(WF.primary.opacity(0.12)).clipShape(Capsule())
+                                HStack(spacing: 12) {
+                                    if !step.ingredients.isEmpty {
+                                        (Text("Uses: ").font(.system(size: 12.5, weight: .bold)).foregroundStyle(WF.ink2)
+                                            + Text(step.ingredients.joined(separator: ", ")).font(.system(size: 12.5)).foregroundStyle(WF.ink3))
+                                            .lineLimit(1).truncationMode(.tail)
                                     }
-                                    ForEach(step.ingredients, id: \.self) { ig in
-                                        Text(ig).font(.system(size: 12, weight: .medium))
-                                            .foregroundStyle(Color(hex: 0x167A4A))
-                                            .padding(.horizontal, 9).padding(.vertical, 4)
-                                            .background(Color(hex: 0x167A4A).opacity(0.12)).clipShape(Capsule())
+                                    Spacer(minLength: 0)
+                                    if let secs = step.timerSeconds, secs > 0 {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "clock").font(.system(size: 11, weight: .bold))
+                                            Text(CookTimer.mmss(secs)).font(.system(size: 12, weight: .bold))
+                                        }
+                                        .foregroundStyle(WF.ink2).fixedSize()
                                     }
                                 }
                             }
@@ -388,20 +466,26 @@ struct RecipeDetailView: View {
 
     // MARK: tag chips
 
-    private var tagChips: [TagChip.Chip] {
+    /// The displayable chips (favorites + New lead, then metadata + veg + dietary), most
+    /// meaningful first so the 3 shown before "+N more" are the useful ones. Free-text
+    /// #hashtags are split out to `hashtags` and shown as a quiet line instead.
+    private var chipTags: [TagChip.Chip] {
         var out: [TagChip.Chip] = []
+        // Favorite stays the heart in the toolbar (no redundant tag); New leads the row.
+        if r.cookedCount == 0 { out.append(.init(text: "🆕 New", style: .new)) }
+        if let e = r.effort { out.append(.init(text: "⏱️ \(e)", style: .plain)) }
+        for v in r.vegetables ?? [] { out.append(.init(text: "🥬 \(v)", style: .veg)) }
         if let c = r.collection { out.append(.init(text: "📁 \(c)", style: .collection)) }
         if let c = r.cuisine { out.append(.init(text: "🌍 \(c)", style: .plain)) }
         if let m = r.mealType { out.append(.init(text: m.replacingOccurrences(of: "-", with: " "), style: .plain)) }
         if let p = r.protein { out.append(.init(text: "🥩 \(p)", style: .plain)) }
         if let b = r.base { out.append(.init(text: "🍚 \(b)", style: .plain)) }
         if let cm = r.cookMethod { out.append(.init(text: "🍳 \(cm)", style: .plain)) }
-        if let e = r.effort { out.append(.init(text: "⏱️ \(e)", style: .plain)) }
         for d in r.dietary ?? [] { out.append(.init(text: d, style: .dietary)) }
-        for v in r.vegetables ?? [] { out.append(.init(text: "🥬 \(v)", style: .veg)) }
-        for t in r.tags ?? [] { out.append(.init(text: "#\(t)", style: .soft)) }
         return out
     }
+
+    private var hashtags: [String] { r.tags ?? [] }
 
     // MARK: data + actions
 
@@ -507,6 +591,114 @@ struct RecipeDetailView: View {
 
     private struct StepNoteEdit: Identifiable { let step: Int; var id: Int { step } }
     private struct SubEdit: Identifiable { let name: String; let current: String?; var id: String { name } }
+}
+
+/// Schedule a recipe onto a day + meal slot (this/next week), mirroring the web
+/// ScheduleModal — a meal-type picker + a week you can page through + a 7-day grid.
+/// Tapping a day plans it via `/api/meals/plan` and dismisses.
+struct RecipeScheduleSheet: View {
+    let title: String
+    let recipeId: String
+    var onScheduled: (String) -> Void = { _ in }
+
+    @Environment(\.dismiss) private var dismiss
+    private let api = WaffledAPI()
+    @State private var meal = "dinner"
+    @State private var weekOffset = 0
+    @State private var savingDay: String?
+
+    private static let meals = ["breakfast", "lunch", "dinner", "snack"]
+    private static let ymdFmt: DateFormatter = {
+        let f = DateFormatter(); f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"; return f
+    }()
+
+    private var weekStart: Date {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let sunday = cal.date(byAdding: .day, value: -(cal.component(.weekday, from: today) - 1), to: today)!
+        return cal.date(byAdding: .day, value: weekOffset * 7, to: sunday)!
+    }
+    private var days: [Date] { (0..<7).compactMap { Calendar.current.date(byAdding: .day, value: $0, to: weekStart) } }
+    private var weekLabel: String {
+        if weekOffset == 0 { return "This week" }
+        if weekOffset == 1 { return "Next week" }
+        return weekStart.formatted(.dateTime.month(.abbreviated).day())
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Schedule").font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.ink3).tracking(0.4)
+                    Text(title).font(WF.serif(22, .bold)).foregroundStyle(WF.ink).lineLimit(2)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    SectionLabel(text: "Meal")
+                    Picker("", selection: $meal) {
+                        ForEach(Self.meals, id: \.self) { Text($0.capitalized).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                HStack {
+                    Button { weekOffset = max(0, weekOffset - 1) } label: {
+                        Image(systemName: "chevron.left").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
+                            .frame(width: 34, height: 34).background(WF.panel).clipShape(Circle())
+                    }.buttonStyle(.plain).disabled(weekOffset == 0).opacity(weekOffset == 0 ? 0.4 : 1)
+                    Text(weekLabel).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
+                        .frame(maxWidth: .infinity)
+                    Button { weekOffset += 1 } label: {
+                        Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.ink2)
+                            .frame(width: 34, height: 34).background(WF.panel).clipShape(Circle())
+                    }.buttonStyle(.plain)
+                }
+
+                HStack(spacing: 6) {
+                    ForEach(days, id: \.self) { day in dayButton(day) }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(20)
+            .background(WF.canvas)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+    }
+
+    private func dayButton(_ day: Date) -> some View {
+        let key = Self.ymdFmt.string(from: day)
+        let saving = savingDay == key
+        return Button { schedule(day) } label: {
+            VStack(spacing: 3) {
+                Text(String(day.formatted(.dateTime.weekday(.abbreviated)).prefix(2)).uppercased())
+                    .font(.system(size: 11, weight: .bold)).foregroundStyle(saving ? .white : WF.ink3)
+                Text(day.formatted(.dateTime.day())).font(WF.serif(17, .bold)).foregroundStyle(saving ? .white : WF.ink)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 10)
+            .background(saving ? FamilyColor.wally.solid : WF.card2)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+        }
+        .buttonStyle(.plain).disabled(savingDay != nil)
+    }
+
+    private func schedule(_ day: Date) {
+        guard savingDay == nil else { return }
+        let key = Self.ymdFmt.string(from: day)
+        savingDay = key
+        Task {
+            do {
+                try await api.planMeal(date: key, mealType: meal, recipeId: recipeId, title: nil)
+                onScheduled("\(day.formatted(.dateTime.weekday(.wide))) \(meal)")
+                dismiss()
+            } catch {
+                savingDay = nil
+            }
+        }
+    }
 }
 
 /// Whole-number + common-fraction amount formatting (½ ¼ ¾ ⅓ ⅔), shared by the
