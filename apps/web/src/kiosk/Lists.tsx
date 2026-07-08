@@ -21,7 +21,7 @@ import '../styles/lists.css'
 const SUGGESTIONS = ['Bug spray', 'Phone chargers', 'Snacks for the drive', 'Trash bags']
 
 const CHECK = (
-  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ink-3)" strokeWidth="3">
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" strokeWidth="3">
     <path d="M5 12l5 5 9-10" />
   </svg>
 )
@@ -79,12 +79,19 @@ function ItemRow({
   const addedBy = item.source !== 'auto' ? item.addedBy : null
 
   return (
-    <div className={`litem ${item.checked ? 'done' : ''}`} onClick={() => onToggle(item)}>
-      <div className="lck" aria-label={item.checked ? 'Checked' : 'Not checked'}>
+    <div className={`litem ${item.checked ? 'done' : ''}`}>
+      {/* Only the checkbox toggles; tapping the name opens the editor. */}
+      <button
+        type="button"
+        className={`lck ${item.checked ? 'on' : ''}`}
+        aria-label={item.checked ? `Uncheck ${item.name}` : `Check ${item.name}`}
+        aria-pressed={item.checked}
+        onClick={() => onToggle(item)}
+      >
         {item.checked ? CHECK : null}
-      </div>
-      <span className="lnm">
-        {item.name}
+      </button>
+      <button type="button" className="lnm lnm-btn" aria-label={`Edit ${item.name}`} onClick={() => onEdit(item)}>
+        <span className="lnm-text">{item.name}</span>
         {addedBy?.name && (
           <span className="gattr gattr-by">
             {addedBy.avatarEmoji && (
@@ -99,14 +106,9 @@ function ItemRow({
             added by {addedBy.name}
           </span>
         )}
-      </span>
+      </button>
       {item.quantity ? <span className="lqty">{item.quantity}</span> : null}
-      {/* always-visible (touch: no hover) edit + delete */}
-      <div className="litem-actions" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="litem-act" aria-label="Edit item" onClick={() => onEdit(item)}>✎</button>
-        <button type="button" className="litem-act litem-del" aria-label="Delete item" onClick={() => onDelete(item)}>×</button>
-      </div>
-      <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+      <div className="litem-assign" style={{ position: 'relative' }}>
         {a ? (
           <Avatar emoji={a.avatarEmoji} color={a.colorHex} onClick={() => setMenuOpen((v) => !v)} />
         ) : (
@@ -149,6 +151,8 @@ function ItemRow({
           </div>
         )}
       </div>
+      {/* × delete always visible on the far right */}
+      <button type="button" className="litem-act litem-del" aria-label={`Delete ${item.name}`} onClick={() => onDelete(item)}>×</button>
     </div>
   )
 }
@@ -206,6 +210,21 @@ export function Lists() {
   const [filterMenu, setFilterMenu] = useState(false)
   const [itemModal, setItemModal] = useState<{ item: ListItem | null } | null>(null)
   const [groceryOpen, setGroceryOpen] = useState(false)
+  // Header overflow (⋯) menu: rename / save-as-template (or move-to-lists) / delete.
+  const [actionsMenu, setActionsMenu] = useState(false)
+  const actionsRef = useRef<HTMLDivElement>(null)
+  // Close the ⋯ menu on any outside click, and reset the delete confirm with it.
+  useEffect(() => {
+    if (!actionsMenu) return
+    const onDown = (e: MouseEvent) => {
+      if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) {
+        setActionsMenu(false)
+        setConfirmDel(false)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [actionsMenu])
 
   // On first load, the grocery list opens straight into its auto-built board
   // (its primary view) rather than the plain sectioned list. Without this you'd
@@ -327,6 +346,7 @@ export function Lists() {
     }
     await groceryApi.deleteList(selected.id).catch(() => {})
     setConfirmDel(false)
+    setActionsMenu(false)
     setSelectedId(null)
     refetchLists()
   }
@@ -452,6 +472,7 @@ export function Lists() {
               <div className="muted" style={{ fontWeight: 600 }}>
                 {isTemplate ? `${items.length} item${items.length === 1 ? '' : 's'}` : summaryLine(items)}
               </div>
+              <div className="lists-head-actions">
               <div className="filter-wrap" onClick={(e) => e.stopPropagation()}>
                 <button type="button" className="pill filter-pill" onClick={() => setFilterMenu((v) => !v)}>
                   <Icon name="filter" />
@@ -470,29 +491,49 @@ export function Lists() {
                   </div>
                 )}
               </div>
-              <button type="button" className="pill" style={{ cursor: 'pointer' }} title={isTemplate ? 'Rename template' : 'Rename list'} onClick={() => setEditingList({ id: selected.id, name: selected.name, emoji: selected.emoji })}>✎ Rename</button>
-              {isTemplate ? (
-                <>
-                  <button type="button" className="pill btn-primary" style={{ cursor: 'pointer' }} title="Create a new list from this template (current items, unchecked)" onClick={useSelectedTemplate}>
-                    ▶ Use template
-                  </button>
-                  <button type="button" className="pill" style={{ cursor: 'pointer' }} title="Move this template back into your lists" onClick={moveTemplateToLists}>
-                    ↩ Move to Lists
-                  </button>
-                </>
-              ) : (
-                <button type="button" className="pill" style={{ cursor: 'pointer' }} title="Turn this list into a reusable template" onClick={saveSelectedAsTemplate}>
-                  📑 Save as template
+              {isTemplate && (
+                <button type="button" className="pill btn-primary" style={{ cursor: 'pointer' }} title="Create a new list from this template (current items, unchecked)" onClick={useSelectedTemplate}>
+                  ▶ Use template
                 </button>
               )}
-              <button type="button" className="pill" style={{ cursor: 'pointer', color: confirmDel ? 'var(--primary)' : undefined, borderColor: confirmDel ? 'var(--primary)' : undefined }} title={isTemplate ? 'Delete template' : 'Delete list'} onClick={deleteSelected}>
-                {confirmDel ? 'Tap again to delete' : isTemplate ? '🗑 Delete template' : '🗑 Delete'}
-              </button>
+              <div className="filter-wrap" ref={actionsRef} onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  className="pill lists-more"
+                  aria-label="More actions"
+                  aria-haspopup="menu"
+                  aria-expanded={actionsMenu}
+                  onClick={() => { setActionsMenu((v) => !v); setConfirmDel(false) }}
+                >
+                  ⋯
+                </button>
+                {actionsMenu && (
+                  <div className="assign-menu" style={{ right: 0, top: 40 }}>
+                    <button type="button" onClick={() => { setEditingList({ id: selected.id, name: selected.name, emoji: selected.emoji }); setActionsMenu(false) }}>
+                      <span aria-hidden>✎</span> {isTemplate ? 'Rename template' : 'Rename'}
+                    </button>
+                    {isTemplate ? (
+                      <button type="button" onClick={() => { moveTemplateToLists(); setActionsMenu(false) }}>
+                        <span aria-hidden>↩</span> Move to Lists
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => { saveSelectedAsTemplate(); setActionsMenu(false) }}>
+                        <span aria-hidden>📑</span> Save as template
+                      </button>
+                    )}
+                    {/* Two-tap confirm: the first tap keeps the menu open so the second can land. */}
+                    <button type="button" className="lists-more-del" onClick={deleteSelected}>
+                      <span aria-hidden>🗑</span> {confirmDel ? 'Tap again to delete' : isTemplate ? 'Delete template' : 'Delete'}
+                    </button>
+                  </div>
+                )}
+              </div>
+              </div>
             </div>
             <div className="tiny muted lists-hint">
               {isTemplate
                 ? 'This is a template · edit its items here and every list you make from it uses the latest'
-                : 'Tap to check off · tap an avatar to assign · ×2 is the quantity'}
+                : 'Tap the box to check off · tap an item to edit · tap an avatar to assign'}
             </div>
 
             <form className="ai-bar lists-addbar" onSubmit={onAddSubmit}>
@@ -533,7 +574,7 @@ export function Lists() {
                       <div key={sec.key} className="lists-section">
                         <div className="lists-section-title">{sec.title}</div>
                         {sec.items.map((it) => (
-                          <ItemRow key={it.id} item={it} people={persons} onToggle={isTemplate ? () => {} : toggle} onAssign={assign} onEdit={(i) => setItemModal({ item: i })} onDelete={remove} />
+                          <ItemRow key={it.id} item={it} people={persons} onToggle={toggle} onAssign={assign} onEdit={(i) => setItemModal({ item: i })} onDelete={remove} />
                         ))}
                       </div>
                     ))}

@@ -80,9 +80,23 @@
 .lists-head-name {
   font-size: 24px;
 }
-.lists-head .filter-pill {
+/* Everyone filter · Use template · ⋯ — pinned as one group on the right, all the
+   same height so they read as a matched set. */
+.lists-head-actions {
   margin-left: auto;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lists-head-actions .pill {
+  height: 36px;
+  padding-top: 0;
+  padding-bottom: 0;
   font-size: 13px;
+  cursor: pointer;
+}
+.lists-head .filter-pill {
   cursor: pointer;
 }
 .lists-hint {
@@ -124,6 +138,16 @@
 .sug-chip {
   border: 0;
   font: inherit;
+}
+/* Smaller, chip-sized suggestions (not full-height buttons). */
+.lists-suggest .sug-chip {
+  font-size: 11.5px;
+  padding: 4px 10px;
+  gap: 5px;
+}
+.lists-suggest .sug-chip svg {
+  width: 11px;
+  height: 11px;
 }
 
 /* ----- sectioned item grid ----- */
@@ -276,4 +300,57 @@
   font-size: 13.5px;
   cursor: pointer;
   width: 100%;
+}
+
+/* ----- item row redesign: the checkbox toggles, the name opens the editor ----- */
+/* checkbox is now a <button>; keep the 22px box look, fill green when checked */
+.litem .lck {
+  padding: 0;
+}
+.litem .lck.on {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+/* name is a <button> that opens the editor — reset chrome, keep .lnm's type scale */
+.litem .lnm-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+/* checked row stays readable: solid green box + struck, muted label (no full fade) */
+.lists-grid .litem.done {
+  opacity: 1;
+}
+.lists-grid .litem.done .lnm {
+  text-decoration: none;
+}
+.lists-grid .litem.done .lnm-text {
+  text-decoration: line-through;
+  color: var(--ink-3);
+}
+.litem-assign {
+  flex: none;
+}
+/* the ⋯ overflow trigger in the list header */
+.lists-more {
+  min-width: 42px;
+  justify-content: center;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+/* Delete is destructive — always red (not just on the confirm tap). Scope under
+   .assign-menu to outrank `.assign-menu button { color: var(--ink) }`. */
+.assign-menu .lists-more-del,
+.assign-menu .lists-more-del:hover {
+  color: var(--danger, #c0392b);
 }

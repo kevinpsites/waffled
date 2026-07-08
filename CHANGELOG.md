@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+- **The Lists page is cleaner and easier to use (web).** The list header is decluttered into a
+  single **⋯** menu (Rename · Save as template / Move to Lists · Delete) beside the Everyone
+  filter, with **Use template** kept as the primary action on templates. Item rows now behave
+  the way you'd expect: **tap the checkbox to check off, tap the item to edit it**, with the
+  assignee avatar (or ＋) and a delete **×** always on the right — no more accidental check-offs.
 - **"Use template" lets you name the new list first (web).** Choosing **Use template** now
   opens the New-list dialog pre-pointed at that template, so you give the new list its own
   name before it's created — instead of it silently spinning up a list named after the template.

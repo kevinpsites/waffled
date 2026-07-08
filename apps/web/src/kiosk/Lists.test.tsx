@@ -123,16 +123,30 @@ describe('Lists screen', () => {
     expect(pjs).toHaveClass('done')
   })
 
-  it('toggles an item and PATCHes checked state', async () => {
+  it('toggles an item via its checkbox and PATCHes checked state', async () => {
     const sent: Sent[] = []
     mockApi({ lists: [grocery, packing], items: packItems, sent })
     renderScreen()
     await exitBoard()
 
-    fireEvent.click(await screen.findByText('Swimsuits'))
+    // Only the checkbox toggles (not the row/name, which now opens the editor).
+    fireEvent.click(await screen.findByRole('button', { name: 'Check Swimsuits' }))
     await waitFor(() => expect(sent.some((s) => s.method === 'PATCH' && /\/api\/list-items\/i1$/.test(s.url))).toBe(true))
     const patch = sent.find((s) => s.method === 'PATCH' && /\/api\/list-items\/i1$/.test(s.url))!
     expect(patch.body).toMatchObject({ checked: true })
+  })
+
+  it('opens the item editor when the item name is tapped (not a toggle)', async () => {
+    const sent: Sent[] = []
+    mockApi({ lists: [grocery, packing], items: packItems, sent })
+    renderScreen()
+    await exitBoard()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Swimsuits' }))
+    // the edit modal opens…
+    expect(await screen.findByText('Edit item')).toBeInTheDocument()
+    // …and tapping the name did NOT toggle the item
+    expect(sent.some((s) => s.method === 'PATCH' && /\/api\/list-items\//.test(s.url))).toBe(false)
   })
 
   it('assigns an item to a person via the avatar menu', async () => {
@@ -198,7 +212,8 @@ describe('Lists screen', () => {
     renderScreen()
     await exitBoard()
 
-    // packing is auto-selected in the hub; its header exposes a "Save as template" action
+    // packing is auto-selected in the hub; "Save as template" lives in the ⋯ menu
+    fireEvent.click(await screen.findByRole('button', { name: 'More actions' }))
     fireEvent.click(await screen.findByRole('button', { name: /Save as template/i }))
 
     await waitFor(() => expect(sent.some((s) => s.method === 'POST' && /\/save-as-template$/.test(s.url))).toBe(true))
@@ -232,6 +247,8 @@ describe('Lists screen', () => {
     await exitBoard()
 
     fireEvent.click(await screen.findByRole('button', { name: /Beach Day/ }))
+    // "Move to Lists" lives in the ⋯ menu for a template
+    fireEvent.click(await screen.findByRole('button', { name: 'More actions' }))
     fireEvent.click(await screen.findByRole('button', { name: /Move to Lists/i }))
     await waitFor(() => expect(sent.some((s) => s.method === 'POST' && /\/api\/lists\/tpl\/unmark-template$/.test(s.url))).toBe(true))
   })
