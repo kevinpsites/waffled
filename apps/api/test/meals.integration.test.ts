@@ -790,6 +790,37 @@ describe('meal prep / thaw reminder', () => {
     expect(lunch).toHaveLength(0)
   })
 
+  it('replacing the meal updates the reminder in place (same event, new title)', async () => {
+    // The prep event's id + title for the one dinner reminder on a date.
+    const reminder = (date: string) =>
+      withClient((c) =>
+        c.query<{ id: string; title: string }>(
+          `select e.id, e.title from events e
+             join meal_plan_entries mpe on mpe.id = e.origin_ref_id
+            where e.origin = 'meal_prep' and e.deleted_at is null
+              and mpe.date = $1 and mpe.meal_type = 'dinner'`,
+          [date]
+        )
+      )
+    const other = await call('POST', '/api/recipes', kevin, { title: 'Beef Stew', emoji: '🍲' })
+    const otherId = JSON.parse(other.body).recipe.id
+
+    // Plan recipe A → one reminder titled for A.
+    await call('POST', '/api/meals/plan', kevin, { date: '2026-07-21', mealType: 'dinner', recipeId })
+    const before = (await reminder('2026-07-21')).rows
+    expect(before).toHaveLength(1)
+    expect(before[0].title).toBe('🧊 Thaw for Dinner · Garlic Chicken')
+
+    // Re-plan the SAME slot with recipe B (an edit, not a delete + re-add).
+    await call('POST', '/api/meals/plan', kevin, { date: '2026-07-21', mealType: 'dinner', recipeId: otherId })
+    const after = (await reminder('2026-07-21')).rows
+    // Still exactly one reminder, the SAME event row, re-titled — updated in
+    // place, not orphaned + recreated.
+    expect(after).toHaveLength(1)
+    expect(after[0].id).toBe(before[0].id)
+    expect(after[0].title).toBe('🧊 Thaw for Dinner · Beef Stew')
+  })
+
   it('removes the reminder when the slot is cleared', async () => {
     expect((await call('DELETE', '/api/meals/plan?date=2026-07-16&mealType=dinner', kevin)).statusCode).toBe(204)
     const dinner = (await prepEvents('2026-07-16')).rows.filter((r) => r.meal_type === 'dinner')
