@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+- **The recipe page leads with one clear action (web).** The detail screen was redesigned for
+  hierarchy: the toolbar drops from five buttons to small favorite/edit/schedule icons, and
+  **Cook Mode** becomes a single full-width button right under the title. Tags show the first
+  few with a **"+N more"** toggle (hashtags move to a quiet line), method steps reference their
+  ingredients as a short **"Uses: …"** line with an inline timer instead of a wall of chips, and
+  the on-hand banner is one calm line with an **Add to grocery** action.
 - **The Lists page is cleaner and easier to use (web).** The list header is decluttered into a
   single **⋯** menu (Rename · Save as template / Move to Lists · Delete) beside the Everyone
   filter, with **Use template** kept as the primary action on templates. Item rows now behave
