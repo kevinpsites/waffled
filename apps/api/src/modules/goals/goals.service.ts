@@ -9,6 +9,9 @@ import type { CreateGoalListInput, UpdateGoalListInput, CreateGoalInput, UpdateG
 
 export const GOAL_TYPES = new Set(['count', 'total', 'habit', 'checklist'])
 export const TRACKING_MODES = new Set(['shared_total', 'each_tracks'])
+// Apple Health metrics a goal can auto-fill from (iPhone). Keep in sync with the iOS
+// HealthKitBridge.Metric keys.
+export const HEALTH_METRICS = new Set(['steps', 'flights', 'exercise_minutes', 'active_energy'])
 
 // ---- goal lists (membership groups) ----------------------------------------
 
@@ -171,8 +174,8 @@ export async function createGoal(tenant: Tenant, input: CreateGoalInput): Promis
       `insert into goals
          (household_id, goal_list_id, title, emoji, category, goal_type, unit, target_value,
           habit_period, habit_target_per_period, tracking_mode, log_method, auto_from_calendar,
-          deadline, is_featured, has_rewards)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) returning id`,
+          health_metric, deadline, is_featured, has_rewards)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) returning id`,
       [
         tenant.householdId,
         input.goalListId ?? null,
@@ -187,6 +190,7 @@ export async function createGoal(tenant: Tenant, input: CreateGoalInput): Promis
         input.trackingMode,
         input.logMethod ?? 'quick_log',
         input.autoFromCalendar ?? false,
+        input.healthMetric ?? null,
         input.deadline ?? null,
         input.isFeatured ?? false,
         input.hasRewards ?? false,
@@ -281,6 +285,7 @@ interface GoalRow extends QueryResultRow {
   tracking_mode: string
   log_method: string
   auto_from_calendar: boolean
+  health_metric: string | null
   deadline: string | null
   is_featured: boolean
   has_rewards: boolean
@@ -309,6 +314,7 @@ function mapGoal(g: GoalRow) {
     trackingMode: g.tracking_mode,
     logMethod: g.log_method,
     autoFromCalendar: g.auto_from_calendar,
+    healthMetric: g.health_metric,
     deadline: g.deadline,
     isFeatured: g.is_featured,
     hasRewards: g.has_rewards,
@@ -370,7 +376,7 @@ async function streaksFor(householdId: string, goalIds: string[]): Promise<Map<s
 export async function listGoals(householdId: string, listId?: string | null) {
   const { rows } = await query<GoalRow>(
     `select g.id, g.goal_list_id, g.title, g.emoji, g.category, g.goal_type, g.unit, g.target_value,
-            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.log_method, g.auto_from_calendar, g.deadline,
+            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.log_method, g.auto_from_calendar, g.health_metric, g.deadline,
             g.is_featured, g.has_rewards,
             coalesce((select sum(amount)::float from goal_logs gl
                        where gl.goal_id = g.id and gl.deleted_at is null), 0) as total_progress,
@@ -454,7 +460,7 @@ export async function goalParticipantIds(householdId: string, goalId: string): P
 export async function goalDetail(householdId: string, id: string) {
   const { rows } = await query<GoalRow>(
     `select g.id, g.goal_list_id, g.title, g.emoji, g.category, g.goal_type, g.unit, g.target_value,
-            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.log_method, g.auto_from_calendar, g.deadline,
+            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.log_method, g.auto_from_calendar, g.health_metric, g.deadline,
             g.is_featured, g.has_rewards, g.created_at,
             coalesce((select sum(amount)::float from goal_logs gl
                        where gl.goal_id = g.id and gl.deleted_at is null), 0) as total_progress,
@@ -659,6 +665,69 @@ export async function logProgress(
   return logIds
 }
 
+/**
+ * Idempotent per-day Apple Health sync (Tier 1). Keeps exactly ONE goal_logs row per
+ * (goal, person, metric, day) — tracked in health_goal_logs — and REPLACES its amount on
+ * re-sync, so re-running today's sync never double-counts against the append-only SUM.
+ * `value` is the day's cumulative total read from HealthKit.
+ *
+ * NOTE (open product question): this treats each day's total as an independent
+ * contribution that accumulates toward target_value — great for "1,000,000 steps this
+ * year". A per-day *target* ("10,000 steps every day") is a different semantic the `total`
+ * model doesn't capture yet; see docs/design/healthkit-goals.md.
+ */
+export async function syncHealthProgress(
+  tenant: Tenant,
+  goalId: string,
+  metric: string,
+  day: string,
+  value: number
+): Promise<{ goalLogId: string }> {
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    const existing = await client.query<{ goal_log_id: string | null }>(
+      `select goal_log_id from health_goal_logs
+        where goal_id=$1 and person_id is not distinct from $2 and metric=$3 and day=$4`,
+      [goalId, tenant.personId, metric, day]
+    )
+    let goalLogId: string
+    if (existing.rowCount && existing.rows[0].goal_log_id) {
+      // Replace the day's amount in place — same row, new total.
+      goalLogId = existing.rows[0].goal_log_id
+      await client.query(
+        `update goal_logs set amount=$1 where id=$2 and household_id=$3 and deleted_at is null`,
+        [value, goalLogId, tenant.householdId]
+      )
+    } else {
+      // First sync for this day → insert the progress row (landed at noon local so it
+      // falls on `day` in every timezone), then record the idempotency mapping.
+      const ins = await client.query<{ id: string }>(
+        `insert into goal_logs (household_id, goal_id, person_id, amount, source, ref_type, ref_id, created_by, logged_at)
+         values ($1,$2,$3,$4,'auto_healthkit','hk_day',null,$3,
+                 ($5::date + time '12:00') at time zone (select timezone from households where id=$1))
+         returning id`,
+        [tenant.householdId, goalId, tenant.personId, value, day]
+      )
+      goalLogId = ins.rows[0].id
+      await client.query(
+        `insert into health_goal_logs (household_id, goal_id, person_id, metric, day, goal_log_id)
+         values ($1,$2,$3,$4,$5,$6)
+         on conflict (goal_id, person_id, metric, day)
+           do update set goal_log_id=excluded.goal_log_id, updated_at=now()`,
+        [tenant.householdId, goalId, tenant.personId, metric, day, goalLogId]
+      )
+    }
+    await client.query('commit')
+    return { goalLogId }
+  } catch (e) {
+    await client.query('rollback')
+    throw e
+  } finally {
+    client.release()
+  }
+}
+
 const GOAL_COLUMNS: Record<string, string> = {
   title: 'title',
   emoji: 'emoji',
@@ -671,6 +740,7 @@ const GOAL_COLUMNS: Record<string, string> = {
   trackingMode: 'tracking_mode',
   logMethod: 'log_method',
   autoFromCalendar: 'auto_from_calendar',
+  healthMetric: 'health_metric',
   deadline: 'deadline',
   isFeatured: 'is_featured',
   hasRewards: 'has_rewards',

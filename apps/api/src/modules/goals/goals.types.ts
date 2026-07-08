@@ -29,6 +29,7 @@ export interface CreateGoalInput {
   trackingMode: string
   logMethod?: string | null
   autoFromCalendar?: boolean
+  healthMetric?: string | null
   deadline?: string | null
   isFeatured?: boolean
   hasRewards?: boolean
