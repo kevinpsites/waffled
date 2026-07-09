@@ -48,6 +48,22 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **Goals** — types (count/total/habit/checklist), shared vs each-tracks, create/edit/
   detail read-model, person + family overview, **calendar → goal** auto-count (single
   and recurring events) with learned suggestions.
+- **Apple Health → goals (iPhone)** — link a goal to an Apple Health / Apple Watch metric
+  (steps, flights climbed, exercise minutes, active energy, **mindful minutes**, **activity
+  rings** — Move/Exercise/Stand or all three — and **mood**, iOS 17+) and its progress
+  auto-fills: numeric goals accumulate each day's total, a **habit** counts a day whenever it
+  clears a daily threshold ("2,000 steps a day, 5×/week"), and rings/mood count a day when the
+  ring closes or a mood is logged. Ring/mood links also work on a **count** goal — each met day
+  adds one, so "close my Exercise ring 15× this month" or "log my mood 20 days" accumulate
+  toward the target (open days add nothing; a later correction self-adjusts). A **"set a goal
+  from your Health data"** picker shows your
+  live value per metric so you pick something real. Opening the app **catches up every missed
+  day** since the last sync (bounded at the goal's creation date, so it never back-fills from
+  before the goal existed). Opt-in per goal in the editor's **Extras** (next to calendar
+  auto-count), plus a **Settings → Permissions** screen for managing device access. iPhone-only
+  by nature (HealthKit); iPad/web just display the synced number. *(Tiers 0–2 of the
+  [staged plan](../design/healthkit-goals.md); background sync + a rewards tie-in remain — see
+  below.)*
 - **Lists & groceries** — multi-lists, auto-built aisle board, quantity merge, pantry
   staples, live cross-surface refresh, **item attribution** ("added by …" / "from meal plan").
 - **Meals & recipes** — week/month planners, recipe library, in-app editor (with
@@ -129,21 +145,31 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   should preserve the existing cook. Keep it un-gated (collaborative/attribution-style, like list
   authorship — no capability needed to volunteer or reassign a cook).
 
-- **Apple Health → goals (iPhone).** Let an iPhone user link a goal to an Apple Health / Apple
-  Watch metric — steps, flights climbed, exercise minutes, activity rings, mindful minutes, even
-  mood (iOS 17+ State of Mind) — so progress fills itself instead of being hand-logged, plus a
-  **"set a goal from your Health data"** picker that shows the user their *current* value for each
-  supported metric so they pick something real. Fits the existing model with near-zero churn:
-  `goals.unit`/`target_value` already describe "10,000 steps", `goal_type=habit` already dedupes one
-  check-in per person per day (rings/mood auto-check for free), and `goal_logs.source` +
-  `logProgress(source:refId:at:)` are already the extension point — a new `source='auto_healthkit'`
-  writer mirroring the `auto_from_calendar` + `event_goal_logs` idempotency pattern. **iPhone-only by
-  nature** (HealthKit doesn't exist on iPad or web; Apple Watch feeds the iPhone automatically) —
-  iPad/kiosk/web only *display* the synced progress number, never the raw health data; and a link is
-  personal (attaches to a `goal_participant`, not a shared household goal). Staged **Tier 0** (read &
-  suggest) → **Tier 1** (linked auto-log) → **Tier 2** (first-class health goal type + metric
-  discovery); full plan in [`docs/design/healthkit-goals.md`](../design/healthkit-goals.md). Needs
-  the HealthKit entitlement + usage strings + a privacy-policy line (App Store).
+- **Apple Health → goals — remaining follow-ons (iPhone).** Tiers 0–2 shipped (see **Done** —
+  the full metric set incl. rings/mindful/mood, habit thresholds, ring/mood **count** goals
+  ("close the ring 15×"), the "set a goal from your Health data" picker, and gap catch-up).
+  What's left is deliberately deferred:
+  - **Graduated ring goals ("I hit 75% of my Move ring").** Apple's `HKActivitySummary`
+    exposes each ring's **value *and* the user's personal goal**, not just closed/not — so the
+    ring is really a numerator/denominator we currently collapse to a boolean at 100%. We could
+    expose a **numeric "ring %"** metric (`value / goal × 100`) that a habit counts at a
+    threshold you set (default 100 = fully closed, e.g. ≥75% for an easier bar, or ≥150% to
+    require overachievement). **Where we landed:** don't build the full per-ring % set — most
+    of it is redundant (the Exercise ring's value *is* our Exercise-minutes metric; the Move
+    ring's value *is* Active energy). The one non-redundant, compelling case is a **"Move ring %"**
+    habit that rides your *personalized, auto-adjusting* calorie goal ("hit 80% of my Move goal,
+    whatever it is this month") — hard to express otherwise. So this is scoped to *maybe just
+    Move ring %*, a fast-follow only if graduated goals are wanted. Wrinkles to handle if we do:
+    % can exceed 100 (don't cap the UI), the denominator moves with the user's Watch goal, and
+    "all rings %" is ambiguous (three denominators) so it'd be per-ring only.
+  - **Background sync** (`enableBackgroundDelivery` / `HKObserverQuery`) to keep the family iPad
+    fresh on days the phone-owner never opens the app — a *freshness* nicety, not correctness,
+    since the next app-open already reconciles.
+  - A **rewards tie-in** ("hit your step goal → earn a marble"), which waits on goals touching
+    the currency ledger; and **write-back** into HealthKit (out of scope — the read-only pull is
+    ~95% of the value).
+
+  Full plan in [`docs/design/healthkit-goals.md`](../design/healthkit-goals.md).
 
 - **Multi-household identity** — one email/account that belongs to many households (separate
   profile + role per household, switch after login). Design spike written + product decisions

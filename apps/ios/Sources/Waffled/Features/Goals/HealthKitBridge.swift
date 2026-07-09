@@ -23,7 +23,11 @@ final class HealthKitBridge {
     /// The metrics we can read a same-day cumulative total for in Tier 0. Tier 1 adds the
     /// stored per-goal link (activity rings / mindful / mood ride in with later tiers).
     enum Metric: CaseIterable {
+        // Declaration order drives the editor's chip order — keep the boolean rings
+        // grouped together at the end, after the numeric metrics + mindful + mood.
         case steps, flights, exerciseMinutes, activeEnergy
+        case mindfulMinutes, mood
+        case moveRing, exerciseRing, standRing, ringsAll
 
         /// Canonical key persisted server-side (goals.health_metric) and sent to
         /// /health-sync. Must match the API's HEALTH_METRICS set.
@@ -33,21 +37,23 @@ final class HealthKitBridge {
             case .flights:         return "flights"
             case .exerciseMinutes: return "exercise_minutes"
             case .activeEnergy:    return "active_energy"
+            case .moveRing:        return "move_ring"
+            case .exerciseRing:    return "exercise_ring"
+            case .standRing:       return "stand_ring"
+            case .ringsAll:        return "rings_all"
+            case .mindfulMinutes:  return "mindful_minutes"
+            case .mood:            return "mood"
             }
         }
 
         init?(key: String?) {
-            switch key {
-            case "steps":           self = .steps
-            case "flights":         self = .flights
-            case "exercise_minutes": self = .exerciseMinutes
-            case "active_energy":   self = .activeEnergy
-            default:                return nil
-            }
+            guard let m = Metric.allCases.first(where: { $0.key == key }) else { return nil }
+            self = m
         }
 
         /// Light a suggestion up on an *existing* goal by matching its free-text `unit`,
-        /// so "10,000 steps" works today with no stored link (the link lands in Tier 1).
+        /// so "10,000 steps" works today with no stored link. Only the quantity metrics
+        /// carry a meaningful free-text unit (rings/mood are picked explicitly).
         static func matching(unit: String?) -> Metric? {
             switch unit?.lowercased() {
             case "step", "steps":                                return .steps
@@ -58,32 +64,80 @@ final class HealthKitBridge {
             }
         }
 
-        var quantityType: HKQuantityType {
+        /// A day is met/not-met (rings closed, mood logged) rather than a running number.
+        /// These are habit-only and sync 1 (met) / 0 (not) against an implicit daily
+        /// threshold of 1 — so the editor hides the threshold field for them.
+        var isBoolean: Bool {
+            switch self {
+            case .moveRing, .exerciseRing, .standRing, .ringsAll, .mood: return true
+            default: return false
+            }
+        }
+
+        /// Which goal types can link this metric. Quantity metrics fit habit (daily
+        /// threshold), total (sum), and count. A boolean (ring/mood) is met-or-not per day,
+        /// so it drives a habit (streak) or a *count* of met-days ("close the ring 15×") —
+        /// but there's nothing to sum, so never a total. Never checklists.
+        func applies(toGoalType goalType: String) -> Bool {
+            switch goalType {
+            case "habit", "count": return true
+            case "total":          return !isBoolean
+            default:               return false   // checklist / unknown
+            }
+        }
+
+        /// HealthKit object types to request *read* access for. Quantity + category types
+        /// map 1:1; rings read the daily activity summary; mood reads State of Mind (iOS 17+).
+        var readTypes: Set<HKObjectType> {
+            switch self {
+            case .steps, .flights, .exerciseMinutes, .activeEnergy:
+                return quantityType.map { [$0] } ?? []
+            case .mindfulMinutes:
+                return [HKCategoryType(.mindfulSession)]
+            case .moveRing, .exerciseRing, .standRing, .ringsAll:
+                return [HKObjectType.activitySummaryType()]
+            case .mood:
+                if #available(iOS 17.0, *) { return [HKObjectType.stateOfMindType()] }
+                return []
+            }
+        }
+
+        /// HKQuantityType for the four cumulative-sum metrics; nil for rings/mood/mindful
+        /// (which use their own query shapes).
+        var quantityType: HKQuantityType? {
             switch self {
             case .steps:           return HKQuantityType(.stepCount)
             case .flights:         return HKQuantityType(.flightsClimbed)
             case .exerciseMinutes: return HKQuantityType(.appleExerciseTime)
             case .activeEnergy:    return HKQuantityType(.activeEnergyBurned)
+            default:               return nil
             }
         }
 
-        var unit: HKUnit {
+        /// The unit its cumulative sum is read in (quantity metrics only).
+        var quantityUnit: HKUnit? {
             switch self {
             case .steps, .flights: return .count()
             case .exerciseMinutes: return .minute()
             case .activeEnergy:    return .kilocalorie()
+            default:               return nil
             }
         }
 
-        /// The goal `unit` stored when this metric is picked — also what
-        /// `matching(unit:)` keys off, and the label shown next to a value
-        /// ("7,340 steps"). Keep the two in sync.
+        /// The goal `unit` stored when a numeric metric is picked, and the word shown next
+        /// to a value ("7,340 steps"). Booleans are habits (unit is null server-side).
         var label: String {
             switch self {
             case .steps:           return "steps"
             case .flights:         return "flights"
             case .exerciseMinutes: return "min"
             case .activeEnergy:    return "cal"
+            case .mindfulMinutes:  return "min"
+            case .moveRing:        return "move ring"
+            case .exerciseRing:    return "exercise ring"
+            case .standRing:       return "stand ring"
+            case .ringsAll:        return "rings"
+            case .mood:            return "mood"
             }
         }
 
@@ -94,17 +148,25 @@ final class HealthKitBridge {
             case .flights:         return "Flights"
             case .exerciseMinutes: return "Exercise"
             case .activeEnergy:    return "Energy"
+            case .mindfulMinutes:  return "Mindful"
+            case .moveRing:        return "Move ring"
+            case .exerciseRing:    return "Exercise ring"
+            case .standRing:       return "Stand ring"
+            case .ringsAll:        return "All rings"
+            case .mood:            return "Mood"
             }
         }
 
-        /// A sensible starting target to pre-fill when the metric is picked, so the
-        /// user isn't staring at an empty number field.
+        /// A sensible starting target to pre-fill when the metric is picked, so the user
+        /// isn't staring at an empty number field. Booleans use 1 (met/not) — kept hidden.
         var suggestedTarget: Int {
             switch self {
             case .steps:           return 10000
             case .flights:         return 10
             case .exerciseMinutes: return 30
             case .activeEnergy:    return 500
+            case .mindfulMinutes:  return 10
+            case .moveRing, .exerciseRing, .standRing, .ringsAll, .mood: return 1
             }
         }
 
@@ -116,6 +178,24 @@ final class HealthKitBridge {
             case .flights:         return "Flights of stairs climbed, tracked by your iPhone."
             case .exerciseMinutes: return "Apple Watch exercise minutes — the green ring."
             case .activeEnergy:    return "Active calories burned — the Apple Watch move ring."
+            case .mindfulMinutes:  return "Mindful minutes logged in Health or the Mindfulness app."
+            case .moveRing:        return "Counts a day when you close your Apple Watch Move ring."
+            case .exerciseRing:    return "Counts a day when you close your Apple Watch Exercise ring."
+            case .standRing:       return "Counts a day when you close your Apple Watch Stand ring."
+            case .ringsAll:        return "Counts a day when you close all three Apple Watch rings."
+            case .mood:            return "Counts a day when you log how you're feeling (iOS 17+)."
+            }
+        }
+
+        /// A short "current value" string for the discovery picker, given the day's reading.
+        func formatCurrent(_ value: Double?) -> String {
+            guard let v = value else { return "—" }
+            if isBoolean { return v >= 1 ? "done today" : "not yet today" }
+            switch self {
+            case .steps, .flights:                   return "\(Int(v)) \(label) today"
+            case .exerciseMinutes, .mindfulMinutes:  return "\(Int(v)) min today"
+            case .activeEnergy:                      return "\(Int(v)) cal today"
+            default:                                 return "\(Int(v)) today"
             }
         }
     }
@@ -124,7 +204,7 @@ final class HealthKitBridge {
     /// HealthKit only prompts the first time and never re-reveals a prior choice.
     func requestReadAuthorization() async throws {
         guard isAvailable else { return }
-        let read = Set(Metric.allCases.map { $0.quantityType as HKObjectType })
+        let read = Metric.allCases.reduce(into: Set<HKObjectType>()) { $0.formUnion($1.readTypes) }
         try await store.requestAuthorization(toShare: [], read: read)
     }
 
@@ -193,24 +273,103 @@ final class HealthKitBridge {
     /// Log sheet's read-&-suggest card.
     func todayTotal(for metric: Metric) async -> Double? { await total(for: metric, on: Date()) }
 
-    /// Cumulative total for `metric` over one local calendar day, or `nil` when unavailable /
-    /// not-yet-authorized / no samples. `nil` is intentionally ambiguous (denied vs empty).
+    /// The day's reading for `metric`, or `nil` when unavailable. Quantity metrics return a
+    /// cumulative sum; **boolean** metrics (rings/mood) return 1 (met) or 0 (not) so they push
+    /// straight into the habit daily-threshold path. `nil` is intentionally ambiguous (denied
+    /// vs empty) and simply yields no suggestion.
     func total(for metric: Metric, on day: Date) async -> Double? {
         guard isAvailable else { return nil }
-        let cal = Calendar.current
-        let start = cal.startOfDay(for: day)
-        let end = cal.date(byAdding: .day, value: 1, to: start) ?? day
+        switch metric {
+        case .steps, .flights, .exerciseMinutes, .activeEnergy:
+            return await quantitySum(metric, on: day)
+        case .mindfulMinutes:
+            return await mindfulMinutes(on: day)
+        case .moveRing, .exerciseRing, .standRing, .ringsAll:
+            return await ringClosed(metric, on: day)
+        case .mood:
+            return await moodLogged(on: day)
+        }
+    }
+
+    /// The four cumulative-sum quantity metrics, summed over one local day.
+    private func quantitySum(_ metric: Metric, on day: Date) async -> Double? {
+        guard let qty = metric.quantityType, let unit = metric.quantityUnit else { return nil }
+        let (start, end) = Self.dayBounds(day)
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
         return await withCheckedContinuation { continuation in
             let query = HKStatisticsQuery(
-                quantityType: metric.quantityType,
-                quantitySamplePredicate: predicate,
-                options: .cumulativeSum
+                quantityType: qty, quantitySamplePredicate: predicate, options: .cumulativeSum
             ) { _, stats, _ in
-                continuation.resume(returning: stats?.sumQuantity()?.doubleValue(for: metric.unit))
+                continuation.resume(returning: stats?.sumQuantity()?.doubleValue(for: unit))
             }
             store.execute(query)
         }
+    }
+
+    /// Total minutes of mindful sessions logged on `day` (sum of each session's duration).
+    private func mindfulMinutes(on day: Date) async -> Double? {
+        let (start, end) = Self.dayBounds(day)
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        return await withCheckedContinuation { continuation in
+            let q = HKSampleQuery(sampleType: HKCategoryType(.mindfulSession), predicate: predicate,
+                                  limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
+                guard let samples else { continuation.resume(returning: nil); return }
+                let seconds = samples.reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
+                continuation.resume(returning: seconds / 60.0)
+            }
+            store.execute(q)
+        }
+    }
+
+    /// 1 when the relevant Apple Watch ring(s) closed on `day`, else 0 — a ring is "closed"
+    /// when the day's value meets the user's own Apple goal for it.
+    private func ringClosed(_ metric: Metric, on day: Date) async -> Double? {
+        var comps = Calendar.current.dateComponents([.year, .month, .day], from: day)
+        comps.calendar = Calendar.current
+        let predicate = HKQuery.predicate(forActivitySummariesBetweenStart: comps, end: comps)
+        return await withCheckedContinuation { continuation in
+            let q = HKActivitySummaryQuery(predicate: predicate) { _, summaries, _ in
+                guard let s = summaries?.first else { continuation.resume(returning: 0); return }
+                func met(_ v: HKQuantity, _ goal: HKQuantity, _ unit: HKUnit) -> Bool {
+                    let g = goal.doubleValue(for: unit)
+                    return g > 0 && v.doubleValue(for: unit) >= g
+                }
+                let move = met(s.activeEnergyBurned, s.activeEnergyBurnedGoal, .kilocalorie())
+                let exercise = met(s.appleExerciseTime, s.appleExerciseTimeGoal, .minute())
+                let stand = met(s.appleStandHours, s.appleStandHoursGoal, .count())
+                let done: Bool
+                switch metric {
+                case .moveRing:     done = move
+                case .exerciseRing: done = exercise
+                case .standRing:    done = stand
+                case .ringsAll:     done = move && exercise && stand
+                default:            done = false
+                }
+                continuation.resume(returning: done ? 1 : 0)
+            }
+            store.execute(q)
+        }
+    }
+
+    /// 1 when at least one State of Mind entry was logged on `day`, else 0 (iOS 17+).
+    private func moodLogged(on day: Date) async -> Double? {
+        guard #available(iOS 17.0, *) else { return nil }
+        let (start, end) = Self.dayBounds(day)
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        return await withCheckedContinuation { continuation in
+            let q = HKSampleQuery(sampleType: HKObjectType.stateOfMindType(), predicate: predicate,
+                                  limit: 1, sortDescriptors: nil) { _, samples, _ in
+                continuation.resume(returning: (samples?.isEmpty == false) ? 1 : 0)
+            }
+            store.execute(q)
+        }
+    }
+
+    /// Local [startOfDay, startOfNextDay) bounds for a day.
+    private static func dayBounds(_ day: Date) -> (Date, Date) {
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: day)
+        return (start, cal.date(byAdding: .day, value: 1, to: start) ?? day)
     }
 }
 

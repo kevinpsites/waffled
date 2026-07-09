@@ -14,6 +14,7 @@ Goals turn intentions into visible progress. Track **count**, **total**, **habit
 - 🔍 **Goal detail** — a milestone track, hours-by-person, streaks, and recent activity.
 - 👤 **Person profile + Family overview** — see one person's goals or the whole household at a glance.
 - 📅 **Calendar auto-count** — a single-event recap, smart **"might count toward a goal"** suggestions that learn over time, and recurring-event counting (via Calendar's **"counts toward a goal"** tag).
+- ❤️ **Apple Health auto-fill (iPhone)** — link a goal to steps, exercise, mindful minutes, your Apple Watch rings, or your mood and progress fills itself, including days you didn't open the app. See [Apple Health → goals](/features/apple-health/).
 
 ## Where it works
 
@@ -38,3 +39,4 @@ Optional module `goals`, default **on** — toggle it in **Settings → Modules*
 - 🎚️ **The milestone axis differs by type** — habit tracks **streak days**, checklist tracks **step %**, and count/total track raw **progress**. Same milestone concept, different yardstick.
 - 🔒 **Capability-gated where it touches someone else** — `goal.manage` covers logging for others and editing/deleting shared or others' goals; your **own** progress and personal goals stay open. See [Permissions](/concepts/permissions/).
 - 📶 **REST-only, not offline** — goals don't ride PowerSync, so logging needs a live connection.
+- ❤️ **Apple Health is iPhone-only** — HealthKit doesn't exist on iPad or the web, so linking and syncing happen on iPhone; every surface just *displays* the synced number. Full walkthrough: [Apple Health → goals](/features/apple-health/).

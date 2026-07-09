@@ -20,9 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which meal slots), works on web, iPad, and iPhone, and pushes to Google Calendar when meal-calendar
   sync is on.
 - **Auto-fill goals from Apple Health (iPhone).** Link a goal to an Apple Health / Apple Watch
-  metric — steps, flights climbed, exercise minutes, or active energy — and its progress fills in on
-  its own. Total/count goals accumulate each day's total; a habit counts a day whenever it clears a
-  daily threshold you set ("2,000 steps a day, 5 days a week"). Opening the app catches up every day
+  metric — steps, flights climbed, exercise minutes, active energy, **mindful minutes**, your
+  **activity rings** (Move / Exercise / Stand, or all three), or **logging your mood** (iOS 17+) —
+  and its progress fills in on its own. Numeric goals accumulate each day's total; a habit counts a
+  day whenever it clears a daily threshold you set ("2,000 steps a day, 5 days a week"), and rings
+  and mood simply count a day when the ring closes or a mood is logged. Rings and mood also work on
+  a **count** goal, so "close my Exercise ring 15× this month" or "log my mood 20 days" tallies one
+  per met day. Not sure what to track? Tap
+  **See your Health data** to pick a goal from your live values. Opening the app catches up every day
   since it last synced — so being away for two weeks fills all fourteen days on the next open — and
   it never pulls data from before the goal existed. Turn it on per goal in the editor's Extras, next
   to auto-count-from-calendar. Includes a new **Settings → Permissions** screen for managing device

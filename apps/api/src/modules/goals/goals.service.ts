@@ -10,8 +10,13 @@ import type { CreateGoalListInput, UpdateGoalListInput, CreateGoalInput, UpdateG
 export const GOAL_TYPES = new Set(['count', 'total', 'habit', 'checklist'])
 export const TRACKING_MODES = new Set(['shared_total', 'each_tracks'])
 // Apple Health metrics a goal can auto-fill from (iPhone). Keep in sync with the iOS
-// HealthKitBridge.Metric keys.
-export const HEALTH_METRICS = new Set(['steps', 'flights', 'exercise_minutes', 'active_energy'])
+// HealthKitBridge.Metric keys. Quantity metrics (steps…mindful_minutes) send a raw daily
+// total; the boolean metrics (rings, mood) send 1 when met / 0 when not, so they ride the
+// habit daily-threshold path (threshold 1) — the server stays metric-agnostic either way.
+export const HEALTH_METRICS = new Set([
+  'steps', 'flights', 'exercise_minutes', 'active_energy',
+  'move_ring', 'exercise_ring', 'stand_ring', 'rings_all', 'mindful_minutes', 'mood',
+])
 
 // ---- goal lists (membership groups) ----------------------------------------
 
