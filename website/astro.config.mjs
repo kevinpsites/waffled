@@ -47,6 +47,7 @@ export default defineConfig({
 						{ label: 'Chores & tasks', slug: 'features/chores' },
 						{ label: 'Rewards & economy', slug: 'features/rewards' },
 						{ label: 'Goals', slug: 'features/goals' },
+						{ label: 'Apple Health → goals', slug: 'features/apple-health' },
 						{ label: 'Meals & recipes', slug: 'features/meals' },
 						{ label: 'Lists & groceries', slug: 'features/lists' },
 						{ label: 'Pantry', slug: 'features/pantry' },

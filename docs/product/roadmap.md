@@ -48,6 +48,16 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 - **Goals** — types (count/total/habit/checklist), shared vs each-tracks, create/edit/
   detail read-model, person + family overview, **calendar → goal** auto-count (single
   and recurring events) with learned suggestions.
+- **Apple Health → goals (iPhone)** — link a goal to an Apple Health / Apple Watch metric
+  (steps, flights climbed, exercise minutes, active energy) and its progress auto-fills:
+  count/total goals accumulate each day's total, a **habit** counts a day whenever it clears a
+  daily threshold ("2,000 steps a day, 5×/week"). Opening the app **catches up every missed
+  day** since the last sync (bounded at the goal's creation date, so it never back-fills from
+  before the goal existed). Opt-in per goal in the editor's **Extras** (next to calendar
+  auto-count), plus a **Settings → Permissions** screen for managing device access. iPhone-only
+  by nature (HealthKit); iPad/web just display the synced number. *(Tier 0–1 of the
+  [staged plan](../design/healthkit-goals.md); Tier 2 — activity rings, mindful minutes, mood,
+  a first-class health goal type + metric discovery — is still planned below.)*
 - **Lists & groceries** — multi-lists, auto-built aisle board, quantity merge, pantry
   staples, live cross-surface refresh, **item attribution** ("added by …" / "from meal plan").
 - **Meals & recipes** — week/month planners, recipe library, in-app editor (with
@@ -129,21 +139,13 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   should preserve the existing cook. Keep it un-gated (collaborative/attribution-style, like list
   authorship — no capability needed to volunteer or reassign a cook).
 
-- **Apple Health → goals (iPhone).** Let an iPhone user link a goal to an Apple Health / Apple
-  Watch metric — steps, flights climbed, exercise minutes, activity rings, mindful minutes, even
-  mood (iOS 17+ State of Mind) — so progress fills itself instead of being hand-logged, plus a
-  **"set a goal from your Health data"** picker that shows the user their *current* value for each
-  supported metric so they pick something real. Fits the existing model with near-zero churn:
-  `goals.unit`/`target_value` already describe "10,000 steps", `goal_type=habit` already dedupes one
-  check-in per person per day (rings/mood auto-check for free), and `goal_logs.source` +
-  `logProgress(source:refId:at:)` are already the extension point — a new `source='auto_healthkit'`
-  writer mirroring the `auto_from_calendar` + `event_goal_logs` idempotency pattern. **iPhone-only by
-  nature** (HealthKit doesn't exist on iPad or web; Apple Watch feeds the iPhone automatically) —
-  iPad/kiosk/web only *display* the synced progress number, never the raw health data; and a link is
-  personal (attaches to a `goal_participant`, not a shared household goal). Staged **Tier 0** (read &
-  suggest) → **Tier 1** (linked auto-log) → **Tier 2** (first-class health goal type + metric
-  discovery); full plan in [`docs/design/healthkit-goals.md`](../design/healthkit-goals.md). Needs
-  the HealthKit entitlement + usage strings + a privacy-policy line (App Store).
+- **Apple Health → goals, Tier 2 (iPhone).** Tier 0–1 shipped (see **Done** — steps / flights /
+  exercise minutes / active energy auto-log with habit thresholds + gap catch-up). Still to build:
+  **more metrics** (activity rings, mindful minutes, iOS 17+ *State of Mind* mood — `goal_type=habit`
+  already dedupes one check-in per person per day, so rings/mood auto-check for free), a
+  **first-class health goal type**, and **metric discovery** — a *"set a goal from your Health data"*
+  picker that shows the user their *current* value for each supported metric so they pick something
+  real. Full plan in [`docs/design/healthkit-goals.md`](../design/healthkit-goals.md).
 
 - **Multi-household identity** — one email/account that belongs to many households (separate
   profile + role per household, switch after login). Design spike written + product decisions
