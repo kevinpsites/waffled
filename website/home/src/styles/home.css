@@ -310,6 +310,25 @@ img { max-width: 100%; display: block; }
 }
 .feature:hover .go { opacity: 1; transform: translateX(0); }
 
+/* ── Feature spotlights (alternating screenshot + copy) ──────────────────── */
+.spots { display: grid; gap: 68px; }
+.spot { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 52px; align-items: center; }
+.spot.rev .spot-shot { order: 2; }
+.spot-shot {
+  border-radius: 16px; overflow: hidden;
+  border: 1px solid var(--wf-hairline);
+  box-shadow: var(--wf-shadow-md);
+  background: var(--wf-card);
+}
+.spot-shot img { display: block; width: 100%; height: auto; }
+.spot-copy h3 { font-size: clamp(24px, 3vw, 32px); margin-top: 12px; }
+.spot-copy p { margin-top: 14px; color: var(--wf-ink-2); font-size: 17px; }
+.spot-link {
+  display: inline-flex; margin-top: 18px;
+  font-weight: 600; color: var(--wf-coral-d); text-decoration: none;
+}
+.spot-link:hover { text-decoration: underline; }
+
 /* ── Three surfaces — real device showcase ───────────────────────────────── */
 .showcase {
   display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 56px; align-items: center;
@@ -509,6 +528,9 @@ img { max-width: 100%; display: block; }
   .hero .lede { max-width: none; }
   .hero-visual { max-width: 460px; }
   .features { grid-template-columns: repeat(2, 1fr); }
+  .spot, .spot.rev { grid-template-columns: 1fr; gap: 26px; }
+  .spot .spot-shot, .spot.rev .spot-shot { order: -1; }
+  .spots { gap: 48px; }
   .showcase { grid-template-columns: 1fr; gap: 40px; }
   .device-cluster { max-width: 620px; margin: 0 auto 24px; }
   .pillars { grid-template-columns: repeat(2, 1fr); }
