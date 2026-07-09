@@ -21,6 +21,10 @@ struct SyncedEvent: Identifiable, Sendable, Equatable {
     /// The occurrence's original start (for a recurring instance); nil for a single
     /// event. Mirrors the web's `occurrenceStart` — used to key per-occurrence state.
     var occurrenceStart: String? = nil
+    /// Personal-calendar visibility: 'family' (shared kiosk) or 'personal' (only the
+    /// owner sees it). Denormalized from the event's calendar; filtered per-viewer.
+    var visibility: String = "family"
+    var ownerPersonId: String? = nil
 }
 
 /// Timestamp handling that mirrors the web client (`events-local.ts`): server-

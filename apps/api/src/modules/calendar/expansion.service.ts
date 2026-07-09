@@ -29,6 +29,8 @@ interface MasterRow {
   exdate: Date[] | null
   recurrence_end_at: Date | null
   person_id: string | null
+  visibility: string
+  owner_person_id: string | null
 }
 
 interface OverrideDbRow {
@@ -42,7 +44,7 @@ interface OverrideDbRow {
 }
 
 const MASTER_COLS = `id, household_id, title, location, starts_at, ends_at, all_day, timezone,
-                     rrule, rdate, exdate, recurrence_end_at, person_id`
+                     rrule, rdate, exdate, recurrence_end_at, person_id, visibility, owner_person_id`
 
 function windowFor(now: Date): { start: Date; end: Date } {
   const start = new Date(now)
@@ -97,13 +99,14 @@ async function materializeOne(m: MasterRow, now: Date): Promise<number> {
       await client.query(
         `insert into event_occurrences
            (household_id, event_id, override_id, original_start, person_id, title, location,
-            starts_at, ends_at, all_day, starts_on)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+            starts_at, ends_at, all_day, starts_on, visibility, owner_person_id)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          on conflict (event_id, original_start) do update set
            override_id = excluded.override_id, person_id = excluded.person_id,
            title = excluded.title, location = excluded.location,
            starts_at = excluded.starts_at, ends_at = excluded.ends_at,
-           all_day = excluded.all_day, starts_on = excluded.starts_on, deleted_at = null`,
+           all_day = excluded.all_day, starts_on = excluded.starts_on, deleted_at = null,
+           visibility = excluded.visibility, owner_person_id = excluded.owner_person_id`,
         [
           m.household_id,
           m.id,
@@ -116,6 +119,8 @@ async function materializeOne(m: MasterRow, now: Date): Promise<number> {
           o.endsAt,
           o.allDay,
           localDayKey(o.startsAt, tz),
+          m.visibility,
+          m.owner_person_id,
         ],
       )
       keep.push(o.originalStart)

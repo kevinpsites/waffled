@@ -23,6 +23,8 @@ const events = new Table({
   origin: column.text,
   origin_ref_id: column.text,
   rrule: column.text, // non-null marks a recurring master (its occurrences render instead)
+  visibility: column.text, // 'family' | 'personal' (personal shows only to owner_person_id)
+  owner_person_id: column.text,
   updated_at: column.text,
 })
 
@@ -46,6 +48,8 @@ const event_occurrences = new Table({
   ends_at: column.text,
   all_day: column.integer,
   starts_on: column.text,
+  visibility: column.text,
+  owner_person_id: column.text,
 })
 
 const persons = new Table({

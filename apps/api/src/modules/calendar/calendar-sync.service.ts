@@ -47,6 +47,7 @@ interface SelectedCalendarRow extends QueryResultRow {
   summary: string | null
   timezone: string | null
   person_id: string | null
+  visibility: string
   sync_token: string | null
   refresh_token_encrypted: string
   household_timezone: string
@@ -57,7 +58,7 @@ interface SelectedCalendarRow extends QueryResultRow {
 async function selectedCalendars(householdId: string, onlyId?: string): Promise<SelectedCalendarRow[]> {
   const { rows } = await query<SelectedCalendarRow>(
     `select c.id, c.household_id, c.account_id, c.google_calendar_id, c.summary, c.timezone,
-            c.person_id, c.sync_token, a.refresh_token_encrypted, h.timezone as household_timezone
+            c.person_id, c.visibility, c.sync_token, a.refresh_token_encrypted, h.timezone as household_timezone
        from calendars c
        join calendar_accounts a on a.id = c.account_id and a.deleted_at is null
        join households h on h.id = c.household_id
@@ -109,7 +110,8 @@ async function applyEvent(
        household_id, calendar_id, person_id, origin,
        title, description, location,
        starts_at, ends_at, all_day, timezone,
-       status, google_event_id, ical_uid, etag, sequence, google_updated, sync_state
+       status, google_event_id, ical_uid, etag, sequence, google_updated, sync_state,
+       visibility, owner_person_id
      ) values (
        $1, $2, $3, 'google',
        $4, $5, $6,
@@ -118,7 +120,8 @@ async function applyEvent(
             when $7 then ($10::text)::timestamp at time zone $9
             else ($10::text)::timestamptz end,
        $7, $9,
-       coalesce($11, 'confirmed'), $12, $13, $14, $15, $16, 'synced'
+       coalesce($11, 'confirmed'), $12, $13, $14, $15, $16, 'synced',
+       $17, $18
      )
      on conflict (calendar_id, google_event_id) where google_event_id is not null
      do update set
@@ -136,7 +139,11 @@ async function applyEvent(
        google_updated = excluded.google_updated,
        sync_state = 'synced',
        deleted_at = null,
-       person_id = coalesce(events.person_id, excluded.person_id)
+       person_id = coalesce(events.person_id, excluded.person_id),
+       -- visibility/owner follow the calendar mapping (not the manual color person),
+       -- so always take the calendar's current values on re-sync.
+       visibility = excluded.visibility,
+       owner_person_id = excluded.owner_person_id
      returning (xmax = 0) as inserted`,
     [
       cal.household_id,
@@ -155,6 +162,8 @@ async function applyEvent(
       ev.etag,
       ev.sequence,
       ev.updated,
+      cal.visibility,
+      cal.person_id,
     ]
   )
   // Series-level goal inheritance: if this Google instance belongs to a goal-tracked

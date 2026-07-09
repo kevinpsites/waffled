@@ -21,7 +21,16 @@ final class SyncManager {
 
     private(set) var status: Status = .idle
     private(set) var members: [SyncedMember] = []
-    private(set) var events: [SyncedEvent] = []
+    /// Every synced event (PowerSync streams the whole household, incl. personal ones).
+    private(set) var allEvents: [SyncedEvent] = []
+    /// What this device may show right now: family events + the signed-in person's own
+    /// personal-calendar events. A personal event owned by someone else is hidden even
+    /// though it's synced to the device (mirrors the web's per-viewer filter). Computed
+    /// so it re-derives when either the events or the current person changes.
+    var events: [SyncedEvent] {
+        let me = currentPersonId
+        return allEvents.filter { $0.visibility != "personal" || ($0.ownerPersonId != nil && $0.ownerPersonId == me) }
+    }
     private(set) var householdTz: TimeZone = .current
     private(set) var personCount = 0
     private(set) var eventCount = 0
@@ -206,7 +215,7 @@ final class SyncManager {
         watchTask?.cancel(); eventsTask?.cancel(); statusTask?.cancel()
         watchTask = nil; eventsTask = nil; statusTask = nil
         if clearLocal { try? await db.disconnectAndClear() } else { try? await db.disconnect() }
-        members = []; events = []
+        members = []; allEvents = []
         personCount = 0; eventCount = 0; pendingUploads = 0
         lastSyncedAt = nil; lastError = nil
         currentPerson = nil; currencies = []
@@ -730,6 +739,7 @@ final class SyncManager {
                     sql: """
                     SELECT e.id AS id, e.id AS series_id, NULL AS occurrence_start,
                            e.title, e.starts_at, e.ends_at, e.all_day, e.is_countdown, e.location, e.person_id,
+                           e.visibility, e.owner_person_id,
                            p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
                            (SELECT group_concat(ep.person_id) FROM event_participants ep
                              WHERE ep.event_id = e.id) AS participant_ids
@@ -740,6 +750,7 @@ final class SyncManager {
                     SELECT o.id AS id, m.id AS series_id, o.original_start AS occurrence_start,
                            coalesce(o.title, m.title) AS title, o.starts_at, o.ends_at, o.all_day, m.is_countdown,
                            coalesce(o.location, m.location) AS location, o.person_id,
+                           o.visibility, o.owner_person_id,
                            p.color_hex AS person_color, p.avatar_emoji AS person_emoji,
                            (SELECT group_concat(ep.person_id) FROM event_participants ep
                              WHERE ep.event_id = m.id) AS participant_ids
@@ -768,12 +779,14 @@ final class SyncManager {
                             participantIds: pids,
                             // For a single event series_id == id; occurrence_start is NULL.
                             seriesId: (try cursor.getStringOptional(name: "series_id")) ?? id,
-                            occurrenceStart: try cursor.getStringOptional(name: "occurrence_start")
+                            occurrenceStart: try cursor.getStringOptional(name: "occurrence_start"),
+                            visibility: (try cursor.getStringOptional(name: "visibility")) ?? "family",
+                            ownerPersonId: try cursor.getStringOptional(name: "owner_person_id")
                         )
                     }
                 )
                 for try await rows in stream {
-                    self.events = rows
+                    self.allEvents = rows
                     self.eventCount = rows.count
                 }
             } catch {

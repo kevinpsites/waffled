@@ -1,6 +1,6 @@
 // Persons (family members) + household settings — client slice, types, hooks.
 import { useEffect, useState } from 'react'
-import { apiGet, apiSend, apiDelete } from './client'
+import { apiGet, apiSend, apiDelete, setCurrentViewerPersonId } from './client'
 import { tap } from './bus'
 
 export interface Person {
@@ -124,14 +124,16 @@ export function useHousehold(): {
     const load = () =>
       personsApi
         .household()
-        .then(
-          (d) =>
-            alive &&
-            (setHousehold(d.household ?? null),
-            setPerson(d.person ?? null),
-            setMemberships(d.memberships ?? []),
-            setPendingInvites(d.pendingInvites ?? [])),
-        )
+        .then((d) => {
+          // Keep the module-level viewer in sync (drives personal-calendar visibility
+          // in the offline agenda reads) regardless of whether this hook is still mounted.
+          setCurrentViewerPersonId(d.person?.id ?? null)
+          if (!alive) return
+          setHousehold(d.household ?? null)
+          setPerson(d.person ?? null)
+          setMemberships(d.memberships ?? [])
+          setPendingInvites(d.pendingInvites ?? [])
+        })
         .catch(() => {})
     load()
     window.addEventListener(HOUSEHOLD_CHANGED, load)

@@ -1434,6 +1434,13 @@ function CalendarsPanel() {
     const { calendar } = await calendarsApi.updateCalendar(cal.id, { selected: !cal.selected })
     replaceCal(calendar)
   }
+  // Family (on the shared kiosk) vs personal (only its owner sees it, on their own
+  // profile/app). Flipping this re-stamps the calendar's events server-side.
+  async function toggleVisibility(cal: CalendarLink) {
+    const next = cal.visibility === 'personal' ? 'family' : 'personal'
+    const { calendar } = await calendarsApi.updateCalendar(cal.id, { visibility: next })
+    replaceCal(calendar)
+  }
   // Setting a write target clears the flag on the person's other calendars, so
   // refetch the whole list rather than patching a single row.
   async function toggleWriteTarget(cal: CalendarLink) {
@@ -1470,6 +1477,12 @@ function CalendarsPanel() {
           <div className="tiny muted" style={{ fontWeight: 600 }}>
             {cal.selected ? `Last synced ${fmtWhen(cal.lastSyncedAt)}` : 'Sync off'}
             {cal.accessRole ? ` · ${cal.accessRole}` : ''}
+            {cal.selected && (
+              <span style={{ fontWeight: 700 }}>
+                {' · '}
+                {cal.visibility === 'personal' ? '🔒 Private (only you)' : '👪 Family viewable'}
+              </span>
+            )}
             {cal.isWriteTarget && <span style={{ color: 'var(--accent, #4c8bf5)' }}> · ★ new events go here</span>}
           </div>
         </div>
@@ -1495,6 +1508,19 @@ function CalendarsPanel() {
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
+        {cal.selected && (
+          <label
+            className="cal-sync"
+            title={
+              cal.visibility === 'personal'
+                ? 'Private — only you see this calendar. Uncheck to show it to the whole family (on the shared kiosk).'
+                : 'Visible to the whole family, including the shared kiosk. Check to keep it private (only you).'
+            }
+          >
+            <input type="checkbox" checked={cal.visibility === 'personal'} onChange={() => toggleVisibility(cal)} />
+            Private
+          </label>
+        )}
         <label className="cal-sync" title="Sync this calendar into Waffled">
           <input type="checkbox" checked={cal.selected} onChange={() => toggleSelected(cal)} />
           Sync

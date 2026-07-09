@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { localDate, rowToAgenda, eventsForDay, eventsForRange, type LocalEventRow } from './events-local'
+import { setCurrentViewerPersonId } from '../api/client'
 
 function row(p: Partial<LocalEventRow>): LocalEventRow {
   return {
@@ -108,5 +109,33 @@ describe('eventsForRange', () => {
   it('includes events whose local date is within [from,to], ordered by start', () => {
     const out = eventsForRange(rows, tz, '2026-06-23', '2026-06-30')
     expect(out.map((e) => e.id)).toEqual(['a', 'b'])
+  })
+})
+
+describe('personal-calendar visibility', () => {
+  const tz = 'America/Chicago'
+  const day = '2026-06-24'
+  const at = '2026-06-24T14:00:00Z'
+  const rows = [
+    row({ id: 'fam', starts_at: at, visibility: 'family' }),
+    row({ id: 'legacy', starts_at: at }), // no visibility → treated as family
+    row({ id: 'mine', starts_at: at, visibility: 'personal', owner_person_id: 'me' }),
+    row({ id: 'theirs', starts_at: at, visibility: 'personal', owner_person_id: 'you' }),
+  ]
+  afterEach(() => setCurrentViewerPersonId(null))
+
+  it('hides every personal event on a bare kiosk (no profile claimed)', () => {
+    setCurrentViewerPersonId(null)
+    expect(eventsForDay(rows, tz, day).map((e) => e.id)).toEqual(['fam', 'legacy'])
+  })
+
+  it('shows the viewer their own personal events but not another person’s', () => {
+    setCurrentViewerPersonId('me')
+    expect(eventsForDay(rows, tz, day).map((e) => e.id).sort()).toEqual(['fam', 'legacy', 'mine'])
+  })
+
+  it('applies the same filter to a date range', () => {
+    setCurrentViewerPersonId('you')
+    expect(eventsForRange(rows, tz, day, day).map((e) => e.id).sort()).toEqual(['fam', 'legacy', 'theirs'])
   })
 })

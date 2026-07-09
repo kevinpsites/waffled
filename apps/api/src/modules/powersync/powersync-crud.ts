@@ -76,7 +76,12 @@ async function applyEventPut(tenant: Tenant, id: string, data: Record<string, un
     : await resolveWriteTarget(tenant.householdId, asStr(data.person_id))
   if (target) {
     await query(
-      `update events set calendar_id = $2, sync_state = 'pending_push'
+      // Stamp visibility/owner from the destination calendar (family if it somehow
+      // resolves to none), so an offline-authored event on a personal calendar is
+      // hidden on the shared kiosk just like a Google one.
+      `update events set calendar_id = $2, sync_state = 'pending_push',
+              visibility = coalesce((select visibility from calendars where id = $2 and deleted_at is null), 'family'),
+              owner_person_id = (select person_id from calendars where id = $2 and deleted_at is null)
         where id = $1 and household_id = $3 and deleted_at is null`,
       [id, target.calendarId, tenant.householdId]
     )
