@@ -28,7 +28,18 @@ real HTTP routes against a throwaway Postgres (`@testcontainers/postgresql` + `r
    Changed; pure-internal churn (`test`/`docs`/internal `chore`) is omitted. Write a **bold
    lead + a plain-language sentence**, synthesizing related commits into one feature-level
    entry — a changelog is for users, not a commit log. Match the existing entries.
-2. **Cut a release ONLY with `./waffled release X.Y.Z`** — never hand-bump versions or
+2. **When a feature is done, update the docs too — not just the changelog.** A `CHANGELOG.md`
+   entry records that something changed; it does **not** teach anyone how to use it. So when you
+   finish a user-facing feature (or change one enough that the old docs are now wrong), also
+   surface it where users actually look: the **features reference**
+   (`website/src/content/docs/reference/features.md`), the **product roadmap**
+   (`docs/product/roadmap.md` — move the item from *Planned* to *Done*, or trim it to the part
+   still outstanding), and a **how-to page** under the docs site when the feature needs
+   explaining (setup, permissions, gotchas — e.g. an iPhone-only capability with an OS
+   permission prompt). Match the existing pages' Starlight frontmatter + voice. Ask "if a user
+   went looking for this, would they find and understand it?" — if not, the feature isn't done.
+   Skip only when nothing user-facing changed (pure internal churn).
+3. **Cut a release ONLY with `./waffled release X.Y.Z`** — never hand-bump versions or
    hand-edit the changelog heading, and never move a published tag. That one command is the
    source of truth: it reviews the `[Unreleased]` notes (and **requires ≥1 entry**), dates
    them `## [X.Y.Z]` + opens a fresh `[Unreleased]` + adds the compare link, bumps **every**
