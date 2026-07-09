@@ -108,9 +108,13 @@ and every surface (iPhone/iPad/web) sees the aggregated number, never the raw he
 **iOS**
 - Goal editor gains **"Link to Apple Health → \<metric\>"** (only for compatible goal
   types); requests that metric's read permission.
-- On app foreground (+ optional `enableBackgroundDelivery` / `HKObserverQuery`), for each
-  linked goal, query today's value and POST `health-sync`. Manual quick-log stays allowed;
-  health owns only the health portion of the day.
+- On app foreground, for **every** linked goal in the household (not just the visible list),
+  re-sync a **rolling window** (last `HealthKitBridge.backfillWindow` = 7 days), reading each
+  day's total and POSTing `health-sync` — so opening the app once catches up a day you walked
+  but didn't open the app (important for habit streaks). Idempotent per goal/person/metric/day,
+  so re-running is safe. The goal detail syncs the same window on view/refresh. Manual quick-log
+  stays allowed; health owns only the health portion of the day. **Still open:** true background
+  sync (`enableBackgroundDelivery` / `HKObserverQuery`) for days the app is never opened.
 - Goal card shows an **"Auto from Apple Health"** badge.
 
 **v1 metric set:** steps, flights, exercise minutes, activity rings (all stable pre-iOS-17).

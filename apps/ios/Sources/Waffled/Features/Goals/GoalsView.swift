@@ -77,9 +77,15 @@ final class GoalsModel {
             HealthKitBridge.Metric(key: g.healthMetric).map { (id: g.id, metric: $0) }
         }
         guard !linked.isEmpty else { return }
+        try? await HealthKitBridge.shared.requestReadAuthorization()
+        // Backfill a rolling window so opening the app once catches up any missed days
+        // (a habit day you walked but didn't open the app still counts).
+        let window = HealthKitBridge.backfillDays(count: HealthKitBridge.backfillWindow)
         var didSync = false
         for l in linked {
-            if await HealthKitBridge.push(api, goalId: l.id, metric: l.metric) { didSync = true }
+            for d in window {
+                if await HealthKitBridge.pushDay(api, goalId: l.id, metric: l.metric, day: d.day, key: d.key) { didSync = true }
+            }
         }
         if didSync { await loadGoals() }
     }
@@ -1672,8 +1678,14 @@ final class GoalDetailModel {
     /// Sync this goal's linked Health metric when the detail is viewed/refreshed, so its
     /// progress fills from the detail too — not only from the goals list. No-op if unlinked.
     func syncHealth() async {
-        guard let m = HealthKitBridge.Metric(key: detail?.healthMetric ?? goal.healthMetric) else { return }
-        if await HealthKitBridge.push(api, goalId: goal.id, metric: m) { await load() }
+        guard HealthKitBridge.shared.isAvailable,
+              let m = HealthKitBridge.Metric(key: detail?.healthMetric ?? goal.healthMetric) else { return }
+        try? await HealthKitBridge.shared.requestReadAuthorization()
+        var didSync = false
+        for d in HealthKitBridge.backfillDays(count: HealthKitBridge.backfillWindow) {
+            if await HealthKitBridge.pushDay(api, goalId: goal.id, metric: m, day: d.day, key: d.key) { didSync = true }
+        }
+        if didSync { await load() }
     }
 
     func update(_ body: [String: JSONValue]) async {

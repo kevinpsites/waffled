@@ -128,26 +128,46 @@ final class HealthKitBridge {
         try await store.requestAuthorization(toShare: [], read: read)
     }
 
-    /// Shared "read today's total for `metric` and push it to `goalId`" step. Used by both
-    /// the goals list and a goal's detail so a linked goal fills from wherever you view it.
-    /// Ensures read access first; a denied read or no data is a silent no-op. Returns true
-    /// only if a value was posted (so callers know whether to refresh).
-    static func push(_ api: WaffledAPI, goalId: String, metric: Metric) async -> Bool {
-        guard shared.isAvailable else { return false }
-        try? await shared.requestReadAuthorization()
-        guard let value = await shared.todayTotal(for: metric), value > 0 else { return false }
-        let day = DateFmt.string(Date(), "yyyy-MM-dd", .current)
-        do { try await api.syncGoalHealth(goalId: goalId, metric: metric.key, day: day, value: value); return true }
+    /// Number of days syncHealth re-syncs each run so one app-open catches up a missed day.
+    static let backfillWindow = 7
+
+    /// Local-day window syncHealth backfills: the `count` days ending on `reference`
+    /// (inclusive), newest-first, each as its start-of-day `Date` + "yyyy-MM-dd" `key`.
+    /// Pure + `nonisolated` so it's unit-testable with an injected calendar.
+    nonisolated static func backfillDays(count: Int, endingOn reference: Date = Date(),
+                                         calendar: Calendar = .current) -> [(day: Date, key: String)] {
+        let fmt = DateFormatter()
+        fmt.calendar = calendar
+        fmt.timeZone = calendar.timeZone
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.dateFormat = "yyyy-MM-dd"
+        let start = calendar.startOfDay(for: reference)
+        return (0 ..< max(count, 1)).compactMap { offset in
+            calendar.date(byAdding: .day, value: -offset, to: start).map { ($0, fmt.string(from: $0)) }
+        }
+    }
+
+    /// Read `metric`'s total for one local day (`key`, its "yyyy-MM-dd") and push it to
+    /// `goalId`. A denied read or no data is a silent no-op. Returns true only if a value
+    /// was posted. Auth is requested by the caller once before looping.
+    static func pushDay(_ api: WaffledAPI, goalId: String, metric: Metric, day: Date, key: String) async -> Bool {
+        guard let value = await shared.total(for: metric, on: day), value > 0 else { return false }
+        do { try await api.syncGoalHealth(goalId: goalId, metric: metric.key, day: key, value: value); return true }
         catch { return false }
     }
 
-    /// Today's cumulative total for `metric` over local-day boundaries, or `nil` when
-    /// unavailable / not-yet-authorized / no samples. `nil` is intentionally ambiguous
-    /// (see the denied-vs-empty note above) — callers just show nothing.
-    func todayTotal(for metric: Metric) async -> Double? {
+    /// Today's cumulative total for `metric` — convenience over `total(for:on:)` used by the
+    /// Log sheet's read-&-suggest card.
+    func todayTotal(for metric: Metric) async -> Double? { await total(for: metric, on: Date()) }
+
+    /// Cumulative total for `metric` over one local calendar day, or `nil` when unavailable /
+    /// not-yet-authorized / no samples. `nil` is intentionally ambiguous (denied vs empty).
+    func total(for metric: Metric, on day: Date) async -> Double? {
         guard isAvailable else { return nil }
-        let start = Calendar.current.startOfDay(for: Date())
-        let predicate = HKQuery.predicateForSamples(withStart: start, end: Date(), options: .strictStartDate)
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: day)
+        let end = cal.date(byAdding: .day, value: 1, to: start) ?? day
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
         return await withCheckedContinuation { continuation in
             let query = HKStatisticsQuery(
                 quantityType: metric.quantityType,
