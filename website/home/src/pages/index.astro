@@ -95,25 +95,46 @@ import { LINKS, DOCS, FEATURES } from '../consts';
 				<h2>At home, on the go, on your terms</h2>
 				<p>The same data, shown the right way in every place your family looks.</p>
 			</div>
-			<div class="surfaces">
-				<div class="surface">
-					<span class="tag">Kitchen kiosk</span>
-					<h3>The family display</h3>
-					<p>Pin an old tablet to the fridge. A big, touch-friendly Today dashboard the whole house glances at — and a photo screensaver when idle.</p>
-					<div class="art">📟</div>
+			<div class="showcase">
+				<div class="device-cluster">
+					<div class="frame-ipad">
+						<img
+							src="/screenshots/ipad-home.png"
+							width="1300" height="975" loading="lazy"
+							alt="Waffled running full-screen on an iPad kitchen kiosk — a family water-drinking goal with per-person progress, the week's plan, countdowns, chores, grocery list and pantry"
+						/>
+					</div>
+					<div class="frame-iphone">
+						<img
+							src="/screenshots/iphone-home.png"
+							width="760" height="1651" loading="lazy"
+							alt="Waffled's native iOS app — the Today screen with events, countdowns and tonight's dinner"
+						/>
+					</div>
 				</div>
-				<div class="surface">
-					<span class="tag">iOS app</span>
-					<h3>In everyone’s pocket</h3>
-					<p>A native SwiftUI app with offline sync, local reminders, and Apple Health goals. Add a chore or check the list from anywhere.</p>
-					<div class="art">📱</div>
-				</div>
-				<div class="surface">
-					<span class="tag">Your server</span>
-					<h3>Self-hosted core</h3>
-					<p>One Docker command brings up the API, database, and sync engine. Your data never leaves hardware you control.</p>
-					<div class="art">🖥️</div>
-				</div>
+				<ul class="surface-list">
+					<li>
+						<div class="s-ic">📟</div>
+						<div>
+							<h3>Kitchen kiosk</h3>
+							<p>Pin a tablet to the fridge — a big, touch-friendly Today dashboard the whole house glances at, with a photo screensaver when it’s idle.</p>
+						</div>
+					</li>
+					<li>
+						<div class="s-ic">📱</div>
+						<div>
+							<h3>iOS app</h3>
+							<p>A native SwiftUI app with offline sync, local reminders, and Apple Health goals. Add a chore or check the list from anywhere.</p>
+						</div>
+					</li>
+					<li>
+						<div class="s-ic">🖥️</div>
+						<div>
+							<h3>Your server</h3>
+							<p>One Docker command brings up the API, database, and sync engine — the data behind every screen never leaves hardware you control.</p>
+						</div>
+					</li>
+				</ul>
 			</div>
 		</div>
 	</section>

@@ -310,29 +310,42 @@ img { max-width: 100%; display: block; }
 }
 .feature:hover .go { opacity: 1; transform: translateX(0); }
 
-/* ── Three surfaces ──────────────────────────────────────────────────────── */
-.surfaces {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+/* ── Three surfaces — real device showcase ───────────────────────────────── */
+.showcase {
+  display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 56px; align-items: center;
 }
-.surface {
-  border-radius: var(--wf-radius);
-  padding: 28px;
-  border: 1px solid var(--wf-hairline);
-  background: var(--wf-card);
+.device-cluster { position: relative; padding-bottom: 8px; }
+
+/* iPad — dark bezel around the landscape screenshot */
+.frame-ipad {
+  background: #14110f;
+  padding: 12px;
+  border-radius: 26px;
+  box-shadow: var(--wf-shadow-lg);
 }
-.surface .tag {
-  font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--wf-coral-d);
+.frame-ipad img { display: block; width: 100%; height: auto; border-radius: 13px; }
+
+/* iPhone — smaller portrait frame overlapping the iPad's lower-right */
+.frame-iphone {
+  position: absolute;
+  right: -14px; bottom: -30px;
+  width: 26%;
+  background: #14110f;
+  padding: 6px;
+  border-radius: 30px;
+  box-shadow: var(--wf-shadow-lg);
 }
-.surface h3 { font-size: 22px; margin-top: 8px; }
-.surface p { margin-top: 10px; color: var(--wf-ink-2); font-size: 15px; }
-.surface .art {
-  margin-top: 18px; height: 108px; border-radius: 14px;
-  border: 1px solid var(--wf-hairline-soft);
-  background:
-    linear-gradient(135deg, var(--wf-panel), var(--wf-rail));
-  display: grid; place-items: center; font-size: 40px;
+.frame-iphone img { display: block; width: 100%; height: auto; border-radius: 25px; }
+
+.surface-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 24px; }
+.surface-list li { display: flex; gap: 16px; }
+.s-ic {
+  width: 46px; height: 46px; flex: none; border-radius: 12px;
+  background: var(--wf-card); border: 1px solid var(--wf-hairline);
+  display: grid; place-items: center; font-size: 23px; box-shadow: var(--wf-shadow-sm);
 }
+.surface-list h3 { font-size: 20px; }
+.surface-list p { margin-top: 6px; color: var(--wf-ink-2); font-size: 15px; }
 
 /* ── Dark "own your data" band ───────────────────────────────────────────── */
 .band {
@@ -451,7 +464,8 @@ img { max-width: 100%; display: block; }
   .hero .lede { max-width: none; }
   .hero-visual { max-width: 460px; }
   .features { grid-template-columns: repeat(2, 1fr); }
-  .surfaces { grid-template-columns: 1fr; }
+  .showcase { grid-template-columns: 1fr; gap: 40px; }
+  .device-cluster { max-width: 620px; margin: 0 auto 24px; }
   .pillars { grid-template-columns: repeat(2, 1fr); }
   .install .wrap { grid-template-columns: 1fr; gap: 32px; }
   .footer-grid { grid-template-columns: 1fr 1fr; }
