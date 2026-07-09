@@ -1,7 +1,7 @@
 # Waffled websites
 
-Two independent static sites, each its own Astro project and its own Cloudflare
-Pages deployment:
+Two independent static sites, each its own Astro project deployed to its own
+Cloudflare project (a Worker or a Pages project — see Hosting):
 
 | Folder | Site | Domain | Stack |
 | --- | --- | --- | --- |
@@ -22,59 +22,37 @@ cd website/home && npm install && npm run dev   # → localhost:4321
 cd website/docs && npm install && npm run dev   # → localhost:4321
 ```
 
-## Hosting — two Cloudflare Pages projects, one repo
+## Hosting — two Cloudflare projects, one repo
 
-Both sites live in this one repo. Create **two separate Pages projects** connected
-to the same repository, each scoped to its own subfolder so pushes only rebuild
-the site that changed.
+Each site deploys to its **own** Cloudflare project connected to this repo. A
+project can be a **Worker (static assets)** or a **Pages** project — both serve a
+static Astro `dist/` identically, and both support the build-watch-path scoping
+below. Cloudflare is consolidating on **Workers**, so if one site is already a
+Worker, set the other up the same way for consistency.
 
-> Requires **Build system version 2** (Pages → project → Settings → Build → Build
-> system version) — monorepo build-watch-paths need V2.
+| Project | Builds | Serves | Domain |
+| --- | --- | --- | --- |
+| **docs** | `website/docs` | `website/docs/dist` | `docs.waffled.app` |
+| **home** | `website/home` | `website/home/dist` | `waffled.app` |
 
-### Project A — docs (`docs.waffled.app`)
+For **each** project:
 
-Workers & Pages → **Create** → **Pages** → Connect to Git → this repo, then:
-
-| Setting | Value |
-| --- | --- |
-| Production branch | `main` |
-| Framework preset | **Astro** |
-| **Root directory** | `website/docs` |
-| Build command | `npm run build` |
-| Build output directory | `dist` |
-
-Then **Settings → Build → Build watch paths**:
-
-| | Value |
-| --- | --- |
-| Include paths | `website/docs/*` |
-| Exclude paths | *(empty)* |
-
-Custom domain: **Custom domains → Set up a domain → `docs.waffled.app`**.
-(Optional) set env var `DOCS_SITE=https://docs.waffled.app` so canonical/sitemap
-URLs are absolute.
-
-### Project B — home (`waffled.app`)
-
-Same flow, a **second** Pages project:
-
-| Setting | Value |
-| --- | --- |
-| Production branch | `main` |
-| Framework preset | **Astro** |
-| **Root directory** | `website/home` |
-| Build command | `npm run build` |
-| Build output directory | `dist` |
-
-**Settings → Build → Build watch paths**:
-
-| | Value |
-| --- | --- |
-| Include paths | `website/home/*` |
-| Exclude paths | *(empty)* |
-
-Custom domain: `waffled.app` (and `www.waffled.app` → redirect). (Optional) env
-var `HOME_SITE=https://waffled.app`.
+1. **Connect it to this repo** — Workers: *Create → Workers → Import a repository*;
+   Pages: *Create → Pages → Connect to Git*. Production branch `main`.
+2. **Build the subfolder** — run `npm run build` in the site's folder, serving its
+   `dist/`. On **Pages**: set **Root directory** = `website/docs` (or `website/home`),
+   framework **Astro**, output `dist`. On **Workers**: build the subfolder and serve
+   its `dist` as static assets (a one-line `assets` config — there are no secrets in
+   it; secrets, if a project ever needed any, live in the dashboard / `wrangler
+   secret`, never in the committed file).
+3. **Scope builds so they don't rebuild each other** — **Settings → Build → Build
+   watch paths → Include**: `website/docs/*` for docs, `website/home/*` for home
+   (Exclude empty). Needs **Build system v2** on Pages; the same Build settings exist
+   on Workers.
+4. **Custom domain** — `docs.waffled.app` on docs, `waffled.app` (+ `www` → apex
+   redirect) on home.
+5. *(optional)* env vars for absolute canonical/sitemap URLs:
+   `DOCS_SITE=https://docs.waffled.app`, `HOME_SITE=https://waffled.app`.
 
 ### How the path scoping works
 
@@ -89,10 +67,10 @@ includes, and only builds if a changed path survives. Net effect:
 
 ### Migrating the existing project
 
-The current single Pages project points at root directory `website`. Repoint it to
-`website/docs` and add the `website/docs/*` build watch path (that becomes Project
-A), then create the new Project B for `website/home`. No need to delete and
-recreate — just update the existing project's root directory + watch paths.
+The original single project pointed at `website`. Repoint it to build `website/docs`
+and add the `website/docs/*` watch path (that becomes the **docs** project), then
+create a **second** project for `website/home`. No need to delete and recreate —
+just update the existing project's build folder + watch paths.
 
 ## Screenshots & assets
 
@@ -120,7 +98,7 @@ cd website && node scripts/capture-screenshots.mjs .out   # writes today.png, ca
 # then copy the ones each site uses into home/public/screenshots and docs/public/screenshots
 ```
 
-The README `demo.gif` is built from that set with ffmpeg (crossfade slideshow of
+The README `demo.gif` is built from that set with ffmpeg (a hard-cut slideshow of
 Today → Calendar → Chores → Meals → Pantry).
 
 ## Future: `api.waffled.app`
