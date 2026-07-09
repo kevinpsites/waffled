@@ -1894,7 +1894,7 @@ struct WaffledAPI: Sendable {
                       goalType: goalType ?? "total", unit: unit, habitPeriod: nil, habitTargetPerPeriod: nil,
                       trackingMode: "shared_total", deadline: nil, isFeatured: false, target: target,
                       totalProgress: progress ?? 0, milestoneTotal: 0, milestoneReached: 0,
-                      streakDays: streakDays, autoFromCalendar: false, healthMetric: nil, participants: [])
+                      streakDays: streakDays, autoFromCalendar: false, healthMetric: nil, createdAt: nil, participants: [])
             }
         }
         /// Alias so `asGoal` can name the outer `WaffledAPI.Goal` from inside this nested type.
@@ -2243,6 +2243,9 @@ struct WaffledAPI: Sendable {
         let autoFromCalendar: Bool
         /// Apple Health metric this goal auto-fills from (nil = manual). See HealthKitBridge.
         let healthMetric: String?
+        /// ISO-8601 creation timestamp — floors the first Health sync so a new goal never
+        /// pulls steps from before it existed.
+        let createdAt: String?
         let participants: [Participant]
         struct Participant: Decodable, Hashable, Sendable {
             let personId: String

@@ -60,6 +60,31 @@ import Testing
         #expect(gap(at("2026-07-20 00:00", cal), at("2026-07-08 14:30", cal), cal) == ["2026-07-08"])
     }
 
+    @Test func firstSyncIsBoundedByGoalStart() {
+        let cal = chicago
+        // Goal created 5 days ago, never synced → catch up only since creation, not the cap.
+        let keys = HealthKitBridge.daysToSync(syncedThrough: nil, today: at("2026-07-08 14:30", cal),
+                                              notBefore: at("2026-07-04 10:00", cal), cap: 90, recheckTail: 2, calendar: cal).map(\.key)
+        #expect(keys == ["2026-07-08", "2026-07-07", "2026-07-06", "2026-07-05", "2026-07-04"])
+    }
+
+    @Test func capStillWinsWhenGoalIsOlderThanCap() {
+        let cal = chicago
+        // Goal created a year ago → the cap still bounds it (never scans hundreds of days).
+        let keys = HealthKitBridge.daysToSync(syncedThrough: nil, today: at("2026-07-08 14:30", cal),
+                                              notBefore: at("2025-01-01 00:00", cal), cap: 90, recheckTail: 2, calendar: cal).map(\.key)
+        #expect(keys.count == 90)
+        #expect(keys.last == "2026-04-10")
+    }
+
+    @Test func goalStartNeverEclipsesAnExistingMark() {
+        let cal = chicago
+        // A recent mark still wins even if the goal is old — we don't re-scan back to creation.
+        let keys = HealthKitBridge.daysToSync(syncedThrough: at("2026-07-07 08:00", cal), today: at("2026-07-08 14:30", cal),
+                                              notBefore: at("2026-01-01 00:00", cal), cap: 90, recheckTail: 2, calendar: cal).map(\.key)
+        #expect(keys == ["2026-07-08", "2026-07-07", "2026-07-06"])
+    }
+
     @Test func eachKeyMatchesItsPairedLocalStartOfDay() {
         let cal = chicago
         let f = DateFormatter()

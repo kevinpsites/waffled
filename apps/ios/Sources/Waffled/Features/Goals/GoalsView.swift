@@ -73,17 +73,18 @@ final class GoalsModel {
     func syncHealth() async {
         guard HealthKitBridge.shared.isAvailable else { return }
         let all = (try? await api.goalsIn(listId: nil)) ?? []
-        let linked = all.compactMap { g in
-            HealthKitBridge.Metric(key: g.healthMetric).map { (id: g.id, metric: $0) }
+        let linked = all.compactMap { g -> (id: String, metric: HealthKitBridge.Metric, start: Date?)? in
+            HealthKitBridge.Metric(key: g.healthMetric).map { (g.id, $0, HealthKitBridge.parseTimestamp(g.createdAt)) }
         }
         guard !linked.isEmpty else { return }
         try? await HealthKitBridge.shared.requestReadAuthorization()
         // Catch up only the days since each goal's synced-through mark (a two-week absence
-        // fills all fourteen days on the next open), then advance the mark to today.
+        // fills all fourteen days on the next open), floored at the goal's start so a brand-new
+        // goal never pulls pre-creation steps. Then advance the mark to today.
         let today = Date()
         var didSync = false
         for l in linked {
-            let days = HealthKitBridge.daysToSync(syncedThrough: HealthSyncMark.get(l.id, l.metric), today: today)
+            let days = HealthKitBridge.daysToSync(syncedThrough: HealthSyncMark.get(l.id, l.metric), today: today, notBefore: l.start)
             for d in days {
                 if await HealthKitBridge.pushDay(api, goalId: l.id, metric: l.metric, day: d.day, key: d.key) { didSync = true }
             }
@@ -1684,8 +1685,9 @@ final class GoalDetailModel {
               let m = HealthKitBridge.Metric(key: detail?.healthMetric ?? goal.healthMetric) else { return }
         try? await HealthKitBridge.shared.requestReadAuthorization()
         let today = Date()
+        let start = HealthKitBridge.parseTimestamp(detail?.createdAt ?? goal.createdAt)
         var didSync = false
-        for d in HealthKitBridge.daysToSync(syncedThrough: HealthSyncMark.get(goal.id, m), today: today) {
+        for d in HealthKitBridge.daysToSync(syncedThrough: HealthSyncMark.get(goal.id, m), today: today, notBefore: start) {
             if await HealthKitBridge.pushDay(api, goalId: goal.id, metric: m, day: d.day, key: d.key) { didSync = true }
         }
         HealthSyncMark.set(goal.id, m, today)
@@ -1749,7 +1751,8 @@ struct GoalDetailView: View {
                      trackingMode: goal.trackingMode, deadline: goal.deadline, isFeatured: goal.isFeatured,
                      target: target, totalProgress: progress, milestoneTotal: goal.milestoneTotal,
                      milestoneReached: goal.milestoneReached, streakDays: goal.streakDays,
-                     autoFromCalendar: goal.autoFromCalendar, healthMetric: goal.healthMetric, participants: participants)
+                     autoFromCalendar: goal.autoFromCalendar, healthMetric: goal.healthMetric,
+                     createdAt: goal.createdAt, participants: participants)
     }
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }

@@ -139,9 +139,11 @@ final class HealthKitBridge {
     /// `Date` + "yyyy-MM-dd" `key`. Given the per-goal "synced-through" high-water mark, this
     /// is `[mark - (tail-1) … today]` — so a two-week absence returns all fourteen missed days,
     /// a fresh mark returns just the re-check tail, and no mark (first sync / reinstall) returns
-    /// the last `cap` days. Bounded to `[today-cap+1 … today]`. Pure + `nonisolated` so it's
-    /// unit-testable with an injected calendar.
+    /// the last `cap` days. `notBefore` (the goal's start) floors the window so a brand-new goal
+    /// never pulls steps from before it existed. Bounded to `[max(today-cap+1, notBefore) … today]`.
+    /// Pure + `nonisolated` so it's unit-testable with an injected calendar.
     nonisolated static func daysToSync(syncedThrough: Date?, today: Date = Date(),
+                                       notBefore: Date? = nil,
                                        cap: Int = syncCap, recheckTail: Int = syncRecheckTail,
                                        calendar: Calendar = .current) -> [(day: Date, key: String)] {
         let fmt = DateFormatter()
@@ -150,7 +152,9 @@ final class HealthKitBridge {
         fmt.locale = Locale(identifier: "en_US_POSIX")
         fmt.dateFormat = "yyyy-MM-dd"
         let todayStart = calendar.startOfDay(for: today)
-        let earliest = calendar.date(byAdding: .day, value: -(max(cap, 1) - 1), to: todayStart) ?? todayStart
+        let capFloor = calendar.date(byAdding: .day, value: -(max(cap, 1) - 1), to: todayStart) ?? todayStart
+        // Never look before the goal existed (or before the cap window, whichever is later).
+        let earliest = notBefore.map { max(capFloor, calendar.startOfDay(for: $0)) } ?? capFloor
         let rawStart: Date
         if let mark = syncedThrough {
             let m = calendar.startOfDay(for: mark)
@@ -163,6 +167,17 @@ final class HealthKitBridge {
         return (0 ..< max(dayCount, 1)).compactMap { offset in
             calendar.date(byAdding: .day, value: -offset, to: todayStart).map { ($0, fmt.string(from: $0)) }
         }
+    }
+
+    /// Parse an ISO-8601 timestamp (a goal's `createdAt`) to a `Date`, or nil. Used to floor
+    /// the first sync at the goal's start. Handles the fractional-seconds form Postgres emits.
+    nonisolated static func parseTimestamp(_ s: String?) -> Date? {
+        guard let s else { return nil }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = iso.date(from: s) { return d }
+        iso.formatOptions = [.withInternetDateTime]
+        return iso.date(from: s)
     }
 
     /// Read `metric`'s total for one local day (`key`, its "yyyy-MM-dd") and push it to
