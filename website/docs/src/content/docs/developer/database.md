@@ -43,7 +43,7 @@ domain migrations that `ALTER PUBLICATION powersync ADD TABLE …` as each offli
 
 ## Table conventions
 
-Every tenant-scoped table shares a common spine (see `docs/DATA_MODEL.md`):
+Every tenant-scoped table shares a common spine (see the [full schema reference](https://github.com/kevinpsites/waffled/blob/main/docs/DATA_MODEL.md)):
 
 | Column | Purpose |
 |---|---|

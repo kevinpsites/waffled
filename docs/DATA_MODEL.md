@@ -176,9 +176,11 @@ alter table households add constraint fk_owner
 ```
 
 **Auth wiring:** first login → create `households` + `persons(member_type='adult', is_admin)`
-+ `identities` → write `household_id`/`person_id`/`is_admin` into Auth0 app_metadata; the Auth0
-action copies them into the JWT so the `api` authorizes straight from the token. `identities`
-mirrors that mapping (one person ↔ many identities; auto-link only on a *verified* matching email).
++ `identities`. Built-in auth mints the JWT locally (HS256), reading `household_id` /
+`person_id` / `role` straight from these tables so the `api` authorizes from the token.
+`identities` maps one person ↔ many login identities (password / Google / Apple / OIDC;
+auto-link only on a *verified* matching email). The `auth0_user_id` column just holds the
+identity's JWT `sub` — the name is a historical artifact, not an Auth0 dependency.
 
 ---
 
@@ -602,9 +604,10 @@ alter table albums add constraint fk_cover foreign key (cover_photo_id) referenc
 create index ix_photos_album on photos (household_id, album_id) where deleted_at is null;
 ```
 
-**Out-of-band media:** PowerSync syncs `albums`/`photos` **rows only**; image bytes are fetched
-from CloudFront/S3 on demand (private bucket, **signed URLs**) and cached on-device. Uploads use
-**presigned S3 PUT** (never proxied through the api). Auto-grouping + screensaver are services/UI.
+**Out-of-band media:** PowerSync syncs `albums`/`photos` **rows only**; the image bytes are
+stored server-side and served on demand by **Caddy under `/media`**, then cached on-device.
+Uploads go through the `api` (real blob upload, single + multi). Auto-grouping + screensaver
+are services/UI.
 
 ---
 

@@ -74,15 +74,21 @@ export interface GoalStep {
   doneBy: string | null
 }
 
+export interface GoalLogParticipant {
+  personId: string | null
+  name: string | null
+  avatarEmoji: string | null
+  colorHex: string | null
+}
+
 export interface GoalLogEntry {
   id: string
   amount: number
   loggedAt: string
   note: string | null
-  personId: string | null
-  name: string | null
-  avatarEmoji: string | null
-  colorHex: string | null
+  // Split-pool logs write one row per person but collapse to a single entry here —
+  // `amount` is the summed total and `participants` lists everyone credited.
+  participants: GoalLogParticipant[]
 }
 
 export interface GoalDetail extends Goal {
