@@ -2310,9 +2310,16 @@ struct WaffledAPI: Sendable {
             let amount: Double
             let loggedAt: String
             let note: String?
-            let name: String?
-            let avatarEmoji: String?
-            let colorHex: String?
+            /// Split-pool logs collapse to one entry: `amount` is the summed total and
+            /// `participants` lists everyone credited (empty for a family/shared log).
+            let participants: [Participant]
+            struct Participant: Decodable, Identifiable, Sendable {
+                let personId: String?
+                let name: String?
+                let avatarEmoji: String?
+                let colorHex: String?
+                var id: String { personId ?? name ?? avatarEmoji ?? "" }
+            }
         }
     }
 

@@ -2085,7 +2085,18 @@ struct GoalDetailView: View {
                         HStack(spacing: 10) {
                             Text(weekday(log.loggedAt)).font(.system(size: 11, weight: .bold))
                                 .foregroundStyle(WF.ink3).frame(width: 34, alignment: .leading)
-                            Avatar(colorHex: log.colorHex, emoji: log.avatarEmoji ?? "🙂", size: 24)
+                            if log.participants.isEmpty {
+                                Avatar(colorHex: nil, emoji: "🙂", size: 24)
+                            } else {
+                                // Split-pool logs collapse to one row; show everyone credited
+                                // as an overlapping avatar cluster (matches AvatarStack).
+                                HStack(spacing: -24 * 0.34) {
+                                    ForEach(log.participants.prefix(4)) { p in
+                                        Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 24)
+                                            .overlay(Circle().strokeBorder(WF.canvas, lineWidth: 2))
+                                    }
+                                }
+                            }
                             Text(log.note?.isEmpty == false ? log.note! : "Logged progress")
                                 .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                             Spacer(minLength: 6)
