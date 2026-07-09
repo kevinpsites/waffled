@@ -92,6 +92,26 @@ source, **but you must run `xcodegen generate` before building** so the project
 sees them. New Info.plist keys / capabilities require editing `project.yml` then
 regenerating.
 
+### Adding a restricted capability (HealthKit, etc.) — two publish gates, both hidden
+
+A green **local** build proves nothing: the simulator enforces no entitlements and
+never runs App Store static analysis. A new restricted capability fails at **two
+separate Xcode Cloud gates**, both vaguely labeled by the capability:
+
+1. **Ad-hoc/App Store export → `exit code 70`.** Apple-managed signing won't
+   auto-enable a restricted capability on the App ID. Enable it in the Developer
+   portal (Identifiers → `app.waffled.Waffled` → tick the capability → Save), then
+   re-run. Real error lives in the export step's `IDEDistribution.standard.log`.
+2. **App Store upload → `ITMS-90683: Missing purpose string`.** Static analysis
+   requires **every** relevant usage string once the entitlement is present, even
+   if you never call those APIs. HealthKit needs BOTH `NSHealthShareUsageDescription`
+   **and** `NSHealthUpdateUsageDescription` — read-only is not an exception.
+
+"Preparing build for App Store Connect failed" shows no detail in the UI — the real
+`ITMS-xxxxx` reason arrives by **email** to the account holder. Build number is frozen
+at `CURRENT_PROJECT_VERSION: 1`; every upload relies on the workflow's "Xcode Cloud
+manages build number" toggle being on (else duplicate-build rejects).
+
 ## Web app (React/kiosk, `apps/web`)
 
 ### Design system — REUSE, don't hand-roll (this bit us — polish it once, use it everywhere)
