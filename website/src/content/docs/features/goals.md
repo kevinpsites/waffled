@@ -14,7 +14,7 @@ Goals turn intentions into visible progress. Track **count**, **total**, **habit
 - 🔍 **Goal detail** — a milestone track, hours-by-person, streaks, and recent activity.
 - 👤 **Person profile + Family overview** — see one person's goals or the whole household at a glance.
 - 📅 **Calendar auto-count** — a single-event recap, smart **"might count toward a goal"** suggestions that learn over time, and recurring-event counting (via Calendar's **"counts toward a goal"** tag).
-- ❤️ **Apple Health auto-fill (iPhone)** — link a goal to steps, flights, exercise minutes, or active energy and progress fills itself, including days you didn't open the app. See [Apple Health → goals](/features/apple-health/).
+- ❤️ **Apple Health auto-fill (iPhone)** — link a goal to steps, exercise, mindful minutes, your Apple Watch rings, or your mood and progress fills itself, including days you didn't open the app. See [Apple Health → goals](/features/apple-health/).
 
 ## Where it works
 
