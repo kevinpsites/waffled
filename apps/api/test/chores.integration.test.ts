@@ -749,17 +749,24 @@ describe('one-off chores + rollover (carry-forward)', () => {
     expect(await choreRrule(mine[0].choreId)).toBeNull()
   })
 
-  it('a one-off can be placed on a future date (hidden until that day)', async () => {
+  it('a future-dated one-off shows from today (creation) onward, keeping its future due_on', async () => {
     const future = shift(today, 3)
     const add = await call('POST', '/api/chores', kevin, { title: 'OneOff Future', personId: kevinId, dueOn: future })
     expect(add.statusCode).toBe(201)
-    // not in today's list…
-    expect((await instances()).some((i) => i.choreTitle === 'OneOff Future')).toBe(false)
-    // …but present when that day is requested
+    // visible on today's list right away — a task you added today is on your list today…
+    const mine = (await instances()).filter((i) => i.choreTitle === 'OneOff Future')
+    expect(mine).toHaveLength(1)
+    expect(mine[0].dueOn).toBe(future) // …but its due date is preserved so the UI can say "due in 3 days"
+    expect(mine[0].status).toBe('pending')
+    // it counts toward today's totals (list ↔ rings stay consistent)
+    expect((await meTotal()).total).toBeGreaterThanOrEqual(1)
+    // still present when the due day itself is requested
     const ahead = JSON.parse((await call('GET', `/api/chore-instances/today?date=${future}`, kevin)).body).instances as Inst[]
-    const f = ahead.filter((i) => i.choreTitle === 'OneOff Future')
-    expect(f).toHaveLength(1)
-    expect(f[0].dueOn).toBe(future)
+    expect(ahead.filter((i) => i.choreTitle === 'OneOff Future')).toHaveLength(1)
+    // but NOT on a date before it was created (no time-traveling onto past lists)
+    const past = shift(today, -5)
+    const back = JSON.parse((await call('GET', `/api/chore-instances/today?date=${past}`, kevin)).body).instances as Inst[]
+    expect(back.some((i) => i.choreTitle === 'OneOff Future')).toBe(false)
   })
 
   it('carries a pending one-off forward (keeps original due_on) and counts it in the summary', async () => {

@@ -154,6 +154,29 @@ enum ChoreDates {
         if days < 7 { return "since \(DateFmt.string(due, "EEE", .current))" }
         return "since \(DateFmt.string(due, "MMM d", .current))"
     }
+
+    /// Client-side "due …" suffix for a future-dated one-off that's already on the list
+    /// (web parity: Tasks.tsx `upcomingLabel`) — its `dueOn` is after the day being
+    /// viewed. nil when the due date is today or already past (that's the overdue case).
+    static func upcomingLabel(dueOn: String?, viewing: String) -> String? {
+        guard let dueOn,
+              let due = DateFmt.date(dueOn, "yyyy-MM-dd", .current),
+              let view = DateFmt.date(viewing, "yyyy-MM-dd", .current) else { return nil }
+        let cal = Calendar.current
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: view), to: cal.startOfDay(for: due)).day ?? 0
+        guard days >= 1 else { return nil }
+        if days == 1 { return "due tomorrow" }
+        if days < 7 { return "due \(DateFmt.string(due, "EEE", .current))" }
+        return "due \(DateFmt.string(due, "MMM d", .current))"
+    }
+
+    /// Format a stored "HH:mm" due time as a friendly "4:30 PM" (web parity). nil for
+    /// empty/absent input.
+    static func timeLabel(_ hhmm: String?) -> String? {
+        guard let hhmm, !hhmm.isEmpty,
+              let d = DateFmt.date(hhmm, "HH:mm", .current) else { return nil }
+        return DateFmt.string(d, "h:mm a", .current)
+    }
 }
 
 /// A person's (or the up-for-grabs) column of chores for the day.
@@ -782,11 +805,23 @@ struct ChoresView: View {
                                 .padding(.horizontal, 7).padding(.vertical, 2)
                                 .background(WF.primary.opacity(0.12)).clipShape(Capsule())
                                 .lineLimit(1)
+                        } else if !isDone, !isAwaiting,
+                                  let due = ChoreDates.upcomingLabel(dueOn: inst.dueOn, viewing: model.date) {
+                            // Future-dated one-off already on the list: calm "not yet due" hint.
+                            Text(due)
+                                .font(.system(size: 10.5, weight: .heavy))
+                                .foregroundStyle(WF.ink3)
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(WF.ink3.opacity(0.10)).clipShape(Capsule())
+                                .lineLimit(1)
                         }
                     }
                     HStack(spacing: 5) {
                         Text(sync.currencySymbol(inst.rewardCurrency)).font(.system(size: 11))
                         Text("\(inst.rewardAmount)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
+                        if let t = ChoreDates.timeLabel(inst.dueTime) {
+                            Text("🕒 \(t)").font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
+                        }
                         if isAwaiting {
                             Text("Needs OK").font(.system(size: 10, weight: .heavy))
                                 .foregroundStyle(WF.primary)
@@ -916,6 +951,8 @@ struct ChoreEditSheet: View {
     @State private var freq: String        // "once" | "daily" | "weekly"
     @State private var days: Set<String>
     @State private var dueOn: Date         // the "On" date for a one-off ("Just once")
+    @State private var hasDueTime: Bool    // optional time-of-day toggle
+    @State private var dueTime: Date       // the chosen time when hasDueTime is on
     @State private var requiresApproval: Bool
     @State private var requiresPhoto: Bool
     @State private var confirmDelete = false
@@ -936,6 +973,7 @@ struct ChoreEditSheet: View {
             _currencyKey = State(initialValue: nil)
             _freq = State(initialValue: "daily"); _days = State(initialValue: [])
             _dueOn = State(initialValue: Date())
+            _hasDueTime = State(initialValue: false); _dueTime = State(initialValue: Date())
             _requiresApproval = State(initialValue: false)
             _requiresPhoto = State(initialValue: false)
         case let .edit(i):
@@ -946,12 +984,21 @@ struct ChoreEditSheet: View {
             let parsed = ChoreEditSheet.parseRrule(i.rrule)
             _freq = State(initialValue: parsed.freq); _days = State(initialValue: Set(parsed.days))
             _dueOn = State(initialValue: DateFmt.date(i.dueOn ?? "", "yyyy-MM-dd", .current) ?? Date())
+            let parsedTime = DateFmt.date(i.dueTime ?? "", "HH:mm", .current)
+            _hasDueTime = State(initialValue: parsedTime != nil)
+            _dueTime = State(initialValue: parsedTime ?? Date())
             _requiresApproval = State(initialValue: i.requiresApproval)
             _requiresPhoto = State(initialValue: i.requiresPhoto)
         }
     }
 
     private var editing: Bool { editChoreId != nil }
+    /// A parent doesn't need another parent's OK: the approval toggle is hidden when the
+    /// chore is assigned to an adult. Still shown for kids, teens, and up-for-grabs.
+    private var assigneeIsAdult: Bool {
+        guard let pid = personId else { return false }
+        return assignableMembers.first(where: { $0.id == pid })?.memberType == "adult"
+    }
     private var canSave: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty && (freq != "weekly" || !days.isEmpty)
     }
@@ -1023,6 +1070,26 @@ struct ChoreEditSheet: View {
                     }
                     .animation(.easeInOut(duration: 0.2), value: freq)
 
+                    // Optional time-of-day. Off by default; when on, a wheel picks the
+                    // time sent as "HH:mm" (applies to one-offs and each recurrence).
+                    VStack(alignment: .leading, spacing: 9) {
+                        Toggle(isOn: $hasDueTime.animation(.easeInOut(duration: 0.2))) {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Due time").font(.system(size: 14.5, weight: .bold)).foregroundStyle(WF.ink)
+                                Text("Give this chore a specific time of day.")
+                                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                            }
+                        }
+                        .tint(FamilyColor.wally.solid)
+                        .padding(13).cardField()
+                        if hasDueTime {
+                            DatePicker("Due time", selection: $dueTime, displayedComponents: .hourAndMinute)
+                                .font(.system(size: 15, weight: .semibold))
+                                .tint(WF.primary)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+
                     VStack(alignment: .leading, spacing: 9) {
                         SectionLabel(text: "Who")
                         ChipFlow(spacing: 8, lineSpacing: 8) {
@@ -1071,15 +1138,18 @@ struct ChoreEditSheet: View {
                         }
                     }
 
-                    Toggle(isOn: $requiresApproval) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("Needs a parent’s OK").font(.system(size: 14.5, weight: .bold)).foregroundStyle(WF.ink)
-                            Text("The reward is awarded only after a parent approves.")
-                                .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                    // A parent doesn't need another parent's OK — hidden for adult assignees.
+                    if !assigneeIsAdult {
+                        Toggle(isOn: $requiresApproval) {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Needs a parent’s OK").font(.system(size: 14.5, weight: .bold)).foregroundStyle(WF.ink)
+                                Text("The reward is awarded only after a parent approves.")
+                                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                            }
                         }
+                        .tint(FamilyColor.wally.solid)
+                        .padding(13).cardField()
                     }
-                    .tint(FamilyColor.wally.solid)
-                    .padding(13).cardField()
 
                     Toggle(isOn: $requiresPhoto) {
                         VStack(alignment: .leading, spacing: 1) {
@@ -1094,7 +1164,7 @@ struct ChoreEditSheet: View {
                     // A photo on its own attaches to the finished chore but doesn't pause
                     // for review. Nudge toward pairing it with approval so the photo lands
                     // in your "Needs your OK" queue before the reward counts.
-                    if requiresPhoto && !requiresApproval {
+                    if requiresPhoto && !requiresApproval && !assigneeIsAdult {
                         Label("Turn on “Needs a parent’s OK” too if you want to see the photo in your approvals before it counts.",
                               systemImage: "info.circle.fill")
                             .font(.system(size: 11.5, weight: .semibold)).foregroundStyle(WF.ink3)
@@ -1170,7 +1240,10 @@ struct ChoreEditSheet: View {
             "rewardAmount": .int(stars),
             // One-off ("Just once") sends no rrule (null); recurring sends FREQ=…
             "rrule": buildRrule().map(JSONValue.string) ?? .null,
-            "requiresApproval": .bool(requiresApproval),
+            // Optional time-of-day ("HH:mm"); null clears it.
+            "dueTime": hasDueTime ? .string(DateFmt.string(dueTime, "HH:mm", .current)) : .null,
+            // Approval is meaningless for an adult assignee — never persist it there.
+            "requiresApproval": .bool(assigneeIsAdult ? false : requiresApproval),
             "requiresPhoto": .bool(requiresPhoto),
         ]
         // Pass the chosen currency when the household has more than one (else the

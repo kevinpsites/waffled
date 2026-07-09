@@ -54,6 +54,7 @@ export interface TodayInstance {
   personAvatar: string | null
   personColor: string | null
   dueOn: string
+  dueTime: string | null
   status: string
   rewardAmount: number | null
   rewardCurrency: string | null

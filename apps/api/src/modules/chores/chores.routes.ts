@@ -124,18 +124,20 @@ export function registerChoreRoutes(api: Api): void {
 
   // Per-person chore summary (rings + stars) for a day (default today, household-local).
   api.get('/api/chores/today', tenantRoute(async (tenant, req: Request) => {
-    const date = requestedDate(req.query?.date, todayDate(await householdTz(tenant.householdId)))
+    const tz = await householdTz(tenant.householdId)
+    const date = requestedDate(req.query?.date, todayDate(tz))
     await ensureTodayInstances(tenant.householdId, date)
-    const people = await todaySummary(tenant.householdId, date)
+    const people = await todaySummary(tenant.householdId, date, tz)
     return { date, people }
   }))
 
   // Individual chore instances (the Tasks list) for a day. `?date=YYYY-MM-DD`
   // (within ±31 days) lets the Tasks screen look ahead; defaults to today (local).
   api.get('/api/chore-instances/today', tenantRoute(async (tenant, req: Request) => {
-    const date = requestedDate(req.query?.date, todayDate(await householdTz(tenant.householdId)))
+    const tz = await householdTz(tenant.householdId)
+    const date = requestedDate(req.query?.date, todayDate(tz))
     await ensureTodayInstances(tenant.householdId, date)
-    const instances = await listTodayInstances(tenant.householdId, date)
+    const instances = await listTodayInstances(tenant.householdId, date, tz)
     return { date, instances }
   }))
 

@@ -198,7 +198,7 @@ interface SummaryRow extends QueryResultRow {
 
 // Per-person done/total for the day + balance in the household's default currency
 // (drives the kiosk rings).
-export async function todaySummary(householdId: string, dueOn: string): Promise<PersonChoreSummary[]> {
+export async function todaySummary(householdId: string, dueOn: string, tz = 'UTC'): Promise<PersonChoreSummary[]> {
   const defaultCurrency = await getDefaultCurrencyKey(householdId)
   const { rows } = await query<SummaryRow>(
     `select p.id, p.name, p.avatar_emoji, p.color_hex, p.member_type, p.is_admin,
@@ -211,13 +211,15 @@ export async function todaySummary(householdId: string, dueOn: string): Promise<
        left join chores c
          on c.id = ci.chore_id and c.deleted_at is null
          and (ci.due_on = $2::date
-              or (ci.due_on < $2::date and ci.status = 'pending' and c.rrule is null and c.rollover))
+              or (ci.due_on < $2::date and ci.status = 'pending' and c.rrule is null and c.rollover)
+              or (ci.due_on > $2::date and ci.status = 'pending' and c.rrule is null
+                  and (ci.created_at at time zone $4)::date <= $2::date))
        left join v_person_balances b
          on b.person_id = p.id and b.currency = $3
       where p.household_id = $1 and p.deleted_at is null
       group by p.id, b.balance
       order by p.sort_order, p.created_at`,
-    [householdId, dueOn, defaultCurrency]
+    [householdId, dueOn, defaultCurrency, tz]
   )
   return rows.map((r) => ({
     id: r.id,
@@ -263,20 +265,22 @@ async function streaksByChore(householdId: string, dueOn: string): Promise<Map<s
   return out
 }
 
-export async function listTodayInstances(householdId: string, dueOn: string): Promise<TodayInstance[]> {
+export async function listTodayInstances(householdId: string, dueOn: string, tz = 'UTC'): Promise<TodayInstance[]> {
   const { rows } = await query<QueryResultRow>(
     `select ci.id, ci.status, ci.reward_amount, ci.reward_currency, ci.person_id, ci.requires_approval,
             ci.requires_photo, ci.proof_storage_key, ci.had_proof, ci.due_on::text as due_on,
-            c.id as chore_id, c.title as chore_title, c.emoji, c.rrule,
+            c.id as chore_id, c.title as chore_title, c.emoji, c.rrule, c.due_time::text as due_time,
             p.name as person_name, p.avatar_emoji, p.color_hex
        from chore_instances ci
        join chores c on c.id = ci.chore_id and c.deleted_at is null
        left join persons p on p.id = ci.person_id
       where ci.household_id = $1 and ci.deleted_at is null
         and (ci.due_on = $2::date
-             or (ci.due_on < $2::date and ci.status = 'pending' and c.rrule is null and c.rollover))
+             or (ci.due_on < $2::date and ci.status = 'pending' and c.rrule is null and c.rollover)
+             or (ci.due_on > $2::date and ci.status = 'pending' and c.rrule is null
+                 and (ci.created_at at time zone $3)::date <= $2::date))
       order by p.sort_order nulls last, c.due_time nulls last, c.title`,
-    [householdId, dueOn]
+    [householdId, dueOn, tz]
   )
   const streaks = await streaksByChore(householdId, dueOn)
   return rows.map((r) => ({
@@ -289,6 +293,7 @@ export async function listTodayInstances(householdId: string, dueOn: string): Pr
     personAvatar: r.avatar_emoji,
     personColor: r.color_hex,
     dueOn: r.due_on,
+    dueTime: r.due_time ? String(r.due_time).slice(0, 5) : null,
     status: r.status,
     rewardAmount: r.reward_amount,
     rewardCurrency: r.reward_currency,
@@ -307,7 +312,7 @@ export async function listAwaitingInstances(householdId: string): Promise<TodayI
   const { rows } = await query<QueryResultRow>(
     `select ci.id, ci.status, ci.reward_amount, ci.reward_currency, ci.person_id, ci.requires_approval,
             ci.requires_photo, ci.proof_storage_key, ci.had_proof, ci.due_on::text as due_on,
-            c.id as chore_id, c.title as chore_title, c.emoji, c.rrule,
+            c.id as chore_id, c.title as chore_title, c.emoji, c.rrule, c.due_time::text as due_time,
             p.name as person_name, p.avatar_emoji, p.color_hex
        from chore_instances ci
        join chores c on c.id = ci.chore_id and c.deleted_at is null
@@ -326,6 +331,7 @@ export async function listAwaitingInstances(householdId: string): Promise<TodayI
     personAvatar: r.avatar_emoji,
     personColor: r.color_hex,
     dueOn: r.due_on,
+    dueTime: r.due_time ? String(r.due_time).slice(0, 5) : null,
     status: r.status,
     rewardAmount: r.reward_amount,
     rewardCurrency: r.reward_currency,
