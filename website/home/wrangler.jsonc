@@ -1,0 +1,12 @@
+{
+  // Cloudflare Worker (static assets) for the marketing landing → waffled.app.
+  // Committed so the Git-connected build's `wrangler deploy` knows where the
+  // built files are (this is what fixes the "assets.directory does not exist"
+  // deploy error). Contains NO secrets — those live in the dashboard only.
+  //
+  // "name" MUST match this Worker's name in the Cloudflare dashboard.
+  "name": "waffled-home",
+  "compatibility_date": "2026-07-09",
+  // Astro build output. Relative to this file → website/home/dist.
+  "assets": { "directory": "./dist" }
+}

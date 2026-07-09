@@ -41,10 +41,12 @@ For **each** project:
    Pages: *Create → Pages → Connect to Git*. Production branch `main`.
 2. **Build the subfolder** — run `npm run build` in the site's folder, serving its
    `dist/`. On **Pages**: set **Root directory** = `website/docs` (or `website/home`),
-   framework **Astro**, output `dist`. On **Workers**: build the subfolder and serve
-   its `dist` as static assets (a one-line `assets` config — there are no secrets in
-   it; secrets, if a project ever needed any, live in the dashboard / `wrangler
-   secret`, never in the committed file).
+   framework **Astro**, output `dist`. On **Workers**: each site ships a committed
+   **`wrangler.jsonc`** (`home/wrangler.jsonc`, `docs/wrangler.jsonc`) pointing
+   `assets.directory` at `./dist` — this is what makes `npx wrangler deploy` find the
+   built files. **Set each file's `name` to match its Worker's name in the dashboard.**
+   The file holds **no secrets** (secrets, if ever needed, live in the dashboard /
+   `wrangler secret`, never in the file).
 3. **Scope builds so they don't rebuild each other** — **Settings → Build → Build
    watch paths → Include**: `website/docs/*` for docs, `website/home/*` for home
    (Exclude empty). Needs **Build system v2** on Pages; the same Build settings exist
