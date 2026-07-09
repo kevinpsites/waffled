@@ -19,6 +19,9 @@ export const LINKS = {
 	license: `${GITHUB}/blob/main/LICENSE`,
 	security: `${GITHUB}/blob/main/SECURITY.md`,
 	changelog: `${GITHUB}/blob/main/CHANGELOG.md`,
+	// Managed-hosting interest. TODO: point at a real waitlist form once it exists;
+	// GitHub Discussions is the interim "register interest" destination.
+	hosted: `${GITHUB}/discussions`,
 } as const;
 
 // Feature cards → each links to its docs feature page.

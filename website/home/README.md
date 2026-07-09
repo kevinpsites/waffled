@@ -35,6 +35,9 @@ public/                favicon + logo/icon (copied from the app brand)
 - **Brand tokens** (colours, fonts) are the CSS variables at the top of
   `src/styles/home.css`, mirrored from the app (`apps/web/src/styles/waffled.css`)
   and docs (`../docs/src/styles/docs.css`) so the three surfaces never drift.
+- **Voice & positioning** (how it should sound, the free-self-host / paid-hosted
+  framing) live in [`docs/product/brand.md`](../../docs/product/brand.md) — read
+  it before rewriting headlines or the hosting copy.
 
 ## Screenshots (TODO)
 
