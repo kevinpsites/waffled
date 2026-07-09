@@ -237,7 +237,8 @@ describe('goal lists + detail', () => {
     expect(detail.milestones).toHaveLength(2)
     expect(detail.milestones[0]).toMatchObject({ label: '250 hrs', reached: true })
     expect(detail.milestones[1]).toMatchObject({ label: '500 hrs', reached: false })
-    expect(detail.recent[0]).toMatchObject({ amount: 300, note: 'Creek hike', name: 'Kevin' })
+    expect(detail.recent[0]).toMatchObject({ amount: 300, note: 'Creek hike' })
+    expect(detail.recent[0].participants[0]).toMatchObject({ name: 'Kevin' })
     expect(detail.streakDays).toBe(1)
     expect(detail.milestoneReached).toBe(1)
 
@@ -295,6 +296,36 @@ describe('goal lists + detail', () => {
     const byName = Object.fromEntries(detail.participants.map((p: { name: string; progress: number }) => [p.name, p.progress]))
     expect(byName.Kevin).toBe(1) // his half of the shared session
     expect(byName.Kelly).toBe(2) // half of shared + 1 solo
+  })
+
+  it('groups split-log siblings into one activity row (summed amount + participant avatars), keeping raw rows intact', async () => {
+    const kelly = await call('POST', '/api/persons', kevin, { name: 'Kelly', memberType: 'adult' })
+    const kellyId = JSON.parse(kelly.body).person.id
+    const add = await call('POST', '/api/goals', kevin, { title: 'Park hours', goalType: 'total', unit: 'hours', targetValue: 1000, trackingMode: 'shared_total', participantIds: [kevinId, kellyId] })
+    const id = JSON.parse(add.body).goal.id
+
+    // 2h together → split 1h + 1h across two rows under one batch.
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 2, personIds: [kevinId, kellyId], note: 'At the park' })).statusCode).toBe(201)
+
+    const detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    const parkRows = detail.recent.filter((r: { note: string }) => r.note === 'At the park')
+    expect(parkRows).toHaveLength(1) // one line, not two
+    expect(parkRows[0].amount).toBe(2) // summed back to what was entered
+    expect(parkRows[0].participants.map((p: { name: string }) => p.name).sort()).toEqual(['Kelly', 'Kevin'])
+
+    // The underlying per-person rows are still there — source of truth intact.
+    const raw = await withClient((c) =>
+      c.query<{ n: string }>(`select count(*) n from goal_logs where goal_id=$1 and note='At the park' and deleted_at is null`, [id])
+    )
+    expect(Number(raw.rows[0].n)).toBe(2)
+
+    // A later solo log is its own action — its own row, not merged into the batch.
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 1, personIds: [kellyId], note: 'Solo walk' })).statusCode).toBe(201)
+    const detail2 = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    const solo = detail2.recent.filter((r: { note: string }) => r.note === 'Solo walk')
+    expect(solo).toHaveLength(1)
+    expect(solo[0].amount).toBe(1)
+    expect(solo[0].participants.map((p: { name: string }) => p.name)).toEqual(['Kelly'])
   })
 
   it('does not split when a whole-unit shared goal credits the family (one log)', async () => {

@@ -2,6 +2,7 @@
 // INDIVIDUAL membership sidebar), goals (count/total/habit/checklist; shared_total
 // vs each_tracks), append-only logs (SUM = progress), milestones, and a detail
 // read model (hours-by-person, recent activity, streak, this-week).
+import { randomUUID } from 'node:crypto'
 import type { QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
@@ -521,13 +522,28 @@ export async function goalDetail(householdId: string, id: string) {
     )
   ).rows.map((s) => ({ id: s.id, label: s.label, done: s.done_at != null, doneBy: s.done_by }))
 
+  // Audit log. Rows split from one entered amount share a batch_id (set only on the
+  // shared-pool split path); we collapse those siblings into a single entry — summed
+  // amount, earliest timestamp, and the participants as an avatar list. Every unbatched
+  // row groups by its own id, so it stays one entry exactly as before. Grouping (not the
+  // raw rows) is limited to 12 so a split action counts as one line.
   const recent = (
-    await query<{ id: string; amount: string; loggedAt: string; note: string | null; personId: string | null; name: string | null; avatarEmoji: string | null; colorHex: string | null }>(
-      `select gl.id, gl.amount, gl.logged_at as "loggedAt", gl.note,
-              gl.person_id as "personId", p.name, p.avatar_emoji as "avatarEmoji", p.color_hex as "colorHex"
+    await query<{ id: string; amount: string; loggedAt: string; note: string | null; participants: Array<{ personId: string | null; name: string | null; avatarEmoji: string | null; colorHex: string | null }> }>(
+      `select coalesce(gl.batch_id, gl.id)::text as id,
+              sum(gl.amount) as amount,
+              min(gl.logged_at) as "loggedAt",
+              gl.note,
+              coalesce(
+                json_agg(json_build_object(
+                  'personId', gl.person_id, 'name', p.name,
+                  'avatarEmoji', p.avatar_emoji, 'colorHex', p.color_hex
+                ) order by p.name) filter (where gl.person_id is not null),
+                '[]'::json
+              ) as participants
          from goal_logs gl left join persons p on p.id = gl.person_id
         where gl.goal_id=$1 and gl.deleted_at is null
-        order by gl.logged_at desc limit 12`,
+        group by coalesce(gl.batch_id, gl.id), gl.note
+        order by min(gl.logged_at) desc limit 12`,
       [id]
     )
   ).rows.map((r) => ({ ...r, amount: Number(r.amount) }))
@@ -646,6 +662,12 @@ export async function logProgress(
     amounts = targets.map(() => amount)
   }
 
+  // When one entered amount is split into per-person rows, tag the siblings with a
+  // shared batch id so the audit log can collapse them back into a single line (summed
+  // amount + participant avatars). Only the split path is batched; every other log stays
+  // null and renders as its own row, unchanged.
+  const batchId = splitEvenly ? randomUUID() : null
+
   for (let i = 0; i < targets.length; i++) {
     // A habit can only be logged once per day per person — logging it five times
     // in an afternoon isn't the point. Skip a same-day duplicate silently.
@@ -664,11 +686,11 @@ export async function logProgress(
       if (dup.rowCount) continue
     }
     const ins = await query<{ id: string }>(
-      `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, ref_type, ref_id, created_by${at ? ', logged_at' : ''})
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9${at ? `, ($10::date + time '12:00') at time zone (select timezone from households where id = $1)` : ''}) returning id`,
+      `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, ref_type, ref_id, created_by, batch_id${at ? ', logged_at' : ''})
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10${at ? `, ($11::date + time '12:00') at time zone (select timezone from households where id = $1)` : ''}) returning id`,
       at
-        ? [tenant.householdId, goalId, targets[i], amounts[i], note ?? null, source, refType, refId, tenant.personId, at]
-        : [tenant.householdId, goalId, targets[i], amounts[i], note ?? null, source, refType, refId, tenant.personId]
+        ? [tenant.householdId, goalId, targets[i], amounts[i], note ?? null, source, refType, refId, tenant.personId, batchId, at]
+        : [tenant.householdId, goalId, targets[i], amounts[i], note ?? null, source, refType, refId, tenant.personId, batchId]
     )
     logIds.push(ins.rows[0].id)
   }

@@ -286,7 +286,15 @@ export function GoalDetail() {
             {goal.recent.map((r: GoalLogEntry) => (
               <div key={r.id} className="logrow">
                 <div className="lwhen">{fmtDay(r.loggedAt)}</div>
-                <div className="av sm" style={{ background: `${r.colorHex ?? '#A6A29B'}22` }}>{r.avatarEmoji ?? '🙂'}</div>
+                {r.participants.length > 0 ? (
+                  <div className="avstack">
+                    {r.participants.map((p) => (
+                      <div key={p.personId ?? p.name} className="av sm" style={{ background: `${p.colorHex ?? '#A6A29B'}22` }}>{p.avatarEmoji ?? '🙂'}</div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="av sm" style={{ background: '#A6A29B22' }}>🙂</div>
+                )}
                 <div className="lwhat">{r.note || 'Logged progress'}</div>
                 <div className="lamt">
                   +{r.amount}

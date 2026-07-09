@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **A goal's activity log no longer double-lists shared sessions.** When you log time on a shared
+  goal and credit more than one person, the hours are still split between them behind the scenes —
+  but the goal's Recent activity now shows that as a single line with the full amount and everyone's
+  avatars, instead of one half-amount row per person. Web and iPhone.
 
 ## [0.6.0] - 2026-07-09
 
