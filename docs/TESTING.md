@@ -13,7 +13,8 @@ integration test before the implementation, then build until it's green.
   pre-started stack. (Needs Docker running.)
 - **External services we don't control:** use a real container if one exists; otherwise
   **[wiremock](https://wiremock.org/)** to stand in for the HTTP API. This is how we test
-  Auth0 (JWKS) today and how we'll test Google Calendar later — never hit the real service.
+  the optional external-IdP path (RS256/JWKS) and how we'll test Google Calendar later —
+  never hit the real service.
 - **Runner: [Vitest](https://vitest.dev/)** (`vitest run`), TS-native.
 
 ## Layout (per app)
@@ -36,8 +37,8 @@ cd apps/api && npm run test:watch
 
 ## Patterns established in `apps/api`
 
-- **Auth0 RS256 without Auth0** (`test/jwks.integration.test.ts`): generate an RSA keypair,
-  publish the public half as a JWK via wiremock, point the API at it with `AUTH0_JWKS_URI`,
+- **External-IdP RS256/JWKS, without a real IdP** (`test/jwks.integration.test.ts`): generate
+  an RSA keypair, publish the public half as a JWK via wiremock, point the API at it with `AUTH0_JWKS_URI`,
   and assert published-key tokens pass while unpublished-key / wrong-audience tokens fail.
 - **Shipped-artifact e2e** (`test/api.e2e.test.ts`): Testcontainers builds the Dockerfile,
   runs the container, and drives it over HTTP exactly as Caddy / iOS will.
