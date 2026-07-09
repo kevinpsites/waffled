@@ -109,12 +109,16 @@ and every surface (iPhone/iPad/web) sees the aggregated number, never the raw he
 - Goal editor gains **"Link to Apple Health → \<metric\>"** (only for compatible goal
   types); requests that metric's read permission.
 - On app foreground, for **every** linked goal in the household (not just the visible list),
-  re-sync a **rolling window** (last `HealthKitBridge.backfillWindow` = 7 days), reading each
-  day's total and POSTing `health-sync` — so opening the app once catches up a day you walked
-  but didn't open the app (important for habit streaks). Idempotent per goal/person/metric/day,
-  so re-running is safe. The goal detail syncs the same window on view/refresh. Manual quick-log
-  stays allowed; health owns only the health portion of the day. **Still open:** true background
-  sync (`enableBackgroundDelivery` / `HKObserverQuery`) for days the app is never opened.
+  **catch up the gap since a per-goal "synced-through" high-water mark** (`HealthSyncMark`,
+  stored locally — HealthKit is per-device): `daysToSync` returns `[mark − tail … today]`, so a
+  two-week absence fills all fourteen missed days on the next open, a fresh mark returns just a
+  short re-check tail (for late Apple Watch writes), and no mark (first run / reinstall) returns
+  the last `syncCap` = 90 days. Each day's total is POSTed to `health-sync` (idempotent per
+  goal/person/metric/day), then the mark advances to today. The goal detail runs the same
+  catch-up on view/refresh. Manual quick-log stays allowed; health owns only the health portion
+  of the day. **Still open:** true background sync (`enableBackgroundDelivery` / `HKObserverQuery`)
+  for days the app is never opened at all, and re-catching-up a metric after a deny→grant (the
+  mark advances past denied days beyond the tail).
 - Goal card shows an **"Auto from Apple Health"** badge.
 
 **v1 metric set:** steps, flights, exercise minutes, activity rings (all stable pre-iOS-17).

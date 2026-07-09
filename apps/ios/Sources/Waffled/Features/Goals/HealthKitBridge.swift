@@ -128,22 +128,40 @@ final class HealthKitBridge {
         try await store.requestAuthorization(toShare: [], read: read)
     }
 
-    /// Number of days syncHealth re-syncs each run so one app-open catches up a missed day.
-    static let backfillWindow = 7
+    /// Hard cap on how far back a single catch-up reaches — so a goal started a year ago
+    /// (or a fresh install with no mark) doesn't read hundreds of days on first open.
+    nonisolated static let syncCap = 90
+    /// Re-check this many recent days even when we've synced past them, so a late Apple
+    /// Watch write for a recent day still lands.
+    nonisolated static let syncRecheckTail = 2
 
-    /// Local-day window syncHealth backfills: the `count` days ending on `reference`
-    /// (inclusive), newest-first, each as its start-of-day `Date` + "yyyy-MM-dd" `key`.
-    /// Pure + `nonisolated` so it's unit-testable with an injected calendar.
-    nonisolated static func backfillDays(count: Int, endingOn reference: Date = Date(),
-                                         calendar: Calendar = .current) -> [(day: Date, key: String)] {
+    /// The days that still need an Apple Health sync, newest-first, each as its start-of-day
+    /// `Date` + "yyyy-MM-dd" `key`. Given the per-goal "synced-through" high-water mark, this
+    /// is `[mark - (tail-1) … today]` — so a two-week absence returns all fourteen missed days,
+    /// a fresh mark returns just the re-check tail, and no mark (first sync / reinstall) returns
+    /// the last `cap` days. Bounded to `[today-cap+1 … today]`. Pure + `nonisolated` so it's
+    /// unit-testable with an injected calendar.
+    nonisolated static func daysToSync(syncedThrough: Date?, today: Date = Date(),
+                                       cap: Int = syncCap, recheckTail: Int = syncRecheckTail,
+                                       calendar: Calendar = .current) -> [(day: Date, key: String)] {
         let fmt = DateFormatter()
         fmt.calendar = calendar
         fmt.timeZone = calendar.timeZone
         fmt.locale = Locale(identifier: "en_US_POSIX")
         fmt.dateFormat = "yyyy-MM-dd"
-        let start = calendar.startOfDay(for: reference)
-        return (0 ..< max(count, 1)).compactMap { offset in
-            calendar.date(byAdding: .day, value: -offset, to: start).map { ($0, fmt.string(from: $0)) }
+        let todayStart = calendar.startOfDay(for: today)
+        let earliest = calendar.date(byAdding: .day, value: -(max(cap, 1) - 1), to: todayStart) ?? todayStart
+        let rawStart: Date
+        if let mark = syncedThrough {
+            let m = calendar.startOfDay(for: mark)
+            rawStart = calendar.date(byAdding: .day, value: -(max(recheckTail, 1) - 1), to: m) ?? m
+        } else {
+            rawStart = earliest
+        }
+        let start = min(max(rawStart, earliest), todayStart)   // clamp into [earliest, today]
+        let dayCount = (calendar.dateComponents([.day], from: start, to: todayStart).day ?? 0) + 1
+        return (0 ..< max(dayCount, 1)).compactMap { offset in
+            calendar.date(byAdding: .day, value: -offset, to: todayStart).map { ($0, fmt.string(from: $0)) }
         }
     }
 
@@ -178,5 +196,22 @@ final class HealthKitBridge {
             }
             store.execute(query)
         }
+    }
+}
+
+/// Per-goal "synced-through" high-water mark for Apple Health, stored locally (HealthKit is
+/// per-device, so the mark is too). Lets syncHealth re-sync only the days since the last run
+/// instead of a fixed window — a two-week absence catches up on the next open. Losing it (app
+/// reinstall) just re-catches-up from the cap window once; harmless because /health-sync is
+/// idempotent.
+enum HealthSyncMark {
+    private static func key(_ goalId: String, _ metric: HealthKitBridge.Metric) -> String {
+        "hk.syncedThrough.\(goalId).\(metric.key)"
+    }
+    static func get(_ goalId: String, _ metric: HealthKitBridge.Metric) -> Date? {
+        UserDefaults.standard.object(forKey: key(goalId, metric)) as? Date
+    }
+    static func set(_ goalId: String, _ metric: HealthKitBridge.Metric, _ day: Date) {
+        UserDefaults.standard.set(day, forKey: key(goalId, metric))
     }
 }

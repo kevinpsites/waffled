@@ -78,14 +78,16 @@ final class GoalsModel {
         }
         guard !linked.isEmpty else { return }
         try? await HealthKitBridge.shared.requestReadAuthorization()
-        // Backfill a rolling window so opening the app once catches up any missed days
-        // (a habit day you walked but didn't open the app still counts).
-        let window = HealthKitBridge.backfillDays(count: HealthKitBridge.backfillWindow)
+        // Catch up only the days since each goal's synced-through mark (a two-week absence
+        // fills all fourteen days on the next open), then advance the mark to today.
+        let today = Date()
         var didSync = false
         for l in linked {
-            for d in window {
+            let days = HealthKitBridge.daysToSync(syncedThrough: HealthSyncMark.get(l.id, l.metric), today: today)
+            for d in days {
                 if await HealthKitBridge.pushDay(api, goalId: l.id, metric: l.metric, day: d.day, key: d.key) { didSync = true }
             }
+            HealthSyncMark.set(l.id, l.metric, today)
         }
         if didSync { await loadGoals() }
     }
@@ -1681,10 +1683,12 @@ final class GoalDetailModel {
         guard HealthKitBridge.shared.isAvailable,
               let m = HealthKitBridge.Metric(key: detail?.healthMetric ?? goal.healthMetric) else { return }
         try? await HealthKitBridge.shared.requestReadAuthorization()
+        let today = Date()
         var didSync = false
-        for d in HealthKitBridge.backfillDays(count: HealthKitBridge.backfillWindow) {
+        for d in HealthKitBridge.daysToSync(syncedThrough: HealthSyncMark.get(goal.id, m), today: today) {
             if await HealthKitBridge.pushDay(api, goalId: goal.id, metric: m, day: d.day, key: d.key) { didSync = true }
         }
+        HealthSyncMark.set(goal.id, m, today)
         if didSync { await load() }
     }
 
