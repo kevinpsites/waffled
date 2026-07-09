@@ -53,7 +53,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   rings** — Move/Exercise/Stand or all three — and **mood**, iOS 17+) and its progress
   auto-fills: numeric goals accumulate each day's total, a **habit** counts a day whenever it
   clears a daily threshold ("2,000 steps a day, 5×/week"), and rings/mood count a day when the
-  ring closes or a mood is logged. A **"set a goal from your Health data"** picker shows your
+  ring closes or a mood is logged. Ring/mood links also work on a **count** goal — each met day
+  adds one, so "close my Exercise ring 15× this month" or "log my mood 20 days" accumulate
+  toward the target (open days add nothing; a later correction self-adjusts). A **"set a goal
+  from your Health data"** picker shows your
   live value per metric so you pick something real. Opening the app **catches up every missed
   day** since the last sync (bounded at the goal's creation date, so it never back-fills from
   before the goal existed). Opt-in per goal in the editor's **Extras** (next to calendar
@@ -143,14 +146,30 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   authorship — no capability needed to volunteer or reassign a cook).
 
 - **Apple Health → goals — remaining follow-ons (iPhone).** Tiers 0–2 shipped (see **Done** —
-  the full metric set incl. rings/mindful/mood, habit thresholds, the "set a goal from your Health
-  data" picker, and gap catch-up). What's left is deliberately deferred: **background sync**
-  (`enableBackgroundDelivery` / `HKObserverQuery`) to keep the family iPad fresh on days the
-  phone-owner never opens the app — a *freshness* nicety, not correctness, since the next app-open
-  already reconciles; a **rewards tie-in** ("hit your step goal → earn a marble"), which waits on
-  goals touching the currency ledger; and **write-back** into HealthKit (out of scope — the
-  read-only pull is ~95% of the value). Full plan in
-  [`docs/design/healthkit-goals.md`](../design/healthkit-goals.md).
+  the full metric set incl. rings/mindful/mood, habit thresholds, ring/mood **count** goals
+  ("close the ring 15×"), the "set a goal from your Health data" picker, and gap catch-up).
+  What's left is deliberately deferred:
+  - **Graduated ring goals ("I hit 75% of my Move ring").** Apple's `HKActivitySummary`
+    exposes each ring's **value *and* the user's personal goal**, not just closed/not — so the
+    ring is really a numerator/denominator we currently collapse to a boolean at 100%. We could
+    expose a **numeric "ring %"** metric (`value / goal × 100`) that a habit counts at a
+    threshold you set (default 100 = fully closed, e.g. ≥75% for an easier bar, or ≥150% to
+    require overachievement). **Where we landed:** don't build the full per-ring % set — most
+    of it is redundant (the Exercise ring's value *is* our Exercise-minutes metric; the Move
+    ring's value *is* Active energy). The one non-redundant, compelling case is a **"Move ring %"**
+    habit that rides your *personalized, auto-adjusting* calorie goal ("hit 80% of my Move goal,
+    whatever it is this month") — hard to express otherwise. So this is scoped to *maybe just
+    Move ring %*, a fast-follow only if graduated goals are wanted. Wrinkles to handle if we do:
+    % can exceed 100 (don't cap the UI), the denominator moves with the user's Watch goal, and
+    "all rings %" is ambiguous (three denominators) so it'd be per-ring only.
+  - **Background sync** (`enableBackgroundDelivery` / `HKObserverQuery`) to keep the family iPad
+    fresh on days the phone-owner never opens the app — a *freshness* nicety, not correctness,
+    since the next app-open already reconciles.
+  - A **rewards tie-in** ("hit your step goal → earn a marble"), which waits on goals touching
+    the currency ledger; and **write-back** into HealthKit (out of scope — the read-only pull is
+    ~95% of the value).
+
+  Full plan in [`docs/design/healthkit-goals.md`](../design/healthkit-goals.md).
 
 - **Multi-household identity** — one email/account that belongs to many households (separate
   profile + role per household, switch after login). Design spike written + product decisions

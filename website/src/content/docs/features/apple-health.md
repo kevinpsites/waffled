@@ -28,7 +28,7 @@ Apple's **HealthKit framework exists only on iPhone** — there's no Health data
 
 1. On your **iPhone**, create or edit a goal — e.g. a **total** goal "10,000 steps" or a **habit** "Daily steps."
 2. Open the **Extras** section and turn on **Auto-fill from Apple Health**.
-3. Pick the metric. Numeric goals offer **Steps**, **Flights**, **Exercise**, **Energy**, and **Mindful**; **habit** goals add the boolean metrics — **Move / Exercise / Stand / All rings** and **Mood**. A short explanation of what each one tracks appears under the picker, and a sensible target is pre-filled.
+3. Pick the metric. Numeric goals offer **Steps**, **Flights**, **Exercise**, **Energy**, and **Mindful**; **habit** and **count** goals also offer the boolean metrics — **Mood**, then your rings (**Move ring / Exercise ring / Stand ring / All rings**), grouped at the end. (On a **count** goal a ring or mood counts *met days* toward a target — "close it 15×"; on a **habit** it keeps a streak.) A short explanation of what each one tracks appears under the picker, and a sensible target is pre-filled.
 4. For a numeric **habit** (e.g. steps), set the daily threshold ("Reach **2,000** steps a day"); ring and mood habits skip this — they're simply met or not. Then set the weekly cadence (the goal's "how many days a week" target).
 5. Save. The first time, iOS shows Apple's **Health access** sheet — allow the metric you picked. (Apple only asks **once**, ever; see [Managing access](#managing-access) to change it later.)
 
@@ -45,6 +45,7 @@ The counting follows the **goal type**, so the same Health data does the right t
 - **Total / count** (e.g. "1,000,000 steps this year") — each day's total is added toward your target. Re-syncing a day **replaces** that day's number rather than double-counting it.
 - **Habit — numeric** (e.g. "2,000 steps a day, 5 days a week") — a day counts as **one completion** when it clears your daily threshold. Days below don't count, and a day that later drops below (a correction in Health) is un-counted. A manual check-in and an auto one on the same day still count as a single day.
 - **Habit — rings & mood** — a day counts when the ring **closes** (you met your own Apple Watch goal for it) or you **log a mood** that day. "All rings" needs Move, Exercise, and Stand all closed. There's no number to set — it's simply met or not.
+- **Count — rings & mood** (e.g. "close my Exercise ring **15×** this month," "log my mood **20 days**") — instead of a streak, each met day adds **one** toward a running count. Open days add nothing, and a day later corrected (a ring that turns out not to have closed) drops back out on its own. Pick a **count** goal, turn on a ring or mood metric, and set the target to how many days you're aiming for.
 
 ## Catching up missed days
 
@@ -72,4 +73,4 @@ If you deny access, the goal simply stops receiving Health data — you can stil
 - 🛜 **Needs a connection** — goals are online-only (not offline PowerSync), so syncing a day's total requires a live link to your server.
 - 🔐 **Your data stays yours** — only the aggregated number (e.g. "7,340 steps") is synced to your self-hosted server; raw Health records never leave your phone.
 - ⏳ **Mood needs iOS 17+** — mood uses Apple's *State of Mind*, which only exists on iOS 17 and later.
-- 🧭 **What's still coming** — background sync (to keep the family iPad fresh on days you never open your phone) and a rewards tie-in are on the [roadmap](https://github.com/kevinpsites/waffled/blob/main/docs/product/roadmap.md); everything above works today.
+- 🧭 **What's still coming** — graduated ring goals (e.g. "hit 75% of my Move ring," using the ring's underlying percentage rather than a plain closed/not-closed), background sync (to keep the family iPad fresh on days you never open your phone), and a rewards tie-in are on the [roadmap](https://github.com/kevinpsites/waffled/blob/main/docs/product/roadmap.md); everything above works today.
