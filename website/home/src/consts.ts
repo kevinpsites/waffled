@@ -24,7 +24,7 @@ export const LINKS = {
 // Managed-hosting interest form (Google Form). Paste the published form URL here
 // and the hosted card's button lights up automatically; while it's empty the
 // card just shows a muted "waitlist opening soon" line (no dead link).
-export const HOSTED_FORM_URL = '';
+export const HOSTED_FORM_URL = 'https://forms.gle/KuNXkooDKzZivwim8';
 
 // Feature cards → each links to its docs feature page.
 export const FEATURES = [
