@@ -3,6 +3,8 @@ title: Rewards & economy
 description: The spend half of the chores economy — a stars ledger, per-kid shop, and approved redemptions.
 ---
 
+![The Reward Shop — each family member’s star balance, a “saving up for” goal, and redeemable rewards that unlock as stars add up](/screenshots/rewards.png)
+
 Rewards is the *spend* half of the family economy: an append-only stars ledger, a per-kid reward shop, and parent-approved redemptions. It gives [Chores](/features/chores/) a payoff and teaches kids to save toward something they want. Earn stars by doing jobs, then trade them in — with a grown-up's OK where it matters. 🎉
 
 ## Highlights

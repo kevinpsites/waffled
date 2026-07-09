@@ -55,5 +55,14 @@ for (const v of VIEWS) {
   await page.screenshot({ path: `${OUT}/${v.name}.png` });
   console.log(`  ${v.name}.png`);
 }
+
+// Rewards is a tab on the Tasks page (not a route) — open Tasks, click Rewards.
+try { await page.goto(BASE + '/tasks', { waitUntil: 'networkidle', timeout: 15000 }); } catch {}
+await page.waitForTimeout(1500);
+try { await page.getByRole('button', { name: 'Rewards', exact: true }).click({ timeout: 5000 }); } catch {}
+await page.waitForTimeout(3000);
+await page.screenshot({ path: `${OUT}/rewards.png` });
+console.log('  rewards.png');
+
 await browser.close();
 console.log('done →', OUT);

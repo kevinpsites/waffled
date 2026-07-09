@@ -3,6 +3,8 @@ title: Kiosk & display
 description: The shared-tablet experience — device pairing, a profile picker, optional PINs, and the ambient screensaver.
 ---
 
+![Waffled on an always-on iPad kitchen kiosk — the Today dashboard the whole household glances at](/screenshots/ipad-home.png)
+
 Kiosk is the ambient-hub half of Waffled — the same web app, running fullscreen on a spare tablet on the kitchen counter, turned into a family command center. Pair a device, pick your profile from a Netflix-style picker, and the app hands you a real per-person session; when nobody touches it, it drifts into a photo screensaver with the clock, weather, and your next event. It's the surface the whole family walks past a hundred times a day. 📺
 
 ## Highlights
