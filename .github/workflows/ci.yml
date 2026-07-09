@@ -11,12 +11,29 @@
 # waiting on the slow api job. The api integration/e2e tests use Testcontainers
 # (ephemeral Postgres + wiremock, and api.e2e.test.ts builds the Dockerfile),
 # which needs Docker — available out of the box on ubuntu-latest.
+#
+# Scope: this workflow ONLY covers apps/api + apps/web, and each app is fully
+# self-contained (no root package.json / tsconfig / lockfile — see the note
+# above), so we run it ONLY when those apps or this file change. Docs-only,
+# iOS-only (apps/ios is built by Xcode Cloud, not here), and website-only PRs
+# skip CI entirely. Because CI's coverage *is* api+web, an allowlist can't
+# silently skip something it was actually testing. (Safe today because `main`
+# has no required-status-check branch protection — a path-skipped run reports
+# nothing, which would otherwise block a PR waiting on a required check.)
 name: CI
 
 on:
   pull_request:
+    paths:
+      - 'apps/api/**'
+      - 'apps/web/**'
+      - '.github/workflows/ci.yml'
   push:
     branches: [main]
+    paths:
+      - 'apps/api/**'
+      - 'apps/web/**'
+      - '.github/workflows/ci.yml'
 
 # Cancel superseded runs on the same ref (e.g. rapid pushes to a PR branch).
 concurrency:
