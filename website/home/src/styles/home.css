@@ -241,15 +241,10 @@ img { max-width: 100%; display: block; }
 }
 .code-chip .copy:hover { background: rgba(255,255,255,0.20); }
 
-/* ── Device mockup (placeholder — swap the .mock-* blocks for a screenshot) ── */
+/* ── Device frame (browser chrome around a real kiosk screenshot) ─────────── */
 .hero-visual { position: relative; }
-.mock-note {
-  position: absolute; top: -14px; right: 6px;
-  font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase;
-  color: var(--wf-ink-2); opacity: 0.6;
-}
 .device {
-  border-radius: 22px;
+  border-radius: 16px;
   background: var(--wf-card);
   border: 1px solid var(--wf-hairline);
   box-shadow: var(--wf-shadow-lg);
@@ -258,7 +253,7 @@ img { max-width: 100%; display: block; }
 }
 .device-bar {
   display: flex; align-items: center; gap: 7px;
-  padding: 12px 16px;
+  padding: 11px 14px;
   background: var(--wf-rail);
   border-bottom: 1px solid var(--wf-hairline-soft);
 }
@@ -267,35 +262,7 @@ img { max-width: 100%; display: block; }
   margin-left: 10px; height: 16px; flex: 1; border-radius: 8px;
   background: rgba(40,33,24,0.06);
 }
-.device-body { padding: 18px; display: grid; gap: 12px; }
-.mock-h {
-  display: flex; align-items: baseline; justify-content: space-between;
-}
-.mock-h b { font-family: var(--wf-serif); font-size: 20px; }
-.mock-h span { font-size: 12px; color: var(--wf-ink-2); }
-.mock-card {
-  border: 1px solid var(--wf-hairline-soft);
-  border-radius: 14px;
-  padding: 14px;
-  background: var(--wf-card);
-  box-shadow: var(--wf-shadow-sm);
-}
-.mock-card .label {
-  font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
-  color: var(--wf-ink-2); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
-}
-.mock-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
-.mock-check {
-  width: 18px; height: 18px; border-radius: 6px; flex: none;
-  border: 2px solid var(--wf-hairline);
-}
-.mock-check.done { background: var(--wf-mint); border-color: var(--wf-mint); }
-.mock-line { height: 10px; border-radius: 6px; background: rgba(40,33,24,0.10); }
-.mock-star { color: var(--wf-gold); }
-.mock-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.badge-count {
-  font-family: var(--wf-serif); font-size: 30px; color: var(--wf-coral); line-height: 1;
-}
+.device-shot { display: block; width: 100%; height: auto; }
 
 /* ── Logo / trust strip ──────────────────────────────────────────────────── */
 .trust {
