@@ -71,7 +71,8 @@ Kiosk and web share the same React codebase (kiosk = a layout/PWA mode).
 - **IaC:** Terraform for AWS (S3, CloudFront, backup IAM, state) + Auth0. Compose for
   runtime. One `hostname` value per environment, referenced by both. The only
   console-only, non-IaC pieces are the Google OAuth client + consent-screen verification
-  and the Apple Sign In / APNs keys — done once, consumed as secrets (see BOOTSTRAP.md).
+  and the Apple Sign In / APNs keys — done once, consumed as secrets (the Google OAuth
+  walkthrough lives in the Google Calendar admin guide under `website/`).
 
 ## Known open details (resolved within their chunks, not blockers)
 

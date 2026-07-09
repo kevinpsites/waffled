@@ -1,8 +1,8 @@
 # Roadmap status
 
-A product-level view of what's **done**, **partial**, and **planned**. This is distilled
-from the engineering plan in [`../../ROADMAP.md`](../../ROADMAP.md) — see that file for the
-full, commit-level history and rationale.
+A product-level view of what's **done**, **partial**, and **planned** — the **canonical,
+living roadmap**. For the original milestone-by-milestone engineering plan and commit-level
+rationale, see the [engineering plan](../engineering-plan.md).
 
 Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (superseded)
 
@@ -250,7 +250,8 @@ The original cloud plan (Terraform/AWS, Auth0, GCP project provisioning, a separ
 - Auth0 RS256 → HS256 local JWT (`LOCAL_JWT_SECRET`); PowerSync token exchange unchanged.
 
 > `README.md` has been updated to the self-host model (repo layout, "stack in one breath",
-> and SSO panel label). `BOOTSTRAP.md` still carries the old Auth0/AWS/Terraform framing
-> around its Google Cloud OAuth steps — kept for the OAuth-client walkthrough, but ignore
-> the cloud scaffolding. The **self-host model in [`quick-start.md`](./quick-start.md)** and
-> the `Self-hosted (Immich-style)` section of `ROADMAP.md` are the current source of truth.
+> and SSO panel label). The old `BOOTSTRAP.md` (Auth0/AWS/Terraform-era console setup) has
+> been **removed**; the still-relevant Google OAuth-client walkthrough lives in the **Google
+> Calendar** admin guide on the docs site. The **self-host model in
+> [`quick-start.md`](./quick-start.md)** and the `Self-hosted (Immich-style)` section of the
+> [engineering plan](../engineering-plan.md) are the current source of truth.

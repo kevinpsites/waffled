@@ -1,7 +1,6 @@
 name: waffled
 
-# Chunk 2.1 — local runtime: Postgres + Caddy.
-# Later chunks add: api, worker, powersync, backup (see ROADMAP.md).
+# Local + tailnet runtime: Postgres, Caddy, api, powersync, backup.
 # Everything is env-driven so the same file runs locally and on the tailnet host.
 
 services:

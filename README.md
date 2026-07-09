@@ -231,11 +231,10 @@ non-interactively (e.g. over plain SSH).
 1. Run it — the [Self-hosting quickstart](#self-hosting-quickstart) above (`./waffled up`).
 2. Read `docs/ARCHITECTURE.md` — the decisions and why.
 3. Read the docs site (built from `website/`, Astro Starlight) — the user-facing docs and the feature matrix (source: `website/src/content/docs/reference/features.md`).
-4. Follow `ROADMAP.md` — bite-sized, committable chunks, in order.
+4. Follow `docs/engineering-plan.md` — the milestone plan in bite-sized, committable chunks.
 
-> Only setting up Google Calendar sync or OIDC? `BOOTSTRAP.md` has the Google Cloud
-> OAuth-client walkthrough (skip its Auth0/AWS/Terraform framing — those were dropped
-> with the self-host pivot).
+> Only setting up Google Calendar sync? The **Google Calendar** admin guide on the docs site
+> (`website/src/content/docs/administration/google-calendar.md`) has the OAuth-client walkthrough.
 
 ## The stack in one breath
 
