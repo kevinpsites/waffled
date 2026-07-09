@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to auto-count-from-calendar. Includes a new **Settings → Permissions** screen for managing device
   access (Apple Health, notifications, camera, mic). iPhone-only by nature; iPad and web display the
   synced progress.
+- **Personal vs family calendars.** Each connected Google calendar can now be marked
+  **personal** (only its owner sees it, on their own profile or phone) or **family** (shows
+  on the shared kiosk) — so a work calendar stays off the family board while still appearing
+  on your own device. Toggle it per calendar in Settings → Calendars; a newly connected
+  account defaults your primary calendar to family and the rest to personal. The local Nook
+  calendar is always family.
 
 ### Changed
 

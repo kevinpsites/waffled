@@ -321,6 +321,19 @@ struct CalendarsSettingsView: View {
                     .padding(.horizontal, 10).padding(.vertical, 6).background(WF.panel).clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                // Private (owner-only) vs family (shared kiosk) — only meaningful when synced.
+                // Checked = private; unchecked = visible to the whole family.
+                if c.selected {
+                    Button { Task { await patch(c.id, ["visibility": .string(c.visibility == "personal" ? "family" : "personal")]) } } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: c.visibility == "personal" ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 14)).foregroundStyle(c.visibility == "personal" ? WF.primary : WF.ink3)
+                            Text("Private").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink2)
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 6).background(WF.panel).clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
                 // person assign
                 Menu {
                     Button("Unassigned") { Task { await patch(c.id, ["personId": .null]) } }
@@ -352,6 +365,7 @@ struct CalendarsSettingsView: View {
         var parts: [String] = []
         parts.append(c.selected ? (c.lastSyncedAt.map { "Synced \(when($0))" } ?? "Will sync") : "Sync off")
         if let r = c.accessRole { parts.append(r) }
+        if c.selected { parts.append(c.visibility == "personal" ? "🔒 Private (only you)" : "👪 Family viewable") }
         if c.isWriteTarget { parts.append("★ new events go here") }
         return parts.joined(separator: " · ")
     }

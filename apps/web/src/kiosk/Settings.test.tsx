@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { Settings } from './Settings'
 import type { PermissionMatrix } from '../lib/api'
@@ -225,5 +225,59 @@ describe('Settings screen', () => {
     expect(screen.getByText(/Sign out/, { selector: '.set-signout' })).toBeInTheDocument()
     expect(screen.queryByText('Family & People')).not.toBeInTheDocument()
     expect(screen.queryByText('Sign-in & Security')).not.toBeInTheDocument()
+  })
+
+  it('Meals: the thaw reminder toggle enables the time + meal chips and auto-saves', async () => {
+    const mealSettings = {
+      addToCalendar: true,
+      pushToGoogle: true,
+      calendarPersonId: 'p1',
+      participantIds: null,
+      times: { breakfast: '08:00', lunch: '12:00', dinner: '18:00', snack: '15:00' },
+      durationMinutes: 60,
+      prepReminder: false, // off by default
+      prepReminderTime: '08:00',
+      prepReminderMealTypes: ['dinner'],
+    }
+    const putBodies: Array<Record<string, unknown>> = []
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/api/meals/calendar-settings')) {
+        if (init?.method === 'PUT') {
+          const patch = JSON.parse(String(init.body)) as Record<string, unknown>
+          putBodies.push(patch)
+          return { ok: true, json: async () => ({ settings: { ...mealSettings, ...patch } }) }
+        }
+        return { ok: true, json: async () => ({ settings: mealSettings }) }
+      }
+      if (u.includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
+      if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household, person: members[0] }) }
+      if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('Meals')) // nav item
+
+    // The merged card + thaw subsection render with Title-Cased headers.
+    expect(await screen.findByText('Meal Times & Reminders')).toBeInTheDocument()
+    expect(screen.getByText('Thaw Reminder')).toBeInTheDocument()
+    expect(screen.getByText('For Which Meals')).toBeInTheDocument()
+
+    // Off by default → the Dinner meal-type chip is disabled.
+    expect(screen.getByRole('button', { name: /Dinner/ })).toBeDisabled()
+
+    // Flip the "Remind me to thaw" toggle on.
+    const toggle = within(screen.getByText('Remind me to thaw').closest('.set-row2')!).getByRole('checkbox')
+    expect(toggle).not.toBeChecked()
+    fireEvent.click(toggle)
+
+    // The chips (and time) become enabled once the reminder is on.
+    await waitFor(() => expect(screen.getByRole('button', { name: /Dinner/ })).not.toBeDisabled())
+    expect(toggle).toBeChecked()
+
+    // Debounced auto-save persists prepReminder: true.
+    await waitFor(() => expect(putBodies.some((b) => b.prepReminder === true)).toBe(true), { timeout: 2000 })
   })
 })

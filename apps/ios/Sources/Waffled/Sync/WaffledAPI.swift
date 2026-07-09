@@ -693,6 +693,7 @@ struct WaffledAPI: Sendable {
             let isPrimary: Bool
             let selected: Bool
             let isWriteTarget: Bool
+            let visibility: String   // 'family' (shared kiosk) | 'personal' (owner-only)
             let personId, personName, personColor: String?
             let lastSyncedAt: String?
             var isWritable: Bool { accessRole == "owner" || accessRole == "writer" }

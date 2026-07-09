@@ -23,6 +23,7 @@ export interface CalendarLink {
   isPrimary: boolean
   selected: boolean
   isWriteTarget: boolean
+  visibility: string // 'family' (shows on the shared kiosk) | 'personal' (owner-only)
   personId: string | null
   personName: string | null
   personColor: string | null
@@ -59,7 +60,7 @@ export const calendarsApi = {
   // to (the api callback redirects there after storing the connection).
   connectCalendar: (redirectTo?: string) =>
     apiSend<{ url: string }>('POST', '/api/calendar/google/connect', redirectTo ? { redirectTo } : {}),
-  updateCalendar: (id: string, patch: { personId?: string | null; selected?: boolean; isWriteTarget?: boolean }) =>
+  updateCalendar: (id: string, patch: { personId?: string | null; selected?: boolean; isWriteTarget?: boolean; visibility?: 'family' | 'personal' }) =>
     apiSend<{ calendar: CalendarLink }>('PATCH', `/api/calendar/google/calendars/${id}`, patch),
   disconnectAccount: (accountId: string) => apiDelete(`/api/calendar/google/accounts/${accountId}`),
   syncCalendars: (calendarId?: string) =>

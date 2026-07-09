@@ -3,7 +3,18 @@
 // bucketing, person color/owner, participant list). Pure helpers here are unit-
 // tested; watchAgendaRows streams live rows. Falls back gracefully (no DB → no-op).
 import type { AgendaEvent, Participant } from '../api/events'
+import { currentViewerPersonId } from '../api/client'
 import { getPowerSyncDb } from './db'
+
+// Personal-calendar visibility: a family event is visible to everyone; a personal
+// event only to its owner. A row with no visibility (older/local rows) is treated as
+// family. The viewer is the currently-active profile/user (null on a bare kiosk →
+// family only). Applied on every local read so a personal event never shows on the
+// shared kiosk unless that person's profile is the one claimed right now.
+function isVisibleToViewer(r: LocalEventRow): boolean {
+  if (r.visibility !== 'personal') return true
+  return !!r.owner_person_id && r.owner_person_id === currentViewerPersonId()
+}
 
 // ── Delete tombstones ────────────────────────────────────────────────────────
 // A locally-deleted event can briefly reappear: PowerSync acks the CRUD upload
@@ -73,6 +84,8 @@ export interface LocalEventRow {
   goal_step_id?: string | null
   origin: string | null
   origin_ref_id: string | null
+  visibility?: string | null // 'family' | 'personal'
+  owner_person_id?: string | null
   person_name: string | null
   person_color: string | null
   person_emoji: string | null
@@ -148,7 +161,7 @@ const byStart = (a: AgendaEvent, b: AgendaEvent) => parseInstant(a.startsAt).get
 // Today's agenda — same order as the server: timed before all-day, then by start.
 export function eventsForDay(rows: LocalEventRow[], tz: string, day: string): AgendaEvent[] {
   return rows
-    .filter((r) => localDate(r.starts_at, tz) === day)
+    .filter((r) => isVisibleToViewer(r) && localDate(r.starts_at, tz) === day)
     .map(rowToAgenda)
     .sort((a, b) => (a.allDay === b.allDay ? byStart(a, b) : a.allDay ? 1 : -1))
 }
@@ -157,6 +170,7 @@ export function eventsForDay(rows: LocalEventRow[], tz: string, day: string): Ag
 export function eventsForRange(rows: LocalEventRow[], tz: string, from: string, to: string): AgendaEvent[] {
   return rows
     .filter((r) => {
+      if (!isVisibleToViewer(r)) return false
       const d = localDate(r.starts_at, tz)
       return d >= from && d <= to
     })
@@ -180,7 +194,7 @@ const participantsJson = (idExpr: string) => `
 const SINGLE_SELECT = `
   select e.id as id, e.id as series_id, null as occurrence_start,
          e.title, e.description, e.location, e.starts_at, e.ends_at, e.all_day, e.is_countdown, e.person_id, e.goal_id, e.goal_step_id,
-         e.origin, e.origin_ref_id,
+         e.origin, e.origin_ref_id, e.visibility, e.owner_person_id,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          ${participantsJson('e.id')}
     from events e
@@ -192,7 +206,7 @@ const OCC_SELECT = `
   select o.id as id, m.id as series_id, o.original_start as occurrence_start,
          coalesce(o.title, m.title) as title, m.description, coalesce(o.location, m.location) as location,
          o.starts_at, o.ends_at, o.all_day, m.is_countdown, o.person_id, m.goal_id, m.goal_step_id,
-         m.origin, m.origin_ref_id,
+         m.origin, m.origin_ref_id, o.visibility, o.owner_person_id,
          p.name as person_name, p.color_hex as person_color, p.avatar_emoji as person_emoji,
          ${participantsJson('m.id')}
     from event_occurrences o
@@ -211,7 +225,8 @@ export async function getLocalEvent(id: string, _tz: string): Promise<AgendaEven
   if (!db) return null
   try {
     const row = await db.getOptional<LocalEventRow>(`${SINGLE_SELECT} where e.id = ?`, [id])
-    return row ? rowToAgenda(row) : null
+    // Guard a deep link to someone else's personal event — hide it like the lists do.
+    return row && isVisibleToViewer(row) ? rowToAgenda(row) : null
   } catch {
     return null
   }

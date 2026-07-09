@@ -140,10 +140,14 @@ export async function createEvent(tenant: Tenant, input: CreateEventInput): Prom
     const ins = await client.query<EventRow>(
       `insert into events
          (household_id, calendar_id, title, description, location, starts_at, ends_at, all_day, timezone,
-          person_id, goal_id, goal_step_id, rrule, rdate, exdate, recurrence_end_at, origin, sync_state, is_countdown)
+          person_id, goal_id, goal_step_id, rrule, rdate, exdate, recurrence_end_at, origin, sync_state, is_countdown,
+          visibility, owner_person_id)
        values ($1,$2,$3,$4,$5,$6,$7, coalesce($8,false),
                coalesce($9, (select timezone from households where id=$1)), $10, $11, $12,
-               $13, $14::timestamptz[], $15::timestamptz[], $16, 'manual', $17, coalesce($18,false))
+               $13, $14::timestamptz[], $15::timestamptz[], $16, 'manual', $17, coalesce($18,false),
+               -- visibility/owner follow the destination calendar; local-only (null) ⇒ family
+               coalesce((select visibility from calendars where id=$2 and deleted_at is null), 'family'),
+               (select person_id from calendars where id=$2 and deleted_at is null))
        returning *`,
       [
         tenant.householdId,
@@ -227,34 +231,42 @@ const OCC_SELECT = `
     left join calendars c on c.id = m.calendar_id and c.deleted_at is null
    where o.household_id = $1 and o.deleted_at is null`
 
-export async function todayEvents(householdId: string, date: string): Promise<EventRow[]> {
+// Viewer scope for personal calendars: family events are visible to everyone; personal
+// events only to their owner. A null viewer (a bare kiosk device with no profile claimed)
+// sees family only — `owner_person_id = NULL` never matches. `alias` is the events /
+// occurrences table alias; `p` is the param placeholder holding the viewer's person id.
+const visibleTo = (alias: string, p: string) =>
+  `and (${alias}.visibility = 'family' or ${alias}.owner_person_id = ${p})`
+
+export async function todayEvents(householdId: string, date: string, viewerPersonId: string | null): Promise<EventRow[]> {
   const { rows } = await query<EventRow>(
-    `${SINGLE_SELECT} and (e.starts_at at time zone h.timezone)::date = $2::date
+    `${SINGLE_SELECT} ${visibleTo('e', '$3')} and (e.starts_at at time zone h.timezone)::date = $2::date
      union all
-     ${OCC_SELECT} and (o.starts_at at time zone h.timezone)::date = $2::date
+     ${OCC_SELECT} ${visibleTo('o', '$3')} and (o.starts_at at time zone h.timezone)::date = $2::date
      order by all_day, starts_at`,
-    [householdId, date]
+    [householdId, date, viewerPersonId]
   )
   return rows
 }
 
-export async function rangeEvents(householdId: string, from: string, to: string): Promise<EventRow[]> {
+export async function rangeEvents(householdId: string, from: string, to: string, viewerPersonId: string | null): Promise<EventRow[]> {
   const { rows } = await query<EventRow>(
-    `${SINGLE_SELECT} and (e.starts_at at time zone h.timezone)::date between $2::date and $3::date
+    `${SINGLE_SELECT} ${visibleTo('e', '$4')} and (e.starts_at at time zone h.timezone)::date between $2::date and $3::date
      union all
-     ${OCC_SELECT} and (o.starts_at at time zone h.timezone)::date between $2::date and $3::date
+     ${OCC_SELECT} ${visibleTo('o', '$4')} and (o.starts_at at time zone h.timezone)::date between $2::date and $3::date
      order by starts_at`,
-    [householdId, from, to]
+    [householdId, from, to, viewerPersonId]
   )
   return rows
 }
 
 // Looks up a master/single event by id (not an occurrence). The detail screen for a
-// recurring occurrence fetches its series via series_id.
-export async function getEventById(householdId: string, id: string): Promise<EventRow | null> {
+// recurring occurrence fetches its series via series_id. Scoped to the viewer so a deep
+// link to someone else's personal event 404s instead of leaking.
+export async function getEventById(householdId: string, id: string, viewerPersonId: string | null): Promise<EventRow | null> {
   const { rows } = await query<EventRow>(
-    `${SINGLE_SELECT.replace('and e.rrule is null', '')} and e.id = $2`,
-    [householdId, id]
+    `${SINGLE_SELECT.replace('and e.rrule is null', '')} ${visibleTo('e', '$3')} and e.id = $2`,
+    [householdId, id, viewerPersonId]
   )
   return rows[0] ?? null
 }
@@ -466,8 +478,10 @@ export async function splitSeries(
     const ins = await client.query<EventRow>(
       `insert into events
          (household_id, calendar_id, title, description, location, starts_at, ends_at, all_day, timezone,
-          person_id, goal_id, goal_step_id, rrule, rdate, exdate, recurrence_end_at, origin, sync_state)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::timestamptz[],$15::timestamptz[],$16,'manual','local_only')
+          person_id, goal_id, goal_step_id, rrule, rdate, exdate, recurrence_end_at, origin, sync_state,
+          visibility, owner_person_id)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::timestamptz[],$15::timestamptz[],$16,'manual','local_only',
+               $17,$18)
        returning *`,
       [
         m.household_id,
@@ -486,6 +500,8 @@ export async function splitSeries(
         m.rdate,
         m.exdate,
         m.recurrence_end_at,
+        m.visibility,
+        m.owner_person_id,
       ]
     )
     const created = ins.rows[0]
@@ -578,7 +594,7 @@ export function registerEventRoutes(api: Api): void {
   api.get('/api/events/today', tenantRoute(async (tenant, req: Request) => {
     const dateParam = typeof req.query?.date === 'string' ? req.query.date : ''
     const date = DATE_RE.test(dateParam) ? dateParam : localToday()
-    const events = await todayEvents(tenant.householdId, date)
+    const events = await todayEvents(tenant.householdId, date, tenant.personId ?? null)
     return { date, events: events.map(presentEvent) }
   }))
 
@@ -589,7 +605,7 @@ export function registerEventRoutes(api: Api): void {
     if (!DATE_RE.test(from) || !DATE_RE.test(to)) {
       return res.status(400).json({ error: 'BadRequest', message: 'from and to (YYYY-MM-DD) are required' })
     }
-    const events = await rangeEvents(tenant.householdId, from, to)
+    const events = await rangeEvents(tenant.householdId, from, to, tenant.personId ?? null)
     return { from, to, events: events.map(presentEvent) }
   }))
 
@@ -597,7 +613,7 @@ export function registerEventRoutes(api: Api): void {
   api.get('/api/events/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
-    const event = await getEventById(tenant.householdId, id)
+    const event = await getEventById(tenant.householdId, id, tenant.personId ?? null)
     if (!event) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
     return { event: presentEvent(event) }
   }))

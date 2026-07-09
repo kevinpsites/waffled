@@ -123,9 +123,9 @@ const HEADS_UP_SCHEMA = {
   required: ['headline', 'body'],
 }
 
-export async function weekHeadsUp(householdId: string, from: string, to: string): Promise<{ headline: string; body: string; via: string }> {
+export async function weekHeadsUp(householdId: string, from: string, to: string, viewerPersonId: string | null): Promise<{ headline: string; body: string; via: string }> {
   const tz = await householdTz(householdId)
-  const events = await rangeEvents(householdId, from, to)
+  const events = await rangeEvents(householdId, from, to, viewerPersonId)
   const facts = weekFacts(events, tz)
   const fallback = headsUpFallback(facts)
   try {
@@ -181,10 +181,11 @@ const INSIGHT_SCHEMA = {
 
 export async function eventInsight(
   householdId: string,
-  id: string
+  id: string,
+  viewerPersonId: string | null
 ): Promise<{ headline: string; body: string; leaveBy: string | null; reminder: string; via: string } | null> {
   const tz = await householdTz(householdId)
-  const event = await getEventById(householdId, id)
+  const event = await getEventById(householdId, id, viewerPersonId)
   if (!event) return null
   const fallback = eventInsightFallback(event, tz)
   try {
@@ -243,14 +244,14 @@ export function registerCalendarAiRoutes(api: Api): void {
       to = d.toISOString().slice(0, 10)
     }
     if (from > to) [from, to] = [to, from]
-    return weekHeadsUp(tenant.householdId, from, to)
+    return weekHeadsUp(tenant.householdId, from, to, tenant.personId ?? null)
   }))
 
   // Per-event insight for the detail screen's AI card + "Remind me".
   api.get('/api/events/:id/insight', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
-    const insight = await eventInsight(tenant.householdId, id)
+    const insight = await eventInsight(tenant.householdId, id, tenant.personId ?? null)
     if (!insight) return res.status(404).json({ error: 'NotFound', message: 'event not found' })
     return insight
   }))
