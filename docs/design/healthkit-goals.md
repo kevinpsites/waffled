@@ -116,9 +116,13 @@ and every surface (iPhone/iPad/web) sees the aggregated number, never the raw he
   the last `syncCap` = 90 days. Each day's total is POSTed to `health-sync` (idempotent per
   goal/person/metric/day), then the mark advances to today. The goal detail runs the same
   catch-up on view/refresh. Manual quick-log stays allowed; health owns only the health portion
-  of the day. **Still open:** true background sync (`enableBackgroundDelivery` / `HKObserverQuery`)
-  for days the app is never opened at all, and re-catching-up a metric after a deny→grant (the
-  mark advances past denied days beyond the tail).
+  of the day. Opening the app once recovers **every** missed day since the mark (within `syncCap`),
+  so skipping days loses nothing. By design the mark advances **even while permission is denied**,
+  so a deny→grant resumes from ~grant time rather than retroactively pulling the denied period —
+  the intended behavior.
+- **Enhancement (freshness, not data recovery):** true background sync (`enableBackgroundDelivery`
+  / `HKObserverQuery`) would keep progress fresh on shared surfaces (family iPad / web) on days the
+  owner never opens their phone. Not required for correctness — the next app-open reconciles.
 - Goal card shows an **"Auto from Apple Health"** badge.
 
 **v1 metric set:** steps, flights, exercise minutes, activity rings (all stable pre-iOS-17).
