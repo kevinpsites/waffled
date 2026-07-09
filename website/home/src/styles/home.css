@@ -28,7 +28,7 @@
   --wf-night:   #1b1917;
   --wf-night-2: #262220;
 
-  --wf-serif: "Fraunces", "New York", "Iowan Old Style", ui-serif, Georgia, serif;
+  --wf-serif: "Newsreader", "New York", "Iowan Old Style", ui-serif, Georgia, serif;
   --wf-sans:  "Instrument Sans", -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   --wf-mono:  "SF Mono", ui-monospace, "JetBrains Mono", "Fira Code", monospace;
 
@@ -379,13 +379,15 @@ img { max-width: 100%; display: block; }
 .install .wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
 .install h2 { font-size: clamp(30px, 4vw, 40px); margin-top: 14px; }
 .install p { margin-top: 14px; color: var(--wf-ink-2); font-size: 17px; }
-.install .steps { margin-top: 22px; display: grid; gap: 12px; }
-.install .step { display: flex; gap: 12px; align-items: flex-start; }
+.install .steps { margin-top: 22px; display: grid; gap: 14px; }
+.install .step { display: flex; gap: 14px; align-items: flex-start; }
 .install .step .n {
-  width: 26px; height: 26px; flex: none; border-radius: 8px;
+  width: 28px; height: 28px; flex: none; border-radius: 8px;
   background: var(--wf-coral); color: #fff; font-weight: 700; font-size: 14px;
   display: grid; place-items: center; font-family: var(--wf-sans);
 }
+/* Match the first text line's height to the badge so the badge centres on it. */
+.install .step p { line-height: 28px; }
 .terminal {
   background: var(--wf-night);
   border-radius: 16px;
