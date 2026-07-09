@@ -1,0 +1,11 @@
+{
+  // Cloudflare Worker (static assets) for the docs → docs.waffled.app.
+  // Committed so the Git-connected build's `wrangler deploy` finds the built
+  // files. Contains NO secrets — those live in the dashboard only.
+  //
+  // "name" matches the docs Worker's name in the Cloudflare dashboard.
+  "name": "waffled-docs",
+  "compatibility_date": "2026-07-09",
+  // Astro/Starlight build output. Relative to this file → website/docs/dist.
+  "assets": { "directory": "./dist" }
+}
