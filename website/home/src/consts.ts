@@ -19,10 +19,12 @@ export const LINKS = {
 	license: `${GITHUB}/blob/main/LICENSE`,
 	security: `${GITHUB}/blob/main/SECURITY.md`,
 	changelog: `${GITHUB}/blob/main/CHANGELOG.md`,
-	// Managed-hosting interest. TODO: point at a real waitlist form once it exists;
-	// GitHub Discussions is the interim "register interest" destination.
-	hosted: `${GITHUB}/discussions`,
 } as const;
+
+// Managed-hosting interest form (Google Form). Paste the published form URL here
+// and the hosted card's button lights up automatically; while it's empty the
+// card just shows a muted "waitlist opening soon" line (no dead link).
+export const HOSTED_FORM_URL = '';
 
 // Feature cards → each links to its docs feature page.
 export const FEATURES = [

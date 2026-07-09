@@ -441,6 +441,15 @@ img { max-width: 100%; display: block; }
 .plan-list li { display: flex; align-items: center; gap: 10px; font-size: 15px; }
 .plan-list li::before { content: "✓"; color: var(--wf-mint); font-weight: 800; }
 .plan > .btn { align-self: flex-start; margin-top: auto; }
+.plan-note {
+  margin-top: auto; align-self: flex-start;
+  font-size: 14px; font-weight: 600; color: var(--wf-ink-2);
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.plan-note::before {
+  content: ""; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--wf-gold);
+}
 
 /* ── Community ───────────────────────────────────────────────────────────── */
 .community .wrap {

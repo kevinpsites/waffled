@@ -1,6 +1,6 @@
 ---
 import Base from '../layouts/Base.astro';
-import { LINKS, DOCS, FEATURES } from '../consts';
+import { LINKS, DOCS, FEATURES, HOSTED_FORM_URL } from '../consts';
 ---
 
 <Base>
@@ -205,7 +205,9 @@ import { LINKS, DOCS, FEATURES } from '../consts';
 						<li>Updates &amp; backups handled</li>
 						<li>Funds Waffled’s development</li>
 					</ul>
-					<a class="btn btn-ghost" href={LINKS.hosted} rel="noopener">Register interest</a>
+					{HOSTED_FORM_URL
+						? <a class="btn btn-ghost" href={HOSTED_FORM_URL} target="_blank" rel="noopener">Get notified when it’s ready</a>
+						: <span class="plan-note">Waitlist opening soon</span>}
 				</div>
 			</div>
 		</div>
