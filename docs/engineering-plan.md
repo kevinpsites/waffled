@@ -1,4 +1,9 @@
-# Roadmap
+# Engineering plan
+
+> **This is the detailed, historical engineering plan** — the original milestone-by-milestone
+> build sequence (M0–M7), backlog, and design rationale, kept for the "why" and the
+> commit-level history. For the **canonical, living status view** (what's done / partial /
+> planned today) see [`product/roadmap.md`](./product/roadmap.md).
 
 Bite-sized, committable chunks. Each line is roughly one PR — independently committable,
 ideally demoable, and not dependent on later chunks. Tackle one at a time.

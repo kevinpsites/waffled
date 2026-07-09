@@ -16,4 +16,4 @@ This folder now retains only:
 For engineering internals see the sibling docs:
 [`../ARCHITECTURE.md`](../ARCHITECTURE.md), [`../DATA_MODEL.md`](../DATA_MODEL.md),
 [`../TESTING.md`](../TESTING.md), [`../RECIPE_FORMAT.md`](../RECIPE_FORMAT.md), and the
-project plan in [`../../ROADMAP.md`](../../ROADMAP.md).
+detailed [engineering plan](../engineering-plan.md).
