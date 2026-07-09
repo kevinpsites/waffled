@@ -379,18 +379,16 @@ img { max-width: 100%; display: block; }
 .install .wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
 .install h2 { font-size: clamp(30px, 4vw, 40px); margin-top: 14px; }
 .install p { margin-top: 14px; color: var(--wf-ink-2); font-size: 17px; }
-.install .steps { margin-top: 22px; display: grid; gap: 14px; }
-.install .step { display: flex; gap: 14px; align-items: flex-start; }
+.install .steps { margin-top: 26px; display: grid; gap: 20px; }
+/* Baseline-align the numeral with the first line of its text — a text-to-text
+   baseline is metric-independent, so it never floats regardless of font/render. */
+.install .step { display: flex; gap: 16px; align-items: baseline; }
 .install .step .n {
-  width: 28px; height: 28px; flex: none; border-radius: 8px;
-  background: var(--wf-coral); color: #fff; font-weight: 700; font-size: 14px;
-  display: grid; place-items: center; font-family: var(--wf-sans);
-  /* The filled square optically centres on cap-height; nudge down so it sits
-     on the lowercase text's optical (x-height) centre of the first line. */
-  margin-top: 3px;
+  flex: none; width: 26px; text-align: right;
+  font-family: var(--wf-serif); font-weight: 600; font-size: 24px; line-height: 1;
+  color: var(--wf-coral); font-feature-settings: "lnum" 1, "tnum" 1;
 }
-/* Give the first text line the badge's height so the two share a centre line. */
-.install .step p { line-height: 28px; }
+.install .step p { line-height: 1.6; }
 .terminal {
   background: var(--wf-night);
   border-radius: 16px;
