@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that day's planned meal. It's off by default and applies to dinners out of the box (you can pick
   which meal slots), works on web, iPad, and iPhone, and pushes to Google Calendar when meal-calendar
   sync is on.
+- **Auto-fill goals from Apple Health (iPhone).** Link a goal to an Apple Health / Apple Watch
+  metric — steps, flights climbed, exercise minutes, or active energy — and its progress fills in on
+  its own. Total/count goals accumulate each day's total; a habit counts a day whenever it clears a
+  daily threshold you set ("2,000 steps a day, 5 days a week"). Opening the app catches up every day
+  since it last synced — so being away for two weeks fills all fourteen days on the next open — and
+  it never pulls data from before the goal existed. Turn it on per goal in the editor's Extras, next
+  to auto-count-from-calendar. Includes a new **Settings → Permissions** screen for managing device
+  access (Apple Health, notifications, camera, mic). iPhone-only by nature; iPad and web display the
+  synced progress.
 - **Personal vs family calendars.** Each connected Google calendar can now be marked
   **personal** (only its owner sees it, on their own profile or phone) or **family** (shows
   on the shared kiosk) — so a work calendar stays off the family board while still appearing

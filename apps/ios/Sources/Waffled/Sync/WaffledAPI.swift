@@ -1895,7 +1895,7 @@ struct WaffledAPI: Sendable {
                       goalType: goalType ?? "total", unit: unit, habitPeriod: nil, habitTargetPerPeriod: nil,
                       trackingMode: "shared_total", deadline: nil, isFeatured: false, target: target,
                       totalProgress: progress ?? 0, milestoneTotal: 0, milestoneReached: 0,
-                      streakDays: streakDays, autoFromCalendar: false, participants: [])
+                      streakDays: streakDays, autoFromCalendar: false, healthMetric: nil, createdAt: nil, participants: [])
             }
         }
         /// Alias so `asGoal` can name the outer `WaffledAPI.Goal` from inside this nested type.
@@ -2242,6 +2242,11 @@ struct WaffledAPI: Sendable {
         let streakDays: Int
         /// Goal opted in to count matching calendar events (drives "Plan time").
         let autoFromCalendar: Bool
+        /// Apple Health metric this goal auto-fills from (nil = manual). See HealthKitBridge.
+        let healthMetric: String?
+        /// ISO-8601 creation timestamp — floors the first Health sync so a new goal never
+        /// pulls steps from before it existed.
+        let createdAt: String?
         let participants: [Participant]
         struct Participant: Decodable, Hashable, Sendable {
             let personId: String
@@ -2275,6 +2280,9 @@ struct WaffledAPI: Sendable {
         let createdAt: String
         let thisWeek: Double
         let autoFromCalendar: Bool
+        let healthMetric: String?
+        /// Daily threshold for a health-linked habit ("2,000 steps a day"); nil otherwise.
+        let healthDailyTarget: Double?
         let participants: [Goal.Participant]
         let milestones: [Milestone]
         let steps: [Step]
@@ -2348,6 +2356,14 @@ struct WaffledAPI: Sendable {
         if let note, !note.isEmpty { body["note"] = .string(note) }
         if let loggedOn, !loggedOn.isEmpty { body["loggedOn"] = .string(loggedOn) }
         try await send("POST", "/api/goals/\(goalId)/log", body: body)
+    }
+
+    /// Push today's Apple Health total for a linked goal. Idempotent server-side: one
+    /// replaceable progress row per person/metric/day, so re-syncing never double-counts.
+    /// `day` is YYYY-MM-DD (household-local); `metric` is a HealthKitBridge.Metric.key.
+    func syncGoalHealth(goalId: String, metric: String, day: String, value: Double) async throws {
+        try await send("POST", "/api/goals/\(goalId)/health-sync",
+                       body: ["metric": .string(metric), "day": .string(day), "value": .double(value)])
     }
 
     /// Create a goal. Required: title, goalType (count|total|habit|checklist),

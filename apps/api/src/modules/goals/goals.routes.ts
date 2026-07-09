@@ -16,10 +16,12 @@ import {
   softDeleteGoal,
   toggleGoalStep,
   logProgress,
+  syncHealthProgress,
   goalExists,
   goalParticipantIds,
   GOAL_TYPES,
   TRACKING_MODES,
+  HEALTH_METRICS,
 } from './goals.service'
 
 type Api = ReturnType<typeof createAPI>
@@ -78,6 +80,12 @@ export function registerGoalRoutes(api: Api): void {
     if (!body.trackingMode || !TRACKING_MODES.has(body.trackingMode)) {
       return res.status(400).json({ error: 'BadRequest', message: 'trackingMode is required' })
     }
+    if (body.healthMetric != null && !HEALTH_METRICS.has(String(body.healthMetric))) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid healthMetric' })
+    }
+    if (body.healthDailyTarget != null && !(Number(body.healthDailyTarget) >= 0)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'healthDailyTarget must be a non-negative number' })
+    }
     // Carve-out: a goal that assigns no one else (nobody, or only the caller) is
     // self-scoped. Assigning another participant takes goal.manage.
     const assigned = Array.isArray(body.participantIds) ? body.participantIds.filter(Boolean) : []
@@ -104,12 +112,18 @@ export function registerGoalRoutes(api: Api): void {
   api.patch('/api/goals/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
-    const body = (req.body ?? {}) as { goalType?: string; trackingMode?: string }
+    const body = (req.body ?? {}) as { goalType?: string; trackingMode?: string; healthMetric?: unknown; healthDailyTarget?: unknown }
     if (body.goalType && !GOAL_TYPES.has(body.goalType)) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid goalType' })
     }
     if (body.trackingMode && !TRACKING_MODES.has(body.trackingMode)) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid trackingMode' })
+    }
+    if (body.healthMetric != null && !HEALTH_METRICS.has(String(body.healthMetric))) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid healthMetric' })
+    }
+    if (body.healthDailyTarget != null && !(Number(body.healthDailyTarget) >= 0)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'healthDailyTarget must be a non-negative number' })
     }
     // Carve-out: a goal whose sole participant is the caller is their own personal
     // goal — editable freely. Anything else (shared, others', or a family goal with
@@ -155,6 +169,30 @@ export function registerGoalRoutes(api: Api): void {
     }
     await logProgress(tenant, id, amount, personIds, body.note ?? null, { at: loggedOn })
     return res.status(201).json({ ok: true })
+  }))
+
+  // Apple Health auto-fill (iPhone): the client pushes its own day's total for a linked
+  // metric; we upsert it idempotently (one replaceable row per person/metric/day). Always
+  // self-scoped — you sync your own Health data — so no capability is needed.
+  api.post('/api/goals/:id/health-sync', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const id = req.params.id ?? ''
+    if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    const body = (req.body ?? {}) as { metric?: unknown; day?: unknown; value?: unknown }
+    if (typeof body.metric !== 'string' || !HEALTH_METRICS.has(body.metric)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid metric' })
+    }
+    if (typeof body.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.day)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'day must be a YYYY-MM-DD date' })
+    }
+    const value = Number(body.value)
+    if (!Number.isFinite(value) || value < 0) {
+      return res.status(400).json({ error: 'BadRequest', message: 'value must be a non-negative number' })
+    }
+    if (!(await goalExists(tenant.householdId, id))) {
+      return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    }
+    await syncHealthProgress(tenant, id, body.metric, body.day, value)
+    return res.status(200).json({ ok: true })
   }))
 
   // Tick/untick a checklist step.

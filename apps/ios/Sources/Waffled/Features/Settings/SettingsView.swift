@@ -66,11 +66,16 @@ struct SettingsView: View {
                     }
                     row("🧩", "Modules", "Optional features on/off") { path.append(.settingsModules) }
                     row("🖥️", "Display & Kiosk", "Screensaver & idle") { path.append(.settingsDisplay) }
+                }
 
-                    // System — deployment / operator config
-                    SectionLabel(text: "System").padding(.top, 8)
+                // System — device access (personal, every user on this device) + deployment
+                // config (admin-only). Always visible so anyone can manage their own
+                // permissions; AI & Capture stays admin-gated.
+                SectionLabel(text: "System").padding(.top, 8)
+                if isAdmin {
                     row("✨", "AI & Capture", "Provider & model") { path.append(.settingsAI) }
                 }
+                row("🔐", "Permissions", "Apple Health & device access") { path.append(.settingsPermissions) }
 
                 // About + sign out (ungrouped, always visible)
                 row("ℹ️", "About", "Version & server") { path.append(.settingsAbout) }

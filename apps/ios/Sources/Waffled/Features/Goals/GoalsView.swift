@@ -1,5 +1,6 @@
 import SwiftUI
 import Observation
+import UIKit
 
 /// Goals — the membership model from the web kiosk, folded onto one phone screen:
 /// a horizontal list-picker (Family / each person) up top, an All/Shared/Each
@@ -63,6 +64,33 @@ final class GoalsModel {
             try await api.logGoalProgress(goalId: goalId, amount: amount, personIds: personIds, note: note, loggedOn: loggedOn)
             await loadGoals()
         } catch { self.error = true }
+    }
+
+    /// Push today's Apple Health total for **every** health-linked goal in the household —
+    /// not just the visible list, so a linked goal in another list fills too — then refresh
+    /// the current list. iPhone-only; a no-op when HealthKit is unavailable or nothing is
+    /// linked. Best-effort; the server upsert is idempotent, so re-running is safe.
+    func syncHealth() async {
+        guard HealthKitBridge.shared.isAvailable else { return }
+        let all = (try? await api.goalsIn(listId: nil)) ?? []
+        let linked = all.compactMap { g -> (id: String, metric: HealthKitBridge.Metric, start: Date?)? in
+            HealthKitBridge.Metric(key: g.healthMetric).map { (g.id, $0, HealthKitBridge.parseTimestamp(g.createdAt)) }
+        }
+        guard !linked.isEmpty else { return }
+        try? await HealthKitBridge.shared.requestReadAuthorization()
+        // Catch up only the days since each goal's synced-through mark (a two-week absence
+        // fills all fourteen days on the next open), floored at the goal's start so a brand-new
+        // goal never pulls pre-creation steps. Then advance the mark to today.
+        let today = Date()
+        var didSync = false
+        for l in linked {
+            let days = HealthKitBridge.daysToSync(syncedThrough: HealthSyncMark.get(l.id, l.metric), today: today, notBefore: l.start)
+            for d in days {
+                if await HealthKitBridge.pushDay(api, goalId: l.id, metric: l.metric, day: d.day, key: d.key) { didSync = true }
+            }
+            HealthSyncMark.set(l.id, l.metric, today)
+        }
+        if didSync { await loadGoals() }
     }
 
     /// Create a goal, then reselect its list so it shows up. Returns success.
@@ -242,12 +270,13 @@ struct GoalsView: View {
         }
         .task {
             if model.lists.isEmpty { await model.loadLists() }
+            await model.syncHealth()
             if DemoHooks.openGoal, !Self.didOpenGoal, let f = model.featured {
                 Self.didOpenGoal = true; path.append(.goal(f))
             }
             if DemoHooks.newGoal, !Self.didOpenGoal { Self.didOpenGoal = true; creating = true }
         }
-        .refreshable { await model.loadLists() }
+        .refreshable { await model.loadLists(); await model.syncHealth() }
         .sheet(item: $logging) { g in
             GoalLogSheet(goal: g) { amount, ids, note, loggedOn in
                 Task { await model.log(goalId: g.id, amount: amount, personIds: ids, note: note, loggedOn: loggedOn) }
@@ -515,6 +544,9 @@ struct GoalLogSheet: View {
     @State private var note = ""
     /// The day this entry counts for — defaults to today, backdate to catch up a streak.
     @State private var loggedOn = Date()
+    /// Tier-0 Apple Health read-&-suggest: today's total for a metric this goal's unit
+    /// matches, offered as a one-tap pre-fill. iPhone-only; nil = nothing to suggest.
+    @State private var healthSuggestion: (metric: HealthKitBridge.Metric, value: Double)?
 
     private static let hourUnits: Set<String> = ["hour", "hours", "hr", "hrs"]
     private static let activityChips = ["Bike ride", "Park", "Sports", "Outside play", "Reading", "Art"]
@@ -541,10 +573,51 @@ struct GoalLogSheet: View {
         _who = State(initialValue: goal.participants.count == 1 ? [goal.participants[0].personId] : [])
     }
 
+    /// Tier-0 read-&-suggest: if HealthKit is available and this goal's unit maps to a
+    /// metric, pre-fetch today's total once. Denied/empty reads just leave it nil.
+    private func loadHealthSuggestion() async {
+        let hk = HealthKitBridge.shared
+        guard hk.isAvailable, let metric = HealthKitBridge.Metric.matching(unit: goal.unit) else { return }
+        try? await hk.requestReadAuthorization()
+        if let value = await hk.todayTotal(for: metric), value > 0 {
+            healthSuggestion = (metric, value)
+        }
+    }
+
+    /// One-tap pre-fill from Apple Health — sets the amount; the user still credits + logs.
+    private func healthSuggestionCard(_ s: (metric: HealthKitBridge.Metric, value: Double)) -> some View {
+        Button {
+            amount = s.value
+            amountText = goalFmt(s.value)
+        } label: {
+            HStack(spacing: 11) {
+                ZStack {
+                    Circle().fill(WF.ai.opacity(0.14)).frame(width: 34, height: 34)
+                    Image(systemName: "heart.fill").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ai)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Apple Health · today").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                    Text("\(goalFmt(s.value)) \(s.metric.label)").font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
+                }
+                Spacer()
+                Text("Use").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(Capsule().fill(WF.ai))
+            }
+            .padding(12)
+            .background(WF.card2)
+            .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    if let s = healthSuggestion { healthSuggestionCard(s) }
+
                     VStack(alignment: .leading, spacing: 9) {
                         SectionLabel(text: isHours ? "How long?" : "How much?")
                         chipRow
@@ -603,6 +676,7 @@ struct GoalLogSheet: View {
                 .padding(20)
             }
             .background(WF.canvas)
+            .task { await loadHealthSuggestion() }
             .navigationTitle("Log progress")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -807,6 +881,21 @@ struct GoalCreateSheet: View {
     private var isChecklist: Bool { goalType == "checklist" }
     private var filledSteps: [Step] { steps.filter { !$0.label.trimmingCharacters(in: .whitespaces).isEmpty } }
 
+    /// Apple Health metric this goal auto-tracks (Tier 1 discoverable picker). Picking one
+    /// sets the unit + a suggested target — no typing — and, since the unit then matches,
+    /// the Log sheet's read-&-suggest card lights up. iPhone-only (HealthKit is absent on
+    /// iPad); `nil` = "Manual". The link is carried by the unit today; a persisted
+    /// health_metric column + auto-sync are the next slice (see docs/design/healthkit-goals.md).
+    @State private var healthMetric: HealthKitBridge.Metric?
+    @State private var autoFromHealth = false
+    /// Daily threshold for a health-linked *habit* ("2,000 steps a day"). Unused by
+    /// total/count goals, which accumulate toward `target` instead.
+    @State private var healthDailyTarget = ""
+    private var healthAvailable: Bool { HealthKitBridge.shared.isAvailable }
+    /// Health auto-fill applies to numeric goals (accumulate) and habits (daily
+    /// threshold), but not checklists — and only on a device with HealthKit (iPhone).
+    private var canAutoFromHealth: Bool { healthAvailable && !isChecklist }
+
     /// Mirrors the web's per-type validation: a name, plus a valid measure.
     private var canSave: Bool {
         guard !title.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
@@ -997,6 +1086,70 @@ struct GoalCreateSheet: View {
         }
     }
 
+    /// Metric chooser revealed when "Auto-fill from Apple Health" is on (Extras). No
+    /// "Manual" chip — off = manual. Each choice fills the unit + a suggested target and
+    /// explains what Apple Health tracks for it.
+    private var healthMetricChips: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ChipFlow(spacing: 8, lineSpacing: 8) {
+                ForEach(HealthKitBridge.Metric.allCases, id: \.self) { m in
+                    healthChip(m, m.chipLabel)
+                }
+            }
+            if let m = healthMetric {
+                Text(m.explanation)
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
+                    .fixedSize(horizontal: false, vertical: true)
+                // A habit counts a day when it clears a daily threshold ("2,000 steps a
+                // day"), paired with the "N× a week" cadence in the measure section above.
+                if isHabit {
+                    HStack(spacing: 8) {
+                        Text("Reach").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
+                        numField($healthDailyTarget, width: 90)
+                        Text("\(m.label) a day").font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
+                    }
+                    .padding(.top, 2)
+                }
+            }
+            // iOS never re-prompts once a choice is made — the only recovery is Settings.
+            Button {
+                if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+            } label: {
+                Text("Not seeing your data? Manage access in Settings")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ai)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func healthChip(_ m: HealthKitBridge.Metric, _ label: String) -> some View {
+        let on = healthMetric == m
+        return Button { selectHealthMetric(m) } label: {
+            Text(label).font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(on ? .white : WF.ink2)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(on ? WF.ai : WF.card)
+                .overlay(Capsule().strokeBorder(on ? Color.clear : WF.hair, lineWidth: 1))
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Picking a metric fills a sensible default (a habit's daily threshold, or a numeric
+    /// goal's unit + target) and requests read access now (so consent happens at opt-in).
+    private func selectHealthMetric(_ m: HealthKitBridge.Metric) {
+        healthMetric = m
+        if isHabit {
+            if healthDailyTarget.trimmingCharacters(in: .whitespaces).isEmpty {
+                healthDailyTarget = String(m.suggestedTarget)
+            }
+        } else {
+            unit = m.label
+            target = String(m.suggestedTarget)
+        }
+        Task { try? await HealthKitBridge.shared.requestReadAuthorization() }
+    }
+
     /// Named checklist steps (matches the web): numbered rows you edit + add to.
     private var stepsEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1131,6 +1284,19 @@ struct GoalCreateSheet: View {
             // comes from ticking steps, not from calendar events.
             if !isChecklist {
                 extraRow("📅", "Auto-count from calendar", "Matching events add progress automatically", $autoFromCalendar)
+            }
+            // Apple Health auto-fill — an opt-in enhancement alongside calendar auto-count.
+            // Off = you log manually; on = pick a metric and progress fills from Health.
+            // iPhone-only + numeric goals only. The custom binding runs the pick/clear only
+            // on a real user toggle (prefill sets the @State directly, so it can't clobber
+            // a saved target).
+            if canAutoFromHealth {
+                extraRow("⌚", "Auto-fill from Apple Health", "Progress fills from your iPhone & Apple Watch",
+                         Binding(get: { autoFromHealth }, set: { on in
+                             autoFromHealth = on
+                             if on { selectHealthMetric(healthMetric ?? .steps) } else { healthMetric = nil }
+                         }))
+                if autoFromHealth { healthMetricChips.padding(.top, 4).padding(.bottom, 10) }
             }
             // NOTE: the mock's "🔔 Weekly check-in" toggle is intentionally omitted —
             // there's no backend for it yet (tracked in docs/product/roadmap.md).
@@ -1421,6 +1587,12 @@ struct GoalCreateSheet: View {
         if !g.steps.isEmpty {
             steps = g.steps.map { .init(existingId: $0.id, label: $0.label) }
         }
+        // Restore the health auto-fill selection from the persisted link (falling back to
+        // unit-matching for goals created before health_metric existed). Set the @State
+        // directly (not via the toggle's binding) so the saved target isn't overwritten.
+        healthMetric = HealthKitBridge.Metric(key: g.healthMetric) ?? HealthKitBridge.Metric.matching(unit: unit)
+        autoFromHealth = healthMetric != nil
+        if let t = g.healthDailyTarget { healthDailyTarget = goalFmt(t) }
     }
 
     private static func parseDay(_ iso: String) -> Date? {
@@ -1441,6 +1613,12 @@ struct GoalCreateSheet: View {
             // Checklist progress comes from steps, never from the calendar.
             "autoFromCalendar": .bool(isChecklist ? false : autoFromCalendar),
             "unit": (isHabit || isChecklist) ? .null : (unit.trimmingCharacters(in: .whitespaces).isEmpty ? .null : .string(unit.trimmingCharacters(in: .whitespaces))),
+            // Apple Health link (numeric goals only). Null when off/manual — including on
+            // edit, so turning the toggle off clears the stored link server-side.
+            "healthMetric": (canAutoFromHealth && autoFromHealth) ? (healthMetric.map { .string($0.key) } ?? .null) : .null,
+            // Daily threshold only for a health-linked habit; null everywhere else.
+            "healthDailyTarget": (canAutoFromHealth && autoFromHealth && isHabit)
+                ? (Double(healthDailyTarget).map(JSONValue.double) ?? .null) : .null,
             "deadline": hasDeadline ? .string(isoDay(deadline)) : .null,
         ]
         if isHabit {
@@ -1500,6 +1678,22 @@ final class GoalDetailModel {
         loading = false
     }
 
+    /// Sync this goal's linked Health metric when the detail is viewed/refreshed, so its
+    /// progress fills from the detail too — not only from the goals list. No-op if unlinked.
+    func syncHealth() async {
+        guard HealthKitBridge.shared.isAvailable,
+              let m = HealthKitBridge.Metric(key: detail?.healthMetric ?? goal.healthMetric) else { return }
+        try? await HealthKitBridge.shared.requestReadAuthorization()
+        let today = Date()
+        let start = HealthKitBridge.parseTimestamp(detail?.createdAt ?? goal.createdAt)
+        var didSync = false
+        for d in HealthKitBridge.daysToSync(syncedThrough: HealthSyncMark.get(goal.id, m), today: today, notBefore: start) {
+            if await HealthKitBridge.pushDay(api, goalId: goal.id, metric: m, day: d.day, key: d.key) { didSync = true }
+        }
+        HealthSyncMark.set(goal.id, m, today)
+        if didSync { await load() }
+    }
+
     func update(_ body: [String: JSONValue]) async {
         do { try await api.updateGoal(id: goal.id, body); await load() }
         catch { self.error = true }
@@ -1557,7 +1751,8 @@ struct GoalDetailView: View {
                      trackingMode: goal.trackingMode, deadline: goal.deadline, isFeatured: goal.isFeatured,
                      target: target, totalProgress: progress, milestoneTotal: goal.milestoneTotal,
                      milestoneReached: goal.milestoneReached, streakDays: goal.streakDays,
-                     autoFromCalendar: goal.autoFromCalendar, participants: participants)
+                     autoFromCalendar: goal.autoFromCalendar, healthMetric: goal.healthMetric,
+                     createdAt: goal.createdAt, participants: participants)
     }
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
@@ -1598,8 +1793,8 @@ struct GoalDetailView: View {
                 }
             }
         }
-        .task { await model.load() }
-        .refreshable { await model.load() }
+        .task { await model.load(); await model.syncHealth() }
+        .refreshable { await model.load(); await model.syncHealth() }
         .sheet(isPresented: $logging) {
             GoalLogSheet(goal: logGoal) { amount, ids, note, loggedOn in
                 Task { await model.log(amount: amount, personIds: ids, note: note, loggedOn: loggedOn) }
