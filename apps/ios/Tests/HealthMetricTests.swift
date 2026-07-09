@@ -31,11 +31,14 @@ import Testing
         #expect(boolean == ["move_ring", "exercise_ring", "stand_ring", "rings_all", "mood"])
     }
 
-    @Test func booleanMetricsApplyToHabitsOnly() {
+    @Test func booleanMetricsApplyToHabitAndCountGoals() {
+        // A ring/mood is met-or-not per day, so it can drive a habit (a streak) or a COUNT
+        // of met-days ("close the Exercise ring 15× this month"). There's nothing to *sum*,
+        // so it's never offered on a total, and never on a checklist.
         for m in HealthKitBridge.Metric.allCases where m.isBoolean {
             #expect(m.applies(toGoalType: "habit"))
+            #expect(m.applies(toGoalType: "count"))
             #expect(!m.applies(toGoalType: "total"))
-            #expect(!m.applies(toGoalType: "count"))
             #expect(!m.applies(toGoalType: "checklist"))
         }
     }

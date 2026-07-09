@@ -235,6 +235,36 @@ describe('goals — Apple Health Tier 2 metrics', () => {
     expect((await sync(id, '2026-07-08', 1, 'mood')).statusCode).toBe(200)
     expect((await getGoal(id)).totalProgress).toBe(1)
   })
+
+  // A boolean metric on a COUNT goal ("close my Exercise ring 15× this month") — each met
+  // day contributes its raw value of 1, so the count accumulates one per closed day, an open
+  // day adds nothing, and a day later corrected to open is replaced in place (drops back out).
+  // No habit threshold is involved; this rides the plain total/count accumulation path.
+  it('counts ring closures on a count goal — one per closed day, self-correcting', async () => {
+    const id = await createGoal({
+      title: 'Close my Exercise ring 15×', goalType: 'count', unit: 'days', targetValue: 15,
+      healthMetric: 'exercise_ring',
+    })
+    // Two separate closed days → count 2.
+    expect((await sync(id, '2026-07-08', 1, 'exercise_ring')).statusCode).toBe(200)
+    expect((await sync(id, '2026-07-09', 1, 'exercise_ring')).statusCode).toBe(200)
+    expect((await getGoal(id)).totalProgress).toBe(2)
+    // An open day adds nothing.
+    expect((await sync(id, '2026-07-10', 0, 'exercise_ring')).statusCode).toBe(200)
+    expect((await getGoal(id)).totalProgress).toBe(2)
+    // A previously-counted day corrected to open drops back out (replace-in-place).
+    expect((await sync(id, '2026-07-08', 0, 'exercise_ring')).statusCode).toBe(200)
+    expect((await getGoal(id)).totalProgress).toBe(1)
+  })
+
+  it('counts mood entries on a count goal — "log my mood 20 days"', async () => {
+    const id = await createGoal({
+      title: 'Log my mood 20 days', goalType: 'count', unit: 'days', targetValue: 20, healthMetric: 'mood',
+    })
+    expect((await sync(id, '2026-07-08', 1, 'mood')).statusCode).toBe(200)
+    expect((await sync(id, '2026-07-09', 1, 'mood')).statusCode).toBe(200)
+    expect((await getGoal(id)).totalProgress).toBe(2)
+  })
 })
 
 describe('goals — /health-sync validation', () => {

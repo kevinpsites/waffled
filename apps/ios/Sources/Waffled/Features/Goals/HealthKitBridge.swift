@@ -23,9 +23,11 @@ final class HealthKitBridge {
     /// The metrics we can read a same-day cumulative total for in Tier 0. Tier 1 adds the
     /// stored per-goal link (activity rings / mindful / mood ride in with later tiers).
     enum Metric: CaseIterable {
+        // Declaration order drives the editor's chip order — keep the boolean rings
+        // grouped together at the end, after the numeric metrics + mindful + mood.
         case steps, flights, exerciseMinutes, activeEnergy
-        case moveRing, exerciseRing, standRing, ringsAll
         case mindfulMinutes, mood
+        case moveRing, exerciseRing, standRing, ringsAll
 
         /// Canonical key persisted server-side (goals.health_metric) and sent to
         /// /health-sync. Must match the API's HEALTH_METRICS set.
@@ -72,12 +74,14 @@ final class HealthKitBridge {
             }
         }
 
-        /// Which goal types can link this metric. Booleans are habit-only; quantity metrics
-        /// fit count/total (accumulate) and habit (daily threshold). Never checklists.
+        /// Which goal types can link this metric. Quantity metrics fit habit (daily
+        /// threshold), total (sum), and count. A boolean (ring/mood) is met-or-not per day,
+        /// so it drives a habit (streak) or a *count* of met-days ("close the ring 15×") —
+        /// but there's nothing to sum, so never a total. Never checklists.
         func applies(toGoalType goalType: String) -> Bool {
             switch goalType {
-            case "habit":          return true
-            case "count", "total": return !isBoolean
+            case "habit", "count": return true
+            case "total":          return !isBoolean
             default:               return false   // checklist / unknown
             }
         }
@@ -145,9 +149,9 @@ final class HealthKitBridge {
             case .exerciseMinutes: return "Exercise"
             case .activeEnergy:    return "Energy"
             case .mindfulMinutes:  return "Mindful"
-            case .moveRing:        return "Move"
+            case .moveRing:        return "Move ring"
             case .exerciseRing:    return "Exercise ring"
-            case .standRing:       return "Stand"
+            case .standRing:       return "Stand ring"
             case .ringsAll:        return "All rings"
             case .mood:            return "Mood"
             }

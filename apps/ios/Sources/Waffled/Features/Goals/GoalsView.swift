@@ -1223,6 +1223,11 @@ struct GoalCreateSheet: View {
             } else if changed || healthDailyTarget.trimmingCharacters(in: .whitespaces).isEmpty {
                 healthDailyTarget = String(m.suggestedTarget)
             }
+        } else if m.isBoolean {
+            // A boolean on a *count* goal accumulates met-days ("close the ring 15×"):
+            // the unit is days and the target is a count, not the per-day met-value of 1.
+            unit = "days"
+            if changed || target.trimmingCharacters(in: .whitespaces).isEmpty { target = "20" }
         } else {
             unit = m.label
             target = String(m.suggestedTarget)
@@ -1231,9 +1236,11 @@ struct GoalCreateSheet: View {
     }
 
     /// Chosen from the "See your Health data" picker: configure the goal around the metric —
-    /// booleans force a habit — turn auto-fill on, seed a title, and select it.
+    /// turn auto-fill on, seed a title, and select it. If the current goal type can't take
+    /// the metric (e.g. a ring on a total), fall to habit; a boolean already on a count goal
+    /// stays a count ("close the ring 15×").
     private func pickFromHealth(_ m: HealthKitBridge.Metric) {
-        if m.isBoolean { goalType = "habit" }
+        if !m.applies(toGoalType: goalType) { goalType = "habit" }
         autoFromHealth = true
         if title.trimmingCharacters(in: .whitespaces).isEmpty { title = m.chipLabel }
         selectHealthMetric(m)
