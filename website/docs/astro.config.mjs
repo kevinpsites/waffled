@@ -6,7 +6,7 @@ import starlight from '@astrojs/starlight';
 export default defineConfig({
 	// GitHub-Pages-friendly: `site` + `base` read from env so this works at the
 	// root locally (defaults) and under a project subpath when deployed.
-	site: process.env.DOCS_SITE || 'https://waffled.app',
+	site: process.env.DOCS_SITE || 'https://docs.waffled.app',
 	base: process.env.DOCS_BASE || '/',
 	integrations: [
 		starlight({

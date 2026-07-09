@@ -1,0 +1,48 @@
+---
+import { LINKS } from '../consts';
+---
+
+<footer class="footer">
+	<div class="wrap">
+		<div class="footer-grid">
+			<div>
+				<a class="brand" href="/">
+					<img src="/waffled-logo.png" alt="" width="30" height="30" />
+					Waffled
+				</a>
+				<p class="blurb">The self-hosted family hub. One household, one source of truth — on your hardware, in your control.</p>
+			</div>
+			<div>
+				<h4>Product</h4>
+				<ul>
+					<li><a href="#features">Features</a></li>
+					<li><a href={LINKS.comparison}>Comparison</a></li>
+					<li><a href={LINKS.changelog}>Changelog</a></li>
+					<li><a href={LINKS.faq}>FAQ</a></li>
+				</ul>
+			</div>
+			<div>
+				<h4>Docs</h4>
+				<ul>
+					<li><a href={LINKS.quickStart}>Quick start</a></li>
+					<li><a href={LINKS.install}>Install</a></li>
+					<li><a href={LINKS.requirements}>Requirements</a></li>
+					<li><a href={LINKS.api}>API reference</a></li>
+				</ul>
+			</div>
+			<div>
+				<h4>Project</h4>
+				<ul>
+					<li><a href={LINKS.github} rel="noopener">GitHub</a></li>
+					<li><a href={LINKS.contributing}>Contributing</a></li>
+					<li><a href={LINKS.security} rel="noopener">Security</a></li>
+					<li><a href={LINKS.license} rel="noopener">License (AGPL-3.0)</a></li>
+				</ul>
+			</div>
+		</div>
+		<div class="footer-bottom">
+			<span>© 2026 Waffled · Self-hosted &amp; open source</span>
+			<span>Built for families who’d rather own their data.</span>
+		</div>
+	</div>
+</footer>
