@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="website/src/assets/waffled-logo.png" alt="Waffled" width="180">
+  <img src="website/docs/src/assets/waffled-logo.png" alt="Waffled" width="180">
 </p>
 
 <h1 align="center">Waffled — Family Hub</h1>
@@ -8,6 +8,10 @@
   <strong><a href="https://docs.waffled.app">📖 Documentation</a></strong>
   &nbsp;·&nbsp; <a href="#self-hosting-quickstart">Quickstart</a>
   &nbsp;·&nbsp; <a href="https://github.com/kevinpsites/waffled/releases">Releases</a>
+</p>
+
+<p align="center">
+  <img src="docs/product/screenshots/demo.gif" alt="Waffled across the Today dashboard, calendar, chores, meal planner and pantry" width="820">
 </p>
 
 A shared family operating system rendered across three surfaces:
@@ -92,7 +96,7 @@ prints a health table. Migrations are idempotent, so it's safe to re-run.
 Waffled also checks GitHub for new releases and shows **Settings → System Health →
 "Update available"** when you're behind (on by default; disable with
 `UPDATE_CHECK_ENABLED=false`). Full details, including pinning a specific version and
-rolling back: the [upgrading guide](website/src/content/docs/operations/upgrading.md).
+rolling back: the [upgrading guide](website/docs/src/content/docs/operations/upgrading.md).
 
 ### Image source (optional)
 
@@ -230,11 +234,11 @@ non-interactively (e.g. over plain SSH).
 
 1. Run it — the [Self-hosting quickstart](#self-hosting-quickstart) above (`./waffled up`).
 2. Read `docs/ARCHITECTURE.md` — the decisions and why.
-3. Read the docs site (built from `website/`, Astro Starlight) — the user-facing docs and the feature matrix (source: `website/src/content/docs/reference/features.md`).
+3. Read the docs site (built from `website/docs/`, Astro Starlight) — the user-facing docs and the feature matrix (source: `website/docs/src/content/docs/reference/features.md`).
 4. Follow `docs/engineering-plan.md` — the milestone plan in bite-sized, committable chunks.
 
 > Only setting up Google Calendar sync? The **Google Calendar** admin guide on the docs site
-> (`website/src/content/docs/administration/google-calendar.md`) has the OAuth-client walkthrough.
+> (`website/docs/src/content/docs/administration/google-calendar.md`) has the OAuth-client walkthrough.
 
 ## The stack in one breath
 

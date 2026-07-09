@@ -1,0 +1,43 @@
+---
+import { LINKS } from '../consts';
+---
+
+<header class="nav" id="nav">
+	<div class="nav-inner">
+		<a class="brand" href="/">
+			<img src="/waffled-logo.png" alt="" width="30" height="30" />
+			Waffled
+		</a>
+		<button class="nav-toggle" id="navToggle" aria-label="Menu" aria-expanded="false">
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+		</button>
+		<nav class="nav-links" id="navLinks">
+			<a class="navlink" href="#features">Features</a>
+			<a class="navlink" href="#surfaces">How it works</a>
+			<a class="navlink" href="#run">Hosting</a>
+			<a class="navlink" href={LINKS.docs}>Docs</a>
+			<a class="navlink" href={LINKS.github} rel="noopener">GitHub</a>
+			<a class="btn btn-primary nav-cta" href={LINKS.quickStart}>Get started</a>
+		</nav>
+	</div>
+</header>
+
+<script>
+	const nav = document.getElementById('nav');
+	const onScroll = () => nav?.classList.toggle('scrolled', window.scrollY > 8);
+	onScroll();
+	window.addEventListener('scroll', onScroll, { passive: true });
+
+	const toggle = document.getElementById('navToggle');
+	const links = document.getElementById('navLinks');
+	toggle?.addEventListener('click', () => {
+		const open = links?.classList.toggle('open');
+		toggle.setAttribute('aria-expanded', String(!!open));
+	});
+	links?.addEventListener('click', (e) => {
+		if ((e.target as HTMLElement).tagName === 'A') {
+			links.classList.remove('open');
+			toggle?.setAttribute('aria-expanded', 'false');
+		}
+	});
+</script>

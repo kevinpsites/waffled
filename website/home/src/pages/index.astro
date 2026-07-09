@@ -1,0 +1,281 @@
+---
+import Base from '../layouts/Base.astro';
+import { LINKS, DOCS, FEATURES, HOSTED_FORM_URL } from '../consts';
+---
+
+<Base>
+	<!-- ── Hero ─────────────────────────────────────────────────────────── -->
+	<section class="hero">
+		<div class="wrap hero-grid">
+			<div>
+				<span class="eyebrow rise d1">Self-hosted · Open source · Yours</span>
+				<h1 class="rise d1">One household,<br /><span class="accent">one source</span> of truth.</h1>
+				<p class="lede rise d2">
+					Waffled is the family hub you run yourself — calendar, chores, meals,
+					lists, pantry, goals and photos, on your kitchen kiosk, your phone,
+					and your own server. No cloud, no ads, no data mining.
+				</p>
+				<div class="hero-actions rise d3">
+					<a class="btn btn-primary btn-lg" href={LINKS.quickStart}>
+						Get started
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+					</a>
+					<a class="btn btn-ghost btn-lg" href={LINKS.github} rel="noopener">
+						<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.8-1.3-1.8-1.1-.7 0-.7 0-.7 1.2 0 1.9 1.2 1.9 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2 0-.3-.5-1.5.2-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.8 18.3 5 18.3 5c.7 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5Z"/></svg>
+						View on GitHub
+					</a>
+				</div>
+				<div class="code-chip rise d3">
+					<span class="prompt">$</span>
+					<code>git clone … &amp;&amp; ./waffled up</code>
+					<button class="copy" data-copy="git clone https://github.com/kevinpsites/waffled && cd waffled && ./waffled up">Copy</button>
+				</div>
+				<div class="hero-meta rise d4">
+					<span><i class="dot" style="background:var(--wf-mint)"></i> Docker, one command</span>
+					<span><i class="dot" style="background:var(--wf-coral)"></i> Runs on a Raspberry Pi</span>
+					<span><i class="dot" style="background:var(--wf-violet)"></i> Native iOS app</span>
+				</div>
+			</div>
+
+			<!-- Real kiosk screenshot (Seinfelds demo household) inside a browser frame -->
+			<div class="hero-visual rise d3">
+				<div class="device">
+					<div class="device-bar">
+						<i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>
+						<span class="pill"></span>
+					</div>
+					<img
+						class="device-shot"
+						src="/screenshots/today-dashboard.png"
+						width="2000"
+						height="1250"
+						alt="The Waffled Today dashboard on a kitchen kiosk — the day's events, family chores with stars, tonight's dinner, the week's meal plan, pantry and countdowns at a glance"
+					/>
+				</div>
+			</div>
+		</div>
+
+		<!-- trust strip -->
+		<div class="trust">
+			<div class="trust-inner">
+				<span>🔒 Your data stays on your server</span>
+				<span>🧩 Modular — turn features on &amp; off</span>
+				<span>📟 Kiosk · 📱 iOS · 🖥️ Web</span>
+				<span>⚖️ AGPL-3.0 open source</span>
+			</div>
+		</div>
+	</section>
+
+	<!-- ── Features ─────────────────────────────────────────────────────── -->
+	<section class="section" id="features">
+		<div class="wrap">
+			<div class="section-head">
+				<span class="eyebrow">Everything the household needs</span>
+				<h2>One hub, every corner of family life</h2>
+				<p>Each module is independent — enable only what your family uses. It all lives together on the Today dashboard.</p>
+			</div>
+			<div class="features">
+				{FEATURES.map((f) => (
+					<a class="feature" href={`${DOCS}/${f.slug}/`}>
+						<div class="ic">{f.icon}</div>
+						<h3>{f.title}</h3>
+						<p>{f.blurb}</p>
+						<span class="go">Learn more →</span>
+					</a>
+				))}
+			</div>
+		</div>
+	</section>
+
+	<!-- ── Three surfaces ───────────────────────────────────────────────── -->
+	<section class="section" id="surfaces" style="background:var(--wf-panel)">
+		<div class="wrap">
+			<div class="section-head">
+				<span class="eyebrow">Three surfaces, one household</span>
+				<h2>At home, on the go, on your terms</h2>
+				<p>The same data, shown the right way in every place your family looks.</p>
+			</div>
+			<div class="showcase">
+				<div class="device-cluster">
+					<div class="frame-ipad">
+						<img
+							src="/screenshots/ipad-home.png"
+							width="1300" height="975" loading="lazy"
+							alt="Waffled running full-screen on an iPad kitchen kiosk — a family water-drinking goal with per-person progress, the week's plan, countdowns, chores, grocery list and pantry"
+						/>
+					</div>
+					<div class="frame-iphone">
+						<img
+							src="/screenshots/iphone-home.png"
+							width="760" height="1651" loading="lazy"
+							alt="Waffled's native iOS app — the Today screen with events, countdowns and tonight's dinner"
+						/>
+					</div>
+				</div>
+				<ul class="surface-list">
+					<li>
+						<div class="s-ic">📟</div>
+						<div>
+							<h3>Kitchen kiosk</h3>
+							<p>Pin a tablet to the fridge — a big, touch-friendly Today dashboard the whole house glances at, with a photo screensaver when it’s idle.</p>
+						</div>
+					</li>
+					<li>
+						<div class="s-ic">📱</div>
+						<div>
+							<h3>iOS app</h3>
+							<p>A native SwiftUI app with offline sync, local reminders, and Apple Health goals. Add a chore or check the list from anywhere.</p>
+						</div>
+					</li>
+					<li>
+						<div class="s-ic">🖥️</div>
+						<div>
+							<h3>Your server</h3>
+							<p>One Docker command brings up the API, database, and sync engine — the data behind every screen never leaves hardware you control.</p>
+						</div>
+					</li>
+				</ul>
+			</div>
+		</div>
+	</section>
+
+	<!-- ── Own your data band ───────────────────────────────────────────── -->
+	<section class="section band">
+		<div class="wrap">
+			<div class="section-head">
+				<span class="eyebrow">Why self-host</span>
+				<h2>Your family’s life isn’t a product</h2>
+				<p>Waffled is open source and runs entirely on your hardware. No accounts to sell, no telemetry to phone home, no subscription.</p>
+			</div>
+			<div class="pillars">
+				<div class="pillar">
+					<div class="ic">🔒</div>
+					<h3>Own your data</h3>
+					<p>Every photo, chore, and calendar entry lives in your own Postgres — full backup &amp; restore built in.</p>
+				</div>
+				<div class="pillar">
+					<div class="ic">🚫</div>
+					<h3>No cloud lock-in</h3>
+					<p>No third-party servers in the loop. Works fully on your LAN, even offline.</p>
+				</div>
+				<div class="pillar">
+					<div class="ic">🧠</div>
+					<h3>Bring your own AI</h3>
+					<p>Point the capture bar at local Ollama or your own key. Nothing is sent anywhere you didn’t choose.</p>
+				</div>
+				<div class="pillar">
+					<div class="ic">⚖️</div>
+					<h3>Open &amp; auditable</h3>
+					<p>AGPL-3.0 licensed. Read the code, file an issue, or build your own module.</p>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<!-- ── Two ways to run it ───────────────────────────────────────────── -->
+	<section class="section" id="run">
+		<div class="wrap">
+			<div class="section-head">
+				<span class="eyebrow">Two ways to run Waffled</span>
+				<h2>Host it yourself, or let us host it</h2>
+				<p>Same app, same features either way. The only question is who runs the server.</p>
+			</div>
+			<div class="plans">
+				<div class="plan plan-primary">
+					<div class="plan-top">
+						<span class="plan-badge">Free &amp; open source</span>
+						<h3>Self-host it</h3>
+						<p>Clone the repo, run <code>./waffled up</code>, done. Waffled is AGPL open source and free — forever. Every byte lives on hardware you control, and it’s the whole app: nothing held back behind a paywall.</p>
+					</div>
+					<ul class="plan-list">
+						<li>Free forever</li>
+						<li>Your hardware, your data</li>
+						<li>Every feature, no tiers</li>
+					</ul>
+					<a class="btn btn-primary" href={LINKS.quickStart}>Read the quick start</a>
+				</div>
+				<div class="plan plan-soon">
+					<div class="plan-top">
+						<span class="plan-badge soon">Coming soon</span>
+						<h3>Let us host it</h3>
+						<p>Don’t want to run a server? We’ll host a managed Waffled for you — kept updated, backed up, and online, so you just use it. It’s a paid plan, and it’s what funds the open-source project.</p>
+					</div>
+					<ul class="plan-list">
+						<li>No server to run</li>
+						<li>Updates &amp; backups handled</li>
+						<li>Funds Waffled’s development</li>
+					</ul>
+					{HOSTED_FORM_URL
+						? <a class="btn btn-ghost" href={HOSTED_FORM_URL} target="_blank" rel="noopener">Get notified when it’s ready</a>
+						: <span class="plan-note">Waitlist opening soon</span>}
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<!-- ── Install ──────────────────────────────────────────────────────── -->
+	<section class="section install">
+		<div class="wrap">
+			<div>
+				<span class="eyebrow">Up in minutes</span>
+				<h2>If you can run Docker, you can run Waffled</h2>
+				<p>Clone the repo and run one command. It pulls prebuilt images, runs migrations, and starts the whole stack.</p>
+				<div class="steps">
+					<div class="step"><span class="n">1</span><p><strong>Clone</strong> the repository onto any machine with Docker.</p></div>
+					<div class="step"><span class="n">2</span><p><strong><code>./waffled up</code></strong> — API, database, and sync engine come online.</p></div>
+					<div class="step"><span class="n">3</span><p><strong>Open the kiosk</strong>, sign in, and invite your household.</p></div>
+				</div>
+				<div class="hero-actions" style="margin-top:26px">
+					<a class="btn btn-primary" href={LINKS.quickStart}>Read the quick start</a>
+					<a class="btn btn-ghost" href={LINKS.requirements}>Requirements</a>
+				</div>
+			</div>
+			<div class="terminal">
+				<div class="terminal-bar">
+					<i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>
+					<span>bash</span>
+				</div>
+				<pre><code><span class="c"># grab it and bring the stack up</span>
+<span class="p">$</span> git clone https://github.com/kevinpsites/waffled
+<span class="p">$</span> cd waffled
+<span class="p">$</span> ./waffled up
+
+<span class="g">✓</span> pulling images (pinned to release)
+<span class="g">✓</span> running migrations
+<span class="g">✓</span> api · postgres · sync   <span class="g">healthy</span>
+
+  Kiosk ready at <span class="p">http://localhost:8080</span></code></pre>
+			</div>
+		</div>
+	</section>
+
+	<!-- ── Community / CTA ──────────────────────────────────────────────── -->
+	<section class="section community">
+		<div class="wrap">
+			<span class="eyebrow" style="justify-content:center; display:flex">Open source</span>
+			<h2>Built in the open — join in</h2>
+			<p>Waffled is free and open source. Star it on GitHub, open an issue, or bring the docs up and self-host your own hub this weekend.</p>
+			<div class="row">
+				<a class="btn btn-primary btn-lg" href={LINKS.github} rel="noopener">
+					<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" width="18" height="18"><path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.8-1.3-1.8-1.1-.7 0-.7 0-.7 1.2 0 1.9 1.2 1.9 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2 0-.3-.5-1.5.2-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.8 18.3 5 18.3 5c.7 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5Z"/></svg>
+					Star on GitHub
+				</a>
+				<a class="btn btn-ghost btn-lg" href={LINKS.docs}>Explore the docs</a>
+			</div>
+		</div>
+	</section>
+</Base>
+
+<script>
+	// Copy-to-clipboard on the hero install chip.
+	document.querySelectorAll<HTMLButtonElement>('.copy').forEach((btn) => {
+		btn.addEventListener('click', async () => {
+			try {
+				await navigator.clipboard.writeText(btn.dataset.copy || '');
+				const prev = btn.textContent;
+				btn.textContent = 'Copied!';
+				setTimeout(() => { btn.textContent = prev; }, 1400);
+			} catch { /* clipboard unavailable — no-op */ }
+		});
+	});
+</script>

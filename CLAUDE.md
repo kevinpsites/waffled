@@ -32,7 +32,7 @@ real HTTP routes against a throwaway Postgres (`@testcontainers/postgresql` + `r
    entry records that something changed; it does **not** teach anyone how to use it. So when you
    finish a user-facing feature (or change one enough that the old docs are now wrong), also
    surface it where users actually look: the **features reference**
-   (`website/src/content/docs/reference/features.md`), the **product roadmap**
+   (`website/docs/src/content/docs/reference/features.md`), the **product roadmap**
    (`docs/product/roadmap.md` — move the item from *Planned* to *Done*, or trim it to the part
    still outstanding), and a **how-to page** under the docs site when the feature needs
    explaining (setup, permissions, gotchas — e.g. an iPhone-only capability with an OS
