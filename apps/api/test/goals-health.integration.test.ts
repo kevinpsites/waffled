@@ -137,6 +137,24 @@ describe('goals — /health-sync counting (total/count)', () => {
     expect((await sync(id, '2026-07-09', 5000)).statusCode).toBe(200)
     expect((await getGoal(id)).totalProgress).toBe(14000)
   })
+
+  it('fills two goals linked to the same metric independently', async () => {
+    // Guards the contract the iOS client relies on: the day's total must be synced to
+    // EACH linked goal separately (a goal in another list still fills), with no
+    // cross-contamination between goals.
+    const a = await createGoal({ title: 'Steps A', goalType: 'total', unit: 'steps', targetValue: 100000, healthMetric: 'steps' })
+    const b = await createGoal({ title: 'Steps B', goalType: 'total', unit: 'steps', targetValue: 100000, healthMetric: 'steps' })
+
+    expect((await sync(a, '2026-07-08', 9000)).statusCode).toBe(200)
+    expect((await sync(b, '2026-07-08', 9000)).statusCode).toBe(200)
+    expect((await getGoal(a)).totalProgress).toBe(9000)
+    expect((await getGoal(b)).totalProgress).toBe(9000)
+
+    // Re-syncing only A leaves B untouched.
+    expect((await sync(a, '2026-07-08', 12000)).statusCode).toBe(200)
+    expect((await getGoal(a)).totalProgress).toBe(12000)
+    expect((await getGoal(b)).totalProgress).toBe(9000)
+  })
 })
 
 describe('goals — /health-sync counting (habit daily threshold)', () => {
