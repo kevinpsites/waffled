@@ -155,6 +155,21 @@ enum ChoreDates {
         return "since \(DateFmt.string(due, "MMM d", .current))"
     }
 
+    /// Client-side "due …" suffix for a future-dated one-off that's already on the list
+    /// (web parity: Tasks.tsx `upcomingLabel`) — its `dueOn` is after the day being
+    /// viewed. nil when the due date is today or already past (that's the overdue case).
+    static func upcomingLabel(dueOn: String?, viewing: String) -> String? {
+        guard let dueOn,
+              let due = DateFmt.date(dueOn, "yyyy-MM-dd", .current),
+              let view = DateFmt.date(viewing, "yyyy-MM-dd", .current) else { return nil }
+        let cal = Calendar.current
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: view), to: cal.startOfDay(for: due)).day ?? 0
+        guard days >= 1 else { return nil }
+        if days == 1 { return "due tomorrow" }
+        if days < 7 { return "due \(DateFmt.string(due, "EEE", .current))" }
+        return "due \(DateFmt.string(due, "MMM d", .current))"
+    }
+
     /// Format a stored "HH:mm" due time as a friendly "4:30 PM" (web parity). nil for
     /// empty/absent input.
     static func timeLabel(_ hhmm: String?) -> String? {
@@ -789,6 +804,15 @@ struct ChoresView: View {
                                 .foregroundStyle(WF.primaryD)
                                 .padding(.horizontal, 7).padding(.vertical, 2)
                                 .background(WF.primary.opacity(0.12)).clipShape(Capsule())
+                                .lineLimit(1)
+                        } else if !isDone, !isAwaiting,
+                                  let due = ChoreDates.upcomingLabel(dueOn: inst.dueOn, viewing: model.date) {
+                            // Future-dated one-off already on the list: calm "not yet due" hint.
+                            Text(due)
+                                .font(.system(size: 10.5, weight: .heavy))
+                                .foregroundStyle(WF.ink3)
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(WF.ink3.opacity(0.10)).clipShape(Capsule())
                                 .lineLimit(1)
                         }
                     }

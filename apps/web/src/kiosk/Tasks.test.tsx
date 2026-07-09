@@ -71,6 +71,18 @@ describe('Tasks screen', () => {
     )
   })
 
+  it('shows a calm "due …" hint on a future-dated one-off (not "overdue")', async () => {
+    const future = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10)
+    mockInstances([
+      { id: '5', choreTitle: 'Return library books', emoji: '📚', personId: 'p1', personName: 'Wally', status: 'pending', rewardAmount: 2, dueOn: future, rrule: null } as unknown as Inst,
+    ])
+    renderTasks(<Tasks />)
+    expect(await screen.findByText(/Return library books/)).toBeInTheDocument()
+    // present today with a "due …" badge, and NOT flagged overdue
+    expect(screen.getByText(/^due /)).toBeInTheDocument()
+    expect(screen.queryByText(/overdue/)).not.toBeInTheDocument()
+  })
+
   it('always shows Up-for-grabs and every person — even with no chores', async () => {
     // Wally has a chore; Lottie and Kevin have none. All three (+ Up for grabs) should appear.
     mockInstances(

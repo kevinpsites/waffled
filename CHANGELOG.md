@@ -36,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   another parent's sign-off. It still appears for kids, teens, and up-for-grabs chores.
 
 ### Fixed
+- **A one-off chore due later now shows on the list right away (web + iOS).** A task you add
+  today with a future due date used to vanish until the due date arrived. It now appears on the
+  list from the day you create it — with a calm "due tomorrow / due Fri" hint — and only flips to
+  "overdue" once its due date passes. It also counts toward the day's totals, so the list and the
+  rings stay in sync.
 
 ## [0.5.0] - 2026-07-08
 

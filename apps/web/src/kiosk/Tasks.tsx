@@ -45,6 +45,19 @@ function overdueLabel(dueOn: string, viewing: string): string | null {
   return `since ${due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
 }
 
+// A future-dated one-off shows on the list from the day it's added, so mark that it's
+// not due yet ("due tomorrow", "due Fri", or a date further out). Returns null when the
+// due date is today or already past (that's the overdue case above).
+function upcomingLabel(dueOn: string, viewing: string): string | null {
+  const due = new Date(`${dueOn}T00:00:00`)
+  const ref = new Date(`${viewing}T00:00:00`)
+  const diff = Math.round((due.getTime() - ref.getTime()) / 86_400_000)
+  if (diff <= 0) return null
+  if (diff === 1) return 'due tomorrow'
+  if (diff < 7) return `due ${due.toLocaleDateString('en-US', { weekday: 'short' })}`
+  return `due ${due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+}
+
 type Column = { key: string; name: string; items: ChoreInstance[]; emoji?: string | null; color?: string | null }
 type PersonLite = { id: string; name: string; avatarEmoji?: string | null; colorHex?: string | null }
 
@@ -327,7 +340,9 @@ export function Tasks() {
                         {i.streak >= 2 && <span className="chore-streak" title={`${i.streak}-day streak`}>🔥 {i.streak}</span>}
                         {!isComplete && (() => {
                           const od = overdueLabel(i.dueOn, date)
-                          return od ? <span className="chore-overdue" title={`Was due ${i.dueOn}`}>overdue · {od}</span> : null
+                          if (od) return <span className="chore-overdue" title={`Was due ${i.dueOn}`}>overdue · {od}</span>
+                          const up = upcomingLabel(i.dueOn, date)
+                          return up ? <span className="chore-upcoming" title={`Due ${i.dueOn}`}>{up}</span> : null
                         })()}
                       </div>
                       <div className="star">

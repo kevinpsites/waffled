@@ -790,6 +790,11 @@ button.tick {
   margin-left: 8px; font-size: 11px; font-weight: 800; color: #b04a4a;
   background: #fdeaea; padding: 2px 7px; border-radius: 999px; white-space: nowrap;
 }
+/* future-dated one-off already on the list — a calm "not yet due" hint */
+.chore-upcoming {
+  margin-left: 8px; font-size: 11px; font-weight: 800; color: #4a6db0;
+  background: #eaf0fd; padding: 2px 7px; border-radius: 999px; white-space: nowrap;
+}
 
 /* up-for-grabs: a normal left-side column with a subtle shared tint */
 .chore-col.up-for-grabs { background: linear-gradient(160deg, #f5f1fe, #eef4fe); }
