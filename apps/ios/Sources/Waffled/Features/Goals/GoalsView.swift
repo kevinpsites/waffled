@@ -66,23 +66,20 @@ final class GoalsModel {
         } catch { self.error = true }
     }
 
-    /// Push today's Apple Health total for every health-linked goal in the current list,
-    /// then refresh so the filled-in progress shows. iPhone-only; a no-op when HealthKit
-    /// is unavailable or nothing is linked. Best-effort — a failed read/sync just leaves
-    /// manual progress as-is. The server upsert is idempotent, so re-running is safe.
+    /// Push today's Apple Health total for **every** health-linked goal in the household —
+    /// not just the visible list, so a linked goal in another list fills too — then refresh
+    /// the current list. iPhone-only; a no-op when HealthKit is unavailable or nothing is
+    /// linked. Best-effort; the server upsert is idempotent, so re-running is safe.
     func syncHealth() async {
         guard HealthKitBridge.shared.isAvailable else { return }
-        let linked = goals.compactMap { g in
+        let all = (try? await api.goalsIn(listId: nil)) ?? []
+        let linked = all.compactMap { g in
             HealthKitBridge.Metric(key: g.healthMetric).map { (id: g.id, metric: $0) }
         }
         guard !linked.isEmpty else { return }
-        try? await HealthKitBridge.shared.requestReadAuthorization()
-        let day = DateFmt.string(Date(), "yyyy-MM-dd", .current)
         var didSync = false
         for l in linked {
-            guard let value = await HealthKitBridge.shared.todayTotal(for: l.metric), value > 0 else { continue }
-            do { try await api.syncGoalHealth(goalId: l.id, metric: l.metric.key, day: day, value: value); didSync = true }
-            catch { /* best-effort; leave manual progress intact */ }
+            if await HealthKitBridge.push(api, goalId: l.id, metric: l.metric) { didSync = true }
         }
         if didSync { await loadGoals() }
     }
@@ -1672,6 +1669,13 @@ final class GoalDetailModel {
         loading = false
     }
 
+    /// Sync this goal's linked Health metric when the detail is viewed/refreshed, so its
+    /// progress fills from the detail too — not only from the goals list. No-op if unlinked.
+    func syncHealth() async {
+        guard let m = HealthKitBridge.Metric(key: detail?.healthMetric ?? goal.healthMetric) else { return }
+        if await HealthKitBridge.push(api, goalId: goal.id, metric: m) { await load() }
+    }
+
     func update(_ body: [String: JSONValue]) async {
         do { try await api.updateGoal(id: goal.id, body); await load() }
         catch { self.error = true }
@@ -1770,8 +1774,8 @@ struct GoalDetailView: View {
                 }
             }
         }
-        .task { await model.load() }
-        .refreshable { await model.load() }
+        .task { await model.load(); await model.syncHealth() }
+        .refreshable { await model.load(); await model.syncHealth() }
         .sheet(isPresented: $logging) {
             GoalLogSheet(goal: logGoal) { amount, ids, note, loggedOn in
                 Task { await model.log(amount: amount, personIds: ids, note: note, loggedOn: loggedOn) }

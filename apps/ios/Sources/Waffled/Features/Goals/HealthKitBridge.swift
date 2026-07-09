@@ -128,6 +128,19 @@ final class HealthKitBridge {
         try await store.requestAuthorization(toShare: [], read: read)
     }
 
+    /// Shared "read today's total for `metric` and push it to `goalId`" step. Used by both
+    /// the goals list and a goal's detail so a linked goal fills from wherever you view it.
+    /// Ensures read access first; a denied read or no data is a silent no-op. Returns true
+    /// only if a value was posted (so callers know whether to refresh).
+    static func push(_ api: WaffledAPI, goalId: String, metric: Metric) async -> Bool {
+        guard shared.isAvailable else { return false }
+        try? await shared.requestReadAuthorization()
+        guard let value = await shared.todayTotal(for: metric), value > 0 else { return false }
+        let day = DateFmt.string(Date(), "yyyy-MM-dd", .current)
+        do { try await api.syncGoalHealth(goalId: goalId, metric: metric.key, day: day, value: value); return true }
+        catch { return false }
+    }
+
     /// Today's cumulative total for `metric` over local-day boundaries, or `nil` when
     /// unavailable / not-yet-authorized / no samples. `nil` is intentionally ambiguous
     /// (see the denied-vs-empty note above) — callers just show nothing.
