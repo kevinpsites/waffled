@@ -145,6 +145,22 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   discovery); full plan in [`docs/design/healthkit-goals.md`](../design/healthkit-goals.md). Needs
   the HealthKit entitlement + usage strings + a privacy-policy line (App Store).
 
+- **iOS widgets, Siri & Shortcuts (iPhone).** Bring Waffled onto the iPhone's *glanceable +
+  quick-add* surfaces — Home/Lock-Screen **widgets**, **App Intents** (Siri/Shortcuts), and iOS 18
+  **Controls** — as a **personal** experience (the device is signed in as one person, so the widget
+  *is you*; no per-person picker). Planned tiles: an **offline Agenda** ("my day", reads the
+  PowerSync events with no network/token), a **Grocery** tile (snapshot display + iOS 17 inline
+  check-off via `PATCH /list-items/:id` + a `+` deep-link to add), and a **type-aware Goal nudge**
+  (`+` for count/total, checkmark for habit, ring-only for health-sourced goals → `POST
+  /goals/:id/log`). Plus **voice quick-add** (a reliable "add to grocery" intent + a freeform
+  "capture" intent that parses via `/api/capture` then commits + speaks a client-built summary), which
+  also shines on the family iPad at the table. The **key plumbing**: today there's no extension
+  target, App Group, or shared Keychain — reads use an app-written **App Group snapshot** (no token),
+  writes need a **shared Keychain access group**. Staged **Tier 0** (foundation + Agenda) → **Tier 1**
+  (Grocery) → **Tier 2** (Goal nudge) → **Tier 3** (voice + Controls); full plan in
+  [`docs/design/ios-widgets-intents.md`](../design/ios-widgets-intents.md). Needs a Siri/Intents
+  capability + App Group + Keychain-access-group (App Store review).
+
 - **Multi-household identity** — one email/account that belongs to many households (separate
   profile + role per household, switch after login). Design spike written + product decisions
   aligned: [`docs/design/multi-household-identity.md`](../design/multi-household-identity.md).
