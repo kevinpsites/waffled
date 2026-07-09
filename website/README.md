@@ -94,6 +94,35 @@ The current single Pages project points at root directory `website`. Repoint it 
 A), then create the new Project B for `website/home`. No need to delete and
 recreate — just update the existing project's root directory + watch paths.
 
+## Screenshots & assets
+
+> ⚠️ **The same screenshot is vendored into several places — if you update one,
+> update (or re-copy) them all.** The two sites build independently, so images
+> can't be shared across them; each keeps its own copy under `public/screenshots`.
+
+Where the source of truth lives:
+
+| Kind | Source of truth | Vendored copies (what actually ships) |
+| --- | --- | --- |
+| **Web / kiosk** shots | Regenerate with `scripts/capture-screenshots.mjs` against a running demo stack (the UI is the truth) | `home/public/screenshots`, `docs/public/screenshots`, `../docs/product/screenshots` (README `demo.gif`) |
+| **iOS / iPad** shots | `../apps/ios/app-store/screenshots` (the App Store assets) | copied into `home/public/screenshots` / `docs/public/screenshots` where used |
+
+So to refresh a screenshot: re-capture (or re-export) it at the source, then
+**copy it into every `public/screenshots` that references it** and, if it's in
+the README montage, rebuild `demo.gif`. Grep the repo for the filename first to
+find every copy.
+
+Regenerate the web set (needs `playwright-core` + a Chromium, and a demo stack —
+see the [Demo seed](../docs/product/) notes for the `:8081` stack):
+
+```bash
+cd website && node scripts/capture-screenshots.mjs .out   # writes today.png, calendar.png, …
+# then copy the ones each site uses into home/public/screenshots and docs/public/screenshots
+```
+
+The README `demo.gif` is built from that set with ffmpeg (crossfade slideshow of
+Today → Calendar → Chores → Meals → Pantry).
+
 ## Future: `api.waffled.app`
 
 The docs already publish an API reference page. If we later want a standalone,

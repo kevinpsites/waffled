@@ -3,6 +3,8 @@ title: Goals
 description: Personal and family goal tracking with progress, streaks, milestones, and calendar auto-counting.
 ---
 
+![Goals in Waffled — personal and family goals with progress](/screenshots/goals.png)
+
 Goals turn intentions into visible progress. Track **count**, **total**, **habit**, or **checklist** goals — for one person or the whole family — with milestones, streaks, and an activity feed. Some goals even count themselves: tag a [Calendar](/features/calendar/) event and its occurrences roll into the total automatically. 🎯
 
 ## Highlights

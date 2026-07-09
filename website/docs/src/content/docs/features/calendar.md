@@ -3,6 +3,8 @@ title: Calendar & events
 description: The family's shared schedule — native events plus optional two-way Google Calendar sync.
 ---
 
+![The month calendar — colour-coded family events with a Today rail and countdown badges](/screenshots/calendar.png)
+
 The calendar is the family's shared schedule and the thing the whole hub is
 anchored to — every person's events (and their colors) on one grid, so "whose
 thing is when" stops being a group text. It's native events out of the box, with

@@ -3,6 +3,8 @@ title: Pantry
 description: On-hand inventory of what's in the fridge, freezer, and pantry — with barcode lookup, allergen warnings, and tight meal-planning integration.
 ---
 
+![The pantry — items grouped by location with expiry and low-stock badges and an allergen legend](/screenshots/pantry.png)
+
 Pantry tracks what's actually on your shelves — quantities and locations, barcode-scanned nutrition and allergen data, and a direct line into meal planning. It cuts waste and answers the two everyday questions: "can I cook this right now?" and "do I need to buy it?" 🥫
 
 ## Highlights

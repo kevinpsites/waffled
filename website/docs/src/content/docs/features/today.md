@@ -3,6 +3,8 @@ title: Today dashboard
 description: The at-a-glance home screen — agenda, tonight's meal, this week, chores, and grocery.
 ---
 
+![The Waffled Today dashboard — the day’s events, family chores, tonight’s dinner, pantry and countdowns at a glance](/screenshots/today.png)
+
 Today is the home screen — the at-a-glance view your family lands on: what's on the
 [calendar](/features/calendar/), what's for dinner, how the week looks, whose chores
 are left, and what's on the grocery list. Like Calendar, it is **never gated** — it's

@@ -127,3 +127,16 @@ main :is(h1, h2, h3) {
   transform: translateY(-2px);
   box-shadow: var(--sl-shadow-md);
 }
+
+/* Feature-page screenshots — soft framed look, matching the marketing site.
+   max-height keeps portrait phone shots (mobile.md) a sensible size while
+   landscape kiosk shots still fill the content width. */
+.sl-markdown-content img {
+  border-radius: 12px;
+  border: 1px solid var(--sl-color-hairline);
+  box-shadow: 0 12px 32px rgba(40, 33, 24, 0.14);
+  max-height: 620px;
+  width: auto;
+  display: block;
+  margin-inline: auto;
+}

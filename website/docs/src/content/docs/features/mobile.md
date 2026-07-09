@@ -3,6 +3,8 @@ title: Mobile app
 description: Waffled's native iOS companion — a personal planner on iPhone, a family-hub kiosk on iPad, with an offline-first calendar.
 ---
 
+![The native iOS app — the Today screen with events, countdowns and tonight’s dinner](/screenshots/iphone-home.png)
+
 Mobile is Waffled's native iOS companion — one universal SwiftUI binary that is a personal planner on your iPhone and a family-hub kiosk on your iPad, chosen automatically by the device. It's built for capture on the go and an always-on counter display, with a calendar that keeps working through network blips. Sign in once, and the app points itself at your own Waffled server. 📱
 
 ## Highlights

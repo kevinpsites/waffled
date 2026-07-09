@@ -3,6 +3,8 @@ title: Lists & groceries
 description: Shared custom lists plus the auto-built grocery board that turns the week's dinners into an aisle-sorted shopping list.
 ---
 
+![A shared list in Waffled, synced across the kiosk and every phone](/screenshots/lists.png)
+
 Lists is where "things to buy or do" live — shared custom lists you build by hand, plus a grocery board that assembles itself from the week's dinners and sorts by aisle so a shopping run is one clean sweep. It consolidates the scattered notes-app lists and takes manual grocery entry off your plate. 🧺
 
 ## Highlights

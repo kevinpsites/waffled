@@ -3,6 +3,8 @@ title: Meals & recipes
 description: A recipe library plus weekly and monthly meal planning that auto-builds the grocery list and drives a guided, step-by-step cook.
 ---
 
+![The weekly meal planner — breakfast, lunch and dinner slots across the week filled with recipes](/screenshots/meals.png)
+
 Meals is your recipe library and your planner in one — pick what's for dinner on a weekly or monthly grid, and Waffled turns the plan into an aisle-sorted grocery list and a hands-free, step-by-step cook. It answers "what's for dinner" and then carries you all the way from the plan to the pan. 🍽️
 
 ## Highlights

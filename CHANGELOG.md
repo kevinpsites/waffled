@@ -273,7 +273,7 @@ for Safari, first-run reliability, and image build provenance.
   checkout (an existing `.env` was previously left on its old version, so a plain `up`
   re-pulled the old image), **snapshots the database** as a rollback point, pulls the new
   images, and applies migrations. The in-app "Update available" notice now names the
-  command, and the self-hosting docs have a rewritten [upgrading guide](https://github.com/kevinpsites/waffled/blob/main/website/src/content/docs/operations/upgrading.md).
+  command, and the self-hosting docs have a rewritten [upgrading guide](https://github.com/kevinpsites/waffled/blob/main/website/docs/src/content/docs/operations/upgrading.md).
 - **Bulk Markdown recipe importer.** `apps/api/scripts/import-recipes-api.mjs` mass-imports
   a folder of Markdown recipes into any running server over the API (with an API key),
   tagging each with its subfolder as the recipe's collection. Idempotent, with a `--dry-run`.

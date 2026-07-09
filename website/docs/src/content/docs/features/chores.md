@@ -3,6 +3,8 @@ title: Chores & tasks
 description: The assignable Tasks board — recurring or one-off chores that pay out stars on completion.
 ---
 
+![The Tasks board — an “up for grabs” column plus a column per family member, each chore worth stars](/screenshots/chores.png)
+
 Chores are the assignable Tasks board: recurring or one-off jobs that award stars (or any currency you invent) when someone finishes them, with optional parent approval and photo proof. It's the *earn* half of the family economy — every completed chore feeds the ledger behind [Rewards](/features/rewards/). Kids can see what's theirs, grab what's up for grabs, and watch a streak climb 🔥.
 
 ## Highlights

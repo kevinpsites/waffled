@@ -3,6 +3,8 @@ title: Photos & memories
 description: A shared family photo wall plus the ambient screensaver that turns an idle kiosk into a rotating photo frame.
 ---
 
+![The photos gallery — family albums that double as the kiosk screensaver](/screenshots/photos.png)
+
 Photos is your family's shared wall of memories — and the visual identity of an idle counter tablet. Upload the photos everyone loves, sort them into albums, then point the ambient screensaver at one so the kitchen kiosk turns into a rotating photo frame between glances. It's the calm, glanceable face of the whole app. 🖼️
 
 ## Highlights
