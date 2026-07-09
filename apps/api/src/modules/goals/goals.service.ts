@@ -291,6 +291,7 @@ interface GoalRow extends QueryResultRow {
   deadline: string | null
   is_featured: boolean
   has_rewards: boolean
+  created_at: string
   total_progress: number
   milestone_total: number
   milestone_reached: number
@@ -321,6 +322,7 @@ function mapGoal(g: GoalRow) {
     deadline: g.deadline,
     isFeatured: g.is_featured,
     hasRewards: g.has_rewards,
+    createdAt: g.created_at,
     target: g.target_value == null ? null : Number(g.target_value),
     totalProgress: Number(g.total_progress),
     milestoneTotal: Number(g.milestone_total),
@@ -380,7 +382,7 @@ export async function listGoals(householdId: string, listId?: string | null) {
   const { rows } = await query<GoalRow>(
     `select g.id, g.goal_list_id, g.title, g.emoji, g.category, g.goal_type, g.unit, g.target_value,
             g.habit_period, g.habit_target_per_period, g.tracking_mode, g.log_method, g.auto_from_calendar, g.health_metric, g.health_daily_target, g.deadline,
-            g.is_featured, g.has_rewards,
+            g.is_featured, g.has_rewards, g.created_at,
             coalesce((select sum(amount)::float from goal_logs gl
                        where gl.goal_id = g.id and gl.deleted_at is null), 0) as total_progress,
             (select count(*) from goal_milestones gm
@@ -536,7 +538,7 @@ export async function goalDetail(householdId: string, id: string) {
     ).rows[0].sum
   )
 
-  return { ...base, createdAt: rows[0].created_at, milestones, steps, recent, thisWeek, streakDays }
+  return { ...base, milestones, steps, recent, thisWeek, streakDays }
 }
 
 // Tick/untick a checklist step. We keep the step's done_at as the source of truth
