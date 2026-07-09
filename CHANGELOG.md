@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## [0.6.0] - 2026-07-09
+
+### Added
 - **Thaw reminders for planned meals.** A new Meals setting adds a same-day calendar reminder —
   at a time you choose (default 8:00 am) — to pull the protein/ingredients out of the freezer for
   that day's planned meal. It's off by default and applies to dinners out of the box (you can pick
@@ -681,7 +689,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/kevinpsites/waffled/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/kevinpsites/waffled/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/kevinpsites/waffled/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/kevinpsites/waffled/compare/v0.3.0...v0.3.1
