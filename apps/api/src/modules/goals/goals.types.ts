@@ -35,6 +35,7 @@ export interface CreateGoalInput {
   healthDailyTarget?: number | null
   deadline?: string | null
   isFeatured?: boolean
+  isSpotlight?: boolean
   hasRewards?: boolean
   participantIds?: string[]
   milestones?: Array<{ threshold: number; emoji?: string | null; label?: string | null; rewardText?: string | null }>

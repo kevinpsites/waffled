@@ -126,7 +126,7 @@ function SharedHero({ goal, onLog, onOpen }: { goal: Goal; onLog: (g: Goal) => v
           </div>
         </Ring>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <span className="cat-pill hero-pill">⭐ Featured · shared total</span>
+          <span className="cat-pill hero-pill">🌟 Spotlight · shared total</span>
           <div className="wf-serif hero-title">{goal.title}</div>
           <div className="hero-sub">Everyone contributes to one pool{goal.deadline ? ` · by ${fmtDeadline(goal.deadline)}` : ''}</div>
           {goal.participants.length > 0 && (
@@ -170,7 +170,7 @@ function EachHero({ goal, onOpen }: { goal: Goal; onOpen: () => void }) {
       <div className="ch-row">
         <div className="hero-emoji">{goal.emoji ?? '🎯'}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <span className="cat-pill hero-pill">⭐ Featured · each tracks their own</span>
+          <span className="cat-pill hero-pill">🌟 Spotlight · each tracks their own</span>
           <div className="wf-serif hero-title">{goal.title}</div>
           <div className="hero-sub">{sub}</div>
         </div>
@@ -199,6 +199,29 @@ function MoreGoalCard({ goal, onClick }: { goal: Goal; onClick: () => void }) {
         <div className="goal-emoji">{goal.emoji ?? c?.emoji ?? '🎯'}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="gc-t">{goal.title}</div>
+          <div className="tiny muted goal-desc">{descriptor(goal)}</div>
+        </div>
+        <div className="goal-num">
+          <span className="num">{fmtNum(dispProgress(goal))}</span>
+          <span className="tiny muted">/{fmtNum(dispTarget(goal))}</span>
+        </div>
+      </div>
+      <div className="gc-bar">
+        <div style={{ width: `${(frac(dispProgress(goal), dispTarget(goal)) * 100).toFixed(0)}%`, background: barColor(goal) }} />
+      </div>
+    </div>
+  )
+}
+
+// A Featured-band card — a touch more prominent than a "More" row, with a Featured tag.
+function FeaturedCard({ goal, onClick }: { goal: Goal; onClick: () => void }) {
+  const c = goal.category ? CATEGORIES[goal.category] : null
+  return (
+    <div className="goal-card clickable more-goal featured-goal" onClick={onClick}>
+      <div className="gc-top">
+        <div className="goal-emoji">{goal.emoji ?? c?.emoji ?? '🎯'}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="gc-t">{goal.title} <span className="feat-tag">⭐ Featured</span></div>
           <div className="tiny muted goal-desc">{descriptor(goal)}</div>
         </div>
         <div className="goal-num">
@@ -254,8 +277,12 @@ export function Goals() {
   const visible = goals.filter(
     (g) => isIndividual || filter === 'all' || (filter === 'shared' ? g.trackingMode === 'shared_total' : g.trackingMode === 'each_tracks')
   )
-  const featured = visible.find((g) => g.isFeatured) ?? null
-  const more = visible.filter((g) => g !== featured)
+  // Three tiers (mirrors the API's derivation): the one Spotlight hero, the Featured band,
+  // then everything else as compact "More" rows. The API already returns goals A–Z, so the
+  // Featured and More bands are alphabetical (manual Featured drag order is a roadmap item).
+  const spotlight = visible.find((g) => g.isSpotlight) ?? null
+  const featured = visible.filter((g) => g.isFeatured && !g.isSpotlight)
+  const more = visible.filter((g) => !g.isSpotlight && !g.isFeatured)
   // For an individual list, the visible goals ARE that person's, so the best
   // single-goal streak is a free at-a-glance "on a roll" cue. (Distinct from the
   // whole-person chore+goal streak on their profile — labeled as a goal streak.)
@@ -348,11 +375,27 @@ export function Goals() {
           </div>
         </div>
 
-        {featured && <Hero goal={featured} onLog={setLogging} onOpen={() => navigate(`/goals/${featured.id}`)} />}
+        {spotlight && (
+          <>
+            <div className="flabel more-label">SPOTLIGHT</div>
+            <Hero goal={spotlight} onLog={setLogging} onOpen={() => navigate(`/goals/${spotlight.id}`)} />
+          </>
+        )}
+
+        {featured.length > 0 && (
+          <>
+            <div className="flabel more-label">FEATURED</div>
+            <div className="more-grid">
+              {featured.map((g) => (
+                <FeaturedCard key={g.id} goal={g} onClick={() => navigate(`/goals/${g.id}`)} />
+              ))}
+            </div>
+          </>
+        )}
 
         {more.length > 0 && (
           <>
-            <div className="flabel more-label">MORE {(selected?.name ?? '').toUpperCase()} GOALS</div>
+            <div className="flabel more-label">MORE {(selected?.name ?? '').toUpperCase()} GOALS <span className="tiny muted" style={{ fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>· A–Z</span></div>
             <div className="more-grid">
               {more.map((g) => (
                 <MoreGoalCard key={g.id} goal={g} onClick={() => navigate(`/goals/${g.id}`)} />

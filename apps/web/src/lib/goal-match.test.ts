@@ -21,6 +21,7 @@ function goal(over: Partial<Goal> & { id: string; title: string }): Goal {
     autoFromCalendar: over.autoFromCalendar ?? true,
     deadline: null,
     isFeatured: false,
+    isSpotlight: over.isSpotlight ?? false,
     hasRewards: false,
     target: null,
     totalProgress: 0,

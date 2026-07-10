@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Goals now have three deliberate tiers instead of one overloaded "Featured" flag.** The old
+  flag was doing two jobs at once — a tag any number of goals could carry, *and* the single big
+  hero slot — so extra featured goals silently did nothing. Now each goal list has a **Spotlight**
+  (the one hero card), a **Featured** band of elevated cards, and everything else as compact
+  **A–Z rows**. The create/edit form gets a Spotlight / Featured / Normal picker, and choosing
+  Spotlight when the list already has one tells you which goal it replaces (that one drops to
+  Featured). (Web this release; iPhone to follow.)
 - **iPhone now has full parity with the web app for Goals.** Everything above ships on iPhone/iPad
   too: **ticking off a checklist** (from the goal or the Log sheet — previously iPhone could only add
   numeric progress, which made no sense for a checklist), the **measure-aware group-counting** choice

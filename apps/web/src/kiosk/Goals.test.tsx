@@ -29,7 +29,8 @@ const featured = {
   trackingMode: 'shared_total',
   logMethod: 'quick_log',
   deadline: null,
-  isFeatured: true,
+  isFeatured: false,
+  isSpotlight: true, // the hero is now the Spotlight tier
   hasRewards: false,
   target: 1000,
   totalProgress: 312,
@@ -53,6 +54,7 @@ const moreGoal = {
   habitPeriod: 'week',
   habitTargetPerPeriod: 5,
   isFeatured: false,
+  isSpotlight: false,
   target: 5,
   totalProgress: 4,
   streakDays: 0,
@@ -90,9 +92,9 @@ describe('Goals home (goal-lists model)', () => {
     expect(await screen.findAllByText('Family')).not.toHaveLength(0)
     expect(screen.getAllByText(/Kevin & Kelly/i).length).toBeGreaterThan(0)
 
-    // featured hero
+    // spotlight hero
     expect(screen.getByText('1,000 Hours Outside')).toBeInTheDocument()
-    expect(screen.getByText(/Featured · shared total/)).toBeInTheDocument()
+    expect(screen.getByText(/Spotlight · shared total/)).toBeInTheDocument()
     expect(screen.getByText(/9-day streak/)).toBeInTheDocument()
 
     // more goals with type descriptor
@@ -117,7 +119,7 @@ describe('Goals home (goal-lists model)', () => {
     mockApi({ lists: [familyList], goals: [eachGoal] })
     renderHome()
     expect(await screen.findByText('Summer Reading Challenge')).toBeInTheDocument()
-    expect(screen.getByText(/Featured · each tracks their own/)).toBeInTheDocument()
+    expect(screen.getByText(/Spotlight · each tracks their own/)).toBeInTheDocument()
     expect(screen.getByText('TOGETHER')).toBeInTheDocument()
   })
 })

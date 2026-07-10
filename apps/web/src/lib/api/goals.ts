@@ -49,6 +49,8 @@ export interface Goal {
   autoFromCalendar: boolean
   deadline: string | null
   isFeatured: boolean
+  // The one hero goal per list. Tier is derived spotlight > featured > normal.
+  isSpotlight: boolean
   hasRewards: boolean
   target: number | null
   totalProgress: number

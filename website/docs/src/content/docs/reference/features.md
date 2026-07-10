@@ -143,6 +143,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Goal types: count / total / habit / checklist | ✅ | ✅ | ✅ | ✅ Done |
 | Goal **lists** + membership (shared lists / individual) | ✅ | ✅ | ✅ | ✅ Done |
 | Shared-pool vs each-tracks goals | ✅ | ✅ | ✅ | ✅ Done |
+| **Goal tiers** — Spotlight (one hero per list) / Featured band / More (A–Z), with a Spotlight-Featured-Normal picker on the create/edit form | ✅ | 🟡 | 🟡 | 🟡 Web done; iPhone/iPad pending (drag-reorder + Today-card pinning on roadmap) |
 | **How a group activity counts** — shared/each toggle + a measure-aware counting follow-up under "How do you measure it?" (total: full / split · count: each / once) with real-name worked examples | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
 | **Checklist tick-off** — complete a checklist by ticking its named steps (in the goal detail + the Log sheet) | ✅ | ✅ | ✅ | ✅ Done (was iPhone-blocked; now shipped) |
 | **Type-aware Log sheet** — count stepper, total amount, habit one-tap, checklist ticking; unit shown correctly | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |

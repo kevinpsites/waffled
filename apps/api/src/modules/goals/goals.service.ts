@@ -3,7 +3,7 @@
 // vs each_tracks), append-only logs (SUM = progress), milestones, and a detail
 // read model (hours-by-person, recent activity, streak, this-week).
 import { randomUUID } from 'node:crypto'
-import type { QueryResultRow } from 'pg'
+import type { PoolClient, QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import type { CreateGoalListInput, UpdateGoalListInput, CreateGoalInput, UpdateGoalInput } from './goals.types'
@@ -187,16 +187,34 @@ export async function softDeleteGoalList(householdId: string, id: string): Promi
 
 // ---- goals ------------------------------------------------------------------
 
+// A list holds exactly one spotlight (the hero). Clear any OTHER spotlight in the same list,
+// demoting the old one to Featured so it stays elevated — just not the hero. `listId` null
+// groups ungrouped goals. Runs inside the caller's transaction.
+async function demoteListSpotlight(client: PoolClient, householdId: string, listId: string | null, exceptGoalId: string | null): Promise<void> {
+  await client.query(
+    `update goals set is_spotlight = false, is_featured = true
+      where household_id = $1 and deleted_at is null and is_spotlight
+        and ($2::uuid is null or id <> $2)
+        and goal_list_id is not distinct from $3`,
+    [householdId, exceptGoalId, listId]
+  )
+}
+
 export async function createGoal(tenant: Tenant, input: CreateGoalInput): Promise<{ id: string }> {
   const client = await getPool().connect()
   try {
     await client.query('begin')
+    // Demote the list's current spotlight BEFORE inserting the new one (the partial unique
+    // index forbids two live spotlights in a list).
+    if (input.isSpotlight) {
+      await demoteListSpotlight(client, tenant.householdId, input.goalListId ?? null, null)
+    }
     const g = await client.query<{ id: string }>(
       `insert into goals
          (household_id, goal_list_id, title, emoji, category, goal_type, unit, target_value,
           habit_period, habit_target_per_period, tracking_mode, participant_mode, target_basis, log_method, auto_from_calendar,
-          health_metric, health_daily_target, deadline, is_featured, has_rewards)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) returning id`,
+          health_metric, health_daily_target, deadline, is_featured, is_spotlight, has_rewards)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) returning id`,
       [
         tenant.householdId,
         input.goalListId ?? null,
@@ -218,6 +236,7 @@ export async function createGoal(tenant: Tenant, input: CreateGoalInput): Promis
         input.deadline || null, // '' (cleared) → null so it isn't written to a date column
 
         input.isFeatured ?? false,
+        input.isSpotlight ?? false,
         input.hasRewards ?? false,
       ]
     )
@@ -316,6 +335,7 @@ interface GoalRow extends QueryResultRow {
   health_daily_target: string | null
   deadline: string | null
   is_featured: boolean
+  is_spotlight: boolean
   has_rewards: boolean
   created_at: string
   total_progress: number
@@ -349,6 +369,7 @@ function mapGoal(g: GoalRow) {
     healthDailyTarget: g.health_daily_target == null ? null : Number(g.health_daily_target),
     deadline: g.deadline,
     isFeatured: g.is_featured,
+    isSpotlight: g.is_spotlight,
     hasRewards: g.has_rewards,
     createdAt: g.created_at,
     target: g.target_value == null ? null : Number(g.target_value),
@@ -410,7 +431,7 @@ export async function listGoals(householdId: string, listId?: string | null) {
   const { rows } = await query<GoalRow>(
     `select g.id, g.goal_list_id, g.title, g.emoji, g.category, g.goal_type, g.unit, g.target_value,
             g.habit_period, g.habit_target_per_period, g.tracking_mode, g.participant_mode, g.target_basis, g.log_method, g.auto_from_calendar, g.health_metric, g.health_daily_target, g.deadline,
-            g.is_featured, g.has_rewards, g.created_at,
+            g.is_featured, g.is_spotlight, g.has_rewards, g.created_at,
             coalesce((select sum(amount)::float from goal_logs gl
                        where gl.goal_id = g.id and gl.deleted_at is null and gl.counts_total), 0) as total_progress,
             (select count(*) from goal_milestones gm
@@ -516,7 +537,7 @@ export async function goalDetail(householdId: string, id: string) {
   const { rows } = await query<GoalRow>(
     `select g.id, g.goal_list_id, g.title, g.emoji, g.category, g.goal_type, g.unit, g.target_value,
             g.habit_period, g.habit_target_per_period, g.tracking_mode, g.participant_mode, g.target_basis, g.log_method, g.auto_from_calendar, g.health_metric, g.health_daily_target, g.deadline,
-            g.is_featured, g.has_rewards, g.created_at,
+            g.is_featured, g.is_spotlight, g.has_rewards, g.created_at,
             coalesce((select sum(amount)::float from goal_logs gl
                        where gl.goal_id = g.id and gl.deleted_at is null and gl.counts_total), 0) as total_progress,
             (select count(*) from goal_milestones gm
@@ -871,6 +892,7 @@ const GOAL_COLUMNS: Record<string, string> = {
   healthDailyTarget: 'health_daily_target',
   deadline: 'deadline',
   isFeatured: 'is_featured',
+  isSpotlight: 'is_spotlight',
   hasRewards: 'has_rewards',
   goalListId: 'goal_list_id',
 }
@@ -879,6 +901,18 @@ export async function updateGoal(tenant: Tenant, id: string, patch: UpdateGoalIn
   const client = await getPool().connect()
   try {
     await client.query('begin')
+    // Promoting to spotlight demotes the target list's current hero FIRST, before this goal's
+    // flag flips (the partial unique index forbids two live spotlights per list). Target list
+    // = the patched goalListId if present, else the goal's current list.
+    if (patch.isSpotlight === true) {
+      const targetList = 'goalListId' in patch
+        ? ((patch.goalListId as string | null) ?? null)
+        : (await client.query<{ goal_list_id: string | null }>(
+            `select goal_list_id from goals where household_id=$1 and id=$2 and deleted_at is null`,
+            [tenant.householdId, id]
+          )).rows[0]?.goal_list_id ?? null
+      await demoteListSpotlight(client, tenant.householdId, targetList, id)
+    }
     const sets: string[] = []
     const vals: unknown[] = []
     let i = 1

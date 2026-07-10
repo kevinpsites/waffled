@@ -402,6 +402,55 @@ describe('goal lists + detail', () => {
   })
 })
 
+describe('goal tiers (spotlight / featured)', () => {
+  async function newList(name: string): Promise<string> {
+    return JSON.parse((await call('POST', '/api/goal-lists', kevin, { name, memberIds: [kevinId] })).body).list.id
+  }
+  const mk = async (listId: string, title: string, extra: Record<string, unknown> = {}) =>
+    JSON.parse((await call('POST', '/api/goals', kevin, {
+      title, goalType: 'count', unit: 'x', targetValue: 5, trackingMode: 'shared_total',
+      goalListId: listId, participantIds: [kevinId], ...extra,
+    })).body).goal.id
+  const byId = async (listId: string) => {
+    const goals = JSON.parse((await call('GET', `/api/goals?listId=${listId}`, kevin)).body).goals
+    return Object.fromEntries(goals.map((g: { id: string }) => [g.id, g]))
+  }
+
+  it('exposes isSpotlight and keeps at most one spotlight per list', async () => {
+    const list = await newList('Tiers A')
+    const a = await mk(list, 'Alpha', { isSpotlight: true })
+    let g = await byId(list)
+    expect(g[a].isSpotlight).toBe(true)
+
+    // A second spotlight in the SAME list demotes the first to Featured.
+    const b = await mk(list, 'Beta', { isSpotlight: true })
+    g = await byId(list)
+    expect(g[b].isSpotlight).toBe(true)
+    expect(g[a].isSpotlight).toBe(false)
+    expect(g[a].isFeatured).toBe(true) // demoted, not dropped to normal
+  })
+
+  it('PATCH-ing a goal to spotlight demotes the list’s current spotlight', async () => {
+    const list = await newList('Tiers B')
+    const a = await mk(list, 'Aaa', { isSpotlight: true })
+    const b = await mk(list, 'Bbb')
+    expect((await call('PATCH', `/api/goals/${b}`, kevin, { isSpotlight: true })).statusCode).toBe(200)
+    const g = await byId(list)
+    expect(g[b].isSpotlight).toBe(true)
+    expect(g[a].isSpotlight).toBe(false)
+    expect(g[a].isFeatured).toBe(true)
+  })
+
+  it('spotlight is per-list — a spotlight in another list is untouched', async () => {
+    const l1 = await newList('Tiers C1'); const l2 = await newList('Tiers C2')
+    const a = await mk(l1, 'One', { isSpotlight: true })
+    const b = await mk(l2, 'Two', { isSpotlight: true })
+    const g1 = await byId(l1); const g2 = await byId(l2)
+    expect(g1[a].isSpotlight).toBe(true)
+    expect(g2[b].isSpotlight).toBe(true)
+  })
+})
+
 describe('goal list ordering', () => {
   it('lists goals purely alphabetically by title (case-insensitive) — featured does NOT reorder', async () => {
     const mk = (title: string, isFeatured = false) =>

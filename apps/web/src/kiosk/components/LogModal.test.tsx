@@ -20,6 +20,7 @@ const goal = {
   autoFromCalendar: false,
   deadline: null,
   isFeatured: true,
+  isSpotlight: false,
   hasRewards: false,
   target: 1000,
   totalProgress: 100,

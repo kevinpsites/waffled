@@ -109,6 +109,17 @@ button.goal-listhead-link:hover {
   padding: 15px 17px;
   gap: 11px;
 }
+/* Featured band — a hair more prominent than a "More" row, with a Featured tag. */
+.featured-goal {
+  border: 1.5px solid color-mix(in srgb, #e2a636 55%, var(--hair));
+  box-shadow: 0 2px 10px color-mix(in srgb, #e2a636 12%, transparent);
+}
+.featured-goal .gc-t { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.feat-tag {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase;
+  color: #b07d1c; background: #fdf2dd; padding: 3px 8px; border-radius: 999px;
+}
 .more-goal .gc-t {
   font-size: 16px;
 }

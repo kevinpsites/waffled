@@ -155,12 +155,17 @@ export function GoalCreate() {
     // Auto-count from the calendar is ON by default — most numeric/habit goals
     // benefit from matching events adding progress without extra taps.
     autoFromCalendar: true,
-    isFeatured: true,
+    // Tier defaults to Normal — elevating to Featured/Spotlight is an intentional choice
+    // (auto-featuring everything is exactly what the old single flag got wrong).
+    isFeatured: false,
+    isSpotlight: false,
     hasRewards: false,
     weeklyCheckIn: true,
   })
   const [milestones, setMilestones] = useState<Milestone[]>(DEFAULT_MILESTONES)
   const [steps, setSteps] = useState<Array<{ id?: string; label: string }>>([{ label: '' }, { label: '' }, { label: '' }])
+  // The list's current spotlight (a DIFFERENT goal) — so picking Spotlight can say what it replaces.
+  const [listSpotlight, setListSpotlight] = useState<{ id: string; title: string } | null>(null)
   const [dlOpen, setDlOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showListModal, setShowListModal] = useState(false)
@@ -200,6 +205,7 @@ export function GoalCreate() {
       habitPerPeriod: editGoal.habitTargetPerPeriod ?? 5,
       autoFromCalendar: editGoal.autoFromCalendar ?? false,
       isFeatured: editGoal.isFeatured,
+      isSpotlight: editGoal.isSpotlight,
       hasRewards: editGoal.hasRewards,
     }))
     setDlOpen(!!editGoal.deadline)
@@ -211,6 +217,19 @@ export function GoalCreate() {
       setSteps(editGoal.steps.map((s) => ({ id: s.id, label: s.label })))
     }
   }, [editing, editGoal])
+
+  // Look up the selected list's current spotlight (a different goal) so the Spotlight
+  // option can tell the user which goal it will replace.
+  useEffect(() => {
+    if (!form.goalListId) { setListSpotlight(null); return }
+    let live = true
+    api.goals(form.goalListId).then((r) => {
+      if (!live) return
+      const s = r.goals.find((g) => g.isSpotlight && g.id !== id)
+      setListSpotlight(s ? { id: s.id, title: s.title } : null)
+    }).catch(() => { if (live) setListSpotlight(null) })
+    return () => { live = false }
+  }, [form.goalListId, id])
 
   // Regenerate the default milestones from the current type + target until the
   // user hand-edits them — so setting a 300-hour target gives 75/150/225.
@@ -303,6 +322,7 @@ export function GoalCreate() {
       autoFromCalendar: isChecklist ? false : form.autoFromCalendar,
       deadline: form.deadline || null,
       isFeatured: form.isFeatured,
+      isSpotlight: form.isSpotlight,
       hasRewards: form.hasRewards,
       participantIds,
       milestones: form.hasRewards
@@ -339,6 +359,15 @@ export function GoalCreate() {
       ? (form.trackingMode === 'each_tracks' && form.targetBasis === 'per_person' ? 'each' : 'shared')
       : (form.trackingMode === 'each_tracks' ? 'each' : 'shared')
   const shared = shareValue === 'shared'
+
+  // Tier picker (Spotlight / Featured / Normal) derived from the two booleans.
+  const tier: 'spotlight' | 'featured' | 'normal' = form.isSpotlight ? 'spotlight' : form.isFeatured ? 'featured' : 'normal'
+  const setTier = (t: 'spotlight' | 'featured' | 'normal') =>
+    setForm((f) => ({ ...f, isSpotlight: t === 'spotlight', isFeatured: t === 'featured' }))
+  const tierHint =
+    tier === 'spotlight' ? 'The one big hero card for this list — only one goal can be the spotlight.'
+      : tier === 'featured' ? 'Elevated into the Featured band on the goals list.'
+        : 'Lives in the goals list with everything else.'
   const countChoice: string | null =
     form.goalType === 'total' ? (form.trackingMode === 'each_tracks' ? 'full' : 'split')
       : form.goalType === 'count' ? (form.trackingMode === 'each_tracks' ? 'each' : 'once')
@@ -533,10 +562,20 @@ export function GoalCreate() {
             <div className="ge-sec-t">Extras</div>
             <div className="ge-sec-h">All optional. Turn on only what this goal needs.</div>
 
-            <div className="ge-extra">
-              <div className="eic">⭐</div>
-              <div className="etx"><div className="e1">Feature on the home screen</div><div className="e2">Shows big on the kitchen display</div></div>
-              <Toggle on={form.isFeatured} onClick={() => set('isFeatured', !form.isFeatured)} />
+            <div className="ge-extra" style={{ display: 'block' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
+                <div className="eic">🌟</div>
+                <div className="etx"><div className="e1">Spotlight &amp; featured</div><div className="e2">How prominent this goal is on the home screen and goals list</div></div>
+              </div>
+              <div className="ge-share ge-share-3" style={{ display: 'flex', marginTop: 12 }}>
+                <button type="button" className={tier === 'spotlight' ? 'on' : ''} onClick={() => setTier('spotlight')}>🌟 Spotlight</button>
+                <button type="button" className={tier === 'featured' ? 'on' : ''} onClick={() => setTier('featured')}>⭐ Featured</button>
+                <button type="button" className={tier === 'normal' ? 'on' : ''} onClick={() => setTier('normal')}>Normal</button>
+              </div>
+              <div className="ge-sec-h" style={{ marginTop: 6 }}>{tierHint}</div>
+              {tier === 'spotlight' && listSpotlight && (
+                <div className="ge-sec-h" style={{ marginTop: 4, fontWeight: 650 }}>Replaces “{listSpotlight.title}” as this list’s spotlight (it becomes Featured).</div>
+              )}
             </div>
 
             <div className="ge-extra">
@@ -584,12 +623,12 @@ export function GoalCreate() {
         <div className="ge-pvlabel">Live preview</div>
         <div className="ge-pvcap">How this goal appears on the kitchen display.</div>
         <div className="ge-pvstage">
-          {form.isFeatured ? (
+          {tier !== 'normal' ? (
             <div className="ge-pv-hero">
               <div className="hrow">
                 <div className="hicon">🎯</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <span className="htag">★ Featured{shared ? ' · shared' : ' · each tracks'}</span>
+                  <span className="htag">{tier === 'spotlight' ? '🌟 Spotlight' : '★ Featured'}{shared ? ' · shared' : ' · each tracks'}</span>
                   <div className="htitle">{previewName}</div>
                   <div className="hsub">{subLine}</div>
                 </div>
@@ -640,7 +679,7 @@ export function GoalCreate() {
 
           <div className="ge-pv-where">
             <svg viewBox="0 0 24 24"><rect x={3} y={4} width={18} height={14} rx={2} /><path d="M8 20h8M12 18v2" /></svg>
-            {form.isFeatured ? 'Featured big on the home screen' : 'Lives in the goals list'}
+            {tier === 'spotlight' ? 'The spotlight on the home screen' : tier === 'featured' ? 'In the Featured band on the goals list' : 'Lives in the goals list'}
           </div>
         </div>
       </div>
