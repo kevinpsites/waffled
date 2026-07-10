@@ -158,6 +158,15 @@ export class VisionUnavailableError extends Error {
   }
 }
 
+// Raised for a bad photo upload (unsupported type, too large, empty) — the route maps it
+// to 400. It's a client input error, not a server ingest failure (502).
+export class IngestInputError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'IngestInputError'
+  }
+}
+
 export function isAiUnavailable(err: unknown): boolean {
   return err instanceof VisionUnavailableError || (err instanceof Error && AI_UNAVAILABLE_RE.test(err.message))
 }
@@ -209,18 +218,20 @@ export async function ingestRecipeFromPhotos(
   tenant: { householdId: string },
   photos: IngestPhotoInput[]
 ): Promise<{ draft: RecipeDraft; via: string; photoKeys: string[] }> {
+  // Validate + decode every image up front. Bad input is a 400 (IngestInputError) and is
+  // checked BEFORE the vision gate — it stores nothing, so "gate before store" still holds,
+  // and a malformed upload is rejected the same way regardless of the household's provider.
+  const decoded = photos.map((p) => {
+    if (!ALLOWED_IMAGE_TYPES.has(p.contentType)) throw new IngestInputError(`unsupported image type: ${p.contentType}`)
+    const bytes = Buffer.from(p.data, 'base64')
+    if (bytes.length === 0) throw new IngestInputError('empty image')
+    if (bytes.length > MAX_IMAGE_BYTES) throw new IngestInputError('image too large')
+    return { bytes, contentType: p.contentType, dataBase64: p.data }
+  })
+
   // Gate on vision BEFORE storing anything, so a heuristic/text-only household gets a
   // clean 501 instead of orphaned blobs.
   if (!(await visionAvailable(tenant.householdId))) throw new VisionUnavailableError()
-
-  // Validate + decode every image up front.
-  const decoded = photos.map((p) => {
-    if (!ALLOWED_IMAGE_TYPES.has(p.contentType)) throw new Error(`unsupported image type: ${p.contentType}`)
-    const bytes = Buffer.from(p.data, 'base64')
-    if (bytes.length === 0) throw new Error('empty image')
-    if (bytes.length > MAX_IMAGE_BYTES) throw new Error('image too large')
-    return { bytes, contentType: p.contentType, dataBase64: p.data }
-  })
 
   // Persist + record first (so retention works even if extraction later fails).
   const store = getBlobStore()
@@ -249,15 +260,6 @@ export async function ingestRecipeFromPhotos(
 
 // ── Source-photo TTL sweep (mirrors chore-proof-cleanup) ─────────────────────
 export const DEFAULT_RECIPE_PHOTO_TTL_DAYS = 1
-
-export async function getRecipePhotoTtlDays(householdId: string): Promise<number> {
-  const { rows } = await query<{ v: number | null }>(
-    `select (settings #>> '{meals,recipePhotoTtlDays}')::int as v from households where id = $1`,
-    [householdId]
-  )
-  const v = rows[0]?.v
-  return typeof v === 'number' && Number.isFinite(v) ? v : DEFAULT_RECIPE_PHOTO_TTL_DAYS
-}
 
 // One sweep across every household: hard-delete recipe-ingest photo rows (and their
 // blobs) older than that household's retention window. Returns counts for logs/tests.

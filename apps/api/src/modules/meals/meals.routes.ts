@@ -42,6 +42,7 @@ import {
   ingestRecipeFromText,
   ingestRecipeFromPhotos,
   isAiUnavailable,
+  IngestInputError,
   MAX_INGEST_PHOTOS,
   type IngestPhotoInput,
 } from './recipe-ingest.service'
@@ -220,6 +221,7 @@ export function registerMealRoutes(api: Api): void {
       const { draft, via, photoKeys } = await ingestRecipeFromPhotos(tenant, images)
       return { ...draft, via, photoKeys }
     } catch (err) {
+      if (err instanceof IngestInputError) return res.status(400).json({ error: 'BadRequest', message: err.message })
       if (isAiUnavailable(err)) return res.status(501).json({ error: 'AIUnavailable', message: (err as Error).message })
       return res.status(502).json({ error: 'IngestFailed', message: (err as Error).message })
     }

@@ -196,6 +196,19 @@ describe('ingest routes — gating with no provider configured', () => {
     expect(res.statusCode).toBe(501)
     expect(JSON.parse(res.body).error).toBe('AIUnavailable')
   })
+
+  it('POST /api/recipes/ingest/photo 400s on an unsupported image type (e.g. HEIC)', async () => {
+    // Input validation is a client error (400), not a server IngestFailed (502) — and it
+    // is checked before the vision gate, so a bad upload is rejected regardless of provider.
+    const res = await call('POST', '/api/recipes/ingest/photo', kevin, { images: [{ data: Buffer.from('x').toString('base64'), contentType: 'image/heic' }] })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('POST /api/recipes/ingest/photo 400s on an oversized image', async () => {
+    const tooBig = Buffer.alloc(11 * 1024 * 1024, 1).toString('base64')
+    const res = await call('POST', '/api/recipes/ingest/photo', kevin, { images: [{ data: tooBig, contentType: 'image/jpeg' }] })
+    expect(res.statusCode).toBe(400)
+  })
 })
 
 describe('cleanupExpiredIngestPhotos — source-photo TTL sweep', () => {
