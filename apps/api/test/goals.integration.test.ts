@@ -403,14 +403,14 @@ describe('goal lists + detail', () => {
 })
 
 describe('goal list ordering', () => {
-  it('lists goals featured-first, then alphabetically by title (case-insensitive)', async () => {
+  it('lists goals purely alphabetically by title (case-insensitive) — featured does NOT reorder', async () => {
     const mk = (title: string, isFeatured = false) =>
       call('POST', '/api/goals', kevin, { title, goalType: 'count', unit: 'x', targetValue: 5, trackingMode: 'shared_total', participantIds: [kevinId], isFeatured })
+    // ZZ_Bravo is featured, but it still sorts by title — no pinning to the top.
     await mk('ZZ_Zebra'); await mk('ZZ_apple'); await mk('ZZ_Mango'); await mk('ZZ_Bravo', true)
     const goals = JSON.parse((await call('GET', '/api/goals', kevin)).body).goals
-    // Featured "ZZ_Bravo" pins to the top; the rest sort case-insensitively A→Z.
     const mine = goals.filter((g: { title: string }) => g.title.startsWith('ZZ_')).map((g: { title: string }) => g.title)
-    expect(mine).toEqual(['ZZ_Bravo', 'ZZ_apple', 'ZZ_Mango', 'ZZ_Zebra'])
+    expect(mine).toEqual(['ZZ_apple', 'ZZ_Bravo', 'ZZ_Mango', 'ZZ_Zebra'])
   })
 })
 

@@ -51,8 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   automatically deleted.
 
 ### Changed
-- **Goals now list alphabetically** (with featured goals still pinned on top), instead of by
-  creation date — so the list is predictable and easy to scan instead of feeling random.
+- **Goals now list alphabetically** (A–Z by title), instead of by creation date — one clean,
+  predictable list that's easy to scan. Featuring a goal shows it big on the home screen; it no
+  longer floats to the top of the goals list (which made the order look random).
 - **The "one shared total / each tracks their own" choice moved below "How do you measure it?"**
   It only applies once you've picked a measure with a per-person dimension — so it now sits with
   the group-counting options under the measure picker, and no longer appears for a checklist

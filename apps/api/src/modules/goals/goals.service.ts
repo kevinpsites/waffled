@@ -427,7 +427,7 @@ export async function listGoals(householdId: string, listId?: string | null) {
        from goals g
       where g.household_id = $1 and g.deleted_at is null and g.is_active
         and ($2::uuid is null or g.goal_list_id = $2)
-      order by g.is_featured desc, lower(g.title), g.created_at`,
+      order by lower(g.title), g.created_at`,
     [householdId, listId ?? null]
   )
   const goals = rows.map(mapGoal)
