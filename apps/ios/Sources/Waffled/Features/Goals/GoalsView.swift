@@ -30,8 +30,11 @@ final class GoalsModel {
                 || (filter == .shared ? g.trackingMode == "shared_total" : g.trackingMode == "each_tracks")
         }
     }
-    var featured: WaffledAPI.Goal? { visibleGoals.first { $0.isFeatured } }
-    var more: [WaffledAPI.Goal] { visibleGoals.filter { $0.id != featured?.id } }
+    // Three tiers (mirrors web): the one Spotlight hero, the Pinned band, then everything else
+    // A–Z (the API already sorts A–Z). `isFeatured` is the internal flag behind "Pinned".
+    var spotlight: WaffledAPI.Goal? { visibleGoals.first { $0.isSpotlight ?? false } }
+    var pinned: [WaffledAPI.Goal] { visibleGoals.filter { $0.isFeatured && !($0.isSpotlight ?? false) } }
+    var more: [WaffledAPI.Goal] { visibleGoals.filter { !($0.isSpotlight ?? false) && !$0.isFeatured } }
 
     func loadLists() async {
         loading = true
@@ -56,6 +59,12 @@ final class GoalsModel {
     func loadGoals() async {
         guard let id = selectedList?.id else { goals = []; return }
         do { goals = try await api.goalsIn(listId: id); error = false }
+        catch { self.error = true }
+    }
+
+    /// Quick pin/unpin: toggle the Pinned tier (isFeatured) straight from a card.
+    func togglePin(_ g: WaffledAPI.Goal) async {
+        do { try await api.updateGoal(id: g.id, ["isFeatured": .bool(!g.isFeatured)]); await loadGoals() }
         catch { self.error = true }
     }
 
@@ -233,17 +242,31 @@ struct GoalsView: View {
                 listPicker
                 if let list = model.selectedList { listHead(list) }
                 if !model.isIndividual, model.selectedList != nil { filterSeg }
-                if let f = model.featured { hero(f) }
+                if let s = model.spotlight {
+                    SectionLabel(text: "Spotlight").padding(.top, 2)
+                    hero(s)
+                }
+                if !model.pinned.isEmpty {
+                    SectionLabel(text: "Pinned").padding(.top, 2)
+                    if isKiosk {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 300, maximum: 460), spacing: 14, alignment: .top)],
+                                  alignment: .leading, spacing: 14) {
+                            ForEach(model.pinned) { moreCard($0, pinned: true) }
+                        }
+                    } else {
+                        ForEach(model.pinned) { moreCard($0, pinned: true) }
+                    }
+                }
                 if !model.more.isEmpty {
-                    SectionLabel(text: "More \(model.selectedList?.name ?? "") goals")
+                    SectionLabel(text: "More \(model.selectedList?.name ?? "") goals · A–Z")
                         .padding(.top, 2)
                     if isKiosk {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 300, maximum: 460), spacing: 14, alignment: .top)],
                                   alignment: .leading, spacing: 14) {
-                            ForEach(model.more) { moreCard($0) }
+                            ForEach(model.more) { moreCard($0, pinned: false) }
                         }
                     } else {
-                        ForEach(model.more) { moreCard($0) }
+                        ForEach(model.more) { moreCard($0, pinned: false) }
                     }
                 }
                 if model.loading && model.visibleGoals.isEmpty {
@@ -271,7 +294,7 @@ struct GoalsView: View {
         .task {
             if model.lists.isEmpty { await model.loadLists() }
             await model.syncHealth()
-            if DemoHooks.openGoal, !Self.didOpenGoal, let f = model.featured {
+            if DemoHooks.openGoal, !Self.didOpenGoal, let f = model.spotlight ?? model.visibleGoals.first {
                 Self.didOpenGoal = true; path.append(.goal(f))
             }
             if DemoHooks.newGoal, !Self.didOpenGoal { Self.didOpenGoal = true; creating = true }
@@ -386,7 +409,7 @@ struct GoalsView: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 6) {
-                    heroPill("⭐ Featured · shared total")
+                    heroPill("🌟 Spotlight · shared total")
                     Text(g.title).font(WF.serif(26)).foregroundStyle(.white).lineLimit(2)
                         .minimumScaleFactor(0.7)
                     Text("Everyone contributes to one pool\(g.deadline.map { " · by \(fmtDeadline($0))" } ?? "")")
@@ -416,7 +439,7 @@ struct GoalsView: View {
                     .frame(width: 64, height: 64)
                     .background(.white.opacity(0.18)).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 VStack(alignment: .leading, spacing: 6) {
-                    heroPill("⭐ Featured · each tracks their own")
+                    heroPill("🌟 Spotlight · each tracks their own")
                     Text(g.title).font(WF.serif(26)).foregroundStyle(.white).lineLimit(2)
                         .minimumScaleFactor(0.7)
                     Text(g.target.map { "\(goalFmt($0)) \(g.unit ?? "")".trimmingCharacters(in: .whitespaces) + " each" } ?? "Everyone tracks their own")
@@ -487,7 +510,7 @@ struct GoalsView: View {
 
     // MARK: more cards
 
-    private func moreCard(_ g: WaffledAPI.Goal) -> some View {
+    private func moreCard(_ g: WaffledAPI.Goal, pinned: Bool) -> some View {
         let c = GoalStyle.color(g.category)
         let frac = g.target.map { $0 > 0 ? min(g.totalProgress / $0, 1) : 0 } ?? 0
         return Button { path.append(.goal(g)) } label: {
@@ -497,7 +520,14 @@ struct GoalsView: View {
                         .frame(width: 42, height: 42)
                         .background(c.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(g.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text(g.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
+                            if pinned {
+                                Text("📌 PINNED").font(.system(size: 9, weight: .heavy)).foregroundStyle(Color(hex: 0xB07D1C))
+                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                    .background(Color(hex: 0xFDF2DD)).clipShape(Capsule())
+                            }
+                        }
                         Text(goalDescriptor(g)).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
                     }
                     Spacer(minLength: 6)
@@ -505,6 +535,7 @@ struct GoalsView: View {
                         Text(goalFmt(g.totalProgress)).font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
                         Text("/\(goalFmt(g.target))").font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
                     }
+                    pinToggle(g)
                 }
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
@@ -520,6 +551,25 @@ struct GoalsView: View {
             }
             .padding(14)
             .wfField()
+            .overlay {
+                if pinned {
+                    RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                        .strokeBorder(Color(hex: 0xE2A636).opacity(0.5), lineWidth: 1.5)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// A quick pin/unpin toggle on a card. Nested in the card button — SwiftUI routes the tap
+    /// to this inner button, so it doesn't open the goal.
+    private func pinToggle(_ g: WaffledAPI.Goal) -> some View {
+        Button { Task { await model.togglePin(g) } } label: {
+            Image(systemName: g.isFeatured ? "pin.fill" : "pin")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(g.isFeatured ? WF.primary : WF.ink3.opacity(0.55))
+                .frame(width: 30, height: 30)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -1043,7 +1093,12 @@ struct GoalCreateSheet: View {
     @State private var category = "physical"
     @State private var hasDeadline = false
     @State private var deadline = Date()
-    @State private var isFeatured = true
+    // Tier defaults to Normal — elevating to Pinned/Spotlight is an intentional choice.
+    @State private var isFeatured = false
+    @State private var isSpotlight = false
+    /// The selected list's current spotlight (a different goal), so picking Spotlight can name it.
+    @State private var listSpotlightTitle: String?
+    private let tierApi = WaffledAPI()
     @State private var hasRewards = false
     // Calendar auto-count defaults ON (product decision): most goals benefit from
     // matching events adding progress, and it's still one tap to turn off.
@@ -1160,6 +1215,7 @@ struct GoalCreateSheet: View {
             .onAppear(perform: prefill)
             // New goal: land in the name field. (Edits keep the keyboard down.)
             .task { if editGoal == nil { try? await Task.sleep(for: .milliseconds(300)); titleFocused = true } }
+            .task(id: goalListId) { await loadListSpotlight() }
             // Auto-derived milestones track the target/type until the user hand-edits
             // them (see `reDeriveIfUntouched`). Create only — edits keep the goal's own.
             .onChange(of: goalType) { _, _ in reDeriveIfUntouched() }
@@ -1651,11 +1707,58 @@ struct GoalCreateSheet: View {
         }
     }
 
+    // MARK: Spotlight / Pinned / Normal tier
+
+    enum Tier: Hashable { case spotlight, pinned, normal }
+    private var tier: Tier { isSpotlight ? .spotlight : isFeatured ? .pinned : .normal }
+    private var tierBinding: Binding<Tier> {
+        Binding(get: { tier }, set: { t in isSpotlight = t == .spotlight; isFeatured = t == .pinned })
+    }
+    private var tierHint: String {
+        switch tier {
+        case .spotlight: return "The one big hero card for this list — only one goal can be the spotlight."
+        case .pinned:    return "Pinned to the top of the goals list, above the rest."
+        case .normal:    return "Lives in the goals list with everything else."
+        }
+    }
+    /// Look up the list's current spotlight (a different goal) so the picker can name it.
+    private func loadListSpotlight() async {
+        guard let lid = goalListId else { listSpotlightTitle = nil; return }
+        let gs = (try? await tierApi.goalsIn(listId: lid)) ?? []
+        listSpotlightTitle = gs.first { ($0.isSpotlight ?? false) && $0.id != editGoal?.id }?.title
+    }
+    private var tierPickerRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 13) {
+                Text("🌟").font(.system(size: 18)).frame(width: 30)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Spotlight & pinned").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                    Text("How prominent this goal is on the home screen and goals list")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink2).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            Picker("", selection: tierBinding) {
+                Text("🌟 Spotlight").tag(Tier.spotlight)
+                Text("📌 Pinned").tag(Tier.pinned)
+                Text("Normal").tag(Tier.normal)
+            }
+            .pickerStyle(.segmented)
+            Text(tierHint).font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3).fixedSize(horizontal: false, vertical: true)
+            if tier == .spotlight, let t = listSpotlightTitle {
+                Text("Replaces “\(t)” as this list’s spotlight (it becomes Pinned).")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 14)
+    }
+
     // MARK: Extras (flat, hairline-divided rows — matching the mock's "Extras" group)
 
     private var extras: some View {
         VStack(spacing: 0) {
-            extraRow("⭐", "Feature on the home screen", "Shows big on the family hub", $isFeatured, first: true)
+            tierPickerRow
+            Divider().overlay(WF.hair)
             extraRow("🏆", "Milestones & rewards", "Bonus stars at thresholds you set", $hasRewards)
             if hasRewards { milestoneEditor.padding(.top, 4).padding(.bottom, 10) }
             // Auto-count is offered for total/count/habit only — a checklist's progress
@@ -1745,7 +1848,7 @@ struct GoalCreateSheet: View {
     /// The pinned compact preview at the top of the iPhone form.
     private var compactPreview: some View {
         let shared = trackingMode == "shared_total"
-        let feat = isFeatured
+        let feat = tier != .normal // Spotlight or Pinned both get the elevated coral preview
         return HStack(spacing: 13) {
             ZStack {
                 RoundedRectangle(cornerRadius: 13, style: .continuous)
@@ -1755,7 +1858,7 @@ struct GoalCreateSheet: View {
             .frame(width: 46, height: 46)
             VStack(alignment: .leading, spacing: 2) {
                 if feat {
-                    Text("★ FEATURED").font(.system(size: 9.5, weight: .heavy)).tracking(0.3).foregroundStyle(.white)
+                    Text(tier == .spotlight ? "🌟 SPOTLIGHT" : "📌 PINNED").font(.system(size: 9.5, weight: .heavy)).tracking(0.3).foregroundStyle(.white)
                         .padding(.horizontal, 7).padding(.vertical, 2).background(Color.white.opacity(0.2), in: Capsule())
                 }
                 Text(previewTitle).font(WF.serif(17)).lineLimit(1)
@@ -1786,14 +1889,14 @@ struct GoalCreateSheet: View {
     private var generousPreview: some View {
         let shared = trackingMode == "shared_total"
         return VStack(alignment: .leading, spacing: 16) {
-            if isFeatured { featuredHero(shared: shared) } else { plainPreviewCard(shared: shared) }
+            if tier != .normal { featuredHero(shared: shared) } else { plainPreviewCard(shared: shared) }
             if hasRewards {
                 let nodes = Array(milestones.filter { !$0.threshold.isEmpty }.prefix(4))
                 if !nodes.isEmpty { milestoneTrack(nodes) }
             }
             HStack(spacing: 8) {
                 Image(systemName: "display").font(.system(size: 13, weight: .semibold))
-                Text(isFeatured ? "Featured big on the home screen" : "Lives in the goals list")
+                Text(tier == .spotlight ? "The spotlight on the home screen" : tier == .pinned ? "Pinned to the top of the goals list" : "Lives in the goals list")
                     .font(.system(size: 12, weight: .semibold))
             }
             .foregroundStyle(WF.ink3)
@@ -1956,6 +2059,7 @@ struct GoalCreateSheet: View {
         habitPeriod = g.habitPeriod ?? "week"
         if let h = g.habitTargetPerPeriod { habitPer = String(h) }
         isFeatured = g.isFeatured
+        isSpotlight = g.isSpotlight ?? false
         hasRewards = g.hasRewards
         autoFromCalendar = g.autoFromCalendar
         if let d = g.deadline, let parsed = Self.parseDay(d) { hasDeadline = true; deadline = parsed }
@@ -1991,6 +2095,7 @@ struct GoalCreateSheet: View {
             "targetBasis": .string(targetBasis),
             "logMethod": .string("quick_log"),
             "isFeatured": .bool(isFeatured),
+            "isSpotlight": .bool(isSpotlight),
             "hasRewards": .bool(hasRewards),
             // Checklist progress comes from steps, never from the calendar.
             "autoFromCalendar": .bool(isChecklist ? false : autoFromCalendar),
@@ -2294,7 +2399,7 @@ struct GoalDetailView: View {
                      trackingMode: goal.trackingMode,
                      participantMode: model.detail?.participantMode ?? goal.participantMode,
                      targetBasis: model.detail?.targetBasis ?? goal.targetBasis,
-                     deadline: goal.deadline, isFeatured: goal.isFeatured,
+                     deadline: goal.deadline, isFeatured: goal.isFeatured, isSpotlight: goal.isSpotlight,
                      target: target, totalProgress: progress, milestoneTotal: goal.milestoneTotal,
                      milestoneReached: goal.milestoneReached, streakDays: goal.streakDays,
                      autoFromCalendar: goal.autoFromCalendar, healthMetric: goal.healthMetric,

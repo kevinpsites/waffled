@@ -335,17 +335,19 @@ struct TodayView: View {
         func isFamily(_ g: WaffledAPI.Goal) -> Bool {
             everyone.count > 1 && everyone.isSubset(of: Set(g.participants.map(\.personId)))
         }
+        // Prefer the Spotlight, then a Pinned (isFeatured) goal, then any — within scope.
+        func spot(_ g: WaffledAPI.Goal) -> Bool { g.isSpotlight ?? false }
         let mineFirst: [(WaffledAPI.Goal) -> Bool] = [
-            { isMine($0) && $0.isFeatured }, { isMine($0) },
-            { isFamily($0) && $0.isFeatured }, { isFamily($0) },
+            { isMine($0) && spot($0) }, { isMine($0) && $0.isFeatured }, { isMine($0) },
+            { isFamily($0) && spot($0) }, { isFamily($0) && $0.isFeatured }, { isFamily($0) },
         ]
         let familyFirst: [(WaffledAPI.Goal) -> Bool] = [
-            { isFamily($0) && $0.isFeatured }, { isFamily($0) },
-            { isMine($0) && $0.isFeatured }, { isMine($0) },
+            { isFamily($0) && spot($0) }, { isFamily($0) && $0.isFeatured }, { isFamily($0) },
+            { isMine($0) && spot($0) }, { isMine($0) && $0.isFeatured }, { isMine($0) },
         ]
         let order = goalScope == "family" ? familyFirst : mineFirst
         for matches in order { if let g = goals.first(where: matches) { return g } }
-        return goals.first { $0.isFeatured } ?? goals.first
+        return goals.first(where: spot) ?? goals.first { $0.isFeatured } ?? goals.first
     }
 
     private static let goalGreen = Color(hex: 0x2BA45F)
@@ -412,7 +414,8 @@ struct TodayView: View {
             HStack(spacing: 8) {
                 Text(g.emoji ?? "🎯").font(.system(size: 20))
                 Text(g.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
-                if g.isFeatured { Text("⭐").font(.system(size: 11)) }
+                if g.isSpotlight ?? false { Text("🌟").font(.system(size: 11)) }
+                else if g.isFeatured { Text("📌").font(.system(size: 11)) }
                 Spacer(minLength: 6)
                 if g.streakDays >= 2 {
                     Text("🔥 \(g.streakDays)").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink2)

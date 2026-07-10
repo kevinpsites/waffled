@@ -1896,7 +1896,7 @@ struct WaffledAPI: Sendable {
             var asGoal: Goal2 {
                 Goal2(id: id, goalListId: nil, title: title, emoji: emoji, category: category,
                       goalType: goalType ?? "total", unit: unit, habitPeriod: nil, habitTargetPerPeriod: nil,
-                      trackingMode: "shared_total", participantMode: nil, targetBasis: nil, deadline: nil, isFeatured: false, target: target,
+                      trackingMode: "shared_total", participantMode: nil, targetBasis: nil, deadline: nil, isFeatured: false, isSpotlight: nil, target: target,
                       totalProgress: progress ?? 0, milestoneTotal: 0, milestoneReached: 0,
                       streakDays: streakDays, autoFromCalendar: false, healthMetric: nil, createdAt: nil, participants: [])
             }
@@ -1962,7 +1962,7 @@ struct WaffledAPI: Sendable {
 
     // MARK: Family hub tile counts (non-synced domains, fetched over REST)
 
-    struct GoalDTO: Decodable { let id: String; let isFeatured: Bool }
+    struct GoalDTO: Decodable { let id: String; let isFeatured: Bool; let isSpotlight: Bool? }
     struct ListRefDTO: Decodable { let id: String }
     struct FamilyStarsDTO: Decodable, Sendable { let name: String?; let stars: Int }
 
@@ -2243,6 +2243,9 @@ struct WaffledAPI: Sendable {
         let targetBasis: String?
         let deadline: String?
         let isFeatured: Bool
+        /// The one hero goal per list ("Spotlight"). Optional so an older response still
+        /// decodes; default false at read. `isFeatured` is the "Pinned" tier.
+        let isSpotlight: Bool?
         let target: Double?
         let totalProgress: Double
         let milestoneTotal: Int
@@ -2283,6 +2286,7 @@ struct WaffledAPI: Sendable {
         let habitPeriod: String?
         let habitTargetPerPeriod: Int?
         let isFeatured: Bool
+        let isSpotlight: Bool?
         let hasRewards: Bool
         let totalProgress: Double
         let streakDays: Int

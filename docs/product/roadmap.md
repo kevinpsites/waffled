@@ -127,10 +127,10 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   pieces are deferred: (1) **manual drag-to-reorder for the Pinned band** — needs a
   `sort_order` column + a reorder endpoint + drag gestures on web & iOS (today the Pinned band
   is A–Z like More); and (2) a **customizable Today goal card** — the Today card defaults to the
-  household's spotlight, but families should be able to **pin a specific goal** to it. Also:
-  **iOS parity** for the three tiers (list sections + the tier picker on the create/edit form) —
-  web shipped first. (Internally the Pinned tier is still the `is_featured` column; a clean
-  rename to `is_pinned` is optional cleanup.)
+  household's spotlight, but families should be able to **pin a specific goal** to it. (The three
+  tiers, the tier picker, one-tap pin/unpin, and the Today→Spotlight default all shipped on web +
+  iOS. Internally the Pinned tier is still the `is_featured` column; a clean rename to `is_pinned`
+  is optional cleanup.)
 
 - **Pantry ↔ meal-planning loop.** The pantry redesign + Open Food Facts integration
   (cached barcode lookup/scanner, nutrition + colored allergen badges, household∪per-person

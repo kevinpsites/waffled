@@ -21,7 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   else below as compact **A–Z rows**. The create/edit form gets a Spotlight / Pinned / Normal
   picker, and choosing Spotlight when the list already has one tells you which goal it replaces
   (that one becomes Pinned). You can also **pin or unpin a goal in one tap right from its card** —
-  no need to open the editor. (Web this release; iPhone to follow.)
+  no need to open the editor. On iPhone/iPad the goals list gets the same three sections, the
+  tier picker, one-tap pin/unpin, and the Today goal card now shows the **Spotlight** (falling
+  back to a Pinned goal). Web + iOS.
 - **iPhone now has full parity with the web app for Goals.** Everything above ships on iPhone/iPad
   too: **ticking off a checklist** (from the goal or the Log sheet — previously iPhone could only add
   numeric progress, which made no sense for a checklist), the **measure-aware group-counting** choice
