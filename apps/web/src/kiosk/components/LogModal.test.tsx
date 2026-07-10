@@ -14,6 +14,7 @@ const goal = {
   habitPeriod: null,
   habitTargetPerPeriod: null,
   trackingMode: 'shared_total',
+  participantMode: 'split',
   logMethod: 'quick_log',
   autoFromCalendar: false,
   deadline: null,
@@ -81,5 +82,22 @@ describe('LogModal capability gating', () => {
     mockApi([])
     render(<LogModal goal={goal} canDelete={true} selfPersonId="p1" onClose={vi.fn()} onSaved={vi.fn()} />)
     expect(await screen.findByText('Delete goal')).toBeInTheDocument()
+  })
+})
+
+describe('LogModal shared-count attendance (count_once)', () => {
+  const parksGoal = { ...goal, goalType: 'count', unit: 'parks', participantMode: 'count_once', title: 'State parks' }
+
+  it('offers a multi-select "Who was there?" and logs everyone tapped in one call', async () => {
+    const logged: unknown[] = []
+    mockApi(logged)
+    render(<LogModal goal={parksGoal} canLogOthers={true} selfPersonId="p1" onClose={vi.fn()} onSaved={vi.fn()} />)
+    expect(await screen.findByText('Who was there?')).toBeInTheDocument()
+    // Tap both attendees — multi-select, not the old single-select.
+    fireEvent.click(screen.getByText('Wally'))
+    fireEvent.click(screen.getByText('Lottie'))
+    fireEvent.click(screen.getByRole('button', { name: /^Log \d/ }))
+    await waitFor(() => expect(logged).toHaveLength(1))
+    expect((logged[0] as { personIds: string[] }).personIds.sort()).toEqual(['p1', 'p2'])
   })
 })

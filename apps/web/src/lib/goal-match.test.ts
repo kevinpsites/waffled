@@ -15,6 +15,7 @@ function goal(over: Partial<Goal> & { id: string; title: string }): Goal {
     habitPeriod: null,
     habitTargetPerPeriod: null,
     trackingMode: 'shared_total',
+    participantMode: over.participantMode ?? 'count_once',
     logMethod: 'quick_log',
     autoFromCalendar: over.autoFromCalendar ?? true,
     deadline: null,

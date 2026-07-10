@@ -24,6 +24,13 @@ const TYPES = [
 // everything except checklists, which complete by ticking named steps.
 const CALENDAR_TYPES = new Set(['total', 'count', 'habit'])
 
+// For a shared goal, what does tapping several people on one log mean?
+const PARTICIPANT_MODES = [
+  { key: 'count_once', title: 'Once for the family', hint: 'Counts once no matter how many took part — the people you tap are recorded as who was there.' },
+  { key: 'credit_each', title: 'Full credit to each', hint: 'Everyone tapped gets the full amount toward their own total; the family goal still counts it once.' },
+  { key: 'split', title: 'Split evenly', hint: 'The amount is divided evenly across the people you tap.' },
+] as const
+
 type Milestone = { threshold: number; emoji: string; label: string; rewardText: string }
 
 // Sensible auto-milestones DERIVED from the goal's target — for a numeric goal we
@@ -100,6 +107,7 @@ export function GoalCreate() {
     goalListId: editing ? '' : (searchParams.get('list') ?? ''),
     category: 'physical',
     trackingMode: 'shared_total' as 'shared_total' | 'each_tracks',
+    participantMode: 'count_once' as (typeof PARTICIPANT_MODES)[number]['key'],
     goalType: 'total' as (typeof TYPES)[number]['key'],
     target: 1000,
     unit: 'hours',
@@ -133,6 +141,7 @@ export function GoalCreate() {
       goalListId: editGoal.goalListId ?? '',
       category: editGoal.category ?? 'physical',
       trackingMode: editGoal.trackingMode === 'each_tracks' ? 'each_tracks' : 'shared_total',
+      participantMode: (editGoal.participantMode as (typeof PARTICIPANT_MODES)[number]['key']) ?? 'count_once',
       goalType: (editGoal.goalType as (typeof TYPES)[number]['key']) ?? 'total',
       target: editGoal.target ?? 1,
       unit: editGoal.unit ?? '',
@@ -237,6 +246,7 @@ export function GoalCreate() {
       habitPeriod: form.goalType === 'habit' ? form.habitPeriod : null,
       habitTargetPerPeriod: form.goalType === 'habit' ? form.habitPerPeriod : null,
       trackingMode: form.trackingMode,
+      participantMode: form.participantMode,
       // Logging style is derived from the type; calendar auto-count is an
       // independent opt-in (never on checklists, which tick steps).
       autoFromCalendar: isChecklist ? false : form.autoFromCalendar,
@@ -319,6 +329,19 @@ export function GoalCreate() {
               <button type="button" className={shared ? 'on' : ''} onClick={() => set('trackingMode', 'shared_total')}>One shared total</button>
               <button type="button" className={!shared ? 'on' : ''} onClick={() => set('trackingMode', 'each_tracks')}>Each tracks their own</button>
             </div>
+            {shared && !isChecklist && form.goalType !== 'habit' && (
+              <div className="ge-pmode">
+                <div className="ge-sec-h" style={{ margin: '10px 0 6px' }}>When several people are in on one log…</div>
+                <div className="ge-share ge-share-3">
+                  {PARTICIPANT_MODES.map((m) => (
+                    <button key={m.key} type="button" className={form.participantMode === m.key ? 'on' : ''} onClick={() => set('participantMode', m.key)}>{m.title}</button>
+                  ))}
+                </div>
+                <div className="ge-sec-h" style={{ marginTop: 6 }}>
+                  {PARTICIPANT_MODES.find((m) => m.key === form.participantMode)?.hint}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 3 · measure */}

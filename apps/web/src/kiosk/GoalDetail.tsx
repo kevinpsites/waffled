@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router'
 import { LogModal } from './components/LogModal'
+import { EntryModal } from './components/EntryModal'
 import { EventModal } from './components/EventModal'
 import { ReviewList } from './components/GoalRecap'
 import { useGoalDetail, useHousehold, can, api, type GoalParticipant, type GoalMilestone, type GoalLogEntry } from '../lib/api'
@@ -77,6 +78,7 @@ export function GoalDetail() {
   const [logging, setLogging] = useState(false)
   const [planning, setPlanning] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
+  const [editEntry, setEditEntry] = useState<GoalLogEntry | null>(null)
   // Optimistic checklist toggles: stepId -> intended done state. The checkbox
   // flips instantly (no wait for the round-trip) and rapid taps stay consistent;
   // each override is dropped once the server confirms it (or on error).
@@ -281,10 +283,22 @@ export function GoalDetail() {
           {goal.autoFromCalendar && <ReviewList goalId={goal.id} variant="inline" />}
 
           <div className="card detail-card">
-            <div className="card-h" style={{ marginBottom: 8 }}>Recent activity</div>
+            <div className="card-h" style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <span>Recent activity</span>
+              {canEdit && !isChecklist && goal.recent.length > 0 && <span className="tiny muted" style={{ fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>tap to edit</span>}
+            </div>
             {goal.recent.length === 0 && <div className="tiny muted" style={{ fontWeight: 600, padding: '8px 0' }}>No activity yet — log some progress.</div>}
-            {goal.recent.map((r: GoalLogEntry) => (
-              <div key={r.id} className="logrow">
+            {goal.recent.map((r: GoalLogEntry) => {
+              const editable = canEdit && !isChecklist
+              return (
+              <div
+                key={r.id}
+                className="logrow"
+                role={editable ? 'button' : undefined}
+                tabIndex={editable ? 0 : undefined}
+                onClick={editable ? () => setEditEntry(r) : undefined}
+                style={editable ? { cursor: 'pointer' } : undefined}
+              >
                 <div className="lwhen">{fmtDay(r.loggedAt)}</div>
                 {r.participants.length > 0 ? (
                   <div className="avstack">
@@ -301,7 +315,8 @@ export function GoalDetail() {
                   {goal.unit ? ` ${goal.unit}` : ''}
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
 
           {canEdit && (
@@ -316,6 +331,7 @@ export function GoalDetail() {
         </div>
       </div>
 
+      {editEntry && <EntryModal goal={goal} entry={editEntry} onClose={() => setEditEntry(null)} onSaved={refetch} />}
       {logging && <LogModal goal={goal} canLogOthers={canManageGoals} selfPersonId={person?.id ?? null} canDelete={canEdit} onClose={() => setLogging(false)} onSaved={refetch} onDeleted={() => navigate('/goals')} />}
       {planning && (
         <EventModal
