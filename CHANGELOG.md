@@ -56,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Checklist goals can no longer be given a meaningless numeric "log".** A checklist is
   completed by ticking its items, so recording "1" against it is rejected — checklists progress
   only by checking things off.
+- **Goal forms now reject nonsense input instead of failing silently.** Malformed values —
+  a non-date deadline, a fractional target on a whole-number (count) goal, a bad habit cadence,
+  a non-numeric milestone — are turned away with a clear message rather than saved and breaking
+  the goal later, and progress can only be credited to real members of your household.
 
 - **Per-step timers now carry into the recipe editor when parsing.** Building a recipe
   from a photo, a description, or pasted Markdown correctly detected each step's timer but

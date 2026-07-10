@@ -481,6 +481,44 @@ describe('participant counting modes (shared goals)', () => {
   })
 })
 
+describe('goal input validation (hardening)', () => {
+  const base = { title: 'V', trackingMode: 'shared_total' as const }
+
+  it('rejects a habitPeriod that is not day/week/month (would break the progress query)', async () => {
+    expect((await call('POST', '/api/goals', kevin, { ...base, goalType: 'habit', habitPeriod: 'fortnight', habitTargetPerPeriod: 3 })).statusCode).toBe(400)
+    // a valid period is accepted
+    expect((await call('POST', '/api/goals', kevin, { ...base, goalType: 'habit', habitPeriod: 'week', habitTargetPerPeriod: 3 })).statusCode).toBe(201)
+  })
+
+  it('rejects a non-numeric or fractional target where it makes no sense', async () => {
+    expect((await call('POST', '/api/goals', kevin, { ...base, goalType: 'total', targetValue: 'abc' })).statusCode).toBe(400)
+    // count goals are whole things — no 5.5 parks
+    expect((await call('POST', '/api/goals', kevin, { ...base, goalType: 'count', targetValue: 5.5 })).statusCode).toBe(400)
+    expect((await call('POST', '/api/goals', kevin, { ...base, goalType: 'count', targetValue: 5 })).statusCode).toBe(201)
+  })
+
+  it('rejects a malformed deadline and a bad milestone threshold', async () => {
+    expect((await call('POST', '/api/goals', kevin, { ...base, goalType: 'total', targetValue: 10, deadline: 'someday' })).statusCode).toBe(400)
+    expect((await call('POST', '/api/goals', kevin, { ...base, goalType: 'total', targetValue: 10, milestones: [{ threshold: 'lots' }] })).statusCode).toBe(400)
+  })
+
+  it('rejects a malformed field on PATCH too', async () => {
+    const add = await call('POST', '/api/goals', kevin, { ...base, goalType: 'total', targetValue: 10 })
+    const id = JSON.parse(add.body).goal.id
+    expect((await call('PATCH', `/api/goals/${id}`, kevin, { deadline: 'nope' })).statusCode).toBe(400)
+    expect((await call('PATCH', `/api/goals/${id}`, kevin, { habitPeriod: 'fortnight' })).statusCode).toBe(400)
+  })
+
+  it('rejects a fractional /log against a count goal, and an unknown person', async () => {
+    const add = await call('POST', '/api/goals', kevin, { ...base, goalType: 'count', unit: 'parks', targetValue: 5, participantIds: [kevinId] })
+    const id = JSON.parse(add.body).goal.id
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 1.5, personId: kevinId })).statusCode).toBe(400)
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 1, personId: kevinId })).statusCode).toBe(201)
+    // a person id that isn't in this household can't be credited
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 1, personIds: ['11111111-1111-1111-1111-111111111111'] })).statusCode).toBe(400)
+  })
+})
+
 describe('checklist goals reject numeric progress logs', () => {
   it('a checklist goal is updated by ticking steps, not POST /log (400)', async () => {
     const add = await call('POST', '/api/goals', kevin, {

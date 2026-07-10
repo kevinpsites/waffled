@@ -17,6 +17,10 @@ export const TRACKING_MODES = new Set(['shared_total', 'each_tracks'])
 //   split       — the amount is divided evenly across the people.
 // See migration 0078 + logProgress for the row-writing rules.
 export const PARTICIPANT_MODES = new Set(['count_once', 'credit_each', 'split'])
+// A habit's period is interpolated into date_trunc() in the progress query, so it must
+// be one of Postgres's field names — an unconstrained value would throw at read time and
+// 500 the whole goals list. Keep this in sync with habit_period usage.
+export const HABIT_PERIODS = new Set(['day', 'week', 'month'])
 // Apple Health metrics a goal can auto-fill from (iPhone). Keep in sync with the iOS
 // HealthKitBridge.Metric keys. Quantity metrics (steps…mindful_minutes) send a raw daily
 // total; the boolean metrics (rings, mood) send 1 when met / 0 when not, so they ride the
@@ -206,7 +210,8 @@ export async function createGoal(tenant: Tenant, input: CreateGoalInput): Promis
         input.autoFromCalendar ?? false,
         input.healthMetric ?? null,
         input.healthDailyTarget ?? null,
-        input.deadline ?? null,
+        input.deadline || null, // '' (cleared) → null so it isn't written to a date column
+
         input.isFeatured ?? false,
         input.hasRewards ?? false,
       ]
@@ -473,6 +478,18 @@ export async function goalTypeFor(householdId: string, id: string): Promise<stri
     [householdId, id]
   )
   return rows[0]?.goal_type ?? null
+}
+
+// True only if every id is a live person in this household — so a /log can't attribute
+// progress to a stranger (or someone in another household).
+export async function personsInHousehold(householdId: string, ids: string[]): Promise<boolean> {
+  if (ids.length === 0) return true
+  const unique = [...new Set(ids)]
+  const { rows } = await query<{ n: string }>(
+    `select count(*)::int as n from persons where household_id=$1 and id = any($2::uuid[]) and deleted_at is null`,
+    [householdId, unique]
+  )
+  return Number(rows[0]?.n ?? 0) === unique.length
 }
 
 // The person_ids currently assigned to a goal (live participants only). Powers the

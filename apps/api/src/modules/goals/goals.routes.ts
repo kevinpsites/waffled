@@ -23,7 +23,9 @@ import {
   GOAL_TYPES,
   TRACKING_MODES,
   PARTICIPANT_MODES,
+  HABIT_PERIODS,
   HEALTH_METRICS,
+  personsInHousehold,
 } from './goals.service'
 
 type Api = ReturnType<typeof createAPI>
@@ -32,6 +34,37 @@ type Api = ReturnType<typeof createAPI>
 const { tenantRoute, capRoute } = moduleRoutes('goals')
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+// Shape checks shared by create + PATCH: reject malformed values that would otherwise
+// slip into numeric/date columns (a 500) or a habit period that breaks the progress
+// query. `goalType` is the effective type (from the body on create, or the body/stored
+// type on PATCH) so count goals can enforce whole-number targets. Returns an error
+// message or null. Absent fields are skipped — PATCH only validates what it's changing.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function goalShapeError(body: any, goalType?: string | null): string | null {
+  if (body.targetValue != null && body.targetValue !== '') {
+    const n = Number(body.targetValue)
+    if (!Number.isFinite(n)) return 'targetValue must be a number'
+    if (goalType === 'count' && !Number.isInteger(n)) return 'a count goal target must be a whole number'
+  }
+  if (body.deadline != null && body.deadline !== '' && !(typeof body.deadline === 'string' && DATE_RE.test(body.deadline))) {
+    return 'deadline must be a YYYY-MM-DD date'
+  }
+  if (body.habitPeriod != null && body.habitPeriod !== '' && !HABIT_PERIODS.has(String(body.habitPeriod))) {
+    return 'habitPeriod must be day, week, or month'
+  }
+  if (body.habitTargetPerPeriod != null) {
+    const n = Number(body.habitTargetPerPeriod)
+    if (!Number.isInteger(n) || n <= 0) return 'habitTargetPerPeriod must be a positive whole number'
+  }
+  if (Array.isArray(body.milestones)) {
+    for (const m of body.milestones) {
+      if (!Number.isFinite(Number(m?.threshold))) return 'milestone threshold must be a number'
+    }
+  }
+  return null
+}
 
 export function registerGoalRoutes(api: Api): void {
   // goal lists (sidebar)
@@ -91,6 +124,8 @@ export function registerGoalRoutes(api: Api): void {
     if (body.healthDailyTarget != null && !(Number(body.healthDailyTarget) >= 0)) {
       return res.status(400).json({ error: 'BadRequest', message: 'healthDailyTarget must be a non-negative number' })
     }
+    const shapeErr = goalShapeError(body, body.goalType)
+    if (shapeErr) return res.status(400).json({ error: 'BadRequest', message: shapeErr })
     // Carve-out: a goal that assigns no one else (nobody, or only the caller) is
     // self-scoped. Assigning another participant takes goal.manage.
     const assigned = Array.isArray(body.participantIds) ? body.participantIds.filter(Boolean) : []
@@ -127,6 +162,10 @@ export function registerGoalRoutes(api: Api): void {
     if (body.participantMode && !PARTICIPANT_MODES.has(body.participantMode)) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid participantMode' })
     }
+    const patchShapeErr = goalShapeError(body, body.goalType)
+    if (patchShapeErr) return res.status(400).json({ error: 'BadRequest', message: patchShapeErr })
+    // A cleared deadline arrives as '' — normalize to null so it isn't written to a date column.
+    if ((req.body as { deadline?: unknown })?.deadline === '') (req.body as { deadline?: unknown }).deadline = null
     if (body.healthMetric != null && !HEALTH_METRICS.has(String(body.healthMetric))) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid healthMetric' })
     }
@@ -175,7 +214,15 @@ export function registerGoalRoutes(api: Api): void {
     if (gType === 'checklist') {
       return res.status(400).json({ error: 'BadRequest', message: 'checklist goals are updated by ticking steps, not logging progress' })
     }
+    // A count goal tallies whole things (parks, books) — no fractional amounts.
+    if (gType === 'count' && !Number.isInteger(amount)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'a count goal is logged in whole numbers' })
+    }
     const personIds = Array.isArray(body.personIds) ? body.personIds.filter(Boolean) : body.personId ? [body.personId] : []
+    // Every credited person must be a real member of this household — no crediting a stranger.
+    if (personIds.length && !(await personsInHousehold(tenant.householdId, personIds))) {
+      return res.status(400).json({ error: 'BadRequest', message: 'unknown person' })
+    }
     // Carve-out: logging for nobody (a family/shared log) or only for yourself is
     // always allowed; attributing progress to another person takes goal.manage.
     if (personIds.some((pid) => pid !== tenant.personId)) {
