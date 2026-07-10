@@ -278,10 +278,13 @@ struct PhotoDetailView: View {
         editing = false
     }
 
+    // ISO8601DateFormatter is expensive to allocate per call; hoist to a shared static.
+    private static let isoDF = ISO8601DateFormatter()
+
     /// Format a chosen day as an ISO timestamp at noon (device tz) for `taken_at`.
     private static func isoDay(_ d: Date) -> String {
-        let noon = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: d) ?? d
-        return ISO8601DateFormatter().string(from: noon)
+        let noon = Cal.current.date(bySettingHour: 12, minute: 0, second: 0, of: d) ?? d
+        return isoDF.string(from: noon)
     }
 
     private func toggleFavorite() async {

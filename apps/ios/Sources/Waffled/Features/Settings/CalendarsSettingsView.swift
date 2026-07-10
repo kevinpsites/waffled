@@ -34,6 +34,12 @@ final class OAuthLauncher: NSObject, ASWebAuthenticationPresentationContextProvi
 /// each belongs to, set the write-target, and run a manual sync. Mirrors the web
 /// CalendarsPanel.
 struct CalendarsSettingsView: View {
+    // ISO8601DateFormatter is expensive to build; these parsers are hit per calendar row.
+    private static let isoFrac: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f
+    }()
+    private static let isoPlain = ISO8601DateFormatter()
+
     @Environment(SyncManager.self) private var sync
     @State private var status: WaffledAPI.CalendarStatus?
     @State private var loading = true
@@ -287,8 +293,7 @@ struct CalendarsSettingsView: View {
     }
 
     private func shortDay(_ iso: String) -> String {
-        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let d = f.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else { return "" }
+        guard let d = Self.isoFrac.date(from: iso) ?? Self.isoPlain.date(from: iso) else { return "" }
         return DateFmt.string(d, "MMM d", sync.householdTz)
     }
 
@@ -421,8 +426,7 @@ struct CalendarsSettingsView: View {
 
     /// "Jun 19, 2:48 PM" from an ISO timestamp.
     private func when(_ iso: String) -> String {
-        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let d = f.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
+        let d = Self.isoFrac.date(from: iso) ?? Self.isoPlain.date(from: iso)
         guard let d else { return "" }
         return DateFmt.string(d, "MMM d, h:mm a", sync.householdTz)
     }

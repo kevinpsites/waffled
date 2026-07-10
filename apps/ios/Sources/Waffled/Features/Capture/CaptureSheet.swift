@@ -45,6 +45,13 @@ struct CaptureSheet: View {
         ("task", "✅", "Task"), ("meal", "🍽️", "Meal"),
     ]
 
+    // ISO8601DateFormatter is expensive to allocate; hoist the two distinct configs
+    // (default internet-date-time, and one with fractional seconds) to shared statics.
+    private static let isoDF = ISO8601DateFormatter()
+    private static let isoFracDF: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f
+    }()
+
     enum Phase { case input, parsing, preview, committing }
 
     var body: some View {
@@ -287,7 +294,7 @@ struct CaptureSheet: View {
             var detail = DateFmt.string(evDate, pattern, sync.householdTz) + (evAllDay ? " · all day" : "")
             // Surface the recurrence in the glance so "every Thursday" reads as recurring.
             if evRepeat.freq != .none {
-                var cal = Calendar(identifier: .gregorian); cal.timeZone = sync.householdTz
+                let cal = Cal.gregorian(sync.householdTz)
                 let rr = Recurrence.buildRrule(evRepeat, start: evDate, cal)
                 detail += " · 🔁 \(Recurrence.describeRrule(rr, start: evDate, cal))"
             }
@@ -562,7 +569,7 @@ struct CaptureSheet: View {
 
         // 1) Instant on-device guess — shown immediately, so you can add it before the
         //    LLM even responds.
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = sync.householdTz
+        let cal = Cal.gregorian(sync.householdTz)
         let local = CaptureHeuristic.parse(t, persons: sync.members.map(\.name), now: Date(), cal: cal, lists: lists.map(\.name))
         let localConfident = local != nil && CaptureHeuristic.looksConfident(local, text: t)
         if let local, localConfident { accept(local, via: "on-device", autoCommit: false) }
@@ -629,11 +636,9 @@ struct CaptureSheet: View {
     /// card is shown; the user can re-classify it and the other fields carry over.
     private func populate(_ i: CaptureIntent) {
         editing = false   // always land on the confident glance first
-        let iso = ISO8601DateFormatter()
-        let isoFrac = ISO8601DateFormatter(); isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         func date(_ s: String?) -> Date? {
             guard let s else { return nil }
-            return iso.date(from: s) ?? isoFrac.date(from: s)
+            return Self.isoDF.date(from: s) ?? Self.isoFracDF.date(from: s)
         }
         switch i {
         case let .event(title, startsAt, allDay, personName, rrule, _, _):
@@ -663,15 +668,15 @@ struct CaptureSheet: View {
             let ok: Bool
             switch editKind {
             case "event":
-                let cal = Calendar.current
+                let cal = Cal.current
                 let start = evAllDay ? (cal.date(bySettingHour: 12, minute: 0, second: 0, of: evDate) ?? evDate) : evDate
                 let rrule = Recurrence.buildRrule(evRepeat, start: start)
                 var endAt: String?
                 if rrule != nil, evUntilOn {
                     let eod = cal.date(bySettingHour: 23, minute: 59, second: 0, of: evUntil) ?? evUntil
-                    endAt = ISO8601DateFormatter().string(from: eod)
+                    endAt = Self.isoDF.string(from: eod)
                 }
-                ok = await sync.commitEvent(title: name, startsAtISO: ISO8601DateFormatter().string(from: start),
+                ok = await sync.commitEvent(title: name, startsAtISO: Self.isoDF.string(from: start),
                                             allDay: evAllDay, personName: evPerson, rrule: rrule, recurrenceEndAt: endAt)
             case "grocery":
                 ok = await sync.commitGrocery(name: name, quantity: qty)
@@ -680,7 +685,7 @@ struct CaptureSheet: View {
                                            stars: taskStars > 0 ? taskStars : nil,
                                            rewardCurrency: taskCurrency, rrule: taskRrule)
             case "meal":
-                let d = ISO8601DateFormatter().string(from: mealDate)
+                let d = Self.isoDF.string(from: mealDate)
                 ok = await sync.commitMeal(title: name, date: d, mealType: mealSlot)
             case "list":
                 ok = await sync.commitListItem(item: name, listName: editListName, quantity: qty)
