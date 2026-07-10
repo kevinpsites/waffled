@@ -8,6 +8,11 @@ section, numbered steps) that you then review and save.
 It's also handy for generating recipes with an LLM: paste the template below into
 ChatGPT/Claude, ask it to fill in a dish, and paste the result back into Waffled.
 
+> **You usually don't need to do this by hand.** The New recipe screen can build a
+> recipe *for* you from a **photo** of a physical recipe or a spoken/typed
+> **description** — both use this same format under the hood and drop into the editor
+> for review. See the "Add a recipe from a photo or your voice" guide.
+
 > The same format powers the dev-only `import-recipes` seeding CLI, but you never need
 > the CLI — authoring and pasting in-app is the supported path.
 

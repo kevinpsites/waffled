@@ -68,13 +68,20 @@ function stripDataUrl(dataUrl: string): { data: string; contentType: string } {
   return { contentType: m[1], data: m[2] }
 }
 
+// Validate + downscale/re-encode a chosen file to the bare `{ data, contentType }`
+// the server accepts — WITHOUT uploading. Used both by uploadImage (which then POSTs
+// to /api/media) and by AI recipe photo-import (which POSTs the base64 straight to the
+// ingest endpoint, so the source photo isn't a permanent /media blob).
+export async function encodeImageForUpload(file: File): Promise<{ data: string; contentType: string }> {
+  if (!isAllowed(file.type)) throw new Error(BAD_TYPE_MSG)
+  if (file.size > MAX_UPLOAD_BYTES) throw new Error(TOO_BIG_MSG)
+  const dataUrl = await reencode(file, file.type)
+  return stripDataUrl(dataUrl)
+}
+
 // Upload a chosen file: validate type + size up front (fail fast), downscale/re-encode
 // via canvas, then POST { data, contentType } to /api/media. Resolves to { key, url, contentType }.
 export async function uploadImage(file: File): Promise<UploadedImage> {
-  if (!isAllowed(file.type)) throw new Error(BAD_TYPE_MSG)
-  if (file.size > MAX_UPLOAD_BYTES) throw new Error(TOO_BIG_MSG)
-
-  const dataUrl = await reencode(file, file.type)
-  const { data, contentType } = stripDataUrl(dataUrl)
+  const { data, contentType } = await encodeImageForUpload(file)
   return apiSend<UploadedImage>('POST', '/api/media', { data, contentType })
 }

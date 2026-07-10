@@ -4,6 +4,7 @@ import { useTopbarFull } from './topbar-slot'
 import { ChipEditor } from './components/ChipEditor'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { RECIPE_TEMPLATE, RECIPE_EXAMPLE } from './components/recipe-template'
+import { PhotoImportModal, DescribeImportModal } from './components/RecipeImportModals'
 import { mealsApi, uploadImage, useRecipe, type IngredientInput, type RecipeMetadataSuggestion, type RecipeWriteInput, type StepInput } from '../lib/api'
 import '../styles/recipe.css'
 
@@ -128,6 +129,10 @@ export function RecipeEditor() {
   const [pendingSectionUid, setPendingSectionUid] = useState<string | null>(null)
 
   const [pasteOpen, setPasteOpen] = useState(false)
+  // AI import (new-recipe only): which paths this household can use + open modal.
+  const [importCfg, setImportCfg] = useState<{ text: boolean; vision: boolean }>({ text: false, vision: false })
+  const [photoOpen, setPhotoOpen] = useState(false)
+  const [describeOpen, setDescribeOpen] = useState(false)
   const [markdown, setMarkdown] = useState('')
   const [parsing, setParsing] = useState(false)
   const [parseErr, setParseErr] = useState<string | null>(null)
@@ -159,6 +164,15 @@ export function RecipeEditor() {
     ),
     [navigate, isEdit]
   )
+
+  // New recipe only: ask which AI import paths this household can use, to show the
+  // photo/describe buttons. Silent on failure (module off, offline) — just no buttons.
+  useEffect(() => {
+    if (isEdit) return
+    let alive = true
+    mealsApi.ingestConfig().then((c) => alive && setImportCfg(c)).catch(() => {})
+    return () => { alive = false }
+  }, [isEdit])
 
   // Prefill from the loaded recipe when editing.
   useEffect(() => {
@@ -467,8 +481,21 @@ export function RecipeEditor() {
       {!isEdit && (
         <div className="re-paste-bar">
           <span className="tiny muted" style={{ fontWeight: 700 }}>Build it by hand below, or</span>
+          {importCfg.vision && (
+            <button type="button" className="pill" onClick={() => setPhotoOpen(true)}>📷 From a photo</button>
+          )}
+          {importCfg.text && (
+            <button type="button" className="pill" onClick={() => setDescribeOpen(true)}>🎤 Describe it</button>
+          )}
           <button type="button" className="pill" onClick={() => setPasteOpen((v) => !v)}>📋 Paste markdown</button>
         </div>
+      )}
+
+      {photoOpen && (
+        <PhotoImportModal onClose={() => setPhotoOpen(false)} onDraft={(p) => { applyParsed(p); setPasteOpen(false) }} />
+      )}
+      {describeOpen && (
+        <DescribeImportModal onClose={() => setDescribeOpen(false)} onDraft={(p) => { applyParsed(p); setPasteOpen(false) }} />
       )}
 
       {pasteOpen && (

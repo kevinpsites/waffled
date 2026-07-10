@@ -93,12 +93,23 @@ async function fetchJson(url: string, init: RequestInit, timeoutMs: number): Pro
   }
 }
 
+// An image to send alongside the text prompt (vision). `dataBase64` is the raw
+// base64 of the image bytes (no data: URI prefix); the adapter wraps it in whatever
+// shape its provider expects.
+export interface LlmImage {
+  contentType: string
+  dataBase64: string
+}
+
 export interface LlmJsonRequest {
   system: string
   user: string
   schema: object // JSON schema the response must match
   schemaName?: string
   maxTokens?: number
+  // Optional images for vision-capable models (photo → recipe, etc.). Only honored
+  // by providers/models that support vision — gate with visionAvailable() first.
+  images?: LlmImage[]
   // Per-call timeout. Heavier tasks (multi-item drafts on a local model) need
   // more than the default; defaults to AI_TIMEOUT_MS / 30s.
   timeoutMs?: number
@@ -106,6 +117,14 @@ export interface LlmJsonRequest {
 
 async function anthropicJson(req: LlmJsonRequest, model: string): Promise<unknown> {
   const name = req.schemaName ?? 'respond'
+  // With images, the user turn is a content array (text + image blocks); without,
+  // keep the plain string form the other features already use.
+  const content = req.images?.length
+    ? [
+        { type: 'text', text: req.user },
+        ...req.images.map((img) => ({ type: 'image', source: { type: 'base64', media_type: img.contentType, data: img.dataBase64 } })),
+      ]
+    : req.user
   const data = (await fetchJson('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -120,7 +139,7 @@ async function anthropicJson(req: LlmJsonRequest, model: string): Promise<unknow
       system: req.system,
       tools: [{ name, description: 'Structured response', input_schema: req.schema }],
       tool_choice: { type: 'tool', name },
-      messages: [{ role: 'user', content: req.user }],
+      messages: [{ role: 'user', content }],
     }),
   }, req.timeoutMs ?? TIMEOUT_MS)) as { content?: Array<{ type: string; input?: unknown }> }
   const tool = data.content?.find((c) => c.type === 'tool_use')
@@ -151,6 +170,19 @@ export function toStrictSchema(node: unknown): unknown {
 // don't have to defensively re-shape it. Response text lives in output[].content[]
 // (type 'output_text'); a strict-mode refusal comes back as a 'refusal' part.
 async function openaiJson(req: LlmJsonRequest, model: string): Promise<unknown> {
+  // With images, `input` becomes a single user message whose content mixes
+  // input_text + input_image (data URI); without, keep the plain string form.
+  const input = req.images?.length
+    ? [
+        {
+          role: 'user',
+          content: [
+            { type: 'input_text', text: req.user },
+            ...req.images.map((img) => ({ type: 'input_image', image_url: `data:${img.contentType};base64,${img.dataBase64}` })),
+          ],
+        },
+      ]
+    : req.user
   const data = (await fetchJson(`${config.ai.openai.baseUrl.replace(/\/$/, '')}/responses`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${config.ai.openai.apiKey ?? ''}` },
@@ -158,7 +190,7 @@ async function openaiJson(req: LlmJsonRequest, model: string): Promise<unknown> 
       model,
       temperature: 0,
       instructions: req.system,
-      input: req.user,
+      input,
       max_output_tokens: req.maxTokens,
       text: {
         format: { type: 'json_schema', name: req.schemaName ?? 'response', strict: true, schema: toStrictSchema(req.schema) },
@@ -188,13 +220,67 @@ async function ollamaJson(req: LlmJsonRequest, model: string): Promise<unknown> 
       options: { temperature: 0 },
       messages: [
         { role: 'system', content: req.system },
-        { role: 'user', content: req.user },
+        // Ollama takes vision images as an array of raw base64 (no data: prefix)
+        // on the user message; only vision models honor it.
+        req.images?.length
+          ? { role: 'user', content: req.user, images: req.images.map((img) => img.dataBase64) }
+          : { role: 'user', content: req.user },
       ],
     }),
   }, req.timeoutMs ?? TIMEOUT_MS)) as { message?: { content?: string } }
   const content = data.message?.content
   if (!content) throw new Error('ollama: empty response')
   return JSON.parse(content)
+}
+
+// ── Vision capability ────────────────────────────────────────────────────────
+// Whether a given provider+model can accept image input. anthropic/openai current
+// models are all multimodal, so we assume yes. ollama depends on the specific model
+// pulled, which we can't know synchronously → null means "unknown, must probe".
+export function modelSupportsVision(provider: Provider, model: string | null): boolean | null {
+  if (provider === 'heuristic') return false
+  if (provider === 'anthropic') return true // all current Claude models are multimodal
+  if (provider === 'openai') {
+    // The 4o/o-series + gpt-5 defaults are multimodal; the legacy 3.5 line is not.
+    return /gpt-3\.5|text-|instruct/i.test(model ?? '') ? false : true
+  }
+  return null // ollama — capability is per-pulled-model; probe it
+}
+
+// Name-based fallback for older Ollama servers whose /api/show omits `capabilities`.
+const OLLAMA_VISION_NAME_RE = /llava|vision|moondream|bakllava|minicpm-?v|qwen2\.?5?-?vl|gemma3|llama3\.2-vision/i
+
+// Per-model cache so we don't re-probe /api/show on every photo import.
+const ollamaVisionCache = new Map<string, boolean>()
+
+async function ollamaModelHasVision(model: string): Promise<boolean> {
+  if (ollamaVisionCache.has(model)) return ollamaVisionCache.get(model)!
+  let hasVision = OLLAMA_VISION_NAME_RE.test(model)
+  try {
+    const host = (config.ai.ollama.host ?? '').replace(/\/$/, '')
+    const data = (await fetchJson(`${host}/api/show`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model }),
+    }, 10_000)) as { capabilities?: string[] }
+    if (Array.isArray(data.capabilities)) hasVision = data.capabilities.includes('vision')
+  } catch (err) {
+    log.warn('ollama vision probe failed; using name heuristic', { model, err: (err as Error).message })
+  }
+  ollamaVisionCache.set(model, hasVision)
+  return hasVision
+}
+
+// Whether the household's *selected* provider+model can read images right now.
+// Gates the photo-import path; speech/text import only needs completeJson.
+export async function visionAvailable(householdId: string): Promise<boolean> {
+  const { provider, model } = await getAiConfig(householdId)
+  if (!availability()[provider]) return false
+  const cap = modelSupportsVision(provider, model)
+  if (cap !== null) return cap
+  // ollama — probe the pulled model
+  const m = model ?? defaultModel(provider) ?? ''
+  return m ? ollamaModelHasVision(m) : false
 }
 
 // Ask the household's chosen model for a JSON object matching req.schema. Throws if

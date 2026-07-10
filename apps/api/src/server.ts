@@ -9,6 +9,7 @@ import { version } from './platform/version'
 import { startSyncScheduler } from './modules/calendar/calendar-sync.service'
 import { startExpansionScheduler } from './modules/calendar/expansion.service'
 import { startProofCleanupScheduler } from './modules/chores/chore-proof-cleanup.service'
+import { startRecipeIngestCleanupScheduler } from './modules/meals/recipe-ingest.service'
 
 interface RunResult {
   statusCode: number
@@ -50,4 +51,6 @@ server.listen(config.port, () => {
   startExpansionScheduler()
   // Delete chore photo-proof blobs past their per-household retention window.
   startProofCleanupScheduler()
+  // Delete AI recipe-ingest source photos past their (short) retention window.
+  startRecipeIngestCleanupScheduler()
 })

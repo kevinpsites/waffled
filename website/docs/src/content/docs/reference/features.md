@@ -193,7 +193,8 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | AI **Plan my week / month** (library-only, themes, gaps) | ✅ | ✅ | ✅ | ✅ Done |
 | **Try New Recipe** — nudge the AI week toward novelty / list specific dishes to try | ✅ | ✅ | ✅ | ✅ Done — mobile: "Try something new" toggle + "Dishes to try" chips in the Plan-my-week sheet (sent on the initial full draft) |
 | AI **metadata auto-fill** (cuisine, protein, vegetables, tags) | ✅ | ✅ | ✅ | ✅ Done (debounced "✨ Thinking…" in the editor; fills empty fields / suggestion chips) |
-| **Conversational recipe AI** ("make it gluten-free", photo → recipe) | 🚧 | 🚧 | 🚧 | 🚧 Planned |
+| **AI recipe import** — **photo → recipe** and **describe-it** (speech/free-form → recipe) | ✅ | 🚧 | 🚧 | ✅ Done (web) — in "New recipe": read photos of a physical recipe with a vision model, or dictate/type a loose description; both prefill the editor for review before saving. Source photos auto-delete after a short window. Photo needs a vision provider (Claude / OpenAI / vision Ollama); describe works with any. iOS parity (camera + Apple-Speech) planned |
+| **Conversational recipe edits** ("make it gluten-free", "double it") | 🚧 | 🚧 | 🚧 | 🚧 Planned |
 
 ## Photos & memories
 
