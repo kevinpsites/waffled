@@ -389,7 +389,7 @@ struct TodayView: View {
             }
         }
         .sheet(isPresented: $showingGoalPicker) {
-            TodayGoalPickerSheet(goals: goals, selectedId: todayGoalId) { id in todayGoalId = id }
+            TodayGoalPickerSheet(goals: goals, myPersonId: sync.currentPersonId ?? greetingMember?.id, selectedId: todayGoalId) { id in todayGoalId = id }
         }
     }
 
@@ -588,29 +588,61 @@ struct TodayView: View {
 private struct TodayGoalPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     let goals: [WaffledAPI.Goal]
+    let myPersonId: String?
     let selectedId: String
     /// "" clears the pin (back to My/Family spotlight); otherwise a goal id.
     let onSelect: (String) -> Void
 
+    @State private var lists: [WaffledAPI.GoalList] = []
+    @State private var expanded: [String: Bool] = [:]
+    private let api = WaffledAPI()
+
+    private struct Group: Identifiable {
+        let id: String; let title: String
+        let members: [WaffledAPI.GoalList.Member]; let goals: [WaffledAPI.Goal]
+    }
+    /// Goals grouped by their list: My goals first, then shared groups I'm in, then the rest.
+    private var groups: [Group] {
+        let byId = Dictionary(lists.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        func rank(_ key: String) -> Int {
+            guard key != "__none__", let l = byId[key] else { return 3 }
+            let ids = Set(l.members.map(\.personId))
+            if let me = myPersonId, ids == [me] { return 0 }               // my personal list
+            if let me = myPersonId, ids.count > 1, ids.contains(me) { return 1 } // a group I'm in
+            return 2                                                        // someone else's / other
+        }
+        var buckets: [String: [WaffledAPI.Goal]] = [:]
+        for g in goals { buckets[g.goalListId ?? "__none__", default: []].append(g) }
+        return buckets.keys.sorted { a, b in
+            let ra = rank(a), rb = rank(b)
+            if ra != rb { return ra < rb }
+            return (byId[a]?.name ?? "Other").localizedCaseInsensitiveCompare(byId[b]?.name ?? "Other") == .orderedAscending
+        }.map { key in
+            let l = byId[key]
+            let title = key == "__none__" ? "Other goals" : (rank(key) == 0 ? "My goals" : (l?.name ?? "Goals"))
+            return Group(id: key, title: title, members: l?.members ?? [], goals: buckets[key] ?? [])
+        }
+    }
+
     var body: some View {
         NavigationStack {
-            // A List (not a ScrollView of Buttons) so a scroll drag never fires a row —
-            // taps select, drags scroll, natively.
+            // A List (not a ScrollView of Buttons) so a scroll drag never fires a row.
             List {
                 autoRow
                     .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
                     .listRowSeparator(.hidden).listRowBackground(Color.clear)
-                if !goals.isEmpty {
-                    Section {
-                        ForEach(goals) { g in
+                ForEach(groups) { grp in
+                    DisclosureGroup(isExpanded: Binding(get: { expanded[grp.id] ?? true }, set: { expanded[grp.id] = $0 })) {
+                        ForEach(grp.goals) { g in
                             goalRow(g)
                                 .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
                                 .listRowSeparator(.hidden).listRowBackground(Color.clear)
                         }
-                    } header: {
-                        Text("PIN A SPECIFIC GOAL").font(.system(size: 11, weight: .heavy))
-                            .tracking(0.4).foregroundStyle(WF.ink3)
+                    } label: {
+                        groupHeader(grp)
                     }
+                    .tint(WF.ink3)
+                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
                 }
             }
             .listStyle(.plain)
@@ -619,7 +651,26 @@ private struct TodayGoalPickerSheet: View {
             .navigationTitle("Show on Today")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .task { if lists.isEmpty { lists = (try? await api.goalLists()) ?? [] } }
         }
+    }
+
+    private func groupHeader(_ grp: Group) -> some View {
+        HStack(spacing: 8) {
+            if !grp.members.isEmpty {
+                HStack(spacing: -6) {
+                    ForEach(grp.members.prefix(4), id: \.personId) { m in
+                        Text(m.avatarEmoji ?? "🙂").font(.system(size: 12))
+                            .frame(width: 22, height: 22).background(WF.panel).clipShape(Circle())
+                            .overlay(Circle().strokeBorder(WF.canvas, lineWidth: 1.5))
+                    }
+                }
+            }
+            Text(grp.title).font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.ink)
+            Text("\(grp.goals.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
     }
 
     private var autoRow: some View {
