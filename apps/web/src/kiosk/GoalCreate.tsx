@@ -24,29 +24,45 @@ const TYPES = [
 // everything except checklists, which complete by ticking named steps.
 const CALENDAR_TYPES = new Set(['total', 'count', 'habit'])
 
-// The FOUR ways a count/total goal counts when several people take part. This one
-// choice replaces the old two-control combo (shared-vs-each + a 3-way participant
-// mode) that confused people — each option writes a (trackingMode, participantMode,
-// targetBasis) triple under the hood. A live preview (built in render from the unit
-// + member count) shows the arithmetic so the number is never a surprise.
-const PARTICIPANT_TYPES = [
-  { key: 'individual', emoji: '🧍', tracking: 'each_tracks', mode: 'count_once', basis: 'per_person',
-    title: 'Everyone individually', blurb: 'Each person aims for the full amount on their own.' },
-  { key: 'chip_in', emoji: '🤝', tracking: 'each_tracks', mode: 'count_once', basis: 'family',
-    title: 'We all chip in', blurb: 'One shared target — everyone’s entries add up toward it.' },
-  { key: 'split', emoji: '➗', tracking: 'shared_total', mode: 'split', basis: 'family',
-    title: 'Split it evenly', blurb: 'A group entry is divided evenly across who took part.' },
-  { key: 'count_once', emoji: '✅', tracking: 'shared_total', mode: 'count_once', basis: 'family',
-    title: 'Just count it once', blurb: 'One entry counts once, whoever’s there — the people are just who came.' },
-] as const
+// Group counting — the "Counting Below Measure" model. The shared-vs-each toggle lives
+// in the "Who" section; this measure-aware follow-up sits BELOW the measure picker and
+// only shows for a SHARED total/count goal with 2+ people. Each choice maps to the
+// backend (trackingMode, participantMode, targetBasis):
+//   Each tracks their own      → each_tracks + per_person  (ring = target × members)
+//   Shared · everyone’s counts → each_tracks + family      (adds up: +2 hrs / +3)
+//   Shared · split evenly      → shared_total + split
+//   Shared · count once        → shared_total + count_once
+const COUNT_RULES = {
+  total: [
+    { k: 'full', emoji: '👥', title: 'Everyone’s counts fully' },
+    { k: 'split', emoji: '➗', title: 'Split across who took part' },
+  ],
+  count: [
+    { k: 'each', emoji: '👥', title: 'Count it for each person' },
+    { k: 'once', emoji: '✅', title: 'Count the activity once' },
+  ],
+} as const
 
-type PType = (typeof PARTICIPANT_TYPES)[number]['key']
-
-// Recover which of the four the current (trackingMode, participantMode, targetBasis)
-// represents — so the right card lights up when editing an existing goal.
-function participantTypeKey(tracking: string, mode: string, basis: string): PType {
-  if (tracking === 'each_tracks') return basis === 'per_person' ? 'individual' : 'chip_in'
-  return mode === 'split' ? 'split' : 'count_once'
+// Backend fields for a given (measure, count-choice), and for the two toggle states.
+const eachTracksOwn = { trackingMode: 'each_tracks', targetBasis: 'per_person', participantMode: 'count_once' } as const
+function sharedDefault(goalType: string) {
+  // "One shared total": total/count default to "everyone’s counts fully / for each"
+  // (adds up); habit/checklist have no sub-question, so a plain shared total.
+  return goalType === 'total' || goalType === 'count'
+    ? { trackingMode: 'each_tracks', targetBasis: 'family', participantMode: 'count_once' } as const
+    : { trackingMode: 'shared_total', targetBasis: 'family', participantMode: 'count_once' } as const
+}
+// Singular for a "1 <unit>" phrase so examples read "1 hour", not "1 hours".
+const singular = (u: string) => (u.length > 1 && u.endsWith('s') ? u.slice(0, -1) : u)
+function countChoiceFields(goalType: string, k: string) {
+  if (goalType === 'total') {
+    return k === 'full'
+      ? { trackingMode: 'each_tracks', targetBasis: 'family', participantMode: 'count_once' } as const
+      : { trackingMode: 'shared_total', targetBasis: 'family', participantMode: 'split' } as const
+  }
+  return k === 'each'
+    ? { trackingMode: 'each_tracks', targetBasis: 'family', participantMode: 'count_once' } as const
+    : { trackingMode: 'shared_total', targetBasis: 'family', participantMode: 'count_once' } as const
 }
 
 type Milestone = { threshold: number; emoji: string; label: string; rewardText: string }
@@ -124,9 +140,12 @@ export function GoalCreate() {
     // "Kevin" / "Mom & Dad" starts in that group; falls to the picker otherwise.
     goalListId: editing ? '' : (searchParams.get('list') ?? ''),
     category: 'physical',
-    trackingMode: 'shared_total' as 'shared_total' | 'each_tracks',
+    // Default matches the mock: "Each tracks their own" (per-person), so the ring and
+    // the shared/each toggle start consistent. Users flip to "One shared total" + a
+    // measure-aware counting choice as needed.
+    trackingMode: 'each_tracks' as 'shared_total' | 'each_tracks',
     participantMode: 'count_once' as 'count_once' | 'split',
-    targetBasis: 'family' as 'family' | 'per_person',
+    targetBasis: 'per_person' as 'family' | 'per_person',
     goalType: 'total' as (typeof TYPES)[number]['key'],
     target: 1000,
     unit: 'hours',
@@ -298,23 +317,42 @@ export function GoalCreate() {
   const setMs = (i: number, patch: Partial<Milestone>) => { msTouched.current = true; setMilestones((ms) => ms.map((m, j) => (j === i ? { ...m, ...patch } : m))) }
 
   // ── live-preview helpers ─────────────────────────────────────────────────
-  const shared = form.trackingMode === 'shared_total'
   const previewName = form.title.trim() || 'Your goal'
   const unit = (form.unit || '').trim()
 
-  // Which of the four participant types is currently selected, and a concrete
-  // arithmetic preview built from the unit + member count — so "= 8 / ÷ 4 / once"
-  // is visible, not implied. Only meaningful for count/total goals with 2+ people.
-  const ptype = participantTypeKey(form.trackingMode, form.participantMode, form.targetBasis)
-  const ptypePreview = (key: PType): string => {
-    const n = participantCount
-    const un = unit ? ` ${unit}` : ''
-    const tgt = Number(form.target) || 0
-    const round2 = (x: number) => Math.round(x * 100) / 100
-    if (key === 'individual') return `Ring target = ${tgt || '?'}${un} × ${n} people = ${tgt ? tgt * n : '?'}${un}. Each person’s bar runs to ${tgt || '?'} — so you see who’s behind.`
-    if (key === 'chip_in') return `One shared target of ${tgt || '?'}${un}. 1${un} each from ${n} people → +${n}.`
-    if (key === 'split') return `1${un} shared by ${n} people → +1${un} total (${round2(1 / n)}${un} each).`
-    return `One entry → +1${un}, no matter how many are there. The people are just who came.`
+  // Shared-vs-each and the measure-aware count sub-choice are DERIVED from the backend
+  // fields (so an edited goal lights up the right rows). "Each tracks their own" is the
+  // per-person basis for total/count, or plain each_tracks for habit/checklist.
+  const shareValue: 'shared' | 'each' =
+    form.goalType === 'total' || form.goalType === 'count'
+      ? (form.trackingMode === 'each_tracks' && form.targetBasis === 'per_person' ? 'each' : 'shared')
+      : (form.trackingMode === 'each_tracks' ? 'each' : 'shared')
+  const shared = shareValue === 'shared'
+  const countChoice: string | null =
+    form.goalType === 'total' ? (form.trackingMode === 'each_tracks' ? 'full' : 'split')
+      : form.goalType === 'count' ? (form.trackingMode === 'each_tracks' ? 'each' : 'once')
+        : null
+
+  // A concrete "worked example" using the real members' first names + unit, mirroring
+  // the mock — the arithmetic delta is what the <b> highlights.
+  const memberNames = (selectedList?.members ?? editGoal?.participants ?? [])
+    .map((m) => (m.name ?? '').split(' ')[0]).filter(Boolean)
+  const twoNames = memberNames.slice(0, 2).join(' + ') || 'Two people'
+  const someNames = (memberNames.length > 3 ? [...memberNames.slice(0, 3), '…'] : memberNames).join(', ') || 'everyone'
+  const workedExample = (): { icon: string; lead: string; delta: string; tail: string } | null => {
+    if (form.goalType === 'total') {
+      const u = unit || 'hr'
+      return countChoice === 'split'
+        ? { icon: '🌳', lead: `${twoNames}, 1 ${singular(u)} outside together → total `, delta: `+1 ${singular(u)}`, tail: `, ½ each.` }
+        : { icon: '🌳', lead: `${twoNames}, 1 ${singular(u)} each → total `, delta: `+2 ${u}`, tail: `.` }
+    }
+    if (form.goalType === 'count') {
+      const u = unit || 'visit'
+      return countChoice === 'once'
+        ? { icon: '🏞️', lead: `Log “${someNames}” → the total goes up by `, delta: `1`, tail: ` ${u}.` }
+        : { icon: '🏞️', lead: `Log “${someNames}” → the total goes up by `, delta: `${Math.max(2, participantCount)}`, tail: ` (one each).` }
+    }
+    return null
   }
   const dlLabel = form.deadline
     ? ` · by ${new Date(`${form.deadline}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
@@ -322,7 +360,7 @@ export function GoalCreate() {
   const subLine = (() => {
     const tail = isChecklist || form.goalType === 'habit'
       ? ''
-      : participantCount > 1 ? ` · ${(PARTICIPANT_TYPES.find((t) => t.key === ptype)?.title ?? '').toLowerCase()}` : ''
+      : participantCount > 1 ? (shared ? ' · shared total' : ' · each their own') : ''
     if (form.goalType === 'total') return `Adds up in ${unit || 'units'}${dlLabel}${tail}`
     if (form.goalType === 'count') return `Count to ${form.target} ${unit || 'units'}${dlLabel}${tail}`
     if (form.goalType === 'habit') return `${form.habitPerPeriod}× a ${form.habitPeriod} · keep the streak going`
@@ -363,34 +401,12 @@ export function GoalCreate() {
               ))}
               <button type="button" className="ge-who-chip dashed" onClick={() => setShowListModal(true)}>＋ New group</button>
             </div>
-            {/* How a shared goal counts a multi-person entry only matters with 2+
-                people — hidden for a single-person goal. Count/total goals get the
-                four-way choice; a habit just picks one-streak-or-each; a checklist
-                has no such choice (its steps are shared). */}
-            {participantCount > 1 && (form.goalType === 'total' || form.goalType === 'count') && (
-              <div className="ge-pmode">
-                <div className="ge-sec-h" style={{ margin: '12px 0 8px' }}>When several people take part in one entry…</div>
-                <div className="ge-measure-grid">
-                  {PARTICIPANT_TYPES.map((t) => (
-                    <button
-                      key={t.key}
-                      type="button"
-                      className={`ge-mcard ${ptype === t.key ? 'on' : ''}`}
-                      onClick={() => setForm((f) => ({ ...f, trackingMode: t.tracking, participantMode: t.mode, targetBasis: t.basis }))}
-                    >
-                      <div className="me">{t.emoji}</div>
-                      <div><div className="mt">{t.title}</div><div className="md">{t.blurb}</div></div>
-                      <div className="mck">{ptype === t.key && <CheckIcon />}</div>
-                    </button>
-                  ))}
-                </div>
-                <div className="ge-sec-h" style={{ marginTop: 8, fontWeight: 650 }}>{ptypePreview(ptype)}</div>
-              </div>
-            )}
-            {participantCount > 1 && form.goalType === 'habit' && (
+            {/* Shared-vs-each only matters with 2+ people. How a group ENTRY counts is
+                a measure-aware follow-up shown below the measure picker (total/count). */}
+            {participantCount > 1 && (
               <div className="ge-share">
-                <button type="button" className={shared ? 'on' : ''} onClick={() => set('trackingMode', 'shared_total')}>One shared streak</button>
-                <button type="button" className={!shared ? 'on' : ''} onClick={() => set('trackingMode', 'each_tracks')}>Each keeps their own</button>
+                <button type="button" className={shared ? 'on' : ''} onClick={() => setForm((f) => ({ ...f, ...sharedDefault(f.goalType) }))}>One shared total</button>
+                <button type="button" className={!shared ? 'on' : ''} onClick={() => setForm((f) => ({ ...f, ...eachTracksOwn, targetBasis: f.goalType === 'total' || f.goalType === 'count' ? 'per_person' : 'family' }))}>Each tracks their own</button>
               </div>
             )}
           </div>
@@ -445,6 +461,40 @@ export function GoalCreate() {
                 </div>
                 {dlOpen && <input type="date" className="ge-date-input" value={form.deadline} onChange={(e) => set('deadline', e.target.value)} />}
               </>
+            )}
+
+            {/* Group counting — measure-aware, sits below the measure picker ("Counting
+                Below Measure"). Only for a SHARED total/count goal with 2+ people. */}
+            {shared && participantCount > 1 && (form.goalType === 'total' || form.goalType === 'count') && (
+              <div className="ge-count">
+                <div className="ge-count-q">When a shared activity includes more than one person…</div>
+                <div className="ge-count-h">How should a group entry add up toward the total?</div>
+                {COUNT_RULES[form.goalType as 'total' | 'count'].map((o) => {
+                  const on = countChoice === o.k
+                  const u = unit || (form.goalType === 'total' ? 'hr' : 'visit')
+                  const ex =
+                    o.k === 'full' ? { pre: `2 people, 1 ${singular(u)} each → `, b: `+2 ${u}`, post: '' }
+                      : o.k === 'split' ? { pre: `1 ${singular(u)} together, 2 people → `, b: `+1 ${singular(u)}`, post: ', ½ each' }
+                        : o.k === 'each' ? { pre: `${participantCount} at once → `, b: `+${participantCount}`, post: ' (one each)' }
+                          : { pre: `${participantCount} at once → `, b: '+1', post: ', they’re just who came' }
+                  return (
+                    <button key={o.k} type="button" className={`ge-rowopt ${on ? 'on' : ''}`} onClick={() => setForm((f) => ({ ...f, ...countChoiceFields(f.goalType, o.k) }))}>
+                      <span className="rem">{o.emoji}</span>
+                      <span className="rbd">
+                        <span className="rt">{o.title}</span>
+                        <span className="rex">{ex.pre}<b>{ex.b}</b>{ex.post}</span>
+                      </span>
+                      <span className="rrk" />
+                    </button>
+                  )
+                })}
+                {(() => {
+                  const w = workedExample()
+                  return w ? (
+                    <div className="ge-worked"><span className="wi">{w.icon}</span><span className="wt">{w.lead}<b>{w.delta}</b>{w.tail}</span></div>
+                  ) : null
+                })()}
+              </div>
             )}
           </div>
 

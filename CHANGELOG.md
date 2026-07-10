@@ -18,15 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   activity can be edited (amount, note, date) or deleted — a split/shared entry is removed as a
   whole. Entries created by ticking a checklist, confirming a calendar event, or an Apple Health
   sync stay managed by those features.
-- **Goals now ask, in one clear question, how a group activity counts.** When a goal has more
-  than one person, you pick one of four plain options with a live preview of the arithmetic:
-  **Everyone individually** (each person aims for the full amount on their own — "read 12 books
-  each" shows a ring of 12 × the household), **We all chip in** (one shared target everyone's
-  entries add up toward), **Split it evenly** (a group entry is divided across who took part —
-  e.g. a one-hour family walk adds one hour, shared out), and **Just count it once** (a park
-  visit or camping trip counts once no matter how many came; the people are simply recorded as
-  who was there). This replaces the earlier shared-vs-each toggle plus a separate mode picker,
-  which were easy to confuse.
+- **Goals now make group counting clear and measure-aware.** Alongside the *One shared total /
+  Each tracks their own* choice, a shared goal with more than one person shows a short follow-up
+  right under "How do you measure it?" asking how a group entry should count — with options
+  tailored to the measure and a worked example using your family's names. For a **total**:
+  *everyone's counts fully* (2 people, 1 hr each → +2 hrs) or *split across who took part* (1 hr
+  together → +1 hr, ½ each). For a **count**: *count it for each person* (3 at the park → +3) or
+  *count the activity once* (→ +1, the people are just who came). "Each tracks their own" keeps a
+  per-person target — "read 12 books each" shows a family ring of 12 × the household. Together
+  these cover every way a family goal can add up, without the confusing overlap the old controls
+  had.
 
 - **Add a recipe from a photo or by describing it.** The recipe editor's "New recipe"
   screen can now build the whole form for you two new ways. **From a photo** — snap or
@@ -57,8 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Logging a shared count goal with several people no longer multiplies the total.** Marking
   a state-park visit or camping trip with the whole family used to add one for *each* person
-  selected; it now counts the event once and records who was there. (Choose *We all chip in* if
-  you do want everyone's entries to add up toward the total.)
+  selected; it now counts the event once and records who was there. (Choose *Count it for each
+  person* if you do want everyone credited toward the total.)
 - **Checklist goals can no longer be given a meaningless numeric "log".** A checklist is
   completed by ticking its items, so recording "1" against it is rejected — checklists progress
   only by checking things off.
