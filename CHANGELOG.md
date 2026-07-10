@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Per-step timers now carry into the recipe editor when parsing.** Building a recipe
+  from a photo, a description, or pasted Markdown correctly detected each step's timer but
+  dropped it when filling the form, so every step showed "Add timer" even when the recipe
+  clearly stated a time. The parsed timer now lands on the step.
+
 ## [0.6.1] - 2026-07-09
 
 ### Added

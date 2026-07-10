@@ -154,4 +154,22 @@ describe('RecipeEditor — new', () => {
     expect((screen.getByPlaceholderText('ingredient') as HTMLInputElement).value).toBe('rice')
     expect((screen.getByPlaceholderText('Describe this step…') as HTMLTextAreaElement).value).toBe('Cook the rice.')
   })
+
+  it('paste → parse carries a step timer into the timer control', async () => {
+    const sent: Sent[] = []
+    mockApi(sent, {
+      recipe: { title: 'Timed Dish', emoji: '🍲', servings: 2, tags: [], notes: null, sourceName: null, mealType: null, protein: null, base: null, cuisine: null, effort: null, cookMethod: null, flavorProfile: null, dietary: [], vegetables: [] },
+      ingredients: [{ name: 'rice', amount: 1, unit: 'cup', prepNote: null, section: null }],
+      steps: [{ instruction: 'Cook on the grill for 6 minutes.', ingredients: [], timerSeconds: 360 }],
+    })
+    renderNew()
+
+    fireEvent.click(screen.getByText('📋 Paste markdown'))
+    fireEvent.change(screen.getByPlaceholderText('Paste frontmatter + markdown here…'), { target: { value: '# Timed Dish' } })
+    fireEvent.click(screen.getByText('Parse → fill the form'))
+
+    // The parsed timerSeconds should surface as a "6:00" timer pill, not "Add timer".
+    await waitFor(() => expect(screen.getByText('6:00')).toBeTruthy())
+    expect(screen.queryByText('⏱ Add timer')).toBeNull()
+  })
 })

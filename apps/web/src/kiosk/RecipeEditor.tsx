@@ -236,7 +236,7 @@ export function RecipeEditor() {
         }))
       : [blankIng()]
     setIngs(ingRows)
-    setStps(p.steps.length ? p.steps.map((s) => stepFromStrings(s.instruction, s.ingredients ?? [], ingRows)) : [blankStep()])
+    setStps(p.steps.length ? p.steps.map((s) => stepFromStrings(s.instruction, s.ingredients ?? [], ingRows, s.timerSeconds ?? null)) : [blankStep()])
   }
 
   async function parse() {
