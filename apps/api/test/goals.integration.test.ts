@@ -519,6 +519,80 @@ describe('goal input validation (hardening)', () => {
   })
 })
 
+describe('editing and deleting logged entries', () => {
+  async function newPerson(name: string): Promise<string> {
+    const r = await call('POST', '/api/persons', kevin, { name, memberType: 'adult' })
+    return JSON.parse(r.body).person.id
+  }
+
+  it('deletes a logged entry, restoring the total', async () => {
+    const add = await call('POST', '/api/goals', kevin, { title: 'Books', goalType: 'count', unit: 'books', targetValue: 20, trackingMode: 'shared_total', participantIds: [kevinId] })
+    const id = JSON.parse(add.body).goal.id
+    await call('POST', `/api/goals/${id}/log`, kevin, { amount: 3, personId: kevinId })
+    await call('POST', `/api/goals/${id}/log`, kevin, { amount: 2, personId: kevinId, note: 'oops' })
+
+    let detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.totalProgress).toBe(5)
+    const oops = detail.recent.find((r: { note: string }) => r.note === 'oops')
+
+    expect((await call('DELETE', `/api/goals/${id}/logs/${oops.id}`, kevin)).statusCode).toBe(200)
+    detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.totalProgress).toBe(3)
+    expect(detail.recent.some((r: { note: string }) => r.note === 'oops')).toBe(false)
+    // deleting again 404s
+    expect((await call('DELETE', `/api/goals/${id}/logs/${oops.id}`, kevin)).statusCode).toBe(404)
+  })
+
+  it('deleting a split entry removes the whole batch (both per-person rows)', async () => {
+    const kellyId = await newPerson('KellyD')
+    const add = await call('POST', '/api/goals', kevin, { title: 'Shared hrs', goalType: 'total', unit: 'hours', targetValue: 100, trackingMode: 'shared_total', participantMode: 'split', participantIds: [kevinId, kellyId] })
+    const id = JSON.parse(add.body).goal.id
+    await call('POST', `/api/goals/${id}/log`, kevin, { amount: 2, personIds: [kevinId, kellyId], note: 'together' })
+
+    let detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.totalProgress).toBe(2)
+    const entry = detail.recent.find((r: { note: string }) => r.note === 'together')
+
+    expect((await call('DELETE', `/api/goals/${id}/logs/${entry.id}`, kevin)).statusCode).toBe(200)
+    detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.totalProgress).toBe(0)
+    const raw = await withClient((c) => c.query<{ n: string }>(`select count(*) n from goal_logs where goal_id=$1 and deleted_at is null`, [id]))
+    expect(Number(raw.rows[0].n)).toBe(0)
+  })
+
+  it('edits a logged entry amount and note', async () => {
+    const add = await call('POST', '/api/goals', kevin, { title: 'Hours', goalType: 'total', unit: 'hours', targetValue: 100, trackingMode: 'shared_total', participantIds: [kevinId] })
+    const id = JSON.parse(add.body).goal.id
+    await call('POST', `/api/goals/${id}/log`, kevin, { amount: 5, personId: kevinId, note: 'hike' })
+    let detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    const entry = detail.recent[0]
+
+    expect((await call('PATCH', `/api/goals/${id}/logs/${entry.id}`, kevin, { amount: 8, note: 'long hike' })).statusCode).toBe(200)
+    detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.totalProgress).toBe(8)
+    expect(detail.recent[0]).toMatchObject({ amount: 8, note: 'long hike' })
+  })
+
+  it('will not edit/delete a derived (checklist-tick) log through this endpoint', async () => {
+    const add = await call('POST', '/api/goals', kevin, { title: 'Prep', goalType: 'checklist', trackingMode: 'shared_total', participantIds: [kevinId], steps: [{ label: 'Pack' }] })
+    const id = JSON.parse(add.body).goal.id
+    const detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    await call('PATCH', `/api/goals/${id}/steps/${detail.steps[0].id}`, kevin, { done: true })
+    const withLog = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    const tick = withLog.recent[0]
+    // a checklist tick is managed by the step toggle, not the log endpoints
+    expect((await call('DELETE', `/api/goals/${id}/logs/${tick.id}`, kevin)).statusCode).toBe(400)
+    expect((await call('PATCH', `/api/goals/${id}/logs/${tick.id}`, kevin, { amount: 2 })).statusCode).toBe(400)
+  })
+
+  it('404s editing/deleting an unknown entry', async () => {
+    const add = await call('POST', '/api/goals', kevin, { title: 'X', goalType: 'count', trackingMode: 'shared_total', targetValue: 5 })
+    const id = JSON.parse(add.body).goal.id
+    expect((await call('DELETE', `/api/goals/${id}/logs/00000000-0000-0000-0000-000000000000`, kevin)).statusCode).toBe(404)
+    expect((await call('PATCH', `/api/goals/${id}/logs/00000000-0000-0000-0000-000000000000`, kevin, { note: 'x' })).statusCode).toBe(404)
+  })
+})
+
 describe('checklist goals reject numeric progress logs', () => {
   it('a checklist goal is updated by ticking steps, not POST /log (400)', async () => {
     const add = await call('POST', '/api/goals', kevin, {

@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **You can now fix or remove a goal entry logged by mistake.** Each line in a goal's Recent
+  activity can be edited (amount, note, date) or deleted — a split/shared entry is removed as a
+  whole. Entries created by ticking a checklist, confirming a calendar event, or an Apple Health
+  sync stay managed by those features.
 - **Shared goals now let you choose what "who took part" means.** When you log an activity and
   tap several people, a new per-goal setting decides how it counts: **Once for the family** (a
   park visit or camping trip counts once no matter how many came — the people are recorded as

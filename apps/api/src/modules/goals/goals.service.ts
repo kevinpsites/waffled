@@ -956,6 +956,106 @@ export async function updateGoal(tenant: Tenant, id: string, patch: UpdateGoalIn
   }
 }
 
+// Entries the user can hand-edit/delete. Derived logs (a checklist tick, an Apple
+// Health sync, a confirmed calendar event) are owned by their source and must be undone
+// there, not through the log endpoints.
+const EDITABLE_LOG_SOURCES = new Set(['quick_log', 'manual'])
+
+type LogEditResult = 'ok' | 'not_found' | 'not_editable'
+
+// The live rows of one logged entry. `logId` is the grouped id surfaced in a goal's
+// recent activity — a batch_id (split/attributed entry) or a lone row's id.
+async function loadLogGroup(
+  client: import('pg').PoolClient,
+  householdId: string,
+  goalId: string,
+  logId: string
+): Promise<Array<{ person_id: string | null; amount: string; note: string | null; source: string; counts_total: boolean; day: string }>> {
+  const { rows } = await client.query(
+    `select person_id, amount, note, source, counts_total,
+            (logged_at at time zone (select timezone from households where id=$1))::date::text as day
+       from goal_logs
+      where household_id=$1 and goal_id=$2 and deleted_at is null and coalesce(batch_id, id) = $3
+      order by created_at`,
+    [householdId, goalId, logId]
+  )
+  return rows
+}
+
+// Soft-delete a whole logged entry (every row in its batch). Refuses derived entries.
+export async function deleteGoalLog(tenant: Tenant, goalId: string, logId: string): Promise<LogEditResult> {
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    const group = await loadLogGroup(client, tenant.householdId, goalId, logId)
+    if (group.length === 0) { await client.query('rollback'); return 'not_found' }
+    if (!EDITABLE_LOG_SOURCES.has(group[0].source)) { await client.query('rollback'); return 'not_editable' }
+    await client.query(
+      `update goal_logs set deleted_at = now()
+        where household_id=$1 and goal_id=$2 and deleted_at is null and coalesce(batch_id, id) = $3`,
+      [tenant.householdId, goalId, logId]
+    )
+    await client.query('commit')
+    return 'ok'
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+// Edit a logged entry's amount / note / date. Re-plans the rows through the goal's
+// current counting rules (so a split/credit/count_once entry stays consistent), keeping
+// the same participants. amount/note/loggedOn are each optional (unchanged if omitted).
+export async function editGoalLog(
+  tenant: Tenant,
+  goalId: string,
+  logId: string,
+  patch: { amount?: number; note?: string | null; loggedOn?: string | null }
+): Promise<LogEditResult> {
+  const client = await getPool().connect()
+  try {
+    await client.query('begin')
+    const group = await loadLogGroup(client, tenant.householdId, goalId, logId)
+    if (group.length === 0) { await client.query('rollback'); return 'not_found' }
+    const source = group[0].source
+    if (!EDITABLE_LOG_SOURCES.has(source)) { await client.query('rollback'); return 'not_editable' }
+
+    const enteredAmount = group.filter((r) => r.counts_total).reduce((s, r) => s + Number(r.amount), 0)
+    const participants = [...new Set(group.map((r) => r.person_id).filter((p): p is string => p != null))]
+    const newAmount = patch.amount != null ? patch.amount : enteredAmount
+    const newNote = patch.note !== undefined ? patch.note : group[0].note
+    const newDay = patch.loggedOn != null ? patch.loggedOn : group[0].day
+
+    const g = await client.query<{ tracking_mode: string; goal_type: string; participant_mode: string }>(
+      `select tracking_mode, goal_type, participant_mode from goals where id=$1 and household_id=$2`,
+      [goalId, tenant.householdId]
+    )
+    await client.query(
+      `update goal_logs set deleted_at = now()
+        where household_id=$1 and goal_id=$2 and deleted_at is null and coalesce(batch_id, id) = $3`,
+      [tenant.householdId, goalId, logId]
+    )
+    const targets = participants.length ? participants : [null]
+    const { rows: plan, batchId } = planLogRows(g.rows[0].participant_mode, g.rows[0].tracking_mode, g.rows[0].goal_type, newAmount, targets)
+    for (const row of plan) {
+      await client.query(
+        `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, created_by, batch_id, counts_total, logged_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9, ($10::date + time '12:00') at time zone (select timezone from households where id=$1))`,
+        [tenant.householdId, goalId, row.personId, row.amount, newNote, source, tenant.personId, batchId, row.countsTotal, newDay]
+      )
+    }
+    await client.query('commit')
+    return 'ok'
+  } catch (err) {
+    await client.query('rollback')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
 export async function softDeleteGoal(householdId: string, id: string): Promise<boolean> {
   const { rowCount } = await query(
     `update goals set deleted_at = now() where household_id=$1 and id=$2 and deleted_at is null`,

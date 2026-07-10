@@ -16,6 +16,8 @@ import {
   softDeleteGoal,
   toggleGoalStep,
   logProgress,
+  deleteGoalLog,
+  editGoalLog,
   syncHealthProgress,
   goalExists,
   goalTypeFor,
@@ -265,6 +267,58 @@ export function registerGoalRoutes(api: Api): void {
     const ok = await toggleGoalStep(tenant, id, stepId, done)
     if (!ok) return res.status(404).json({ error: 'NotFound', message: 'step not found' })
     return res.status(200).json({ ok: true })
+  }))
+
+  // Edit a single logged entry (amount / note / date). Re-plans through the goal's
+  // counting rules, keeping the same participants.
+  api.patch('/api/goals/:id/logs/:logId', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const id = req.params.id ?? ''
+    const logId = req.params.logId ?? ''
+    if (!UUID_RE.test(id) || !UUID_RE.test(logId)) return res.status(404).json({ error: 'NotFound', message: 'entry not found' })
+    const body = (req.body ?? {}) as { amount?: unknown; note?: unknown; loggedOn?: unknown }
+    const patch: { amount?: number; note?: string | null; loggedOn?: string } = {}
+    if (body.amount !== undefined) {
+      const amount = Number(body.amount)
+      if (!Number.isFinite(amount) || amount === 0) {
+        return res.status(400).json({ error: 'BadRequest', message: 'amount must be a non-zero number' })
+      }
+      if ((await goalTypeFor(tenant.householdId, id)) === 'count' && !Number.isInteger(amount)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'a count goal is logged in whole numbers' })
+      }
+      patch.amount = amount
+    }
+    if (body.note !== undefined) patch.note = body.note == null ? null : String(body.note)
+    if (body.loggedOn != null && body.loggedOn !== '') {
+      if (typeof body.loggedOn !== 'string' || !DATE_RE.test(body.loggedOn)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'loggedOn must be a YYYY-MM-DD date' })
+      }
+      patch.loggedOn = body.loggedOn
+    }
+    if (!(await goalExists(tenant.householdId, id))) {
+      return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    }
+    const parts = await goalParticipantIds(tenant.householdId, id)
+    if (!(parts.length === 1 && parts[0] === tenant.personId)) await requireCapability(tenant, 'goal.manage')
+    const result = await editGoalLog(tenant, id, logId, patch)
+    if (result === 'not_found') return res.status(404).json({ error: 'NotFound', message: 'entry not found' })
+    if (result === 'not_editable') return res.status(400).json({ error: 'BadRequest', message: 'this entry is managed by its source (a checklist tick, calendar event, or Health sync)' })
+    return { goal: await goalDetail(tenant.householdId, id) }
+  }))
+
+  // Delete a single logged entry (the whole batch if it was split/attributed).
+  api.delete('/api/goals/:id/logs/:logId', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const id = req.params.id ?? ''
+    const logId = req.params.logId ?? ''
+    if (!UUID_RE.test(id) || !UUID_RE.test(logId)) return res.status(404).json({ error: 'NotFound', message: 'entry not found' })
+    if (!(await goalExists(tenant.householdId, id))) {
+      return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    }
+    const parts = await goalParticipantIds(tenant.householdId, id)
+    if (!(parts.length === 1 && parts[0] === tenant.personId)) await requireCapability(tenant, 'goal.manage')
+    const result = await deleteGoalLog(tenant, id, logId)
+    if (result === 'not_found') return res.status(404).json({ error: 'NotFound', message: 'entry not found' })
+    if (result === 'not_editable') return res.status(400).json({ error: 'BadRequest', message: 'this entry is managed by its source (a checklist tick, calendar event, or Health sync)' })
+    return res.status(200).json({ goal: await goalDetail(tenant.householdId, id) })
   }))
 
   api.delete('/api/goals/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
