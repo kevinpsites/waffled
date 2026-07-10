@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Shared goals now let you choose what "who took part" means.** When you log an activity and
+  tap several people, a new per-goal setting decides how it counts: **Once for the family** (a
+  park visit or camping trip counts once no matter how many came — the people are recorded as
+  attendance), **Full credit to each** (everyone tapped gets the full amount toward their own
+  tally, e.g. an hours leaderboard, while the family goal still counts it once), or **Split
+  evenly** (the amount is divided across the people, as before). New shared goals default to
+  *Once for the family*; existing hours-style pools keep *Split evenly*.
 
 - **Add a recipe from a photo or by describing it.** The recipe editor's "New recipe"
   screen can now build the whole form for you two new ways. **From a photo** — snap or
@@ -42,6 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the first.
 
 ### Fixed
+- **Logging a shared count goal with several people no longer multiplies the total.** Marking
+  a state-park visit or camping trip with the whole family used to add one for *each* person
+  selected; it now counts the event once and records who was there. (Set a goal to *Full credit
+  to each* if you do want everyone credited the full amount.)
 
 - **Per-step timers now carry into the recipe editor when parsing.** Building a recipe
   from a photo, a description, or pasted Markdown correctly detected each step's timer but

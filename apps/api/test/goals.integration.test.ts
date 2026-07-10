@@ -283,7 +283,7 @@ describe('goal lists + detail', () => {
   it('splits a shared divisible pool evenly across the people credited', async () => {
     const kelly = await call('POST', '/api/persons', kevin, { name: 'Kelly', memberType: 'adult' })
     const kellyId = JSON.parse(kelly.body).person.id
-    const add = await call('POST', '/api/goals', kevin, { title: 'Outside', goalType: 'total', unit: 'hours', targetValue: 1000, trackingMode: 'shared_total', participantIds: [kevinId, kellyId] })
+    const add = await call('POST', '/api/goals', kevin, { title: 'Outside', goalType: 'total', unit: 'hours', targetValue: 1000, trackingMode: 'shared_total', participantMode: 'split', participantIds: [kevinId, kellyId] })
     const id = JSON.parse(add.body).goal.id
 
     // 2 hours together → +2 to the pool (NOT 4), split 1h each.
@@ -301,7 +301,7 @@ describe('goal lists + detail', () => {
   it('groups split-log siblings into one activity row (summed amount + participant avatars), keeping raw rows intact', async () => {
     const kelly = await call('POST', '/api/persons', kevin, { name: 'Kelly', memberType: 'adult' })
     const kellyId = JSON.parse(kelly.body).person.id
-    const add = await call('POST', '/api/goals', kevin, { title: 'Park hours', goalType: 'total', unit: 'hours', targetValue: 1000, trackingMode: 'shared_total', participantIds: [kevinId, kellyId] })
+    const add = await call('POST', '/api/goals', kevin, { title: 'Park hours', goalType: 'total', unit: 'hours', targetValue: 1000, trackingMode: 'shared_total', participantMode: 'split', participantIds: [kevinId, kellyId] })
     const id = JSON.parse(add.body).goal.id
 
     // 2h together → split 1h + 1h across two rows under one batch.
@@ -399,5 +399,84 @@ describe('goal lists + detail', () => {
 
     expect((await call('PATCH', '/api/goal-lists/00000000-0000-0000-0000-000000000000', kevin, { name: 'X' })).statusCode).toBe(404)
     expect((await call('PATCH', `/api/goal-lists/${listId}`, kevin, { name: '  ' })).statusCode).toBe(400)
+  })
+})
+
+describe('participant counting modes (shared goals)', () => {
+  async function newPerson(name: string): Promise<string> {
+    const r = await call('POST', '/api/persons', kevin, { name, memberType: 'adult' })
+    return JSON.parse(r.body).person.id
+  }
+
+  it('rejects an invalid participantMode on create (400)', async () => {
+    expect(
+      (await call('POST', '/api/goals', kevin, { title: 'X', goalType: 'count', trackingMode: 'shared_total', participantMode: 'bogus' })).statusCode
+    ).toBe(400)
+  })
+
+  it("count_once: a shared event counts +1 no matter how many people attended", async () => {
+    const kramerId = await newPerson('Kramer')
+    const georgeId = await newPerson('George')
+    // Default mode is count_once, but be explicit.
+    const add = await call('POST', '/api/goals', kevin, {
+      title: 'State parks', goalType: 'count', unit: 'parks', targetValue: 5,
+      trackingMode: 'shared_total', participantMode: 'count_once',
+      participantIds: [kevinId, kramerId, georgeId],
+    })
+    const id = JSON.parse(add.body).goal.id
+
+    // One visit, three people present → the goal goes up by ONE, not three.
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 1, personIds: [kevinId, kramerId, georgeId], note: 'Big Bend' })).statusCode).toBe(201)
+
+    const detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.totalProgress).toBe(1)
+    // Each attendee's personal tally stays 0 — they were present, not multipliers.
+    const byName = Object.fromEntries(detail.participants.map((p: { name: string; progress: number }) => [p.name, p.progress]))
+    expect(byName.Kevin).toBe(0)
+    expect(byName.Kramer).toBe(0)
+    expect(byName.George).toBe(0)
+    // The activity feed shows a single line for the visit, with all three avatars.
+    const visit = detail.recent.filter((r: { note: string }) => r.note === 'Big Bend')
+    expect(visit).toHaveLength(1)
+    expect(visit[0].amount).toBe(1)
+    expect(visit[0].participants.map((p: { name: string }) => p.name).sort()).toEqual(['George', 'Kevin', 'Kramer'])
+  })
+
+  it("count_once is the default for a new shared goal", async () => {
+    const kramerId = await newPerson('Kramer2')
+    const add = await call('POST', '/api/goals', kevin, {
+      title: 'Camping trips', goalType: 'count', unit: 'trips', targetValue: 3,
+      trackingMode: 'shared_total', participantIds: [kevinId, kramerId],
+    })
+    const id = JSON.parse(add.body).goal.id
+    const goal = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(goal.participantMode).toBe('count_once')
+
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 1, personIds: [kevinId, kramerId] })).statusCode).toBe(201)
+    expect(JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal.totalProgress).toBe(1)
+  })
+
+  it("credit_each: everyone present gets the FULL amount, family total counts it once", async () => {
+    const kramerId = await newPerson('Kramer3')
+    const add = await call('POST', '/api/goals', kevin, {
+      title: 'Hours outside', goalType: 'total', unit: 'hours', targetValue: 750,
+      trackingMode: 'shared_total', participantMode: 'credit_each',
+      participantIds: [kevinId, kramerId],
+    })
+    const id = JSON.parse(add.body).goal.id
+
+    // 1 hour together → family +1 (elapsed), but each person personally logged 1 hour.
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 1, personIds: [kevinId, kramerId], note: 'Frisbee' })).statusCode).toBe(201)
+
+    const detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.totalProgress).toBe(1) // family: elapsed hour, counted once
+    const byName = Object.fromEntries(detail.participants.map((p: { name: string; progress: number }) => [p.name, p.progress]))
+    expect(byName.Kevin).toBe(1) // full credit to each — the leaderboard
+    expect(byName.Kramer3).toBe(1)
+    // One activity line, amount = what was entered, both avatars.
+    const row = detail.recent.filter((r: { note: string }) => r.note === 'Frisbee')
+    expect(row).toHaveLength(1)
+    expect(row[0].amount).toBe(1)
+    expect(row[0].participants.map((p: { name: string }) => p.name).sort()).toEqual(['Kevin', 'Kramer3'])
   })
 })

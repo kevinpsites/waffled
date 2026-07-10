@@ -10,6 +10,13 @@ import type { CreateGoalListInput, UpdateGoalListInput, CreateGoalInput, UpdateG
 
 export const GOAL_TYPES = new Set(['count', 'total', 'habit', 'checklist'])
 export const TRACKING_MODES = new Set(['shared_total', 'each_tracks'])
+// How a SHARED goal counts a log that several people took part in (ignored for
+// each_tracks, which always credits each person and sums to the collective total):
+//   count_once  — one shared event; +amount once, the people are attendance.
+//   credit_each — each person gets the full amount (leaderboard); family +amount once.
+//   split       — the amount is divided evenly across the people.
+// See migration 0078 + logProgress for the row-writing rules.
+export const PARTICIPANT_MODES = new Set(['count_once', 'credit_each', 'split'])
 // Apple Health metrics a goal can auto-fill from (iPhone). Keep in sync with the iOS
 // HealthKitBridge.Metric keys. Quantity metrics (steps…mindful_minutes) send a raw daily
 // total; the boolean metrics (rings, mood) send 1 when met / 0 when not, so they ride the
@@ -179,9 +186,9 @@ export async function createGoal(tenant: Tenant, input: CreateGoalInput): Promis
     const g = await client.query<{ id: string }>(
       `insert into goals
          (household_id, goal_list_id, title, emoji, category, goal_type, unit, target_value,
-          habit_period, habit_target_per_period, tracking_mode, log_method, auto_from_calendar,
+          habit_period, habit_target_per_period, tracking_mode, participant_mode, log_method, auto_from_calendar,
           health_metric, health_daily_target, deadline, is_featured, has_rewards)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) returning id`,
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning id`,
       [
         tenant.householdId,
         input.goalListId ?? null,
@@ -194,6 +201,7 @@ export async function createGoal(tenant: Tenant, input: CreateGoalInput): Promis
         input.habitPeriod ?? null,
         input.habitTargetPerPeriod ?? null,
         input.trackingMode,
+        input.participantMode ?? 'count_once',
         input.logMethod ?? 'quick_log',
         input.autoFromCalendar ?? false,
         input.healthMetric ?? null,
@@ -290,6 +298,7 @@ interface GoalRow extends QueryResultRow {
   habit_period: string | null
   habit_target_per_period: number | null
   tracking_mode: string
+  participant_mode: string
   log_method: string
   auto_from_calendar: boolean
   health_metric: string | null
@@ -321,6 +330,7 @@ function mapGoal(g: GoalRow) {
     habitPeriod: g.habit_period,
     habitTargetPerPeriod: g.habit_target_per_period,
     trackingMode: g.tracking_mode,
+    participantMode: g.participant_mode,
     logMethod: g.log_method,
     autoFromCalendar: g.auto_from_calendar,
     healthMetric: g.health_metric,
@@ -387,16 +397,16 @@ async function streaksFor(householdId: string, goalIds: string[]): Promise<Map<s
 export async function listGoals(householdId: string, listId?: string | null) {
   const { rows } = await query<GoalRow>(
     `select g.id, g.goal_list_id, g.title, g.emoji, g.category, g.goal_type, g.unit, g.target_value,
-            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.log_method, g.auto_from_calendar, g.health_metric, g.health_daily_target, g.deadline,
+            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.participant_mode, g.log_method, g.auto_from_calendar, g.health_metric, g.health_daily_target, g.deadline,
             g.is_featured, g.has_rewards, g.created_at,
             coalesce((select sum(amount)::float from goal_logs gl
-                       where gl.goal_id = g.id and gl.deleted_at is null), 0) as total_progress,
+                       where gl.goal_id = g.id and gl.deleted_at is null and gl.counts_total), 0) as total_progress,
             (select count(*) from goal_milestones gm
               where gm.goal_id = g.id and gm.deleted_at is null) as milestone_total,
             (select count(*) from goal_milestones gm
               where gm.goal_id = g.id and gm.deleted_at is null
                 and gm.threshold <= coalesce((select sum(amount) from goal_logs gl
-                       where gl.goal_id = g.id and gl.deleted_at is null), 0)) as milestone_reached,
+                       where gl.goal_id = g.id and gl.deleted_at is null and gl.counts_total), 0)) as milestone_reached,
             ${PERIOD_DONE_SUBQUERY} as period_done,
             ${STEP_TOTAL_SUBQUERY} as step_total,
             ${STEP_DONE_SUBQUERY} as step_done,
@@ -471,16 +481,16 @@ export async function goalParticipantIds(householdId: string, goalId: string): P
 export async function goalDetail(householdId: string, id: string) {
   const { rows } = await query<GoalRow>(
     `select g.id, g.goal_list_id, g.title, g.emoji, g.category, g.goal_type, g.unit, g.target_value,
-            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.log_method, g.auto_from_calendar, g.health_metric, g.health_daily_target, g.deadline,
+            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.participant_mode, g.log_method, g.auto_from_calendar, g.health_metric, g.health_daily_target, g.deadline,
             g.is_featured, g.has_rewards, g.created_at,
             coalesce((select sum(amount)::float from goal_logs gl
-                       where gl.goal_id = g.id and gl.deleted_at is null), 0) as total_progress,
+                       where gl.goal_id = g.id and gl.deleted_at is null and gl.counts_total), 0) as total_progress,
             (select count(*) from goal_milestones gm
               where gm.goal_id = g.id and gm.deleted_at is null) as milestone_total,
             (select count(*) from goal_milestones gm
               where gm.goal_id = g.id and gm.deleted_at is null
                 and gm.threshold <= coalesce((select sum(amount) from goal_logs gl
-                       where gl.goal_id = g.id and gl.deleted_at is null), 0)) as milestone_reached,
+                       where gl.goal_id = g.id and gl.deleted_at is null and gl.counts_total), 0)) as milestone_reached,
             ${PERIOD_DONE_SUBQUERY} as period_done,
             ${STEP_TOTAL_SUBQUERY} as step_total,
             ${STEP_DONE_SUBQUERY} as step_done,
@@ -530,7 +540,7 @@ export async function goalDetail(householdId: string, id: string) {
   const recent = (
     await query<{ id: string; amount: string; loggedAt: string; note: string | null; participants: Array<{ personId: string | null; name: string | null; avatarEmoji: string | null; colorHex: string | null }> }>(
       `select coalesce(gl.batch_id, gl.id)::text as id,
-              sum(gl.amount) as amount,
+              coalesce(sum(gl.amount) filter (where gl.counts_total), 0) as amount,
               min(gl.logged_at) as "loggedAt",
               gl.note,
               coalesce(
@@ -552,7 +562,7 @@ export async function goalDetail(householdId: string, id: string) {
     (
       await query<{ sum: string }>(
         `select coalesce(sum(amount),0) as sum from goal_logs
-          where goal_id=$1 and deleted_at is null
+          where goal_id=$1 and deleted_at is null and counts_total
             and logged_at >= date_trunc('week', now())`,
         [id]
       )
@@ -606,21 +616,69 @@ export async function toggleGoalStep(
   }
 }
 
-// Log progress for one or more people — the handoff "who was outside" multi-select
-// inserts one entry per person, so per-person sums still roll up to the pool total.
 const round2 = (n: number): number => Math.round(n * 100) / 100
 
-// Log progress toward a goal. The `amount` is always what the GOAL gains — the
-// people you tap are who took part, never a multiplier. How that maps to rows
-// depends on the goal:
-//   • shared_total + divisible (goalType 'total', e.g. hours): the amount is the
-//     family's total for this activity, so it's SPLIT EVENLY across participants
-//     (rows sum back to exactly `amount`; the last person absorbs any rounding
-//     remainder so the pool total never drifts).
-//   • each_tracks: each person independently did `amount`, so every participant
-//     gets a full-amount row (the pool gains amount × N — correct here).
-//   • whole-unit goals (books, parks): the modal sends a single target (one
-//     person, or null = "the family"), so this writes one full-amount row.
+interface PlanRow { personId: string | null; amount: number; countsTotal: boolean }
+
+// Decide which goal_logs rows a single log action writes. `amount` is always what the
+// GOAL gains — the people you tap are who took part, never a multiplier. The FAMILY
+// total sums only `countsTotal` rows; the per-person leaderboard sums every row by
+// person. That split is what lets several people share one event without inflating the
+// family number. See PARTICIPANT_MODES + migration 0078.
+//   • habit        → each completion is exactly 1 (one row per person, all count).
+//   • each_tracks  → everyone independently did `amount`; all rows count, summing to
+//                    the collective total (e.g. "read 12 books each" → 48 for four).
+//   • shared_total → the participant mode decides:
+//       - split       amount divided evenly across the people (rows sum to `amount`).
+//       - credit_each one family row (counts once) + a FULL-amount attribution row per
+//                     person (the leaderboard) that does NOT count toward the total.
+//       - count_once  one family row (counts once) + an amount-0 ATTENDANCE row per
+//                     person recording who was there.
+export function planLogRows(
+  participantMode: string,
+  trackingMode: string,
+  goalType: string,
+  amount: number,
+  targets: Array<string | null>
+): { rows: PlanRow[]; batchId: string | null } {
+  const realPeople = targets.filter((t): t is string => t != null)
+  if (goalType === 'habit') {
+    return { rows: targets.map((t) => ({ personId: t, amount: 1, countsTotal: true })), batchId: null }
+  }
+  if (trackingMode === 'each_tracks') {
+    return { rows: targets.map((t) => ({ personId: t, amount, countsTotal: true })), batchId: null }
+  }
+  if (participantMode === 'split' && targets.length > 1) {
+    const n = targets.length
+    const share = round2(amount / n)
+    return {
+      rows: targets.map((t, i) => ({ personId: t, amount: i === n - 1 ? round2(amount - share * (n - 1)) : share, countsTotal: true })),
+      batchId: randomUUID(),
+    }
+  }
+  // The attendance/multiplier distinction only bites with 2+ people. With a single
+  // person (or none) there is no shared event to divide, so it's just that person (or
+  // the family) doing it — one plain row that counts, credited to whoever's named.
+  if (participantMode === 'credit_each' && realPeople.length > 1) {
+    return {
+      rows: [{ personId: null, amount, countsTotal: true }, ...realPeople.map((p) => ({ personId: p, amount, countsTotal: false }))],
+      batchId: randomUUID(),
+    }
+  }
+  if (participantMode === 'count_once' && realPeople.length > 1) {
+    return {
+      rows: [{ personId: null, amount, countsTotal: true }, ...realPeople.map((p) => ({ personId: p, amount: 0, countsTotal: false }))],
+      batchId: randomUUID(),
+    }
+  }
+  // split with a single target, a single-person shared log, or a family-only log
+  // (no people tapped): one plain row that counts toward the total.
+  return { rows: targets.map((t) => ({ personId: t, amount, countsTotal: true })), batchId: null }
+}
+
+// Log progress toward a goal. Resolves the goal's counting rules, plans the rows via
+// planLogRows, then inserts them (batched siblings share a batch_id so the audit log
+// collapses them into one line with participant avatars).
 export async function logProgress(
   tenant: Tenant,
   goalId: string,
@@ -639,36 +697,18 @@ export async function logProgress(
   const targets = personIds.length ? personIds : [null]
   const logIds: string[] = []
 
-  const { rows } = await query<{ tracking_mode: string; goal_type: string }>(
-    `select tracking_mode, goal_type from goals where id = $1 and household_id = $2`,
+  const { rows: goalRows } = await query<{ tracking_mode: string; goal_type: string; participant_mode: string }>(
+    `select tracking_mode, goal_type, participant_mode from goals where id = $1 and household_id = $2`,
     [goalId, tenant.householdId]
   )
-  const trackingMode = rows[0]?.tracking_mode
-  const goalType = rows[0]?.goal_type
+  const trackingMode = goalRows[0]?.tracking_mode
+  const goalType = goalRows[0]?.goal_type
+  const participantMode = goalRows[0]?.participant_mode
   const isHabit = goalType === 'habit'
-  const splitEvenly = trackingMode === 'shared_total' && goalType === 'total' && targets.length > 1
 
-  // Per-row amounts. Habits are about consistency, so each completion counts as
-  // exactly 1 (never split, never a custom amount). When splitting a divisible
-  // shared pool, divide so the parts sum to exactly `amount`.
-  let amounts: number[]
-  if (isHabit) {
-    amounts = targets.map(() => 1)
-  } else if (splitEvenly) {
-    const n = targets.length
-    const share = round2(amount / n)
-    amounts = targets.map((_, i) => (i === n - 1 ? round2(amount - share * (n - 1)) : share))
-  } else {
-    amounts = targets.map(() => amount)
-  }
+  const { rows: plan, batchId } = planLogRows(participantMode, trackingMode, goalType, amount, targets)
 
-  // When one entered amount is split into per-person rows, tag the siblings with a
-  // shared batch id so the audit log can collapse them back into a single line (summed
-  // amount + participant avatars). Only the split path is batched; every other log stays
-  // null and renders as its own row, unchanged.
-  const batchId = splitEvenly ? randomUUID() : null
-
-  for (let i = 0; i < targets.length; i++) {
+  for (const row of plan) {
     // A habit can only be logged once per day per person — logging it five times
     // in an afternoon isn't the point. Skip a same-day duplicate silently.
     if (isHabit) {
@@ -681,16 +721,16 @@ export async function logProgress(
             and gl.person_id is not distinct from $3
             and (gl.logged_at at time zone h.timezone)::date = ${dayExpr}
           limit 1`,
-        at ? [tenant.householdId, goalId, targets[i], at] : [tenant.householdId, goalId, targets[i]]
+        at ? [tenant.householdId, goalId, row.personId, at] : [tenant.householdId, goalId, row.personId]
       )
       if (dup.rowCount) continue
     }
     const ins = await query<{ id: string }>(
-      `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, ref_type, ref_id, created_by, batch_id${at ? ', logged_at' : ''})
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10${at ? `, ($11::date + time '12:00') at time zone (select timezone from households where id = $1)` : ''}) returning id`,
+      `insert into goal_logs (household_id, goal_id, person_id, amount, note, source, ref_type, ref_id, created_by, batch_id, counts_total${at ? ', logged_at' : ''})
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11${at ? `, ($12::date + time '12:00') at time zone (select timezone from households where id = $1)` : ''}) returning id`,
       at
-        ? [tenant.householdId, goalId, targets[i], amounts[i], note ?? null, source, refType, refId, tenant.personId, batchId, at]
-        : [tenant.householdId, goalId, targets[i], amounts[i], note ?? null, source, refType, refId, tenant.personId, batchId]
+        ? [tenant.householdId, goalId, row.personId, row.amount, note ?? null, source, refType, refId, tenant.personId, batchId, row.countsTotal, at]
+        : [tenant.householdId, goalId, row.personId, row.amount, note ?? null, source, refType, refId, tenant.personId, batchId, row.countsTotal]
     )
     logIds.push(ins.rows[0].id)
   }
@@ -797,6 +837,7 @@ const GOAL_COLUMNS: Record<string, string> = {
   habitPeriod: 'habit_period',
   habitTargetPerPeriod: 'habit_target_per_period',
   trackingMode: 'tracking_mode',
+  participantMode: 'participant_mode',
   logMethod: 'log_method',
   autoFromCalendar: 'auto_from_calendar',
   healthMetric: 'health_metric',
