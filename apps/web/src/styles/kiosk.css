@@ -273,7 +273,8 @@ body {
   margin-bottom: 4px;
 }
 .field input,
-.field select {
+.field select,
+.field textarea {
   width: 100%;
   font: inherit;
   font-size: 15px;
@@ -282,6 +283,19 @@ body {
   border: 1px solid var(--hair);
   background: var(--card-2);
   color: var(--ink);
+}
+.field textarea {
+  display: block;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 96px;
+}
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(236, 96, 73, 0.12);
 }
 .field-row {
   display: flex;

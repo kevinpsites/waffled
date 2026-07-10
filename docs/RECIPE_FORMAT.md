@@ -8,6 +8,11 @@ section, numbered steps) that you then review and save.
 It's also handy for generating recipes with an LLM: paste the template below into
 ChatGPT/Claude, ask it to fill in a dish, and paste the result back into Waffled.
 
+> **You usually don't need to do this by hand.** The New recipe screen can build a
+> recipe *for* you from a **photo** of a physical recipe or a spoken/typed
+> **description** — both use this same format under the hood and drop into the editor
+> for review. See the "Add a recipe from a photo or your voice" guide.
+
 > The same format powers the dev-only `import-recipes` seeding CLI, but you never need
 > the CLI — authoring and pasting in-app is the supported path.
 
@@ -106,6 +111,12 @@ These power the Recipes library's search, filters, and chips.
   Durations accept minutes/hours/seconds and compound/short forms — `20 minutes`,
   `1 hour 30 min`, `1.5 hrs`, `90s`. You can also drop the timer inline as
   `{timer: 20 minutes}` anywhere in the step text (equivalent; also stripped).
+
+  You often don't need the marker at all: if a step **sentence** states a time
+  (`Place on the grill and cook for 6 minutes.`), that duration is auto-detected and a
+  timer is attached — the wording stays in the step. An explicit `**Timer:**` /
+  `{timer:}` always wins over the prose, and when a step mentions two times the first
+  one is used.
 - **`## Notes`** — free text. A `Source: …` line is captured as the recipe's source.
 
 ## After you paste

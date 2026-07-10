@@ -15,9 +15,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Add a recipe from a photo or by describing it.** The recipe editor's "New recipe"
+  screen can now build the whole form for you two new ways. **From a photo** — snap or
+  choose photos of a recipe card, cookbook page, or handwritten note (a few pages of one
+  recipe is fine) and the AI reads them into ingredients and steps. **Describe it** — say
+  or type what you know in any order ("brown a pound of beef, add two cans of beans, simmer
+  30 minutes…") and it's organized into a proper recipe. Either way the AI fills in the whole
+  recipe — not just the title, ingredients, and steps, but the details it can infer from the
+  dish (cuisine, protein, cook method, meal type), the ingredients each step uses, and a timer
+  on any step with a cook or rest time. Both drop straight into the editor for you to tidy up
+  before saving — nothing is stored until you do. Photo import needs a
+  vision-capable AI provider (Claude, OpenAI, or a vision Ollama model, chosen in Settings →
+  AI & capture); describing works with any provider. Source photos are held briefly, then
+  automatically deleted.
+
 ### Changed
 
+- **Recipe steps that mention a time now get a timer automatically.** Whether a recipe
+  comes from a photo, a description, or pasted Markdown, a step that says something like
+  "cook for 6 minutes" now attaches a cook-mode timer without needing an explicit
+  `**Timer:**` line. An explicit marker still wins, and a step that lists two times uses
+  the first.
+
 ### Fixed
+
+- **Per-step timers now carry into the recipe editor when parsing.** Building a recipe
+  from a photo, a description, or pasted Markdown correctly detected each step's timer but
+  dropped it when filling the form, so every step showed "Add timer" even when the recipe
+  clearly stated a time. The parsed timer now lands on the step.
 
 ## [0.6.1] - 2026-07-09
 

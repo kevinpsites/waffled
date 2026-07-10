@@ -224,8 +224,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   module cards** (the toggle is already server-shared; Pantry et al. need Swift screens), and
   API-key follow-ups: per-user (non-admin) issuance, an OpenAPI/published contract, and a CORS
   posture for cross-origin integrations.
-- **Conversational recipe AI** — instruction-driven edits + photo → recipe (needs a vision
-  provider).
+- **Conversational recipe AI** — **photo → recipe and describe-it (speech/free-form → recipe)
+  SHIPPED (web)** in the "New recipe" editor: photos of a physical recipe are read by a
+  vision model, and a rambly spoken/typed description is organized into ingredients + steps;
+  both prefill the editor for review before saving, and source photos auto-delete after a
+  short window. Still planned: **instruction-driven edits** ("make it vegetarian", "double
+  it") and **iOS parity** (native camera + Apple-Speech dictation → the same endpoints).
 - **Shared album import** for Photos (Google Photos / iCloud).
 - **Server-side fuzzy person resolution** for capture (nicknames/aliases).
 - **Milestone reward payouts** — deferred by design (needs idempotency + attribution rules).

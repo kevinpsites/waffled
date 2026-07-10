@@ -88,6 +88,7 @@ export default defineConfig({
 					label: 'Guides',
 					items: [
 						{ label: 'Set up a kitchen kiosk', slug: 'guides/kitchen-kiosk' },
+						{ label: 'Add a recipe from a photo or voice', slug: 'guides/ai-recipe-import' },
 						{ label: 'Run AI locally with Ollama', slug: 'guides/local-ai' },
 						{ label: 'Offsite backups (3-2-1)', slug: 'guides/offsite-backups' },
 						{ label: 'Move to new hardware', slug: 'guides/moving-hardware' },

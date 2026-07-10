@@ -38,6 +38,15 @@ import {
   todayDate,
 } from './meals.service'
 import { parseRecipe } from './recipe-markdown'
+import {
+  ingestRecipeFromText,
+  ingestRecipeFromPhotos,
+  isAiUnavailable,
+  IngestInputError,
+  MAX_INGEST_PHOTOS,
+  type IngestPhotoInput,
+} from './recipe-ingest.service'
+import { getAiConfig, availability, visionAvailable } from '../../platform/llm'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -162,6 +171,59 @@ export function registerMealRoutes(api: Api): void {
         section: it.section,
       })),
       steps: r.steps.map((s) => ({ instruction: s.text, ingredients: s.ingredients, timerSeconds: s.timerSeconds ?? null })),
+    }
+  }))
+
+  // Which AI recipe-import paths this household can use right now: `text` (speech/
+  // free-form → recipe) needs any non-heuristic provider; `vision` (photo → recipe)
+  // needs a vision-capable model. The web client uses this to show/disable the two
+  // import entry points.
+  api.get('/api/recipes/ingest/config', tenantRoute(async (tenant) => {
+    const { provider } = await getAiConfig(tenant.householdId)
+    const text = provider !== 'heuristic' && availability()[provider]
+    const vision = await visionAvailable(tenant.householdId)
+    return { text, vision }
+  }))
+
+  // Speech/text → recipe. Free-form spoken (transcribed client-side) or typed
+  // description → our markdown → structured draft. Does NOT save. 501 when no AI
+  // provider is selected.
+  api.post('/api/recipes/ingest/voice', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const body = (req.body ?? {}) as { text?: string }
+    if (!body.text || !body.text.trim()) {
+      return res.status(400).json({ error: 'BadRequest', message: 'text is required' })
+    }
+    try {
+      const { draft, via } = await ingestRecipeFromText(tenant, body.text)
+      return { ...draft, via }
+    } catch (err) {
+      if (isAiUnavailable(err)) return res.status(501).json({ error: 'AIUnavailable', message: (err as Error).message })
+      return res.status(502).json({ error: 'IngestFailed', message: (err as Error).message })
+    }
+  }))
+
+  // Photo(s) → recipe. One or more photos of a physical/printed recipe → vision LLM →
+  // our markdown → structured draft. Does NOT save the recipe; source photos are
+  // persisted for a short window then swept. 501 when no vision-capable model.
+  api.post('/api/recipes/ingest/photo', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const body = (req.body ?? {}) as { images?: IngestPhotoInput[] }
+    const images = Array.isArray(body.images) ? body.images : []
+    if (images.length === 0) {
+      return res.status(400).json({ error: 'BadRequest', message: 'at least one image is required' })
+    }
+    if (images.length > MAX_INGEST_PHOTOS) {
+      return res.status(400).json({ error: 'BadRequest', message: `at most ${MAX_INGEST_PHOTOS} images` })
+    }
+    if (images.some((im) => !im || typeof im.data !== 'string' || typeof im.contentType !== 'string')) {
+      return res.status(400).json({ error: 'BadRequest', message: 'each image needs data + contentType' })
+    }
+    try {
+      const { draft, via, photoKeys } = await ingestRecipeFromPhotos(tenant, images)
+      return { ...draft, via, photoKeys }
+    } catch (err) {
+      if (err instanceof IngestInputError) return res.status(400).json({ error: 'BadRequest', message: err.message })
+      if (isAiUnavailable(err)) return res.status(501).json({ error: 'AIUnavailable', message: (err as Error).message })
+      return res.status(502).json({ error: 'IngestFailed', message: (err as Error).message })
     }
   }))
 
