@@ -54,7 +54,10 @@ struct ScreensaverView: View {
         .contentShape(Rectangle())
         .onTapGesture { onWake() }
         .onReceive(tick) { t in
-            now = t
+            // The clock reads "h:mm", so re-render only on a minute rollover — not every
+            // second. (`elapsed` isn't read by `body`, so bumping it doesn't re-render;
+            // minute boundaries align across all real time zones, so compare epoch minutes.)
+            if Int(t.timeIntervalSince1970 / 60) != Int(now.timeIntervalSince1970 / 60) { now = t }
             elapsed += 1
             if elapsed >= Int(perPhoto) { elapsed = 0; advance() }
         }
@@ -135,13 +138,19 @@ struct ScreensaverView: View {
 
     // MARK: formatting
 
+    // Static so a re-render doesn't allocate a DateFormatter (the repo's hot-path rule).
+    // timeZone is set per use since it's the household's, and the saver is single-instance
+    // on the main thread, so sharing these is safe.
+    private static let clockFmt: DateFormatter = { let f = DateFormatter(); f.dateFormat = "h:mm"; return f }()
+    private static let dateFmt: DateFormatter = { let f = DateFormatter(); f.dateFormat = "EEEE, MMMM d"; return f }()
+
     private var timeString: String {
-        let f = DateFormatter(); f.timeZone = timezone; f.dateFormat = "h:mm"
-        return f.string(from: now)
+        Self.clockFmt.timeZone = timezone
+        return Self.clockFmt.string(from: now)
     }
     private var dateLine: String {
-        let f = DateFormatter(); f.timeZone = timezone; f.dateFormat = "EEEE, MMMM d"
-        let date = f.string(from: now)
+        Self.dateFmt.timeZone = timezone
+        let date = Self.dateFmt.string(from: now)
         if let w = weather, w.configured, let t = w.tempF {
             let parts = ["\(w.emoji ?? "")\(w.emoji == nil ? "" : " ")\(Int(t.rounded()))°", w.label].compactMap { $0 }.filter { !$0.isEmpty }
             return "\(date) · \(parts.joined(separator: " · "))"
@@ -158,8 +167,8 @@ struct ScreensaverView: View {
         guard let ev = nextEvent else { return nil }
         if ev.allDay { return "Next: \(ev.title)" }
         guard let when = ev.startsAt else { return "Next: \(ev.title)" }
-        let f = DateFormatter(); f.timeZone = timezone; f.dateFormat = "h:mm"
-        return "Next: \(ev.title) · \(f.string(from: when))"
+        Self.clockFmt.timeZone = timezone
+        return "Next: \(ev.title) · \(Self.clockFmt.string(from: when))"
     }
 }
 

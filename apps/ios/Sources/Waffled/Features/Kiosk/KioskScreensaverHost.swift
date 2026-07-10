@@ -18,6 +18,9 @@ final class ScreensaverModel {
     private var lastActivity = Date()
     private let api = WaffledAPI()
 
+    /// Reused by the per-tick night-window check so it never allocates a formatter (hot path).
+    private static let hhmmFmt: DateFormatter = { let f = DateFormatter(); f.dateFormat = "HH:mm"; return f }()
+
     /// A touch happened somewhere — reset the idle clock (ignored while the saver is up;
     /// the saver handles its own wake so a stray ping can't pre-empt the wake tap).
     func ping() { if !showing { lastActivity = Date() } }
@@ -70,8 +73,9 @@ final class ScreensaverModel {
     /// handles an overnight window (start later than end, e.g. 21:00 → 07:00).
     static func inNightWindow(_ nd: WaffledAPI.DisplayConfig.NightDim, now: Date, tz: TimeZone) -> Bool {
         guard nd.enabled else { return false }
-        let f = DateFormatter(); f.timeZone = tz; f.dateFormat = "HH:mm"
-        let cur = f.string(from: now)
+        // Static so the idle tick doesn't allocate a DateFormatter on every fire.
+        Self.hhmmFmt.timeZone = tz
+        let cur = Self.hhmmFmt.string(from: now)
         return nd.start <= nd.end ? (cur >= nd.start && cur < nd.end)
                                   : (cur >= nd.start || cur < nd.end)
     }
@@ -82,7 +86,10 @@ struct KioskScreensaverHost: ViewModifier {
     @Environment(KioskMode.self) private var kiosk
     @State private var model = ScreensaverModel()
     @AppStorage("waffled.screensaverMotion") private var motion = true
-    private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    // Idle/night-window detection doesn't need 1s precision — a 10s cadence keeps the SoC
+    // asleep ~10× more while the kiosk sits idle (worst case: the saver appears, or the
+    // night-dim toggles, up to 10s late — imperceptible).
+    private let tick = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
 
     func body(content: Content) -> some View {
         content
@@ -102,11 +109,13 @@ struct KioskScreensaverHost: ViewModifier {
             }
             .animation(.easeInOut(duration: 0.45), value: model.showing)
             .task { await model.load() }
-            // Refresh photos / weather / config periodically while parked.
+            // Refresh photos / weather / config periodically while parked. Config rarely
+            // changes and weather is hourly at most, so 15 min is plenty — and there's
+            // nothing worth fetching overnight, so skip the poll while night-dimmed.
             .task {
                 while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(150))
-                    await model.load()
+                    try? await Task.sleep(for: .seconds(900))
+                    if !model.dimmed { await model.load() }
                 }
             }
             .onReceive(tick) { model.tick($0, tz: sync.householdTz) }

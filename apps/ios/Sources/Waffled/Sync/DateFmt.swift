@@ -45,11 +45,36 @@ enum DateFmt {
     /// "Good morning/afternoon/evening" for the current hour in `tz`. Shared by the
     /// phone Today header and the iPad dashboard.
     static func greeting(_ tz: TimeZone) -> String {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
-        switch cal.component(.hour, from: Date()) {
+        switch Cal.gregorian(tz).component(.hour, from: Date()) {
         case 5..<12:  return "Good morning"
         case 12..<17: return "Good afternoon"
         default:      return "Good evening"
         }
     }
+}
+
+/// Cached `Calendar`s, one per timezone. `Calendar(identifier:)` (and `Calendar.current`)
+/// loads locale/timezone data on every access — far too expensive to allocate inside a
+/// filter/map/sort closure or a per-cell grid builder, which the calendar and meal grids
+/// do dozens of times per render. A `Calendar` is a value type, so a cached one is safe to
+/// hand out by copy; callers only ever read from it. Companion to `DateFmt`.
+enum Cal {
+    private static var cache: [String: Calendar] = [:]
+    private static let lock = NSLock()
+
+    /// A gregorian calendar in `tz`, built once per timezone identifier and reused.
+    static func gregorian(_ tz: TimeZone) -> Calendar {
+        lock.lock(); defer { lock.unlock() }
+        if let c = cache[tz.identifier] { return c }
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = tz
+        cache[tz.identifier] = c
+        return c
+    }
+
+    /// The device's current-timezone gregorian calendar (a cached stand-in for repeated
+    /// `Calendar.current` reads in hot paths). Keyed on the current tz, so it tracks tz
+    /// changes on the next access. Locale is snapshotted at first build for that zone —
+    /// fine for the day-math this is used for (startOfDay / isDateInToday / components).
+    static var current: Calendar { gregorian(TimeZone.current) }
 }

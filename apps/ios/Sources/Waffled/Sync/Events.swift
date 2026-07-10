@@ -43,9 +43,9 @@ enum EventTime {
 
     /// The local calendar date (YYYY-MM-DD) an instant falls on, in `tz`.
     static func dayKey(_ date: Date, _ tz: TimeZone) -> String {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = tz
-        let c = cal.dateComponents([.year, .month, .day], from: date)
+        // Cached calendar — this runs per-event inside Agenda.forDay/upcoming filters and
+        // is fanned out ~40×+ per calendar-grid build, so a fresh alloc here janks.
+        let c = Cal.gregorian(tz).dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 
