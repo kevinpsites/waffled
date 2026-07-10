@@ -23,6 +23,9 @@ function dispProgress(g: Goal): number {
 function dispTarget(g: Goal): number | null {
   if (g.goalType === 'habit') return g.habitTargetPerPeriod ?? g.target
   if (g.goalType === 'checklist') return g.stepTotal || null
+  // "Everyone individually" (per_person basis): the ring target is the per-person
+  // number × household size (read 12 EACH → 48 for four), so it grows as people join.
+  if (g.targetBasis === 'per_person' && g.target != null) return g.target * Math.max(1, g.participants.length)
   return g.target
 }
 function fmtNum(n: number | null): string {

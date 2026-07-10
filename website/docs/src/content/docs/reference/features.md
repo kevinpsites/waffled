@@ -143,7 +143,9 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Goal types: count / total / habit / checklist | ✅ | ✅ | ✅ | ✅ Done |
 | Goal **lists** + membership (shared lists / individual) | ✅ | ✅ | ✅ | ✅ Done |
 | Shared-pool vs each-tracks goals | ✅ | ✅ | ✅ | ✅ Done |
+| **How a group activity counts** — one choice of four (Everyone individually / We all chip in / Split it evenly / Just count it once) with a live arithmetic preview | ✅ | 🟡 | 🟡 | 🟡 Web done; iPhone/iPad pending |
 | Create / **edit** / delete goals | ✅ | ✅ | ✅ | ✅ Done |
+| **Edit / remove a logged entry** (amount, note, date; shared entries removed whole) | ✅ | 🟡 | 🟡 | 🟡 Web done; iPhone/iPad pending |
 | Type-aware **logging** (amount / stepper / once-a-day / tick steps) | ✅ | ✅ | ✅ | ✅ Done |
 | Backdated logs ("When?" picker) | ✅ | ✅ | ✅ | ✅ Done |
 | **Goal detail** read-model (milestone track, hours-by-person, streaks, recent) | ✅ | ✅ | ✅ | ✅ Done |

@@ -41,8 +41,10 @@ export interface Goal {
   habitPeriod: string | null
   habitTargetPerPeriod: number | null
   trackingMode: string
-  // Shared-goal counting rule: count_once | credit_each | split (see GoalCreate).
+  // Shared-goal counting rule: count_once | split (see GoalCreate PARTICIPANT_TYPES).
   participantMode: string
+  // For each_tracks goals: 'family' (flat shared target) | 'per_person' (ring = target × members).
+  targetBasis: string
   logMethod: string
   autoFromCalendar: boolean
   deadline: string | null

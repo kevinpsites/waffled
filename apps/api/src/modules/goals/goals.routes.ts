@@ -25,6 +25,7 @@ import {
   GOAL_TYPES,
   TRACKING_MODES,
   PARTICIPANT_MODES,
+  TARGET_BASES,
   HABIT_PERIODS,
   HEALTH_METRICS,
   personsInHousehold,
@@ -120,6 +121,9 @@ export function registerGoalRoutes(api: Api): void {
     if (body.participantMode != null && !PARTICIPANT_MODES.has(String(body.participantMode))) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid participantMode' })
     }
+    if (body.targetBasis != null && !TARGET_BASES.has(String(body.targetBasis))) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid targetBasis' })
+    }
     if (body.healthMetric != null && !HEALTH_METRICS.has(String(body.healthMetric))) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid healthMetric' })
     }
@@ -154,7 +158,7 @@ export function registerGoalRoutes(api: Api): void {
   api.patch('/api/goals/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
-    const body = (req.body ?? {}) as { goalType?: string; trackingMode?: string; participantMode?: string; healthMetric?: unknown; healthDailyTarget?: unknown }
+    const body = (req.body ?? {}) as { goalType?: string; trackingMode?: string; participantMode?: string; targetBasis?: string; healthMetric?: unknown; healthDailyTarget?: unknown }
     if (body.goalType && !GOAL_TYPES.has(body.goalType)) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid goalType' })
     }
@@ -163,6 +167,9 @@ export function registerGoalRoutes(api: Api): void {
     }
     if (body.participantMode && !PARTICIPANT_MODES.has(body.participantMode)) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid participantMode' })
+    }
+    if (body.targetBasis && !TARGET_BASES.has(body.targetBasis)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid targetBasis' })
     }
     const patchShapeErr = goalShapeError(body, body.goalType)
     if (patchShapeErr) return res.status(400).json({ error: 'BadRequest', message: patchShapeErr })

@@ -408,9 +408,20 @@ describe('participant counting modes (shared goals)', () => {
     return JSON.parse(r.body).person.id
   }
 
-  it('rejects an invalid participantMode on create (400)', async () => {
+  it('rejects an invalid participantMode on create (400) — including the retired credit_each', async () => {
     expect(
       (await call('POST', '/api/goals', kevin, { title: 'X', goalType: 'count', trackingMode: 'shared_total', participantMode: 'bogus' })).statusCode
+    ).toBe(400)
+    // credit_each was the confusing "family counts once but each gets full credit" mode.
+    // It's retired in favour of the four clear types — the API must now reject it.
+    expect(
+      (await call('POST', '/api/goals', kevin, { title: 'X', goalType: 'total', trackingMode: 'shared_total', participantMode: 'credit_each' })).statusCode
+    ).toBe(400)
+  })
+
+  it('rejects an invalid targetBasis on create (400)', async () => {
+    expect(
+      (await call('POST', '/api/goals', kevin, { title: 'X', goalType: 'total', trackingMode: 'each_tracks', targetBasis: 'bogus' })).statusCode
     ).toBe(400)
   })
 
@@ -456,28 +467,59 @@ describe('participant counting modes (shared goals)', () => {
     expect(JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal.totalProgress).toBe(1)
   })
 
-  it("credit_each: everyone present gets the FULL amount, family total counts it once", async () => {
+  it("#2 'We all chip in' (each_tracks, family target): everyone tapped is credited full and the total sums", async () => {
+    // Type #2 — one shared family target, everyone's contributions stack. Jerry + Kramer
+    // each spend an hour and both are tapped → each +1 AND the family total goes up by 2.
     const kramerId = await newPerson('Kramer3')
     const add = await call('POST', '/api/goals', kevin, {
-      title: 'Hours outside', goalType: 'total', unit: 'hours', targetValue: 750,
-      trackingMode: 'shared_total', participantMode: 'credit_each',
+      title: 'Family reads 12 (combined)', goalType: 'total', unit: 'books', targetValue: 12,
+      trackingMode: 'each_tracks', targetBasis: 'family',
       participantIds: [kevinId, kramerId],
     })
     const id = JSON.parse(add.body).goal.id
 
-    // 1 hour together → family +1 (elapsed), but each person personally logged 1 hour.
-    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 1, personIds: [kevinId, kramerId], note: 'Frisbee' })).statusCode).toBe(201)
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 1, personIds: [kevinId, kramerId], note: 'Two books' })).statusCode).toBe(201)
 
     const detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
-    expect(detail.totalProgress).toBe(1) // family: elapsed hour, counted once
+    expect(detail.targetBasis).toBe('family')
+    expect(detail.target).toBe(12) // flat family target — not ×N
+    expect(detail.totalProgress).toBe(2) // each person's contribution stacks: 1 + 1
     const byName = Object.fromEntries(detail.participants.map((p: { name: string; progress: number }) => [p.name, p.progress]))
-    expect(byName.Kevin).toBe(1) // full credit to each — the leaderboard
+    expect(byName.Kevin).toBe(1)
     expect(byName.Kramer3).toBe(1)
-    // One activity line, amount = what was entered, both avatars.
-    const row = detail.recent.filter((r: { note: string }) => r.note === 'Frisbee')
-    expect(row).toHaveLength(1)
-    expect(row[0].amount).toBe(1)
-    expect(row[0].participants.map((p: { name: string }) => p.name).sort()).toEqual(['Kevin', 'Kramer3'])
+  })
+
+  it("#1 'Everyone individually' (each_tracks, per_person target): per-person tallies sum and the basis round-trips", async () => {
+    // Type #1 — each person aims for the full amount on their own (read 12 books EACH).
+    // Counting is the same "stacks up" mechanic as #2; the difference is the target basis,
+    // which the client multiplies by member count for the ring (12 × 2 = 24 here).
+    const kramerId = await newPerson('Kramer4')
+    const add = await call('POST', '/api/goals', kevin, {
+      title: 'Read 12 books each', goalType: 'count', unit: 'books', targetValue: 12,
+      trackingMode: 'each_tracks', targetBasis: 'per_person',
+      participantIds: [kevinId, kramerId],
+    })
+    const id = JSON.parse(add.body).goal.id
+
+    // Kevin reads a book (logged for himself only) → his tally +1, total +1.
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { amount: 1, personIds: [kevinId], note: 'A book' })).statusCode).toBe(201)
+
+    const detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.targetBasis).toBe('per_person')
+    expect(detail.target).toBe(12) // stored per-person target; ring = 12 × members on the client
+    expect(detail.totalProgress).toBe(1)
+    const byName = Object.fromEntries(detail.participants.map((p: { name: string; progress: number }) => [p.name, p.progress]))
+    expect(byName.Kevin).toBe(1)
+    expect(byName.Kramer4).toBe(0)
+  })
+
+  it("targetBasis defaults to 'family' when omitted", async () => {
+    const add = await call('POST', '/api/goals', kevin, {
+      title: 'Hours', goalType: 'total', unit: 'hours', targetValue: 750,
+      trackingMode: 'shared_total', participantMode: 'split', participantIds: [kevinId],
+    })
+    const id = JSON.parse(add.body).goal.id
+    expect(JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal.targetBasis).toBe('family')
   })
 })
 

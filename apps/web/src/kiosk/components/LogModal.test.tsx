@@ -15,6 +15,7 @@ const goal = {
   habitTargetPerPeriod: null,
   trackingMode: 'shared_total',
   participantMode: 'split',
+  targetBasis: 'family',
   logMethod: 'quick_log',
   autoFromCalendar: false,
   deadline: null,

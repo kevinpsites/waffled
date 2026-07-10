@@ -13,10 +13,14 @@ export const TRACKING_MODES = new Set(['shared_total', 'each_tracks'])
 // How a SHARED goal counts a log that several people took part in (ignored for
 // each_tracks, which always credits each person and sums to the collective total):
 //   count_once  — one shared event; +amount once, the people are attendance.
-//   credit_each — each person gets the full amount (leaderboard); family +amount once.
 //   split       — the amount is divided evenly across the people.
-// See migration 0078 + logProgress for the row-writing rules.
-export const PARTICIPANT_MODES = new Set(['count_once', 'credit_each', 'split'])
+// ('credit_each' was retired — see migration 0079.) See migration 0078 + logProgress
+// for the row-writing rules.
+export const PARTICIPANT_MODES = new Set(['count_once', 'split'])
+// Whether a goal's target_value is a family total or a per-person target. Only meaningful
+// for each_tracks goals: 'per_person' means the family ring target is target_value × the
+// member count (read 12 EACH → 24 for two); 'family' is a flat shared target (12 total).
+export const TARGET_BASES = new Set(['family', 'per_person'])
 // A habit's period is interpolated into date_trunc() in the progress query, so it must
 // be one of Postgres's field names — an unconstrained value would throw at read time and
 // 500 the whole goals list. Keep this in sync with habit_period usage.
@@ -190,9 +194,9 @@ export async function createGoal(tenant: Tenant, input: CreateGoalInput): Promis
     const g = await client.query<{ id: string }>(
       `insert into goals
          (household_id, goal_list_id, title, emoji, category, goal_type, unit, target_value,
-          habit_period, habit_target_per_period, tracking_mode, participant_mode, log_method, auto_from_calendar,
+          habit_period, habit_target_per_period, tracking_mode, participant_mode, target_basis, log_method, auto_from_calendar,
           health_metric, health_daily_target, deadline, is_featured, has_rewards)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning id`,
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) returning id`,
       [
         tenant.householdId,
         input.goalListId ?? null,
@@ -206,6 +210,7 @@ export async function createGoal(tenant: Tenant, input: CreateGoalInput): Promis
         input.habitTargetPerPeriod ?? null,
         input.trackingMode,
         input.participantMode ?? 'count_once',
+        input.targetBasis ?? 'family',
         input.logMethod ?? 'quick_log',
         input.autoFromCalendar ?? false,
         input.healthMetric ?? null,
@@ -304,6 +309,7 @@ interface GoalRow extends QueryResultRow {
   habit_target_per_period: number | null
   tracking_mode: string
   participant_mode: string
+  target_basis: string
   log_method: string
   auto_from_calendar: boolean
   health_metric: string | null
@@ -336,6 +342,7 @@ function mapGoal(g: GoalRow) {
     habitTargetPerPeriod: g.habit_target_per_period,
     trackingMode: g.tracking_mode,
     participantMode: g.participant_mode,
+    targetBasis: g.target_basis,
     logMethod: g.log_method,
     autoFromCalendar: g.auto_from_calendar,
     healthMetric: g.health_metric,
@@ -402,7 +409,7 @@ async function streaksFor(householdId: string, goalIds: string[]): Promise<Map<s
 export async function listGoals(householdId: string, listId?: string | null) {
   const { rows } = await query<GoalRow>(
     `select g.id, g.goal_list_id, g.title, g.emoji, g.category, g.goal_type, g.unit, g.target_value,
-            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.participant_mode, g.log_method, g.auto_from_calendar, g.health_metric, g.health_daily_target, g.deadline,
+            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.participant_mode, g.target_basis, g.log_method, g.auto_from_calendar, g.health_metric, g.health_daily_target, g.deadline,
             g.is_featured, g.has_rewards, g.created_at,
             coalesce((select sum(amount)::float from goal_logs gl
                        where gl.goal_id = g.id and gl.deleted_at is null and gl.counts_total), 0) as total_progress,
@@ -508,7 +515,7 @@ export async function goalParticipantIds(householdId: string, goalId: string): P
 export async function goalDetail(householdId: string, id: string) {
   const { rows } = await query<GoalRow>(
     `select g.id, g.goal_list_id, g.title, g.emoji, g.category, g.goal_type, g.unit, g.target_value,
-            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.participant_mode, g.log_method, g.auto_from_calendar, g.health_metric, g.health_daily_target, g.deadline,
+            g.habit_period, g.habit_target_per_period, g.tracking_mode, g.participant_mode, g.target_basis, g.log_method, g.auto_from_calendar, g.health_metric, g.health_daily_target, g.deadline,
             g.is_featured, g.has_rewards, g.created_at,
             coalesce((select sum(amount)::float from goal_logs gl
                        where gl.goal_id = g.id and gl.deleted_at is null and gl.counts_total), 0) as total_progress,
@@ -657,8 +664,6 @@ interface PlanRow { personId: string | null; amount: number; countsTotal: boolea
 //                    the collective total (e.g. "read 12 books each" → 48 for four).
 //   • shared_total → the participant mode decides:
 //       - split       amount divided evenly across the people (rows sum to `amount`).
-//       - credit_each one family row (counts once) + a FULL-amount attribution row per
-//                     person (the leaderboard) that does NOT count toward the total.
 //       - count_once  one family row (counts once) + an amount-0 ATTENDANCE row per
 //                     person recording who was there.
 export function planLogRows(
@@ -686,12 +691,6 @@ export function planLogRows(
   // The attendance/multiplier distinction only bites with 2+ people. With a single
   // person (or none) there is no shared event to divide, so it's just that person (or
   // the family) doing it — one plain row that counts, credited to whoever's named.
-  if (participantMode === 'credit_each' && realPeople.length > 1) {
-    return {
-      rows: [{ personId: null, amount, countsTotal: true }, ...realPeople.map((p) => ({ personId: p, amount, countsTotal: false }))],
-      batchId: randomUUID(),
-    }
-  }
   if (participantMode === 'count_once' && realPeople.length > 1) {
     return {
       rows: [{ personId: null, amount, countsTotal: true }, ...realPeople.map((p) => ({ personId: p, amount: 0, countsTotal: false }))],
@@ -865,6 +864,7 @@ const GOAL_COLUMNS: Record<string, string> = {
   habitTargetPerPeriod: 'habit_target_per_period',
   trackingMode: 'tracking_mode',
   participantMode: 'participant_mode',
+  targetBasis: 'target_basis',
   logMethod: 'log_method',
   autoFromCalendar: 'auto_from_calendar',
   healthMetric: 'health_metric',

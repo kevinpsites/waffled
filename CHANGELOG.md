@@ -18,13 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   activity can be edited (amount, note, date) or deleted — a split/shared entry is removed as a
   whole. Entries created by ticking a checklist, confirming a calendar event, or an Apple Health
   sync stay managed by those features.
-- **Shared goals now let you choose what "who took part" means.** When you log an activity and
-  tap several people, a new per-goal setting decides how it counts: **Once for the family** (a
-  park visit or camping trip counts once no matter how many came — the people are recorded as
-  attendance), **Full credit to each** (everyone tapped gets the full amount toward their own
-  tally, e.g. an hours leaderboard, while the family goal still counts it once), or **Split
-  evenly** (the amount is divided across the people, as before). New shared goals default to
-  *Once for the family*; existing hours-style pools keep *Split evenly*.
+- **Goals now ask, in one clear question, how a group activity counts.** When a goal has more
+  than one person, you pick one of four plain options with a live preview of the arithmetic:
+  **Everyone individually** (each person aims for the full amount on their own — "read 12 books
+  each" shows a ring of 12 × the household), **We all chip in** (one shared target everyone's
+  entries add up toward), **Split it evenly** (a group entry is divided across who took part —
+  e.g. a one-hour family walk adds one hour, shared out), and **Just count it once** (a park
+  visit or camping trip counts once no matter how many came; the people are simply recorded as
+  who was there). This replaces the earlier shared-vs-each toggle plus a separate mode picker,
+  which were easy to confuse.
 
 - **Add a recipe from a photo or by describing it.** The recipe editor's "New recipe"
   screen can now build the whole form for you two new ways. **From a photo** — snap or
@@ -55,8 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Logging a shared count goal with several people no longer multiplies the total.** Marking
   a state-park visit or camping trip with the whole family used to add one for *each* person
-  selected; it now counts the event once and records who was there. (Set a goal to *Full credit
-  to each* if you do want everyone credited the full amount.)
+  selected; it now counts the event once and records who was there. (Choose *We all chip in* if
+  you do want everyone's entries to add up toward the total.)
 - **Checklist goals can no longer be given a meaningless numeric "log".** A checklist is
   completed by ticking its items, so recording "1" against it is rejected — checklists progress
   only by checking things off.

@@ -24,12 +24,30 @@ const TYPES = [
 // everything except checklists, which complete by ticking named steps.
 const CALENDAR_TYPES = new Set(['total', 'count', 'habit'])
 
-// For a shared goal, what does tapping several people on one log mean?
-const PARTICIPANT_MODES = [
-  { key: 'count_once', title: 'Once for the family', hint: 'Counts once no matter how many took part — the people you tap are recorded as who was there.' },
-  { key: 'credit_each', title: 'Full credit to each', hint: 'Everyone tapped gets the full amount toward their own total; the family goal still counts it once.' },
-  { key: 'split', title: 'Split evenly', hint: 'The amount is divided evenly across the people you tap.' },
+// The FOUR ways a count/total goal counts when several people take part. This one
+// choice replaces the old two-control combo (shared-vs-each + a 3-way participant
+// mode) that confused people — each option writes a (trackingMode, participantMode,
+// targetBasis) triple under the hood. A live preview (built in render from the unit
+// + member count) shows the arithmetic so the number is never a surprise.
+const PARTICIPANT_TYPES = [
+  { key: 'individual', emoji: '🧍', tracking: 'each_tracks', mode: 'count_once', basis: 'per_person',
+    title: 'Everyone individually', blurb: 'Each person aims for the full amount on their own.' },
+  { key: 'chip_in', emoji: '🤝', tracking: 'each_tracks', mode: 'count_once', basis: 'family',
+    title: 'We all chip in', blurb: 'One shared target — everyone’s entries add up toward it.' },
+  { key: 'split', emoji: '➗', tracking: 'shared_total', mode: 'split', basis: 'family',
+    title: 'Split it evenly', blurb: 'A group entry is divided evenly across who took part.' },
+  { key: 'count_once', emoji: '✅', tracking: 'shared_total', mode: 'count_once', basis: 'family',
+    title: 'Just count it once', blurb: 'One entry counts once, whoever’s there — the people are just who came.' },
 ] as const
+
+type PType = (typeof PARTICIPANT_TYPES)[number]['key']
+
+// Recover which of the four the current (trackingMode, participantMode, targetBasis)
+// represents — so the right card lights up when editing an existing goal.
+function participantTypeKey(tracking: string, mode: string, basis: string): PType {
+  if (tracking === 'each_tracks') return basis === 'per_person' ? 'individual' : 'chip_in'
+  return mode === 'split' ? 'split' : 'count_once'
+}
 
 type Milestone = { threshold: number; emoji: string; label: string; rewardText: string }
 
@@ -107,7 +125,8 @@ export function GoalCreate() {
     goalListId: editing ? '' : (searchParams.get('list') ?? ''),
     category: 'physical',
     trackingMode: 'shared_total' as 'shared_total' | 'each_tracks',
-    participantMode: 'count_once' as (typeof PARTICIPANT_MODES)[number]['key'],
+    participantMode: 'count_once' as 'count_once' | 'split',
+    targetBasis: 'family' as 'family' | 'per_person',
     goalType: 'total' as (typeof TYPES)[number]['key'],
     target: 1000,
     unit: 'hours',
@@ -141,7 +160,8 @@ export function GoalCreate() {
       goalListId: editGoal.goalListId ?? '',
       category: editGoal.category ?? 'physical',
       trackingMode: editGoal.trackingMode === 'each_tracks' ? 'each_tracks' : 'shared_total',
-      participantMode: (editGoal.participantMode as (typeof PARTICIPANT_MODES)[number]['key']) ?? 'count_once',
+      participantMode: editGoal.participantMode === 'split' ? 'split' : 'count_once',
+      targetBasis: editGoal.targetBasis === 'per_person' ? 'per_person' : 'family',
       goalType: (editGoal.goalType as (typeof TYPES)[number]['key']) ?? 'total',
       target: editGoal.target ?? 1,
       unit: editGoal.unit ?? '',
@@ -247,6 +267,7 @@ export function GoalCreate() {
       habitTargetPerPeriod: form.goalType === 'habit' ? form.habitPerPeriod : null,
       trackingMode: form.trackingMode,
       participantMode: form.participantMode,
+      targetBasis: form.targetBasis,
       // Logging style is derived from the type; calendar auto-count is an
       // independent opt-in (never on checklists, which tick steps).
       autoFromCalendar: isChecklist ? false : form.autoFromCalendar,
@@ -280,11 +301,28 @@ export function GoalCreate() {
   const shared = form.trackingMode === 'shared_total'
   const previewName = form.title.trim() || 'Your goal'
   const unit = (form.unit || '').trim()
+
+  // Which of the four participant types is currently selected, and a concrete
+  // arithmetic preview built from the unit + member count — so "= 8 / ÷ 4 / once"
+  // is visible, not implied. Only meaningful for count/total goals with 2+ people.
+  const ptype = participantTypeKey(form.trackingMode, form.participantMode, form.targetBasis)
+  const ptypePreview = (key: PType): string => {
+    const n = participantCount
+    const un = unit ? ` ${unit}` : ''
+    const tgt = Number(form.target) || 0
+    const round2 = (x: number) => Math.round(x * 100) / 100
+    if (key === 'individual') return `Ring target = ${tgt || '?'}${un} × ${n} people = ${tgt ? tgt * n : '?'}${un}. Each person’s bar runs to ${tgt || '?'} — so you see who’s behind.`
+    if (key === 'chip_in') return `One shared target of ${tgt || '?'}${un}. 1${un} each from ${n} people → +${n}.`
+    if (key === 'split') return `1${un} shared by ${n} people → +1${un} total (${round2(1 / n)}${un} each).`
+    return `One entry → +1${un}, no matter how many are there. The people are just who came.`
+  }
   const dlLabel = form.deadline
     ? ` · by ${new Date(`${form.deadline}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
     : ''
   const subLine = (() => {
-    const tail = isChecklist || form.goalType === 'habit' ? '' : shared ? ' · shared total' : ' · each their own'
+    const tail = isChecklist || form.goalType === 'habit'
+      ? ''
+      : participantCount > 1 ? ` · ${(PARTICIPANT_TYPES.find((t) => t.key === ptype)?.title ?? '').toLowerCase()}` : ''
     if (form.goalType === 'total') return `Adds up in ${unit || 'units'}${dlLabel}${tail}`
     if (form.goalType === 'count') return `Count to ${form.target} ${unit || 'units'}${dlLabel}${tail}`
     if (form.goalType === 'habit') return `${form.habitPerPeriod}× a ${form.habitPeriod} · keep the streak going`
@@ -325,28 +363,35 @@ export function GoalCreate() {
               ))}
               <button type="button" className="ge-who-chip dashed" onClick={() => setShowListModal(true)}>＋ New group</button>
             </div>
-            {/* Shared-vs-each (and the participant mode) only mean something with 2+
-                people — for a single-person goal they're irrelevant, so hide them. */}
-            {participantCount > 1 && (
-              <>
-                <div className="ge-share">
-                  <button type="button" className={shared ? 'on' : ''} onClick={() => set('trackingMode', 'shared_total')}>One shared total</button>
-                  <button type="button" className={!shared ? 'on' : ''} onClick={() => set('trackingMode', 'each_tracks')}>Each tracks their own</button>
+            {/* How a shared goal counts a multi-person entry only matters with 2+
+                people — hidden for a single-person goal. Count/total goals get the
+                four-way choice; a habit just picks one-streak-or-each; a checklist
+                has no such choice (its steps are shared). */}
+            {participantCount > 1 && (form.goalType === 'total' || form.goalType === 'count') && (
+              <div className="ge-pmode">
+                <div className="ge-sec-h" style={{ margin: '12px 0 8px' }}>When several people take part in one entry…</div>
+                <div className="ge-measure-grid">
+                  {PARTICIPANT_TYPES.map((t) => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      className={`ge-mcard ${ptype === t.key ? 'on' : ''}`}
+                      onClick={() => setForm((f) => ({ ...f, trackingMode: t.tracking, participantMode: t.mode, targetBasis: t.basis }))}
+                    >
+                      <div className="me">{t.emoji}</div>
+                      <div><div className="mt">{t.title}</div><div className="md">{t.blurb}</div></div>
+                      <div className="mck">{ptype === t.key && <CheckIcon />}</div>
+                    </button>
+                  ))}
                 </div>
-                {shared && !isChecklist && form.goalType !== 'habit' && (
-                  <div className="ge-pmode">
-                    <div className="ge-sec-h" style={{ margin: '10px 0 6px' }}>When several people are in on one log…</div>
-                    <div className="ge-share ge-share-3">
-                      {PARTICIPANT_MODES.map((m) => (
-                        <button key={m.key} type="button" className={form.participantMode === m.key ? 'on' : ''} onClick={() => set('participantMode', m.key)}>{m.title}</button>
-                      ))}
-                    </div>
-                    <div className="ge-sec-h" style={{ marginTop: 6 }}>
-                      {PARTICIPANT_MODES.find((m) => m.key === form.participantMode)?.hint}
-                    </div>
-                  </div>
-                )}
-              </>
+                <div className="ge-sec-h" style={{ marginTop: 8, fontWeight: 650 }}>{ptypePreview(ptype)}</div>
+              </div>
+            )}
+            {participantCount > 1 && form.goalType === 'habit' && (
+              <div className="ge-share">
+                <button type="button" className={shared ? 'on' : ''} onClick={() => set('trackingMode', 'shared_total')}>One shared streak</button>
+                <button type="button" className={!shared ? 'on' : ''} onClick={() => set('trackingMode', 'each_tracks')}>Each keeps their own</button>
+              </div>
             )}
           </div>
 

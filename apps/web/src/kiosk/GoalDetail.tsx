@@ -174,7 +174,12 @@ export function GoalDetail() {
   const stepTotal = stepState.length
   // Each type measures on its own axis (period for habits, steps for checklists).
   const dProg = isHabit ? goal.periodDone : isChecklist ? stepDone : goal.totalProgress
-  const dTarget = isHabit ? goal.habitTargetPerPeriod ?? goal.target : isChecklist ? stepTotal || null : goal.target
+  // A per-person target ("read 12 EACH") makes the family ring target grow with the
+  // household: 12 × members. A family-basis goal uses the flat target as stored.
+  const ringTarget = goal.targetBasis === 'per_person' && goal.target != null
+    ? goal.target * Math.max(1, goal.participants.length)
+    : goal.target
+  const dTarget = isHabit ? goal.habitTargetPerPeriod ?? goal.target : isChecklist ? stepTotal || null : ringTarget
   const dUnit = isHabit
     ? goal.habitPeriod === 'day' ? 'today' : goal.habitPeriod === 'month' ? 'this month' : 'this week'
     : isChecklist ? 'steps' : goal.unit ?? ''

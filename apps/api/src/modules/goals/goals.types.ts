@@ -28,6 +28,7 @@ export interface CreateGoalInput {
   habitTargetPerPeriod?: number | null
   trackingMode: string
   participantMode?: string | null
+  targetBasis?: string | null
   logMethod?: string | null
   autoFromCalendar?: boolean
   healthMetric?: string | null

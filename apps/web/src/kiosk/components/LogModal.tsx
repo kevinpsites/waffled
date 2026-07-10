@@ -60,9 +60,15 @@ export function LogModal({
   const [amount, setAmount] = useState<number>(oneTap ? 1 : isCount ? 1 : chips[1]?.value ?? 1)
   const isShared = goal.trackingMode === 'shared_total'
   const divisible = goal.goalType === 'total'
-  // How a shared goal counts several people on one log: count_once (attendance),
-  // credit_each (full to each), or split (divided). Drives the "who" copy/preview.
-  const mode = goal.participantMode ?? 'count_once'
+  // The four participant types (see GoalCreate.PARTICIPANT_TYPES), decoded for the
+  // "who" copy + preview:
+  //   • eachAdds  (each_tracks: "individually"/"we all chip in") — every person tapped
+  //     gets the FULL amount and the total sums (+amount × people).
+  //   • isSplit   (shared_total + split) — the amount is divided evenly across them.
+  //   • count-once (shared_total + count_once) — counts once; the people are attendance
+  //     (the implicit else branch of the two flags below).
+  const eachAdds = goal.trackingMode === 'each_tracks'
+  const isSplit = isShared && (goal.participantMode ?? 'count_once') === 'split'
 
   // Habit display: completions in the current period vs the cadence target.
   const period = goal.habitPeriod ?? 'week'
@@ -103,22 +109,20 @@ export function LogModal({
     setWho((w) => (multi ? (w.includes(id) ? w.filter((x) => x !== id) : [...w, id]) : [id]))
 
   // Divisible shared pool in SPLIT mode, more than one tapped → preview the even split.
-  const splitN = isShared && divisible && mode === 'split' ? who.filter((id) => id !== FAMILY).length : 0
+  const splitN = isSplit && divisible ? who.filter((id) => id !== FAMILY).length : 0
   const perEach = splitN > 1 ? Math.round((amount / splitN) * 100) / 100 : null
 
   // One-tap (habit / check-off) = 1; count = whole units; total = entered amount.
   const logAmount = oneTap ? 1 : isCount ? Math.max(1, Math.round(amount)) : Number(amount)
 
-  // "Who?" copy + preview adapt to the shared goal's counting mode.
+  // "Who?" copy + preview adapt to the goal's participant type.
   const nSel = who.filter((id) => id !== FAMILY).length
-  const whoLabel = !isShared
-    ? 'Who?'
-    : mode === 'count_once' ? 'Who was there?' : mode === 'credit_each' ? 'Who took part?' : 'Split between'
+  const whoLabel = eachAdds ? 'Who took part?' : isSplit ? 'Split between' : 'Who was there?'
   const unitSuffix = goal.unit ? ` ${goal.unit}` : ''
   const modeHint =
-    !isShared || nSel === 0 ? null
-      : mode === 'split' ? (perEach != null ? `Shared together → ${perEach}${unitSuffix} each, ${amount}${unitSuffix} total.` : null)
-        : mode === 'credit_each' ? `Each of the ${nSel} gets the full ${logAmount}${unitSuffix} · family total +${logAmount} once.`
+    nSel === 0 ? null
+      : eachAdds ? `Each of the ${nSel} gets the full ${logAmount}${unitSuffix} · total +${Math.round(logAmount * nSel * 100) / 100}${unitSuffix}.`
+        : isSplit ? (perEach != null ? `Shared together → ${perEach}${unitSuffix} each, ${amount}${unitSuffix} total.` : null)
           : `Counts once for the family · records who was there${nSel > 0 ? ` (${nSel})` : ''}.`
 
   async function submit(e: FormEvent) {
