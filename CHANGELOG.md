@@ -15,9 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **You can now fix or remove a goal entry logged by mistake.** Each line in a goal's Recent
-  activity can be edited (amount, note, date) or deleted — a split/shared entry is removed as a
-  whole. Entries created by ticking a checklist, confirming a calendar event, or an Apple Health
-  sync stay managed by those features.
+  activity can be edited — amount, **who took part**, note, and date — or deleted; a split/shared
+  entry is removed as a whole and re-splits correctly when you change who was there. Entries
+  created by ticking a checklist, confirming a calendar event, or an Apple Health sync stay
+  managed by those features.
 - **Goals now make group counting clear and measure-aware.** Alongside the *One shared total /
   Each tracks their own* choice, a shared goal with more than one person shows a short follow-up
   right under "How do you measure it?" asking how a group entry should count — with options
@@ -44,6 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   automatically deleted.
 
 ### Changed
+- **The "one shared total / each tracks their own" choice moved below "How do you measure it?"**
+  It only applies once you've picked a measure with a per-person dimension — so it now sits with
+  the group-counting options under the measure picker, and no longer appears for a checklist
+  (whose steps are always shared).
 
 - **Past events on the Today agenda now fade once they're over.** On the Today
   dashboard's agenda card, an event whose time has already passed is subtly dimmed —
@@ -56,6 +61,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the first.
 
 ### Fixed
+- **A Count goal no longer inherits "hours" as its unit.** Switching a new goal's measure to
+  Count now clears the Total default, so you name what you're counting (parks, books) and logging
+  a park reads "1 park", not "2 hours". A unit you've typed yourself is always kept.
 - **Logging a shared count goal with several people no longer multiplies the total.** Marking
   a state-park visit or camping trip with the whole family used to add one for *each* person
   selected; it now counts the event once and records who was there. (Choose *Count it for each

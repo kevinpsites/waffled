@@ -166,13 +166,24 @@ export function GoalCreate() {
   const [showListModal, setShowListModal] = useState(false)
   // Once the user hand-edits a milestone we stop regenerating defaults from the target.
   const msTouched = useRef(false)
+  // Once the user types a unit we stop auto-swapping it when the measure changes — so
+  // a Count goal doesn't silently inherit the Total default ("hours") and log "2 hours".
+  const unitTouched = useRef(false)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
+  // Switch measure, and (unless the user typed a custom unit) fit the unit to it: Total
+  // keeps "hours", Count clears it so the user names the thing counted (parks, books…).
+  const setMeasure = (key: (typeof TYPES)[number]['key']) =>
+    setForm((f) => {
+      if (unitTouched.current || (key !== 'total' && key !== 'count')) return { ...f, goalType: key }
+      return { ...f, goalType: key, unit: key === 'total' ? 'hours' : '' }
+    })
 
   // prefill once when editing
   const prefilled = useRef(false)
   useEffect(() => {
     if (!editing || prefilled.current || !editGoal) return
     prefilled.current = true
+    unitTouched.current = true // keep the loaded goal's unit; don't auto-swap it
     setForm((f) => ({
       ...f,
       title: editGoal.title,
@@ -387,7 +398,7 @@ export function GoalCreate() {
           {/* 2 · who */}
           <div className="ge-sec">
             <div className="ge-sec-t">Who’s it for?</div>
-            <div className="ge-sec-h">Pick a goal list. Share one total, or let each person track their own.</div>
+            <div className="ge-sec-h">Pick a goal list — the people in it share this goal.</div>
             <div className="ge-who">
               {pickableLists.map((l: GoalList) => (
                 <button key={l.id} type="button" className={`ge-who-chip ${form.goalListId === l.id ? 'on' : ''}`} onClick={() => set('goalListId', l.id)}>
@@ -401,14 +412,6 @@ export function GoalCreate() {
               ))}
               <button type="button" className="ge-who-chip dashed" onClick={() => setShowListModal(true)}>＋ New group</button>
             </div>
-            {/* Shared-vs-each only matters with 2+ people. How a group ENTRY counts is
-                a measure-aware follow-up shown below the measure picker (total/count). */}
-            {participantCount > 1 && (
-              <div className="ge-share">
-                <button type="button" className={shared ? 'on' : ''} onClick={() => setForm((f) => ({ ...f, ...sharedDefault(f.goalType) }))}>One shared total</button>
-                <button type="button" className={!shared ? 'on' : ''} onClick={() => setForm((f) => ({ ...f, ...eachTracksOwn, targetBasis: f.goalType === 'total' || f.goalType === 'count' ? 'per_person' : 'family' }))}>Each tracks their own</button>
-              </div>
-            )}
           </div>
 
           {/* 3 · measure */}
@@ -417,7 +420,7 @@ export function GoalCreate() {
             <div className="ge-sec-h">This shapes how progress is logged and shown.</div>
             <div className="ge-measure-grid">
               {TYPES.map((t) => (
-                <button key={t.key} type="button" className={`ge-mcard ${form.goalType === t.key ? 'on' : ''}`} onClick={() => set('goalType', t.key)}>
+                <button key={t.key} type="button" className={`ge-mcard ${form.goalType === t.key ? 'on' : ''}`} onClick={() => setMeasure(t.key)}>
                   <div className="me">{t.emoji}</div>
                   <div><div className="mt">{t.title}</div><div className="md">{t.desc}</div></div>
                   <div className="mck">{form.goalType === t.key && <CheckIcon />}</div>
@@ -453,7 +456,7 @@ export function GoalCreate() {
               <>
                 <div className="ge-cfg">
                   <NumField value={form.target} step={form.goalType === 'total' ? 10 : 1} onChange={(v) => set('target', v)} />
-                  <input className="ge-unit-input" value={form.unit} onChange={(e) => set('unit', e.target.value)} placeholder="unit — hours, books, miles…" />
+                  <input className="ge-unit-input" value={form.unit} onChange={(e) => { unitTouched.current = true; set('unit', e.target.value) }} placeholder="unit — hours, books, miles…" />
                 </div>
                 <div className="ge-deadline">
                   <div className="ge-deadline-tx"><div className="e1">Set a deadline</div><div className="e2">Optional — a target date to reach it by</div></div>
@@ -461,6 +464,16 @@ export function GoalCreate() {
                 </div>
                 {dlOpen && <input type="date" className="ge-date-input" value={form.deadline} onChange={(e) => set('deadline', e.target.value)} />}
               </>
+            )}
+
+            {/* Shared-vs-each lives here, below the measure — it only matters once you've
+                picked a measure with a per-person dimension. Hidden for a checklist (its
+                steps are always shared). Only shown with 2+ people. */}
+            {participantCount > 1 && form.goalType !== 'checklist' && (
+              <div className="ge-share" style={{ marginTop: 18 }}>
+                <button type="button" className={shared ? 'on' : ''} onClick={() => setForm((f) => ({ ...f, ...sharedDefault(f.goalType) }))}>{form.goalType === 'habit' ? 'One shared streak' : 'One shared total'}</button>
+                <button type="button" className={!shared ? 'on' : ''} onClick={() => setForm((f) => ({ ...f, ...eachTracksOwn, targetBasis: (f.goalType === 'total' || f.goalType === 'count') ? 'per_person' : 'family' }))}>{form.goalType === 'habit' ? 'Each keeps their own' : 'Each tracks their own'}</button>
+              </div>
             )}
 
             {/* Group counting — measure-aware, sits below the measure picker ("Counting

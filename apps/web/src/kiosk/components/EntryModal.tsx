@@ -20,6 +20,11 @@ export function EntryModal({
   const [amount, setAmount] = useState<number>(entry.amount)
   const [note, setNote] = useState(entry.note ?? '')
   const [loggedOn, setLoggedOn] = useState<string>(new Date(entry.loggedAt).toISOString().slice(0, 10))
+  // Who took part — editable when the goal has more than one member. Prefilled from the
+  // people this entry currently credits.
+  const showWho = goal.participants.length > 1
+  const [who, setWho] = useState<string[]>((entry.participants ?? []).map((p) => p.personId).filter((id): id is string => !!id))
+  const toggleWho = (id: string) => setWho((w) => (w.includes(id) ? w.filter((x) => x !== id) : [...w, id]))
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -34,6 +39,7 @@ export function EntryModal({
     try {
       await api.editGoalLog(goal.id, entry.id, {
         ...(numeric ? { amount: logAmount } : {}),
+        ...(showWho ? { personIds: who } : {}),
         note: note.trim() || null,
         loggedOn,
       })
@@ -86,6 +92,24 @@ export function EntryModal({
                   {goal.unit && <span className="tiny muted" style={{ fontWeight: 600 }}>{goal.unit}</span>}
                 </div>
               )}
+            </>
+          )}
+
+          {showWho && (
+            <>
+              <div className="flabel" style={{ marginTop: 16 }}>Who took part?</div>
+              <div className="log-who">
+                {goal.participants.map((p) => {
+                  const on = who.includes(p.personId)
+                  return (
+                    <button key={p.personId} type="button" className={`log-person ${on ? 'on' : ''}`} onClick={() => toggleWho(p.personId)}>
+                      <div className="av md" style={{ background: `${p.colorHex ?? '#A6A29B'}22` }}>{p.avatarEmoji ?? '🙂'}</div>
+                      <span className="log-check" style={{ background: on ? 'var(--wally)' : '#fff', borderColor: on ? 'var(--wally)' : 'var(--hair)' }}>{on ? '✓' : ''}</span>
+                      <span className="tiny" style={{ fontWeight: 700, color: 'var(--ink-2)' }}>{p.name.split(' ')[0]}</span>
+                    </button>
+                  )
+                })}
+              </div>
             </>
           )}
 

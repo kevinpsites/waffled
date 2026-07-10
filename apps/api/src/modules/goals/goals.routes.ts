@@ -282,8 +282,15 @@ export function registerGoalRoutes(api: Api): void {
     const id = req.params.id ?? ''
     const logId = req.params.logId ?? ''
     if (!UUID_RE.test(id) || !UUID_RE.test(logId)) return res.status(404).json({ error: 'NotFound', message: 'entry not found' })
-    const body = (req.body ?? {}) as { amount?: unknown; note?: unknown; loggedOn?: unknown }
-    const patch: { amount?: number; note?: string | null; loggedOn?: string } = {}
+    const body = (req.body ?? {}) as { amount?: unknown; note?: unknown; loggedOn?: unknown; personIds?: unknown }
+    const patch: { amount?: number; note?: string | null; loggedOn?: string; personIds?: string[] } = {}
+    if (Array.isArray(body.personIds)) {
+      const ids = body.personIds.filter(Boolean).map(String)
+      if (ids.length && !(await personsInHousehold(tenant.householdId, ids))) {
+        return res.status(400).json({ error: 'BadRequest', message: 'a logged person must be in your household' })
+      }
+      patch.personIds = ids
+    }
     if (body.amount !== undefined) {
       const amount = Number(body.amount)
       if (!Number.isFinite(amount) || amount === 0) {

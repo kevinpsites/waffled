@@ -120,7 +120,7 @@ export const goalsApi = {
     apiSend<{ ok: boolean }>('PATCH', `/api/goals/${goalId}/steps/${stepId}`, { done }).then(tap('goals')),
   deleteGoal: (id: string) => apiDelete(`/api/goals/${id}`).then(tap('goals')),
   // Edit or remove a single logged entry (keyed on the grouped id in recent activity).
-  editGoalLog: (goalId: string, logId: string, patch: { amount?: number; note?: string | null; loggedOn?: string | null }) =>
+  editGoalLog: (goalId: string, logId: string, patch: { amount?: number; note?: string | null; loggedOn?: string | null; personIds?: string[] }) =>
     apiSend<{ goal: GoalDetail }>('PATCH', `/api/goals/${goalId}/logs/${logId}`, patch).then(tap('goals')),
   deleteGoalLog: (goalId: string, logId: string) =>
     apiSend<{ goal: GoalDetail }>('DELETE', `/api/goals/${goalId}/logs/${logId}`).then(tap('goals')),

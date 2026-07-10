@@ -145,7 +145,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Shared-pool vs each-tracks goals | ✅ | ✅ | ✅ | ✅ Done |
 | **How a group activity counts** — shared/each toggle + a measure-aware counting follow-up under "How do you measure it?" (total: full / split · count: each / once) with real-name worked examples | ✅ | 🟡 | 🟡 | 🟡 Web done; iPhone/iPad pending |
 | Create / **edit** / delete goals | ✅ | ✅ | ✅ | ✅ Done |
-| **Edit / remove a logged entry** (amount, note, date; shared entries removed whole) | ✅ | 🟡 | 🟡 | 🟡 Web done; iPhone/iPad pending |
+| **Edit / remove a logged entry** (amount, who took part, note, date; shared entries removed whole + re-split) | ✅ | 🟡 | 🟡 | 🟡 Web done; iPhone/iPad pending |
 | Type-aware **logging** (amount / stepper / once-a-day / tick steps) | ✅ | ✅ | ✅ | ✅ Done |
 | Backdated logs ("When?" picker) | ✅ | ✅ | ✅ | ✅ Done |
 | **Goal detail** read-model (milestone track, hours-by-person, streaks, recent) | ✅ | ✅ | ✅ | ✅ Done |

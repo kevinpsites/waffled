@@ -1005,14 +1005,15 @@ export async function deleteGoalLog(tenant: Tenant, goalId: string, logId: strin
   }
 }
 
-// Edit a logged entry's amount / note / date. Re-plans the rows through the goal's
-// current counting rules (so a split/credit/count_once entry stays consistent), keeping
-// the same participants. amount/note/loggedOn are each optional (unchanged if omitted).
+// Edit a logged entry's amount / note / date / participants. Re-plans the rows through
+// the goal's current counting rules (so a split/count_once entry stays consistent).
+// Every field is optional — omitted ones keep their current value, including who took
+// part (pass personIds to change "who was there").
 export async function editGoalLog(
   tenant: Tenant,
   goalId: string,
   logId: string,
-  patch: { amount?: number; note?: string | null; loggedOn?: string | null }
+  patch: { amount?: number; note?: string | null; loggedOn?: string | null; personIds?: string[] }
 ): Promise<LogEditResult> {
   const client = await getPool().connect()
   try {
@@ -1023,7 +1024,9 @@ export async function editGoalLog(
     if (!EDITABLE_LOG_SOURCES.has(source)) { await client.query('rollback'); return 'not_editable' }
 
     const enteredAmount = group.filter((r) => r.counts_total).reduce((s, r) => s + Number(r.amount), 0)
-    const participants = [...new Set(group.map((r) => r.person_id).filter((p): p is string => p != null))]
+    const participants = patch.personIds != null
+      ? [...new Set(patch.personIds)]
+      : [...new Set(group.map((r) => r.person_id).filter((p): p is string => p != null))]
     const newAmount = patch.amount != null ? patch.amount : enteredAmount
     const newNote = patch.note !== undefined ? patch.note : group[0].note
     const newDay = patch.loggedOn != null ? patch.loggedOn : group[0].day

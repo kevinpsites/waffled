@@ -615,6 +615,30 @@ describe('editing and deleting logged entries', () => {
     expect(detail.recent[0]).toMatchObject({ amount: 8, note: 'long hike' })
   })
 
+  it('edits a logged entry’s participants (re-plans who took part)', async () => {
+    const pippaId = JSON.parse((await call('POST', '/api/persons', kevin, { name: 'Pippa', memberType: 'adult' })).body).person.id
+    const add = await call('POST', '/api/goals', kevin, { title: 'Parks', goalType: 'count', unit: 'parks', targetValue: 5, trackingMode: 'shared_total', participantMode: 'count_once', participantIds: [kevinId, pippaId] })
+    const id = JSON.parse(add.body).goal.id
+    await call('POST', `/api/goals/${id}/log`, kevin, { amount: 1, personIds: [kevinId, pippaId], note: 'Big Bend' })
+    let detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    const entry = detail.recent[0]
+    expect(entry.participants.map((p: { name: string }) => p.name).sort()).toEqual(['Kevin', 'Pippa'])
+
+    // Correct "who was there" to Kevin only — the visit still counts once.
+    expect((await call('PATCH', `/api/goals/${id}/logs/${entry.id}`, kevin, { personIds: [kevinId] })).statusCode).toBe(200)
+    detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.totalProgress).toBe(1)
+    expect(detail.recent[0].participants.map((p: { name: string }) => p.name)).toEqual(['Kevin'])
+  })
+
+  it('rejects editing an entry to a person outside the household (400)', async () => {
+    const add = await call('POST', '/api/goals', kevin, { title: 'Hours', goalType: 'total', unit: 'hours', targetValue: 100, trackingMode: 'shared_total', participantIds: [kevinId] })
+    const id = JSON.parse(add.body).goal.id
+    await call('POST', `/api/goals/${id}/log`, kevin, { amount: 5, personId: kevinId })
+    const entry = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal.recent[0]
+    expect((await call('PATCH', `/api/goals/${id}/logs/${entry.id}`, kevin, { personIds: ['00000000-0000-0000-0000-000000000000'] })).statusCode).toBe(400)
+  })
+
   it('will not edit/delete a derived (checklist-tick) log through this endpoint', async () => {
     const add = await call('POST', '/api/goals', kevin, { title: 'Prep', goalType: 'checklist', trackingMode: 'shared_total', participantIds: [kevinId], steps: [{ label: 'Pack' }] })
     const id = JSON.parse(add.body).goal.id
