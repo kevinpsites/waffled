@@ -85,16 +85,16 @@ const INGEST_SCHEMA = {
 const FORMAT_SPEC = `Output the recipe as a single Markdown document in EXACTLY this structure:
 
 ---
-type: <breakfast|lunch|dinner|snack|dessert or omit>
-protein: <main protein or omit>
-base: <rice|noodle|bread|… or omit>
-cuisine: <e.g. Italian or omit>
-effort: <weeknight|weekend or omit>
-cook_method: <stovetop|oven|grill|… or omit>
-flavor_profile: <e.g. savory or omit>
-dietary: [<gluten-free, vegetarian, …> or omit]
-vegetables: [<spinach, tomato, …> or omit]
-tags: [<short tags> or omit]
+type: <breakfast|lunch|dinner|snack|dessert>
+protein: <main protein, e.g. chicken|beef|pork|fish|shrimp|tofu|beans|egg>
+base: <main starch/base, e.g. rice|noodle|pasta|bread|potato|tortilla>
+cuisine: <e.g. Italian|Mexican|Thai|American>
+effort: <weeknight|weekend>
+cook_method: <stovetop|oven|grill|slow-cooker|sheet-pan|no-cook>
+flavor_profile: <e.g. savory|spicy|sweet|fresh|hearty>
+dietary: [<gluten-free, vegetarian, vegan, dairy-free, …>]
+vegetables: [<spinach, tomato, …>]
+tags: [<short tags, e.g. quick, family-favorite>]
 ---
 
 # <Recipe Title>
@@ -109,7 +109,9 @@ tags: [<short tags> or omit]
 ## Instructions
 
 1. <step text>
-   **Timer:** <duration, e.g. 4 minutes>   (only when a step has a wait/cook time)
+   **Ingredients:**
+   - <ingredient this step uses, matching the ones listed above>
+   **Timer:** <duration, e.g. 4 minutes>
 2. <next step>
 
 ## Notes
@@ -117,10 +119,25 @@ tags: [<short tags> or omit]
 <any notes>
 Source: <where it came from, if known>
 
-Rules:
+Filling it out well (this matters — a bare title + ingredients + steps is NOT enough):
+- FRONTMATTER: fill in as many keys as you reasonably can by *classifying the dish* — cuisine,
+  protein, base, cook_method, effort, flavor_profile, meal type and a couple of tags can almost
+  always be deduced from the ingredients and method (e.g. a garlic-butter shrimp pasta →
+  type: dinner, protein: shrimp, base: pasta, cuisine: Italian, cook_method: stovetop). This is
+  reasoning about what you were given, NOT making things up — do it. Omit a key only when it
+  genuinely doesn't apply. Also add \`dietary\` tags when clearly true (vegetarian, gluten-free…).
+- PER-STEP INGREDIENTS: under each step, add a \`**Ingredients:**\` sub-list naming the
+  ingredients that step uses (copied from the Ingredients list above), so the cook sees what to
+  grab at each step. Omit the sub-list only for a step that uses no ingredients (e.g. "Preheat
+  the oven").
+- TIMERS: add a \`**Timer:**\` line whenever a step involves a cook/bake/simmer/rest/chill time —
+  use the stated duration, or a sensible one when the step clearly implies waiting (e.g.
+  "simmer until thickened, about 15 minutes").
+
+Hard rules (do NOT break these):
 - Keep amounts and units exactly as given; use "to taste" (no number) when unquantified.
-- Only include frontmatter keys you can infer; omit the rest. Do not invent ingredients or steps.
-- Put a **Timer:** line under a step ONLY when it has an explicit cook/rest/wait duration.
+- Do NOT invent ingredients or cooking steps that weren't in the source. Classifying metadata is
+  fine and expected; fabricating ingredients/steps is not.
 - Return ONLY the markdown, nothing else.`
 
 const PHOTO_SYSTEM = `You transcribe photos of physical or printed recipes into structured Markdown.

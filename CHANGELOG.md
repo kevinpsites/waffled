@@ -20,8 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   choose photos of a recipe card, cookbook page, or handwritten note (a few pages of one
   recipe is fine) and the AI reads them into ingredients and steps. **Describe it** — say
   or type what you know in any order ("brown a pound of beef, add two cans of beans, simmer
-  30 minutes…") and it's organized into a proper recipe. Both drop straight into the editor
-  for you to tidy up before saving — nothing is stored until you do. Photo import needs a
+  30 minutes…") and it's organized into a proper recipe. Either way the AI fills in the whole
+  recipe — not just the title, ingredients, and steps, but the details it can infer from the
+  dish (cuisine, protein, cook method, meal type), the ingredients each step uses, and a timer
+  on any step with a cook or rest time. Both drop straight into the editor for you to tidy up
+  before saving — nothing is stored until you do. Photo import needs a
   vision-capable AI provider (Claude, OpenAI, or a vision Ollama model, chosen in Settings →
   AI & capture); describing works with any provider. Source photos are held briefly, then
   automatically deleted.

@@ -117,6 +117,39 @@ describe('draftFromMarkdown — LLM markdown → structured editor draft', () =>
     // raw markdown returned for provenance
     expect(d.markdown).toContain('# Chicken Parmesan')
   })
+
+  it('extracts per-step **Ingredients:** sub-lists into steps[].ingredients', () => {
+    // The photo/voice prompt now asks the model to attach each step's ingredients.
+    // The draft must carry them through so the editor prefills per-step ingredients,
+    // not just a flat list.
+    const md = `# Garlic Butter Pasta
+
+*2 servings*
+
+## Ingredients
+
+- 8 oz spaghetti
+- 4 tbsp butter
+- 3 cloves garlic, minced
+
+## Instructions
+
+1. Boil the spaghetti until al dente.
+   **Ingredients:**
+   - 8 oz spaghetti
+   **Timer:** 9 minutes
+2. Melt butter and cook the garlic.
+   **Ingredients:**
+   - 4 tbsp butter
+   - 3 cloves garlic
+`
+    const d = draftFromMarkdown(md)
+    const boil = d.steps.find((s) => /boil/i.test(s.instruction))
+    expect(boil?.ingredients).toContain('8 oz spaghetti')
+    expect(boil?.timerSeconds).toBe(540)
+    const melt = d.steps.find((s) => /melt/i.test(s.instruction))
+    expect(melt?.ingredients).toEqual(expect.arrayContaining(['4 tbsp butter', '3 cloves garlic']))
+  })
 })
 
 describe('modelSupportsVision — per-model capability (pure cases)', () => {

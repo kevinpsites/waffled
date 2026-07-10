@@ -203,23 +203,25 @@ export function parseRecipe(md: string, collection: string | null = null): Parse
   for (const block of insSection.split(/\n(?=\d+\.\s)/)) {
     const num = /^\s*\d+\.\s+([\s\S]*)$/.exec(block)
     if (!num) continue
-    const [textPart, ingPart] = num[1].split(/\*\*\s*Ingredients?:?\s*\*\*/i)
     // A step timer can be declared two ways (either strips out of the display text):
     //   - a **Timer:** sub-line (mirrors **Ingredients:**), e.g. "**Timer:** 20 minutes"
     //   - an inline {timer: …} token, e.g. "Rest the dough. {timer: 1 hour 30 min}"
+    // Extract it from the WHOLE step body first — it may sit before OR after the
+    // **Ingredients:** sub-list — then split off the per-step ingredients.
     let timerSeconds: number | undefined
-    let rawText = textPart
-    const subLine = /\*\*\s*Timer:?\s*\*\*\s*([^\n]+)/i.exec(rawText)
+    let stepBody = num[1]
+    const subLine = /\*\*\s*Timer:?\s*\*\*\s*([^\n]+)/i.exec(stepBody)
     if (subLine) {
       timerSeconds = parseDuration(subLine[1]) ?? undefined
-      rawText = rawText.replace(subLine[0], ' ')
+      stepBody = stepBody.replace(subLine[0], ' ')
     }
-    const inline = /\{\s*timer:?\s*([^}]+)\}/i.exec(rawText)
+    const inline = /\{\s*timer:?\s*([^}]+)\}/i.exec(stepBody)
     if (inline) {
       timerSeconds = timerSeconds ?? (parseDuration(inline[1]) ?? undefined)
-      rawText = rawText.replace(inline[0], ' ')
+      stepBody = stepBody.replace(inline[0], ' ')
     }
-    const text = rawText.replace(/\s+/g, ' ').trim()
+    const [textPart, ingPart] = stepBody.split(/\*\*\s*Ingredients?:?\s*\*\*/i)
+    const text = textPart.replace(/\s+/g, ' ').trim()
     const ings: string[] = []
     if (ingPart) {
       for (const line of ingPart.split('\n')) {
