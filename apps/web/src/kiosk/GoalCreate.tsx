@@ -366,7 +366,7 @@ export function GoalCreate() {
     setForm((f) => ({ ...f, isSpotlight: t === 'spotlight', isFeatured: t === 'featured' }))
   const tierHint =
     tier === 'spotlight' ? 'The one big hero card for this list — only one goal can be the spotlight.'
-      : tier === 'featured' ? 'Elevated into the Featured band on the goals list.'
+      : tier === 'featured' ? 'Pinned to the top of the goals list, above the rest.'
         : 'Lives in the goals list with everything else.'
   const countChoice: string | null =
     form.goalType === 'total' ? (form.trackingMode === 'each_tracks' ? 'full' : 'split')
@@ -565,16 +565,16 @@ export function GoalCreate() {
             <div className="ge-extra" style={{ display: 'block' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
                 <div className="eic">🌟</div>
-                <div className="etx"><div className="e1">Spotlight &amp; featured</div><div className="e2">How prominent this goal is on the home screen and goals list</div></div>
+                <div className="etx"><div className="e1">Spotlight &amp; pinned</div><div className="e2">How prominent this goal is on the home screen and goals list</div></div>
               </div>
               <div className="ge-share ge-share-3" style={{ display: 'flex', marginTop: 12 }}>
                 <button type="button" className={tier === 'spotlight' ? 'on' : ''} onClick={() => setTier('spotlight')}>🌟 Spotlight</button>
-                <button type="button" className={tier === 'featured' ? 'on' : ''} onClick={() => setTier('featured')}>⭐ Featured</button>
+                <button type="button" className={tier === 'featured' ? 'on' : ''} onClick={() => setTier('featured')}>📌 Pinned</button>
                 <button type="button" className={tier === 'normal' ? 'on' : ''} onClick={() => setTier('normal')}>Normal</button>
               </div>
               <div className="ge-sec-h" style={{ marginTop: 6 }}>{tierHint}</div>
               {tier === 'spotlight' && listSpotlight && (
-                <div className="ge-sec-h" style={{ marginTop: 4, fontWeight: 650 }}>Replaces “{listSpotlight.title}” as this list’s spotlight (it becomes Featured).</div>
+                <div className="ge-sec-h" style={{ marginTop: 4, fontWeight: 650 }}>Replaces “{listSpotlight.title}” as this list’s spotlight (it becomes Pinned).</div>
               )}
             </div>
 
@@ -628,7 +628,7 @@ export function GoalCreate() {
               <div className="hrow">
                 <div className="hicon">🎯</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <span className="htag">{tier === 'spotlight' ? '🌟 Spotlight' : '★ Featured'}{shared ? ' · shared' : ' · each tracks'}</span>
+                  <span className="htag">{tier === 'spotlight' ? '🌟 Spotlight' : '📌 Pinned'}{shared ? ' · shared' : ' · each tracks'}</span>
                   <div className="htitle">{previewName}</div>
                   <div className="hsub">{subLine}</div>
                 </div>
@@ -679,7 +679,7 @@ export function GoalCreate() {
 
           <div className="ge-pv-where">
             <svg viewBox="0 0 24 24"><rect x={3} y={4} width={18} height={14} rx={2} /><path d="M8 20h8M12 18v2" /></svg>
-            {tier === 'spotlight' ? 'The spotlight on the home screen' : tier === 'featured' ? 'In the Featured band on the goals list' : 'Lives in the goals list'}
+            {tier === 'spotlight' ? 'The spotlight on the home screen' : tier === 'featured' ? 'Pinned to the top of the goals list' : 'Lives in the goals list'}
           </div>
         </div>
       </div>

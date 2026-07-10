@@ -213,15 +213,16 @@ function MoreGoalCard({ goal, onClick }: { goal: Goal; onClick: () => void }) {
   )
 }
 
-// A Featured-band card — a touch more prominent than a "More" row, with a Featured tag.
-function FeaturedCard({ goal, onClick }: { goal: Goal; onClick: () => void }) {
+// A Pinned card — a touch more prominent than a "More" row, with a Pinned tag. (Internally
+// still the `is_featured` flag; "Pinned" is just the clearer user-facing name.)
+function PinnedCard({ goal, onClick }: { goal: Goal; onClick: () => void }) {
   const c = goal.category ? CATEGORIES[goal.category] : null
   return (
     <div className="goal-card clickable more-goal featured-goal" onClick={onClick}>
       <div className="gc-top">
         <div className="goal-emoji">{goal.emoji ?? c?.emoji ?? '🎯'}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="gc-t">{goal.title} <span className="feat-tag">⭐ Featured</span></div>
+          <div className="gc-t">{goal.title} <span className="feat-tag">📌 Pinned</span></div>
           <div className="tiny muted goal-desc">{descriptor(goal)}</div>
         </div>
         <div className="goal-num">
@@ -277,11 +278,12 @@ export function Goals() {
   const visible = goals.filter(
     (g) => isIndividual || filter === 'all' || (filter === 'shared' ? g.trackingMode === 'shared_total' : g.trackingMode === 'each_tracks')
   )
-  // Three tiers (mirrors the API's derivation): the one Spotlight hero, the Featured band,
+  // Three tiers (mirrors the API's derivation): the one Spotlight hero, the Pinned band,
   // then everything else as compact "More" rows. The API already returns goals A–Z, so the
-  // Featured and More bands are alphabetical (manual Featured drag order is a roadmap item).
+  // Pinned and More bands are alphabetical (manual Pinned drag order is a roadmap item).
+  // `isFeatured` is the internal flag behind the user-facing "Pinned" tier.
   const spotlight = visible.find((g) => g.isSpotlight) ?? null
-  const featured = visible.filter((g) => g.isFeatured && !g.isSpotlight)
+  const pinned = visible.filter((g) => g.isFeatured && !g.isSpotlight)
   const more = visible.filter((g) => !g.isSpotlight && !g.isFeatured)
   // For an individual list, the visible goals ARE that person's, so the best
   // single-goal streak is a free at-a-glance "on a roll" cue. (Distinct from the
@@ -382,12 +384,12 @@ export function Goals() {
           </>
         )}
 
-        {featured.length > 0 && (
+        {pinned.length > 0 && (
           <>
-            <div className="flabel more-label">FEATURED</div>
+            <div className="flabel more-label">PINNED</div>
             <div className="more-grid">
-              {featured.map((g) => (
-                <FeaturedCard key={g.id} goal={g} onClick={() => navigate(`/goals/${g.id}`)} />
+              {pinned.map((g) => (
+                <PinnedCard key={g.id} goal={g} onClick={() => navigate(`/goals/${g.id}`)} />
               ))}
             </div>
           </>
