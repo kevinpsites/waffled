@@ -111,6 +111,12 @@ These power the Recipes library's search, filters, and chips.
   Durations accept minutes/hours/seconds and compound/short forms — `20 minutes`,
   `1 hour 30 min`, `1.5 hrs`, `90s`. You can also drop the timer inline as
   `{timer: 20 minutes}` anywhere in the step text (equivalent; also stripped).
+
+  You often don't need the marker at all: if a step **sentence** states a time
+  (`Place on the grill and cook for 6 minutes.`), that duration is auto-detected and a
+  timer is attached — the wording stays in the step. An explicit `**Timer:**` /
+  `{timer:}` always wins over the prose, and when a step mentions two times the first
+  one is used.
 - **`## Notes`** — free text. A `Source: …` line is captured as the recipe's source.
 
 ## After you paste

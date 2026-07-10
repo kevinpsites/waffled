@@ -163,6 +163,31 @@ describe('parseRecipe', () => {
     expect(parsed.steps[1].timerSeconds).toBe(90)
   })
 
+  it('auto-detects a duration written in the step prose (no explicit marker)', () => {
+    // Real photo/voice recipes phrase timings in the sentence ("cook for 6 minutes")
+    // rather than as a **Timer:** line. Attach a timer from the prose, and keep the
+    // duration visible in the step (it is real instruction text, not markup).
+    const md = `# Grilled Pork Chops\n\n## Instructions\n\n1. Sprinkle salt on each chop.\n2. Place on the grill and cook for 6 minutes.\n3. Flip and cook for another 6 minutes.\n4. Remove and let them rest for 2 minutes.\n`
+    const p = parseRecipe(md)
+    expect(p.steps[0].timerSeconds).toBeUndefined() // no duration in prose
+    expect(p.steps[1].timerSeconds).toBe(360)
+    expect(p.steps[1].text).toContain('cook for 6 minutes') // not stripped
+    expect(p.steps[2].timerSeconds).toBe(360)
+    expect(p.steps[3].timerSeconds).toBe(120)
+  })
+
+  it('an explicit **Timer:** overrides a different duration in the prose', () => {
+    const md = `# T\n\n## Instructions\n\n1. Simmer for 5 minutes, stirring.\n   **Timer:** 20 minutes\n`
+    const p = parseRecipe(md)
+    expect(p.steps[0].timerSeconds).toBe(1200) // the marker wins, not the prose "5 minutes"
+  })
+
+  it('takes the FIRST prose duration, not the sum, when a step lists several', () => {
+    const md = `# T\n\n## Instructions\n\n1. Bake 20 minutes, then rest 5 minutes.\n`
+    const p = parseRecipe(md)
+    expect(p.steps[0].timerSeconds).toBe(1200) // 20 min, not 25
+  })
+
   it('extracts notes and the source name', () => {
     expect(r.notes).toContain('Kids like it')
     expect(r.sourceName).toBe("Grandma's kitchen")

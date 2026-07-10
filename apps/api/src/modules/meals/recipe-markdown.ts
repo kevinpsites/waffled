@@ -108,6 +108,14 @@ const DURATION_UNIT_SECONDS: Array<{ re: RegExp; mult: number }> = [
   { re: /(\d+(?:\.\d+)?)\s*(?:seconds?|secs?|s)\b/gi, mult: 1 },
 ]
 
+// A duration phrase written inline in a step sentence ("cook for 6 minutes",
+// "let rest 1 hour 30 minutes"). Used as a FALLBACK timer when a step carries no
+// explicit **Timer:** / {timer:} marker. Restricted to word/short unit forms
+// (minute/min/hour/hr/second/sec) — not bare single letters — so it doesn't fire on
+// stray letters in prose; matches the FIRST phrase only (optionally compound), so a
+// step listing two times ("bake 20 min, then rest 5 min") yields the first, not the sum.
+const PROSE_DURATION_RE = /\b\d+(?:\.\d+)?\s*(?:hours?|hrs?|minutes?|mins?|seconds?|secs?)(?:\s+\d+(?:\.\d+)?\s*(?:hours?|hrs?|minutes?|mins?|seconds?|secs?))?/i
+
 export function parseDuration(raw: string | null | undefined): number | null {
   const t = (raw ?? '').trim()
   if (!t) return null
@@ -222,6 +230,13 @@ export function parseRecipe(md: string, collection: string | null = null): Parse
     }
     const [textPart, ingPart] = stepBody.split(/\*\*\s*Ingredients?:?\s*\*\*/i)
     const text = textPart.replace(/\s+/g, ' ').trim()
+    // Fallback: no explicit marker, but the step sentence states a time
+    // ("cook for 6 minutes"). Attach a timer from the prose and LEAVE the wording in
+    // place — it's real instruction text, not markup to strip.
+    if (timerSeconds == null) {
+      const prose = PROSE_DURATION_RE.exec(text)
+      if (prose) timerSeconds = parseDuration(prose[0]) ?? undefined
+    }
     const ings: string[] = []
     if (ingPart) {
       for (const line of ingPart.split('\n')) {

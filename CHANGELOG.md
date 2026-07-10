@@ -31,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Recipe steps that mention a time now get a timer automatically.** Whether a recipe
+  comes from a photo, a description, or pasted Markdown, a step that says something like
+  "cook for 6 minutes" now attaches a cook-mode timer without needing an explicit
+  `**Timer:**` line. An explicit marker still wins, and a step that lists two times uses
+  the first.
+
 ### Fixed
 
 ## [0.6.1] - 2026-07-09
