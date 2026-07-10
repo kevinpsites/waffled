@@ -30,7 +30,8 @@ describe('reconcileLayout', () => {
 
   it('merges overflow columns (past the 3rd) into the last column', () => {
     const out = reconcileLayout([['agenda'], ['tonight'], ['week'], ['chores'], ['grocery']])
-    // cols past the 3rd merge in; unplaced cards ('countdowns', 'familyNight') are appended to the last column
-    expect(out[2]).toEqual(['week', 'chores', 'grocery', 'countdowns', 'familyNight'])
+    // cols past the 3rd merge in; unplaced cards (countdowns, pantry, familyNight, goals — in
+    // TODAY_CARDS order) are appended to the last column.
+    expect(out[2]).toEqual(['week', 'chores', 'grocery', 'countdowns', 'pantry', 'familyNight', 'goals'])
   })
 })
