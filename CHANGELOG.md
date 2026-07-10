@@ -51,6 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   automatically deleted.
 
 ### Changed
+- **Goals now list alphabetically** (with featured goals still pinned on top), instead of by
+  creation date — so the list is predictable and easy to scan instead of feeling random.
 - **The "one shared total / each tracks their own" choice moved below "How do you measure it?"**
   It only applies once you've picked a measure with a per-person dimension — so it now sits with
   the group-counting options under the measure picker, and no longer appears for a checklist
