@@ -594,21 +594,27 @@ private struct TodayGoalPickerSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 10) {
-                    autoRow
-                    if !goals.isEmpty {
-                        HStack {
-                            Text("PIN A SPECIFIC GOAL").font(.system(size: 11, weight: .heavy))
-                                .tracking(0.4).foregroundStyle(WF.ink3)
-                            Spacer()
+            // A List (not a ScrollView of Buttons) so a scroll drag never fires a row —
+            // taps select, drags scroll, natively.
+            List {
+                autoRow
+                    .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
+                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
+                if !goals.isEmpty {
+                    Section {
+                        ForEach(goals) { g in
+                            goalRow(g)
+                                .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
+                                .listRowSeparator(.hidden).listRowBackground(Color.clear)
                         }
-                        .padding(.top, 10).padding(.horizontal, 2)
-                        ForEach(goals) { g in goalRow(g) }
+                    } header: {
+                        Text("PIN A SPECIFIC GOAL").font(.system(size: 11, weight: .heavy))
+                            .tracking(0.4).foregroundStyle(WF.ink3)
                     }
                 }
-                .padding(16)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .background(WF.canvas)
             .navigationTitle("Show on Today")
             .navigationBarTitleDisplayMode(.inline)

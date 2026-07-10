@@ -25,7 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tier picker, one-tap pin/unpin, and the Today goal card now shows the **Spotlight** (falling
   back to a Pinned goal). Web + iOS. On the iPhone Today card you can also **choose exactly which
   goal it shows** — My spotlight, Family spotlight, or a specific pinned goal — from the card's
-  own menu.
+  own menu (a scrollable goal picker). The **web Today** now also has a **Goals card** showing the
+  Spotlight goal's progress (a reorderable card in the Customize layout) — matching the phone.
 - **iPhone now has full parity with the web app for Goals.** Everything above ships on iPhone/iPad
   too: **ticking off a checklist** (from the goal or the Log sheet — previously iPhone could only add
   numeric progress, which made no sense for a checklist), the **measure-aware group-counting** choice
