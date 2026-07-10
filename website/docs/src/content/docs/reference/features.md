@@ -143,9 +143,11 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Goal types: count / total / habit / checklist | ✅ | ✅ | ✅ | ✅ Done |
 | Goal **lists** + membership (shared lists / individual) | ✅ | ✅ | ✅ | ✅ Done |
 | Shared-pool vs each-tracks goals | ✅ | ✅ | ✅ | ✅ Done |
-| **How a group activity counts** — shared/each toggle + a measure-aware counting follow-up under "How do you measure it?" (total: full / split · count: each / once) with real-name worked examples | ✅ | 🟡 | 🟡 | 🟡 Web done; iPhone/iPad pending |
+| **How a group activity counts** — shared/each toggle + a measure-aware counting follow-up under "How do you measure it?" (total: full / split · count: each / once) with real-name worked examples | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
+| **Checklist tick-off** — complete a checklist by ticking its named steps (in the goal detail + the Log sheet) | ✅ | ✅ | ✅ | ✅ Done (was iPhone-blocked; now shipped) |
+| **Type-aware Log sheet** — count stepper, total amount, habit one-tap, checklist ticking; unit shown correctly | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
 | Create / **edit** / delete goals | ✅ | ✅ | ✅ | ✅ Done |
-| **Edit / remove a logged entry** (amount, who took part, note, date; shared entries removed whole + re-split) | ✅ | 🟡 | 🟡 | 🟡 Web done; iPhone/iPad pending |
+| **Edit / remove a logged entry** (amount, who took part, note, date; shared entries removed whole + re-split) | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
 | Type-aware **logging** (amount / stepper / once-a-day / tick steps) | ✅ | ✅ | ✅ | ✅ Done |
 | Backdated logs ("When?" picker) | ✅ | ✅ | ✅ | ✅ Done |
 | **Goal detail** read-model (milestone track, hours-by-person, streaks, recent) | ✅ | ✅ | ✅ | ✅ Done |

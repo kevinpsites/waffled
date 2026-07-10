@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **iPhone now has full parity with the web app for Goals.** Everything above ships on iPhone/iPad
+  too: **ticking off a checklist** (from the goal or the Log sheet — previously iPhone could only add
+  numeric progress, which made no sense for a checklist), the **measure-aware group-counting** choice
+  under "How do you measure it?", a **Log sheet that adapts to the goal type** (count stepper, total
+  amount, habit one-tap, checklist ticking, with the right unit), and **editing or removing a logged
+  entry** — including who took part.
 - **You can now fix or remove a goal entry logged by mistake.** Each line in a goal's Recent
   activity can be edited — amount, **who took part**, note, and date — or deleted; a split/shared
   entry is removed as a whole and re-splits correctly when you change who was there. Entries
