@@ -26,6 +26,7 @@ struct TodayView: View {
     /// A specific goal pinned to the Today card (empty = follow the My/Family spotlight scope).
     /// Per-device; falls back to the scope pick if the pinned goal is gone.
     @AppStorage("waffled.todayGoalId") private var todayGoalId = ""
+    @State private var showingGoalPicker = false
     /// The resolved card layout (order + hidden) from the server, plus whether this
     /// member may edit the shared family default. Drives which cards render and how.
     @State private var cardOrder: [String] = ["agenda", "tonight", "chores", "grocery", "goals"]
@@ -387,6 +388,9 @@ struct TodayView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingGoalPicker) {
+            TodayGoalPickerSheet(goals: goals, selectedId: todayGoalId) { id in todayGoalId = id }
+        }
     }
 
     /// A small pill-menu to switch the card between the logged-in member's goal and a
@@ -403,13 +407,7 @@ struct TodayView: View {
                     Label("Family spotlight", systemImage: (todayGoalId.isEmpty && goalScope == "family") ? "checkmark" : "person.3")
                 }
                 Divider()
-                Menu {
-                    ForEach(goals) { g in
-                        Button { todayGoalId = g.id } label: {
-                            Label(g.title, systemImage: todayGoalId == g.id ? "checkmark" : "pin")
-                        }
-                    }
-                } label: {
+                Button { showingGoalPicker = true } label: {
                     Label("Choose a goal…", systemImage: "pin")
                 }
             } label: {
@@ -585,6 +583,82 @@ struct TodayView: View {
 }
 
 /// Thin rounded progress bar used in the summary cards.
+/// A modal goal chooser for the Today card — "Follow the spotlight" plus a scrollable
+/// list of every goal (reuses the goal-card styling), instead of a long inline menu.
+private struct TodayGoalPickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let goals: [WaffledAPI.Goal]
+    let selectedId: String
+    /// "" clears the pin (back to My/Family spotlight); otherwise a goal id.
+    let onSelect: (String) -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 10) {
+                    autoRow
+                    if !goals.isEmpty {
+                        HStack {
+                            Text("PIN A SPECIFIC GOAL").font(.system(size: 11, weight: .heavy))
+                                .tracking(0.4).foregroundStyle(WF.ink3)
+                            Spacer()
+                        }
+                        .padding(.top, 10).padding(.horizontal, 2)
+                        ForEach(goals) { g in goalRow(g) }
+                    }
+                }
+                .padding(16)
+            }
+            .background(WF.canvas)
+            .navigationTitle("Show on Today")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+    }
+
+    private var autoRow: some View {
+        Button { onSelect(""); dismiss() } label: {
+            HStack(spacing: 12) {
+                Text("✨").font(.system(size: 20)).frame(width: 42, height: 42)
+                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Follow the spotlight").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
+                    Text("Auto-picks your My / Family spotlight goal").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                }
+                Spacer(minLength: 0)
+                if selectedId.isEmpty { Image(systemName: "checkmark.circle.fill").font(.system(size: 18)).foregroundStyle(WF.primary) }
+            }
+            .padding(13).wfField()
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func goalRow(_ g: WaffledAPI.Goal) -> some View {
+        let col = GoalStyle.color(g.category)
+        let frac = g.target.map { $0 > 0 ? min(g.totalProgress / $0, 1) : 0 } ?? 0
+        return Button { onSelect(g.id); dismiss() } label: {
+            HStack(spacing: 12) {
+                Text(g.emoji ?? GoalStyle.emoji(g.category)).font(.system(size: 20)).frame(width: 42, height: 42)
+                    .background(col.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(g.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
+                    Text(goalDescriptor(g)).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(WF.hair)
+                            Capsule().fill(col).frame(width: geo.size.width * frac)
+                        }
+                    }
+                    .frame(height: 6)
+                }
+                if selectedId == g.id { Image(systemName: "checkmark.circle.fill").font(.system(size: 18)).foregroundStyle(WF.primary) }
+            }
+            .padding(13).wfField()
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct ProgressBar: View {
     let value: Double      // 0...1
     let tint: Color
