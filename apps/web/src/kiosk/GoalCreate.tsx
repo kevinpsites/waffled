@@ -325,22 +325,28 @@ export function GoalCreate() {
               ))}
               <button type="button" className="ge-who-chip dashed" onClick={() => setShowListModal(true)}>＋ New group</button>
             </div>
-            <div className="ge-share">
-              <button type="button" className={shared ? 'on' : ''} onClick={() => set('trackingMode', 'shared_total')}>One shared total</button>
-              <button type="button" className={!shared ? 'on' : ''} onClick={() => set('trackingMode', 'each_tracks')}>Each tracks their own</button>
-            </div>
-            {shared && !isChecklist && form.goalType !== 'habit' && (
-              <div className="ge-pmode">
-                <div className="ge-sec-h" style={{ margin: '10px 0 6px' }}>When several people are in on one log…</div>
-                <div className="ge-share ge-share-3">
-                  {PARTICIPANT_MODES.map((m) => (
-                    <button key={m.key} type="button" className={form.participantMode === m.key ? 'on' : ''} onClick={() => set('participantMode', m.key)}>{m.title}</button>
-                  ))}
+            {/* Shared-vs-each (and the participant mode) only mean something with 2+
+                people — for a single-person goal they're irrelevant, so hide them. */}
+            {participantCount > 1 && (
+              <>
+                <div className="ge-share">
+                  <button type="button" className={shared ? 'on' : ''} onClick={() => set('trackingMode', 'shared_total')}>One shared total</button>
+                  <button type="button" className={!shared ? 'on' : ''} onClick={() => set('trackingMode', 'each_tracks')}>Each tracks their own</button>
                 </div>
-                <div className="ge-sec-h" style={{ marginTop: 6 }}>
-                  {PARTICIPANT_MODES.find((m) => m.key === form.participantMode)?.hint}
-                </div>
-              </div>
+                {shared && !isChecklist && form.goalType !== 'habit' && (
+                  <div className="ge-pmode">
+                    <div className="ge-sec-h" style={{ margin: '10px 0 6px' }}>When several people are in on one log…</div>
+                    <div className="ge-share ge-share-3">
+                      {PARTICIPANT_MODES.map((m) => (
+                        <button key={m.key} type="button" className={form.participantMode === m.key ? 'on' : ''} onClick={() => set('participantMode', m.key)}>{m.title}</button>
+                      ))}
+                    </div>
+                    <div className="ge-sec-h" style={{ marginTop: 6 }}>
+                      {PARTICIPANT_MODES.find((m) => m.key === form.participantMode)?.hint}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
