@@ -373,12 +373,12 @@ struct CalendarView: View {
         return "\(hr) \(h < 12 ? "AM" : "PM")"
     }
     private func hourMinute(_ date: Date) -> (h: Int, m: Int) {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let cal = Cal.gregorian(tz)
         let c = cal.dateComponents([.hour, .minute], from: date)
         return (c.hour ?? 0, c.minute ?? 0)
     }
     private func dateAt(hour: Int) -> Date {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let cal = Cal.gregorian(tz)
         let base = dayKeyToDate(selectedDay) ?? Date()
         return cal.date(bySettingHour: hour, minute: 0, second: 0, of: base) ?? base
     }
@@ -390,7 +390,7 @@ struct CalendarView: View {
         return 7
     }
     private func stepDay(_ n: Int) {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let cal = Cal.gregorian(tz)
         if let d = dayKeyToDate(selectedDay), let nd = cal.date(byAdding: .day, value: n, to: d) {
             withAnimation { selectedDay = EventTime.dayKey(nd, tz) }
         }
@@ -407,7 +407,7 @@ struct CalendarView: View {
     }
 
     private func stepMonth(_ n: Int) {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let cal = Cal.gregorian(tz)
         if let d = cal.date(byAdding: .month, value: n, to: monthAnchor) { withAnimation { monthAnchor = d } }
     }
 
@@ -432,7 +432,7 @@ struct CalendarView: View {
 
     /// 42 day-cells (6 weeks, Sunday-led) covering `anchor`'s month.
     private func monthCells(_ anchor: Date) -> [MonthCell] {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let cal = Cal.gregorian(tz)
         let comps = cal.dateComponents([.year, .month], from: anchor)
         guard let first = cal.date(from: comps) else { return [] }
         let anchorMonth = cal.component(.month, from: first)
@@ -455,7 +455,7 @@ struct CalendarView: View {
     }
 
     private func relativeLabel(_ key: String) -> String {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let cal = Cal.gregorian(tz)
         let tomorrow = EventTime.dayKey(cal.date(byAdding: .day, value: 1, to: Date()) ?? Date(), tz)
         if key == Agenda.todayKey(tz) { return "Today" }
         if key == tomorrow { return "Tomorrow" }
@@ -608,7 +608,7 @@ struct EventEditSheet: View {
         self.prefillGoalId = prefillGoalId
         self.prefillGoalStepId = prefillGoalStepId
         self.prefillParticipantIds = prefillParticipantIds
-        let cal = Calendar.current
+        let cal = Cal.current
         // Create defaults to 5pm on the given day; edit uses the event's times.
         let startDate = event?.startsAt ?? (cal.date(bySettingHour: 17, minute: 0, second: 0, of: initialDate) ?? initialDate)
         let mins: Int = {
@@ -635,7 +635,7 @@ struct EventEditSheet: View {
     /// The chosen start instant (device tz) — used for the RRULE's default weekday /
     /// nth-weekday ordinal and the live "Repeats" summary.
     private var resolvedStart: Date {
-        let cal = Calendar.current
+        let cal = Cal.current
         return allDay ? (cal.date(bySettingHour: 12, minute: 0, second: 0, of: day) ?? day) : combine(day, start)
     }
 
@@ -1214,7 +1214,7 @@ struct EventEditSheet: View {
     }
 
     private var monthlyModeMenu: some View {
-        let dom = Calendar.current.component(.day, from: resolvedStart)
+        let dom = Cal.current.component(.day, from: resolvedStart)
         let weekdayName = DateFmt.string(resolvedStart, "EEEE", sync.householdTz)
         let dayLabel = "On day \(dom)"
         func nthLabel(_ ord: Int) -> String { "On the \(ordinalWord(ord)) \(weekdayName)" }
@@ -1255,7 +1255,7 @@ struct EventEditSheet: View {
         if let base {
             if endMode == .after, occurrenceCount > 0 { rrule = "\(base);COUNT=\(occurrenceCount)" }
             else if endMode == .on {
-                let cal = Calendar.current
+                let cal = Cal.current
                 let endOfDay = cal.date(bySettingHour: 23, minute: 59, second: 0, of: untilDate) ?? untilDate
                 recurrenceEndAt = Self.iso.string(from: endOfDay)
             }
@@ -1359,7 +1359,7 @@ struct EventEditSheet: View {
 
     /// Combine a date's Y/M/D with a time's H/M into one instant (device tz).
     private func combine(_ dayDate: Date, _ time: Date) -> Date {
-        let cal = Calendar.current
+        let cal = Cal.current
         let d = cal.dateComponents([.year, .month, .day], from: dayDate)
         let t = cal.dateComponents([.hour, .minute], from: time)
         return cal.date(from: DateComponents(year: d.year, month: d.month, day: d.day, hour: t.hour, minute: t.minute)) ?? dayDate

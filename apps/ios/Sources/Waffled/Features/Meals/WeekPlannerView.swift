@@ -424,7 +424,7 @@ struct WeekPlannerView: View {
     // MARK: date helpers
 
     private var cal: Calendar {
-        var c = Calendar(identifier: .gregorian); c.timeZone = sync.householdTz; return c
+        Cal.gregorian(sync.householdTz)
     }
     private var weekStart: Date {
         let base = cal.dateInterval(of: .weekOfYear, for: Date())?.start ?? cal.startOfDay(for: Date())

@@ -614,12 +614,12 @@ struct RecipeScheduleSheet: View {
     }()
 
     private var weekStart: Date {
-        let cal = Calendar.current
+        let cal = Cal.current
         let today = cal.startOfDay(for: Date())
         let sunday = cal.date(byAdding: .day, value: -(cal.component(.weekday, from: today) - 1), to: today)!
         return cal.date(byAdding: .day, value: weekOffset * 7, to: sunday)!
     }
-    private var days: [Date] { (0..<7).compactMap { Calendar.current.date(byAdding: .day, value: $0, to: weekStart) } }
+    private var days: [Date] { (0..<7).compactMap { Cal.current.date(byAdding: .day, value: $0, to: weekStart) } }
     private var weekLabel: String {
         if weekOffset == 0 { return "This week" }
         if weekOffset == 1 { return "Next week" }
