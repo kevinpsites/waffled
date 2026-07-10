@@ -193,10 +193,10 @@ struct FamilyNightSettingsView: View {
     private static func parseTime(_ hhmm: String) -> Date {
         let parts = hhmm.split(separator: ":")
         var c = DateComponents(); c.hour = Int(parts.first ?? "19") ?? 19; c.minute = Int(parts.last ?? "0") ?? 0
-        return Calendar(identifier: .gregorian).date(from: c) ?? Date()
+        return Cal.current.date(from: c) ?? Date()
     }
     private static func formatTime(_ d: Date) -> String {
-        let c = Calendar(identifier: .gregorian).dateComponents([.hour, .minute], from: d)
+        let c = Cal.current.dateComponents([.hour, .minute], from: d)
         return String(format: "%02d:%02d", c.hour ?? 19, c.minute ?? 0)
     }
 }
