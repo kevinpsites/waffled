@@ -120,6 +120,16 @@ button.goal-listhead-link:hover {
   font-size: 10px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase;
   color: #b07d1c; background: #fdf2dd; padding: 3px 8px; border-radius: 999px;
 }
+/* Quick pin/unpin — a muted pushpin that brightens on hover; solid when pinned. */
+.goal-pin {
+  flex: none; width: 28px; height: 28px; border: 0; border-radius: 999px;
+  background: transparent; cursor: pointer; font-size: 13px; line-height: 1;
+  display: grid; place-items: center; margin-left: 2px;
+  opacity: .3; filter: grayscale(1); transition: opacity .12s, background .12s, filter .12s;
+}
+.goal-card:hover .goal-pin { opacity: .55; }
+.goal-pin:hover { opacity: 1; filter: none; background: var(--panel); }
+.goal-pin.on { opacity: 1; filter: none; }
 .more-goal .gc-t {
   font-size: 16px;
 }

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { Icon } from './icons'
 import { LogModal } from './components/LogModal'
 import { ListModal } from './components/ListModal'
-import { useGoalLists, useGoals, useHousehold, can, type Goal, type GoalList, type GoalListMember, type GoalParticipant } from '../lib/api'
+import { api, useGoalLists, useGoals, useHousehold, can, type Goal, type GoalList, type GoalListMember, type GoalParticipant } from '../lib/api'
 import { CATEGORIES } from './categories'
 import '../styles/goals.css'
 
@@ -191,7 +191,21 @@ function Hero({ goal, onLog, onOpen }: { goal: Goal; onLog: (g: Goal) => void; o
   return <SharedHero goal={goal} onLog={onLog} onOpen={onOpen} />
 }
 
-function MoreGoalCard({ goal, onClick }: { goal: Goal; onClick: () => void }) {
+// A small pin/unpin corner button, stopping propagation so it doesn't open the goal.
+function PinButton({ goal, onPin }: { goal: Goal; onPin: () => void }) {
+  const pinned = goal.isFeatured
+  return (
+    <button
+      type="button"
+      className={`goal-pin ${pinned ? 'on' : ''}`}
+      title={pinned ? 'Unpin from top' : 'Pin to top'}
+      aria-label={pinned ? 'Unpin from top' : 'Pin to top'}
+      onClick={(e) => { e.stopPropagation(); onPin() }}
+    >📌</button>
+  )
+}
+
+function MoreGoalCard({ goal, onClick, onPin, canPin }: { goal: Goal; onClick: () => void; onPin?: () => void; canPin?: boolean }) {
   const c = goal.category ? CATEGORIES[goal.category] : null
   return (
     <div className="goal-card clickable more-goal" onClick={onClick}>
@@ -205,6 +219,7 @@ function MoreGoalCard({ goal, onClick }: { goal: Goal; onClick: () => void }) {
           <span className="num">{fmtNum(dispProgress(goal))}</span>
           <span className="tiny muted">/{fmtNum(dispTarget(goal))}</span>
         </div>
+        {canPin && onPin && <PinButton goal={goal} onPin={onPin} />}
       </div>
       <div className="gc-bar">
         <div style={{ width: `${(frac(dispProgress(goal), dispTarget(goal)) * 100).toFixed(0)}%`, background: barColor(goal) }} />
@@ -215,7 +230,7 @@ function MoreGoalCard({ goal, onClick }: { goal: Goal; onClick: () => void }) {
 
 // A Pinned card — a touch more prominent than a "More" row, with a Pinned tag. (Internally
 // still the `is_featured` flag; "Pinned" is just the clearer user-facing name.)
-function PinnedCard({ goal, onClick }: { goal: Goal; onClick: () => void }) {
+function PinnedCard({ goal, onClick, onPin, canPin }: { goal: Goal; onClick: () => void; onPin?: () => void; canPin?: boolean }) {
   const c = goal.category ? CATEGORIES[goal.category] : null
   return (
     <div className="goal-card clickable more-goal featured-goal" onClick={onClick}>
@@ -229,6 +244,7 @@ function PinnedCard({ goal, onClick }: { goal: Goal; onClick: () => void }) {
           <span className="num">{fmtNum(dispProgress(goal))}</span>
           <span className="tiny muted">/{fmtNum(dispTarget(goal))}</span>
         </div>
+        {canPin && onPin && <PinButton goal={goal} onPin={onPin} />}
       </div>
       <div className="gc-bar">
         <div style={{ width: `${(frac(dispProgress(goal), dispTarget(goal)) * 100).toFixed(0)}%`, background: barColor(goal) }} />
@@ -273,6 +289,13 @@ export function Goals() {
   const selected = lists.find((l) => l.id === selectedId) ?? lists[0] ?? null
   const { goals, loading: goalsLoading, refetch } = useGoals(selected?.id ?? null)
 
+
+  // Pinning a goal is a lightweight edit — allowed for goal.manage holders, or the owner of
+  // a solo goal. Quick toggle of the Pinned tier (isFeatured) straight from the card.
+  const canEditGoal = (g: Goal) => canManageGoals || (g.participants.length === 1 && g.participants[0].personId === person?.id)
+  const togglePin = async (g: Goal) => {
+    try { await api.updateGoal(g.id, { isFeatured: !g.isFeatured }); refetch() } catch { /* leave as-is on failure */ }
+  }
 
   const isIndividual = (selected?.members.length ?? 0) === 1
   const visible = goals.filter(
@@ -389,7 +412,7 @@ export function Goals() {
             <div className="flabel more-label">PINNED</div>
             <div className="more-grid">
               {pinned.map((g) => (
-                <PinnedCard key={g.id} goal={g} onClick={() => navigate(`/goals/${g.id}`)} />
+                <PinnedCard key={g.id} goal={g} onClick={() => navigate(`/goals/${g.id}`)} onPin={() => togglePin(g)} canPin={canEditGoal(g)} />
               ))}
             </div>
           </>
@@ -400,7 +423,7 @@ export function Goals() {
             <div className="flabel more-label">MORE {(selected?.name ?? '').toUpperCase()} GOALS <span className="tiny muted" style={{ fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>· A–Z</span></div>
             <div className="more-grid">
               {more.map((g) => (
-                <MoreGoalCard key={g.id} goal={g} onClick={() => navigate(`/goals/${g.id}`)} />
+                <MoreGoalCard key={g.id} goal={g} onClick={() => navigate(`/goals/${g.id}`)} onPin={() => togglePin(g)} canPin={canEditGoal(g)} />
               ))}
             </div>
           </>

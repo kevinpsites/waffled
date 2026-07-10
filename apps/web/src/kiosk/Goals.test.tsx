@@ -61,14 +61,19 @@ const moreGoal = {
   participants: [],
 }
 
-function mockApi(opts: { lists?: unknown[]; goals?: unknown[]; logged?: unknown[] }) {
+function mockApi(opts: { lists?: unknown[]; goals?: unknown[]; logged?: unknown[]; person?: unknown; patched?: { url: string; body: unknown }[] }) {
   globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
     const u = String(url)
     if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
     if (u.includes('/api/goal-lists')) return { ok: true, json: async () => ({ lists: opts.lists ?? [] }) }
+    if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household: { id: 'h', name: 'Home', timezone: 'UTC', weekStart: 'sunday' }, person: opts.person ?? null }) }
     if (/\/api\/goals\/[^/]+\/log$/.test(u) && init?.method === 'POST') {
       opts.logged?.push(JSON.parse(init.body!))
       return { ok: true, json: async () => ({ ok: true }) }
+    }
+    if (/\/api\/goals\/[^/]+$/.test(u) && init?.method === 'PATCH') {
+      opts.patched?.push({ url: u, body: JSON.parse(init.body!) })
+      return { ok: true, json: async () => ({ goal: {} }) }
     }
     if (u.includes('/api/goals')) return { ok: true, json: async () => ({ goals: opts.goals ?? [] }) }
     return { ok: false, status: 404, json: async () => ({}) }
@@ -112,6 +117,19 @@ describe('Goals home (goal-lists model)', () => {
     fireEvent.click(within(modal).getByRole('button', { name: /^Log \d/ }))
     await waitFor(() => expect(logged).toHaveLength(1))
     expect(logged[0]).toMatchObject({ amount: 1 })
+  })
+
+  it('pins a "More" goal from its card (quick PATCH, no edit form)', async () => {
+    const patched: { url: string; body: unknown }[] = []
+    const person = { id: 'p1', name: 'Kevin', memberType: 'adult', isAdmin: true, capabilities: ['goal.manage'] }
+    // featured = the Spotlight hero; moreGoal ("Dinner together") is a plain "More" card.
+    mockApi({ lists: [familyList], goals: [featured, moreGoal], person, patched })
+    renderHome()
+    const card = (await screen.findByText('Dinner together')).closest('.goal-card') as HTMLElement
+    fireEvent.click(within(card).getByRole('button', { name: /^Pin/i }))
+    await waitFor(() => expect(patched).toHaveLength(1))
+    expect(patched[0].url).toContain('/api/goals/g2')
+    expect(patched[0].body).toMatchObject({ isFeatured: true })
   })
 
   it('renders the orange each-tracks hero variant', async () => {
