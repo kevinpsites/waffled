@@ -87,29 +87,39 @@ export function PhotoImportModal({ onClose, onDraft }: { onClose: () => void; on
         )}
 
         {photos.length < MAX_PHOTOS && (
-          <label className="btn btn-ghost" style={{ cursor: 'pointer', display: 'inline-flex' }}>
-            📷 {photos.length ? 'Add another' : 'Choose photos'}
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
-              capture="environment"
-              multiple
-              style={{ display: 'none' }}
-              onChange={(e) => addFiles(e.target.files)}
-            />
-          </label>
+          // Empty state: a single centered, roomy primary button is the one clear
+          // action. Once photos are added it demotes to a small ghost "Add another"
+          // and the Cancel/Read footer appears.
+          <div style={photos.length === 0 ? { display: 'flex', justifyContent: 'center', padding: '6px 0 2px' } : undefined}>
+            <label
+              className={photos.length === 0 ? 'btn btn-primary' : 'btn btn-ghost'}
+              style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, ...(photos.length === 0 ? { padding: '14px 30px', fontSize: 16 } : {}) }}
+            >
+              📷 {photos.length ? 'Add another' : 'Choose photos'}
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                capture="environment"
+                multiple
+                style={{ display: 'none' }}
+                onChange={(e) => addFiles(e.target.files)}
+              />
+            </label>
+          </div>
         )}
 
         {err && <div className="tiny" style={{ color: 'var(--danger,#c0392b)', fontWeight: 700, marginTop: 10 }}>{err}</div>}
 
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
-          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn btn-primary" disabled={busy || !photos.length} onClick={extract}>
-            {busy ? 'Reading…' : `Read ${photos.length || ''} → fill the form`.trim()}
-          </button>
-        </div>
-        <p className="tiny muted" style={{ marginBottom: 0, marginTop: 12 }}>Under 10&nbsp;MB each · up to {MAX_PHOTOS} photos.</p>
+        {photos.length > 0 && (
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
+            <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={extract}>
+              {busy ? 'Reading…' : `Read ${photos.length} → fill the form`}
+            </button>
+          </div>
+        )}
+        <p className="tiny muted" style={{ marginBottom: 0, marginTop: 12, textAlign: photos.length === 0 ? 'center' : undefined }}>Under 10&nbsp;MB each · up to {MAX_PHOTOS} photos.</p>
       </div>
     </div>
   )
