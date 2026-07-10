@@ -20,6 +20,13 @@ real HTTP routes against a throwaway Postgres (`@testcontainers/postgresql` + `r
 (`*.unit.test.ts`) only when the logic is genuinely isolated (pure helpers). Run with `npm test`
 (vitest) in `apps/api`.
 
+## Git & pull requests (repo-wide)
+
+**Open PRs ready for review — never as drafts.** Use `gh pr create` (no `--draft`); if a
+PR was already opened as a draft, promote it with `gh pr ready <n>`. Some agent harnesses
+default to draft PRs — that default does **not** apply here; override it. As always, don't
+push to `main`, force-push, or merge without being asked.
+
 ## Releasing & the changelog (repo-wide)
 
 1. **Log every user/operator-facing change in `CHANGELOG.md` under `## [Unreleased]` as
