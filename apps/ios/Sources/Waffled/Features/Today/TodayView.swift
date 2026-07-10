@@ -23,6 +23,9 @@ struct TodayView: View {
     /// Which goal the card highlights: "mine" (the logged-in member's) or "family"
     /// (a whole-family goal). Per-device preference; defaults to mine.
     @AppStorage("waffled.todayGoalScope") private var goalScope = "mine"
+    /// A specific goal pinned to the Today card (empty = follow the My/Family spotlight scope).
+    /// Per-device; falls back to the scope pick if the pinned goal is gone.
+    @AppStorage("waffled.todayGoalId") private var todayGoalId = ""
     /// The resolved card layout (order + hidden) from the server, plus whether this
     /// member may edit the shared family default. Drives which cards render and how.
     @State private var cardOrder: [String] = ["agenda", "tonight", "chores", "grocery", "goals"]
@@ -323,6 +326,8 @@ struct TodayView: View {
     /// goal. Either way featured wins within the bucket, and we never get stuck — a
     /// sub-group goal (e.g. kids-only) only shows if nothing better exists.
     private var featuredGoal: WaffledAPI.Goal? {
+        // A specific goal pinned to the card wins, if it still exists.
+        if !todayGoalId.isEmpty, let pinned = goals.first(where: { $0.id == todayGoalId }) { return pinned }
         // The token-resolved person if we have it, else the greeting member (first adult).
         let me = sync.currentPersonId ?? greetingMember?.id
         let everyone = Set(sync.members.map(\.id))
@@ -388,16 +393,29 @@ struct TodayView: View {
     /// whole-family goal. Only shown when there's more than one goal to choose from.
     @ViewBuilder private var scopeMenu: some View {
         if goals.count > 1 {
+            // The pinned goal's title (if one is pinned and still exists), else the scope name.
+            let pinnedTitle = todayGoalId.isEmpty ? nil : goals.first { $0.id == todayGoalId }?.title
             Menu {
-                Button { goalScope = "mine" } label: {
-                    Label("My featured goal", systemImage: goalScope == "mine" ? "checkmark" : "person")
+                Button { goalScope = "mine"; todayGoalId = "" } label: {
+                    Label("My spotlight", systemImage: (todayGoalId.isEmpty && goalScope == "mine") ? "checkmark" : "person")
                 }
-                Button { goalScope = "family" } label: {
-                    Label("Family featured goal", systemImage: goalScope == "family" ? "checkmark" : "person.3")
+                Button { goalScope = "family"; todayGoalId = "" } label: {
+                    Label("Family spotlight", systemImage: (todayGoalId.isEmpty && goalScope == "family") ? "checkmark" : "person.3")
+                }
+                Divider()
+                Menu {
+                    ForEach(goals) { g in
+                        Button { todayGoalId = g.id } label: {
+                            Label(g.title, systemImage: todayGoalId == g.id ? "checkmark" : "pin")
+                        }
+                    }
+                } label: {
+                    Label("Choose a goal…", systemImage: "pin")
                 }
             } label: {
                 HStack(spacing: 3) {
-                    Text(goalScope == "family" ? "Family" : "Mine").font(.system(size: 11, weight: .bold))
+                    Text(pinnedTitle ?? (goalScope == "family" ? "Family" : "Mine"))
+                        .font(.system(size: 11, weight: .bold)).lineLimit(1).frame(maxWidth: 120)
                     Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
                 }
                 .foregroundStyle(WF.ink3)
