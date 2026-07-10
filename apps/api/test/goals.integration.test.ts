@@ -480,3 +480,21 @@ describe('participant counting modes (shared goals)', () => {
     expect(row[0].participants.map((p: { name: string }) => p.name).sort()).toEqual(['Kevin', 'Kramer3'])
   })
 })
+
+describe('checklist goals reject numeric progress logs', () => {
+  it('a checklist goal is updated by ticking steps, not POST /log (400)', async () => {
+    const add = await call('POST', '/api/goals', kevin, {
+      title: 'Paint the house', goalType: 'checklist', trackingMode: 'shared_total',
+      participantIds: [kevinId], steps: [{ label: 'Kitchen' }, { label: 'Living room' }],
+    })
+    const id = JSON.parse(add.body).goal.id
+    // Logging "1" against a checklist makes no sense — it must go through the step toggle.
+    const res = await call('POST', `/api/goals/${id}/log`, kevin, { amount: 1, personId: kevinId })
+    expect(res.statusCode).toBe(400)
+    expect(JSON.parse(res.body).message).toMatch(/step/i)
+    // Ticking a step still works and drives progress.
+    const detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect((await call('PATCH', `/api/goals/${id}/steps/${detail.steps[0].id}`, kevin, { done: true })).statusCode).toBe(200)
+    expect(JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal.stepDone).toBe(1)
+  })
+})

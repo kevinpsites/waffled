@@ -53,6 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a state-park visit or camping trip with the whole family used to add one for *each* person
   selected; it now counts the event once and records who was there. (Set a goal to *Full credit
   to each* if you do want everyone credited the full amount.)
+- **Checklist goals can no longer be given a meaningless numeric "log".** A checklist is
+  completed by ticking its items, so recording "1" against it is rejected — checklists progress
+  only by checking things off.
 
 - **Per-step timers now carry into the recipe editor when parsing.** Building a recipe
   from a photo, a description, or pasted Markdown correctly detected each step's timer but

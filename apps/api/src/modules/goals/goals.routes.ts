@@ -18,6 +18,7 @@ import {
   logProgress,
   syncHealthProgress,
   goalExists,
+  goalTypeFor,
   goalParticipantIds,
   GOAL_TYPES,
   TRACKING_MODES,
@@ -165,8 +166,14 @@ export function registerGoalRoutes(api: Api): void {
       }
       loggedOn = body.loggedOn
     }
-    if (!(await goalExists(tenant.householdId, id))) {
+    const gType = await goalTypeFor(tenant.householdId, id)
+    if (gType == null) {
       return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    }
+    // A checklist has no numeric progress — it's driven by ticking steps. Reject a
+    // stray /log so a client can't record a meaningless "1" against it.
+    if (gType === 'checklist') {
+      return res.status(400).json({ error: 'BadRequest', message: 'checklist goals are updated by ticking steps, not logging progress' })
     }
     const personIds = Array.isArray(body.personIds) ? body.personIds.filter(Boolean) : body.personId ? [body.personId] : []
     // Carve-out: logging for nobody (a family/shared log) or only for yourself is

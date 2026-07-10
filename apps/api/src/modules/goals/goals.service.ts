@@ -465,6 +465,16 @@ export async function goalExists(householdId: string, id: string): Promise<boole
   return !!rowCount
 }
 
+// The goal's type, or null if it doesn't exist (wrong household / deleted). Lets the
+// /log route 404 an unknown goal and reject a numeric log against a checklist.
+export async function goalTypeFor(householdId: string, id: string): Promise<string | null> {
+  const { rows } = await query<{ goal_type: string }>(
+    `select goal_type from goals where household_id=$1 and id=$2 and deleted_at is null`,
+    [householdId, id]
+  )
+  return rows[0]?.goal_type ?? null
+}
+
 // The person_ids currently assigned to a goal (live participants only). Powers the
 // goal.manage carve-out: a goal whose sole participant is the caller is "their own".
 export async function goalParticipantIds(householdId: string, goalId: string): Promise<string[]> {
