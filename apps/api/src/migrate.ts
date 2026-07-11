@@ -28,6 +28,14 @@ export async function runMigrations(
     direction: 'up',
     migrationsTable: 'pgmigrations',
     count,
+    // Tolerate out-of-order application. Feature branches are developed in parallel,
+    // so a DB can legitimately have a later-sorted migration applied while an earlier
+    // one is still pending (e.g. two branches each add a migration, then one deploys
+    // first). Strict ordering wedges that DB with "Not run migration X is preceding
+    // already run migration Y"; with checkOrder off, the pending ones just run. The
+    // CI duplicate-number guard + the CLAUDE.md rule keep numbering collisions out in
+    // the first place — this is the safety net for a DB that already diverged.
+    checkOrder: false,
     log: () => {}, // quiet; the CLI is the verbose path
   })
 }

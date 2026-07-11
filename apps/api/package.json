@@ -12,6 +12,7 @@
     "token": "tsx scripts/mint-token.ts",
     "migrate": "node-pg-migrate up",
     "migrate:down": "node-pg-migrate down",
+    "check:migrations": "node scripts/check-migration-numbers.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
