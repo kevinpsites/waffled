@@ -68,9 +68,9 @@ final class GoalsModel {
         catch { self.error = true }
     }
 
-    func log(goalId: String, amount: Double, personIds: [String], note: String, loggedOn: String?) async {
+    func log(goalId: String, amount: Double, personIds: [String], note: String, loggedOn: String?, hours: Int? = nil, minutes: Int? = nil) async {
         do {
-            try await api.logGoalProgress(goalId: goalId, amount: amount, personIds: personIds, note: note, loggedOn: loggedOn)
+            try await api.logGoalProgress(goalId: goalId, amount: amount, personIds: personIds, note: note, loggedOn: loggedOn, hours: hours, minutes: minutes)
             await loadGoals()
         } catch { self.error = true }
     }
@@ -301,8 +301,8 @@ struct GoalsView: View {
         }
         .refreshable { await model.loadLists(); await model.syncHealth() }
         .sheet(item: $logging) { g in
-            GoalLogSheet(goal: g, onChanged: { Task { await model.loadGoals() } }) { amount, ids, note, loggedOn in
-                Task { await model.log(goalId: g.id, amount: amount, personIds: ids, note: note, loggedOn: loggedOn) }
+            GoalLogSheet(goal: g, onChanged: { Task { await model.loadGoals() } }) { amount, hours, minutes, ids, note, loggedOn in
+                Task { await model.log(goalId: g.id, amount: amount, personIds: ids, note: note, loggedOn: loggedOn, hours: hours, minutes: minutes) }
             }
         }
         .goalEditor(isPresented: $creating) {
@@ -585,14 +585,19 @@ struct GoalsView: View {
 struct GoalLogSheet: View {
     @Environment(\.dismiss) private var dismiss
     let goal: WaffledAPI.Goal
-    /// 4th arg is the backdate (YYYY-MM-DD), or nil for today.
-    let onSave: (Double, [String], String, String?) -> Void
+    /// (amount, hours, minutes, who, note, backdate). For a time goal, `hours`/`minutes`
+    /// carry the entry and the server converts; otherwise they're nil and `amount` is used.
+    /// Backdate is a YYYY-MM-DD string, or nil for today.
+    let onSave: (Double, Int?, Int?, [String], String, String?) -> Void
     /// Called after a checklist step is ticked (the parent reloads to reflect it).
     var onChanged: (() -> Void)? = nil
 
     private let api = WaffledAPI()
     @State private var amount: Double
     @State private var amountText: String
+    /// Time goals are logged as hours + minutes; the server folds them into decimal hours.
+    @State private var hours: Int
+    @State private var minutes: Int
     @State private var who: Set<String>
     @State private var note = ""
     /// A checklist goal's steps (fetched on appear; ticking is the "log" for checklists).
@@ -616,14 +621,21 @@ struct GoalLogSheet: View {
     /// still needs a who; count/total the same.
     private var whoMissing: Bool { !goal.participants.isEmpty && who.isEmpty }
     private var isHours: Bool { goal.unit.map { Self.hourUnits.contains($0.lowercased()) } ?? false }
-    /// The amount actually logged: habit = 1 (one completion), count = whole units, total = entered.
-    private var logAmount: Double { isHabit ? 1 : isCount ? max(1, amount.rounded()) : amount }
+    /// A total goal measured in hours — logged as hours + minutes.
+    private var isTime: Bool { !isHabit && !isCount && isHours }
+    /// The amount actually logged: habit = 1 (one completion), count = whole units,
+    /// time = hours + minutes folded to decimal hours, total = entered.
+    private var logAmount: Double { isHabit ? 1 : isCount ? max(1, amount.rounded()) : isTime ? (Double(hours) + Double(minutes) / 60) : amount }
+    /// "2h 10m" / "45m" / "1h" for time goals.
+    private var durationLabel: String {
+        hours > 0 && minutes > 0 ? "\(hours)h \(minutes)m" : hours > 0 ? "\(hours)h" : "\(minutes)m"
+    }
     private var unitSuffix: String { goal.unit.map { " \($0)" } ?? "" }
     // "Who" copy adapts to the goal's participant type (mirrors web LogModal).
     private var eachAdds: Bool { goal.trackingMode == "each_tracks" }
     private var isSplit: Bool { goal.trackingMode == "shared_total" && (goal.participantMode ?? "count_once") == "split" }
     private var whoLabel: String { eachAdds ? "Who took part?" : isSplit ? "Split between" : "Who was there?" }
-    private var confirmLabel: String { isHabit ? "Mark done for today" : "Log \(goalFmt(logAmount))\(unitSuffix)" }
+    private var confirmLabel: String { isHabit ? "Mark done for today" : isTime ? "Log \(durationLabel)" : "Log \(goalFmt(logAmount))\(unitSuffix)" }
     private var chips: [(label: String, value: Double)] {
         if isHours {
             return [("30m", 0.5), ("1 hr", 1), ("1.5 hr", 1.5), ("2 hr", 2)]
@@ -632,7 +644,7 @@ struct GoalLogSheet: View {
         return [1, 2, 3, 5].map { (label: "\(Int($0))\(u)", value: Double($0)) }
     }
 
-    init(goal: WaffledAPI.Goal, onChanged: (() -> Void)? = nil, onSave: @escaping (Double, [String], String, String?) -> Void) {
+    init(goal: WaffledAPI.Goal, onChanged: (() -> Void)? = nil, onSave: @escaping (Double, Int?, Int?, [String], String, String?) -> Void) {
         self.goal = goal
         self.onSave = onSave
         self.onChanged = onChanged
@@ -642,6 +654,9 @@ struct GoalLogSheet: View {
         let initial: Double = (goal.goalType == "habit" || goal.goalType == "count") ? 1 : (isHours ? 1 : 2)
         _amount = State(initialValue: initial)
         _amountText = State(initialValue: goalFmt(initial))
+        // A time goal (total measured in hours) starts at 1h 0m and is entered as hours + minutes.
+        _hours = State(initialValue: (goal.goalType != "habit" && goal.goalType != "count" && isHours) ? 1 : 0)
+        _minutes = State(initialValue: 0)
         _who = State(initialValue: goal.participants.count == 1 ? [goal.participants[0].personId] : [])
     }
 
@@ -724,7 +739,7 @@ struct GoalLogSheet: View {
                     ToolbarItem(placement: .confirmationAction) {
                         Button(confirmLabel) {
                             let backdate = Calendar.current.isDateInToday(loggedOn) ? nil : DateFmt.string(loggedOn, "yyyy-MM-dd", .current)
-                            onSave(logAmount, Array(who), note.trimmingCharacters(in: .whitespacesAndNewlines), backdate)
+                            onSave(logAmount, isTime ? hours : nil, isTime ? minutes : nil, Array(who), note.trimmingCharacters(in: .whitespacesAndNewlines), backdate)
                             dismiss()
                         }
                         .fontWeight(.semibold)
@@ -765,9 +780,21 @@ struct GoalLogSheet: View {
                     Spacer(minLength: 0)
                 }
             }
+        } else if isTime {
+            // Time goal: quick chips + separate hours/minutes entry (server converts to
+            // decimal hours), so "10 min" never has to become 0.1666… here.
+            VStack(alignment: .leading, spacing: 9) {
+                SectionLabel(text: "How long?")
+                timeChipRow
+                HStack(spacing: 8) {
+                    Text("or").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                    hmField($hours, unit: "hr")
+                    hmField($minutes, unit: "min", clampTo: 59)
+                }
+            }
         } else {
             VStack(alignment: .leading, spacing: 9) {
-                SectionLabel(text: isHours ? "How long?" : "How much?")
+                SectionLabel(text: "How much?")
                 chipRow
                 HStack(spacing: 8) {
                     Text("or").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
@@ -783,6 +810,48 @@ struct GoalLogSheet: View {
                 }
             }
         }
+    }
+
+    /// A compact whole-number field for hours or minutes. `clampTo` caps the value
+    /// (minutes at 59); the numeric keypad already blocks negatives.
+    private func hmField(_ value: Binding<Int>, unit: String, clampTo: Int? = nil) -> some View {
+        HStack(spacing: 6) {
+            TextField("0", value: value, format: .number)
+                .keyboardType(.numberPad)
+                .multilineTextAlignment(.center)
+                .font(.system(size: 16, weight: .semibold))
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+                .frame(width: 64)
+                .onChange(of: value.wrappedValue) { _, v in
+                    if v < 0 { value.wrappedValue = 0 } else if let cap = clampTo, v > cap { value.wrappedValue = cap }
+                }
+            Text(unit).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
+        }
+    }
+
+    /// Quick-duration chips (30m / 1 hr / …) that set the hours + minutes fields.
+    private var timeChipRow: some View {
+        HStack(spacing: 8) {
+            ForEach(chips, id: \.label) { c in
+                let on = abs((Double(hours) + Double(minutes) / 60) - c.value) < 1e-6
+                Button { setTimeChip(c.value) } label: {
+                    Text(c.label).font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(on ? .white : WF.ink2)
+                        .frame(maxWidth: .infinity).padding(.vertical, 11)
+                        .background(on ? WF.primary : WF.card)
+                        .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(on ? Color.clear : WF.hair, lineWidth: 1))
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func setTimeChip(_ v: Double) {
+        hours = Int(v)
+        minutes = Int((v - Double(Int(v))) * 60 + 0.5)
     }
 
     private func stepButton(_ icon: String, disabled: Bool, _ action: @escaping () -> Void) -> some View {
@@ -2324,9 +2393,9 @@ final class GoalDetailModel {
         catch { self.error = true }
     }
 
-    func log(amount: Double, personIds: [String], note: String, loggedOn: String?) async {
+    func log(amount: Double, personIds: [String], note: String, loggedOn: String?, hours: Int? = nil, minutes: Int? = nil) async {
         do {
-            try await api.logGoalProgress(goalId: goal.id, amount: amount, personIds: personIds, note: note, loggedOn: loggedOn)
+            try await api.logGoalProgress(goalId: goal.id, amount: amount, personIds: personIds, note: note, loggedOn: loggedOn, hours: hours, minutes: minutes)
             await load()
         } catch { self.error = true }
     }
@@ -2448,8 +2517,8 @@ struct GoalDetailView: View {
         .task { await model.load(); await model.syncHealth() }
         .refreshable { await model.load(); await model.syncHealth() }
         .sheet(isPresented: $logging) {
-            GoalLogSheet(goal: logGoal, onChanged: { Task { await model.load() } }) { amount, ids, note, loggedOn in
-                Task { await model.log(amount: amount, personIds: ids, note: note, loggedOn: loggedOn) }
+            GoalLogSheet(goal: logGoal, onChanged: { Task { await model.load() } }) { amount, hours, minutes, ids, note, loggedOn in
+                Task { await model.log(amount: amount, personIds: ids, note: note, loggedOn: loggedOn, hours: hours, minutes: minutes) }
             }
         }
         .goalEditor(isPresented: $editing) {

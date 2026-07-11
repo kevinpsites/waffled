@@ -105,9 +105,9 @@ struct KioskDashboard: View {
         }
         .sheet(item: $detailEvent) { ev in EventDetailView(event: ev) }
         .sheet(item: $logGoal) { g in
-            GoalLogSheet(goal: g) { amount, ids, note, loggedOn in
+            GoalLogSheet(goal: g) { amount, hours, minutes, ids, note, loggedOn in
                 Task {
-                    try? await WaffledAPI().logGoalProgress(goalId: g.id, amount: amount, personIds: ids, note: note, loggedOn: loggedOn)
+                    try? await WaffledAPI().logGoalProgress(goalId: g.id, amount: amount, personIds: ids, note: note, loggedOn: loggedOn, hours: hours, minutes: minutes)
                     await model.loadGoals()
                     sync.touchGoals()
                 }

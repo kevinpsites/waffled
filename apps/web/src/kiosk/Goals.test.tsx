@@ -116,7 +116,8 @@ describe('Goals home (goal-lists model)', () => {
     const modal = document.querySelector('.modal-card') as HTMLElement
     fireEvent.click(within(modal).getByRole('button', { name: /^Log \d/ }))
     await waitFor(() => expect(logged).toHaveLength(1))
-    expect(logged[0]).toMatchObject({ amount: 1 })
+    // A time goal (hours) logs hours + minutes; the server folds them to decimal hours.
+    expect(logged[0]).toMatchObject({ hours: 1, minutes: 0 })
   })
 
   it('pins a "More" goal from its card (quick PATCH, no edit form)', async () => {

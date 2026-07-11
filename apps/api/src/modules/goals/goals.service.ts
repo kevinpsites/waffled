@@ -508,6 +508,28 @@ export async function goalTypeFor(householdId: string, id: string): Promise<stri
   return rows[0]?.goal_type ?? null
 }
 
+// Type + unit in one hit — the /log route needs both to decide whether an
+// hours+minutes entry is allowed (a `total` goal measured in hours).
+export async function goalMetaFor(
+  householdId: string,
+  id: string
+): Promise<{ goalType: string; unit: string | null } | null> {
+  const { rows } = await query<{ goal_type: string; unit: string | null }>(
+    `select goal_type, unit from goals where household_id=$1 and id=$2 and deleted_at is null`,
+    [householdId, id]
+  )
+  const r = rows[0]
+  return r ? { goalType: r.goal_type, unit: r.unit } : null
+}
+
+// A goal is "time-measured" purely by its free-text unit — the same recognised
+// hour words the web/iOS log sheets use for their time-flavoured chips. Keep this
+// set in sync with HOURS in apps/web LogModal.tsx and hourUnits in iOS GoalsView.swift.
+const TIME_UNITS = new Set(['hour', 'hours', 'hr', 'hrs'])
+export function isTimeUnit(unit: string | null | undefined): boolean {
+  return unit != null && TIME_UNITS.has(unit.trim().toLowerCase())
+}
+
 // True only if every id is a live person in this household — so a /log can't attribute
 // progress to a stranger (or someone in another household).
 export async function personsInHousehold(householdId: string, ids: string[]): Promise<boolean> {

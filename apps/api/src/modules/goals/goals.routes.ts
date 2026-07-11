@@ -21,6 +21,8 @@ import {
   syncHealthProgress,
   goalExists,
   goalTypeFor,
+  goalMetaFor,
+  isTimeUnit,
   goalParticipantIds,
   GOAL_TYPES,
   TRACKING_MODES,
@@ -205,11 +207,7 @@ export function registerGoalRoutes(api: Api): void {
   api.post('/api/goals/:id/log', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
-    const body = (req.body ?? {}) as { amount?: unknown; personId?: string; personIds?: string[]; note?: string; loggedOn?: unknown }
-    const amount = Number(body.amount)
-    if (!Number.isFinite(amount) || amount === 0) {
-      return res.status(400).json({ error: 'BadRequest', message: 'amount must be a non-zero number' })
-    }
+    const body = (req.body ?? {}) as { amount?: unknown; hours?: unknown; minutes?: unknown; personId?: string; personIds?: string[]; note?: string; loggedOn?: unknown }
     // Optional backdate to catch up a missed day (e.g. keep a streak alive).
     let loggedOn: string | null = null
     if (body.loggedOn != null && body.loggedOn !== '') {
@@ -218,18 +216,45 @@ export function registerGoalRoutes(api: Api): void {
       }
       loggedOn = body.loggedOn
     }
-    const gType = await goalTypeFor(tenant.householdId, id)
-    if (gType == null) {
+    const meta = await goalMetaFor(tenant.householdId, id)
+    if (meta == null) {
       return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
     }
     // A checklist has no numeric progress — it's driven by ticking steps. Reject a
     // stray /log so a client can't record a meaningless "1" against it.
-    if (gType === 'checklist') {
+    if (meta.goalType === 'checklist') {
       return res.status(400).json({ error: 'BadRequest', message: 'checklist goals are updated by ticking steps, not logging progress' })
     }
-    // A count goal tallies whole things (parks, books) — no fractional amounts.
-    if (gType === 'count' && !Number.isInteger(amount)) {
-      return res.status(400).json({ error: 'BadRequest', message: 'a count goal is logged in whole numbers' })
+    // Time goals may be logged as hours + minutes; the server folds them into the
+    // decimal-hours `amount` so the client never has to (10m -> 0.1666…). Both fields
+    // are optional and either may stand alone (0h 45m, or 2h with no minutes).
+    let amount: number
+    const usesHm = body.hours != null || body.minutes != null
+    if (usesHm) {
+      if (body.amount != null) {
+        return res.status(400).json({ error: 'BadRequest', message: 'send either amount or hours/minutes, not both' })
+      }
+      if (meta.goalType !== 'total' || !isTimeUnit(meta.unit)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'hours and minutes only apply to a time goal (measured in hours)' })
+      }
+      const hours = body.hours == null ? 0 : Number(body.hours)
+      const minutes = body.minutes == null ? 0 : Number(body.minutes)
+      if (!Number.isFinite(hours) || hours < 0 || !Number.isFinite(minutes) || minutes < 0) {
+        return res.status(400).json({ error: 'BadRequest', message: 'hours and minutes must be non-negative numbers' })
+      }
+      amount = hours + minutes / 60
+      if (amount === 0) {
+        return res.status(400).json({ error: 'BadRequest', message: 'log some time — hours and minutes cannot both be zero' })
+      }
+    } else {
+      amount = Number(body.amount)
+      if (!Number.isFinite(amount) || amount === 0) {
+        return res.status(400).json({ error: 'BadRequest', message: 'amount must be a non-zero number' })
+      }
+      // A count goal tallies whole things (parks, books) — no fractional amounts.
+      if (meta.goalType === 'count' && !Number.isInteger(amount)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'a count goal is logged in whole numbers' })
+      }
     }
     const personIds = Array.isArray(body.personIds) ? body.personIds.filter(Boolean) : body.personId ? [body.personId] : []
     // Every credited person must be a real member of this household — no crediting a stranger.

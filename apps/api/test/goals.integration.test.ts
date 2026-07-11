@@ -245,6 +245,42 @@ describe('goal lists + detail', () => {
     expect((await call('GET', '/api/goals/00000000-0000-0000-0000-000000000000', kevin)).statusCode).toBe(404)
   })
 
+  it('logs a time goal in hours and minutes, converting to decimal hours server-side', async () => {
+    const add = await call('POST', '/api/goals', kevin, {
+      title: '750 Hours Outside', goalType: 'total', unit: 'hours', targetValue: 750,
+      trackingMode: 'shared_total', participantIds: [kevinId],
+    })
+    const id = JSON.parse(add.body).goal.id
+    // 2h 10m -> 2 + 10/60; the client no longer has to compute the decimal.
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { hours: 2, minutes: 10, personId: kevinId })).statusCode).toBe(201)
+    // 45m alone -> 0.75; hours may be omitted.
+    expect((await call('POST', `/api/goals/${id}/log`, kevin, { minutes: 45, personId: kevinId })).statusCode).toBe(201)
+
+    const detail = JSON.parse((await call('GET', `/api/goals/${id}`, kevin)).body).goal
+    expect(detail.totalProgress).toBeCloseTo(2 + 10 / 60 + 0.75, 5)
+    expect(detail.recent[0]).toMatchObject({ amount: 0.75 })
+  })
+
+  it('rejects hours/minutes when they do not apply, and validates the fields', async () => {
+    const timeId = JSON.parse((await call('POST', '/api/goals', kevin, {
+      title: 'Hours', goalType: 'total', unit: 'hours', targetValue: 100, trackingMode: 'shared_total', participantIds: [kevinId],
+    })).body).goal.id
+    const countId = JSON.parse((await call('POST', '/api/goals', kevin, {
+      title: 'Books', goalType: 'count', unit: 'books', targetValue: 20, trackingMode: 'shared_total', participantIds: [kevinId],
+    })).body).goal.id
+
+    // hours/minutes only make sense for a time goal — a "books" count goal rejects them.
+    expect((await call('POST', `/api/goals/${countId}/log`, kevin, { hours: 1, minutes: 0 })).statusCode).toBe(400)
+    // Ambiguous: don't accept a decimal amount and hours/minutes together.
+    expect((await call('POST', `/api/goals/${timeId}/log`, kevin, { amount: 1, hours: 1 })).statusCode).toBe(400)
+    // Zero total time is not a log.
+    expect((await call('POST', `/api/goals/${timeId}/log`, kevin, { hours: 0, minutes: 0 })).statusCode).toBe(400)
+    // Negative components are invalid.
+    expect((await call('POST', `/api/goals/${timeId}/log`, kevin, { minutes: -5 })).statusCode).toBe(400)
+    // A nonexistent goal still 404s before any hours/minutes math.
+    expect((await call('POST', '/api/goals/00000000-0000-0000-0000-000000000000/log', kevin, { hours: 1 })).statusCode).toBe(404)
+  })
+
   it('validates goal-list create input (400)', async () => {
     expect((await call('POST', '/api/goal-lists', kevin, {})).statusCode).toBe(400)
   })
