@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## [0.7.0] - 2026-07-10
+
+### Added
 - **Goals now have three deliberate tiers instead of one overloaded "Featured" flag.** The old
   flag was doing two jobs at once — a tag any number of goals could carry, *and* the single big
   hero slot — so extras silently did nothing. Now each goal list has a **Spotlight** (the one big
@@ -802,7 +810,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/kevinpsites/waffled/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/kevinpsites/waffled/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/kevinpsites/waffled/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/kevinpsites/waffled/compare/v0.4.0...v0.5.0
