@@ -47,6 +47,11 @@ import {
   type IngestPhotoInput,
 } from './recipe-ingest.service'
 import { getAiConfig, availability, visionAvailable } from '../../platform/llm'
+import {
+  assertPersonInHousehold,
+  assertPersonsInHousehold,
+  assertRecipeInHousehold,
+} from '../../platform/household-refs'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -309,6 +314,7 @@ export function registerMealRoutes(api: Api): void {
         return res.status(400).json({ error: 'BadRequest', message: 'recipeId must be a uuid' })
       }
       recipeId = body.recipeId
+      await assertRecipeInHousehold(tenant.householdId, recipeId)
     }
     let cookPersonId: string | null = null
     if (body.cookPersonId != null && body.cookPersonId !== '') {
@@ -316,6 +322,7 @@ export function registerMealRoutes(api: Api): void {
         return res.status(400).json({ error: 'BadRequest', message: 'cookPersonId must be a uuid' })
       }
       cookPersonId = body.cookPersonId
+      await assertPersonInHousehold(tenant.householdId, cookPersonId)
     }
     const plan = await getOrCreateActivePlan(tenant)
     const entry = await upsertEntry(plan.id, tenant, {
@@ -369,6 +376,12 @@ export function registerMealRoutes(api: Api): void {
     if (typeof b.pushToGoogle === 'boolean') patch.pushToGoogle = b.pushToGoogle
     if (b.calendarPersonId === null || (typeof b.calendarPersonId === 'string' && UUID_RE.test(b.calendarPersonId))) patch.calendarPersonId = b.calendarPersonId
     if (b.participantIds === null || (Array.isArray(b.participantIds) && b.participantIds.every((p) => typeof p === 'string' && UUID_RE.test(p)))) patch.participantIds = b.participantIds
+    if (typeof patch.calendarPersonId === 'string') {
+      await assertPersonInHousehold(tenant.householdId, patch.calendarPersonId)
+    }
+    if (Array.isArray(patch.participantIds)) {
+      await assertPersonsInHousehold(tenant.householdId, patch.participantIds as string[])
+    }
     if (b.times && typeof b.times === 'object') {
       const t: Record<string, string> = {}
       for (const [k, v] of Object.entries(b.times as Record<string, unknown>)) {

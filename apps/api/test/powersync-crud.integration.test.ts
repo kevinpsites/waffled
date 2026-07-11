@@ -17,6 +17,11 @@ let stub: Server
 let app: any
 let closePool: () => Promise<void>
 let kevinId = ''
+let foreignPersonId = ''
+let localGoalId = ''
+let foreignGoalId = ''
+let foreignGoalStepId = ''
+let foreignCalendarId = ''
 let writeCalls: Array<{ method: string; calendar: string; eventId?: string }> = []
 
 function mint(sub: string): string {
@@ -112,6 +117,41 @@ beforeAll(async () => {
     `insert into identities (household_id, person_id, provider, auth0_user_id, email_verified) values ($1,$2,'password','dev|kevin',true)`,
     [sb.household.id, kevinId]
   )
+  localGoalId = (await query<{ id: string }>(
+    `insert into goals (household_id, title, goal_type, tracking_mode)
+     values ($1,'Local goal','checklist','shared_total') returning id`,
+    [sb.household.id]
+  )).rows[0].id
+  const h = await query<{ id: string }>(
+    `insert into households (name, timezone) values ('Other PowerSync','UTC') returning id`
+  )
+  const foreignHouseholdId = h.rows[0].id
+  const p = await query<{ id: string }>(
+    `insert into persons (household_id, name, member_type) values ($1,'Outsider','adult') returning id`,
+    [foreignHouseholdId]
+  )
+  foreignPersonId = p.rows[0].id
+  const g = await query<{ id: string }>(
+    `insert into goals (household_id, title, goal_type, tracking_mode)
+     values ($1,'Foreign goal','checklist','shared_total') returning id`,
+    [foreignHouseholdId]
+  )
+  foreignGoalId = g.rows[0].id
+  const s = await query<{ id: string }>(
+    `insert into goal_steps (household_id, goal_id, label) values ($1,$2,'Foreign step') returning id`,
+    [foreignHouseholdId, foreignGoalId]
+  )
+  foreignGoalStepId = s.rows[0].id
+  const a = await query<{ id: string }>(
+    `insert into calendar_accounts (household_id, person_id, google_sub, refresh_token_encrypted)
+     values ($1,$2,'foreign-powersync','encrypted') returning id`,
+    [foreignHouseholdId, foreignPersonId]
+  )
+  foreignCalendarId = (await query<{ id: string }>(
+    `insert into calendars (household_id, account_id, person_id, google_calendar_id)
+     values ($1,$2,$3,'foreign-primary') returning id`,
+    [foreignHouseholdId, a.rows[0].id, foreignPersonId]
+  )).rows[0].id
   const state = stateFrom(JSON.parse((await call('POST', '/api/calendar/google/connect', kevin, {})).body).url)
   await call('GET', `/auth/google/calendar/callback?code=c1&state=${state}`)
 }, 60_000)
@@ -157,6 +197,37 @@ describe('powersync crud upload', () => {
     })
     expect((await eventsInJuly()).find((e) => e.id === eventId)?.title).toBe('Soccer (moved)')
     expect(writeCalls.slice(n).some((w) => w.method === 'PATCH' && w.calendar === 'primary')).toBe(true)
+  })
+
+  it('rejects foreign references and applies no part of an invalid batch', async () => {
+    for (const data of [
+      { person_id: foreignPersonId },
+      { goal_id: foreignGoalId },
+      { goal_id: localGoalId, goal_step_id: foreignGoalStepId },
+      { calendar_id: foreignCalendarId },
+    ]) {
+      const res = await call('POST', '/api/powersync/crud', kevin, {
+        ops: [{ op: 'PUT', table: 'events', id: randomUUID(), data: {
+          title: 'Unsafe', starts_at: '2026-07-11T15:00:00Z', ...data,
+        } }],
+      })
+      expect(res.statusCode).toBe(404)
+    }
+
+    expect((await call('POST', '/api/powersync/crud', kevin, {
+      ops: [{ op: 'PUT', table: 'event_participants', id: randomUUID(), data: {
+        event_id: eventId, person_id: foreignPersonId,
+      } }],
+    })).statusCode).toBe(404)
+
+    const before = (await eventsInJuly()).find((e) => e.id === eventId)?.title
+    expect((await call('POST', '/api/powersync/crud', kevin, {
+      ops: [
+        { op: 'PATCH', table: 'events', id: eventId, data: { title: 'Must not stick' } },
+        { op: 'PATCH', table: 'events', id: eventId, data: { person_id: foreignPersonId } },
+      ],
+    })).statusCode).toBe(404)
+    expect((await eventsInJuly()).find((e) => e.id === eventId)?.title).toBe(before)
   })
 
   it('applies an events DELETE and pushes the deletion', async () => {
