@@ -41,11 +41,20 @@ Waffled runs as a small Docker Compose stack (Postgres · PowerSync · api · Ca
 is **built in** — no Auth0 or external identity provider required. You can optionally
 attach your own SSO later (see below).
 
+Before starting, install **Docker Desktop** (or Docker Engine with Compose v2), open it,
+and wait until Docker reports that it is running. Use Terminal on macOS/Linux or Git Bash/WSL
+on Windows; the `waffled` helper is a Bash script.
+
 ```bash
-git clone <this-repo> waffled && cd waffled
+git clone https://github.com/kevinpsites/waffled.git
+cd waffled
 ./waffled setup  # optional: pick how devices reach the server (skip for localhost-only)
 ./waffled up     # creates .env (generated secrets), pulls prebuilt images, migrates, starts
 ```
+
+You do **not** need to create an `.env` file or obtain API keys for the core app. A successful
+start ends with all five services healthy and prints the exact browser address to open. If it
+does not, run `./waffled doctor` for a plain-language diagnosis.
 
 That single command is the whole install — no host toolchain, no separate migrate
 step. On first run `./waffled up`:

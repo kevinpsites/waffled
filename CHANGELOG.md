@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Make the self-hosting quick start copy-pasteable for first-time Docker users, including the
+  required terminal, no-credentials guidance, success checks, and safe troubleshooting steps.
+
 ### Fixed
 
 ## [0.7.0] - 2026-07-10
