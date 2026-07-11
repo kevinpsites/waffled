@@ -67,7 +67,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Customizing the Today layout is far easier to use.** In Customize mode every card now
   collapses to a compact labeled chip instead of rendering its full contents — so a long list
-  (a 60-item grocery card) no longer dominates the board and buries the cards below it.
+  (a 60-item grocery card) no longer dominates the board and buries the cards below it. Each
+  chip now has an **× to hide that card from Today**, and hidden cards collect in a tray beneath
+  the board where a tap adds any of them back. Your hidden cards and arrangement save **per
+  person** ("Save for me"), and — unlike before — a card you hide *stays* hidden, even the
+  module cards (Chores, Meals, Grocery, Pantry, Goals, Family Night) that used to reappear on
+  their own.
 - **Goals now list alphabetically** (A–Z by title), instead of by creation date — one clean,
   predictable list that's easy to scan. Featuring a goal shows it big on the home screen; it no
   longer floats to the top of the goals list (which made the order look random).
