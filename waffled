@@ -124,9 +124,19 @@ services_ready() {
 # checks pass. Wait briefly so first-run users see the settled state, not a false alarm.
 wait_for_services() {
   local remaining="${WAFFLED_HEALTH_ATTEMPTS:-30}"
+  local requested=("$@") targets=() service arg
+  for service in "${SERVICES[@]}"; do
+    for arg in "${requested[@]}"; do
+      if [ "$arg" = "$service" ]; then
+        targets+=("$service")
+        break
+      fi
+    done
+  done
+  [ "${#targets[@]}" -gt 0 ] || targets=("${SERVICES[@]}")
   printf '%s' "${c_dim}Waiting for services to become healthy"
   while [ "$remaining" -gt 0 ]; do
-    if services_ready "$@"; then
+    if services_ready "${targets[@]}"; then
       echo "${c_grn} ready.${c_reset}"
       return 0
     fi

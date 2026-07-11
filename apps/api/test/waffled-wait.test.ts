@@ -11,15 +11,30 @@ describe('waffled startup health wait', () => {
       source "$1" help >/dev/null
       attempts=0
       services_ready() {
+        observed="$*"
         attempts=$((attempts + 1))
         [ "$attempts" -ge 3 ]
       }
       sleep() { :; }
-      wait_for_services api >/dev/null
-      printf '%s' "$attempts"
+      wait_for_services --pull always api --no-deps >/dev/null
+      printf '%s|%s' "$attempts" "$observed"
     `, '_', cli], { encoding: 'utf8' })
 
-    expect(attempts).toBe('3')
+    expect(attempts).toBe('3|api')
+  })
+
+  it('waits for the full stack when only Compose flags are provided', () => {
+    const targets = execFileSync('bash', ['-c', `
+      source "$1" help >/dev/null
+      services_ready() {
+        observed="$*"
+        return 0
+      }
+      wait_for_services --pull always >/dev/null
+      printf '%s' "$observed"
+    `, '_', cli], { encoding: 'utf8' })
+
+    expect(targets).toBe('postgres api powersync caddy backup')
   })
 
   it('returns after a bounded wait when health checks never settle', () => {
