@@ -4,6 +4,21 @@ High-signal notes for anyone (human or AI) working in this repo. This file is
 auto-loaded by Claude Code in every session. Add a bullet when a mistake bites
 more than once; keep it terse.
 
+## How we start any new work — isolate first (repo-wide)
+
+**Every new piece of work starts in its own git worktree on a fresh branch off `main` —
+never edit `main` directly.** Before writing any code: create a worktree that branches
+from an up-to-date `main` (e.g. via the EnterWorktree tool, or
+`git worktree add .claude/worktrees/<slug> -b <slug> origin/main`), and do all edits,
+builds, and commits there. This keeps `main` and other parallel work clean.
+
+**Work is not done until it is TDD'd and green.** Follow the TDD flow below (failing test
+first), and before opening a PR **all tests and typechecking must pass** — run the full
+test suite (`npm test`) *and* typecheck/build for every app you touched (web: `npm run
+build` / `tsc`; api: `npm test` + `tsc`; iOS: `xcodegen generate` then a clean
+`xcodebuild`). A red test or a type error means the work isn't finished — do not open the
+PR.
+
 ## How we develop — TDD is not optional (repo-wide)
 
 **Test-driven development is the way we build here, not a QA step at the end.** For every

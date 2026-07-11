@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Icon } from '../icons'
 import { EventModal } from './EventModal'
 import { eventPeople } from './cal-utils'
+import { isPastEvent } from './AgendaView'
 import { useEventsToday, usePersons, type AgendaEvent } from '../../lib/api'
 
 function formatTime(e: AgendaEvent): string {
@@ -10,10 +11,11 @@ function formatTime(e: AgendaEvent): string {
   return `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-function AgendaRow({ event, onClick }: { event: AgendaEvent; onClick: () => void }) {
+function AgendaRow({ event, past = false, onClick }: { event: AgendaEvent; past?: boolean; onClick: () => void }) {
   const color = event.personColor ?? '#A6A29B'
   return (
     <div
+      className={`agenda-row${past ? ' past' : ''}`}
       onClick={onClick}
       style={{
         display: 'flex',
@@ -39,10 +41,10 @@ function AgendaRow({ event, onClick }: { event: AgendaEvent; onClick: () => void
 
 // When the day is light (≤3 events), show roomier square-ish cards instead of
 // tight rows so the calendar doesn't look sparse.
-function AgendaBigCard({ event, onClick }: { event: AgendaEvent; onClick: () => void }) {
+function AgendaBigCard({ event, past = false, onClick }: { event: AgendaEvent; past?: boolean; onClick: () => void }) {
   const color = event.personColor ?? '#A6A29B'
   return (
-    <div className="agenda-bigcard" onClick={onClick} role="button" tabIndex={0} style={{ borderTop: `3px solid ${color}` }}>
+    <div className={`agenda-bigcard${past ? ' past' : ''}`} onClick={onClick} role="button" tabIndex={0} style={{ borderTop: `3px solid ${color}` }}>
       <div className="ab-time" style={{ color }}>{formatTime(event)}</div>
       <div className="ab-title">{event.title}</div>
       {event.location && <div className="tiny muted ab-loc">📍 {event.location}</div>}
@@ -89,6 +91,8 @@ export function AgendaCard() {
     ? events.filter((e) => e.personId === filterId || eventPeople(e).some((p) => p.id === filterId))
     : events
   const activePerson = persons.find((p) => p.id === filterId)
+  // Fade events that have already ended — mirrors the calendar's agenda list.
+  const now = new Date()
 
   return (
     <div className="card" style={{ padding: '22px 22px 8px', display: 'flex', flexDirection: 'column' }}>
@@ -135,11 +139,11 @@ export function AgendaCard() {
       {!loading && !error && shown.length > 0 && shown.length <= 3 ? (
         <div className="agenda-biggrid">
           {shown.map((e) => (
-            <AgendaBigCard key={e.id} event={e} onClick={() => setSelected(e)} />
+            <AgendaBigCard key={e.id} event={e} past={isPastEvent(e, now)} onClick={() => setSelected(e)} />
           ))}
         </div>
       ) : (
-        shown.map((e) => <AgendaRow key={e.id} event={e} onClick={() => setSelected(e)} />)
+        shown.map((e) => <AgendaRow key={e.id} event={e} past={isPastEvent(e, now)} onClick={() => setSelected(e)} />)
       )}
       {selected && <EventModal event={selected} onClose={() => setSelected(null)} onSaved={refetch} />}
     </div>

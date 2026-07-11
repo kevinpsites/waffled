@@ -909,6 +909,12 @@ button.tick {
 .agenda-bigcard .ab-title { font-size: 17px; font-weight: 700; margin-top: 3px; line-height: 1.2; }
 .agenda-bigcard .ab-loc { margin-top: 3px; }
 .agenda-bigcard .ab-foot { margin-top: auto; padding-top: 10px; }
+/* Today's already-ended events: subtly faded so it reads as "should be done"
+   (mirrors the calendar's .ag-row.past in calendar.css). */
+.agenda-bigcard.past { opacity: .5; }
+.agenda-bigcard.past:hover { opacity: .75; }
+.agenda-row.past { opacity: .5; }
+.agenda-row.past:hover { opacity: .75; }
 
 /* Countdowns card */
 .cd-row { display: flex; align-items: center; gap: 12px; padding: 11px 4px; border-bottom: 1px solid var(--hair-2); }
