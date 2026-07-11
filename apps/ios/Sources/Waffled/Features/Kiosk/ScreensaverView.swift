@@ -54,7 +54,10 @@ struct ScreensaverView: View {
         .contentShape(Rectangle())
         .onTapGesture { onWake() }
         .onReceive(tick) { t in
-            now = t
+            // The clock reads "h:mm", so re-render only on a minute rollover — not every
+            // second. (`elapsed` isn't read by `body`, so bumping it doesn't re-render;
+            // minute boundaries align across all real time zones, so compare epoch minutes.)
+            if Int(t.timeIntervalSince1970 / 60) != Int(now.timeIntervalSince1970 / 60) { now = t }
             elapsed += 1
             if elapsed >= Int(perPhoto) { elapsed = 0; advance() }
         }
@@ -135,13 +138,14 @@ struct ScreensaverView: View {
 
     // MARK: formatting
 
+    // Static so a re-render doesn't allocate a DateFormatter (the repo's hot-path rule).
+    // Device-locale, tz-baked, cached (never mutated) — so the clock/date render in the
+    // viewer's language and there's no shared mutate-then-read on the formatter.
     private var timeString: String {
-        let f = DateFormatter(); f.timeZone = timezone; f.dateFormat = "h:mm"
-        return f.string(from: now)
+        DateFmt.localizedString(now, "h:mm", timezone)
     }
     private var dateLine: String {
-        let f = DateFormatter(); f.timeZone = timezone; f.dateFormat = "EEEE, MMMM d"
-        let date = f.string(from: now)
+        let date = DateFmt.localizedString(now, "EEEE, MMMM d", timezone)
         if let w = weather, w.configured, let t = w.tempF {
             let parts = ["\(w.emoji ?? "")\(w.emoji == nil ? "" : " ")\(Int(t.rounded()))°", w.label].compactMap { $0 }.filter { !$0.isEmpty }
             return "\(date) · \(parts.joined(separator: " · "))"
@@ -158,8 +162,7 @@ struct ScreensaverView: View {
         guard let ev = nextEvent else { return nil }
         if ev.allDay { return "Next: \(ev.title)" }
         guard let when = ev.startsAt else { return "Next: \(ev.title)" }
-        let f = DateFormatter(); f.timeZone = timezone; f.dateFormat = "h:mm"
-        return "Next: \(ev.title) · \(f.string(from: when))"
+        return "Next: \(ev.title) · \(DateFmt.localizedString(when, "h:mm", timezone))"
     }
 }
 

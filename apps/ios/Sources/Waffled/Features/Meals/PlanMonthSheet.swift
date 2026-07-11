@@ -333,7 +333,7 @@ struct PlanMonthSheet: View {
     }
 
     private func weekKey(_ ymd: String) -> String {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = sync.householdTz
+        let cal = Cal.gregorian(sync.householdTz)
         guard let d = DateFmt.date(ymd, "yyyy-MM-dd", sync.householdTz) else { return ymd }
         let weekdayIdx = cal.component(.weekday, from: d) - 1   // Sunday → 0
         let sunday = cal.date(byAdding: .day, value: -weekdayIdx, to: d) ?? d

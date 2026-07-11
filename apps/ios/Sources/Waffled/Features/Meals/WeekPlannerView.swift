@@ -424,10 +424,10 @@ struct WeekPlannerView: View {
     // MARK: date helpers
 
     private var cal: Calendar {
-        var c = Calendar(identifier: .gregorian); c.timeZone = sync.householdTz; return c
+        Cal.gregorian(sync.householdTz)
     }
     private var weekStart: Date {
-        let base = cal.dateInterval(of: .weekOfYear, for: Date())?.start ?? cal.startOfDay(for: Date())
+        let base = Cal.weekStart(Date(), sync.householdTz)   // honors live first-day-of-week
         return cal.date(byAdding: .weekOfYear, value: weekOffset, to: base) ?? base
     }
     private var days: [Date] { (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: weekStart) } }

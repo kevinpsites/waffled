@@ -487,7 +487,7 @@ struct PlanWeekSheet: View {
     // MARK: date helpers
 
     private var cal: Calendar {
-        var c = Calendar(identifier: .gregorian); c.timeZone = sync.householdTz; return c
+        Cal.gregorian(sync.householdTz)
     }
     private func ymd(_ d: Date) -> String { DateFmt.string(d, "yyyy-MM-dd", sync.householdTz) }
     /// Narrow weekday: S M T W T F S

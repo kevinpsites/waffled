@@ -723,7 +723,7 @@ struct GoalLogSheet: View {
                 if !isChecklist {
                     ToolbarItem(placement: .confirmationAction) {
                         Button(confirmLabel) {
-                            let backdate = Calendar.current.isDateInToday(loggedOn) ? nil : DateFmt.string(loggedOn, "yyyy-MM-dd", .current)
+                            let backdate = Cal.current.isDateInToday(loggedOn) ? nil : DateFmt.string(loggedOn, "yyyy-MM-dd", .current)
                             onSave(logAmount, Array(who), note.trimmingCharacters(in: .whitespacesAndNewlines), backdate)
                             dismiss()
                         }
@@ -889,7 +889,7 @@ struct GoalLogSheet: View {
     /// Quick Today/Yesterday chips plus a compact picker for any earlier day — so a
     /// missed log can be backdated without breaking the streak. Future days disabled.
     private var whenRow: some View {
-        let cal = Calendar.current
+        let cal = Cal.current
         let today = Date()
         let yesterday = cal.date(byAdding: .day, value: -1, to: today) ?? today
         return HStack(spacing: 8) {
@@ -902,7 +902,7 @@ struct GoalLogSheet: View {
     }
 
     private func dayChip(_ label: String, date: Date) -> some View {
-        let on = Calendar.current.isDate(loggedOn, inSameDayAs: date)
+        let on = Cal.current.isDate(loggedOn, inSameDayAs: date)
         return Button { loggedOn = date } label: {
             Text(label).font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(on ? .white : WF.ink2)
@@ -2376,6 +2376,12 @@ struct GoalDetailView: View {
     private static let heroGreen = LinearGradient(colors: [Color(hex: 0x2BA86B), Color(hex: 0x1C8A56)],
                                                   startPoint: .topLeading, endPoint: .bottomTrailing)
 
+    // ISO8601DateFormatter is expensive to allocate per call; hoist both parse configs.
+    private static let isoFracDF: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f
+    }()
+    private static let isoDF = ISO8601DateFormatter()
+
     init(goal: WaffledAPI.Goal, path: Binding<[HubRoute]>) {
         self.goal = goal
         _path = path
@@ -2742,9 +2748,7 @@ struct GoalDetailView: View {
     private func monthDay(_ iso: String) -> String { fmtDate(iso, "MMM d") }
     private func weekday(_ iso: String) -> String { fmtDate(iso, "EEE") }
     private func fmtDate(_ iso: String, _ fmt: String) -> String {
-        let inF = ISO8601DateFormatter()
-        inF.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let date = inF.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
+        let date = Self.isoFracDF.date(from: iso) ?? Self.isoDF.date(from: iso)
         guard let date else {
             // Fall back to a plain yyyy-MM-dd date string.
             guard let parsed = DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", DateFmt.utc) else { return "" }

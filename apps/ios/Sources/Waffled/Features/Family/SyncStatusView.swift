@@ -9,6 +9,9 @@ import SwiftUI
 /// "Add offline test event" queues a write (pending → 1) → restart the backend →
 /// pending drains to 0 and the event count ticks up. Read + write + reconnect.
 struct SyncStatusView: View {
+    // RelativeDateTimeFormatter is expensive; reuse one for the body-read "Last synced" label.
+    private static let relative = RelativeDateTimeFormatter()
+
     @Environment(SyncManager.self) private var sync
     @Environment(\.dismiss) private var dismiss
     @State private var token = AppConfig.devToken
@@ -150,7 +153,6 @@ struct SyncStatusView: View {
 
     private var lastSyncedText: String {
         guard let at = sync.lastSyncedAt else { return "Not yet synced" }
-        let f = RelativeDateTimeFormatter()
-        return "Last synced \(f.localizedString(for: at, relativeTo: Date()))"
+        return "Last synced \(Self.relative.localizedString(for: at, relativeTo: Date()))"
     }
 }

@@ -383,3 +383,43 @@ private final class Counter { var n = 0 }
         }
     }
 }
+
+// The `Cal` cache underpins the kiosk perf sweep: hot paths look up a shared
+// gregorian calendar instead of allocating one per render/row/tick. Because it's
+// handed out by value (Calendar is a value type), the contract that matters is
+// that a caller mutating its copy can't poison the shared entry — otherwise one
+// screen tweaking `firstWeekday` would corrupt everyone else's day math.
+@Suite struct CalTests {
+    @Test func gregorianCarriesTheRequestedTimeZone() {
+        #expect(Cal.gregorian(denver).timeZone == denver)
+        #expect(Cal.gregorian(utc).timeZone == utc)
+        #expect(Cal.gregorian(denver).identifier == .gregorian)
+    }
+
+    @Test func mutatingACopyDoesNotPoisonTheCache() {
+        var copy = Cal.gregorian(utc)
+        copy.firstWeekday = copy.firstWeekday == 1 ? 2 : 1   // scribble on the copy
+        copy.timeZone = denver
+        // A fresh fetch for the same zone must be pristine, not the mutated copy.
+        let fresh = Cal.gregorian(utc)
+        #expect(fresh.timeZone == utc)
+        #expect(fresh.firstWeekday != copy.firstWeekday)
+    }
+
+    @Test func sameZoneReturnsAnEqualCachedCalendar() {
+        #expect(Cal.gregorian(denver) == Cal.gregorian(denver))
+    }
+
+    // weekStart must land on a midnight boundary and bracket the input within one week —
+    // asserted locale-agnostically (the exact start day depends on the runner's region).
+    @Test func weekStartBracketsTheDateOnADayBoundary() {
+        let date = EventTime.parse("2026-06-17T15:30:00Z")!   // a Wednesday
+        let start = Cal.weekStart(date, utc)
+        var probe = Cal.gregorian(utc)
+        probe.firstWeekday = Calendar.current.firstWeekday
+        #expect(probe.startOfDay(for: start) == start)        // midnight
+        #expect(start <= date)                                // at or before the date
+        let weekLater = probe.date(byAdding: .day, value: 7, to: start)!
+        #expect(date < weekLater)                             // within the 7-day window
+    }
+}

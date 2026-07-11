@@ -145,9 +145,13 @@ struct StoredProofsSheet: View {
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
+    // Fallback parser for strings without fractional seconds (plain internet date-time).
+    private static let isoPlain = ISO8601DateFormatter()
+    private static let shortDateFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "MMM d"; return f
+    }()
     private static func shortDate(_ s: String?) -> String? {
-        guard let s, let d = iso.date(from: s) ?? ISO8601DateFormatter().date(from: s) else { return nil }
-        let f = DateFormatter(); f.dateFormat = "MMM d"
-        return f.string(from: d)
+        guard let s, let d = iso.date(from: s) ?? isoPlain.date(from: s) else { return nil }
+        return shortDateFmt.string(from: d)
     }
 }

@@ -123,13 +123,13 @@ enum ChoreDates {
     static func today() -> String { DateFmt.string(Date(), "yyyy-MM-dd", .current) }
     static func shift(_ d: String, _ days: Int) -> String {
         guard let date = DateFmt.date(d, "yyyy-MM-dd", .current),
-              let shifted = Calendar.current.date(byAdding: .day, value: days, to: date) else { return d }
+              let shifted = Cal.current.date(byAdding: .day, value: days, to: date) else { return d }
         return DateFmt.string(shifted, "yyyy-MM-dd", .current)
     }
     /// (relative label, full label, isToday) for the header.
     static func meta(_ d: String) -> (rel: String, full: String, isToday: Bool) {
         guard let date = DateFmt.date(d, "yyyy-MM-dd", .current) else { return ("", d, true) }
-        let cal = Calendar.current
+        let cal = Cal.current
         let diff = cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: date)).day ?? 0
         let rel: String
         switch diff {
@@ -147,7 +147,7 @@ enum ChoreDates {
         guard let dueOn,
               let due = DateFmt.date(dueOn, "yyyy-MM-dd", .current),
               let view = DateFmt.date(viewing, "yyyy-MM-dd", .current) else { return nil }
-        let cal = Calendar.current
+        let cal = Cal.current
         let days = cal.dateComponents([.day], from: cal.startOfDay(for: due), to: cal.startOfDay(for: view)).day ?? 0
         guard days >= 1 else { return nil }
         if days == 1 { return "since yesterday" }
@@ -162,7 +162,7 @@ enum ChoreDates {
         guard let dueOn,
               let due = DateFmt.date(dueOn, "yyyy-MM-dd", .current),
               let view = DateFmt.date(viewing, "yyyy-MM-dd", .current) else { return nil }
-        let cal = Calendar.current
+        let cal = Cal.current
         let days = cal.dateComponents([.day], from: cal.startOfDay(for: view), to: cal.startOfDay(for: due)).day ?? 0
         guard days >= 1 else { return nil }
         if days == 1 { return "due tomorrow" }
