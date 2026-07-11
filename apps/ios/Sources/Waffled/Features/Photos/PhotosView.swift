@@ -361,5 +361,4 @@ struct PhotoTile: View {
     }
 
     private var tintSolid: Color { Color(hexString: photo.colorHex) ?? WF.panel }
-    private var tint: Color { tintSolid }
 }
