@@ -237,12 +237,15 @@ export function Today() {
                 <Fragment key={card}>
                   {editing && drag && target?.col === ci && target?.index === idx && <div className="today-drop-line" />}
                   {editing ? (
-                    <div className="today-card-wrap" data-card={card}>
+                    // In edit mode cards collapse to a compact chip (just the labeled drag
+                    // bar) so a long list — a 60-item grocery card — can't dominate the board
+                    // and bury the cards below it.
+                    <div className="today-card-wrap compact" data-card={card}>
                       <div className="today-card-bar" onPointerDown={(e) => startDrag(e, card)}>
                         <span className="today-card-grip">⠿</span>
                         <span className="today-card-name">{def.label}</span>
+                        {def.fill && <span className="today-card-fillhint">list</span>}
                       </div>
-                      <div className="today-card-inner">{def.node}</div>
                     </div>
                   ) : (
                     <div className={`today-slot ${def.fill ? 'fill' : ''}`}>{def.node}</div>

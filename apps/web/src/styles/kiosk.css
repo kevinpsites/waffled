@@ -191,6 +191,14 @@ body {
 .today-card-bar:active { cursor: grabbing; }
 .today-card-grip { font-size: 15px; color: var(--ink-3); }
 .today-card-inner { pointer-events: none; }
+/* Compact edit-mode chip: just the labeled bar, so long list cards (grocery/agenda)
+   don't dominate the board while rearranging. */
+.today-card-wrap.compact { background: var(--card); border-style: solid; }
+.today-card-wrap.compact .today-card-bar { color: var(--ink); font-size: 13.5px; padding: 11px 13px; background: var(--card); }
+.today-card-fillhint {
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--ink-3); background: var(--panel); padding: 2px 7px; border-radius: 999px; margin-left: auto;
+}
 .today-col-empty {
   border: 1.5px dashed var(--hair);
   border-radius: var(--r-lg);

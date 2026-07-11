@@ -26,7 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   back to a Pinned goal). Web + iOS. On the iPhone Today card you can also **choose exactly which
   goal it shows** — My spotlight, Family spotlight, or a specific pinned goal — from the card's
   own menu (a scrollable goal picker). The **web Today** now also has a **Goals card** showing the
-  Spotlight goal's progress (a reorderable card in the Customize layout) — matching the phone.
+  Spotlight goal's progress (a reorderable card in the Customize layout) — matching the phone,
+  with the same **My spotlight / Family spotlight / pick a specific goal** selector.
 - **iPhone now has full parity with the web app for Goals.** Everything above ships on iPhone/iPad
   too: **ticking off a checklist** (from the goal or the Log sheet — previously iPhone could only add
   numeric progress, which made no sense for a checklist), the **measure-aware group-counting** choice
@@ -64,6 +65,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   automatically deleted.
 
 ### Changed
+- **Customizing the Today layout is far easier to use.** In Customize mode every card now
+  collapses to a compact labeled chip instead of rendering its full contents — so a long list
+  (a 60-item grocery card) no longer dominates the board and buries the cards below it.
 - **Goals now list alphabetically** (A–Z by title), instead of by creation date — one clean,
   predictable list that's easy to scan. Featuring a goal shows it big on the home screen; it no
   longer floats to the top of the goals list (which made the order look random).
