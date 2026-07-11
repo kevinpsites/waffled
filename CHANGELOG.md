@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Generate a durable PowerSync signing key alongside the other required deployment secrets,
+  repair missing values in existing environment files, and refuse production startup when
+  required secrets are missing, malformed, or still use public development defaults.
+
 ### Added
 
 ### Changed

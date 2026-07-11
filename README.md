@@ -51,7 +51,8 @@ That single command is the whole install — no host toolchain, no separate migr
 step. On first run `./waffled up`:
 
 1. creates `infra/compose/.env` from `.env.example`, generating `LOCAL_JWT_SECRET`,
-   `TOKEN_ENCRYPTION_KEY`, and `POSTGRES_PASSWORD` for you (existing `.env` left alone),
+   `TOKEN_ENCRYPTION_KEY`, `POWERSYNC_JWT_PRIVATE_KEY`, and `POSTGRES_PASSWORD` for you
+   (missing secrets are also filled during upgrades),
 2. pulls the prebuilt `api` / `caddy` / `backup` images from GHCR (plus Postgres +
    PowerSync); use `./waffled up --build` to build from source instead,
 3. runs the one-shot **migrate** service to apply the database schema (so PowerSync's
@@ -73,7 +74,7 @@ your **admin account** (name, email, password). That's it — you're in.
 
 `./waffled up` writes a working `infra/compose/.env` for you; you only edit it to enable
 optional integrations or to run somewhere other than `localhost`. The required values
-are the three generated secrets plus the `POSTGRES_*` settings. Optional (leave blank
+are the four generated secrets and the remaining `POSTGRES_*` settings. Optional (leave blank
 to skip): `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OLLAMA_HOST` for the AI capture
 bar, and `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_CALENDAR_REDIRECT_URI`
 for 2-way Google Calendar sync. See the comments in `.env.example` for the full list
