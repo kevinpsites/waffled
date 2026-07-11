@@ -86,7 +86,7 @@ export function GoalSpotlightCard() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
         <div className="card-h" style={{ fontSize: 23 }}>Goals</div>
         {goals.length > 1 && (
-          <select className="sel gs-pick" value={pick} onChange={(e) => updatePick(e.target.value)} style={{ fontSize: 12, fontWeight: 700, padding: '3px 8px' }}>
+          <select className="gs-pick" value={pick} onChange={(e) => updatePick(e.target.value)}>
             <option value="mine">My spotlight</option>
             <option value="family">Family spotlight</option>
             {groups.map((grp) => (
