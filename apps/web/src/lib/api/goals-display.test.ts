@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest'
-import { goalDisplayProgress, goalDisplayTarget, goalFraction, type Goal } from './goals'
+import { goalDisplayProgress, goalDisplayTarget, goalFraction, fmtGoalNum, type Goal } from './goals'
+
+describe('fmtGoalNum', () => {
+  it('rounds to at most 2 decimals, dropping trailing zeros', () => {
+    // An hours+minutes log stores exact repeating decimals — never show them raw.
+    expect(fmtGoalNum(1 + 5 / 60)).toBe('1.08') // 1h5m
+    expect(fmtGoalNum(31 / 12)).toBe('2.58') // 2.5833…
+    expect(fmtGoalNum(6.16667)).toBe('6.17')
+    expect(fmtGoalNum(2)).toBe('2')
+    expect(fmtGoalNum(1.5)).toBe('1.5')
+    expect(fmtGoalNum(1000)).toBe('1,000')
+    expect(fmtGoalNum(null)).toBe('—')
+    expect(fmtGoalNum(undefined)).toBe('—')
+  })
+})
 
 // Minimal Goal factory — every required field with a sane default, overridable per test.
 function goal(over: Partial<Goal>): Goal {

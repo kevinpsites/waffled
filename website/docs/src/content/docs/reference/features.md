@@ -148,6 +148,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | **How a group activity counts** — shared/each toggle + a measure-aware counting follow-up under "How do you measure it?" (total: full / split · count: each / once) with real-name worked examples | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
 | **Checklist tick-off** — complete a checklist by ticking its named steps (in the goal detail + the Log sheet) | ✅ | ✅ | ✅ | ✅ Done (was iPhone-blocked; now shipped) |
 | **Type-aware Log sheet** — count stepper, total amount, habit one-tap, checklist ticking; unit shown correctly | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
+| **Hours + minutes for time goals** — a goal measured in hours takes separate hour/minute fields (no manual "10 min → 0.17"); the server folds them to decimal hours and durations read back as "2h 10m" | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
 | Create / **edit** / delete goals | ✅ | ✅ | ✅ | ✅ Done |
 | **Edit / remove a logged entry** (amount, who took part, note, date; shared entries removed whole + re-split) | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
 | Type-aware **logging** (amount / stepper / once-a-day / tick steps) | ✅ | ✅ | ✅ | ✅ Done |

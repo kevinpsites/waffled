@@ -2371,8 +2371,18 @@ struct WaffledAPI: Sendable {
     /// to `personIds` (one log per person; empty = unattributed pool).
     /// Log progress. `loggedOn` (YYYY-MM-DD) backdates the entry to catch up a missed
     /// day and keep a streak alive; nil logs against today.
-    func logGoalProgress(goalId: String, amount: Double, personIds: [String], note: String?, loggedOn: String? = nil) async throws {
-        var body: [String: JSONValue] = ["amount": .double(amount)]
+    func logGoalProgress(goalId: String, amount: Double, personIds: [String], note: String?, loggedOn: String? = nil,
+                         hours: Int? = nil, minutes: Int? = nil) async throws {
+        // A time goal sends hours + minutes and lets the server fold them to decimal
+        // hours; everything else sends the amount. The two are mutually exclusive (the
+        // server 400s if both are present).
+        var body: [String: JSONValue] = [:]
+        if hours != nil || minutes != nil {
+            body["hours"] = .int(hours ?? 0)
+            body["minutes"] = .int(minutes ?? 0)
+        } else {
+            body["amount"] = .double(amount)
+        }
         if !personIds.isEmpty { body["personIds"] = .array(personIds.map(JSONValue.string)) }
         if let note, !note.isEmpty { body["note"] = .string(note) }
         if let loggedOn, !loggedOn.isEmpty { body["loggedOn"] = .string(loggedOn) }

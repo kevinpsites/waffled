@@ -4,7 +4,7 @@ import { LogModal } from './components/LogModal'
 import { EntryModal } from './components/EntryModal'
 import { EventModal } from './components/EventModal'
 import { ReviewList } from './components/GoalRecap'
-import { useGoalDetail, useHousehold, can, api, type GoalParticipant, type GoalMilestone, type GoalLogEntry } from '../lib/api'
+import { useGoalDetail, useHousehold, can, api, fmtGoalNum, type GoalParticipant, type GoalMilestone, type GoalLogEntry } from '../lib/api'
 import { useTopbarFull } from './topbar-slot'
 import { CATEGORIES } from './categories'
 import './../styles/goals.css'
@@ -13,9 +13,7 @@ const HOUR_UNITS = new Set(['hour', 'hours', 'hr', 'hrs'])
 function pctOf(progress: number, target: number | null): number {
   return target ? Math.min(Math.round((progress / target) * 100), 100) : 0
 }
-function fmtNum(n: number | null): string {
-  return n == null ? '—' : n.toLocaleString('en-US')
-}
+const fmtNum = fmtGoalNum
 // Shrink the ring's hero number so long/fractional values (e.g. a split-backfill
 // "295.99" or "1,234") stay inside the inner circle instead of clipping the ring
 // stroke. `base` is the CSS font-size for a short value.
@@ -56,7 +54,7 @@ function HoursRow({ p, max, unit }: { p: GoalParticipant; max: number; unit: str
         <div style={{ width: `${w}%`, background: color }} />
       </div>
       <div className="tiny muted detail-hours-val">
-        {p.progress}
+        {fmtNum(p.progress)}
         {unit ? ` ${unit}` : ''}
       </div>
     </div>
@@ -316,7 +314,7 @@ export function GoalDetail() {
                 )}
                 <div className="lwhat">{r.note || 'Logged progress'}</div>
                 <div className="lamt">
-                  +{r.amount}
+                  +{fmtNum(r.amount)}
                   {goal.unit ? ` ${goal.unit}` : ''}
                 </div>
               </div>
