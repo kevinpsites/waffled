@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Caddy now sends a Content Security Policy plus MIME-sniffing, referrer, and
+  browser-capability protections while preserving camera, photo, and sync support.
+
 ### Added
 
 ### Changed
