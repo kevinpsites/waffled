@@ -971,9 +971,8 @@ struct KioskDashboard: View {
     // MARK: date helpers
 
     static func dateFromKey(_ key: String, _ tz: TimeZone) -> Date? {
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = tz
-        f.dateFormat = "yyyy-MM-dd"
-        return f.date(from: key)
+        // Called per meal-plan row — route through the cached formatter (POSIX + gregorian).
+        DateFmt.date(key, "yyyy-MM-dd", tz)
     }
 
     static func dayShort(_ key: String, _ tz: TimeZone) -> String {

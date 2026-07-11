@@ -28,9 +28,8 @@ enum FamilyNightFormat {
         let parts = hhmm.split(separator: ":")
         guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]) else { return hhmm }
         var c = DateComponents(); c.hour = h; c.minute = m
-        guard let d = Calendar(identifier: .gregorian).date(from: c) else { return hhmm }
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "h:mm a"
-        return f.string(from: d)
+        guard let d = Cal.gregorian(TimeZone.current).date(from: c) else { return hhmm }
+        return DateFmt.string(d, "h:mm a", TimeZone.current)
     }
 }
 

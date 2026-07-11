@@ -70,8 +70,9 @@ final class ScreensaverModel {
     /// handles an overnight window (start later than end, e.g. 21:00 → 07:00).
     static func inNightWindow(_ nd: WaffledAPI.DisplayConfig.NightDim, now: Date, tz: TimeZone) -> Bool {
         guard nd.enabled else { return false }
-        let f = DateFormatter(); f.timeZone = tz; f.dateFormat = "HH:mm"
-        let cur = f.string(from: now)
+        // "HH:mm" is a pure 24h comparison key, so POSIX DateFmt (cached per tz, never
+        // mutated) is both correct and allocation-free on the idle tick.
+        let cur = DateFmt.string(now, "HH:mm", tz)
         return nd.start <= nd.end ? (cur >= nd.start && cur < nd.end)
                                   : (cur >= nd.start || cur < nd.end)
     }
@@ -82,7 +83,10 @@ struct KioskScreensaverHost: ViewModifier {
     @Environment(KioskMode.self) private var kiosk
     @State private var model = ScreensaverModel()
     @AppStorage("waffled.screensaverMotion") private var motion = true
-    private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    // Idle/night-window detection doesn't need 1s precision — a 10s cadence keeps the SoC
+    // asleep ~10× more while the kiosk sits idle (worst case: the saver appears, or the
+    // night-dim toggles, up to 10s late — imperceptible).
+    private let tick = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
 
     func body(content: Content) -> some View {
         content
@@ -102,11 +106,13 @@ struct KioskScreensaverHost: ViewModifier {
             }
             .animation(.easeInOut(duration: 0.45), value: model.showing)
             .task { await model.load() }
-            // Refresh photos / weather / config periodically while parked.
+            // Refresh photos / weather / config periodically while parked. Config rarely
+            // changes and weather is hourly at most, so 15 min is plenty — and there's
+            // nothing worth fetching overnight, so skip the poll while night-dimmed.
             .task {
                 while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(150))
-                    await model.load()
+                    try? await Task.sleep(for: .seconds(900))
+                    if !model.dimmed { await model.load() }
                 }
             }
             .onReceive(tick) { model.tick($0, tz: sync.householdTz) }

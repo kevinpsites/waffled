@@ -100,6 +100,12 @@ struct ReviewEventsView: View {
     @State private var model = ReviewEventsModel()
     @State private var editingPeople: WaffledAPI.GoalRecapItem?
 
+    // ISO8601DateFormatter is expensive to allocate per call; hoist both parse configs.
+    private static let isoFracDF: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f
+    }()
+    private static let isoDF = ISO8601DateFormatter()
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -363,9 +369,7 @@ struct ReviewEventsView: View {
     }
 
     private func eventWhen(_ iso: String, allDay: Bool) -> String {
-        let parser = ISO8601DateFormatter()
-        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let date = parser.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
+        let date = Self.isoFracDF.date(from: iso) ?? Self.isoDF.date(from: iso)
         guard let date else { return String(iso.prefix(10)) }
         return DateFmt.string(date, allDay ? "EEE, MMM d" : "EEE, MMM d · h:mm a", sync.householdTz)
     }

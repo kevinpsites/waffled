@@ -92,6 +92,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "cook for 6 minutes" now attaches a cook-mode timer without needing an explicit
   `**Timer:**` line. An explicit marker still wins, and a step that lists two times uses
   the first.
+- **Lower battery drain on the always-on iPad kiosk.** The family-display screensaver no longer
+  redraws the clock 60× a minute (it updates on the minute now), stops re-checking idle/night state
+  every second, and refreshes photos/weather every 15 minutes instead of every 2.5 (and not at all
+  overnight). Under the hood, the calendar, meal, chore, and settings screens stopped rebuilding
+  expensive date objects on every render — so a screen left on all day keeps the chip idle far more
+  of the time. Nothing about how the kiosk looks or behaves changes — it just draws less power.
 
 ### Fixed
 - **A Count goal no longer inherits "hours" as its unit.** Switching a new goal's measure to
