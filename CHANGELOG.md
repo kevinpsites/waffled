@@ -93,7 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every second, and refreshes photos/weather every 15 minutes instead of every 2.5 (and not at all
   overnight). Under the hood, the calendar, meal, chore, and settings screens stopped rebuilding
   expensive date objects on every render — so a screen left on all day keeps the chip idle far more
-  of the time. No behavior changes, just less power.
+  of the time. Nothing about how the kiosk looks or behaves changes — it just draws less power.
 
 ### Fixed
 - **A Count goal no longer inherits "hours" as its unit.** Switching a new goal's measure to

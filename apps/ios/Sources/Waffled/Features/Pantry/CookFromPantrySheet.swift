@@ -383,7 +383,7 @@ struct CookFromPantrySheet: View {
     // MARK: week math (mirrors WeekPlannerView)
 
     private var cal: Calendar { Cal.gregorian(sync.householdTz) }
-    private var weekStart: Date { cal.dateInterval(of: .weekOfYear, for: Date())?.start ?? cal.startOfDay(for: Date()) }
+    private var weekStart: Date { Cal.weekStart(Date(), sync.householdTz) }   // honors live first-day-of-week
     private var weekDays: [Date] { (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: weekStart) } }
     private var weekTitle: String {
         guard let last = weekDays.last else { return "" }

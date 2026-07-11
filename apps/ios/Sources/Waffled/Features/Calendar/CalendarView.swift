@@ -1214,6 +1214,9 @@ struct EventEditSheet: View {
     }
 
     private var monthlyModeMenu: some View {
+        // Deliberately gregorian: this day-of-month drives the RRULE BYMONTHDAY, which is
+        // gregorian by spec — so it must match the rule we emit, not the device's calendar
+        // system (Islamic/Hebrew). `Cal.current` is correct here, not `Calendar.current`.
         let dom = Cal.current.component(.day, from: resolvedStart)
         let weekdayName = DateFmt.string(resolvedStart, "EEEE", sync.householdTz)
         let dayLabel = "On day \(dom)"

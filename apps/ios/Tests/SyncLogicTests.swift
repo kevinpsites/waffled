@@ -409,4 +409,17 @@ private final class Counter { var n = 0 }
     @Test func sameZoneReturnsAnEqualCachedCalendar() {
         #expect(Cal.gregorian(denver) == Cal.gregorian(denver))
     }
+
+    // weekStart must land on a midnight boundary and bracket the input within one week —
+    // asserted locale-agnostically (the exact start day depends on the runner's region).
+    @Test func weekStartBracketsTheDateOnADayBoundary() {
+        let date = EventTime.parse("2026-06-17T15:30:00Z")!   // a Wednesday
+        let start = Cal.weekStart(date, utc)
+        var probe = Cal.gregorian(utc)
+        probe.firstWeekday = Calendar.current.firstWeekday
+        #expect(probe.startOfDay(for: start) == start)        // midnight
+        #expect(start <= date)                                // at or before the date
+        let weekLater = probe.date(byAdding: .day, value: 7, to: start)!
+        #expect(date < weekLater)                             // within the 7-day window
+    }
 }

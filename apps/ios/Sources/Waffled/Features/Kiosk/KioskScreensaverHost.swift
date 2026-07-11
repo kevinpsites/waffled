@@ -18,9 +18,6 @@ final class ScreensaverModel {
     private var lastActivity = Date()
     private let api = WaffledAPI()
 
-    /// Reused by the per-tick night-window check so it never allocates a formatter (hot path).
-    private static let hhmmFmt: DateFormatter = { let f = DateFormatter(); f.dateFormat = "HH:mm"; return f }()
-
     /// A touch happened somewhere — reset the idle clock (ignored while the saver is up;
     /// the saver handles its own wake so a stray ping can't pre-empt the wake tap).
     func ping() { if !showing { lastActivity = Date() } }
@@ -73,9 +70,9 @@ final class ScreensaverModel {
     /// handles an overnight window (start later than end, e.g. 21:00 → 07:00).
     static func inNightWindow(_ nd: WaffledAPI.DisplayConfig.NightDim, now: Date, tz: TimeZone) -> Bool {
         guard nd.enabled else { return false }
-        // Static so the idle tick doesn't allocate a DateFormatter on every fire.
-        Self.hhmmFmt.timeZone = tz
-        let cur = Self.hhmmFmt.string(from: now)
+        // "HH:mm" is a pure 24h comparison key, so POSIX DateFmt (cached per tz, never
+        // mutated) is both correct and allocation-free on the idle tick.
+        let cur = DateFmt.string(now, "HH:mm", tz)
         return nd.start <= nd.end ? (cur >= nd.start && cur < nd.end)
                                   : (cur >= nd.start || cur < nd.end)
     }

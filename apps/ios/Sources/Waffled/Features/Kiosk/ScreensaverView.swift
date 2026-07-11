@@ -139,18 +139,13 @@ struct ScreensaverView: View {
     // MARK: formatting
 
     // Static so a re-render doesn't allocate a DateFormatter (the repo's hot-path rule).
-    // timeZone is set per use since it's the household's, and the saver is single-instance
-    // on the main thread, so sharing these is safe.
-    private static let clockFmt: DateFormatter = { let f = DateFormatter(); f.dateFormat = "h:mm"; return f }()
-    private static let dateFmt: DateFormatter = { let f = DateFormatter(); f.dateFormat = "EEEE, MMMM d"; return f }()
-
+    // Device-locale, tz-baked, cached (never mutated) — so the clock/date render in the
+    // viewer's language and there's no shared mutate-then-read on the formatter.
     private var timeString: String {
-        Self.clockFmt.timeZone = timezone
-        return Self.clockFmt.string(from: now)
+        DateFmt.localizedString(now, "h:mm", timezone)
     }
     private var dateLine: String {
-        Self.dateFmt.timeZone = timezone
-        let date = Self.dateFmt.string(from: now)
+        let date = DateFmt.localizedString(now, "EEEE, MMMM d", timezone)
         if let w = weather, w.configured, let t = w.tempF {
             let parts = ["\(w.emoji ?? "")\(w.emoji == nil ? "" : " ")\(Int(t.rounded()))°", w.label].compactMap { $0 }.filter { !$0.isEmpty }
             return "\(date) · \(parts.joined(separator: " · "))"
@@ -167,8 +162,7 @@ struct ScreensaverView: View {
         guard let ev = nextEvent else { return nil }
         if ev.allDay { return "Next: \(ev.title)" }
         guard let when = ev.startsAt else { return "Next: \(ev.title)" }
-        Self.clockFmt.timeZone = timezone
-        return "Next: \(ev.title) · \(Self.clockFmt.string(from: when))"
+        return "Next: \(ev.title) · \(DateFmt.localizedString(when, "h:mm", timezone))"
     }
 }
 
