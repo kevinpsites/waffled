@@ -45,7 +45,7 @@ struct KioskDashboard: View {
     /// the featured goal, else a whole-family goal, else the first goal.
     private var kioskGoal: WaffledAPI.Goal? {
         if !kioskGoalId.isEmpty, let g = model.goals.first(where: { $0.id == kioskGoalId }) { return g }
-        if let f = model.goals.first(where: { $0.isFeatured }) { return f }
+        if let f = model.goals.first(where: { $0.isSpotlight ?? false }) ?? model.goals.first(where: { $0.isFeatured }) { return f }
         let everyone = Set(sync.members.map(\.id))
         if everyone.count > 1,
            let fam = model.goals.first(where: { everyone.isSubset(of: Set($0.participants.map(\.personId))) }) {

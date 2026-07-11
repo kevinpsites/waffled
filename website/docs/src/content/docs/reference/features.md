@@ -69,9 +69,10 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Feature | Web / Kiosk | iPhone | iPad | Status |
 | --- | :---: | :---: | :---: | --- |
 | Today cards: agenda · tonight's meal · this week · chores · grocery | ✅ | ✅ | ✅ | ✅ Done (iPad = distinct 3-column `KioskDashboard`) |
-| **Customize** mode — drag to reorder cards | ✅ | ✅ | 🟡 | ✅ Done (iPhone reorder+hide; iPad uses layout presets) |
+| **Customize** mode — drag to reorder + **× to hide** cards (hidden collect in a tray to add back) | ✅ | ✅ | 🟡 | ✅ Done (web + iPhone reorder + hide; a hidden card stays hidden even for module cards; iPad uses layout presets) |
 | iPad Today **layout presets** (Balanced / Agenda / Meals / **Goal-focused**) | 🟡 | ❌ N/A | ✅ | ✅ Done (iPad-only; Goal-focused features a goal big + tonight's dinner) |
-| Save layout **for me** (per-user) vs **for everyone** (family default) | ✅ | ✅ | 🟡 | ✅ Done (iPad layout is device-local) |
+| Save layout **for me** (per-user, incl. which cards are hidden) vs **for everyone** (family default) | ✅ | ✅ | 🟡 | ✅ Done (iPad layout is device-local) |
+| **Goals card** on Today — a chosen goal's progress with a **My spotlight / Family spotlight / specific goal** picker (grouped by list) | ✅ | ✅ | 🟡 | ✅ Done (web + iPhone; iPad Goal-focused preset shows a goal big) |
 | Mobile-specific Today layout (separate `{order,hidden}` config) | ❌ N/A | ✅ | ✅ | ✅ Done |
 | "Did these happen?" goal recap queue on Today | ✅ | ✅ | ✅ | ✅ Done (iPad banner opens `ReviewEventsView`) |
 | "Needs your OK" approvals banner on Today | ✅ | ✅ | ✅ | ✅ Done (iPad banner opens `ApprovalsView`) |
@@ -143,7 +144,12 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Goal types: count / total / habit / checklist | ✅ | ✅ | ✅ | ✅ Done |
 | Goal **lists** + membership (shared lists / individual) | ✅ | ✅ | ✅ | ✅ Done |
 | Shared-pool vs each-tracks goals | ✅ | ✅ | ✅ | ✅ Done |
+| **Goal tiers** — Spotlight (one hero per list) / Pinned band / More (A–Z), Spotlight-Pinned-Normal picker, one-tap pin/unpin, Today card → Spotlight | ✅ | ✅ | ✅ | ✅ Done (web + iOS); **Today card also pins a specific goal** (My/Family spotlight or a chosen goal). Only Pinned-band drag-reorder remains on roadmap |
+| **How a group activity counts** — shared/each toggle + a measure-aware counting follow-up under "How do you measure it?" (total: full / split · count: each / once) with real-name worked examples | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
+| **Checklist tick-off** — complete a checklist by ticking its named steps (in the goal detail + the Log sheet) | ✅ | ✅ | ✅ | ✅ Done (was iPhone-blocked; now shipped) |
+| **Type-aware Log sheet** — count stepper, total amount, habit one-tap, checklist ticking; unit shown correctly | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
 | Create / **edit** / delete goals | ✅ | ✅ | ✅ | ✅ Done |
+| **Edit / remove a logged entry** (amount, who took part, note, date; shared entries removed whole + re-split) | ✅ | ✅ | ✅ | ✅ Done (web + iOS) |
 | Type-aware **logging** (amount / stepper / once-a-day / tick steps) | ✅ | ✅ | ✅ | ✅ Done |
 | Backdated logs ("When?" picker) | ✅ | ✅ | ✅ | ✅ Done |
 | **Goal detail** read-model (milestone track, hours-by-person, streaks, recent) | ✅ | ✅ | ✅ | ✅ Done |

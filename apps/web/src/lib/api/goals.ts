@@ -41,10 +41,16 @@ export interface Goal {
   habitPeriod: string | null
   habitTargetPerPeriod: number | null
   trackingMode: string
+  // Shared-goal counting rule: count_once | split (see GoalCreate PARTICIPANT_TYPES).
+  participantMode: string
+  // For each_tracks goals: 'family' (flat shared target) | 'per_person' (ring = target × members).
+  targetBasis: string
   logMethod: string
   autoFromCalendar: boolean
   deadline: string | null
   isFeatured: boolean
+  // The one hero goal per list. Tier is derived spotlight > featured > normal.
+  isSpotlight: boolean
   hasRewards: boolean
   target: number | null
   totalProgress: number
@@ -56,6 +62,32 @@ export interface Goal {
   streakDays: number
   loggedTodayBy: string[]
   participants: GoalParticipant[]
+}
+
+// ── Display helpers (shared by the goals list, goal detail, and the Today card) ──
+// A goal is shown on its TYPE's axis: a habit shows completions THIS PERIOD vs its
+// cadence (not a lifetime total), a checklist shows steps done, everything else the
+// cumulative amount. Keeping these in one place stops the Today card from drifting
+// from the list/detail.
+export function goalDisplayProgress(g: Goal): number {
+  if (g.goalType === 'habit') return g.periodDone
+  if (g.goalType === 'checklist') return g.stepDone
+  return g.totalProgress
+}
+// The target the progress is measured against. For an each_tracks / per_person goal
+// the ring target is the per-person number × household size (read 12 EACH → 48 for
+// four), so it grows as people join — matching the goals list and detail.
+export function goalDisplayTarget(g: Goal): number | null {
+  if (g.goalType === 'habit') return g.habitTargetPerPeriod ?? g.target
+  if (g.goalType === 'checklist') return g.stepTotal || null
+  if (g.targetBasis === 'per_person' && g.target != null) return g.target * Math.max(1, g.participants.length)
+  return g.target
+}
+// 0..1 completion, clamped. 0 when there's no positive target (e.g. an empty checklist).
+export function goalFraction(g: Goal): number {
+  const t = goalDisplayTarget(g)
+  const p = goalDisplayProgress(g)
+  return t != null && t > 0 ? Math.min(p / t, 1) : 0
 }
 
 export interface GoalMilestone {
@@ -115,6 +147,11 @@ export const goalsApi = {
   toggleStep: (goalId: string, stepId: string, done: boolean) =>
     apiSend<{ ok: boolean }>('PATCH', `/api/goals/${goalId}/steps/${stepId}`, { done }).then(tap('goals')),
   deleteGoal: (id: string) => apiDelete(`/api/goals/${id}`).then(tap('goals')),
+  // Edit or remove a single logged entry (keyed on the grouped id in recent activity).
+  editGoalLog: (goalId: string, logId: string, patch: { amount?: number; note?: string | null; loggedOn?: string | null; personIds?: string[] }) =>
+    apiSend<{ goal: GoalDetail }>('PATCH', `/api/goals/${goalId}/logs/${logId}`, patch).then(tap('goals')),
+  deleteGoalLog: (goalId: string, logId: string) =>
+    apiSend<{ goal: GoalDetail }>('DELETE', `/api/goals/${goalId}/logs/${logId}`).then(tap('goals')),
 }
 
 export interface GoalListsState {

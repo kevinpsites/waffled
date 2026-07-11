@@ -122,6 +122,14 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Planned 🚧
 
+- **Goal tier polish (following the Spotlight redesign).** The Spotlight / Pinned / More
+  hierarchy shipped (one Spotlight hero per list, a Pinned band, then A–Z rows). One piece is
+  still deferred: **manual drag-to-reorder for the Pinned band** — needs a `sort_order` column +
+  a reorder endpoint + drag gestures on web & iOS (today the Pinned band is A–Z like More). (The
+  three tiers, the tier picker, one-tap pin/unpin, the Today→Spotlight default, and the iPhone
+  Today card's "pin a specific goal" chooser all shipped on web + iOS. Internally the Pinned tier
+  is still the `is_featured` column; a clean rename to `is_pinned` is optional cleanup.)
+
 - **Pantry ↔ meal-planning loop.** The pantry redesign + Open Food Facts integration
   (cached barcode lookup/scanner, nutrition + colored allergen badges, household∪per-person
   allergen warnings incl. "may contain" traces, dietary flags, running-low thresholds,

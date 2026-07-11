@@ -23,6 +23,10 @@ struct TodayView: View {
     /// Which goal the card highlights: "mine" (the logged-in member's) or "family"
     /// (a whole-family goal). Per-device preference; defaults to mine.
     @AppStorage("waffled.todayGoalScope") private var goalScope = "mine"
+    /// A specific goal pinned to the Today card (empty = follow the My/Family spotlight scope).
+    /// Per-device; falls back to the scope pick if the pinned goal is gone.
+    @AppStorage("waffled.todayGoalId") private var todayGoalId = ""
+    @State private var showingGoalPicker = false
     /// The resolved card layout (order + hidden) from the server, plus whether this
     /// member may edit the shared family default. Drives which cards render and how.
     @State private var cardOrder: [String] = ["agenda", "tonight", "chores", "grocery", "goals"]
@@ -323,6 +327,8 @@ struct TodayView: View {
     /// goal. Either way featured wins within the bucket, and we never get stuck — a
     /// sub-group goal (e.g. kids-only) only shows if nothing better exists.
     private var featuredGoal: WaffledAPI.Goal? {
+        // A specific goal pinned to the card wins, if it still exists.
+        if !todayGoalId.isEmpty, let pinned = goals.first(where: { $0.id == todayGoalId }) { return pinned }
         // The token-resolved person if we have it, else the greeting member (first adult).
         let me = sync.currentPersonId ?? greetingMember?.id
         let everyone = Set(sync.members.map(\.id))
@@ -335,17 +341,19 @@ struct TodayView: View {
         func isFamily(_ g: WaffledAPI.Goal) -> Bool {
             everyone.count > 1 && everyone.isSubset(of: Set(g.participants.map(\.personId)))
         }
+        // Prefer the Spotlight, then a Pinned (isFeatured) goal, then any — within scope.
+        func spot(_ g: WaffledAPI.Goal) -> Bool { g.isSpotlight ?? false }
         let mineFirst: [(WaffledAPI.Goal) -> Bool] = [
-            { isMine($0) && $0.isFeatured }, { isMine($0) },
-            { isFamily($0) && $0.isFeatured }, { isFamily($0) },
+            { isMine($0) && spot($0) }, { isMine($0) && $0.isFeatured }, { isMine($0) },
+            { isFamily($0) && spot($0) }, { isFamily($0) && $0.isFeatured }, { isFamily($0) },
         ]
         let familyFirst: [(WaffledAPI.Goal) -> Bool] = [
-            { isFamily($0) && $0.isFeatured }, { isFamily($0) },
-            { isMine($0) && $0.isFeatured }, { isMine($0) },
+            { isFamily($0) && spot($0) }, { isFamily($0) && $0.isFeatured }, { isFamily($0) },
+            { isMine($0) && spot($0) }, { isMine($0) && $0.isFeatured }, { isMine($0) },
         ]
         let order = goalScope == "family" ? familyFirst : mineFirst
         for matches in order { if let g = goals.first(where: matches) { return g } }
-        return goals.first { $0.isFeatured } ?? goals.first
+        return goals.first(where: spot) ?? goals.first { $0.isFeatured } ?? goals.first
     }
 
     private static let goalGreen = Color(hex: 0x2BA45F)
@@ -380,22 +388,32 @@ struct TodayView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingGoalPicker) {
+            TodayGoalPickerSheet(goals: goals, myPersonId: sync.currentPersonId ?? greetingMember?.id, selectedId: todayGoalId) { id in todayGoalId = id }
+        }
     }
 
     /// A small pill-menu to switch the card between the logged-in member's goal and a
     /// whole-family goal. Only shown when there's more than one goal to choose from.
     @ViewBuilder private var scopeMenu: some View {
         if goals.count > 1 {
+            // The pinned goal's title (if one is pinned and still exists), else the scope name.
+            let pinnedTitle = todayGoalId.isEmpty ? nil : goals.first { $0.id == todayGoalId }?.title
             Menu {
-                Button { goalScope = "mine" } label: {
-                    Label("My featured goal", systemImage: goalScope == "mine" ? "checkmark" : "person")
+                Button { goalScope = "mine"; todayGoalId = "" } label: {
+                    Label("My spotlight", systemImage: (todayGoalId.isEmpty && goalScope == "mine") ? "checkmark" : "person")
                 }
-                Button { goalScope = "family" } label: {
-                    Label("Family featured goal", systemImage: goalScope == "family" ? "checkmark" : "person.3")
+                Button { goalScope = "family"; todayGoalId = "" } label: {
+                    Label("Family spotlight", systemImage: (todayGoalId.isEmpty && goalScope == "family") ? "checkmark" : "person.3")
+                }
+                Divider()
+                Button { showingGoalPicker = true } label: {
+                    Label("Choose a goal…", systemImage: "pin")
                 }
             } label: {
                 HStack(spacing: 3) {
-                    Text(goalScope == "family" ? "Family" : "Mine").font(.system(size: 11, weight: .bold))
+                    Text(pinnedTitle ?? (goalScope == "family" ? "Family" : "Mine"))
+                        .font(.system(size: 11, weight: .bold)).lineLimit(1).frame(maxWidth: 120)
                     Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
                 }
                 .foregroundStyle(WF.ink3)
@@ -412,7 +430,8 @@ struct TodayView: View {
             HStack(spacing: 8) {
                 Text(g.emoji ?? "🎯").font(.system(size: 20))
                 Text(g.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
-                if g.isFeatured { Text("⭐").font(.system(size: 11)) }
+                if g.isSpotlight ?? false { Text("🌟").font(.system(size: 11)) }
+                else if g.isFeatured { Text("📌").font(.system(size: 11)) }
                 Spacer(minLength: 6)
                 if g.streakDays >= 2 {
                     Text("🔥 \(g.streakDays)").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink2)
@@ -564,6 +583,139 @@ struct TodayView: View {
 }
 
 /// Thin rounded progress bar used in the summary cards.
+/// A modal goal chooser for the Today card — "Follow the spotlight" plus a scrollable
+/// list of every goal (reuses the goal-card styling), instead of a long inline menu.
+private struct TodayGoalPickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let goals: [WaffledAPI.Goal]
+    let myPersonId: String?
+    let selectedId: String
+    /// "" clears the pin (back to My/Family spotlight); otherwise a goal id.
+    let onSelect: (String) -> Void
+
+    @State private var lists: [WaffledAPI.GoalList] = []
+    @State private var expanded: [String: Bool] = [:]
+    private let api = WaffledAPI()
+
+    private struct Group: Identifiable {
+        let id: String; let title: String
+        let members: [WaffledAPI.GoalList.Member]; let goals: [WaffledAPI.Goal]
+    }
+    /// Goals grouped by their list: My goals first, then shared groups I'm in, then the rest.
+    private var groups: [Group] {
+        let byId = Dictionary(lists.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        func rank(_ key: String) -> Int {
+            guard key != "__none__", let l = byId[key] else { return 3 }
+            let ids = Set(l.members.map(\.personId))
+            if let me = myPersonId, ids == [me] { return 0 }               // my personal list
+            if let me = myPersonId, ids.count > 1, ids.contains(me) { return 1 } // a group I'm in
+            return 2                                                        // someone else's / other
+        }
+        var buckets: [String: [WaffledAPI.Goal]] = [:]
+        for g in goals { buckets[g.goalListId ?? "__none__", default: []].append(g) }
+        return buckets.keys.sorted { a, b in
+            let ra = rank(a), rb = rank(b)
+            if ra != rb { return ra < rb }
+            return (byId[a]?.name ?? "Other").localizedCaseInsensitiveCompare(byId[b]?.name ?? "Other") == .orderedAscending
+        }.map { key in
+            let l = byId[key]
+            let title = key == "__none__" ? "Other goals" : (rank(key) == 0 ? "My goals" : (l?.name ?? "Goals"))
+            return Group(id: key, title: title, members: l?.members ?? [], goals: buckets[key] ?? [])
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            // A List (not a ScrollView of Buttons) so a scroll drag never fires a row.
+            List {
+                autoRow
+                    .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
+                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
+                ForEach(groups) { grp in
+                    DisclosureGroup(isExpanded: Binding(get: { expanded[grp.id] ?? true }, set: { expanded[grp.id] = $0 })) {
+                        ForEach(grp.goals) { g in
+                            goalRow(g)
+                                .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
+                                .listRowSeparator(.hidden).listRowBackground(Color.clear)
+                        }
+                    } label: {
+                        groupHeader(grp)
+                    }
+                    .tint(WF.ink3)
+                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(WF.canvas)
+            .navigationTitle("Show on Today")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .task { if lists.isEmpty { lists = (try? await api.goalLists()) ?? [] } }
+        }
+    }
+
+    private func groupHeader(_ grp: Group) -> some View {
+        HStack(spacing: 8) {
+            if !grp.members.isEmpty {
+                HStack(spacing: -6) {
+                    ForEach(grp.members.prefix(4), id: \.personId) { m in
+                        Text(m.avatarEmoji ?? "🙂").font(.system(size: 12))
+                            .frame(width: 22, height: 22).background(WF.panel).clipShape(Circle())
+                            .overlay(Circle().strokeBorder(WF.canvas, lineWidth: 1.5))
+                    }
+                }
+            }
+            Text(grp.title).font(.system(size: 13, weight: .heavy)).foregroundStyle(WF.ink)
+            Text("\(grp.goals.count)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var autoRow: some View {
+        Button { onSelect(""); dismiss() } label: {
+            HStack(spacing: 12) {
+                Text("✨").font(.system(size: 20)).frame(width: 42, height: 42)
+                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Follow the spotlight").font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
+                    Text("Auto-picks your My / Family spotlight goal").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                }
+                Spacer(minLength: 0)
+                if selectedId.isEmpty { Image(systemName: "checkmark.circle.fill").font(.system(size: 18)).foregroundStyle(WF.primary) }
+            }
+            .padding(13).wfField()
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func goalRow(_ g: WaffledAPI.Goal) -> some View {
+        let col = GoalStyle.color(g.category)
+        let frac = g.target.map { $0 > 0 ? min(g.totalProgress / $0, 1) : 0 } ?? 0
+        return Button { onSelect(g.id); dismiss() } label: {
+            HStack(spacing: 12) {
+                Text(g.emoji ?? GoalStyle.emoji(g.category)).font(.system(size: 20)).frame(width: 42, height: 42)
+                    .background(col.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(g.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
+                    Text(goalDescriptor(g)).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(WF.hair)
+                            Capsule().fill(col).frame(width: geo.size.width * frac)
+                        }
+                    }
+                    .frame(height: 6)
+                }
+                if selectedId == g.id { Image(systemName: "checkmark.circle.fill").font(.system(size: 18)).foregroundStyle(WF.primary) }
+            }
+            .padding(13).wfField()
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct ProgressBar: View {
     let value: Double      // 0...1
     let tint: Color

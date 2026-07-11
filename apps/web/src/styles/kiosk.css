@@ -188,9 +188,86 @@ body {
   font-weight: 700;
   font-size: 13px;
 }
+/* Today Goals card — header, the pick pill (opens a modal), and the modal goal picker. */
+.gs-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.gs-pick-btn {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 46%;
+  background: var(--panel); border: 0; border-radius: 999px; cursor: pointer;
+  padding: 6px 11px; font: inherit; font-size: 12.5px; font-weight: 700; color: var(--ink);
+}
+.gs-pick-btn svg { flex: none; color: var(--ink-3); }
+.gs-pick-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gs-seeall { margin-left: auto; flex: none; white-space: nowrap; cursor: pointer; }
+.gs-goal-btn { border: 0; background: none; padding: 0; text-align: left; cursor: pointer; width: 100%; }
+
+.gs-modal { max-width: 460px; width: 100%; }
+.gs-picklist { max-height: 62vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin: 0 -4px; padding: 2px 4px; }
+.gs-group { display: flex; flex-direction: column; gap: 6px; }
+.gs-group-h {
+  display: flex; align-items: center; gap: 8px; width: 100%; margin: 12px 0 2px; padding: 6px 4px;
+  border: 0; background: none; cursor: pointer; text-align: left;
+  font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3);
+}
+.gs-group-h:hover { color: var(--ink-2); }
+.gs-group-chev { flex: none; color: var(--ink-3); transition: transform .15s; }
+.gs-group-chev.open { transform: rotate(90deg); }
+.gs-group-avs { display: inline-flex; }
+.gs-group-av {
+  width: 22px; height: 22px; display: grid; place-items: center; font-size: 12px;
+  background: var(--panel); border-radius: 999px; margin-left: -6px; border: 1.5px solid var(--card);
+}
+.gs-group-av:first-child { margin-left: 0; }
+.gs-group-n { color: var(--ink-3); font-weight: 700; }
+.gs-pickrow {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  border: 1.5px solid var(--hair); background: var(--card); border-radius: var(--r-md);
+  padding: 11px 13px; cursor: pointer; transition: border-color .12s, background .12s;
+}
+.gs-pickrow:hover { border-color: var(--ink-3); }
+.gs-pickrow.on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--card)); }
+.gs-pickrow-emoji { font-size: 20px; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 11px; background: var(--panel); flex: none; }
+.gs-pickrow-t { font-size: 15px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gs-pickrow-check { color: var(--primary); font-weight: 900; font-size: 16px; flex: none; }
+
 .today-card-bar:active { cursor: grabbing; }
 .today-card-grip { font-size: 15px; color: var(--ink-3); }
 .today-card-inner { pointer-events: none; }
+/* Compact edit-mode chip: just the labeled bar, so long list cards (grocery/agenda)
+   don't dominate the board while rearranging. */
+.today-card-wrap.compact { background: var(--card); border-style: solid; }
+.today-card-wrap.compact .today-card-bar { color: var(--ink); font-size: 13.5px; padding: 11px 13px; background: var(--card); }
+.today-card-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.today-card-fillhint {
+  flex: none;
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--ink-3); background: var(--panel); padding: 2px 7px; border-radius: 999px;
+}
+/* × on an edit-mode chip: hide the card from Today (moves it to the hidden tray). */
+.today-card-hide {
+  flex: none; border: 0; background: none; cursor: pointer; padding: 0 2px;
+  font-size: 19px; line-height: 1; color: var(--ink-3); border-radius: 6px;
+}
+.today-card-hide:hover { color: #d1495b; }
+/* Tray of hidden cards under the board (edit mode) — tap a chip to add it back. */
+.today-hidden-tray {
+  margin: 20px 30px 0; padding: 14px 16px;
+  border: 1.5px dashed var(--hair); border-radius: var(--r-lg); background: var(--card-2);
+}
+.today-hidden-tray-h {
+  font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--ink-3); margin-bottom: 10px;
+}
+.today-hidden-empty { font-size: 12.5px; color: var(--ink-3); font-weight: 600; }
+.today-hidden-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.today-hidden-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 1.5px solid var(--hair); background: var(--card); border-radius: 999px;
+  padding: 7px 13px; font-size: 13px; font-weight: 700; color: var(--ink-2); cursor: pointer;
+  transition: border-color .12s, color .12s;
+}
+.today-hidden-chip:hover { border-color: var(--primary); color: var(--primary); }
+.today-hidden-chip .plus { font-size: 15px; font-weight: 900; color: var(--ink-3); }
+.today-hidden-chip:hover .plus { color: var(--primary); }
 .today-col-empty {
   border: 1.5px dashed var(--hair);
   border-radius: var(--r-lg);

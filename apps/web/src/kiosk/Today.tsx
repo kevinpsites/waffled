@@ -5,13 +5,14 @@ import { ChoresCard } from './components/ChoresCard'
 import { GroceryCard } from './components/GroceryCard'
 import { CountdownsCard } from './components/CountdownsCard'
 import { FamilyNightCard } from './components/FamilyNightCard'
+import { GoalSpotlightCard } from './components/GoalSpotlightCard'
 import { GoalRecapBar } from './components/GoalRecap'
 import { ApprovalsBar } from './components/Approvals'
 import { CaptureBar } from './components/CaptureBar'
 import { GettingStartedBar } from './onboarding/GettingStarted'
 import { PantryCard } from './Pantry'
 import { useTopbarRight } from './topbar-slot'
-import { useTodayLayout, useHousehold, type LayoutScope } from '../lib/api'
+import { useTodayLayout, useHousehold, type LayoutScope, type StoredLayout } from '../lib/api'
 import { moduleEnabled, rewardsEnabled } from '../lib/modules'
 
 // The cards that can live on Today, keyed the same as the stored layout. `fill`
@@ -28,6 +29,7 @@ const CARDS: Record<string, { label: string; node: ReactNode; fill?: boolean }> 
   grocery: { label: 'Grocery', node: <GroceryCard />, fill: true },
   countdowns: { label: 'Countdowns', node: <CountdownsCard /> },
   familyNight: { label: 'Family Night', node: <FamilyNightCard /> },
+  goals: { label: 'Goals', node: <GoalSpotlightCard /> },
   pantry: { label: 'Pantry', node: <PantryCard /> },
 }
 
@@ -36,20 +38,24 @@ function removeCard(layout: string[][], card: string): string[][] {
   return layout.map((col) => col.filter((c) => c !== card))
 }
 
+// Append a card to the shortest column (or a preferred one).
+function appendToColumn(layout: string[][], card: string, preferCol?: number): string[][] {
+  const cols = layout.map((c) => [...c])
+  let target = preferCol != null && preferCol >= 0 && preferCol < cols.length ? preferCol : 0
+  if (preferCol == null) for (let i = 1; i < cols.length; i++) if (cols[i].length < cols[target].length) target = i
+  cols[target] = [...cols[target], card]
+  return cols
+}
+
 // Reconcile an optional module's card with the saved layout: drop it when the
-// module is off/hidden; inject it (into the shortest column) when it's on but the
-// saved layout doesn't have it yet. Preserves a user-placed position once saved.
-function applyModuleCard(layout: string[][], card: string, show: boolean, preferCol?: number): string[][] {
+// module is off or the user hid it; inject it (into a preferred/shortest column)
+// when it's on, not hidden, and not already placed. Preserves a user-placed
+// position once saved. `hidden` wins — a card the user explicitly hid never
+// auto-reappears just because its module is on.
+function applyModuleCard(layout: string[][], card: string, show: boolean, hidden: string[], preferCol?: number): string[][] {
   const present = layout.some((col) => col.includes(card))
-  if (show && !present) {
-    const cols = layout.map((c) => [...c])
-    // Prefer a specific column when asked (e.g. pantry defaults to the middle),
-    // otherwise fall back to the shortest column.
-    let target = preferCol != null && preferCol >= 0 && preferCol < cols.length ? preferCol : 0
-    if (preferCol == null) for (let i = 1; i < cols.length; i++) if (cols[i].length < cols[target].length) target = i
-    cols[target] = [...cols[target], card]
-    return cols
-  }
+  if (hidden.includes(card)) return present ? removeCard(layout, card) : layout
+  if (show && !present) return appendToColumn(layout, card, preferCol)
   if (!show && present) return removeCard(layout, card)
   return layout
 }
@@ -96,17 +102,37 @@ export function Today() {
   const showMeals = moduleEnabled(household, 'meals')
   const showGrocery = moduleEnabled(household, 'lists')
   const showFamilyNight = moduleEnabled(household, 'familyNight') && household?.settings?.familyNight?.showOnToday !== false
-  const effectiveResolved = useMemo(() => {
-    let l = applyModuleCard(resolved, 'pantry', showPantry, 1) // pantry → middle column by default
-    l = applyModuleCard(l, 'familyNight', showFamilyNight)
-    l = hideModuleCard(l, 'chores', showChores)
-    l = hideModuleCard(l, 'tonight', showMeals)
-    l = hideModuleCard(l, 'week', showMeals)
-    l = hideModuleCard(l, 'grocery', showGrocery)
-    return l
-  }, [resolved, showPantry, showFamilyNight, showChores, showMeals, showGrocery])
+  const showGoals = moduleEnabled(household, 'goals')
+  // Whether each card is available to show at all (its module is on). Cards with
+  // no module gate are always available. Drives which hidden cards can be brought
+  // back from the tray — showing one whose module is off would just get stripped.
+  const cardAvailable = useMemo<Record<string, boolean>>(
+    () => ({
+      pantry: showPantry,
+      familyNight: showFamilyNight,
+      goals: showGoals,
+      chores: showChores,
+      tonight: showMeals,
+      week: showMeals,
+      grocery: showGrocery,
+    }),
+    [showPantry, showFamilyNight, showGoals, showChores, showMeals, showGrocery]
+  )
+  const isAvailable = (card: string) => cardAvailable[card] ?? true
+  const effectiveResolved = useMemo<StoredLayout>(() => {
+    const hidden = resolved.hidden
+    let cols = applyModuleCard(resolved.cols, 'pantry', showPantry, hidden, 1) // pantry → middle column by default
+    cols = applyModuleCard(cols, 'familyNight', showFamilyNight, hidden)
+    cols = applyModuleCard(cols, 'goals', showGoals, hidden, 0) // goals → left column by default
+    cols = hideModuleCard(cols, 'chores', showChores)
+    cols = hideModuleCard(cols, 'tonight', showMeals)
+    cols = hideModuleCard(cols, 'week', showMeals)
+    cols = hideModuleCard(cols, 'grocery', showGrocery)
+    return { cols, hidden }
+  }, [resolved, showPantry, showFamilyNight, showGoals, showChores, showMeals, showGrocery])
   const [editing, setEditing] = useState(false)
-  const [layout, setLayout] = useState<string[][]>(effectiveResolved)
+  const [layout, setLayout] = useState<string[][]>(effectiveResolved.cols)
+  const [hidden, setHidden] = useState<string[]>(effectiveResolved.hidden)
   const [saving, setSaving] = useState(false)
 
   // Pointer drag state (edit mode only). `drag` is set once per drag so the
@@ -120,7 +146,10 @@ export function Today() {
 
   // Keep the working copy in sync with the server layout (+ module cards) when not editing.
   useEffect(() => {
-    if (!editing) setLayout(effectiveResolved)
+    if (!editing) {
+      setLayout(effectiveResolved.cols)
+      setHidden(effectiveResolved.hidden)
+    }
   }, [effectiveResolved, editing])
 
   useEffect(() => {
@@ -180,12 +209,24 @@ export function Today() {
   function cancel() {
     setEditing(false)
     setDrag(null)
-    setLayout(resolved)
+    setLayout(effectiveResolved.cols)
+    setHidden(effectiveResolved.hidden)
+  }
+  // Hide a card from Today: pull it out of the columns and remember it as hidden,
+  // so it stays gone (and, for module cards, doesn't auto-reappear) until shown.
+  function hideCard(card: string) {
+    setLayout((prev) => removeCard(prev, card))
+    setHidden((prev) => (prev.includes(card) ? prev : [...prev, card]))
+  }
+  // Bring a hidden card back — drop it from `hidden` and append it to a column.
+  function showCard(card: string) {
+    setHidden((prev) => prev.filter((c) => c !== card))
+    setLayout((prev) => appendToColumn(prev, card))
   }
   async function persist(scope: LayoutScope) {
     setSaving(true)
     try {
-      await save(scope, layout)
+      await save(scope, { cols: layout, hidden })
       setEditing(false)
       setDrag(null)
     } finally {
@@ -205,8 +246,11 @@ export function Today() {
 
   // During a drag, render the layout without the dragged card so the drop
   // indicator and indices line up; otherwise render the working/resolved layout.
-  const cols = editing ? layout : effectiveResolved
+  const cols = editing ? layout : effectiveResolved.cols
   const display = drag ? removeCard(cols, drag.card) : cols
+  // Hidden cards the user could bring back — only those whose module is on (a card
+  // whose module is off can't be shown, and would just get stripped again).
+  const hiddenShowable = hidden.filter((c) => CARDS[c] && isAvailable(c))
 
   return (
     <div className={`today-wrap ${editing ? 'today-editing' : ''}`}>
@@ -233,12 +277,25 @@ export function Today() {
                 <Fragment key={card}>
                   {editing && drag && target?.col === ci && target?.index === idx && <div className="today-drop-line" />}
                   {editing ? (
-                    <div className="today-card-wrap" data-card={card}>
+                    // In edit mode cards collapse to a compact chip (just the labeled drag
+                    // bar) so a long list — a 60-item grocery card — can't dominate the board
+                    // and bury the cards below it.
+                    <div className="today-card-wrap compact" data-card={card}>
                       <div className="today-card-bar" onPointerDown={(e) => startDrag(e, card)}>
                         <span className="today-card-grip">⠿</span>
                         <span className="today-card-name">{def.label}</span>
+                        {def.fill && <span className="today-card-fillhint">list</span>}
+                        <button
+                          type="button"
+                          className="today-card-hide"
+                          title="Hide from Today"
+                          aria-label={`Hide ${def.label}`}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={() => hideCard(card)}
+                        >
+                          ×
+                        </button>
                       </div>
-                      <div className="today-card-inner">{def.node}</div>
                     </div>
                   ) : (
                     <div className={`today-slot ${def.fill ? 'fill' : ''}`}>{def.node}</div>
@@ -251,6 +308,24 @@ export function Today() {
           </div>
         ))}
       </div>
+
+      {editing && (
+        <div className="today-hidden-tray">
+          <div className="today-hidden-tray-h">Hidden cards</div>
+          {hiddenShowable.length === 0 ? (
+            <div className="today-hidden-empty">Tap × on a card to hide it from Today. Hidden cards appear here to add back.</div>
+          ) : (
+            <div className="today-hidden-chips">
+              {hiddenShowable.map((card) => (
+                <button key={card} type="button" className="today-hidden-chip" onClick={() => showCard(card)}>
+                  <span className="plus">+</span>
+                  {CARDS[card].label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {drag && (
         <div className="today-drag-ghost" style={{ left: pos.x, top: pos.y }}>

@@ -14,7 +14,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-
+- **Goals now have three deliberate tiers instead of one overloaded "Featured" flag.** The old
+  flag was doing two jobs at once — a tag any number of goals could carry, *and* the single big
+  hero slot — so extras silently did nothing. Now each goal list has a **Spotlight** (the one big
+  hero card) and any number of **Pinned** goals that sit in a band at the top, with everything
+  else below as compact **A–Z rows**. The create/edit form gets a Spotlight / Pinned / Normal
+  picker, and choosing Spotlight when the list already has one tells you which goal it replaces
+  (that one becomes Pinned). You can also **pin or unpin a goal in one tap right from its card** —
+  no need to open the editor. On iPhone/iPad the goals list gets the same three sections, the
+  tier picker, one-tap pin/unpin, and the Today goal card now shows the **Spotlight** (falling
+  back to a Pinned goal). Web + iOS. On the iPhone Today card you can also **choose exactly which
+  goal it shows** — My spotlight, Family spotlight, or a specific pinned goal — from the card's
+  own menu (a scrollable goal picker). The **web Today** now also has a **Goals card** showing the
+  Spotlight goal's progress (a reorderable card in the Customize layout) — matching the phone,
+  with the same **My spotlight / Family spotlight / pick a specific goal** selector.
+- **iPhone now has full parity with the web app for Goals.** Everything above ships on iPhone/iPad
+  too: **ticking off a checklist** (from the goal or the Log sheet — previously iPhone could only add
+  numeric progress, which made no sense for a checklist), the **measure-aware group-counting** choice
+  under "How do you measure it?", a **Log sheet that adapts to the goal type** (count stepper, total
+  amount, habit one-tap, checklist ticking, with the right unit), and **editing or removing a logged
+  entry** — including who took part.
+- **You can now fix or remove a goal entry logged by mistake.** Each line in a goal's Recent
+  activity can be edited — amount, **who took part**, note, and date — or deleted; a split/shared
+  entry is removed as a whole and re-splits correctly when you change who was there. Entries
+  created by ticking a checklist, confirming a calendar event, or an Apple Health sync stay
+  managed by those features.
+- **Goals now make group counting clear and measure-aware.** Alongside the *One shared total /
+  Each tracks their own* choice, a shared goal with more than one person shows a short follow-up
+  right under "How do you measure it?" asking how a group entry should count — with options
+  tailored to the measure and a worked example using your family's names. For a **total**:
+  *everyone's counts fully* (2 people, 1 hr each → +2 hrs) or *split across who took part* (1 hr
+  together → +1 hr, ½ each). For a **count**: *count it for each person* (3 at the park → +3) or
+  *count the activity once* (→ +1, the people are just who came). "Each tracks their own" keeps a
+  per-person target — "read 12 books each" shows a family ring of 12 × the household. Together
+  these cover every way a family goal can add up, without the confusing overlap the old controls
+  had.
 - **Add a recipe from a photo or by describing it.** The recipe editor's "New recipe"
   screen can now build the whole form for you two new ways. **From a photo** — snap or
   choose photos of a recipe card, cookbook page, or handwritten note (a few pages of one
@@ -30,7 +64,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   automatically deleted.
 
 ### Changed
-
+- **Customizing the Today layout is far easier to use.** In Customize mode every card now
+  collapses to a compact labeled chip instead of rendering its full contents — so a long list
+  (a 60-item grocery card) no longer dominates the board and buries the cards below it. Each
+  chip now has an **× to hide that card from Today**, and hidden cards collect in a tray beneath
+  the board where a tap adds any of them back. Your hidden cards and arrangement save **per
+  person** ("Save for me"), and — unlike before — a card you hide *stays* hidden, even the
+  module cards (Chores, Meals, Grocery, Pantry, Goals, Family Night) that used to reappear on
+  their own.
+- **Goals now list alphabetically** (A–Z by title), instead of by creation date — one clean,
+  predictable list that's easy to scan. Featuring a goal shows it big on the home screen; it no
+  longer floats to the top of the goals list (which made the order look random).
+- **The "one shared total / each tracks their own" choice moved below "How do you measure it?"**
+  It only applies once you've picked a measure with a per-person dimension — so it now sits with
+  the group-counting options under the measure picker, and no longer appears for a checklist
+  (whose steps are always shared).
 - **Past events on the Today agenda now fade once they're over.** On the Today
   dashboard's agenda card, an event whose time has already passed is subtly dimmed —
   the same treatment the calendar's agenda list already uses — so at a glance it's clear
@@ -42,6 +90,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the first.
 
 ### Fixed
+- **A Count goal no longer inherits "hours" as its unit.** Switching a new goal's measure to
+  Count now clears the Total default, so you name what you're counting (parks, books) and logging
+  a park reads "1 park", not "2 hours". A unit you've typed yourself is always kept.
+- **Logging a shared count goal with several people no longer multiplies the total.** Marking
+  a state-park visit or camping trip with the whole family used to add one for *each* person
+  selected; it now counts the event once and records who was there. (Choose *Count it for each
+  person* if you do want everyone credited toward the total.)
+- **Checklist goals can no longer be given a meaningless numeric "log".** A checklist is
+  completed by ticking its items, so recording "1" against it is rejected — checklists progress
+  only by checking things off.
+- **Goal forms now reject nonsense input instead of failing silently.** Malformed values —
+  a non-date deadline, a fractional target on a whole-number (count) goal, a bad habit cadence,
+  a non-numeric milestone — are turned away with a clear message rather than saved and breaking
+  the goal later, and progress can only be credited to real members of your household.
 
 - **Per-step timers now carry into the recipe editor when parsing.** Building a recipe
   from a photo, a description, or pasted Markdown correctly detected each step's timer but
