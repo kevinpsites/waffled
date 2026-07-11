@@ -13,7 +13,10 @@ always there, whatever modules you've turned on.
 ## Highlights
 - **The cards** — agenda · tonight's meal · this week · chores rings · grocery, plus
   **module cards** ([Pantry](/administration/modules/), Family Night,
-  [Countdowns](/features/countdowns/)) that appear only when their module is on.
+  [Countdowns](/features/countdowns/), [Goals](/features/goals/)) that appear only when
+  their module is on.
+- 🎯 **Goals card** — shows one goal's progress; pick **My spotlight**, **Family
+  spotlight**, or a **specific goal** from a grouped picker. See [Goals](/features/goals/).
 - 🎛️ **Customize mode** (web / iPhone):
   - **drag** a card by its bar to reorder; each card also has an **× to hide it** —
     hidden cards drop into a tray below the board where a tap adds them back

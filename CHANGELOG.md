@@ -49,7 +49,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per-person target — "read 12 books each" shows a family ring of 12 × the household. Together
   these cover every way a family goal can add up, without the confusing overlap the old controls
   had.
-
 - **Add a recipe from a photo or by describing it.** The recipe editor's "New recipe"
   screen can now build the whole form for you two new ways. **From a photo** — snap or
   choose photos of a recipe card, cookbook page, or handwritten note (a few pages of one
@@ -80,7 +79,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It only applies once you've picked a measure with a per-person dimension — so it now sits with
   the group-counting options under the measure picker, and no longer appears for a checklist
   (whose steps are always shared).
-
 - **Past events on the Today agenda now fade once they're over.** On the Today
   dashboard's agenda card, an event whose time has already passed is subtly dimmed —
   the same treatment the calendar's agenda list already uses — so at a glance it's clear
