@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Uploaded media keys stay inside their household.** Photo, recipe, and chore-proof
   attachments now reject malformed or cross-household keys, and local storage prevents
   paths from escaping the configured media directory.
+- **Personal calendar rows now stay on their owner's synced devices.** PowerSync
+  enforces calendar visibility from signed household and person claims instead of
+  downloading the whole household's private rows and relying on client filtering.
 - **Installation-wide login settings now have one recoverable owner.** Global login and
   SSO configuration no longer accepts changes from administrators of any household;
   ownership persists across household changes and can be recovered from the host admin CLI.

@@ -1,7 +1,8 @@
 // PowerSync auth. Our api is the token authority: it serves a JWKS and mints
-// short-lived RS256 tokens carrying the caller's real household_id (from the DB).
-// PowerSync validates these against the JWKS; sync rules scope buckets by the
-// household_id claim. This keeps PowerSync auth independent of Auth0.
+// short-lived RS256 tokens carrying the caller's real household_id and person_id
+// (from the DB). PowerSync validates these against the JWKS; sync rules use both
+// claims to keep personal calendar rows on their owner's devices. This keeps
+// PowerSync auth independent of Auth0.
 import {
   createPrivateKey,
   createPublicKey,
@@ -55,8 +56,8 @@ export function getJwks(): { keys: JsonWebKey[] } {
   return { keys: [keys().publicJwk] }
 }
 
-export function mintPowerSyncToken(sub: string, householdId: string): string {
-  return jwt.sign({ household_id: householdId }, keys().privateKey, {
+export function mintPowerSyncToken(sub: string, householdId: string, personId: string): string {
+  return jwt.sign({ household_id: householdId, person_id: personId }, keys().privateKey, {
     algorithm: 'RS256',
     keyid: KID,
     subject: sub,
@@ -72,7 +73,7 @@ export function registerPowerSyncRoutes(api: Api): void {
 
   // Authed: a provisioned member exchanges their session for a PowerSync token.
   api.get('/api/powersync/token', tenantRoute(async (tenant, _req, res: Response) => {
-    const token = mintPowerSyncToken(tenant.sub, tenant.householdId)
+    const token = mintPowerSyncToken(tenant.sub, tenant.householdId, tenant.personId)
     return res.status(200).json({
       token,
       powerSyncUrl: process.env.POWERSYNC_PUBLIC_URL ?? null,
