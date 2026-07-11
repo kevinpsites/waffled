@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Personal calendar rows now stay on their owner's synced devices.** PowerSync
+  enforces calendar visibility from signed household and person claims instead of
+  downloading the whole household's private rows and relying on client filtering.
+
 ### Added
 
 ### Changed
