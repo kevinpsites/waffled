@@ -21,6 +21,7 @@ import {
 } from './modules/households/households'
 import { authenticateApiKey, enforceApiKeyScope, registerApiKeyRoutes } from './modules/api-keys/api-keys'
 import { registerPersonRoutes } from './modules/persons/persons'
+import { registerEmailRoutes } from './modules/email/email.routes'
 import { registerListRoutes } from './modules/lists/lists.routes'
 import { registerPantryRoutes } from './modules/pantry/pantry'
 import { registerChoreRoutes } from './modules/chores/chores.routes'
@@ -196,6 +197,9 @@ api.post('/api/households', async (req: Request, res: Response) => {
 
 // Members CRUD (/api/persons…)
 registerPersonRoutes(api)
+
+// Outbound email settings + test send (/api/email…)
+registerEmailRoutes(api)
 
 // Lists (/api/lists…)
 registerListRoutes(api)
