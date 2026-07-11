@@ -14,6 +14,7 @@ let app: any
 let closePool: () => Promise<void>
 let kevinId = ''
 let householdId = ''
+let foreignPersonId = ''
 
 function mint(sub: string): string {
   return jwt.sign({}, SECRET, {
@@ -86,6 +87,16 @@ beforeAll(async () => {
       [householdId, kevinId]
     )
   )
+  foreignPersonId = await withClient(async (c) => {
+    const h = await c.query<{ id: string }>(
+      `insert into households (name, timezone) values ('Other family','UTC') returning id`
+    )
+    const p = await c.query<{ id: string }>(
+      `insert into persons (household_id, name, member_type) values ($1,'Outsider','adult') returning id`,
+      [h.rows[0].id]
+    )
+    return p.rows[0].id
+  })
 })
 
 // Create a member with a login identity so a minted token resolves to them — the
@@ -219,6 +230,61 @@ describe('chores today api', () => {
     const after = JSON.parse((await call('GET', '/api/chores/today', kevin)).body)
     expect(after.upForGrabs).toBe(before.upForGrabs + 1)
     expect(after.people.find((p: { id: string }) => p.id === kevinId).total).toBe(beforeTotal)
+  })
+
+  it('rejects assignees from another household across chore write paths', async () => {
+    expect((await call('POST', '/api/chores', kevin, {
+      title: 'Foreign create', personId: foreignPersonId,
+    })).statusCode).toBe(404)
+
+    const created = await call('POST', '/api/chores', kevin, {
+      title: 'Boundary chore', personId: null,
+    })
+    expect(created.statusCode).toBe(201)
+    const choreId = JSON.parse(created.body).chore.id as string
+    const instance = JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body)
+      .instances.find((i: { choreId: string }) => i.choreId === choreId)
+
+    expect((await call('PATCH', `/api/chores/${choreId}`, kevin, {
+      personId: foreignPersonId,
+    })).statusCode).toBe(404)
+    expect((await call('POST', `/api/chore-instances/${instance.id}/claim`, kevin, {
+      personId: foreignPersonId,
+    })).statusCode).toBe(404)
+    expect((await call('POST', `/api/chore-instances/${instance.id}/assign`, kevin, {
+      personId: foreignPersonId,
+    })).statusCode).toBe(404)
+  })
+})
+
+describe('currency conversion boundaries', () => {
+  it('allows self and authorized household conversions, but rejects other targets', async () => {
+    const kidId = await addMember('Converter kid', 'kid', false, 'dev|converter-kid')
+    const kid = mint('dev|converter-kid')
+    const currency = await call('POST', '/api/currencies', kevin, { label: 'Gems', symbol: 'G' })
+    expect(currency.statusCode).toBe(201)
+    const conversion = await call('POST', '/api/conversions', kevin, {
+      fromCurrency: 'stars', toCurrency: 'gems', fromAmount: 1, toAmount: 1,
+    })
+    expect(conversion.statusCode).toBe(201)
+    const conversionId = JSON.parse(conversion.body).conversion.id as string
+
+    await withClient((c) => c.query(
+      `insert into ledger_entries (household_id, person_id, currency, amount, reason, created_by)
+       values ($1,$2,'stars',10,'boundary_test',$2), ($1,$3,'stars',10,'boundary_test',$2)`,
+      [householdId, kevinId, kidId]
+    ))
+
+    expect((await call('POST', `/api/conversions/${conversionId}/apply`, kid, {})).statusCode).toBe(200)
+    expect((await call('POST', `/api/conversions/${conversionId}/apply`, kid, {
+      personId: kevinId,
+    })).statusCode).toBe(403)
+    expect((await call('POST', `/api/conversions/${conversionId}/apply`, kevin, {
+      personId: kidId,
+    })).statusCode).toBe(200)
+    expect((await call('POST', `/api/conversions/${conversionId}/apply`, kevin, {
+      personId: foreignPersonId,
+    })).statusCode).toBe(404)
   })
 })
 

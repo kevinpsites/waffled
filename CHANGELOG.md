@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Uploaded media keys stay inside their household.** Photo, recipe, and chore-proof
   attachments now reject malformed or cross-household keys, and local storage prevents
   paths from escaping the configured media directory.
+- **Household links now stay inside the family they belong to.** Chore assignees,
+  currency conversions, calendar events, offline writes, goal participants, list
+  assignees, calendar owners, and meal references reject IDs from another household.
 - **Installation-wide login settings now have one recoverable owner.** Global login and
   SSO configuration no longer accepts changes from administrators of any household;
   ownership persists across household changes and can be recovered from the host admin CLI.
