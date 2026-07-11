@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Caddy now sends a Content Security Policy plus MIME-sniffing, referrer, and
+  browser-capability protections while preserving camera, photo, and sync support.
 - **Member logins now respect account ownership.** An administrator can update the login
   already linked to a household profile, but an account owned by a different person must
   join through the explicit invitation and acceptance flow.
