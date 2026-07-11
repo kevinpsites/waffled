@@ -158,7 +158,7 @@ password). Email-only members can sign in via SSO once OIDC is configured.
 Waffled supports backend-mediated OIDC (auth-code + PKCE) against any OpenID-Connect
 provider (Authentik, Keycloak, Google, …). It's **invite-gated**: a person can only
 sign in via SSO if the provider's *verified email* already matches a family member's
-login email. Configure it in **Settings → Login & security** (admin only):
+login email. Configure it in **Settings → Login & security** (installation owner only):
 
 1. Ensure `TOKEN_ENCRYPTION_KEY` is set (the client secret is encrypted at rest).
 2. **Issuer URL** — your provider's discovery base, e.g.

@@ -14,6 +14,10 @@ let pg: StartedPostgreSqlContainer
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let app: any
 let closePool: () => Promise<void>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let query: any
+
+const LOCAL_SECRET = 'waffled-local-dev-secret-change-me'
 
 // ── stub IdP ───────────────────────────────────────────────────────────────────
 let idp: Server
@@ -111,6 +115,13 @@ function call(method: string, path: string, opts: { body?: unknown; token?: stri
 }
 const json = (r: RunResult) => JSON.parse(r.body)
 const loc = (r: RunResult) => r.headers.location ?? r.headers.Location ?? ''
+const mint = (sub: string) => jwt.sign({}, LOCAL_SECRET, {
+  algorithm: 'HS256',
+  subject: sub,
+  issuer: 'waffled-local',
+  audience: 'waffled-api',
+  expiresIn: '1h',
+})
 
 beforeAll(async () => {
   const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
@@ -122,10 +133,11 @@ beforeAll(async () => {
   await runMigrations(url)
   process.env.DATABASE_URL = url
   process.env.TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64') // 32 bytes → encryption available
+  process.env.LOCAL_JWT_SECRET = LOCAL_SECRET
   delete process.env.AUTH0_DOMAIN
   delete process.env.AUTH_FORCE_PASSWORD
   app = (await import('../src/app')).default
-  closePool = (await import('../src/platform/db')).closePool
+  ;({ query, closePool } = await import('../src/platform/db'))
 }, 120_000)
 afterAll(async () => {
   await closePool?.()
@@ -178,6 +190,55 @@ describe('OIDC login', () => {
     expect(s.methods).toContain('oidc')
     expect(s.methods).toContain('password')
     expect(s.oidc).toMatchObject({ buttonLabel: 'Sign in with Acme' })
+  })
+
+  it('reserves installation-wide auth config for the installation owner account', async () => {
+    const extra = json(await call('POST', '/api/households', {
+      token: admin.accessToken,
+      body: {
+        name: 'Lake House',
+        timezone: 'America/Chicago',
+        person: { name: 'Kevin' },
+      },
+    }))
+    const switched = json(await call('POST', '/api/auth/switch', {
+      token: admin.accessToken,
+      body: { householdId: extra.household.id },
+    }))
+    expect((await call('GET', '/api/auth/config', { token: switched.accessToken })).statusCode).toBe(200)
+
+    const household = await query(
+      `insert into households (name, timezone) values ('Other family', 'UTC') returning id`
+    )
+    const person = await query(
+      `insert into persons (household_id, name, member_type, is_admin)
+       values ($1, 'Other owner', 'adult', true) returning id`,
+      [household.rows[0].id]
+    )
+    await query(`update households set owner_person_id = $1 where id = $2`, [
+      person.rows[0].id,
+      household.rows[0].id,
+    ])
+    await query(
+      `insert into identities
+         (household_id, person_id, provider, auth0_user_id, email_verified, is_primary)
+       values ($1, $2, 'password', 'dev|other-owner', true, true)`,
+      [household.rows[0].id, person.rows[0].id]
+    )
+    const otherAdmin = mint('dev|other-owner')
+
+    expect((await call('GET', '/api/auth/config', { token: otherAdmin })).statusCode).toBe(403)
+    expect((await call('PUT', '/api/auth/config', {
+      token: otherAdmin,
+      body: { buttonLabel: 'Hijacked login' },
+    })).statusCode).toBe(403)
+    expect((await call('POST', '/api/auth/config/test', {
+      token: otherAdmin,
+      body: { issuerUrl: issuer },
+    })).statusCode).toBe(403)
+
+    const ownerConfig = json(await call('GET', '/api/auth/config', { token: admin.accessToken }))
+    expect(ownerConfig.buttonLabel).toBe('Sign in with Acme')
   })
 
   it('links an invited email on first SSO login and authenticates', async () => {

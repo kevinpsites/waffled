@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Installation-wide login and SSO settings now require the installation owner
+  instead of accepting changes from administrators of any household.
+
 ### Added
 
 ### Changed

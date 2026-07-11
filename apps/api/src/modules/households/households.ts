@@ -95,6 +95,36 @@ export function requireAdmin(tenant: Tenant): void {
   if (!tenant.isAdmin) throw new AuthError('Admin privileges required', 403)
 }
 
+// Installation-wide settings must not be writable by every household admin. The
+// owner of the first household is the installation owner; compare account ids so
+// that same human keeps operator access after switching households. Include the
+// original rows even if later soft-deleted so ownership cannot silently transfer.
+export async function requireInstallationOwner(tenant: Tenant): Promise<void> {
+  const { rows } = await query<{ allowed: boolean }>(
+    `with installation_owner as (
+       select p.id, p.account_id
+         from households h
+         join persons p on p.id = h.owner_person_id
+        order by h.created_at, h.id
+        limit 1
+     )
+     select (
+       current_person.id = installation_owner.id
+       or (
+         current_person.account_id is not null
+         and current_person.account_id = installation_owner.account_id
+       )
+     ) as allowed
+       from persons current_person
+       cross join installation_owner
+      where current_person.id = $1`,
+    [tenant.personId]
+  )
+  if (rows[0]?.allowed !== true) {
+    throw new AuthError('Installation owner privileges required', 403)
+  }
+}
+
 export async function findTenantBySub(sub: string): Promise<Tenant | null> {
   const { rows } = await query<{ person_id: string; household_id: string; is_admin: boolean; member_type: string }>(
     `select i.person_id, p.household_id, p.is_admin, p.member_type
