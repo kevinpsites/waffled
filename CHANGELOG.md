@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Uploaded media keys stay inside their household.** Photo, recipe, and chore-proof
+  attachments now reject malformed or cross-household keys, and local storage prevents
+  paths from escaping the configured media directory.
+
 ### Added
 
 ### Changed

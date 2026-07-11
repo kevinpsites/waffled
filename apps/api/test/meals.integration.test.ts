@@ -59,6 +59,7 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 
 const kevin = mint('dev|kevin')
 let kevinId = ''
+let householdId = ''
 let mediaDir = ''
 
 beforeAll(async () => {
@@ -79,7 +80,7 @@ beforeAll(async () => {
   })
   expect(setup.statusCode).toBe(201)
   kevinId = JSON.parse(setup.body).person.id
-  const householdId = JSON.parse(setup.body).household.id
+  householdId = JSON.parse(setup.body).household.id
   // Seed an identity so the legacy mint('dev|kevin') token resolves to the owner.
   await withClient((c) =>
     c.query(
@@ -712,6 +713,17 @@ describe('recipe images (blob storage)', () => {
     // And it survives a GET (presenter path).
     const got = JSON.parse((await call('GET', `/api/recipes/${recipe.id}`, kevin)).body).recipe
     expect(got.imageUrl).toBe(`/media/${key}`)
+  })
+
+  it('rejects storage keys outside the active household namespace', async () => {
+    expect((await call('POST', '/api/recipes', kevin, {
+      title: 'Unsafe', storageKey: `${householdId}/../../etc/passwd`, contentType: 'image/jpeg',
+    })).statusCode).toBe(400)
+
+    const recipe = JSON.parse((await call('POST', '/api/recipes', kevin, { title: 'Safe' })).body).recipe
+    expect((await call('PATCH', `/api/recipes/${recipe.id}`, kevin, {
+      storageKey: '22222222-2222-2222-2222-222222222222/other.jpg',
+    })).statusCode).toBe(400)
   })
 
   it('PATCH replacing the image drops the old blob; soft-delete drops the current one', async () => {
