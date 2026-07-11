@@ -82,6 +82,22 @@ ensure_env() {
   fi
 }
 
+# Upgrade bridge for installs created before PowerSync moved behind Caddy. New
+# `.env` files already carry this value; existing files get the matching listener
+# without overwriting any operator customization.
+ensure_powersync_proxy_env() {
+  [ -n "$(env_val POWERSYNC_CADDY_ADDRESS)" ] && return 0
+  local site host
+  site="$(env_val CADDY_SITE_ADDRESS)"
+  case "$site" in
+    ""|:*) set_env_var POWERSYNC_CADDY_ADDRESS ":8090" ;;
+    *)
+      host="${site#https://}"; host="${host#http://}"; host="${host%%:*}"
+      set_env_var POWERSYNC_CADDY_ADDRESS "https://$host:8090"
+      ;;
+  esac
+}
+
 status() {
   local any_fail=0
   printf '%-12s %-10s %s\n' "SERVICE" "STATE" "HEALTH"
@@ -181,7 +197,7 @@ cmd="${1:-help}"; shift || true
 case "$cmd" in
   up)
     preflight || exit 1
-    ensure_env; export_build_meta
+    ensure_env; ensure_powersync_proxy_env; export_build_meta
     # Default: pull the published images (fast — no local toolchain build) and start.
     # `./waffled up --build [svc]` (dev/bleeding-edge): build the images from source
     # instead, stamping the current git SHA into /healthz + /api/health.
@@ -206,6 +222,7 @@ case "$cmd" in
     # then pull + up (the one-shot `migrate` reruns because the image tag changed).
     preflight || exit 1
     ensure_env
+    ensure_powersync_proxy_env
     if git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
       branch="$(git -C "$ROOT" symbolic-ref --short -q HEAD || true)"
       if [ -n "$branch" ]; then
@@ -240,7 +257,7 @@ case "$cmd" in
     ;;
   down)    "${DC[@]}" down "$@" ;;
   restart) "${DC[@]}" restart "$@"; echo; status || true ;;
-  rebuild) preflight || exit 1; ensure_env; export_build_meta; "${DC[@]}" up -d --build --force-recreate "$@"; echo; status || true ;;
+  rebuild) preflight || exit 1; ensure_env; ensure_powersync_proxy_env; export_build_meta; "${DC[@]}" up -d --build --force-recreate "$@"; echo; status || true ;;
   logs)    "${DC[@]}" logs -f --tail=120 "$@" ;;
   status|st|ps) status || true ;;
   migrate)
@@ -316,6 +333,7 @@ case "$cmd" in
       1)
         set_env_var PUBLIC_BASE_URL ""
         set_env_var POWERSYNC_PUBLIC_URL "http://localhost:$ps_port"
+        set_env_var POWERSYNC_CADDY_ADDRESS ":8090"
         set_env_var CADDY_SITE_ADDRESS ":80"
         echo "${c_grn}Set for localhost.${c_reset} Run ${c_dim}./waffled up${c_reset}, then open http://localhost:$http_port"
         ;;
@@ -326,6 +344,7 @@ case "$cmd" in
         [ -n "$addr" ] || { echo "${c_red}No address given — aborting.${c_reset}"; exit 1; }
         set_env_var PUBLIC_BASE_URL "http://$addr:$http_port"
         set_env_var POWERSYNC_PUBLIC_URL "http://$addr:$ps_port"
+        set_env_var POWERSYNC_CADDY_ADDRESS ":8090"
         set_env_var CADDY_SITE_ADDRESS ":80"
         echo "${c_grn}Set for your network ($addr).${c_reset} Run ${c_dim}./waffled up${c_reset}, then open http://$addr:$http_port on any device."
         echo "${c_dim}Tip: reserve a static IP for this machine in your router so the address doesn't drift.${c_reset}"
@@ -336,8 +355,9 @@ case "$cmd" in
         set_env_var CADDY_SITE_ADDRESS "$host"
         set_env_var PUBLIC_BASE_URL "https://$host"
         set_env_var POWERSYNC_PUBLIC_URL "https://$host:$ps_port"
+        set_env_var POWERSYNC_CADDY_ADDRESS "https://$host:8090"
         echo "${c_grn}Set for https://$host.${c_reset} Enable the 443 mapping in infra/compose/docker-compose.yml, point DNS at this machine, then run ${c_dim}./waffled up${c_reset}."
-        echo "${c_ylw}Note: PowerSync serves on :$ps_port — for public HTTPS you'll also need to expose/proxy that port with TLS (see docs/TROUBLESHOOTING.md).${c_reset}"
+        echo "${c_dim}PowerSync is served through Caddy with TLS on :$ps_port.${c_reset}"
         ;;
       *) echo "${c_red}Unknown choice — run ./waffled setup again.${c_reset}"; exit 1 ;;
     esac

@@ -18,13 +18,13 @@ the api's config; "auto" means `./waffled` generates it for you on first run.
 | `POSTGRES_USER` | Database user | set in `.env` |
 | `POSTGRES_PASSWORD` | Database password | auto |
 | `POSTGRES_DB` | Database name | set in `.env` |
-| `POSTGRES_PORT` | Host port for Postgres | `5432` |
+| `POSTGRES_PORT` | Loopback-only host port for local Postgres tools | `5432` |
 | `DATABASE_URL` | Built by compose (`postgres://…@postgres:5432/…`) for api/migrate/backup | derived |
 | `LOCAL_JWT_SECRET` | HS256 secret for built-in auth + dev tokens | auto |
 | `TOKEN_ENCRYPTION_KEY` | AES key that encrypts Google **and** OIDC secrets at rest | auto |
 | `POWERSYNC_JWT_PRIVATE_KEY` | Stable RS256 key that signs PowerSync tokens. **Set this** — empty means a new key every restart, which drops all clients offline | empty ⚠️ |
 | `POWERSYNC_JWT_KID` | Key ID for the PowerSync signing key | `waffled-powersync-1` |
-| `HTTP_PORT` / `API_PORT` / `POWERSYNC_PORT` | Host ports (Caddy / api / PowerSync) | `8080` / `3000` / `8090` |
+| `HTTP_PORT` / `API_PORT` / `POWERSYNC_PORT` | Host ports (Caddy / loopback API diagnostics / Caddy-fronted sync) | `8080` / `3000` / `8090` |
 | `NODE_ENV` | Node environment | `production` |
 
 > ⚠️ **`POWERSYNC_JWT_PRIVATE_KEY` is the one to not skip.** If it's empty the api regenerates its
@@ -39,6 +39,7 @@ the api's config; "auto" means `./waffled` generates it for you on first run.
 | `POWERSYNC_PUBLIC_URL` | The sync URL clients connect to — **must be reachable by the device** (LAN IP / hostname, not `localhost`) | `http://localhost:8090` |
 | `PUBLIC_BASE_URL` | Public origin for OIDC + Google redirect URLs; empty = derived from request | empty |
 | `CADDY_SITE_ADDRESS` | `:80` (plain HTTP) or a hostname (triggers Caddy auto-TLS) | `:80` |
+| `POWERSYNC_CADDY_ADDRESS` | Caddy's dedicated sync listener (`./waffled setup` manages it) | `:8090` |
 
 See [Reverse proxy & TLS](/install/reverse-proxy/) for the full remote-access story.
 
@@ -93,7 +94,7 @@ Independent of login. See [Google Calendar](/administration/google-calendar/).
 |---|---|---|
 | `GOOGLE_CLIENT_ID` | OAuth client id | null |
 | `GOOGLE_CLIENT_SECRET` | OAuth client secret | null |
-| `GOOGLE_CALENDAR_REDIRECT_URI` | Registered redirect (`…/auth/google/calendar/callback`) | null |
+| `GOOGLE_CALENDAR_REDIRECT_URI` | Registered redirect (`…/auth/google/calendar/callback`) | `http://localhost:8080/auth/google/calendar/callback` |
 | `GOOGLE_CALENDAR_SCOPES` | OAuth scopes | `openid email …/auth/calendar` |
 | `CALENDAR_SYNC_INTERVAL_MS` | Inbound sync poll interval | `300000` (5m) |
 
