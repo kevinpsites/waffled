@@ -188,17 +188,42 @@ body {
   font-weight: 700;
   font-size: 13px;
 }
-/* Compact pill dropdown on the Today Goals card (self-contained — settings.css's
-   select.sel styling isn't loaded on this route, which left it a wide native bar). */
-.gs-pick {
-  appearance: none; -webkit-appearance: none;
-  font: inherit; font-size: 12.5px; font-weight: 700; color: var(--ink);
-  background-color: var(--panel); border: 0; border-radius: 999px; cursor: pointer;
-  padding: 5px 27px 5px 12px; max-width: 160px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b6b70' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
-  background-repeat: no-repeat; background-position: right 10px center;
+/* Today Goals card — header, the pick pill (opens a modal), and the modal goal picker. */
+.gs-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.gs-pick-btn {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 46%;
+  background: var(--panel); border: 0; border-radius: 999px; cursor: pointer;
+  padding: 6px 11px; font: inherit; font-size: 12.5px; font-weight: 700; color: var(--ink);
 }
+.gs-pick-btn svg { flex: none; color: var(--ink-3); }
+.gs-pick-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gs-seeall { margin-left: auto; flex: none; white-space: nowrap; cursor: pointer; }
+.gs-goal-btn { border: 0; background: none; padding: 0; text-align: left; cursor: pointer; width: 100%; }
+
+.gs-modal { max-width: 460px; width: 100%; }
+.gs-picklist { max-height: 62vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin: 0 -4px; padding: 2px 4px; }
+.gs-group { display: flex; flex-direction: column; gap: 6px; }
+.gs-group-h {
+  display: flex; align-items: center; gap: 8px; margin: 12px 2px 2px;
+  font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3);
+}
+.gs-group-avs { display: inline-flex; }
+.gs-group-av {
+  width: 22px; height: 22px; display: grid; place-items: center; font-size: 12px;
+  background: var(--panel); border-radius: 999px; margin-left: -6px; border: 1.5px solid var(--card);
+}
+.gs-group-av:first-child { margin-left: 0; }
+.gs-group-n { color: var(--ink-3); font-weight: 700; }
+.gs-pickrow {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  border: 1.5px solid var(--hair); background: var(--card); border-radius: var(--r-md);
+  padding: 11px 13px; cursor: pointer; transition: border-color .12s, background .12s;
+}
+.gs-pickrow:hover { border-color: var(--ink-3); }
+.gs-pickrow.on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--card)); }
+.gs-pickrow-emoji { font-size: 20px; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 11px; background: var(--panel); flex: none; }
+.gs-pickrow-t { font-size: 15px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gs-pickrow-check { color: var(--primary); font-weight: 900; font-size: 16px; flex: none; }
 
 .today-card-bar:active { cursor: grabbing; }
 .today-card-grip { font-size: 15px; color: var(--ink-3); }
