@@ -89,6 +89,15 @@ export function goalFraction(g: Goal): number {
   const p = goalDisplayProgress(g)
   return t != null && t > 0 ? Math.min(p / t, 1) : 0
 }
+// The one place goal amounts get formatted for display: at most 2 decimals, trailing
+// zeros dropped, with thousands grouping (2.5833… → "2.58", 1.5 → "1.5", 6.16667 →
+// "6.17", 1000 → "1,000"). Amounts are stored exact — an hours+minutes log is 1h5m =
+// 1.0833… hours — so every amount/progress the UI shows MUST route through here rather
+// than render the raw repeating decimal. (Shared so the list, detail, Today card, and
+// person profile can't drift.)
+export function fmtGoalNum(n: number | null | undefined): string {
+  return n == null ? '—' : n.toLocaleString('en-US', { maximumFractionDigits: 2 })
+}
 
 export interface GoalMilestone {
   id: string

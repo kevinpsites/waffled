@@ -142,10 +142,14 @@ enum GoalStyle {
 
 func goalFirstName(_ name: String) -> String { name.split(separator: " ").first.map(String.init) ?? name }
 
-/// Whole numbers without a decimal, otherwise a compact form; nil → em dash.
+/// Whole numbers without a decimal, otherwise rounded to at most 2 decimals with
+/// trailing zeros dropped (3 → "3", 1.5 → "1.5", 2.5833… → "2.58", 6.16667 → "6.17");
+/// nil → em dash. Amounts are stored exact (an hours+minutes log is 1h5m = 1.0833… h),
+/// so every display goes through here to avoid showing the raw repeating decimal.
 func goalFmt(_ n: Double?) -> String {
     guard let n else { return "—" }
-    return n == n.rounded() ? String(Int(n)) : String(format: "%g", n)
+    let r = (n * 100).rounded() / 100
+    return r == r.rounded() ? String(Int(r)) : String(format: "%g", r)
 }
 
 /// Compact, rounded formatting for the tight goal ring: values under 1,000 round to a

@@ -1,15 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { useGoals, useGoalLists, useHousehold, usePersons, goalDisplayProgress, goalDisplayTarget, goalFraction, type Goal, type GoalList, type GoalListMember } from '../../lib/api'
+import { useGoals, useGoalLists, useHousehold, usePersons, goalDisplayProgress, goalDisplayTarget, goalFraction, fmtGoalNum, type Goal, type GoalList, type GoalListMember } from '../../lib/api'
 
 // Today card: a chosen goal's progress — the web counterpart of the iOS Today goal card.
 // A modal picker (grouped by goal list, like iOS) chooses My spotlight, Family spotlight,
 // or a specific goal. Per-device preference; falls back gracefully if the goal is gone.
 const PICK_KEY = 'waffled.todayGoalPick'
 
-function fmtNum(n: number | null): string {
-  return n == null ? '—' : n.toLocaleString('en-US')
-}
+const fmtNum = fmtGoalNum
 // Type-aware progress line, matching the goals list + detail: a checklist counts
 // steps, a habit counts this period vs its cadence, and a numeric goal shows the
 // amount against its (per-person-aware) target — so the Today card never disagrees

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { Icon } from './icons'
 import { LogModal } from './components/LogModal'
 import { ListModal } from './components/ListModal'
-import { api, useGoalLists, useGoals, useHousehold, can, goalDisplayProgress as dispProgress, goalDisplayTarget as dispTarget, type Goal, type GoalList, type GoalListMember, type GoalParticipant } from '../lib/api'
+import { api, useGoalLists, useGoals, useHousehold, can, goalDisplayProgress as dispProgress, goalDisplayTarget as dispTarget, fmtGoalNum, type Goal, type GoalList, type GoalListMember, type GoalParticipant } from '../lib/api'
 import { CATEGORIES } from './categories'
 import '../styles/goals.css'
 
@@ -15,9 +15,7 @@ function frac(progress: number, target: number | null): number {
 // `dispProgress` / `dispTarget` (the type-aware, per-person-aware progress + target)
 // are imported from lib/api so the goals list, goal detail, and the Today card all
 // agree — see goalDisplayProgress / goalDisplayTarget there.
-function fmtNum(n: number | null): string {
-  return n == null ? '—' : n.toLocaleString('en-US')
-}
+const fmtNum = fmtGoalNum
 // Shrink the ring's hero number so long/fractional values (e.g. a split-backfill
 // "295.99" or "1,234") stay inside the inner circle instead of clipping the ring
 // stroke. `base` is the CSS font-size for a short value.
@@ -91,7 +89,7 @@ function ContribRow({ p, max, unit }: { p: GoalParticipant; max: number; unit: s
         <div style={{ width: `${w}%` }} />
       </div>
       <div className="cv" style={{ whiteSpace: 'nowrap', width: 'auto', minWidth: 56, paddingLeft: 8 }}>
-        {p.progress}
+        {fmtNum(p.progress)}
         {unit ? ` ${unit}` : ''}
       </div>
     </div>
@@ -148,7 +146,7 @@ function EachHero({ goal, onOpen }: { goal: Goal; onOpen: () => void }) {
   const sub = [
     goal.target ? `${fmtNum(goal.target)} ${goal.unit ?? ''} each`.trim() : null,
     goal.deadline ? `by ${fmtDeadline(goal.deadline)}` : null,
-    ...goal.participants.map((p) => `${firstName(p.name)} ${p.progress}`),
+    ...goal.participants.map((p) => `${firstName(p.name)} ${fmtNum(p.progress)}`),
   ]
     .filter(Boolean)
     .join(' · ')
