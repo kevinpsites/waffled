@@ -11,8 +11,9 @@ everything a family coordinates day to day:
 - 📅 **Calendar** with optional two-way Google Calendar sync
 - ✅ **Chores & stars** with a full earn → redeem → approve economy
 - 🎯 **Goals & rewards** (individual and shared)
-- 🍽️ **Meals & recipes** with an auto-built grocery list
-- 🧺 **Lists & groceries** (aisle-grouped, meal-aware)
+- 🍽️ **Meals & recipes** with a step-by-step cook mode and an auto-built grocery list
+- 🧺 **Lists & groceries** (aisle-grouped, meal-aware, saveable as templates)
+- 🥫 **Pantry** with a barcode scanner, low-stock/expiry nudges, and allergen warnings *(optional module)*
 - 🖼️ **Photos & memories** with an ambient screensaver
 - ✨ An **AI "Add anything" capture bar** that routes natural language to the right place
 
@@ -26,10 +27,11 @@ is opt-in via configuration.
 | --- | --- | --- |
 | **Counter Kiosk** | Always-on tablet (1280×800) in the kitchen | Same web build in fullscreen/PWA mode; ambient screensaver; profile picker + optional PINs |
 | **Web** | Full management & setup dashboard | The React SPA served by Caddy; first-run setup wizard, all admin/settings |
-| **iOS** | Native Swift/SwiftUI capture companion | Offline-first read + write over PowerSync; native sign-in + local notifications |
+| **iOS (iPhone + iPad)** | Native universal SwiftUI app — a personal planner on iPhone, a family hub on iPad | Offline-first calendar over PowerSync; native sign-in + local notifications; an iPad can double as the kiosk |
 
-The Kiosk and Web are the **same application** (this is the "Web / Kiosk" column in the
-feature matrix); iOS is a separate native client (the "Mobile" column).
+The Kiosk and Web are the **same application** (the "Web / Kiosk" column in the feature
+matrix); iOS is a separate native client — one universal binary whose iPhone and iPad
+experiences are the matrix's "iPhone" and "iPad" columns.
 
 ## Core ideas
 
@@ -45,6 +47,9 @@ feature matrix); iOS is a separate native client (the "Mobile" column).
   a deterministic on-device heuristic when no provider is configured or you're offline.
 - **Bring your own identity (optionally).** Built-in email/password auth out of the box;
   attach any OpenID-Connect provider later (invite-gated) without touching features.
+- **Yours to extend.** Optional features are toggleable **modules**, and a scoped public REST
+  API (admin-issued keys) lets external tools read and write your data. Nothing is held back
+  behind a paid tier.
 
 ## Where to go next
 

@@ -78,6 +78,12 @@ See [Troubleshooting → Locked out](/operations/troubleshooting/#locked-out--fo
 No — it **syncs two-way** with it. Connect per person in Settings → Calendars; Waffled pulls
 Google events and pushes the ones it authors. See [Google Calendar](/administration/google-calendar/).
 
+### Do I need to buy a special display (like a Skylight)?
+No. Any tablet you already own — a spare iPad or Android tablet — becomes the always-on kitchen
+kiosk in fullscreen/PWA mode, with an ambient photo screensaver when it's idle. There's no
+dedicated hardware to buy and no screen locked behind a subscription. See
+[Kiosk & devices](/administration/kiosk/).
+
 ### Do I need an AI subscription for the "Add anything" bar?
 No. With no provider configured, capture still works via an on-device heuristic. Add a key
 (Anthropic, any OpenAI-compatible endpoint, or a local Ollama model) to make it smarter. Keys
