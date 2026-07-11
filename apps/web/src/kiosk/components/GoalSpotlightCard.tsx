@@ -76,7 +76,12 @@ export function GoalSpotlightCard() {
   const everyone = new Set(persons.map((p) => p.id))
   const [pick, setPick] = useState<string>(() => localStorage.getItem(PICK_KEY) || 'mine')
   const [picking, setPicking] = useState(false)
+  // Collapsible groups (like iOS). Default: only the first group (My goals) is open, so a
+  // long list opens compact. An override flips a group.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
+  const toggleGroup = (k: string, cur: boolean) => setOpenGroups((prev) => ({ ...prev, [k]: !cur }))
 
+  const grouped = groupGoals(goals, lists, me)
   const g = resolveGoal(goals, pick, me, everyone)
   const tag = g?.isSpotlight ? '🌟 Spotlight' : g?.isFeatured ? '📌 Pinned' : 'Goal'
   const pickLabel = pick === 'mine' ? 'My spotlight' : pick === 'family' ? 'Family spotlight' : goals.find((x) => x.id === pick)?.title ?? 'My spotlight'
@@ -129,24 +134,28 @@ export function GoalSpotlightCard() {
             <div className="gs-picklist">
               <PickRow emoji="✨" title="My spotlight" sub="Follows your spotlighted goal" on={pick === 'mine'} onClick={() => choose('mine')} />
               <PickRow emoji="👪" title="Family spotlight" sub="Follows the family's spotlight" on={pick === 'family'} onClick={() => choose('family')} />
-              {groupGoals(goals, lists, me).map((grp) => (
-                <div key={grp.key} className="gs-group">
-                  <div className="gs-group-h">
-                    {grp.members.length > 0 && (
-                      <span className="gs-group-avs">
-                        {grp.members.slice(0, 4).map((m) => (
-                          <span key={m.personId} className="gs-group-av">{m.avatarEmoji ?? '🙂'}</span>
-                        ))}
-                      </span>
-                    )}
-                    <span>{grp.label}</span>
-                    <span className="gs-group-n">{grp.goals.length}</span>
+              {grouped.map((grp, i) => {
+                const open = openGroups[grp.key] ?? i === 0
+                return (
+                  <div key={grp.key} className="gs-group">
+                    <button type="button" className="gs-group-h" onClick={() => toggleGroup(grp.key, open)} aria-expanded={open}>
+                      <svg className={`gs-group-chev ${open ? 'open' : ''}`} viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 6 15 12 9 18" /></svg>
+                      {grp.members.length > 0 && (
+                        <span className="gs-group-avs">
+                          {grp.members.slice(0, 4).map((m) => (
+                            <span key={m.personId} className="gs-group-av">{m.avatarEmoji ?? '🙂'}</span>
+                          ))}
+                        </span>
+                      )}
+                      <span>{grp.label}</span>
+                      <span className="gs-group-n">{grp.goals.length}</span>
+                    </button>
+                    {open && grp.goals.map((go) => (
+                      <PickRow key={go.id} emoji={go.emoji ?? '🎯'} title={go.title} sub={goalMeta(go)} on={pick === go.id} onClick={() => choose(go.id)} />
+                    ))}
                   </div>
-                  {grp.goals.map((go) => (
-                    <PickRow key={go.id} emoji={go.emoji ?? '🎯'} title={go.title} sub={goalMeta(go)} on={pick === go.id} onClick={() => choose(go.id)} />
-                  ))}
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>
