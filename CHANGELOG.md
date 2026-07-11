@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Run the API and backup scheduler as unprivileged image users. A short-lived startup job
+  safely updates ownership on volumes created by earlier root-running releases.
+
 ### Added
 
 ### Changed
