@@ -239,8 +239,10 @@ export function registerGoalRoutes(api: Api): void {
       }
       const hours = body.hours == null ? 0 : Number(body.hours)
       const minutes = body.minutes == null ? 0 : Number(body.minutes)
-      if (!Number.isFinite(hours) || hours < 0 || !Number.isFinite(minutes) || minutes < 0) {
-        return res.status(400).json({ error: 'BadRequest', message: 'hours and minutes must be non-negative numbers' })
+      // Whole hours + a 0–59 minute remainder — the same shape both clients enter, reasserted
+      // here so a non-UI caller can't fold e.g. { minutes: 200 } into 3.33h.
+      if (!Number.isInteger(hours) || hours < 0 || !Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
+        return res.status(400).json({ error: 'BadRequest', message: 'hours must be a whole number ≥ 0 and minutes 0–59' })
       }
       amount = hours + minutes / 60
       if (amount === 0) {

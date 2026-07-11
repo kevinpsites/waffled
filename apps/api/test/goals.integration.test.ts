@@ -277,6 +277,10 @@ describe('goal lists + detail', () => {
     expect((await call('POST', `/api/goals/${timeId}/log`, kevin, { hours: 0, minutes: 0 })).statusCode).toBe(400)
     // Negative components are invalid.
     expect((await call('POST', `/api/goals/${timeId}/log`, kevin, { minutes: -5 })).statusCode).toBe(400)
+    // Minutes is a 0–59 remainder — the server reasserts it even though the UI clamps.
+    expect((await call('POST', `/api/goals/${timeId}/log`, kevin, { minutes: 200 })).statusCode).toBe(400)
+    // Whole hours + whole minutes only (no fractional components).
+    expect((await call('POST', `/api/goals/${timeId}/log`, kevin, { hours: 1.5 })).statusCode).toBe(400)
     // A nonexistent goal still 404s before any hours/minutes math.
     expect((await call('POST', '/api/goals/00000000-0000-0000-0000-000000000000/log', kevin, { hours: 1 })).statusCode).toBe(404)
   })

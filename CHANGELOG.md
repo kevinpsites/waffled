@@ -53,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (like "750 Hours Outside"), the Log sheet now takes an **hours** field and a **minutes** field
   instead of asking you to turn "10 minutes" into `0.17`. You enter `2 hr 10 min` and the server
   does the math; the button and progress read back as a plain duration ("2h 10m"). Web + iOS.
+- **Add a recipe from a photo or by describing it.** The recipe editor's "New recipe"
   screen can now build the whole form for you two new ways. **From a photo** — snap or
   choose photos of a recipe card, cookbook page, or handwritten note (a few pages of one
   recipe is fine) and the AI reads them into ingredients and steps. **Describe it** — say
