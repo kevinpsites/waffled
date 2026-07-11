@@ -273,6 +273,37 @@ export async function recordDelivery(params: {
   )
 }
 
+// Claim a household's weekly-digest send for a given ISO-week key BEFORE sending, so
+// a concurrent or subsequent scheduler tick can't double-send. Returns true if this
+// caller won the claim (insert succeeded), false if the week was already claimed. The
+// row lands as 'sent'; markWeeklyDigestFailed flips it if delivery then fails.
+export async function claimWeeklyDigest(
+  householdId: string,
+  dedupeKey: string,
+  subject: string
+): Promise<boolean> {
+  const { rows } = await query<{ id: string }>(
+    `insert into email_deliveries (household_id, kind, to_address, subject, dedupe_key, status)
+     values ($1,'weekly_digest','digest',$2,$3,'sent')
+     on conflict (household_id, dedupe_key) where dedupe_key is not null do nothing
+     returning id`,
+    [householdId, subject, dedupeKey]
+  )
+  return rows.length > 0
+}
+
+export async function markWeeklyDigestFailed(
+  householdId: string,
+  dedupeKey: string,
+  error: string
+): Promise<void> {
+  await query(
+    `update email_deliveries set status = 'failed', error = $3
+      where household_id = $1 and dedupe_key = $2`,
+    [householdId, dedupeKey, error]
+  )
+}
+
 export class EmailSettingsError extends Error {
   constructor(message: string) {
     super(message)

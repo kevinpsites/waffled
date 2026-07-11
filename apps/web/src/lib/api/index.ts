@@ -31,6 +31,7 @@ export * from './meals'
 export * from './photos'
 export * from './media'
 export * from './capture'
+export * from './email'
 export * from './today-layout'
 export * from './auth'
 

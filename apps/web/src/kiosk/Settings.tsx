@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
+import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, emailApi, DIGEST_SECTIONS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef, type EmailSettings, type EmailSettingsPatch } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
 import { PersonModal } from './components/PersonModal'
 import { SettingCard } from './components/SettingCard'
@@ -1729,6 +1729,280 @@ function CountdownsSettings() {
   )
 }
 
+// ── Notifications: outbound email (SMTP) ────────────────────────────────────────
+// Mirrors Immich's "Notification Settings": an SMTP transport an admin points at
+// their provider (Gmail App Password, Fastmail, self-hosted…), plus a weekly digest.
+// "Send test email" validates the *submitted* config against the real server and
+// saves on success — the SMTP error it surfaces is the #1 thing an admin needs.
+const DOW_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] // index 0 = ISO day 1
+const SECTION_LABELS: Record<string, string> = { calendar: 'Calendar', meals: 'Meals', grocery: 'Grocery', chores: 'Chores' }
+
+function NotificationsPanel() {
+  const [loaded, setLoaded] = useState<EmailSettings | null>(null)
+  const [error, setError] = useState(false)
+
+  // Draft transport state.
+  const [enabled, setEnabled] = useState(false)
+  const [host, setHost] = useState('')
+  const [port, setPort] = useState(587)
+  const [secure, setSecure] = useState(false)
+  const [ignoreCert, setIgnoreCert] = useState(false)
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('') // empty = leave the stored one untouched
+  const [fromName, setFromName] = useState('')
+  const [fromAddress, setFromAddress] = useState('')
+
+  // Draft digest state.
+  const [digestEnabled, setDigestEnabled] = useState(false)
+  const [digestDow, setDigestDow] = useState(1)
+  const [digestHour, setDigestHour] = useState(7)
+  const [digestSections, setDigestSections] = useState<string[]>([...DIGEST_SECTIONS])
+
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testOk, setTestOk] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  function hydrate(s: EmailSettings) {
+    setLoaded(s)
+    setEnabled(s.enabled)
+    setHost(s.host ?? '')
+    setPort(s.port)
+    setSecure(s.secure)
+    setIgnoreCert(s.ignoreCert)
+    setUsername(s.username ?? '')
+    setPassword('')
+    setFromName(s.fromName ?? '')
+    setFromAddress(s.fromAddress ?? '')
+    setDigestEnabled(s.digestEnabled)
+    setDigestDow(s.digestDow)
+    setDigestHour(s.digestHour)
+    setDigestSections(s.digestSections)
+  }
+
+  useEffect(() => {
+    let alive = true
+    emailApi.getSettings()
+      .then((s) => alive && hydrate(s))
+      .catch(() => alive && setError(true))
+    return () => { alive = false }
+  }, [])
+
+  if (error) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Couldn't load email settings — try reloading or signing in again.</div></div>
+  if (!loaded) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
+
+  const canEncrypt = loaded.canEncrypt
+
+  function buildPatch(): EmailSettingsPatch {
+    const patch: EmailSettingsPatch = {
+      enabled,
+      host: host.trim() || null,
+      port,
+      secure,
+      ignoreCert,
+      username: username.trim() || null,
+      fromName: fromName.trim() || null,
+      fromAddress: fromAddress.trim() || null,
+      digestEnabled,
+      digestDow,
+      digestHour,
+      digestSections,
+    }
+    // Only send a password when the admin actually typed a new one — omitting it
+    // preserves the stored one server-side.
+    if (password) patch.password = password
+    return patch
+  }
+
+  function reset() { setSaved(false); setTestOk(null); setErr(null) }
+
+  async function save() {
+    if (saving || testing) return
+    reset(); setSaving(true)
+    try {
+      const { settings } = await emailApi.updateSettings(buildPatch())
+      hydrate(settings)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2200)
+    } catch (e) {
+      setErr(accountErrMsg(e, 'Could not save email settings — please try again.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function sendTest() {
+    if (saving || testing) return
+    reset(); setTesting(true)
+    try {
+      const res = await emailApi.sendTest(buildPatch())
+      // The send succeeded and (usually) saved. If persisting hit a snag the server
+      // reports it in `message` while still returning ok — surface it as a soft note.
+      if (res.settings) hydrate(res.settings)
+      setTestOk(res.saved === false && res.message
+        ? `Test email sent to ${res.sentTo}, but settings weren't saved: ${res.message}`
+        : `Test email sent to ${res.sentTo}.`)
+    } catch (e) {
+      // The verbatim SMTP failure is what the admin needs to fix their config.
+      setErr(accountErrMsg(e, 'Could not send the test email — check the host, port, and credentials.'))
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  const busy = saving || testing
+
+  return (
+    <div className="set-panel">
+      <div className="set-head">
+        <div className="wf-serif set-head-t">Notifications</div>
+        <div className="tiny muted" style={{ fontWeight: 600 }}>Outbound email &amp; the weekly digest</div>
+      </div>
+
+      <SettingCard>
+        <CardHeader title="Email (SMTP)" sub="Point Waffled at an email provider so it can send you a weekly digest and other notifications. Works with Gmail (App Password), Fastmail, or your own SMTP server." />
+        <label
+          style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', fontWeight: 600, marginBottom: 4 }}
+          onClick={(e) => { e.preventDefault(); setEnabled((v) => !v); reset() }}
+        >
+          <span className={`toggle ${enabled ? 'on' : ''}`} role="switch" aria-checked={enabled} aria-label="Enable email" />
+          <span>Enable email sending</span>
+        </label>
+      </SettingCard>
+
+      <SettingCard style={{ marginTop: 16 }}>
+        <CardHeader title="Server" />
+        <div className="field-row">
+          <label className="field" style={{ flex: 3 }}>
+            <span>Host</span>
+            <input value={host} onChange={(e) => { setHost(e.target.value); reset() }} placeholder="smtp.gmail.com" autoComplete="off" />
+          </label>
+          <label className="field" style={{ flex: 1 }}>
+            <span>Port</span>
+            <input type="number" value={port} onChange={(e) => { setPort(Number(e.target.value)); reset() }} placeholder="587" min={1} max={65535} />
+          </label>
+        </div>
+        <label
+          style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', fontWeight: 600, margin: '2px 0 12px' }}
+          onClick={(e) => { e.preventDefault(); setSecure((v) => !v); reset() }}
+        >
+          <span className={`toggle ${secure ? 'on' : ''}`} role="switch" aria-checked={secure} aria-label="Use SSL/TLS" />
+          <span>Use SSL/TLS (implicit — usually port 465)</span>
+        </label>
+        <label
+          style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', fontWeight: 600, marginBottom: 4 }}
+          onClick={(e) => { e.preventDefault(); setIgnoreCert((v) => !v); reset() }}
+        >
+          <span className={`toggle ${ignoreCert ? 'on' : ''}`} role="switch" aria-checked={ignoreCert} aria-label="Ignore certificate errors" />
+          <span>Ignore certificate errors (self-signed servers only)</span>
+        </label>
+      </SettingCard>
+
+      <SettingCard style={{ marginTop: 16 }}>
+        <CardHeader title="Credentials" />
+        <label className="field">
+          <span>Username</span>
+          <input value={username} onChange={(e) => { setUsername(e.target.value); reset() }} placeholder="you@gmail.com" autoComplete="off" />
+        </label>
+        <label className="field">
+          <span>Password</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => { setPassword(e.target.value); reset() }}
+            placeholder={loaded.hasPassword ? '•••••• (saved)' : 'App password'}
+            autoComplete="new-password"
+            disabled={!canEncrypt}
+          />
+        </label>
+        {!canEncrypt ? (
+          <div className="tiny muted" style={{ fontWeight: 600 }}>
+            Set <code>TOKEN_ENCRYPTION_KEY</code> in the server environment to store an SMTP password securely.
+          </div>
+        ) : loaded.hasPassword ? (
+          <div className="tiny muted" style={{ fontWeight: 600 }}>A password is saved. Leave this blank to keep it, or type a new one to replace it.</div>
+        ) : null}
+      </SettingCard>
+
+      <SettingCard style={{ marginTop: 16 }}>
+        <CardHeader title="Sender" />
+        <div className="field-row">
+          <label className="field">
+            <span>From name</span>
+            <input value={fromName} onChange={(e) => { setFromName(e.target.value); reset() }} placeholder="Waffled" autoComplete="off" />
+          </label>
+          <label className="field">
+            <span>From address</span>
+            <input type="email" value={fromAddress} onChange={(e) => { setFromAddress(e.target.value); reset() }} placeholder="waffled@example.com" autoComplete="off" />
+          </label>
+        </div>
+      </SettingCard>
+
+      <SettingCard style={{ marginTop: 16 }}>
+        <CardHeader title="Weekly digest" sub="A once-a-week email summarising your household — sent in your household's time zone." />
+        <label
+          style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', fontWeight: 600, marginBottom: digestEnabled ? 16 : 4 }}
+          onClick={(e) => { e.preventDefault(); setDigestEnabled((v) => !v); reset() }}
+        >
+          <span className={`toggle ${digestEnabled ? 'on' : ''}`} role="switch" aria-checked={digestEnabled} aria-label="Send weekly digest" />
+          <span>Send a weekly digest</span>
+        </label>
+
+        {digestEnabled && (
+          <>
+            <div className="field-row">
+              <label className="field">
+                <span>Day</span>
+                <select value={digestDow} onChange={(e) => { setDigestDow(Number(e.target.value)); reset() }}>
+                  {DOW_LABELS.map((label, i) => (
+                    <option key={i} value={i + 1}>{label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Time</span>
+                <select value={digestHour} onChange={(e) => { setDigestHour(Number(e.target.value)); reset() }}>
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <span>Include</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, marginTop: 4 }}>
+                {DIGEST_SECTIONS.map((s) => {
+                  const on = digestSections.includes(s)
+                  return (
+                    <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
+                      <input
+                        type="checkbox"
+                        className="set-check"
+                        checked={on}
+                        onChange={() => { setDigestSections((prev) => on ? prev.filter((x) => x !== s) : [...prev, s]); reset() }}
+                      />
+                      {SECTION_LABELS[s] ?? s}
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          </>
+        )}
+      </SettingCard>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 18, flexWrap: 'wrap' }}>
+        <button type="button" className="btn btn-primary" onClick={save} disabled={busy}>{saving ? 'Saving…' : 'Save'}</button>
+        <button type="button" className="btn btn-ghost" onClick={sendTest} disabled={busy}>{testing ? 'Sending…' : 'Send test email'}</button>
+        {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+      </div>
+      {testOk && <div className="tiny" style={{ fontWeight: 700, color: 'var(--good, #2e7d32)', marginTop: 10 }}>✓ {testOk}</div>}
+      {err && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{err}</div>}
+    </div>
+  )
+}
+
 // Sub-tabs that depend on integrations we haven't built yet render their section
 // honestly rather than faking data. (Defended in the build report.)
 const PLACEHOLDERS: Record<string, { title: string; note: string }> = {
@@ -1736,7 +2010,6 @@ const PLACEHOLDERS: Record<string, { title: string; note: string }> = {
   meals: { title: 'Meals', note: 'Meal preferences & dietary defaults pair with the Meals screen.' },
   lists: { title: 'Lists', note: 'List defaults & sharing pair with the Lists screen.' },
   display: { title: 'Display & Kiosk', note: 'Brightness & screensaver timing land here. Kiosk device pairing moved to Sign-in & Security.' },
-  notifications: { title: 'Notifications', note: 'Push to phones rides APNs + Google reminders (6.7).' },
 }
 
 function Placeholder({ tab }: { tab: string }) {
@@ -3058,7 +3331,7 @@ export function Settings() {
         </div>
       </div>
       <div className="set-content">
-        {activeTab === 'profile' ? <MyProfilePanel /> : activeTab === 'account' ? <MyAccountPanel /> : activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <><CalendarsPanel /><CountdownsSettings /></> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'modules' ? <ModulesPanel /> : activeTab === 'apikeys' ? <ApiKeysPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
+        {activeTab === 'profile' ? <MyProfilePanel /> : activeTab === 'account' ? <MyAccountPanel /> : activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <><CalendarsPanel /><CountdownsSettings /></> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'modules' ? <ModulesPanel /> : activeTab === 'notifications' ? <NotificationsPanel /> : activeTab === 'apikeys' ? <ApiKeysPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
       </div>
     </div>
   )

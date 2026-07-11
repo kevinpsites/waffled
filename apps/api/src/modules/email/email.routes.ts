@@ -2,6 +2,7 @@
 // the SMTP transport + digest prefs, plus a "send test email and save" action that
 // validates the config against the real server before persisting. All admin-gated.
 import createAPI, { type Request, type Response } from 'lambda-api'
+import { DateTime } from 'luxon'
 import { adminRoute } from '../../platform/route-guards'
 import { query } from '../../platform/db'
 import { sendMail, type SmtpSettings } from '../../platform/email'
@@ -13,6 +14,7 @@ import {
   EmailSettingsError,
   type EmailSettingsInput,
 } from './email-settings.service'
+import { buildWeeklyDigest } from './digest.service'
 
 // The caller's own login email — where a test message goes.
 async function callerEmail(personId: string): Promise<string | null> {
@@ -131,5 +133,19 @@ export function registerEmailRoutes(api: Api): void {
       if (e instanceof EmailSettingsError) return { ok: true, sentTo: to, saved: false, message: e.message }
       throw e
     }
+  }))
+
+  // Render the current-week digest without sending — drives a UI preview. Uses the
+  // household's stored section prefs and today (household-local) as the week start.
+  api.post('/api/email/digest/preview', adminRoute(async (tenant) => {
+    const { rows } = await query<{ timezone: string }>(
+      `select timezone from households where id = $1`,
+      [tenant.householdId]
+    )
+    const tz = rows[0]?.timezone ?? 'UTC'
+    const weekStart = DateTime.utc().setZone(tz).toISODate()!
+    const cur = await getEmailSettings(tenant.householdId)
+    const digest = await buildWeeklyDigest(tenant.householdId, weekStart, cur.digestSections)
+    return { subject: digest.subject, html: digest.html, text: digest.text }
   }))
 }
