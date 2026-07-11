@@ -16,8 +16,18 @@ function weekWindow(weekStart: string, tz: string): { startIso: string; endIso: 
   return { startIso: start.toUTC().toISO()!, endIso: end.toUTC().toISO()!, endDate: end.toISODate()! }
 }
 
-function dayLabel(iso: string, tz: string): string {
-  const dt = DateTime.fromISO(iso, { zone: tz })
+// Normalize a column value to a luxon DateTime in the household timezone. Two shapes
+// arrive: a timestamptz (node-postgres gives a JS Date — an absolute instant, so
+// convert it into tz) and a date-only 'YYYY-MM-DD' string (must be interpreted AT
+// midnight in tz, not converted, or it can slip to the previous day).
+function toLocal(v: string | Date, tz: string): DateTime {
+  return v instanceof Date
+    ? DateTime.fromJSDate(v).setZone(tz)
+    : DateTime.fromISO(v, { zone: tz })
+}
+
+function dayLabel(v: string | Date, tz: string): string {
+  const dt = toLocal(v, tz)
   return `${DOW[dt.weekday]} ${dt.day}`
 }
 
@@ -50,7 +60,7 @@ export async function buildWeeklyDigest(
   }
 
   if (want.has('calendar')) {
-    const { rows } = await query<{ title: string; starts_at: string; all_day: boolean }>(
+    const { rows } = await query<{ title: string; starts_at: string | Date; all_day: boolean }>(
       `select title, starts_at, all_day from events
         where household_id = $1 and deleted_at is null and status <> 'cancelled'
           and starts_at >= $2 and starts_at < $3
@@ -59,14 +69,16 @@ export async function buildWeeklyDigest(
     )
     data.events = rows.map((e) => ({
       day: dayLabel(e.starts_at, tz),
-      time: e.all_day ? 'All day' : DateTime.fromISO(e.starts_at, { zone: tz }).toFormat('h:mm a'),
+      time: e.all_day ? 'All day' : toLocal(e.starts_at, tz).toFormat('h:mm a'),
       title: e.title,
     }))
   }
 
   if (want.has('meals')) {
     const { rows } = await query<{ date: string; meal_type: string; title: string | null }>(
-      `select e.date, e.meal_type, coalesce(r.title, e.title) as title
+      // Cast the date-only column to text so it's a clean 'YYYY-MM-DD' — avoids the
+      // node-postgres "date parsed as a Date at server-local midnight" day-shift.
+      `select e.date::text as date, e.meal_type, coalesce(r.title, e.title) as title
          from meal_plan_entries e
          join meal_plans p on p.id = e.meal_plan_id and p.deleted_at is null
          left join recipes r on r.id = e.recipe_id
@@ -78,7 +90,7 @@ export async function buildWeeklyDigest(
       .filter((m) => (m.title ?? '').trim() !== '')
       .sort((a, b) => a.date.localeCompare(b.date) || (MEAL_ORDER[a.meal_type] ?? 9) - (MEAL_ORDER[b.meal_type] ?? 9))
       .map((m) => ({
-        day: `${DOW[DateTime.fromISO(m.date, { zone: tz }).weekday]} ${DateTime.fromISO(m.date, { zone: tz }).day}`,
+        day: dayLabel(m.date, tz),
         mealType: m.meal_type,
         title: (m.title ?? '').trim(),
       }))

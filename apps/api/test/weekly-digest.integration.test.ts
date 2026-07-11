@@ -114,9 +114,15 @@ describe('buildWeeklyDigest', () => {
     expect(d.subject).toContain('Sites')
     expect(d.html).toContain('Dentist')
     expect(d.html).toContain('Tacos')
-    expect(d.html).toContain('chores due this week')
+    expect(d.html).toContain('due this week') // "1 chore due this week"
+    expect(d.html).toContain('Kevin: 1')
     expect(d.html).toContain('Milk')
     expect(d.text).toContain('CALENDAR')
+    // Regression guard: dates must render (pg returns Date objects, not ISO strings).
+    // 2026-07-07 is a Tuesday in America/Chicago.
+    expect(d.html).toContain('Tue 7')
+    expect(d.html).not.toContain('Invalid DateTime')
+    expect(d.html).not.toContain('undefined')
   })
 
   it('honors the sections filter', async () => {
