@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Postgres and direct API diagnostics now bind to loopback, while device-facing
+  PowerSync and Google OAuth callbacks enter through Caddy. This preserves local
+  and LAN setup while avoiding raw service exposure.
 - **Member logins now respect account ownership.** An administrator can update the login
   already linked to a household profile, but an account owned by a different person must
   join through the explicit invitation and acceptance flow.
