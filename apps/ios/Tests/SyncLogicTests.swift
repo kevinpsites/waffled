@@ -86,6 +86,34 @@ private func event(_ id: String, _ raw: String?, allDay: Bool = false) -> Synced
         #expect(groups[0].items.map(\.id) == ["d1b", "d1a"])
         #expect(groups[1].items.map(\.id) == ["d2"])
     }
+
+    // Fading already-ended events — mirrors the web's isPastEvent + the calendar's
+    // EventCard.isPast. All-day events fade only once their day is before today.
+    @Test func isPastUsesEndTimeForTimedEvents() {
+        let now = EventTime.parse("2026-06-16T18:00:00Z")!
+        var ended = event("ended", "2026-06-16T15:00:00Z")
+        ended.endsAt = EventTime.parse("2026-06-16T16:00:00Z")
+        var ongoing = event("ongoing", "2026-06-16T17:30:00Z")
+        ongoing.endsAt = EventTime.parse("2026-06-16T19:00:00Z")
+        #expect(Agenda.isPast(ended, utc, now: now) == true)
+        #expect(Agenda.isPast(ongoing, utc, now: now) == false)
+    }
+
+    @Test func isPastFallsBackToStartWhenOpenEnded() {
+        let now = EventTime.parse("2026-06-16T18:00:00Z")!
+        let started = event("started", "2026-06-16T15:00:00Z")   // no endsAt
+        let upcoming = event("upcoming", "2026-06-16T20:00:00Z")  // no endsAt
+        #expect(Agenda.isPast(started, utc, now: now) == true)
+        #expect(Agenda.isPast(upcoming, utc, now: now) == false)
+    }
+
+    @Test func isPastForAllDayComparesTheDayNotTheClock() {
+        let now = EventTime.parse("2026-06-16T18:00:00Z")!
+        let yesterday = event("yst", "2026-06-15", allDay: true)
+        let today = event("tdy", "2026-06-16", allDay: true)
+        #expect(Agenda.isPast(yesterday, utc, now: now) == true)
+        #expect(Agenda.isPast(today, utc, now: now) == false)
+    }
 }
 
 @Suite struct EncodingTests {

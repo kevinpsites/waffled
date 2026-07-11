@@ -31,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Past events on the Today agenda now fade once they're over.** On the Today
+  dashboard's agenda card, an event whose time has already passed is subtly dimmed —
+  the same treatment the calendar's agenda list already uses — so at a glance it's clear
+  what's done and what's still ahead. All-day events aren't dimmed. Web and iPhone.
 - **Recipe steps that mention a time now get a timer automatically.** Whether a recipe
   comes from a photo, a description, or pasted Markdown, a step that says something like
   "cook for 6 minutes" now attaches a cook-mode timer without needing an explicit

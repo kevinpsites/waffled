@@ -507,15 +507,8 @@ struct EventCard: View {
         return ""
     }
 
-    /// Has this event already ended? All-day events are "past" once their day is before
-    /// today; timed events once their end (or start, if open-ended) is before now.
-    private var isPast: Bool {
-        if event.allDay {
-            let key = Agenda.dayKey(event, tz)
-            return !key.isEmpty && key < Agenda.todayKey(tz)
-        }
-        return (event.endsAt ?? event.startsAt ?? .distantFuture) < Date()
-    }
+    /// Has this event already ended? Shared with the Today agenda rows via `Agenda.isPast`.
+    private var isPast: Bool { Agenda.isPast(event, tz) }
 }
 
 /// Shared empty-state for not-yet-built tabs — keeps the scaffold honest about

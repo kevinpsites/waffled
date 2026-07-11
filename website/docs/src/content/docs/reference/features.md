@@ -85,7 +85,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Views: **Month / Week / Day / Agenda** | ✅ | ✅ | ✅ | ✅ Done (iPad = `KioskCalendarView` grids) |
 | **Current-time "now" line** on the time grid (Week/Day) | ✅ | ✅ | ✅ | ✅ Done (live red rule; iPhone Day + iPad Week/Day) |
 | Month cells show **event titles** (tap a day for times) | ✅ | ✅ | ✅ | ✅ Done |
-| Agenda **dims past events** | ✅ | ✅ | — | ✅ Done (iPhone agenda) |
+| Agenda **dims past events** | ✅ | ✅ | — | ✅ Done — the Calendar agenda **and** the Today dashboard's agenda card fade already-ended events (web + iPhone) |
 | Full-screen **event detail** (location/Directions, repeats, notes, timeline) | ✅ | ✅ | ✅ | ✅ Done (iPad detail is two-column) |
 | Per-person filter | ✅ | ✅ | ✅ | ✅ Done |
 | **Two-way Google Calendar sync** (inbound poll + outbound push) | ✅ | ✅ | ✅ | ✅ Done (sync runs server-side; connect in Settings → Calendars) |

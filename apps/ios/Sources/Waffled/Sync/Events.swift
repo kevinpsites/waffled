@@ -91,6 +91,17 @@ enum Agenda {
         EventTime.dayKey(now, tz)
     }
 
+    /// Has this event already ended? All-day events are "past" only once their day is
+    /// before today; timed events once their end (or start, if open-ended) is before now.
+    /// Mirrors the web's `isPastEvent`. Used to subtly fade already-done events.
+    static func isPast(_ e: SyncedEvent, _ tz: TimeZone, now: Date = Date()) -> Bool {
+        if e.allDay {
+            let key = dayKey(e, tz)
+            return !key.isEmpty && key < todayKey(tz, now: now)
+        }
+        return (e.endsAt ?? e.startsAt ?? .distantFuture) < now
+    }
+
     /// Ordering: timed before all-day, then by start instant (matches the server).
     static func before(_ a: SyncedEvent, _ b: SyncedEvent) -> Bool {
         if a.allDay != b.allDay { return !a.allDay }
