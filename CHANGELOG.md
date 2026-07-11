@@ -128,6 +128,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dropped it when filling the form, so every step showed "Add timer" even when the recipe
   clearly stated a time. The parsed timer now lands on the step.
 
+### Security
+
+- **Member logins now respect account ownership.** An administrator can update the login
+  already linked to a household profile, but an account owned by a different person must
+  join through the explicit invitation and acceptance flow.
+
 ## [0.6.1] - 2026-07-09
 
 ### Added
