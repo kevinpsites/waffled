@@ -64,6 +64,32 @@ export interface Goal {
   participants: GoalParticipant[]
 }
 
+// ── Display helpers (shared by the goals list, goal detail, and the Today card) ──
+// A goal is shown on its TYPE's axis: a habit shows completions THIS PERIOD vs its
+// cadence (not a lifetime total), a checklist shows steps done, everything else the
+// cumulative amount. Keeping these in one place stops the Today card from drifting
+// from the list/detail.
+export function goalDisplayProgress(g: Goal): number {
+  if (g.goalType === 'habit') return g.periodDone
+  if (g.goalType === 'checklist') return g.stepDone
+  return g.totalProgress
+}
+// The target the progress is measured against. For an each_tracks / per_person goal
+// the ring target is the per-person number × household size (read 12 EACH → 48 for
+// four), so it grows as people join — matching the goals list and detail.
+export function goalDisplayTarget(g: Goal): number | null {
+  if (g.goalType === 'habit') return g.habitTargetPerPeriod ?? g.target
+  if (g.goalType === 'checklist') return g.stepTotal || null
+  if (g.targetBasis === 'per_person' && g.target != null) return g.target * Math.max(1, g.participants.length)
+  return g.target
+}
+// 0..1 completion, clamped. 0 when there's no positive target (e.g. an empty checklist).
+export function goalFraction(g: Goal): number {
+  const t = goalDisplayTarget(g)
+  const p = goalDisplayProgress(g)
+  return t != null && t > 0 ? Math.min(p / t, 1) : 0
+}
+
 export interface GoalMilestone {
   id: string
   threshold: number

@@ -171,7 +171,11 @@ export function registerGoalRoutes(api: Api): void {
     if (body.targetBasis && !TARGET_BASES.has(body.targetBasis)) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid targetBasis' })
     }
-    const patchShapeErr = goalShapeError(body, body.goalType)
+    // Validate against the EFFECTIVE type: the body's goalType when it's re-sent
+    // (both web + iOS do), else the stored type — so a PATCH that changes only the
+    // target still enforces a count goal's whole-number rule.
+    const effectiveType = body.goalType ?? (await goalTypeFor(tenant.householdId, id))
+    const patchShapeErr = goalShapeError(body, effectiveType)
     if (patchShapeErr) return res.status(400).json({ error: 'BadRequest', message: patchShapeErr })
     // A cleared deadline arrives as '' — normalize to null so it isn't written to a date column.
     if ((req.body as { deadline?: unknown })?.deadline === '') (req.body as { deadline?: unknown }).deadline = null

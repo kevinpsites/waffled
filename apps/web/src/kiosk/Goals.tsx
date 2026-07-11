@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { Icon } from './icons'
 import { LogModal } from './components/LogModal'
 import { ListModal } from './components/ListModal'
-import { api, useGoalLists, useGoals, useHousehold, can, type Goal, type GoalList, type GoalListMember, type GoalParticipant } from '../lib/api'
+import { api, useGoalLists, useGoals, useHousehold, can, goalDisplayProgress as dispProgress, goalDisplayTarget as dispTarget, type Goal, type GoalList, type GoalListMember, type GoalParticipant } from '../lib/api'
 import { CATEGORIES } from './categories'
 import '../styles/goals.css'
 
@@ -12,22 +12,9 @@ const TYPE_LABEL: Record<string, string> = { count: 'Count', total: 'Total', hab
 function frac(progress: number, target: number | null): number {
   return target ? Math.min(progress / target, 1) : 0
 }
-// What a goal shows depends on its type: habits show completions THIS PERIOD vs
-// the cadence (not a lifetime total), milestones show steps done, everything
-// else shows the cumulative amount.
-function dispProgress(g: Goal): number {
-  if (g.goalType === 'habit') return g.periodDone
-  if (g.goalType === 'checklist') return g.stepDone
-  return g.totalProgress
-}
-function dispTarget(g: Goal): number | null {
-  if (g.goalType === 'habit') return g.habitTargetPerPeriod ?? g.target
-  if (g.goalType === 'checklist') return g.stepTotal || null
-  // "Everyone individually" (per_person basis): the ring target is the per-person
-  // number × household size (read 12 EACH → 48 for four), so it grows as people join.
-  if (g.targetBasis === 'per_person' && g.target != null) return g.target * Math.max(1, g.participants.length)
-  return g.target
-}
+// `dispProgress` / `dispTarget` (the type-aware, per-person-aware progress + target)
+// are imported from lib/api so the goals list, goal detail, and the Today card all
+// agree — see goalDisplayProgress / goalDisplayTarget there.
 function fmtNum(n: number | null): string {
   return n == null ? '—' : n.toLocaleString('en-US')
 }

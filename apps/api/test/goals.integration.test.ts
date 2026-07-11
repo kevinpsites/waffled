@@ -266,6 +266,16 @@ describe('goal lists + detail', () => {
     expect((await call('PATCH', `/api/goals/${id}`, kevin, { goalType: 'bogus' })).statusCode).toBe(400)
   })
 
+  it('enforces the count whole-number target on PATCH even when goalType is omitted', async () => {
+    const add = await call('POST', '/api/goals', kevin, { title: 'Parks', goalType: 'count', trackingMode: 'shared_total', targetValue: 5, participantIds: [kevinId] })
+    const id = JSON.parse(add.body).goal.id
+    // No goalType in the body: the guard must fall back to the STORED type (count),
+    // so a fractional target is still rejected.
+    expect((await call('PATCH', `/api/goals/${id}`, kevin, { targetValue: 5.5 })).statusCode).toBe(400)
+    // A whole-number target still passes.
+    expect((await call('PATCH', `/api/goals/${id}`, kevin, { targetValue: 6 })).statusCode).toBe(200)
+  })
+
   it('logs progress for multiple people at once', async () => {
     const add = await call('POST', '/api/goals', kevin, { title: 'Hours', goalType: 'total', unit: 'hours', targetValue: 100, trackingMode: 'each_tracks', participantIds: [kevinId] })
     const id = JSON.parse(add.body).goal.id

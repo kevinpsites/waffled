@@ -52,6 +52,30 @@ function sharedDefault(goalType: string) {
     ? { trackingMode: 'each_tracks', targetBasis: 'family', participantMode: 'count_once' } as const
     : { trackingMode: 'shared_total', targetBasis: 'family', participantMode: 'count_once' } as const
 }
+// "Each tracks their own" for a given measure (mirrors iOS setEachMode): total/count
+// get the per-person ring; habit/checklist track each_tracks against a flat target.
+function eachDefault(goalType: string) {
+  return {
+    trackingMode: 'each_tracks',
+    targetBasis: goalType === 'total' || goalType === 'count' ? 'per_person' : 'family',
+    participantMode: 'count_once',
+  } as const
+}
+// Re-normalize the counting fields when the MEASURE changes. The split/each sub-choice
+// is measure-specific, so a stale combo (a total's "split" carried onto a count) would
+// submit fractional per-person data on a whole-number goal. Mirrors iOS selectMeasure:
+// keep the shared-vs-each INTENT, reset everything else (incl. participantMode) to the
+// new type's default. Pure + exported for unit tests.
+export function measureCountingFields(
+  prev: { goalType: string; trackingMode: string; targetBasis: string },
+  nextType: string
+) {
+  const wasShared =
+    prev.goalType === 'total' || prev.goalType === 'count'
+      ? !(prev.trackingMode === 'each_tracks' && prev.targetBasis === 'per_person')
+      : prev.trackingMode !== 'each_tracks'
+  return wasShared ? sharedDefault(nextType) : eachDefault(nextType)
+}
 // Singular for a "1 <unit>" phrase so examples read "1 hour", not "1 hours".
 const singular = (u: string) => (u.length > 1 && u.endsWith('s') ? u.slice(0, -1) : u)
 function countChoiceFields(goalType: string, k: string) {
@@ -175,12 +199,15 @@ export function GoalCreate() {
   // a Count goal doesn't silently inherit the Total default ("hours") and log "2 hours".
   const unitTouched = useRef(false)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }))
-  // Switch measure, and (unless the user typed a custom unit) fit the unit to it: Total
-  // keeps "hours", Count clears it so the user names the thing counted (parks, books…).
+  // Switch measure. Re-normalize the counting fields for the new type (so a stale
+  // split/each combo can't survive — see measureCountingFields) and, unless the user
+  // typed a custom unit, fit the unit to it: Total keeps "hours", Count clears it so
+  // the user names the thing counted (parks, books…).
   const setMeasure = (key: (typeof TYPES)[number]['key']) =>
     setForm((f) => {
-      if (unitTouched.current || (key !== 'total' && key !== 'count')) return { ...f, goalType: key }
-      return { ...f, goalType: key, unit: key === 'total' ? 'hours' : '' }
+      const counting = measureCountingFields(f, key)
+      const unit = unitTouched.current || (key !== 'total' && key !== 'count') ? f.unit : key === 'total' ? 'hours' : ''
+      return { ...f, goalType: key, unit, ...counting }
     })
 
   // prefill once when editing
