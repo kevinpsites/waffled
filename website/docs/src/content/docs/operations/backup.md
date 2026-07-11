@@ -34,6 +34,10 @@ By default, dumps land in the `waffled_backups` Docker volume and are pruned aft
   the `BACKUP_S3_*` vars. Each dump is uploaded in addition to the local copy. For S3-side
   retention, use a bucket lifecycle rule (local retention only prunes local files).
 
+The backup scheduler runs as an unprivileged user. On the first start after upgrading from an
+older release, a one-shot permissions job updates the backup and media paths before the app starts.
+For a host folder, its files may therefore appear under numeric UID/GID `999` on the host.
+
 ## Configuration
 
 All optional — set in `infra/compose/.env` (documented in `.env.example`). Defaults shown:

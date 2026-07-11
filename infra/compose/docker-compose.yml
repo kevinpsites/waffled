@@ -31,6 +31,31 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # One-shot ownership migration for volumes written by older root-running images.
+  # The long-running api and backup services start only after this exits successfully.
+  volume-permissions:
+    image: ${WAFFLED_BACKUP_IMAGE:-ghcr.io/kevinpsites/waffled-backup:${WAFFLED_VERSION:-latest}}
+    build:
+      context: ./backup
+    container_name: waffled-volume-permissions
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        if [ "$$(stat -c %u /data/media)" != "1000" ]; then
+          echo "Updating media volume ownership for the api user"
+          chown -R 1000:1000 /data/media
+        fi
+        if [ "$$(stat -c %u /backups)" != "999" ]; then
+          echo "Updating backup volume ownership for the postgres user"
+          chown -R 999:999 /backups
+        fi
+    volumes:
+      - waffled_media:/data/media
+      - ${BACKUP_HOST_PATH:-waffled_backups}:/backups
+    restart: "no"
+
   # One-shot: apply DB migrations, then exit. Reuses the api image (just a different
   # command), so the schema — and the PowerSync publication (migration 0003) — exist
   # before api/powersync start. Idempotent, so it runs harmlessly on every `up`.
@@ -64,6 +89,8 @@ services:
       postgres:
         condition: service_healthy
       migrate:
+        condition: service_completed_successfully
+      volume-permissions:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
@@ -223,6 +250,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully   # needs the backup_runs table (0071)
+      volume-permissions:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run ./waffled up to generate POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       BACKUP_DIR: /backups

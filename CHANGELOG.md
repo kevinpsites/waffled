@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Run the API and backup scheduler as unprivileged image users. A short-lived startup job
+  safely updates ownership on volumes created by earlier root-running releases.
 - **Member logins now respect account ownership.** An administrator can update the login
   already linked to a household profile, but an account owned by a different person must
   join through the explicit invitation and acceptance flow.
