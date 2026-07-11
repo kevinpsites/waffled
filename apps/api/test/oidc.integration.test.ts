@@ -14,6 +14,8 @@ let pg: StartedPostgreSqlContainer
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let app: any
 let closePool: () => Promise<void>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let query: any
 
 // ── stub IdP ───────────────────────────────────────────────────────────────────
 let idp: Server
@@ -125,7 +127,7 @@ beforeAll(async () => {
   delete process.env.AUTH0_DOMAIN
   delete process.env.AUTH_FORCE_PASSWORD
   app = (await import('../src/app')).default
-  closePool = (await import('../src/platform/db')).closePool
+  ;({ query, closePool } = await import('../src/platform/db'))
 }, 120_000)
 afterAll(async () => {
   await closePool?.()
@@ -178,6 +180,49 @@ describe('OIDC login', () => {
     expect(s.methods).toContain('oidc')
     expect(s.methods).toContain('password')
     expect(s.oidc).toMatchObject({ buttonLabel: 'Sign in with Acme' })
+  })
+
+  it('rejects foreign web origins and unregistered native redirect schemes', async () => {
+    expect((await call('GET', '/api/auth/oidc/start', {
+      query: { redirect: 'https://attacker.example/' },
+    })).statusCode).toBe(400)
+    expect((await call('GET', '/api/auth/oidc/start', {
+      query: { redirect: 'attacker://auth/callback' },
+    })).statusCode).toBe(400)
+  })
+
+  it('escapes identity-provider errors rendered in the browser result page', async () => {
+    const result = await call('GET', '/api/auth/oidc/callback', {
+      query: {
+        error: 'access_denied',
+        error_description: '<img src=x onerror=alert(1)>',
+      },
+    })
+    expect(result.statusCode).toBe(400)
+    expect(result.body).not.toContain('<img src=x')
+    expect(result.body).toContain('&lt;img src=x onerror=alert(1)&gt;')
+  })
+
+  it('revalidates redirect destinations persisted before an upgrade', async () => {
+    stubUser = { sub: 'idp-sub-1', email: 'kevin@example.com', email_verified: true }
+    const state = `legacy-${randomUUID()}`
+    const nonce = `nonce-${randomUUID()}`
+    await query(
+      `insert into oidc_login_states (state, code_verifier, nonce, redirect_to)
+       values ($1, 'legacy-verifier', $2, 'https://attacker.example/')`,
+      [state, nonce]
+    )
+
+    const authorizeUrl = new URL(`${issuer}/authorize`)
+    authorizeUrl.searchParams.set('state', state)
+    authorizeUrl.searchParams.set('nonce', nonce)
+    authorizeUrl.searchParams.set('redirect_uri', 'http://localhost:8080/api/auth/oidc/callback')
+    const authRes = await fetch(authorizeUrl, { redirect: 'manual' })
+    const code = new URL(authRes.headers.get('location')!).searchParams.get('code')!
+
+    const cb = await call('GET', '/api/auth/oidc/callback', { query: { code, state } })
+    expect(cb.statusCode).toBe(302)
+    expect(loc(cb)).toMatch(/^http:\/\/localhost:8080\/auth\/callback\?code=/)
   })
 
   it('links an invited email on first SSO login and authenticates', async () => {

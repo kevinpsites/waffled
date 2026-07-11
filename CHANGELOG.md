@@ -128,6 +128,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dropped it when filling the form, so every step showed "Add timer" even when the recipe
   clearly stated a time. The parsed timer now lands on the step.
 
+### Security
+
+- **Sign-in callbacks now return only to Waffled.** OIDC login handoffs are restricted to
+  the current web origin or the registered native-app callback, and browser error pages
+  safely render messages returned by an identity provider.
+
 ## [0.6.1] - 2026-07-09
 
 ### Added
