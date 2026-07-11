@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- The container API now rejects oversized request bodies before buffering them
+  and throttles repeated login, setup, OIDC, kiosk pairing, refresh, and media
+  upload attempts with retry guidance.
+
 ### Added
 
 ### Changed
