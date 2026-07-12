@@ -190,10 +190,10 @@ services:
       - "${HTTP_PORT:-8080}:80"
       # - "443:443"                              # enable for tailnet/prod TLS (later)
     environment:
-      # unset locally → ":80" (plain HTTP); set to your MagicDNS name for auto-TLS
-      CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-:80}
       # Exact non-self endpoint allowed by connect-src for PowerSync HTTP/WebSocket traffic.
       POWERSYNC_PUBLIC_URL: ${POWERSYNC_PUBLIC_URL:-http://localhost:8090}
+      # unset locally → ":80" (plain HTTP); set to your MagicDNS name for auto-TLS
+      CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-:80}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro   # web build is baked into the image at /srv
       - waffled_media:/data/media:ro                   # serve uploaded blobs directly (read-only)
