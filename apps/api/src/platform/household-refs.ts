@@ -46,6 +46,7 @@ async function assertHouseholdRow(
   label: string
 ): Promise<void> {
   if (!UUID_RE.test(id)) throw new InvalidReferenceError(`invalid ${label} id`)
+  // `table` is an internal closed union above; all request-derived values stay parameterized.
   const { rowCount } = await query(
     `select 1 from ${table} where household_id = $1 and id = $2 and deleted_at is null`,
     [householdId, id]
