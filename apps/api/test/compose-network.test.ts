@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -38,6 +39,26 @@ describe('Compose network defaults', () => {
     const cli = await readFile(resolve(root, 'waffled'), 'utf8')
     expect(cli.match(/set_env_var POWERSYNC_CADDY_ADDRESS/g)?.length).toBeGreaterThanOrEqual(3)
     expect(cli).toContain('set_env_var POWERSYNC_CADDY_ADDRESS "https://$host:8090"')
-    expect(cli).toContain('ensure_env; ensure_powersync_proxy_env; export_build_meta')
+    expect(cli).toContain('ensure_env; ensure_powersync_proxy_env; ensure_google_callback_env; export_build_meta')
+  })
+
+  it('migrates only the legacy Google callback and preserves custom callbacks', () => {
+    const cli = resolve(root, 'waffled')
+    const result = execFileSync('bash', ['-c', `
+      source "$1" help >/dev/null
+      google_callback_replacement \
+        http://localhost:3000/auth/google/calendar/callback \
+        https://waffled.example.com \
+        8080
+      printf '\n'
+      set +e
+      google_callback_replacement \
+        https://custom.example.com:3000/auth/google/calendar/callback \
+        https://waffled.example.com \
+        8080
+      printf 'custom=%s' "$?"
+    `, '_', cli], { encoding: 'utf8' })
+
+    expect(result).toBe('https://waffled.example.com/auth/google/calendar/callback\ncustom=1')
   })
 })
