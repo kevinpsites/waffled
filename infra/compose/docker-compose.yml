@@ -133,7 +133,9 @@ services:
     volumes:
       - waffled_media:/data/media         # uploaded blobs (read-write); Caddy serves them read-only
     ports:
-      - "127.0.0.1:${API_PORT:-3000}:3000" # local diagnostics; public traffic enters through Caddy
+      # Host-only direct access; public requests must traverse Caddy so proxy trust
+      # and ingress policy remain enforced.
+      - "127.0.0.1:${API_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 10s
