@@ -8,7 +8,10 @@
 
 	# API (chunk 2.2). Path is preserved upstream, so the api sees /api/*.
 	handle /api/* {
-		reverse_proxy api:3000
+		reverse_proxy api:3000 {
+			# Replace caller-supplied forwarding chains with the address Caddy saw.
+			header_up X-Forwarded-For {remote_host}
+		}
 	}
 	# PowerSync (chunk 4.1) is exposed directly on its own published port
 	# (POWERSYNC_PORT, default 8090); clients get its URL from /api/powersync/token.

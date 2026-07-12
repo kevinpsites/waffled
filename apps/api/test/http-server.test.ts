@@ -7,13 +7,22 @@ import {
   MEDIA_BODY_LIMIT_BYTES,
 } from '../src/platform/http-server'
 
+interface CapturedEvent {
+  requestContext?: { identity?: { sourceIp?: string } }
+}
+
 async function post(
   path: string,
   body: Buffer,
-  includeLength = true
-): Promise<{ status: number; body: string; routeCalls: number }> {
+  includeLength = true,
+  headers: Record<string, string> = {}
+): Promise<{ status: number; body: string; routeCalls: number; event?: CapturedEvent }> {
+  let capturedEvent: CapturedEvent | undefined
   const app = {
-    run: vi.fn(async () => ({ statusCode: 200, body: JSON.stringify({ ok: true }) })),
+    run: vi.fn(async (event: unknown) => {
+      capturedEvent = event as CapturedEvent
+      return { statusCode: 200, body: JSON.stringify({ ok: true }) }
+    }),
   }
   const server = createHttpServer(app)
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -28,6 +37,7 @@ async function post(
       headers: {
         'content-type': 'application/json',
         ...(includeLength ? { 'content-length': body.byteLength } : {}),
+        ...headers,
       },
     }, (res) => {
       const chunks: Buffer[] = []
@@ -37,6 +47,7 @@ async function post(
           status: res.statusCode ?? 0,
           body: Buffer.concat(chunks).toString('utf8'),
           routeCalls: app.run.mock.calls.length,
+          event: capturedEvent,
         }
         server.close((error) => error ? reject(error) : resolve(result))
       })
@@ -72,5 +83,25 @@ describe('Node HTTP request body limits', () => {
     const rejected = await post('/api/media', Buffer.alloc(MEDIA_BODY_LIMIT_BYTES + 1, 'a'))
     expect(rejected.status).toBe(413)
     expect(rejected.routeCalls).toBe(0)
+  })
+
+  it('records the single client address supplied by the trusted proxy', async () => {
+    const result = await post(
+      '/api/auth/login',
+      Buffer.from('{}'),
+      true,
+      { 'x-forwarded-for': '198.51.100.42' }
+    )
+    expect(result.event?.requestContext?.identity?.sourceIp).toBe('198.51.100.42')
+  })
+
+  it('rejects forwarding chains that have not been normalized by the proxy', async () => {
+    const result = await post(
+      '/api/auth/login',
+      Buffer.from('{}'),
+      true,
+      { 'x-forwarded-for': '198.51.100.42, 203.0.113.8' }
+    )
+    expect(result.event?.requestContext?.identity?.sourceIp).not.toBe('198.51.100.42')
   })
 })
