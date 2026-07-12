@@ -1,4 +1,5 @@
 import http from 'node:http'
+import { isIP } from 'node:net'
 import { log } from './logger'
 
 export const DEFAULT_BODY_LIMIT_BYTES = 1024 * 1024
@@ -29,6 +30,17 @@ function payloadTooLarge(res: http.ServerResponse, limit: number): void {
     connection: 'close',
   })
   res.end(body)
+}
+
+function clientAddress(req: http.IncomingMessage): string {
+  // The bundled Caddy config replaces X-Forwarded-For with one validated address.
+  // Direct access is bound to host loopback and is therefore a trusted operator path.
+  const forwarded = req.headers['x-forwarded-for']
+  if (typeof forwarded === 'string') {
+    const address = forwarded.trim()
+    if (isIP(address)) return address
+  }
+  return req.socket.remoteAddress ?? 'unknown'
 }
 
 // Adapt Node requests to the API Gateway REST-v1 event shape used by lambda-api.
@@ -65,7 +77,7 @@ export function createHttpServer(api: ApiRunner): http.Server {
         path: url.pathname,
         queryStringParameters: Object.fromEntries(url.searchParams),
         headers: req.headers,
-        requestContext: { identity: { sourceIp: req.socket.remoteAddress ?? 'unknown' } },
+        requestContext: { identity: { sourceIp: clientAddress(req) } },
         body: chunks.length ? Buffer.concat(chunks).toString('utf8') : null,
         isBase64Encoded: false,
       }

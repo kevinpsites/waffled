@@ -22,11 +22,11 @@ function positiveInt(name: string, fallback: number): number {
 }
 
 function clientAddress(req: Request): string {
-  if (typeof req.ip === 'string' && req.ip) return req.ip
   const sourceIp = (req as Request & {
     requestContext?: { identity?: { sourceIp?: unknown } }
   }).requestContext?.identity?.sourceIp
-  return typeof sourceIp === 'string' && sourceIp ? sourceIp : 'unknown'
+  if (typeof sourceIp === 'string' && sourceIp) return sourceIp
+  return typeof req.ip === 'string' && req.ip ? req.ip : 'unknown'
 }
 
 function sweep(now: number): void {

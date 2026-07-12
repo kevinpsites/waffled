@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The container API now rejects oversized request bodies before buffering them
   and throttles repeated login, setup, OIDC, kiosk pairing, refresh, and media
-  upload attempts with retry guidance.
+  upload attempts with retry guidance. Caddy normalizes the client address used
+  by those limits, and direct API access is restricted to the Docker host.
 - **Member logins now respect account ownership.** An administrator can update the login
   already linked to a household profile, but an account owned by a different person must
   join through the explicit invitation and acceptance flow.

@@ -14,8 +14,14 @@ interface RunResult {
   body: string
 }
 
-function call(method: string, path: string, body?: unknown, token?: string): Promise<RunResult> {
-  const headers: Record<string, string> = {}
+function call(
+  method: string,
+  path: string,
+  body?: unknown,
+  token?: string,
+  extraHeaders: Record<string, string> = {}
+): Promise<RunResult> {
+  const headers: Record<string, string> = { ...extraHeaders }
   if (token) headers.authorization = `Bearer ${token}`
   if (body !== undefined) headers['content-type'] = 'application/json'
   return app.run(
@@ -51,6 +57,7 @@ beforeAll(async () => {
   process.env.RATE_LIMIT_LOGIN_IP_MAX = '20'
   process.env.RATE_LIMIT_OIDC_START_MAX = '2'
   process.env.RATE_LIMIT_OIDC_EXCHANGE_MAX = '2'
+  process.env.RATE_LIMIT_REFRESH_MAX = '2'
   process.env.RATE_LIMIT_KIOSK_PAIR_MAX = '2'
   process.env.RATE_LIMIT_MEDIA_MAX = '2'
   delete process.env.AUTH0_DOMAIN
@@ -91,6 +98,19 @@ describe('sensitive route throttling', () => {
     expect((await call('POST', '/api/auth/oidc/exchange', { code: 'bad-1' })).statusCode).toBe(401)
     expect((await call('POST', '/api/auth/oidc/exchange', { code: 'bad-2' })).statusCode).toBe(401)
     expectLimited(await call('POST', '/api/auth/oidc/exchange', { code: 'bad-3' }))
+  })
+
+  it('does not let spoofed forwarding headers rotate the trusted IP bucket', async () => {
+    const refresh = { refreshToken: 'not-a-valid-refresh-token' }
+    expect((await call('POST', '/api/auth/refresh', refresh, undefined, {
+      'x-forwarded-for': '198.51.100.1',
+    })).statusCode).toBe(401)
+    expect((await call('POST', '/api/auth/refresh', refresh, undefined, {
+      'x-forwarded-for': '198.51.100.2',
+    })).statusCode).toBe(401)
+    expectLimited(await call('POST', '/api/auth/refresh', refresh, undefined, {
+      'x-forwarded-for': '198.51.100.3',
+    }))
   })
 
   it('throttles kiosk pairing-code guesses', async () => {
