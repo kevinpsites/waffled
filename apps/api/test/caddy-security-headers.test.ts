@@ -14,6 +14,7 @@ describe('Caddy browser security headers', () => {
     expect(config).toContain('X-Content-Type-Options "nosniff"')
     expect(config).toContain('Referrer-Policy "strict-origin-when-cross-origin"')
     expect(config).toContain('Permissions-Policy "camera=(self), microphone=(self), geolocation=()"')
+    expect(config).toContain('Strict-Transport-Security "max-age=31536000"')
   })
 
   it('uses a restrictive CSP that still supports Waffled runtime assets and sync', async () => {
@@ -26,11 +27,17 @@ describe('Caddy browser security headers', () => {
     expect(policy).not.toContain("'unsafe-eval'")
     expect(policy).toContain("style-src 'self' 'unsafe-inline'")
     expect(policy).toContain("img-src 'self' data: blob: https:")
-    expect(policy).toContain("connect-src 'self' http: https: ws: wss:")
+    expect(policy).toContain("connect-src 'self' {$POWERSYNC_PUBLIC_URL}")
+    expect(policy).not.toMatch(/connect-src[^;]*(?:http:|https:|ws:|wss:)/)
     expect(policy).toContain("worker-src 'self' blob:")
     expect(policy).toContain("object-src 'none'")
     expect(policy).toContain("frame-ancestors 'none'")
     expect(policy).toContain("base-uri 'self'")
     expect(policy).toContain("form-action 'self'")
+  })
+
+  it('passes the configured PowerSync endpoint into Caddy', async () => {
+    const compose = await readFile(resolve(dirname(caddyfile), '..', 'docker-compose.yml'), 'utf8')
+    expect(compose).toContain('POWERSYNC_PUBLIC_URL: ${POWERSYNC_PUBLIC_URL:-http://localhost:8090}')
   })
 })
