@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Personal calendar rows now stay on their owner's synced devices.** PowerSync
   enforces calendar visibility from signed household and person claims instead of
   downloading the whole household's private rows and relying on client filtering.
+  The bucket split causes a one-time full client re-sync after upgrading.
 - **Installation-wide login settings now have one recoverable owner.** Global login and
   SSO configuration no longer accepts changes from administrators of any household;
   ownership persists across household changes and can be recovered from the host admin CLI.
