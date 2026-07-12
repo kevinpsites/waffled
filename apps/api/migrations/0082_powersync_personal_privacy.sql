@@ -1,7 +1,9 @@
 -- Up Migration
 -- Legacy PowerSync Sync Rules cannot join event_participants back to events while
 -- evaluating CDC rows. Denormalize the event's privacy scope so participant rows
--- can use the same server-side owner filter as events and occurrences.
+-- can use the same server-side owner filter as events and occurrences. Keep this
+-- invariant in the database because participant writes also arrive through the
+-- offline PowerSync CRUD path, outside the normal event service update flow.
 
 alter table event_participants
   add column visibility text not null default 'family'
