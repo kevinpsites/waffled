@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The web service worker no longer stores authenticated API responses in a
   shared URL-keyed cache, and removes API caches created by older versions.
+  The app shell and PowerSync-backed calendar remain available offline, while
+  REST-backed screens now require the server instead of showing another
+  account's potentially stale cached response.
 
 ### Added
 
