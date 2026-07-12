@@ -43,10 +43,12 @@ services:
     command:
       - |
         set -eu
+        # node:20-alpine defines its unprivileged `node` user as UID/GID 1000.
         if [ "$$(stat -c %u /data/media)" != "1000" ]; then
           echo "Updating media volume ownership for the api user"
           chown -R 1000:1000 /data/media
         fi
+        # postgres:16 defines its unprivileged `postgres` user as UID/GID 999.
         if [ "$$(stat -c %u /backups)" != "999" ]; then
           echo "Updating backup volume ownership for the postgres user"
           chown -R 999:999 /backups
