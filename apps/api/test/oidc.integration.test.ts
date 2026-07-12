@@ -163,7 +163,7 @@ async function ssoLogin(redirect = 'http://localhost:8080/'): Promise<RunResult>
 }
 
 describe('OIDC login', () => {
-  let admin: { accessToken: string }
+  let admin: { accessToken: string; person: { id: string } }
 
   it('sets up the admin and enables OIDC via the admin config route', async () => {
     const setup = await call('POST', '/api/auth/setup', {
@@ -174,6 +174,15 @@ describe('OIDC login', () => {
     })
     expect(setup.statusCode).toBe(201)
     admin = json(setup)
+
+    const assigned = await query(
+      `select cfg.installation_owner_account_id, p.account_id
+         from auth_config cfg
+         join persons p on p.id = $1
+        where cfg.id = true`,
+      [admin.person.id]
+    )
+    expect(assigned.rows[0].installation_owner_account_id).toBe(assigned.rows[0].account_id)
 
     // Status: only password before OIDC is configured.
     expect(json(await call('GET', '/api/auth/status')).methods).toEqual(['password'])
@@ -193,6 +202,16 @@ describe('OIDC login', () => {
   })
 
   it('reserves installation-wide auth config for the installation owner account', async () => {
+    const originalHousehold = await query(
+      `select id, owner_person_id from households order by created_at, id limit 1`
+    )
+    await query(`update households set owner_person_id = null where id = $1`, [originalHousehold.rows[0].id])
+    expect((await call('GET', '/api/auth/config', { token: admin.accessToken })).statusCode).toBe(200)
+    await query(`update households set owner_person_id = $1 where id = $2`, [
+      originalHousehold.rows[0].owner_person_id,
+      originalHousehold.rows[0].id,
+    ])
+
     const extra = json(await call('POST', '/api/households', {
       token: admin.accessToken,
       body: {
