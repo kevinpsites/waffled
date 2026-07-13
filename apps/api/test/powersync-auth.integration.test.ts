@@ -1,6 +1,7 @@
 // PowerSync auth: our api serves a JWKS and mints short-lived RS256 tokens that
-// carry the caller's real household_id (resolved from the DB). PowerSync validates
-// those tokens against the JWKS; sync rules scope buckets by the household_id claim.
+// carry the caller's real household_id and person_id (resolved from the DB).
+// PowerSync validates those tokens against the JWKS; sync rules use both claims to
+// keep personal calendar rows scoped to their owner.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
 import { createPublicKey } from 'node:crypto'
@@ -14,6 +15,7 @@ let pg: StartedPostgreSqlContainer
 let app: any
 let closePool: () => Promise<void>
 let kevinHouseholdId = ''
+let kevinPersonId = ''
 
 function mint(sub: string): string {
   return jwt.sign({}, SECRET, {
@@ -81,6 +83,7 @@ describe('powersync auth', () => {
     expect(res.statusCode).toBe(201)
     const sb = JSON.parse(res.body)
     kevinHouseholdId = sb.household.id
+    kevinPersonId = sb.person.id
     // Seed an identity so the legacy mint('dev|kevin') token resolves to the owner;
     // its PowerSync token must carry sub='dev|kevin'.
     await query(
@@ -114,6 +117,7 @@ describe('powersync auth', () => {
 
     expect(decoded.sub).toBe('dev|kevin')
     expect(decoded.household_id).toBe(kevinHouseholdId)
+    expect(decoded.person_id).toBe(kevinPersonId)
   })
 
   it('refuses a PowerSync token for an unprovisioned caller (403)', async () => {
