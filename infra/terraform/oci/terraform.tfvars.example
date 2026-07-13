@@ -1,0 +1,29 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+
+# ── OCI API auth (Console → Profile → My profile → API keys → Add API key) ──
+tenancy_ocid     = "ocid1.tenancy.oc1..aaaa..."
+user_ocid        = "ocid1.user.oc1..aaaa..."
+fingerprint      = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
+private_key_path = "~/.oci/oci_api_key.pem"
+region           = "us-ashburn-1"
+
+# Leave empty to use the root compartment.
+# compartment_ocid = "ocid1.compartment.oc1..aaaa..."
+
+# ── Access ──
+ssh_public_key   = "ssh-ed25519 AAAA... you@host"
+# Lock SSH to your IP (recommended): allowed_ssh_cidr = "203.0.113.7/32"
+
+# ── Public HTTPS + hostname (recommended so the iOS app + scanner work) ──
+# After `apply`, create the DNS A records the outputs list, then wait for TLS.
+domain = "waffled.example.com"
+
+# ── Sizing (Always-Free ceiling is 2 OCPU / 12 GB since 2026-06-15) ──
+# instance_ocpus      = 2
+# instance_memory_gbs = 12
+# boot_volume_gbs     = 100
+# availability_domain_number = 1   # bump to 2/3 if you hit "Out of host capacity"
+
+# ── App source ──
+# waffled_ref     = "main"
+# waffled_version = "0.7.0"

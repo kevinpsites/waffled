@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# Rendered by Terraform (templatefile) and run as root on first boot by cloud-init.
+# Brings up the full Waffled Docker Compose stack. Log: /var/log/waffled-bootstrap.log
+set -euxo pipefail
+exec > /var/log/waffled-bootstrap.log 2>&1
+
+export DEBIAN_FRONTEND=noninteractive
+
+# 1) Docker Engine + Compose v2 plugin (the get.docker.com script bundles both).
+if ! command -v docker >/dev/null 2>&1; then
+  curl -fsSL https://get.docker.com | sh
+fi
+usermod -aG docker ubuntu || true
+systemctl enable --now docker
+
+# 2) Host firewall. OCI's Ubuntu image ships restrictive iptables INPUT rules that
+#    drop everything except SSH, so opening the cloud Security List is not enough —
+#    we must also punch through the OS firewall. Insert ACCEPTs at the top of INPUT.
+iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT
+iptables -I INPUT 1 -p tcp --dport 443 -j ACCEPT
+%{ if domain == "" ~}
+iptables -I INPUT 1 -p tcp --dport 8090 -j ACCEPT
+%{ endif ~}
+if ! netfilter-persistent save; then
+  apt-get update && apt-get install -y iptables-persistent && netfilter-persistent save || true
+fi
+
+# 3) Fetch the app.
+rm -rf /opt/waffled
+git clone "${repo_url}" /opt/waffled
+cd /opt/waffled
+git checkout "${ref}"
+cd infra/compose
+
+# 4) Build .env (mirrors `./waffled up`'s first-run secret generation) plus the
+#    cloud-specific ingress settings.
+cp .env.example .env
+set_env() {
+  if grep -qE "^$1=" .env; then
+    sed -i "s|^$1=.*|$1=$2|" .env
+  else
+    echo "$1=$2" >> .env
+  fi
+}
+set_env LOCAL_JWT_SECRET     "$(openssl rand -base64 48 | tr -d '\n')"
+set_env TOKEN_ENCRYPTION_KEY "$(openssl rand -base64 32 | tr -d '\n')"
+set_env POSTGRES_PASSWORD    "$(openssl rand -hex 24 | tr -d '\n')"
+set_env HTTP_PORT            "80"
+%{ if waffled_version != "" ~}
+set_env WAFFLED_VERSION      "${waffled_version}"
+%{ endif ~}
+
+%{ if domain != "" ~}
+# ── HTTPS mode: Caddy auto-TLS for the app, plus a dedicated TLS subdomain that
+#    fronts PowerSync (its own port isn't behind Caddy in the stock Caddyfile). ──
+set_env CADDY_SITE_ADDRESS   "${domain}"
+set_env PUBLIC_BASE_URL      "https://${domain}"
+set_env POWERSYNC_PUBLIC_URL "https://powersync.${domain}"
+
+cat >> caddy/Caddyfile <<'CADDY_EOF'
+
+# ── Added by OCI Terraform bootstrap ──
+# Serve PowerSync over its own hostname/cert so offline-sync runs over HTTPS/WSS.
+powersync.${domain} {
+	encode gzip
+	reverse_proxy powersync:8080
+}
+CADDY_EOF
+
+# Publish 80 (ACME challenge + HTTP→HTTPS redirect) and 443 on Caddy. `!override`
+# replaces the base port list so we don't collide with the default 80 mapping.
+cat > docker-compose.oci.yml <<'COMPOSE_EOF'
+services:
+  caddy:
+    ports: !override
+      - "80:80"
+      - "443:443"
+COMPOSE_EOF
+
+COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.oci.yml --env-file .env)
+%{ else ~}
+# ── HTTP-only mode: no TLS. Point clients at the raw public IP. ──
+PUBIP="$(curl -fsS https://ifconfig.me || curl -fsS https://icanhazip.com || true)"
+set_env PUBLIC_BASE_URL      "http://$PUBIP"
+set_env POWERSYNC_PUBLIC_URL "http://$PUBIP:8090"
+
+COMPOSE=(docker compose -f docker-compose.yml --env-file .env)
+%{ endif ~}
+
+# 5) Pull images and start everything (runs migrate → api → powersync → caddy → backup).
+"$${COMPOSE[@]}" pull
+"$${COMPOSE[@]}" up -d
+
+echo "waffled bootstrap complete"
