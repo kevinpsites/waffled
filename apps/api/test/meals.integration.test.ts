@@ -428,18 +428,17 @@ describe('meal planning api', () => {
 
   // "Try New Recipe": the AI planner accepts steering toward novelty — a
   // `trySomethingNew` toggle and a `wantToTry` list of specific dishes. The test
-  // container has no LLM provider selected → heuristic → the prompt is built and
-  // the request accepted, then completeJson throws → route maps to 501. We assert
+  // container has no LLM provider selected → heuristic → plan-week shuffles the
+  // empty slots from the library (200, via:'shuffle') rather than 501ing. We assert
   // the new inputs are accepted the same as a plain plan-week (no 400 / no crash).
-  it('plan-week accepts wantToTry + trySomethingNew (501 with no AI provider, like a plain plan-week)', async () => {
-    // Use a week window with no prior plans so a target date actually reaches the
-    // LLM (an empty/filled window short-circuits to 200 before completeJson).
+  it('plan-week accepts wantToTry + trySomethingNew (shuffles with no AI provider, like a plain plan-week)', async () => {
     const plain = await call('POST', '/api/meals/plan-week', kevin, {
       start: '2026-06-22',
       mealType: 'dinner',
       dates: ['2026-06-24'],
     })
-    expect(plain.statusCode).toBe(501)
+    expect(plain.statusCode).toBe(200)
+    expect(JSON.parse(plain.body).via).toBe('shuffle')
 
     const steered = await call('POST', '/api/meals/plan-week', kevin, {
       start: '2026-06-22',
@@ -448,9 +447,9 @@ describe('meal planning api', () => {
       trySomethingNew: true,
       wantToTry: ['Shakshuka', 'Bibimbap'],
     })
-    // Same accepted path — the new fields don't 400 or blow up prompt building.
+    // Same accepted path — the new fields don't 400 or blow up the shuffle branch.
     expect(steered.statusCode).toBe(plain.statusCode)
-    expect(steered.statusCode).toBe(501)
+    expect(JSON.parse(steered.body).via).toBe('shuffle')
   })
 })
 

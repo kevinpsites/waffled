@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Plan breakfast and lunch from the iPhone meal planner, not just dinner.** Each day in the
   weekly planner now offers an add button for every unplanned meal — Breakfast, Lunch, and
   Dinner — instead of a lone "Plan dinner" affordance, matching what the iPad grid already did.
+- **"Plan my week" and "Plan my month" now work even without an AI provider — they shuffle.**
+  Households that haven't configured an LLM used to get an error when they asked the planner to
+  fill a week or a month. Instead, the planner now deals a random hand from your own recipe
+  library: it fills only the empty dinner slots, skips anything already planned in that window or
+  cooked in the last couple of weeks, and leaves slots you've already set alone. No AI required,
+  and the app doesn't change — the same "Plan my week" / "Plan my month" buttons just always
+  return a plan.
 
 ### Changed
 - **New chores now default to a one-off on the day you're viewing, and each day's list is sorted sensibly.** On iPhone/iPad, adding a chore from the Chores tab now starts as "Just once" due on the day currently shown — instead of a recurring daily chore always due today. A day's chores are also ordered unfinished-first, then by due time (earliest first, untimed last), then A–Z.

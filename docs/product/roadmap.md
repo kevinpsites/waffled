@@ -71,7 +71,8 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
   import, overrides, cook mode, **per-step timers** (set in the editor; a floating
   cook-mode dock that ticks live, jumps to the step on tap, and rings a looping
   alarm + local-notification fallback), substitution-aware grocery build, AI
-  plan-week/month, AI metadata auto-fill.
+  plan-week/month (with a no-AI **shuffle** fallback that fills empty slots from
+  your library, skipping recently-planned/cooked dishes), AI metadata auto-fill.
 - **Photos** — wall (masonry), real blob upload (single + multi), albums, edit, multi-
   select bulk move/delete, screensaver + per-album screensaver source, crossfade
   slideshow, recipe hero images.
