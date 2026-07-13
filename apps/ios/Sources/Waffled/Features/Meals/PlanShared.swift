@@ -199,6 +199,9 @@ struct MealPlanReviewCard: View {
     let belowTitleNote: String?
     let titleMultilineLeading: Bool
     var onSkip: (() -> Void)? = nil
+    /// Tap the emoji+title block to preview the candidate recipe. Optional so
+    /// PlanMonthSheet (which doesn't wire it) keeps compiling and stays inert.
+    var onOpen: (() -> Void)? = nil
     let onSwap: () -> Void
     let onPick: () -> Void
     let onToggleLock: () -> Void
@@ -231,6 +234,11 @@ struct MealPlanReviewCard: View {
                     .buttonStyle(.plain)
                 }
             }
+            // Tap the emoji+title block to preview the recipe. The inner ✕ Button keeps
+            // its own tap; this coexists with the card's `.draggable` (same pattern as
+            // WeekPlannerView.entryRow). No-op when onOpen is nil (PlanMonthSheet).
+            .contentShape(Rectangle())
+            .onTapGesture { onOpen?() }
             Divider().background(WF.hair)
             HStack(spacing: 8) {
                 PlanActionChip(icon: "arrow.triangle.2.circlepath", label: "Swap", action: onSwap)

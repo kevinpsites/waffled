@@ -279,12 +279,13 @@ struct WeekPlannerView: View {
                     }
                     Spacer()
                 }
-                if dayEntries.isEmpty {
-                    planButton(date: ds, mealType: "dinner", label: "Plan dinner")
-                } else {
-                    ForEach(dayEntries) { entry in entryRow(entry) }
-                    if !dayEntries.contains(where: { $0.mealType == "dinner" }) {
-                        planButton(date: ds, mealType: "dinner", label: "Plan dinner")
+                ForEach(dayEntries) { entry in entryRow(entry) }
+                // Expose an add affordance for each of the three primary meals that
+                // isn't planned yet (iPhone). Existing entries — including snack —
+                // still render above; this is purely the ADD path (was dinner-only).
+                ForEach(["breakfast", "lunch", "dinner"], id: \.self) { slot in
+                    if !dayEntries.contains(where: { $0.mealType == slot }) {
+                        planButton(date: ds, mealType: slot, label: "Plan \(slotLabel(slot))")
                     }
                 }
             }
