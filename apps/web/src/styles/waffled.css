@@ -579,7 +579,7 @@ select.cap-edit-sub { cursor: pointer; }
 .pd-icon { width: 36px; height: 36px; border-radius: 999px; background: var(--panel); display: grid; place-items: center; }
 .pd-icon svg { width: 17px; height: 17px; stroke: var(--ink-2); fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .pd-icon.lock { background: var(--ink); }
-.pd-icon.lock svg { stroke: var(--on-accent); }
+.pd-icon.lock svg { stroke: var(--on-inverse); }
 .constraint { display: flex; align-items: center; gap: 11px; padding: 12px 0; border-bottom: 1px solid var(--hair-2); }
 .constraint .cl { font-size: 14px; font-weight: 600; color: var(--ink-2); flex: 1; }
 .constraint .cv { font-size: 14px; font-weight: 700; color: var(--ink); }
