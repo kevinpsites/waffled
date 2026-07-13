@@ -60,6 +60,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   step, and the notification is marked time-sensitive so it breaks through Focus and the
   notification summary when you've stepped away from the app.
 
+### Security
+
+- **Member logins now respect account ownership.** An administrator can update the login
+  already linked to a household profile, but an account owned by a different person must
+  join through the explicit invitation and acceptance flow.
+- **Sign-in callbacks now return only to Waffled.** OIDC login handoffs are restricted to
+  the current web origin or the registered native-app callback, and browser error pages
+  safely render messages returned by an identity provider.
+
 ## [0.7.0] - 2026-07-10
 
 ### Added
@@ -168,12 +177,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from a photo, a description, or pasted Markdown correctly detected each step's timer but
   dropped it when filling the form, so every step showed "Add timer" even when the recipe
   clearly stated a time. The parsed timer now lands on the step.
-
-### Security
-
-- **Member logins now respect account ownership.** An administrator can update the login
-  already linked to a household profile, but an account owned by a different person must
-  join through the explicit invitation and acceptance flow.
 
 ## [0.6.1] - 2026-07-09
 
