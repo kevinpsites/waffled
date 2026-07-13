@@ -79,7 +79,7 @@
 .pp-cat-chip.cat-spiritual { background: var(--person-4-t); color: var(--person-4-tx); }
 .pp-cat-chip.cat-creative { background: var(--warn-t); color: var(--warn); }
 .pp-cat-chip.cat-social { background: var(--person-3-t); color: var(--success); }
-.pp-goal-streak { font-size: 12px; font-weight: 800; color: var(--warn); }
+.pp-goal-streak { font-size: 12px; font-weight: 800; color: var(--gold-d); }
 .pp-goal-bar { height: 7px; border-radius: 999px; background: var(--panel); margin-top: 7px; overflow: hidden; }
 .pp-goal-bar span { display: block; height: 100%; background: var(--person-3); border-radius: 999px; }
 .pp-goal-num { flex: none; font-size: 14px; text-align: right; }
@@ -131,7 +131,7 @@
 .fam-av { width: 46px; height: 46px; border-radius: 999px; flex: none; display: grid; place-items: center; font-size: 24px; }
 .fam-name-wrap { flex: 1; min-width: 0; }
 .fam-name { font-weight: 700; font-size: 17px; }
-.fam-streak { font-size: 13px; font-weight: 800; color: var(--warn); }
+.fam-streak { font-size: 13px; font-weight: 800; color: var(--gold-d); }
 .fam-stats { display: flex; justify-content: space-between; }
 .fam-stat { text-align: center; }
 .fam-stat-n { font-size: 20px; font-weight: 800; }

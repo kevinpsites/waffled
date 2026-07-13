@@ -537,7 +537,7 @@ select.cap-edit-sub { cursor: pointer; }
 .tag { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--panel);
   color: var(--ink-2); white-space: nowrap; }
 .tag.veg { background: var(--person-3-t); color: var(--success); }
-.tag.fav { background: var(--warn-t); color: var(--warn); }
+.tag.fav { background: var(--gold-t); color: var(--gold-d); }
 
 /* image gradient placeholders (food) */
 .g-pasta  { background: var(--g-pasta); }
@@ -741,7 +741,7 @@ select.cap-edit-sub { cursor: pointer; }
 .streak-day { width: 38px; height: 44px; border-radius: 12px; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 2px; font-size: 11px; font-weight: 700;
   background: var(--panel); color: var(--ink-3); }
-.streak-day.hit { background: var(--warn-t); color: var(--warn); }
+.streak-day.hit { background: var(--gold-t); color: var(--gold-d); }
 .streak-day .sde { font-size: 16px; }
 
 /* ===== goals =================================================== */
