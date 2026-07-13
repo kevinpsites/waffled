@@ -15,18 +15,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- **Household links now stay inside the family they belong to.** Chore assignees,
-  currency conversions, calendar events, offline writes, goal participants, list
-  assignees, calendar owners, and meal references reject IDs from another household.
-- **Uploaded media keys stay inside their household.** Photo, recipe, and chore-proof
-  attachments now reject malformed or cross-household keys, and local storage prevents
-  paths from escaping the configured media directory.
 - **Member logins now respect account ownership.** An administrator can update the login
   already linked to a household profile, but an account owned by a different person must
   join through the explicit invitation and acceptance flow.
 - **Sign-in callbacks now return only to Waffled.** OIDC login handoffs are restricted to
   the current web origin or the registered native-app callback, and browser error pages
   safely render messages returned by an identity provider.
+- **Uploaded media keys stay inside their household.** Photo, recipe, and chore-proof
+  attachments now reject malformed or cross-household keys, and local storage prevents
+  paths from escaping the configured media directory.
+- **Household links now stay inside the family they belong to.** Chore assignees,
+  currency conversions, calendar events, offline writes, goal participants, list
+  assignees, calendar owners, and meal references reject IDs from another household.
+- **Personal calendar rows now stay on their owner's synced devices.** PowerSync
+  enforces calendar visibility from signed household and person claims instead of
+  downloading the whole household's private rows and relying on client filtering.
+  The bucket split causes a one-time full client re-sync after upgrading.
 
 ### Added
 - **Plan breakfast and lunch from the iPhone meal planner, not just dinner.** Each day in the
