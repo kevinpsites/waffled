@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **New chores now default to a one-off on the day you're viewing, and each day's list is sorted sensibly.** On iPhone/iPad, adding a chore from the Chores tab now starts as "Just once" due on the day currently shown — instead of a recurring daily chore always due today. A day's chores are also ordered unfinished-first, then by due time (earliest first, untimed last), then A–Z.
+- **Cook Mode on iPad now keeps the current step's ingredients in a left sidebar.** Instead of
+  the ingredients scrolling away beneath the big instruction, the iPad wall display pins them in
+  a fixed left-hand column so you can glance at what a step needs while the instruction fills the
+  rest of the screen. iPhone keeps its single scrolling column with ingredients inline.
 
 ### Fixed
 - **The iPhone Goals list now updates itself after you change a goal.** Deleting a goal, logging
@@ -32,6 +36,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tapping a suggestion card's emoji and title now opens the full recipe detail (swap, pick, and
   lock still work as before); brand-new "✨ New dish" suggestions have nothing to open yet, so
   their tap does nothing.
+- **Cook Mode now stays open when you leave the app and comes back where you were.** On the
+  iPad, backgrounding the app (Home button or app switcher) used to drop you back on Today and
+  lose Cook Mode entirely; now Cook Mode — and any running timers — survive backgrounding and are
+  right there when you return, still on the current step. Tapping a fired timer's notification
+  also re-opens Cook Mode at the exact step whose timer went off. Finishing a cook from Cook
+  Mode still offers the "Used from your pantry" update so your on-hand stock stays accurate.
+- **Cook Mode timers now reliably alert you after you leave the app.** A running step timer's
+  notification used to be cancelled the moment Cook Mode closed — including when you simply pressed
+  Home — so backgrounding the app with a timer running meant no alert ever fired. The pending
+  alert is now kept alive across backgrounding and only cleared when you actually pause or dismiss
+  the timer.
+- **Cook Mode timers now say which timer went off and alert like a proper kitchen alarm.** When
+  several step timers are running at once, the "Timer done" screen and the out-of-app
+  notification now name the specific timer (e.g. "Step 5 · 3-minute timer") instead of just its
+  step, and the notification is marked time-sensitive so it breaks through Focus and the
+  notification summary when you've stepped away from the app.
 
 ## [0.7.0] - 2026-07-10
 

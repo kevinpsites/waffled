@@ -8,6 +8,10 @@ import SwiftUI
 /// open as sheets. See `apps/ios/IPAD_ROADMAP.md`.
 struct KioskDashboard: View {
     @Environment(SyncManager.self) private var sync
+    /// Cook Mode is presented app-level (from `RootView`) off this store. Because this
+    /// page opens the recipe as a `.fullScreenCover`, that root cover would otherwise
+    /// queue behind it — so we dismiss the recipe cover the moment a cook starts.
+    @Environment(CookSessionStore.self) private var cook
 
     /// Switch the shell's nav rail to another page (injected by `KioskShell`).
     var navigate: (KioskNav) -> Void = { _ in }
@@ -126,6 +130,12 @@ struct KioskDashboard: View {
                         }
                     }
             }
+        }
+        // Starting a cook (Cook button / auto-cook) closes this recipe cover so the
+        // app-root Cook Mode cover presents immediately instead of queueing behind it.
+        // Cook Mode is durable (survives backgrounding); closing it lands back on Today.
+        .onChange(of: cook.isActive) { _, active in
+            if active { recipeTarget = nil }
         }
         .sheet(isPresented: $showCapture) {
             CaptureSheet(autoDictate: dictateOnOpen).presentationDragIndicator(.visible)
