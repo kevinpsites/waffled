@@ -12,7 +12,7 @@ export const CATEGORIES: Record<string, Category> = {
   intellectual: { emoji: '📚', label: 'Intellectual', color: 'var(--person-1)', tint: 'var(--person-1-t)', txt: 'var(--person-1-tx)' },
   spiritual: { emoji: '🧘', label: 'Spiritual', color: 'var(--person-4)', tint: 'var(--person-4-t)', txt: 'var(--person-4-tx)' },
   creative: { emoji: '🎨', label: 'Creative', color: 'var(--person-2)', tint: 'var(--person-2-t)', txt: 'var(--person-2-tx)' },
-  social: { emoji: '🤝', label: 'Social', color: 'var(--gold)', tint: 'var(--warn-t)', txt: 'var(--warn)' },
+  social: { emoji: '🤝', label: 'Social', color: 'var(--gold)', tint: 'var(--gold-t)', txt: 'var(--gold-d)' },
 }
 
 export const CATEGORY_KEYS = Object.keys(CATEGORIES)

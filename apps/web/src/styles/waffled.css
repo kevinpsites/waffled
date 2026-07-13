@@ -33,6 +33,8 @@
   --primary-d: #D84A33;   /* pressed / hover */
   --primary-t: #F3E2D8;   /* primary tint / hover bg */
   --gold:      #F3A93B;   /* stars & rewards ONLY — not warnings */
+  --gold-t:    #FDECD6;   /* pale-gold tint (chip fills) */
+  --gold-d:    #B07D1C;   /* readable gold-brown text on the gold tint */
   --ai:        #8C74E8;   /* violet — AI accent (lighter in light mode) */
   --ai-2:      #A48CF0;   /* AI gradient end */
   --ai-d:      #6A3FC4;   /* AI text-on-tint (readable on the light tint) */
@@ -158,6 +160,8 @@
   --danger:    #E15B4C;  --danger-t:  rgba(224,91,76,.18);
   --warn:      #E8A13E;  --warn-t:    rgba(232,161,62,.18);
   --info:      #4C9BFF;  --info-t:    rgba(47,127,237,.20);
+  /* gold chip tint/text retune for dark (base --gold stays #F3A93B) */
+  --gold-t:    rgba(243,169,59,.18);  --gold-d: #F3B75C;
 
   /* shadows deepen */
   --sh-1: 0 1px 2px rgba(0,0,0,.45);
@@ -389,7 +393,7 @@ select.cap-edit-sub { cursor: pointer; }
 .ai-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700;
   color: var(--ai-d); background: var(--ai-t); padding: 3px 9px; border-radius: 999px;
   text-transform: uppercase; letter-spacing: .03em; }
-.ai-tag svg { width: 12px; height: 12px; fill: var(--ai); }
+.ai-tag svg { width: 12px; height: 12px; fill: var(--ai-d); }
 
 /* ===== calendar (month) ========================================= */
 .cal { display: grid; grid-template-rows: auto 1fr; height: 100%; }
@@ -574,7 +578,7 @@ select.cap-edit-sub { cursor: pointer; }
 .plan-day .pd-m { font-size: 12px; color: var(--ink-2); font-weight: 600; }
 .reason { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: var(--ai-d);
   background: var(--ai-t); padding: 3px 9px; border-radius: 999px; align-self: flex-start; }
-.reason svg { width: 11px; height: 11px; fill: var(--ai); }
+.reason svg { width: 11px; height: 11px; fill: var(--ai-d); }
 .plan-day .pd-act { display: flex; align-items: center; gap: 8px; padding: 0 14px 0 6px; }
 .pd-icon { width: 36px; height: 36px; border-radius: 999px; background: var(--panel); display: grid; place-items: center; }
 .pd-icon svg { width: 17px; height: 17px; stroke: var(--ink-2); fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
@@ -666,7 +670,7 @@ select.cap-edit-sub { cursor: pointer; }
 .litem .lqty { font-size: 13px; color: var(--ink-2); font-weight: 700; }
 .sug-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700;
   background: var(--ai-t); color: var(--ai-d); padding: 7px 13px; border-radius: 999px; cursor: pointer; }
-.sug-chip svg { width: 13px; height: 13px; stroke: var(--ai); fill: none; stroke-width: 2.4; }
+.sug-chip svg { width: 13px; height: 13px; stroke: var(--ai-d); fill: none; stroke-width: 2.4; }
 
 /* ===== photos ================================================== */
 .ph-wall { display: grid; grid-template-columns: repeat(4,1fr); grid-auto-rows: 152px; gap: 13px; }
@@ -834,7 +838,7 @@ select.cap-edit-sub { cursor: pointer; }
 #wf-modal .am-head { display: flex; align-items: center; gap: 11px; margin-bottom: 16px; }
 #wf-modal .am-spark { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center;
   background: var(--g-ai); }
-#wf-modal .am-spark svg { width: 21px; height: 21px; fill: var(--ai); }
+#wf-modal .am-spark svg { width: 21px; height: 21px; fill: var(--ai-d); }
 #wf-modal .am-t { font-family: var(--serif); font-size: 22px; font-weight: 600; letter-spacing: -.02em; }
 #wf-modal .am-input { width: 100%; border: 2px solid var(--hair); border-radius: 14px; padding: 15px 16px;
   font-size: 17px; font-weight: 500; font-family: var(--sans); color: var(--ink); outline: none;
