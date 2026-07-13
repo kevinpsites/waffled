@@ -48,6 +48,7 @@ async function run(...cliArgs: string[]): Promise<void> {
     if (name === 'reset-password') return await cmds.resetPassword()
     if (name === 'make-admin') return await cmds.makeAdmin(true)
     if (name === 'revoke-admin') return await cmds.makeAdmin(false)
+    if (name === 'set-installation-owner') return await cmds.setInstallationOwner()
     if (name === 'password-login') return await cmds.passwordLogin()
     if (name === 'clear-calendar-error') return await cmds.clearCalendarError()
     if (name === 'prune-sessions') return await cmds.pruneSessions()
@@ -142,6 +143,23 @@ describe('admin CLI', () => {
     await run('password-login', 'on')
     expect((await query(`select password_login_enabled from auth_config where id = true`)).rows[0].password_login_enabled).toBe(true)
     log.mockRestore()
+  })
+
+  it('set-installation-owner transfers the durable operator account', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await run('set-installation-owner', '--email', 'wally@example.com', '--yes')
+    log.mockRestore()
+    const owner = await query(
+      `select a.email
+         from auth_config cfg
+         join accounts a on a.id = cfg.installation_owner_account_id
+        where cfg.id = true`
+    )
+    expect(owner.rows[0].email).toBe('wally@example.com')
+
+    const restore = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await run('set-installation-owner', '--email', 'kevin@example.com', '--yes')
+    restore.mockRestore()
   })
 
   it('clear-calendar-error clears a stuck account flag', async () => {

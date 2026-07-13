@@ -210,6 +210,25 @@ describe('Settings screen', () => {
     expect(screen.getByText(/DEGRADED/)).toBeInTheDocument()
   })
 
+  it('keeps household kiosk controls available when global sign-in config is forbidden', async () => {
+    globalThis.fetch = vi.fn(async (url: string) => {
+      const u = String(url)
+      if (u.includes('/api/auth/config')) return { ok: false, status: 403, json: async () => ({}) }
+      if (u.includes('/api/kiosk/devices')) return { ok: true, json: async () => ({ devices: [] }) }
+      if (u.includes('/api/household/settings')) return { ok: true, json: async () => ({ household, members }) }
+      if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household, person: members[0] }) }
+      if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    renderSettings()
+    await screen.findByText('Kevin')
+    fireEvent.click(screen.getByText('Sign-in & Security'))
+
+    expect(await screen.findByText(/Only the installation owner can manage/)).toBeInTheDocument()
+    expect(await screen.findByText('Kiosk Devices')).toBeInTheDocument()
+  })
+
   it('hides admin-only tabs from non-admins (only About + Sign out)', async () => {
     // Same data, but the signed-in person is not an admin.
     globalThis.fetch = vi.fn(async (url: string) => {

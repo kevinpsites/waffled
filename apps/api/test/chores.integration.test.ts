@@ -14,6 +14,7 @@ let app: any
 let closePool: () => Promise<void>
 let kevinId = ''
 let householdId = ''
+let foreignPersonId = ''
 
 function mint(sub: string): string {
   return jwt.sign({}, SECRET, {
@@ -86,6 +87,16 @@ beforeAll(async () => {
       [householdId, kevinId]
     )
   )
+  foreignPersonId = await withClient(async (c) => {
+    const h = await c.query<{ id: string }>(
+      `insert into households (name, timezone) values ('Other family','UTC') returning id`
+    )
+    const p = await c.query<{ id: string }>(
+      `insert into persons (household_id, name, member_type) values ($1,'Outsider','adult') returning id`,
+      [h.rows[0].id]
+    )
+    return p.rows[0].id
+  })
 })
 
 // Create a member with a login identity so a minted token resolves to them — the
@@ -204,6 +215,61 @@ describe('chores today api', () => {
     expect(res.statusCode).toBe(200)
     const me = JSON.parse(res.body).people.find((p: { id: string }) => p.id === kevinId)
     expect(me).toMatchObject({ total: 1, done: 0, stars: 0 })
+  })
+
+  it('rejects assignees from another household across chore write paths', async () => {
+    expect((await call('POST', '/api/chores', kevin, {
+      title: 'Foreign create', personId: foreignPersonId,
+    })).statusCode).toBe(404)
+
+    const created = await call('POST', '/api/chores', kevin, {
+      title: 'Boundary chore', personId: null,
+    })
+    expect(created.statusCode).toBe(201)
+    const choreId = JSON.parse(created.body).chore.id as string
+    const instance = JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body)
+      .instances.find((i: { choreId: string }) => i.choreId === choreId)
+
+    expect((await call('PATCH', `/api/chores/${choreId}`, kevin, {
+      personId: foreignPersonId,
+    })).statusCode).toBe(404)
+    expect((await call('POST', `/api/chore-instances/${instance.id}/claim`, kevin, {
+      personId: foreignPersonId,
+    })).statusCode).toBe(404)
+    expect((await call('POST', `/api/chore-instances/${instance.id}/assign`, kevin, {
+      personId: foreignPersonId,
+    })).statusCode).toBe(404)
+  })
+})
+
+describe('currency conversion boundaries', () => {
+  it('allows self and authorized household conversions, but rejects other targets', async () => {
+    const kidId = await addMember('Converter kid', 'kid', false, 'dev|converter-kid')
+    const kid = mint('dev|converter-kid')
+    const currency = await call('POST', '/api/currencies', kevin, { label: 'Gems', symbol: 'G' })
+    expect(currency.statusCode).toBe(201)
+    const conversion = await call('POST', '/api/conversions', kevin, {
+      fromCurrency: 'stars', toCurrency: 'gems', fromAmount: 1, toAmount: 1,
+    })
+    expect(conversion.statusCode).toBe(201)
+    const conversionId = JSON.parse(conversion.body).conversion.id as string
+
+    await withClient((c) => c.query(
+      `insert into ledger_entries (household_id, person_id, currency, amount, reason, created_by)
+       values ($1,$2,'stars',10,'boundary_test',$2), ($1,$3,'stars',10,'boundary_test',$2)`,
+      [householdId, kevinId, kidId]
+    ))
+
+    expect((await call('POST', `/api/conversions/${conversionId}/apply`, kid, {})).statusCode).toBe(200)
+    expect((await call('POST', `/api/conversions/${conversionId}/apply`, kid, {
+      personId: kevinId,
+    })).statusCode).toBe(403)
+    expect((await call('POST', `/api/conversions/${conversionId}/apply`, kevin, {
+      personId: kidId,
+    })).statusCode).toBe(200)
+    expect((await call('POST', `/api/conversions/${conversionId}/apply`, kevin, {
+      personId: foreignPersonId,
+    })).statusCode).toBe(404)
   })
 })
 
@@ -459,6 +525,17 @@ describe('photo-proof chores', () => {
     return JSON.parse((await call('GET', '/api/chore-instances/today', kevin)).body).instances
   }
 
+  it('rejects proof keys outside the current household', async () => {
+    await call('POST', '/api/chores', kevin, { title: 'Unsafe proof', personId: kevinId, rewardAmount: 1, requiresPhoto: true })
+    const inst = (await instances()).find((i) => i.choreTitle === 'Unsafe proof')!
+    const res = await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, {
+      storageKey: `${householdId}/../../etc/passwd`,
+      contentType: 'image/jpeg',
+    })
+    expect(res.statusCode).toBe(400)
+    expect((await instances()).find((i) => i.choreTitle === 'Unsafe proof')!.status).toBe('pending')
+  })
+
   it('requires a photo to complete: 422 without one, succeeds with a storage key', async () => {
     await call('POST', '/api/chores', kevin, { title: 'Tidy room', personId: kevinId, rewardAmount: 4, requiresPhoto: true })
     const inst = (await instances()).find((i) => i.choreTitle === 'Tidy room')!
@@ -470,26 +547,26 @@ describe('photo-proof chores', () => {
 
     // with a proof key → done, proofUrl resolves to /media/<key>
     const done = await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, {
-      storageKey: `${kevinId}/abc.jpg`,
+      storageKey: `${householdId}/${'a'.repeat(32)}.jpg`,
       contentType: 'image/jpeg',
     })
     expect(done.statusCode).toBe(200)
     expect(JSON.parse(done.body).instance.status).toBe('done')
     const after = (await instances()).find((i) => i.choreTitle === 'Tidy room')!
-    expect(after.proofUrl).toMatch(/\/media\/.*abc\.jpg$/)
+    expect(after.proofUrl).toMatch(/\/media\/.*a{32}\.jpg$/)
   })
 
   it('combines with approval: proof shows in the awaiting queue; reject clears it', async () => {
     await call('POST', '/api/chores', kevin, { title: 'Wash car', personId: kevinId, rewardAmount: 8, requiresApproval: true, requiresPhoto: true })
     const inst = (await instances()).find((i) => i.choreTitle === 'Wash car')!
     const done = await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, {
-      storageKey: `${kevinId}/car.webp`,
+      storageKey: `${householdId}/${'b'.repeat(32)}.webp`,
       contentType: 'image/webp',
     })
     expect(JSON.parse(done.body).instance.status).toBe('awaiting')
 
     const queue = JSON.parse((await call('GET', '/api/chore-instances/awaiting', kevin)).body).instances as Inst[]
-    expect(queue.find((i) => i.choreTitle === 'Wash car')!.proofUrl).toMatch(/car\.webp$/)
+    expect(queue.find((i) => i.choreTitle === 'Wash car')!.proofUrl).toMatch(/b{32}\.webp$/)
 
     expect((await call('POST', `/api/chore-instances/${inst.id}/reject`, kevin)).statusCode).toBe(200)
     const back = (await instances()).find((i) => i.choreTitle === 'Wash car')!
@@ -519,7 +596,7 @@ describe('photo-proof retention', () => {
   async function completedWithProof(title: string): Promise<string> {
     await call('POST', '/api/chores', kevin, { title, personId: kevinId, rewardAmount: 1, requiresPhoto: true })
     const inst = (await instances()).find((i) => i.choreTitle === title)!
-    await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, { storageKey: `${kevinId}/${title}.jpg`, contentType: 'image/jpeg' })
+    await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, { storageKey: `${householdId}/${Buffer.from(title).toString('hex').padEnd(32, '0').slice(0, 32)}.jpg`, contentType: 'image/jpeg' })
     return inst.id
   }
 
@@ -539,7 +616,7 @@ describe('photo-proof retention', () => {
     const i = (await instances()).find((x) => x.choreTitle === 'Vacuum')!
     expect(i.status).toBe('done')
     expect(i.hadProof).toBe(true)
-    expect(i.proofUrl).toMatch(/Vacuum\.jpg$/)
+    expect(i.proofUrl).toMatch(/[0-9a-f]{32}\.jpg$/)
   })
 
   it('the sweep deletes aged proofs (keeping hadProof) but spares fresh + awaiting ones', async () => {
@@ -548,7 +625,7 @@ describe('photo-proof retention', () => {
     // an awaiting (not settled) photo chore must never be swept, however old
     await call('POST', '/api/chores', kevin, { title: 'Pending proof', personId: kevinId, rewardAmount: 1, requiresPhoto: true, requiresApproval: true })
     const pend = (await instances()).find((i) => i.choreTitle === 'Pending proof')!
-    await call('POST', `/api/chore-instances/${pend.id}/complete`, kevin, { storageKey: `${kevinId}/pend.jpg`, contentType: 'image/jpeg' })
+    await call('POST', `/api/chore-instances/${pend.id}/complete`, kevin, { storageKey: `${householdId}/${'c'.repeat(32)}.jpg`, contentType: 'image/jpeg' })
 
     // backdate the aged one + the awaiting one well past the 3-day window
     await withClient((c) =>
@@ -563,9 +640,9 @@ describe('photo-proof retention', () => {
     const aged = after.find((i) => i.choreTitle === 'Old proof')!
     expect(aged.proofUrl).toBeNull()   // blob + key gone
     expect(aged.hadProof).toBe(true)   // …but we still remember a photo was attached
-    expect(after.find((i) => i.choreTitle === 'Fresh proof')!.proofUrl).toMatch(/Fresh proof\.jpg$/)
+    expect(after.find((i) => i.choreTitle === 'Fresh proof')!.proofUrl).toMatch(/[0-9a-f]{32}\.jpg$/)
     // awaiting one keeps its proof despite being backdated
-    expect(after.find((i) => i.choreTitle === 'Pending proof')!.proofUrl).toMatch(/pend\.jpg$/)
+    expect(after.find((i) => i.choreTitle === 'Pending proof')!.proofUrl).toMatch(/c{32}\.jpg$/)
   })
 })
 
@@ -581,7 +658,7 @@ describe('stored proof photos (review/manage)', () => {
   async function completeWithProof(title: string): Promise<string> {
     await call('POST', '/api/chores', kevin, { title, personId: kevinId, rewardAmount: 1, requiresPhoto: true })
     const inst = (await instances()).find((i) => i.choreTitle === title)!
-    await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, { storageKey: `${kevinId}/${title}.jpg`, contentType: 'image/jpeg' })
+    await call('POST', `/api/chore-instances/${inst.id}/complete`, kevin, { storageKey: `${householdId}/${Buffer.from(title).toString('hex').padEnd(32, '0').slice(0, 32)}.jpg`, contentType: 'image/jpeg' })
     return inst.id
   }
 
@@ -592,7 +669,7 @@ describe('stored proof photos (review/manage)', () => {
     let proofs = await listProofs()
     const a = proofs.find((p) => p.choreTitle === 'Proof A')!
     expect(a.instanceId).toBe(aId)
-    expect(a.proofUrl).toMatch(/Proof A\.jpg$/)
+    expect(a.proofUrl).toMatch(/[0-9a-f]{32}\.jpg$/)
     expect(proofs.some((p) => p.choreTitle === 'Proof B')).toBe(true)
 
     // delete one

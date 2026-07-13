@@ -279,13 +279,21 @@ struct WeekPlannerView: View {
                     }
                     Spacer()
                 }
-                if dayEntries.isEmpty {
-                    planButton(date: ds, mealType: "dinner", label: "Plan dinner")
-                } else {
-                    ForEach(dayEntries) { entry in entryRow(entry) }
-                    if !dayEntries.contains(where: { $0.mealType == "dinner" }) {
-                        planButton(date: ds, mealType: "dinner", label: "Plan dinner")
+                // Interleave meals chronologically (iPhone): for each primary slot show
+                // the planned entry if there is one, otherwise a "Plan <Slot>" add button.
+                // So "Plan Breakfast / Plan Lunch / Dinner" reads in meal order, not entries-
+                // then-buttons.
+                ForEach(["breakfast", "lunch", "dinner"], id: \.self) { slot in
+                    if let entry = dayEntries.first(where: { $0.mealType == slot }) {
+                        entryRow(entry)
+                    } else {
+                        planButton(date: ds, mealType: slot, label: "Plan \(slotLabel(slot))")
                     }
+                }
+                // Snacks aren't a primary add-slot, but an existing snack (or any other
+                // non-primary meal_type) still renders after dinner, in slot order.
+                ForEach(dayEntries.filter { !["breakfast", "lunch", "dinner"].contains($0.mealType) }) { entry in
+                    entryRow(entry)
                 }
             }
         }
