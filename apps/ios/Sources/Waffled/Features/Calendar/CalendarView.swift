@@ -414,12 +414,10 @@ struct CalendarView: View {
     /// Horizontal flick on the grid → step month (month view) or day (day view). Ignored
     /// in agenda mode (a continuous list) and for predominantly-vertical drags.
     private func handleCalendarSwipe(_ value: DragGesture.Value) {
-        let dx = value.translation.width, dy = value.translation.height
-        guard abs(dx) > 50, abs(dx) > abs(dy) * 1.5 else { return }
-        let forward = dx < 0   // swipe left = go forward (next)
+        guard let dir = HorizontalSwipe.step(value) else { return }
         switch mode {
-        case .month: stepMonth(forward ? 1 : -1)
-        case .day:   stepDay(forward ? 1 : -1)
+        case .month: stepMonth(dir)
+        case .day:   stepDay(dir)
         case .agenda: break
         }
     }

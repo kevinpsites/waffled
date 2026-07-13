@@ -32,7 +32,9 @@ import {
   weekEntries,
   presentEntry,
   planWeek,
+  shuffleWeek,
   planMonth,
+  shuffleMonth,
   MEAL_TYPES,
   DATE_RE,
   todayDate,
@@ -52,6 +54,7 @@ import {
   assertPersonsInHousehold,
   assertRecipeInHousehold,
 } from '../../platform/household-refs'
+import { mediaKeyBelongsToHousehold } from '../../platform/storage'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -65,6 +68,9 @@ export function registerMealRoutes(api: Api): void {
     const body = (req.body ?? {}) as Partial<CreateRecipeInput>
     if (!body.title || !body.title.trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
+    }
+    if (body.storageKey != null && !mediaKeyBelongsToHousehold(body.storageKey, tenant.householdId)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid uploaded image key' })
     }
     if (Array.isArray(body.ingredients) && body.ingredients.some((it) => !it?.name || !String(it.name).trim())) {
       return res.status(400).json({ error: 'BadRequest', message: 'every ingredient needs a name' })
@@ -120,6 +126,9 @@ export function registerMealRoutes(api: Api): void {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     const body = (req.body ?? {}) as UpdateRecipeInput
+    if (body.storageKey != null && !mediaKeyBelongsToHousehold(body.storageKey, tenant.householdId)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid uploaded image key' })
+    }
     if (Array.isArray(body.ingredients) && body.ingredients.some((it) => !it?.name || !String(it.name).trim())) {
       return res.status(400).json({ error: 'BadRequest', message: 'every ingredient needs a name' })
     }
@@ -444,10 +453,17 @@ export function registerMealRoutes(api: Api): void {
     const avoidTitles = Array.isArray(b.avoidTitles) ? b.avoidTitles.filter((s): s is string => typeof s === 'string').slice(0, 40) : undefined
     const wantToTry = Array.isArray(b.wantToTry) ? b.wantToTry.filter((s): s is string => typeof s === 'string' && !!s.trim()).slice(0, 12) : undefined
     const trySomethingNew = typeof b.trySomethingNew === 'boolean' ? b.trySomethingNew : undefined
+    const mealType = typeof b.mealType === 'string' ? b.mealType : undefined
+    // No LLM provider configured (heuristic) or the selected provider isn't usable in
+    // this environment → shuffle the empty slots from the library instead of 501ing.
+    const ai = await getAiConfig(tenant.householdId)
+    if (ai.provider === 'heuristic' || !availability()[ai.provider]) {
+      return await shuffleWeek(tenant, { start, mealType, dates, cookingFor: typeof b.cookingFor === 'number' ? b.cookingFor : null })
+    }
     try {
       return await planWeek(tenant, {
         start,
-        mealType: typeof b.mealType === 'string' ? b.mealType : undefined,
+        mealType,
         dates,
         cookingFor: typeof b.cookingFor === 'number' ? b.cookingFor : null,
         keepInMind: typeof b.keepInMind === 'string' ? b.keepInMind : null,
@@ -464,8 +480,7 @@ export function registerMealRoutes(api: Api): void {
       if (/no ai provider|not configured/i.test(message)) {
         return res.status(501).json({ error: 'AIUnavailable', message })
       }
-      const mealType = typeof b.mealType === 'string' ? b.mealType : 'dinner'
-      return { start, mealType, suggestions: [], via: 'none', error: message }
+      return { start, mealType: mealType ?? 'dinner', suggestions: [], via: 'none', error: message }
     }
   }))
 
@@ -497,6 +512,18 @@ export function registerMealRoutes(api: Api): void {
       b.weekdayThemes && typeof b.weekdayThemes === 'object' && !Array.isArray(b.weekdayThemes)
         ? Object.fromEntries(Object.entries(b.weekdayThemes as Record<string, unknown>).filter(([k, v]) => /^[0-6]$/.test(k) && typeof v === 'string'))
         : undefined
+    // No LLM provider configured (heuristic) or the selected provider isn't usable
+    // here → shuffle the month's empty nights from the library instead of 501ing.
+    const ai = await getAiConfig(tenant.householdId)
+    if (ai.provider === 'heuristic' || !availability()[ai.provider]) {
+      return await shuffleMonth(tenant, {
+        start,
+        weekdays,
+        skipDates,
+        dates,
+        cookingFor: typeof b.cookingFor === 'number' ? b.cookingFor : null,
+      })
+    }
     try {
       return await planMonth(tenant, {
         start,
