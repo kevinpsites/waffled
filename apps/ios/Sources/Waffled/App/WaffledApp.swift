@@ -88,6 +88,12 @@ struct RootView: View {
         // stays put because it's driven by the durable `CookSessionStore`, not transient
         // view `@State`. Closing it (✕/Finish) clears the store.
         .fullScreenCover(isPresented: cookPresented) { CookModeView() }
+        // After a Cook Mode finish, offer the same "Used from your pantry" reconcile the
+        // recipe screen's Mark-cooked uses — the back half of the pantry↔meal loop —
+        // reusing the shared CookConfirmSheet (only when the server returned matches).
+        .sheet(item: pantryReconcile) { rec in
+            CookConfirmSheet(title: rec.title, matches: rec.matches)
+        }
         // A tapped cook-timer notification re-opens Cook Mode at the fired step.
         .onChange(of: notifications.pendingCookTimer) { _, link in
             guard let link else { return }
@@ -98,5 +104,9 @@ struct RootView: View {
 
     private var cookPresented: Binding<Bool> {
         Binding(get: { cook.isActive }, set: { if !$0 { cook.end() } })
+    }
+
+    private var pantryReconcile: Binding<CookSessionStore.PantryReconcile?> {
+        Binding(get: { cook.pendingPantryReconcile }, set: { cook.pendingPantryReconcile = $0 })
     }
 }

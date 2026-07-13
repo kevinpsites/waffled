@@ -40,7 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   iPad, backgrounding the app (Home button or app switcher) used to drop you back on Today and
   lose Cook Mode entirely; now Cook Mode — and any running timers — survive backgrounding and are
   right there when you return, still on the current step. Tapping a fired timer's notification
-  also re-opens Cook Mode at the exact step whose timer went off.
+  also re-opens Cook Mode at the exact step whose timer went off. Finishing a cook from Cook
+  Mode still offers the "Used from your pantry" update so your on-hand stock stays accurate.
 - **Cook Mode timers now reliably alert you after you leave the app.** A running step timer's
   notification used to be cancelled the moment Cook Mode closed — including when you simply pressed
   Home — so backgrounding the app with a timer running meant no alert ever fired. The pending

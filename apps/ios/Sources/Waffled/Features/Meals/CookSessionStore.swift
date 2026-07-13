@@ -28,7 +28,19 @@ final class CookSessionStore {
         let ingredients: [WaffledAPI.RecipeIngredientDTO]
     }
 
+    /// A recipe's cook that needs a "Used from your pantry" confirm. Set by `finish()`
+    /// when the server finds on-hand pantry matches; `RootView` presents the shared
+    /// `CookConfirmSheet` off it (the back half of the pantry↔meal loop). Identifiable
+    /// by recipeId so `.sheet(item:)` drives it.
+    struct PantryReconcile: Identifiable, Equatable {
+        let id: String            // recipeId
+        let title: String
+        let matches: [WaffledAPI.RecipeMatch]
+    }
+
     private(set) var recipe: ActiveRecipe?
+    /// Non-nil ⇒ show the pantry-reconcile sheet after finishing a cook.
+    var pendingPantryReconcile: PantryReconcile?
     /// The step Cook Mode is showing — lives here so it (and the timers) survive a
     /// background→foreground teardown of the presenting view.
     var index = 0
@@ -86,11 +98,19 @@ final class CookSessionStore {
     }
 
     /// Finish & mark cooked (last step). Records the cook by id — independent of the
-    /// (possibly torn-down) recipe detail view — then closes Cook Mode.
+    /// (possibly torn-down) recipe detail view — closes Cook Mode, then (like the recipe
+    /// screen's "Mark cooked") offers the "Used from your pantry" reconcile when the
+    /// server finds on-hand matches. Presented once, from `RootView`, off
+    /// `pendingPantryReconcile` — RecipeDetailView's own Mark-cooked path is untouched.
     func finish() {
-        if let id = recipe?.id {
-            Task { _ = try? await api.markRecipeCooked(id: id) }
+        guard let r = recipe else { end(); return }
+        let id = r.id, title = r.title
+        end()   // close Cook Mode straight away
+        Task {
+            _ = try? await api.markRecipeCooked(id: id)
+            if let matches = try? await api.pantryForRecipe(recipeId: id), !matches.isEmpty {
+                pendingPantryReconcile = PantryReconcile(id: id, title: title, matches: matches)
+            }
         }
-        end()
     }
 }
