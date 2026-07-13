@@ -36,11 +36,12 @@
 .pp-bal-label { font-size: 12px; font-weight: 700; margin-top: 2px; }
 .pp-bal-count { font-size: 11px; font-weight: 600; color: var(--ink-3); }
 
-.cat-physical { stroke: var(--primary); }
-.cat-intellectual { stroke: var(--person-1); }
-.cat-spiritual { stroke: var(--ai-2); }
-.cat-creative { stroke: var(--gold); }
-.cat-social { stroke: var(--success); }
+/* Category colors — canonical map lives in kiosk/categories.ts; keep these in sync. */
+.cat-physical { stroke: var(--person-3); }     /* green */
+.cat-intellectual { stroke: var(--person-1); } /* blue */
+.cat-spiritual { stroke: var(--person-4); }    /* purple */
+.cat-creative { stroke: var(--person-2); }     /* pink */
+.cat-social { stroke: var(--gold); }           /* gold */
 
 /* insight */
 .pp-insight {
@@ -74,11 +75,11 @@
   font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
   background: var(--panel); color: var(--ink-2); text-transform: capitalize;
 }
-.pp-cat-chip.cat-physical { background: var(--danger-t); color: var(--danger); stroke: none; }
+.pp-cat-chip.cat-physical { background: var(--person-3-t); color: var(--person-3-tx); stroke: none; }
 .pp-cat-chip.cat-intellectual { background: var(--person-1-t); color: var(--person-1-tx); }
 .pp-cat-chip.cat-spiritual { background: var(--person-4-t); color: var(--person-4-tx); }
-.pp-cat-chip.cat-creative { background: var(--warn-t); color: var(--warn); }
-.pp-cat-chip.cat-social { background: var(--person-3-t); color: var(--success); }
+.pp-cat-chip.cat-creative { background: var(--person-2-t); color: var(--person-2-tx); }
+.pp-cat-chip.cat-social { background: var(--gold-t); color: var(--gold-d); }
 .pp-goal-streak { font-size: 12px; font-weight: 800; color: var(--gold-d); }
 .pp-goal-bar { height: 7px; border-radius: 999px; background: var(--panel); margin-top: 7px; overflow: hidden; }
 .pp-goal-bar span { display: block; height: 100%; background: var(--person-3); border-radius: 999px; }
