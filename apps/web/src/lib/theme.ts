@@ -80,10 +80,14 @@ export function initTheme(): void {
 function subscribe(cb: () => void): () => void {
   window.addEventListener('waffled:theme-changed', cb)
   const mq = window.matchMedia?.(DARK_MQ)
-  mq?.addEventListener?.('change', cb)
+  // addEventListener is standard; addListener is the legacy Safari < 14 fallback —
+  // mirror initTheme() so useThemePref() consumers re-render on a live OS flip there too.
+  if (mq?.addEventListener) mq.addEventListener('change', cb)
+  else if (mq?.addListener) mq.addListener(cb)
   return () => {
     window.removeEventListener('waffled:theme-changed', cb)
-    mq?.removeEventListener?.('change', cb)
+    if (mq?.removeEventListener) mq.removeEventListener('change', cb)
+    else if (mq?.removeListener) mq.removeListener(cb)
   }
 }
 

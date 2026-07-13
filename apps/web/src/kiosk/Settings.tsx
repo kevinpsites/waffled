@@ -3024,7 +3024,7 @@ function ThemePreview({ label, active, pinned, colors, onSelect }: {
   label: string
   active: boolean
   pinned: boolean
-  colors: { bg: string; card: string; ink: string; line: string }
+  colors: { bg: string; card: string; line: string }
   onSelect: () => void
 }) {
   return (
@@ -3055,14 +3055,14 @@ function AppearancePanel() {
           label="Light"
           active={resolved === 'light'}
           pinned={pref === 'light'}
-          colors={{ bg: '#FAF7F2', card: '#FFFFFF', ink: '#1D1D1F', line: '#C9C3B8' }}
+          colors={{ bg: '#FAF7F2', card: '#FFFFFF', line: '#C9C3B8' }}
           onSelect={() => setPref('light')}
         />
         <ThemePreview
           label="Dark"
           active={resolved === 'dark'}
           pinned={pref === 'dark'}
-          colors={{ bg: '#14110C', card: '#232019', ink: '#F3EEE4', line: '#4A453C' }}
+          colors={{ bg: '#14110C', card: '#232019', line: '#4A453C' }}
           onSelect={() => setPref('dark')}
         />
       </div>

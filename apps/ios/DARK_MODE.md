@@ -91,18 +91,22 @@ enum WF {
     static let ink2  = Color(light: 0x6B6B70, dark: 0xADA69A)
     static let ink3  = Color(light: 0xA6A29B, dark: 0x726B5E)
 
-    // Borders — alpha on ink (light) / white (dark).
-    static let hair  = Color(light: 0x282118, dark: 0xFFFFFF).opacity(0.08) // see note*
-    static let line  = Color(light: 0x282118, dark: 0xFFFFFF).opacity(0.18)
+    // Borders — the alpha AMOUNT differs by mode for hair (.08 → .10), so it can't
+    // use the single-opacity init; resolve per-appearance. line is .18 in both modes.
+    static let hair = Color(UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor(white: 1, alpha: 0.10)                                  // dark:  white @ .10
+        : UIColor(red: 40/255, green: 33/255, blue: 24/255, alpha: 0.08) }) // light: ink   @ .08
+    static let line  = Color(light: 0x282118, dark: 0xFFFFFF).opacity(0.18) // same .18 both
 
     // Brand — hues fixed; only the shade/tint retune for dark.
     static let primary  = Color(hex: 0xEC6049)                    // same both themes
     static let primaryD = Color(light: 0xD84A33, dark: 0xF0745F)
     static let primaryT = Color(light: 0xF3E2D8, dark: 0xEC6049)  // dark: primary @ .18 — see tint note
     static let gold     = Color(hex: 0xF3A93B)                    // same
-    static let ai       = Color(light: 0x6E56CF, dark: 0x8C74E8)
-    static let ai2      = Color(light: 0x8C74E8, dark: 0xA48CF0)
-    static let aiD      = Color(light: 0x6A3FC4, dark: 0xB9A3F5)  // AI text-on-tint
+    // AI accent (violet) — LIGHTER in light mode, richer/darker "pop" in dark (matches waffled.css).
+    static let ai       = Color(light: 0x8C74E8, dark: 0x6E56CF)
+    static let ai2      = Color(light: 0xA48CF0, dark: 0x8C74E8)
+    static let aiD      = Color(light: 0x6A3FC4, dark: 0xB9A3F5)  // AI text-on-tint (fixed; readable both)
 
     // Status / semantic — NEW on iOS. Base for text/icons; tint for fills.
     static let success  = Color(light: 0x25A368, dark: 0x34B87A)
@@ -137,8 +141,8 @@ from the source of truth: primary .18, ai .20, success/danger/warn/info .18–.2
 | primary-d | `#D84A33` | `#F0745F` |
 | primary-t | `#F3E2D8` | primary @ .18 |
 | gold | `#F3A93B` | `#F3A93B` |
-| ai | `#6E56CF` | `#8C74E8` |
-| ai-2 | `#8C74E8` | `#A48CF0` |
+| ai | `#8C74E8` | `#6E56CF` |
+| ai-2 | `#A48CF0` | `#8C74E8` |
 | ai-d | `#6A3FC4` | `#B9A3F5` |
 | ai-t | `#EFEAFC` | ai-2 @ .20 |
 | person-1…4 (blue/pink/green/purple) | unchanged | unchanged |
