@@ -1,5 +1,5 @@
 // OIDC (backend-mediated, Immich-style). Config lives in the DB (auth_config,
-// edited by an admin in Settings — see the admin routes below). We run the
+// edited by the installation owner in Settings — see the operator routes below). We run the
 // authorization-code + PKCE flow server-side, verify the IdP's ID token, then mint
 // our OWN session via the same mintAccess/issueRefresh password login uses — so
 // every downstream consumer (requireAuth, the PowerSync token exchange) is
@@ -15,7 +15,7 @@ import { query } from '../../platform/db'
 import { config } from '../../platform/config'
 import { encryptSecret, decryptSecret, encryptionAvailable } from '../../platform/crypto'
 import { mintAccess, issueRefresh } from './auth'
-import { requireTenant, requireAdmin, findTenantBySub, findPersonByEmail, linkIdentity } from '../households/households'
+import { requireTenant, requireInstallationOwner, findTenantBySub, findPersonByEmail, linkIdentity } from '../households/households'
 import {
   listMemberships,
   pickActiveHousehold,
@@ -354,11 +354,11 @@ export function registerOidcRoutes(api: Api): void {
     return res.status(200).json({ accessToken: access.token, refreshToken, expiresIn: access.expiresIn })
   })
 
-  // ── admin config (Settings → Login & security) ──────────────────────────────
+  // ── installation config (Settings → Login & security) ──────────────────────
   // Returns config WITHOUT the secret (only whether one is set).
   api.get('/api/auth/config', async (req: Request) => {
     const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+    await requireInstallationOwner(tenant)
     const cfg = await getAuthConfig()
     return {
       oidcEnabled: cfg.oidcEnabled,
@@ -376,7 +376,7 @@ export function registerOidcRoutes(api: Api): void {
   // pass "" to clear it. Guards against locking everyone out of password login.
   api.put('/api/auth/config', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+    await requireInstallationOwner(tenant)
     const b = (req.body ?? {}) as {
       oidcEnabled?: boolean
       issuerUrl?: string | null
@@ -422,7 +422,7 @@ export function registerOidcRoutes(api: Api): void {
   // Probe the issuer's discovery document so the operator can validate before saving.
   api.post('/api/auth/config/test', async (req: Request, res: Response) => {
     const tenant = await requireTenant(req)
-    requireAdmin(tenant)
+    await requireInstallationOwner(tenant)
     const issuer = ((req.body ?? {}) as { issuerUrl?: string }).issuerUrl?.trim()
     if (!issuer) return res.status(400).json({ error: 'BadRequest', message: 'issuerUrl is required' })
     try {
