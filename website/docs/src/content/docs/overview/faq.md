@@ -115,9 +115,9 @@ and the database holds *encrypted* Google/OIDC refresh tokens that can't be reco
 re-consented. If any guide tells you to wipe a volume, stop. Restore from a backup instead.
 
 ### Everything shows "Offline" — what's wrong?
-Almost always one of two things: an empty `POWERSYNC_JWT_PRIVATE_KEY` (the api rotates its
-signing key on every restart), or a `POWERSYNC_PUBLIC_URL` that clients can't actually reach
-(e.g. `localhost`). See [Troubleshooting → PowerSync offline](/operations/troubleshooting/#powersync-offline-banner).
+Almost always one of two things: a missing `POWERSYNC_JWT_PRIVATE_KEY` on an older/manual
+installation, or a `POWERSYNC_PUBLIC_URL` that clients can't actually reach (e.g. `localhost`).
+See [Troubleshooting → PowerSync offline](/operations/troubleshooting/#powersync-offline-banner).
 
 ## Contributing & project
 

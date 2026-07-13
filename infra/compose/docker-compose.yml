@@ -17,10 +17,10 @@ services:
       - max_wal_senders=10
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run ./waffled up to generate POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"          # reachable on localhost / tailnet for psql + tools
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432" # local psql/tools only; containers use the private network
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
@@ -30,6 +30,33 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+
+  # One-shot ownership migration for volumes written by older root-running images.
+  # The long-running api and backup services start only after this exits successfully.
+  volume-permissions:
+    image: ${WAFFLED_BACKUP_IMAGE:-ghcr.io/kevinpsites/waffled-backup:${WAFFLED_VERSION:-latest}}
+    build:
+      context: ./backup
+    container_name: waffled-volume-permissions
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        # node:20-alpine defines its unprivileged `node` user as UID/GID 1000.
+        if [ "$$(stat -c %u /data/media)" != "1000" ]; then
+          echo "Updating media volume ownership for the api user"
+          chown -R 1000:1000 /data/media
+        fi
+        # postgres:16 defines its unprivileged `postgres` user as UID/GID 999.
+        if [ "$$(stat -c %u /backups)" != "999" ]; then
+          echo "Updating backup volume ownership for the postgres user"
+          chown -R 999:999 /backups
+        fi
+    volumes:
+      - waffled_media:/data/media
+      - ${BACKUP_HOST_PATH:-waffled_backups}:/backups
+    restart: "no"
 
   # One-shot: apply DB migrations, then exit. Reuses the api image (just a different
   # command), so the schema — and the PowerSync publication (migration 0003) — exist
@@ -43,7 +70,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run ./waffled up to generate POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     command: ["node", "dist/migrate.js"]
     restart: "no"
 
@@ -65,21 +92,33 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      volume-permissions:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       PORT: 3000
       # Local auth (HS256). Leave AUTH0_DOMAIN unset to stay dependency-free.
       # mint-token signs with this same secret, so dev tokens validate.
-      LOCAL_JWT_SECRET: ${LOCAL_JWT_SECRET:-waffled-local-dev-secret-change-me}
+      LOCAL_JWT_SECRET: ${LOCAL_JWT_SECRET:?Run ./waffled up to generate LOCAL_JWT_SECRET}
       # Session lifetimes (built-in + OIDC login). Empty → code defaults (1h / 60d).
       ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-}
       REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-}
+      # Sensitive-route abuse limits. Empty values use the conservative API defaults.
+      RATE_LIMIT_SETUP_MAX: ${RATE_LIMIT_SETUP_MAX:-}
+      RATE_LIMIT_LOGIN_ACCOUNT_MAX: ${RATE_LIMIT_LOGIN_ACCOUNT_MAX:-}
+      RATE_LIMIT_LOGIN_IP_MAX: ${RATE_LIMIT_LOGIN_IP_MAX:-}
+      RATE_LIMIT_OIDC_START_MAX: ${RATE_LIMIT_OIDC_START_MAX:-}
+      RATE_LIMIT_OIDC_EXCHANGE_MAX: ${RATE_LIMIT_OIDC_EXCHANGE_MAX:-}
+      RATE_LIMIT_REFRESH_MAX: ${RATE_LIMIT_REFRESH_MAX:-}
+      RATE_LIMIT_KIOSK_PAIR_MAX: ${RATE_LIMIT_KIOSK_PAIR_MAX:-}
+      RATE_LIMIT_KIOSK_TOKEN_MAX: ${RATE_LIMIT_KIOSK_TOKEN_MAX:-}
+      RATE_LIMIT_MEDIA_MAX: ${RATE_LIMIT_MEDIA_MAX:-}
       # Break-glass: always show the password form even if SSO-only is toggled on.
       AUTH_FORCE_PASSWORD: ${AUTH_FORCE_PASSWORD:-}
       # Public origin for redirect URLs (OIDC + Google calendar callbacks). Set this
       # to your real host when not on localhost; empty → derived from request headers.
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
-      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run ./waffled up to generate POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       # --- Media/blob uploads (local disk): api writes blobs, Caddy serves them.
       # Files land in MEDIA_DIR (the waffled_media volume) and are served read-only by
       # Caddy at MEDIA_BASE_URL, so the api stays out of the read path.
@@ -89,9 +128,7 @@ services:
       # Returned by /api/powersync/token so clients know where to connect.
       POWERSYNC_PUBLIC_URL: ${POWERSYNC_PUBLIC_URL:-http://localhost:8090}
       # Stable RS256 signing key for PowerSync tokens (base64 of a PEM, or raw PEM).
-      # Empty → an ephemeral key is generated each boot, which breaks sync on every
-      # api restart until PowerSync re-fetches the JWKS. Set this to make it durable.
-      POWERSYNC_JWT_PRIVATE_KEY: ${POWERSYNC_JWT_PRIVATE_KEY:-}
+      POWERSYNC_JWT_PRIVATE_KEY: ${POWERSYNC_JWT_PRIVATE_KEY:?Run ./waffled up to generate POWERSYNC_JWT_PRIVATE_KEY}
       # --- AI capture bar (6.6): set any subset; pick the active one in Settings.
       # Hosted providers (keys never leave the server):
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -106,7 +143,7 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL:-}
       # --- Google Calendar OAuth (5.2): "Connect your calendar". Independent of Auth0.
       # TOKEN_ENCRYPTION_KEY encrypts the stored refresh token (openssl rand -base64 32).
-      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:?Run ./waffled up to generate TOKEN_ENCRYPTION_KEY}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_CALENDAR_REDIRECT_URI: ${GOOGLE_CALENDAR_REDIRECT_URI:-}
@@ -135,7 +172,9 @@ services:
     volumes:
       - waffled_media:/data/media         # uploaded blobs (read-write); Caddy serves them read-only
     ports:
-      - "${API_PORT:-3000}:3000"     # direct dev access; also reachable via Caddy /api/*
+      # Host-only direct access; public requests must traverse Caddy so proxy trust
+      # and ingress policy remain enforced.
+      - "127.0.0.1:${API_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 10s
@@ -161,13 +200,11 @@ services:
       NODE_OPTIONS: --max-old-space-size=1000
       PS_PORT: 8080
       # Replicate from our DB (needs the `powersync` publication: run `just migrate`).
-      PS_DATA_SOURCE_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      PS_DATA_SOURCE_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run ./waffled up to generate POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       # PowerSync's own bucket storage lives in the powersync_storage database.
-      PS_STORAGE_SOURCE_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/powersync_storage
+      PS_STORAGE_SOURCE_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run ./waffled up to generate POSTGRES_PASSWORD}@postgres:5432/powersync_storage
       # JWKS our api serves; clients present tokens minted by /api/powersync/token.
       PS_JWKS_URL: ${PS_JWKS_URL:-http://api:3000/api/auth/keys}
-    ports:
-      - "${POWERSYNC_PORT:-8090}:8080"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:8080/probes/liveness').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
       interval: 5s
@@ -188,14 +225,19 @@ services:
         condition: service_healthy
       api:
         condition: service_started
+      powersync:
+        condition: service_healthy
     ports:
       - "${HTTP_PORT:-8080}:80"
+      - "${POWERSYNC_PORT:-8090}:8090"          # Caddy-fronted PowerSync (HTTP locally, TLS in hostname mode)
       # - "443:443"                              # enable for tailnet/prod TLS (later)
     environment:
       # Exact non-self endpoint allowed by connect-src for PowerSync HTTP/WebSocket traffic.
       POWERSYNC_PUBLIC_URL: ${POWERSYNC_PUBLIC_URL:-http://localhost:8090}
       # unset locally → ":80" (plain HTTP); set to your MagicDNS name for auto-TLS
       CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-:80}
+      # Separate listener for PowerSync; hostname mode uses https://host:8090.
+      POWERSYNC_CADDY_ADDRESS: ${POWERSYNC_CADDY_ADDRESS:-:8090}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro   # web build is baked into the image at /srv
       - waffled_media:/data/media:ro                   # serve uploaded blobs directly (read-only)
@@ -227,8 +269,10 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully   # needs the backup_runs table (0071)
+      volume-permissions:
+        condition: service_completed_successfully
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run ./waffled up to generate POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       BACKUP_DIR: /backups
       TZ: ${TZ:-UTC}
       BACKUP_TIME: ${BACKUP_TIME:-02:00}                    # daily HH:MM (container TZ)

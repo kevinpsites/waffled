@@ -2490,9 +2490,9 @@ function HouseholdsPanel() {
   )
 }
 
-// Login & security (admin only) — attach an OIDC/SSO provider and decide whether
-// password login stays on. Immich-style: config lives in the DB, edited here. The
-// client secret is write-only (server returns only whether one is set).
+// Login & security — the installation owner can attach an OIDC/SSO provider and
+// decide whether password login stays on. Household admins still manage their own
+// kiosk devices below. The client secret is write-only.
 function SecurityPanel() {
   const [cfg, setCfg] = useState<OidcConfig | null>(null)
   const [forbidden, setForbidden] = useState(false)
@@ -2522,7 +2522,17 @@ function SecurityPanel() {
     authApi.getConfig().then(hydrate).catch(() => setForbidden(true))
   }, [])
 
-  if (forbidden) return <div className="set-panel"><div className="set-head"><div className="wf-serif set-head-t">Sign-in &amp; Security</div></div><SettingCard><div className="muted" style={{ fontWeight: 600 }}>Only an admin can manage sign-in settings.</div></SettingCard></div>
+  if (forbidden) return (
+    <div className="set-panel">
+      <div className="set-head"><div className="wf-serif set-head-t">Sign-in &amp; Security</div></div>
+      <SettingCard>
+        <div className="muted" style={{ fontWeight: 600 }}>
+          Only the installation owner can manage login methods and SSO settings.
+        </div>
+      </SettingCard>
+      <KioskDevicesSection />
+    </div>
+  )
   if (!cfg) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
 
   async function test() {

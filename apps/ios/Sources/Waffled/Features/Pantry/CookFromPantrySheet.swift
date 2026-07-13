@@ -71,6 +71,9 @@ struct CookFromPantryCard: View {
 struct CookFromPantrySheet: View {
     @Environment(SyncManager.self) private var sync
     @Environment(\.dismiss) private var dismiss
+    /// Cook Mode presents app-level (from `RootView`); this sheet would otherwise block
+    /// that cover, so it dismisses itself the moment a cook starts (auto-cook here).
+    @Environment(CookSessionStore.self) private var cook
     let items: [WaffledAPI.PantryItem]
     let ready: [WaffledAPI.CookReady]
     let mains: [WaffledAPI.CookMain]
@@ -115,6 +118,11 @@ struct CookFromPantrySheet: View {
             .navigationDestination(for: ProteinFilter.self) { RecipesLibraryView(model: model, initialProtein: $0.protein) }
         }
         .task { await model.load(); await loadPlanned() }
+        // Auto-cook pushes a recipe here then starts a cook; close this sheet so the
+        // app-root Cook Mode cover isn't queued behind it.
+        .onChange(of: cook.isActive) { _, active in
+            if active { dismiss() }
+        }
         .sheet(isPresented: $planningWeek) {
             PlanWeekSheet(start: ymd(weekStart), weekLabel: weekTitle, weekDays: weekDays,
                           familySize: max(1, sync.members.count), recipes: model,

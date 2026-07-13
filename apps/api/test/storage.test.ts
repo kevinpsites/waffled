@@ -5,7 +5,7 @@ import { readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomBytes } from 'node:crypto'
-import { getBlobStore, mediaKey, mediaUrl } from '../src/platform/storage'
+import { getBlobStore, mediaKey, mediaKeyBelongsToHousehold, mediaUrl } from '../src/platform/storage'
 
 const HOUSEHOLD = '11111111-1111-1111-1111-111111111111'
 
@@ -49,6 +49,12 @@ describe('local blob store', () => {
     // deleting again does not throw
     await expect(store.delete(key)).resolves.toBeUndefined()
   })
+
+  it('rejects paths that could escape the media directory', async () => {
+    const store = getBlobStore()
+    await expect(store.put('../outside.jpg', Buffer.from('x'), 'image/jpeg')).rejects.toThrow('invalid media key')
+    await expect(store.delete(`${HOUSEHOLD}/../../outside.jpg`)).rejects.toThrow('invalid media key')
+  })
 })
 
 describe('mediaKey', () => {
@@ -63,6 +69,17 @@ describe('mediaKey', () => {
     // 16 random bytes → 32 hex chars
     expect(a).toMatch(new RegExp(`^${HOUSEHOLD}/[0-9a-f]{32}\\.jpg$`))
   })
+
+  it('validates the active household namespace and a single safe filename', () => {
+    const filename = 'a'.repeat(32)
+    expect(mediaKeyBelongsToHousehold(`${HOUSEHOLD}/${filename}.jpg`, HOUSEHOLD)).toBe(true)
+    expect(mediaKeyBelongsToHousehold(`22222222-2222-2222-2222-222222222222/${filename}.jpg`, HOUSEHOLD)).toBe(false)
+    expect(mediaKeyBelongsToHousehold(`${HOUSEHOLD}/../${filename}.jpg`, HOUSEHOLD)).toBe(false)
+    expect(mediaKeyBelongsToHousehold(`${HOUSEHOLD}/%2e%2e%2f${filename}.jpg`, HOUSEHOLD)).toBe(false)
+    expect(mediaKeyBelongsToHousehold(`${HOUSEHOLD}/nested/${filename}.jpg`, HOUSEHOLD)).toBe(false)
+    expect(mediaKeyBelongsToHousehold(`${HOUSEHOLD}/${filename}.gif`, HOUSEHOLD)).toBe(false)
+    expect(mediaKeyBelongsToHousehold(`${HOUSEHOLD}/${filename.toUpperCase()}.jpg`, HOUSEHOLD)).toBe(false)
+  })
 })
 
 describe('mediaUrl', () => {
@@ -73,12 +90,19 @@ describe('mediaUrl', () => {
   })
 
   it('builds from the default base', () => {
-    expect(mediaUrl(`${HOUSEHOLD}/abc.jpg`)).toBe(`/media/${HOUSEHOLD}/abc.jpg`)
+    const key = `${HOUSEHOLD}/${'a'.repeat(32)}.jpg`
+    expect(mediaUrl(key)).toBe(`/media/${key}`)
   })
 
   it('honors a custom MEDIA_BASE_URL', () => {
     process.env.MEDIA_BASE_URL = 'https://cdn.example.com/m'
-    expect(mediaUrl(`${HOUSEHOLD}/abc.jpg`)).toBe(`https://cdn.example.com/m/${HOUSEHOLD}/abc.jpg`)
+    const key = `${HOUSEHOLD}/${'a'.repeat(32)}.jpg`
+    expect(mediaUrl(key)).toBe(`https://cdn.example.com/m/${key}`)
+  })
+
+  it('does not expose malformed stored keys', () => {
+    expect(mediaUrl('../secret')).toBeNull()
+    expect(mediaUrl(`${HOUSEHOLD}/../../secret`)).toBeNull()
   })
 })
 
