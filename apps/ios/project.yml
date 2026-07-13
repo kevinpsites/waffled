@@ -104,6 +104,12 @@ targets:
       properties:
         com.apple.developer.healthkit: true
         com.apple.developer.healthkit.access: []
+        # Cook Mode timers post .timeSensitive local notifications so an elapsed
+        # kitchen timer breaks through Focus/DND & the notification summary when the
+        # cook has left the app. Without this entitlement iOS silently downgrades the
+        # interruption level to .active. Portal-gated on the App ID (tick "Time
+        # Sensitive Notifications"); the simulator doesn't enforce provisioning.
+        com.apple.developer.usernotifications.time-sensitive: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.waffled

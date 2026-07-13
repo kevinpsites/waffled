@@ -156,12 +156,7 @@ struct CookModeView: View {
             // Left-aligned and using the full width (with margins) so the big
             // type fills the screen instead of wrapping into a narrow center
             // column — long steps fit without scrolling.
-            VStack(alignment: .leading, spacing: 24) {
-                stepColumn
-                // Phone: keep the current single column with ingredients inline
-                // underneath. (On iPad they're in the left sidebar.)
-                if !isKiosk { ingredientsSidebar }
-            }
+            stepColumn
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, isKiosk ? 56 : 28).padding(.vertical, 24)
             // Leave room so the floating dock never hides content.
@@ -171,8 +166,9 @@ struct CookModeView: View {
         }
     }
 
-    /// STEP label + instruction + timer control + note (no ingredients — those are
-    /// either inline on the phone or in the sidebar on the iPad).
+    /// STEP label + instruction + timer control + note. On the phone the step's
+    /// ingredient chips render inline between the timer and the note (the original
+    /// single-column order); on the iPad they're pulled out into `ingredientsSidebar`.
     private var stepColumn: some View {
         VStack(alignment: .leading, spacing: 24) {
             Text("STEP \(step?.stepNumber ?? index + 1) OF \(steps.count)")
@@ -194,6 +190,11 @@ struct CookModeView: View {
                 }
                 .id(index)
             }
+            // Phone: ingredients inline here (between the timer and the note) — the
+            // original single-column order. On iPad they live in the left sidebar instead.
+            if !isKiosk, let igs = step?.ingredients, !igs.isEmpty {
+                ingredientChips(igs)
+            }
             if let note = step?.note {
                 Text("📝 \(note)").font(.system(size: isKiosk ? 19 : 16)).foregroundStyle(WF.ink2)
                     .multilineTextAlignment(.leading)
@@ -203,27 +204,23 @@ struct CookModeView: View {
         }
     }
 
-    /// The current step's ingredients as wrapping chips. Rendered inline under the
-    /// step on the phone; on the iPad it's wrapped in a fixed-width, scrollable LEFT
-    /// sidebar (with an "INGREDIENTS" header) so it stays put while cooking.
+    /// iPad-only: the current step's ingredients in a fixed-width, scrollable LEFT
+    /// sidebar (with an "INGREDIENTS" header) so they stay put while cooking. On the
+    /// phone the chips render inline inside `stepColumn` instead.
     @ViewBuilder private var ingredientsSidebar: some View {
         if let igs = step?.ingredients, !igs.isEmpty {
-            if isKiosk {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text("INGREDIENTS")
-                            .font(.system(size: 13, weight: .heavy)).tracking(1.2)
-                            .foregroundStyle(WF.ink3)
-                        ingredientChips(igs)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 24).padding(.vertical, 28)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("INGREDIENTS")
+                        .font(.system(size: 13, weight: .heavy)).tracking(1.2)
+                        .foregroundStyle(WF.ink3)
+                    ingredientChips(igs)
                 }
-                .frame(width: 300)
-                .background(WF.panel)
-            } else {
-                ingredientChips(igs)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 24).padding(.vertical, 28)
             }
+            .frame(width: 300)
+            .background(WF.panel)
         }
     }
 
