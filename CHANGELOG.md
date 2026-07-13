@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Household links now stay inside the family they belong to.** Chore assignees,
+  currency conversions, calendar events, offline writes, goal participants, list
+  assignees, calendar owners, and meal references reject IDs from another household.
 - **Uploaded media keys stay inside their household.** Photo, recipe, and chore-proof
   attachments now reject malformed or cross-household keys, and local storage prevents
   paths from escaping the configured media directory.
