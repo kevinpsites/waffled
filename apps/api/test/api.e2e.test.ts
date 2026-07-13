@@ -3,11 +3,19 @@
 // how Caddy and the iOS app will reach it.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers'
+import { generateKeyPairSync } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import jwt from 'jsonwebtoken'
 
-const SECRET = 'e2e-secret-change-me'
+const SECRET = 'e2e-secret-change-me-at-least-32-characters'
+const TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 0x42).toString('base64')
+const POWERSYNC_JWT_PRIVATE_KEY = Buffer.from(
+  generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({
+    type: 'pkcs8',
+    format: 'pem',
+  })
+).toString('base64')
 const CLAIM = 'https://waffled.app/household_id'
 const apiDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -17,7 +25,12 @@ let baseUrl: string
 beforeAll(async () => {
   const image = await GenericContainer.fromDockerfile(apiDir).build()
   container = await image
-    .withEnvironment({ LOCAL_JWT_SECRET: SECRET, PORT: '3000' })
+    .withEnvironment({
+      LOCAL_JWT_SECRET: SECRET,
+      TOKEN_ENCRYPTION_KEY,
+      POWERSYNC_JWT_PRIVATE_KEY,
+      PORT: '3000',
+    })
     .withExposedPorts(3000)
     .withWaitStrategy(Wait.forHttp('/healthz', 3000).forStatusCode(200))
     .start()

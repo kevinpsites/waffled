@@ -5,11 +5,11 @@ description: Every environment variable Waffled reads, what it does, and its def
 
 All configuration lives in **`infra/compose/.env`** (created from `.env.example` on first run).
 Change a value, then `./waffled up` to apply it. Defaults below come from the compose file and
-the api's config; "auto" means `./waffled` generates it for you on first run.
+the api's config; "auto" means `./waffled` generates it for you when missing.
 
-> **Secrets are generated for you.** `LOCAL_JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`, and
-> `POSTGRES_PASSWORD` are auto-filled on first run (if `openssl` is present). You only set the
-> ones for features you turn on.
+> **Secrets are generated for you.** `LOCAL_JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`,
+> `POWERSYNC_JWT_PRIVATE_KEY`, and `POSTGRES_PASSWORD` are auto-filled when missing (if
+> `openssl` is present). Existing values are preserved.
 
 ## Core / required
 
@@ -22,15 +22,13 @@ the api's config; "auto" means `./waffled` generates it for you on first run.
 | `DATABASE_URL` | Built by compose (`postgres://…@postgres:5432/…`) for api/migrate/backup | derived |
 | `LOCAL_JWT_SECRET` | HS256 secret for built-in auth + dev tokens | auto |
 | `TOKEN_ENCRYPTION_KEY` | AES key that encrypts Google **and** OIDC secrets at rest | auto |
-| `POWERSYNC_JWT_PRIVATE_KEY` | Stable RS256 key that signs PowerSync tokens. **Set this** — empty means a new key every restart, which drops all clients offline | empty ⚠️ |
+| `POWERSYNC_JWT_PRIVATE_KEY` | Stable RS256 key that signs PowerSync tokens | auto |
 | `POWERSYNC_JWT_KID` | Key ID for the PowerSync signing key | `waffled-powersync-1` |
 | `HTTP_PORT` / `API_PORT` / `POWERSYNC_PORT` | Host ports (Caddy / api / PowerSync) | `8080` / `3000` / `8090` |
 | `NODE_ENV` | Node environment | `production` |
 
-> ⚠️ **`POWERSYNC_JWT_PRIVATE_KEY` is the one to not skip.** If it's empty the api regenerates its
-> signing key on every restart, PowerSync rejects the tokens (`PSYNC_S2101`), and *every* client
-> shows "Offline." Set a stable value once and never rotate it. See
-> [Troubleshooting](/operations/troubleshooting/#powersync-offline-banner).
+Production startup refuses missing or malformed required secrets. Run `./waffled up` instead of
+calling Compose directly so newly required values can be generated before validation.
 
 ## URLs & access (set by `./waffled setup`)
 

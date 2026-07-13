@@ -42,6 +42,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rejects oversized payloads before buffering and throttles repeated login, setup, OIDC,
   kiosk, refresh, and media attempts; Caddy normalizes the client address and direct API
   access is restricted to the Docker host.
+- **Production starts only with durable, non-default secrets.** Setup generates a stable
+  PowerSync signing key with the other required secrets, repairs missing environment values,
+  and refuses production startup when secrets are malformed or still use public development
+  defaults.
 
 ### Added
 - **Plan breakfast and lunch from the iPhone meal planner, not just dinner.** Each day in the
