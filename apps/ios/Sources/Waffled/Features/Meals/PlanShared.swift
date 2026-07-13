@@ -211,34 +211,17 @@ struct MealPlanReviewCard: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 12) {
-                Text(card.emoji ?? "🍽️").font(.system(size: 26))
-                    .frame(width: 46, height: 46).background(RecipeGradient.forCategory(card.mealType))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(dayLabel).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
-                    titleText
-                    HStack(spacing: 8) {
-                        ForEach(metaTags, id: \.self) { PlanTag(text: $0) }
-                    }
-                    if let note = belowTitleNote, !note.isEmpty {
-                        Text(note).font(.system(size: 12)).foregroundStyle(WF.ink3).lineLimit(2)
-                    }
-                }
-                Spacer(minLength: 0)
-                if let onSkip {
-                    Button(action: onSkip) {
-                        Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
-                            .frame(width: 28, height: 28).background(WF.panel).clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                }
+            // Tap the emoji+title block to preview the recipe — but only when a handler
+            // is wired (PlanWeekSheet). PlanMonthSheet passes no onOpen, so no gesture is
+            // attached at all (rather than a live no-op). The inner ✕ Button keeps its own
+            // tap; this coexists with the card's `.draggable` (as in WeekPlannerView.entryRow).
+            if let onOpen {
+                titleHeader
+                    .contentShape(Rectangle())
+                    .onTapGesture { onOpen() }
+            } else {
+                titleHeader
             }
-            // Tap the emoji+title block to preview the recipe. The inner ✕ Button keeps
-            // its own tap; this coexists with the card's `.draggable` (same pattern as
-            // WeekPlannerView.entryRow). No-op when onOpen is nil (PlanMonthSheet).
-            .contentShape(Rectangle())
-            .onTapGesture { onOpen?() }
             Divider().background(WF.hair)
             HStack(spacing: 8) {
                 PlanActionChip(icon: "arrow.triangle.2.circlepath", label: "Swap", action: onSwap)
@@ -278,6 +261,34 @@ struct MealPlanReviewCard: View {
             guard let s = items.first else { return false }
             return onDrop(s)
         } isTargeted: { onDragTargetChange($0) }
+    }
+
+    /// The emoji + day/title/tags/note block, plus the optional trailing ✕ (month).
+    /// Extracted so the parent can attach the preview tap only when `onOpen` exists.
+    private var titleHeader: some View {
+        HStack(spacing: 12) {
+            Text(card.emoji ?? "🍽️").font(.system(size: 26))
+                .frame(width: 46, height: 46).background(RecipeGradient.forCategory(card.mealType))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(dayLabel).font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(WF.ink3)
+                titleText
+                HStack(spacing: 8) {
+                    ForEach(metaTags, id: \.self) { PlanTag(text: $0) }
+                }
+                if let note = belowTitleNote, !note.isEmpty {
+                    Text(note).font(.system(size: 12)).foregroundStyle(WF.ink3).lineLimit(2)
+                }
+            }
+            Spacer(minLength: 0)
+            if let onSkip {
+                Button(action: onSkip) {
+                    Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
+                        .frame(width: 28, height: 28).background(WF.panel).clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     /// The title line. Week appends `.multilineTextAlignment(.leading)` after
