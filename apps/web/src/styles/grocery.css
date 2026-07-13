@@ -234,7 +234,7 @@
   background: var(--panel);
 }
 .gact.ok {
-  color: #fff;
+  color: var(--on-accent);
   background: var(--primary);
   opacity: 1;
 }

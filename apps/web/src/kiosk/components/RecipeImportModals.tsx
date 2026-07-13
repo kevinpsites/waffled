@@ -79,7 +79,7 @@ export function PhotoImportModal({ onClose, onDraft }: { onClose: () => void; on
                   type="button"
                   aria-label="Remove photo"
                   onClick={() => setPhotos((prev) => prev.filter((_, j) => j !== i))}
-                  style={{ position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: '50%', border: 0, background: 'rgba(0,0,0,.65)', color: '#fff', cursor: 'pointer', lineHeight: 1 }}
+                  style={{ position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: '50%', border: 0, background: 'rgba(0,0,0,.65)', color: 'var(--on-accent)', cursor: 'pointer', lineHeight: 1 }}
                 >×</button>
               </div>
             ))}
@@ -209,7 +209,7 @@ export function DescribeImportModal({ onClose, onDraft }: { onClose: () => void;
                 type="button"
                 className="pill"
                 onClick={toggleMic}
-                style={listening ? { background: 'var(--danger)', color: '#fff', border: 0 } : undefined}
+                style={listening ? { background: 'var(--danger)', color: 'var(--on-accent)', border: 0 } : undefined}
               >
                 {listening ? '● Listening… tap to stop' : '🎤 Dictate'}
               </button>

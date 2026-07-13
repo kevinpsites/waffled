@@ -23,7 +23,7 @@
   height: 44px;
   border-radius: 12px;
   background: var(--ink);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 26px;
   font-weight: 600;
   display: grid;

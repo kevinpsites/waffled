@@ -121,7 +121,7 @@
   margin-left: auto;
   border: 0;
   background: var(--person-3);
-  color: #fff;
+  color: var(--on-accent);
 }
 .cm-finish {
   background: var(--person-3);
@@ -192,7 +192,7 @@
   border-radius: var(--r-lg);
   border: 0;
   background: var(--primary);
-  color: #fff;
+  color: var(--on-accent);
   cursor: pointer;
   box-shadow: var(--sh-1);
 }
@@ -308,7 +308,7 @@
 }
 @keyframes cm-alarm-bg {
   0% { background: var(--primary); }
-  50% { background: #2f7fed; }
+  50% { background: var(--person-1); }
   100% { background: var(--primary); }
 }
 .cm-alarm-card {
@@ -339,4 +339,4 @@
 .cm-alarm-jump:hover { background: var(--person-3-t); }
 .cm-alarm-snooze { border: 1px solid var(--hair); background: var(--card); color: var(--ink); }
 .cm-alarm-snooze:hover { border-color: var(--primary); }
-.cm-alarm-dismiss { border: 0; background: var(--primary); color: #fff; }
+.cm-alarm-dismiss { border: 0; background: var(--primary); color: var(--on-accent); }

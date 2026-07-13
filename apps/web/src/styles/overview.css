@@ -36,11 +36,11 @@
 .pp-bal-label { font-size: 12px; font-weight: 700; margin-top: 2px; }
 .pp-bal-count { font-size: 11px; font-weight: 600; color: var(--ink-3); }
 
-.cat-physical { stroke: #ec6049; }
-.cat-intellectual { stroke: #2f7fed; }
-.cat-spiritual { stroke: #8b5cf6; }
-.cat-creative { stroke: #e0a500; }
-.cat-social { stroke: #25a368; }
+.cat-physical { stroke: var(--primary); }
+.cat-intellectual { stroke: var(--person-1); }
+.cat-spiritual { stroke: var(--ai-2); }
+.cat-creative { stroke: var(--gold); }
+.cat-social { stroke: var(--success); }
 
 /* insight */
 .pp-insight {
@@ -103,7 +103,7 @@
 .pp-redeem-emo { font-size: 20px; }
 .pp-redeem-t { flex: 1; font-weight: 600; font-size: 14px; }
 .pp-redeem-status { font-size: 11px; font-weight: 800; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; }
-.st-pending { background: var(--warn-t); color: #b07d00; }
+.st-pending { background: var(--warn-t); color: var(--warn); }
 .st-approved { background: var(--person-3-t); color: var(--success); }
 .st-denied { background: var(--panel); color: var(--ink-3); }
 .pp-redeem-cost { font-size: 13px; font-weight: 800; color: var(--person-4); }
@@ -168,7 +168,7 @@
 .pp-shop-title { font-weight: 700; font-size: 13px; }
 .pp-shop-cost { font-weight: 800; font-size: 13px; margin: 2px 0 8px; }
 .pp-shop-redeem { font: inherit; font-weight: 700; font-size: 12px; width: 100%; padding: 6px; border-radius: 999px;
-  border: 0; background: var(--primary); color: #fff; cursor: pointer; }
+  border: 0; background: var(--primary); color: var(--on-accent); cursor: pointer; }
 .pp-shop-redeem:hover { filter: brightness(1.05); }
 .pp-shop-togo { font-size: 12px; font-weight: 700; color: var(--ink-3); padding: 6px; }
 

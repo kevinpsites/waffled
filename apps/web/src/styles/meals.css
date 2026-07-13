@@ -231,7 +231,7 @@
   background: var(--person-4-t);
 }
 .meals-cell.snack {
-  background: #fdf3dd;
+  background: var(--warn-t);
 }
 
 /* Empty slot — dashed "+" tap target. */
@@ -323,7 +323,7 @@
 }
 .picker-filters .mp-filter.on {
   background: var(--ink);
-  color: #fff;
+  color: var(--on-accent);
 }
 .picker-count {
   margin-left: auto;
@@ -363,7 +363,7 @@
   font-size: 13.5px;
 }
 .mp-select {
-  color: #fff;
+  color: var(--on-accent);
   border: 0;
 }
 
@@ -449,7 +449,7 @@
 }
 .plan-day-chip.on {
   background: var(--primary);
-  color: #fff;
+  color: var(--on-accent);
 }
 .plan-card {
   background: var(--card);

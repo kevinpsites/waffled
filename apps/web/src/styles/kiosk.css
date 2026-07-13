@@ -34,8 +34,8 @@ body {
 
 /* Offline strip (PWA 7.1) — shown only when the network drops. */
 .offline-banner {
-  background: #5c4324;
-  color: #fde9cf;
+  background: var(--offline);
+  color: var(--offline-fg);
   font-size: 13px;
   font-weight: 600;
   text-align: center;
@@ -247,7 +247,7 @@ body {
   flex: none; border: 0; background: none; cursor: pointer; padding: 0 2px;
   font-size: 19px; line-height: 1; color: var(--ink-3); border-radius: 6px;
 }
-.today-card-hide:hover { color: #d1495b; }
+.today-card-hide:hover { color: var(--danger); }
 /* Tray of hidden cards under the board (edit mode) — tap a chip to add it back. */
 .today-hidden-tray {
   margin: 20px 30px 0; padding: 14px 16px;
@@ -305,7 +305,7 @@ body {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: rgba(12, 11, 10, 0.34);
+  background: var(--scrim);
   backdrop-filter: blur(2px);
   display: grid;
   place-items: center;
@@ -372,7 +372,7 @@ body {
 .field textarea:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(236, 96, 73, 0.12);
+  box-shadow: 0 0 0 3px var(--ring);
 }
 .field-row {
   display: flex;
@@ -390,7 +390,7 @@ body {
   margin-bottom: 12px;
   padding: 10px 12px;
   border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--ai) 8%, #fff);
+  background: color-mix(in srgb, var(--ai) 8%, var(--card));
   border: 1px solid color-mix(in srgb, var(--ai) 28%, var(--hair));
 }
 .ev-suggest-spark { font-size: 16px; flex: none; }
@@ -401,7 +401,7 @@ body {
   font: inherit;
   font-size: 13px;
   font-weight: 700;
-  color: #fff;
+  color: var(--on-accent);
   background: var(--ai);
   border: 0;
   border-radius: 999px;
@@ -570,7 +570,7 @@ button.tick {
   top: 2px;
   width: 4px;
   height: 8px;
-  border: 2px solid #fff;
+  border: 2px solid var(--on-accent);
   border-top: 0;
   border-left: 0;
   transform: rotate(43deg);
@@ -737,7 +737,7 @@ button.tick {
 .rw-redeem {
   margin-top: 6px; font: inherit; font-size: 13.5px; font-weight: 700;
   padding: 8px 18px; border-radius: 999px; border: 0;
-  background: var(--person-3); color: #fff; cursor: pointer;
+  background: var(--person-3); color: var(--on-accent); cursor: pointer;
 }
 .rw-pick { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 6px; }
 .rw-pick-p {
@@ -777,13 +777,13 @@ button.tick {
   padding: 7px 12px; border-radius: 999px;
   border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2); cursor: pointer;
 }
-.chore-day.on { background: var(--person-3); border-color: var(--person-3); color: #fff; }
+.chore-day.on { background: var(--person-3); border-color: var(--person-3); color: var(--on-accent); }
 
 /* up-for-grabs claim affordance (Tasks) */
 .claim-btn {
   flex: none; font: inherit; font-size: 12.5px; font-weight: 700;
   padding: 6px 14px; border-radius: 999px; border: 0;
-  background: var(--person-3); color: #fff; cursor: pointer;
+  background: var(--person-3); color: var(--on-accent); cursor: pointer;
 }
 .claim-pick { display: flex; align-items: center; gap: 5px; flex: none; }
 .claim-p {
@@ -803,7 +803,7 @@ button.tick {
 .chore-approval-check {
   width: 22px; height: 22px; border-radius: 7px; flex: none;
   border: 2px solid var(--hair); background: var(--card);
-  display: grid; place-items: center; font-size: 13px; font-weight: 800; color: #fff;
+  display: grid; place-items: center; font-size: 13px; font-weight: 800; color: var(--on-accent);
 }
 .chore-approval.on .chore-approval-check { background: var(--person-3); border-color: var(--person-3); }
 .chore-approval-t { display: block; font-weight: 700; font-size: 14px; }
@@ -811,11 +811,11 @@ button.tick {
 
 /* awaiting state + approve/reject (Tasks) */
 .tick.awaiting {
-  background: var(--warn-t); border-color: #e0a500;
+  background: var(--warn-t); border-color: var(--gold);
   display: grid; place-items: center; font-size: 12px;
 }
 .chore-awaiting-tag {
-  margin-left: 8px; font-size: 11px; font-weight: 800; color: #b07d00;
+  margin-left: 8px; font-size: 11px; font-weight: 800; color: var(--warn);
   background: var(--warn-t); padding: 2px 7px; border-radius: 999px;
 }
 /* optional due time-of-day — a quiet nudge next to the reward */
@@ -861,30 +861,30 @@ button.tick {
 .cpm-sub { font-size: 13px; color: var(--ink-3); font-weight: 600; margin-top: 2px; }
 .cpm-stage {
   display: grid; place-items: center; border-radius: var(--r-md); overflow: hidden;
-  background: #1c1a17; min-height: 200px; max-height: 56vh;
+  background: var(--viewer-bg); min-height: 200px; max-height: 56vh;
 }
 .cpm-stage img { display: block; max-width: 100%; max-height: 56vh; object-fit: contain; }
-.cpm-noimg { color: #cfc9c0; font-size: 14px; padding: 40px; font-weight: 600; }
+.cpm-noimg { color: var(--on-dark); font-size: 14px; padding: 40px; font-weight: 600; }
 .cpm-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 14px; }
 .cpm-actions .pill { cursor: pointer; padding: 9px 20px; font-size: 14.5px; }
 .ca-approve, .ca-reject {
   font: inherit; font-size: 12.5px; font-weight: 700;
   padding: 6px 13px; border-radius: 999px; cursor: pointer;
 }
-.ca-approve { border: 0; background: var(--person-3); color: #fff; }
+.ca-approve { border: 0; background: var(--person-3); color: var(--on-accent); }
 .ca-reject { border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2); }
 .chore-streak {
   margin-left: 8px; font-size: 12px; font-weight: 800; color: var(--warn);
 }
 /* carried-forward one-off that's past its due date — a subtle nudge, not an alarm */
 .chore-overdue {
-  margin-left: 8px; font-size: 11px; font-weight: 800; color: #b04a4a;
-  background: #fdeaea; padding: 2px 7px; border-radius: 999px; white-space: nowrap;
+  margin-left: 8px; font-size: 11px; font-weight: 800; color: var(--danger);
+  background: var(--danger-t); padding: 2px 7px; border-radius: 999px; white-space: nowrap;
 }
 /* future-dated one-off already on the list — a calm "not yet due" hint */
 .chore-upcoming {
-  margin-left: 8px; font-size: 11px; font-weight: 800; color: #4a6db0;
-  background: #eaf0fd; padding: 2px 7px; border-radius: 999px; white-space: nowrap;
+  margin-left: 8px; font-size: 11px; font-weight: 800; color: var(--info);
+  background: var(--info-t); padding: 2px 7px; border-radius: 999px; white-space: nowrap;
 }
 
 /* up-for-grabs: a normal left-side column with a subtle shared tint */
@@ -1008,7 +1008,7 @@ button.tick {
 .cd-form label span { font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
 .cd-form input { font: inherit; font-size: 14px; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--hair); background: var(--card-2); color: var(--ink); }
 .cd-form-row { display: flex; gap: 10px; }
-.cd-card .pill.primary { color: #fff; background: var(--primary); border-color: transparent; }
+.cd-card .pill.primary { color: var(--on-accent); background: var(--primary); border-color: transparent; }
 
 /* Family Night card */
 .fn-theme { font-size: 15px; font-weight: 700; color: var(--ink-2); margin: 0 4px 8px; }

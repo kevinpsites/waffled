@@ -511,7 +511,7 @@ export function RecipeEditor() {
           {parseErr && <div className="tiny" style={{ color: 'var(--danger)', fontWeight: 700, marginTop: 6 }}>{parseErr}</div>}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 10 }}>
             <button type="button" className="pill" onClick={() => setPasteOpen(false)}>Cancel</button>
-            <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={parsing || !markdown.trim()} onClick={parse}>
+            <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0 }} disabled={parsing || !markdown.trim()} onClick={parse}>
               {parsing ? 'Parsing…' : 'Parse → fill the form'}
             </button>
           </div>
@@ -717,7 +717,7 @@ export function RecipeEditor() {
         {isEdit && <button type="button" className="pill re-delete-btn" onClick={() => setConfirmDelete(true)}>🗑 Delete recipe</button>}
         <div className="re-actions-right">
           <button type="button" className="pill" onClick={() => navigate(-1)}>Cancel</button>
-          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={!title.trim() || saving} onClick={save}>
+          <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0 }} disabled={!title.trim() || saving} onClick={save}>
             {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create recipe'}
           </button>
         </div>

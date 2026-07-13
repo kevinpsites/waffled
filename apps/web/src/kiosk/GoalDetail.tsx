@@ -145,7 +145,7 @@ export function GoalDetail() {
             <button
               className="pill btn-primary"
               disabled={habitDoneToday}
-              style={{ color: '#fff', border: 0, cursor: habitDoneToday ? 'default' : 'pointer', opacity: habitDoneToday ? 0.6 : 1 }}
+              style={{ color: 'var(--on-accent)', border: 0, cursor: habitDoneToday ? 'default' : 'pointer', opacity: habitDoneToday ? 0.6 : 1 }}
               onClick={() => { if (!habitDoneToday) logRef.current() }}
             >
               {logLabel}

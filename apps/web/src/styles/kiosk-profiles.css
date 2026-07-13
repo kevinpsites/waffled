@@ -154,7 +154,7 @@
 }
 .kp-key-ok {
   background: var(--success);
-  color: #fff;
+  color: var(--on-accent);
 }
 .kp-key-del {
   background: var(--panel);

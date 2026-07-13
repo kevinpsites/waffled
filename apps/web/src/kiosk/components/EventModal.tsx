@@ -44,7 +44,7 @@ function WeekdayChips({ value, weekday, onChange }: { value: string[]; weekday: 
               borderRadius: 999,
               border: `1.5px solid ${on ? 'var(--primary)' : 'transparent'}`,
               background: on ? 'var(--primary)' : 'var(--card-2)',
-              color: on ? '#fff' : 'var(--ink)',
+              color: on ? 'var(--on-accent)' : 'var(--ink)',
               font: 'inherit',
               fontSize: 14,
               fontWeight: 700,

@@ -221,7 +221,7 @@ export function PersonProfile() {
           ))}
         </div>
         {canCreateForThisPerson && (
-          <button className="pill btn-primary" style={{ color: '#fff', border: 0, marginLeft: 'auto', flex: 'none', cursor: 'pointer' }} onClick={() => navigate(newGoalHref)}>
+          <button className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0, marginLeft: 'auto', flex: 'none', cursor: 'pointer' }} onClick={() => navigate(newGoalHref)}>
             ＋ New goal{data?.person.name ? ` for ${data.person.name}` : ''}
           </button>
         )}

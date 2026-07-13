@@ -2013,7 +2013,7 @@ function RewardsSettingsPanel() {
         <div className="cur-add">
           <input className="cur-sym" value={newSymbol} maxLength={2} placeholder="⭐" aria-label="New symbol" onChange={(e) => setNewSymbol(e.target.value)} />
           <input className="cur-label" value={newLabel} placeholder="Add a currency (e.g. Family Dollars)" aria-label="New label" onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
-          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={adding || !newLabel.trim()} onClick={add}>＋ Add</button>
+          <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0 }} disabled={adding || !newLabel.trim()} onClick={add}>＋ Add</button>
         </div>
         {currencies.length > 1 && <ConversionsSection currencies={currencies} />}
       </SettingCard>
@@ -2068,7 +2068,7 @@ function ConversionsSection({ currencies }: { currencies: Currency[] }) {
         <select className="conv-cur" value={toCur} onChange={(e) => setToCur(e.target.value)} aria-label="To currency">
           {currencies.map((c) => <option key={c.key} value={c.key}>{(c.symbol ? `${c.symbol} ` : '') + c.label}</option>)}
         </select>
-        <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={busy || fromCur === toCur} onClick={add}>＋ Add</button>
+        <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0 }} disabled={busy || fromCur === toCur} onClick={add}>＋ Add</button>
       </div>
     </>
   )
