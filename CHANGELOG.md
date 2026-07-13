@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Uploaded media keys stay inside their household.** Photo, recipe, and chore-proof
   attachments now reject malformed or cross-household keys, and local storage prevents
   paths from escaping the configured media directory.
+- **Member logins now respect account ownership.** An administrator can update the login
+  already linked to a household profile, but an account owned by a different person must
+  join through the explicit invitation and acceptance flow.
+- **Sign-in callbacks now return only to Waffled.** OIDC login handoffs are restricted to
+  the current web origin or the registered native-app callback, and browser error pages
+  safely render messages returned by an identity provider.
 
 ### Added
 - **Plan breakfast and lunch from the iPhone meal planner, not just dinner.** Each day in the
@@ -65,15 +71,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notification now name the specific timer (e.g. "Step 5 · 3-minute timer") instead of just its
   step, and the notification is marked time-sensitive so it breaks through Focus and the
   notification summary when you've stepped away from the app.
-
-### Security
-
-- **Member logins now respect account ownership.** An administrator can update the login
-  already linked to a household profile, but an account owned by a different person must
-  join through the explicit invitation and acceptance flow.
-- **Sign-in callbacks now return only to Waffled.** OIDC login handoffs are restricted to
-  the current web origin or the registered native-app callback, and browser error pages
-  safely render messages returned by an identity provider.
 
 ## [0.7.0] - 2026-07-10
 
