@@ -33,6 +33,7 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 | Feature | Web / Kiosk | iPhone | iPad | Status |
 | --- | :---: | :---: | :---: | --- |
 | First-run **setup wizard** (create household + admin) | ✅ | ❌ N/A | ❌ N/A | ✅ Done — **web/server-only by design**, not planned for mobile (mobile shows a "finish setup on the web" notice) |
+| **Dark mode** + Settings → Appearance (Light / Dark / Match system) | ✅ | 🔜 | 🔜 | 🟡 Web/kiosk done; iOS parity planned (`apps/ios/DARK_MODE.md`) |
 | **Email/password** login (built-in) | ✅ | ✅ | ✅ | ✅ Done |
 | Rotating refresh tokens + transparent 401-refresh | ✅ | ✅ | ✅ | ✅ Done (Keychain token store) |
 | **OIDC SSO** (backend-mediated, invite-gated) | ✅ | ✅ | ✅ | ✅ Done (`ASWebAuthenticationSession`) |
