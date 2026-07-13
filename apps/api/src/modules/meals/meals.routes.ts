@@ -32,6 +32,7 @@ import {
   weekEntries,
   presentEntry,
   planWeek,
+  shuffleWeek,
   planMonth,
   MEAL_TYPES,
   DATE_RE,
@@ -431,10 +432,17 @@ export function registerMealRoutes(api: Api): void {
     const avoidTitles = Array.isArray(b.avoidTitles) ? b.avoidTitles.filter((s): s is string => typeof s === 'string').slice(0, 40) : undefined
     const wantToTry = Array.isArray(b.wantToTry) ? b.wantToTry.filter((s): s is string => typeof s === 'string' && !!s.trim()).slice(0, 12) : undefined
     const trySomethingNew = typeof b.trySomethingNew === 'boolean' ? b.trySomethingNew : undefined
+    const mealType = typeof b.mealType === 'string' ? b.mealType : undefined
+    // No LLM provider configured (heuristic) or the selected provider isn't usable in
+    // this environment → shuffle the empty slots from the library instead of 501ing.
+    const ai = await getAiConfig(tenant.householdId)
+    if (ai.provider === 'heuristic' || !availability()[ai.provider]) {
+      return await shuffleWeek(tenant, { start, mealType, dates, cookingFor: typeof b.cookingFor === 'number' ? b.cookingFor : null })
+    }
     try {
       return await planWeek(tenant, {
         start,
-        mealType: typeof b.mealType === 'string' ? b.mealType : undefined,
+        mealType,
         dates,
         cookingFor: typeof b.cookingFor === 'number' ? b.cookingFor : null,
         keepInMind: typeof b.keepInMind === 'string' ? b.keepInMind : null,
@@ -451,8 +459,7 @@ export function registerMealRoutes(api: Api): void {
       if (/no ai provider|not configured/i.test(message)) {
         return res.status(501).json({ error: 'AIUnavailable', message })
       }
-      const mealType = typeof b.mealType === 'string' ? b.mealType : 'dinner'
-      return { start, mealType, suggestions: [], via: 'none', error: message }
+      return { start, mealType: mealType ?? 'dinner', suggestions: [], via: 'none', error: message }
     }
   }))
 
