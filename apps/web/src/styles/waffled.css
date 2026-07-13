@@ -33,9 +33,9 @@
   --primary-d: #D84A33;   /* pressed / hover */
   --primary-t: #F3E2D8;   /* primary tint / hover bg */
   --gold:      #F3A93B;   /* stars & rewards ONLY — not warnings */
-  --ai:        #6E56CF;   /* violet — AI accent */
-  --ai-2:      #8C74E8;   /* AI gradient end */
-  --ai-d:      #6A3FC4;   /* AI text-on-tint */
+  --ai:        #8C74E8;   /* violet — AI accent (lighter in light mode) */
+  --ai-2:      #A48CF0;   /* AI gradient end */
+  --ai-d:      #6A3FC4;   /* AI text-on-tint (readable on the light tint) */
   --ai-t:      #EFEAFC;   /* AI tint bg */
 
   /* person palette (base + tint) — four distinct accent slots used as default
@@ -59,6 +59,9 @@
   /* on-color: text/icons that sit ON a brand-colored fill (coral button, today
      pill, badges) — white in both themes, but named so it lives in one place. */
   --on-accent: #FFFFFF;
+  /* text on an INVERTED fill (background: var(--ink) — a dark button in light
+     mode, a light button in dark mode). Flips opposite the canvas. */
+  --on-inverse: #FFFFFF;
 
   /* coral focus-ring glow (derived from --primary so it tracks the brand). */
   --ring: color-mix(in srgb, var(--primary) 14%, transparent);
@@ -137,9 +140,9 @@
   /* brand — hues fixed; tint + text-on-tint retuned for dark */
   --primary-d: #F0745F;
   --primary-t: rgba(236,96,73,.18);
-  --ai:        #8C74E8;
-  --ai-2:      #A48CF0;
-  --ai-d:      #B9A3F5;
+  --ai:        #6E56CF;   /* darker, richer "pop" in dark mode (fills/buttons) */
+  --ai-2:      #8C74E8;
+  --ai-d:      #B9A3F5;   /* text-on-tint stays light for contrast on the dark wash */
   --ai-t:      rgba(140,116,232,.20);
 
   /* person palette — bases fixed; tints become translucent washes; text-on-tint
@@ -160,6 +163,9 @@
   --sh-1: 0 1px 2px rgba(0,0,0,.45);
   --sh-2: 0 2px 10px rgba(0,0,0,.5);
   --sh-3: 0 12px 34px rgba(0,0,0,.6);
+
+  /* text on an inverted fill flips dark (the button is light in dark mode) */
+  --on-inverse:    #1D1D1F;
 
   /* overlays retune for dark (scrim deepens; washes flip to white; off-track darkens) */
   --ring:          color-mix(in srgb, var(--primary) 26%, transparent);
@@ -349,13 +355,13 @@
 .cap-kind-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .cap-kind-chip { font: inherit; font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 999px;
   border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2); cursor: pointer; }
-.cap-kind-chip.on { border-color: var(--ai); color: var(--ai); background: var(--ai-t); }
+.cap-kind-chip.on { border-color: var(--ai); color: var(--ai-d); background: var(--ai-t); }
 
 /* per-kind "basics" fields in the inline editor */
 .cap-people { display: flex; flex-wrap: wrap; gap: 6px; }
 .cap-person { font: inherit; font-size: 12.5px; font-weight: 700; padding: 6px 11px; border-radius: 999px;
   border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2); cursor: pointer; }
-.cap-person.on { border-color: var(--ai); color: var(--ai); background: var(--ai-t); }
+.cap-person.on { border-color: var(--ai); color: var(--ai-d); background: var(--ai-t); }
 .cap-edit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .cap-edit-mini { font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink); border: 1px solid var(--hair);
   border-radius: 8px; background: var(--card-2); padding: 6px 9px; }
@@ -367,11 +373,11 @@
 .cap-stars input { width: 56px; font: inherit; font-size: 14px; font-weight: 700; color: var(--ink);
   border: 1px solid var(--hair); border-radius: 8px; background: var(--card-2); padding: 6px 8px; }
 select.cap-edit-sub { cursor: pointer; }
-.cap-thinking .cap-icon { color: var(--ai); }
+.cap-thinking .cap-icon { color: var(--ai-d); }
 /* "The model read this differently" — offer its alternative without imposing it. */
 .cap-switch { margin-top: 8px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
   border: 1px solid color-mix(in srgb, var(--ai) 35%, var(--hair));
-  background: color-mix(in srgb, var(--ai) 8%, var(--card-2)); color: var(--ai);
+  background: color-mix(in srgb, var(--ai) 8%, var(--card-2)); color: var(--ai-d);
   border-radius: 999px; padding: 5px 11px; }
 .cap-switch:hover { border-color: var(--ai); background: color-mix(in srgb, var(--ai) 14%, var(--card-2)); }
 
@@ -381,7 +387,7 @@ select.cap-edit-sub { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .ai-spark.thinking { animation: none; } }
 
 .ai-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700;
-  color: var(--ai); background: var(--ai-t); padding: 3px 9px; border-radius: 999px;
+  color: var(--ai-d); background: var(--ai-t); padding: 3px 9px; border-radius: 999px;
   text-transform: uppercase; letter-spacing: .03em; }
 .ai-tag svg { width: 12px; height: 12px; fill: var(--ai); }
 
@@ -566,7 +572,7 @@ select.cap-edit-sub { cursor: pointer; }
 .plan-day .pd-b { flex: 1; padding: 12px 14px; display: flex; flex-direction: column; justify-content: center; gap: 5px; min-width: 0; }
 .plan-day .pd-t { font-family: var(--serif); font-size: 17px; font-weight: 600; }
 .plan-day .pd-m { font-size: 12px; color: var(--ink-2); font-weight: 600; }
-.reason { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: var(--ai);
+.reason { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: var(--ai-d);
   background: var(--ai-t); padding: 3px 9px; border-radius: 999px; align-self: flex-start; }
 .reason svg { width: 11px; height: 11px; fill: var(--ai); }
 .plan-day .pd-act { display: flex; align-items: center; gap: 8px; padding: 0 14px 0 6px; }
@@ -659,7 +665,7 @@ select.cap-edit-sub { cursor: pointer; }
 .litem .lnm { flex: 1; font-size: 15px; font-weight: 600; }
 .litem .lqty { font-size: 13px; color: var(--ink-2); font-weight: 700; }
 .sug-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700;
-  background: var(--ai-t); color: var(--ai); padding: 7px 13px; border-radius: 999px; cursor: pointer; }
+  background: var(--ai-t); color: var(--ai-d); padding: 7px 13px; border-radius: 999px; cursor: pointer; }
 .sug-chip svg { width: 13px; height: 13px; stroke: var(--ai); fill: none; stroke-width: 2.4; }
 
 /* ===== photos ================================================== */
@@ -837,7 +843,7 @@ select.cap-edit-sub { cursor: pointer; }
 #wf-modal .am-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 6px; }
 #wf-modal .am-chip { font-size: 13.5px; font-weight: 600; padding: 8px 13px; border-radius: 999px;
   background: var(--panel); color: var(--ink-2); cursor: pointer; transition: all .12s; }
-#wf-modal .am-chip:hover { background: var(--ai-t); color: var(--ai); }
+#wf-modal .am-chip:hover { background: var(--ai-t); color: var(--ai-d); }
 #wf-modal .am-hint { font-size: 12.5px; color: var(--ink-3); line-height: 1.45; margin: 12px 2px 0; }
 #wf-modal .am-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
 

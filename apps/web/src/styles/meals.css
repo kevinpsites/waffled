@@ -323,7 +323,7 @@
 }
 .picker-filters .mp-filter.on {
   background: var(--ink);
-  color: var(--on-accent);
+  color: var(--on-inverse);
 }
 .picker-count {
   margin-left: auto;

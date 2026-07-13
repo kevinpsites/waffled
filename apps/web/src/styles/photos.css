@@ -54,7 +54,7 @@
 /* ---- album filter chips (above the wall) ---------------------- */
 .ph-filter { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 30px 14px; }
 .ph-chip { font-size: 14px; padding: 8px 14px; cursor: pointer; }
-.ph-chip.on { background: var(--ink); color: var(--on-accent); border-color: var(--ink); }
+.ph-chip.on { background: var(--ink); color: var(--on-inverse); border-color: var(--ink); }
 
 /* per-album action bar (shown under the chips when an album is selected) */
 .ph-album-actions { display: flex; align-items: center; gap: 12px; padding: 0 30px 14px; }

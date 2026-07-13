@@ -40,7 +40,7 @@
   background: transparent;
 }
 .list-item .lct.auto {
-  color: var(--ai);
+  color: var(--ai-d);
 }
 /* the Templates group sits under the New-list button, set off by a hairline */
 .lists-rail-tpl {
@@ -133,7 +133,7 @@
 }
 .lists-suggest-label {
   font-weight: 700;
-  color: var(--ai);
+  color: var(--ai-d);
 }
 .sug-chip {
   border: 0;

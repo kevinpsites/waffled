@@ -888,7 +888,7 @@ button.tick {
 }
 
 /* up-for-grabs: a normal left-side column with a subtle shared tint */
-.chore-col.up-for-grabs { background: linear-gradient(160deg, #f5f1fe, #eef4fe); }
+.chore-col.up-for-grabs { background: linear-gradient(160deg, var(--ai-t), var(--info-t)); }
 .chore-grabs-hint { margin: -2px 0 10px; }
 .chore-empty { padding: 8px 2px 12px; opacity: .8; }
 .claim-pick-q { font-size: 12px; font-weight: 800; color: var(--ink-3); margin-right: 3px; align-self: center; }

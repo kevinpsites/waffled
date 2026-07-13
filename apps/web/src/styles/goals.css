@@ -308,7 +308,7 @@ button.goal-listhead-link:hover {
 .ge-who { display: flex; gap: 8px; flex-wrap: wrap; }
 .ge-who-chip { display: inline-flex; align-items: center; gap: 8px; padding: 7px 15px 7px 7px; border-radius: 999px; background: var(--card); border: 1.5px solid var(--hair); cursor: pointer; font: inherit; font-size: 14px; font-weight: 650; color: var(--ink); box-shadow: var(--sh-1); transition: all .13s; }
 .ge-who-chip:hover { border-color: var(--ink-3); }
-.ge-who-chip.on { background: var(--ink); color: var(--on-accent); border-color: var(--ink); }
+.ge-who-chip.on { background: var(--ink); color: var(--on-inverse); border-color: var(--ink); }
 .ge-who-chip.dashed { border-style: dashed; border-color: var(--hair); box-shadow: none; background: transparent; color: var(--ink-3); font-weight: 700; padding: 7px 14px; }
 .ge-who-chip.dashed:hover { color: var(--ink-2); border-color: var(--ink-3); }
 .ge-avstack { display: inline-flex; }
@@ -531,7 +531,7 @@ button.goal-listhead-link:hover {
 }
 .gc-chip.on {
   background: var(--ink);
-  color: var(--on-accent);
+  color: var(--on-inverse);
   border-color: var(--ink);
 }
 .gc-seg button {
@@ -1062,7 +1062,7 @@ button.goal-listhead-link:hover {
 }
 .recap-stepchip {
   display: inline-flex; align-items: center; gap: 5px; font-weight: 700;
-  color: var(--ai); background: color-mix(in srgb, var(--ai) 10%, var(--card));
+  color: var(--ai-d); background: color-mix(in srgb, var(--ai) 10%, var(--card));
   border-radius: 999px; padding: 3px 10px; margin-top: 1px;
 }
 
@@ -1098,7 +1098,7 @@ button.goal-listhead-link:hover {
   font: inherit; font-size: 12.5px; font-weight: 700; color: var(--ink-2); cursor: pointer;
   border: 1px solid var(--hair); background: var(--card-2);
 }
-.recap-chip.on { border-color: var(--ai); color: var(--ai); background: color-mix(in srgb, var(--ai) 10%, var(--card)); }
+.recap-chip.on { border-color: var(--ai); color: var(--ai-d); background: color-mix(in srgb, var(--ai) 10%, var(--card)); }
 
 /* Actions: coral Confirm on top, quiet "Didn't happen" below. */
 .recap-act { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 6px; width: 132px; }

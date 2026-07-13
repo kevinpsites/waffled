@@ -85,7 +85,7 @@
   color: var(--ink-2); font: inherit; font-weight: 700; font-size: 14px;
   transition: background .12s, color .12s, border-color .12s;
 }
-.shop-cat.on { background: var(--ink); border-color: var(--ink); color: var(--on-accent); }
+.shop-cat.on { background: var(--ink); border-color: var(--ink); color: var(--on-inverse); }
 
 .shop-manage { display: flex; }
 

@@ -184,7 +184,7 @@
 .ag-ai-icon, .ed-ai-icon { width: 34px; height: 34px; border-radius: 999px; flex: none; display: grid; place-items: center;
   background: linear-gradient(135deg, var(--ai-2), var(--ai)); color: var(--on-accent); font-size: 16px; }
 .ag-ai-icon svg { width: 17px; height: 17px; fill: var(--on-accent); }
-.ag-ai-h, .ed-ai-h { font-size: 14.5px; font-weight: 700; color: var(--ai); }
+.ag-ai-h, .ed-ai-h { font-size: 14.5px; font-weight: 700; color: var(--ai-d); }
 .ag-ai-b, .ed-ai-b { font-size: 13.5px; color: var(--ink-2); margin-top: 3px; line-height: 1.4; }
 .ed-ai-main { min-width: 0; flex: 1; }
 
@@ -202,7 +202,7 @@
 @media (prefers-reduced-motion: reduce) {
   .ag-ai-icon.thinking, .ed-ai-icon.thinking, .ai-think-bar { animation: none; }
 }
-.ed-ai-chip { display: inline-block; margin-top: 9px; font-size: 12.5px; font-weight: 700; color: var(--ai);
+.ed-ai-chip { display: inline-block; margin-top: 9px; font-size: 12.5px; font-weight: 700; color: var(--ai-d);
   background: var(--card); border: 1px solid var(--ai-t); padding: 4px 11px; border-radius: 999px; }
 .ed-ai-reminder { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--ai-t); font-size: 13.5px;
   font-weight: 600; color: var(--ink); line-height: 1.4; }
