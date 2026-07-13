@@ -49,6 +49,7 @@ import {
   type IngestPhotoInput,
 } from './recipe-ingest.service'
 import { getAiConfig, availability, visionAvailable } from '../../platform/llm'
+import { mediaKeyBelongsToHousehold } from '../../platform/storage'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -62,6 +63,9 @@ export function registerMealRoutes(api: Api): void {
     const body = (req.body ?? {}) as Partial<CreateRecipeInput>
     if (!body.title || !body.title.trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
+    }
+    if (body.storageKey != null && !mediaKeyBelongsToHousehold(body.storageKey, tenant.householdId)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid uploaded image key' })
     }
     if (Array.isArray(body.ingredients) && body.ingredients.some((it) => !it?.name || !String(it.name).trim())) {
       return res.status(400).json({ error: 'BadRequest', message: 'every ingredient needs a name' })
@@ -117,6 +121,9 @@ export function registerMealRoutes(api: Api): void {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'recipe not found' })
     const body = (req.body ?? {}) as UpdateRecipeInput
+    if (body.storageKey != null && !mediaKeyBelongsToHousehold(body.storageKey, tenant.householdId)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid uploaded image key' })
+    }
     if (Array.isArray(body.ingredients) && body.ingredients.some((it) => !it?.name || !String(it.name).trim())) {
       return res.status(400).json({ error: 'BadRequest', message: 'every ingredient needs a name' })
     }

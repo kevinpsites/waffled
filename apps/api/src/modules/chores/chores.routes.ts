@@ -32,6 +32,7 @@ import {
   setChoreRewardsEnabled,
 } from './chores.service'
 import { getProofTtlDays, setProofTtlDays } from './chore-proof-cleanup.service'
+import { mediaKeyBelongsToHousehold } from '../../platform/storage'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -153,6 +154,12 @@ export function registerChoreRoutes(api: Api): void {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
     const body = (req.body ?? {}) as { storageKey?: unknown; contentType?: unknown }
+    if (body.storageKey != null && (
+      typeof body.storageKey !== 'string' ||
+      !mediaKeyBelongsToHousehold(body.storageKey, tenant.householdId)
+    )) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid proof image key' })
+    }
     const proof = {
       storageKey: typeof body.storageKey === 'string' ? body.storageKey : null,
       contentType: typeof body.contentType === 'string' ? body.contentType : null,
