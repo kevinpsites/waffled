@@ -36,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tapping a suggestion card's emoji and title now opens the full recipe detail (swap, pick, and
   lock still work as before); brand-new "✨ New dish" suggestions have nothing to open yet, so
   their tap does nothing.
+- **Cook Mode now stays open when you leave the app and comes back where you were.** On the
+  iPad, backgrounding the app (Home button or app switcher) used to drop you back on Today and
+  lose Cook Mode entirely; now Cook Mode — and any running timers — survive backgrounding and are
+  right there when you return, still on the current step. Tapping a fired timer's notification
+  also re-opens Cook Mode at the exact step whose timer went off.
 - **Cook Mode timers now reliably alert you after you leave the app.** A running step timer's
   notification used to be cancelled the moment Cook Mode closed — including when you simply pressed
   Home — so backgrounding the app with a timer running meant no alert ever fired. The pending
