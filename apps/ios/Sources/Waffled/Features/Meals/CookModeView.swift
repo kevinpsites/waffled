@@ -133,8 +133,14 @@ struct CookModeView: View {
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
-            alarm.stop()
-            for t in timers { alarm.cancelNotification(t.notifId) }
+            alarm.stop()   // stop the in-app chime; the OS notification is independent
+            // NOTE: deliberately do NOT cancel the pending timer notifications here.
+            // `onDisappear` also fires when the app is backgrounded and this cover is
+            // torn down involuntarily — cancelling then would kill the very notification
+            // meant to reach the cook while they're away (the original bug: press Home
+            // with a timer running → no alert ever fired). Pending notifications are only
+            // cancelled on explicit user action: pause (`togglePause`), dismiss
+            // (`dismissTimer`), or a timer being acknowledged in-app (`refreshFiring`).
         }
         .onReceive(tick) { _ in refreshFiring() }
         .onChange(of: scenePhase) { _, phase in

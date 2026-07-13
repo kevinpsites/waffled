@@ -36,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tapping a suggestion card's emoji and title now opens the full recipe detail (swap, pick, and
   lock still work as before); brand-new "✨ New dish" suggestions have nothing to open yet, so
   their tap does nothing.
+- **Cook Mode timers now reliably alert you after you leave the app.** A running step timer's
+  notification used to be cancelled the moment Cook Mode closed — including when you simply pressed
+  Home — so backgrounding the app with a timer running meant no alert ever fired. The pending
+  alert is now kept alive across backgrounding and only cleared when you actually pause or dismiss
+  the timer.
 - **Cook Mode timers now say which timer went off and alert like a proper kitchen alarm.** When
   several step timers are running at once, the "Timer done" screen and the out-of-app
   notification now name the specific timer (e.g. "Step 5 · 3-minute timer") instead of just its
