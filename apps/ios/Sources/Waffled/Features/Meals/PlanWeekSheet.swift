@@ -43,6 +43,7 @@ struct PlanWeekSheet: View {
     @State private var draftingDates: Set<String> = []    // nights being (re)drafted
     @State private var redrafting = false                 // a reshuffle/swap is in flight
     @State private var pickTarget: PickTarget?            // manual-pick sheet
+    @State private var previewRecipe: WaffledAPI.RecipeSummary?   // tapped-card recipe preview
     @State private var via: String?
     @State private var errorMessage: String?
     @State private var notice: String?                    // transient re-roll feedback
@@ -68,6 +69,9 @@ struct PlanWeekSheet: View {
         .task { seedDaysIfNeeded() }
         .sheet(item: $pickTarget) { target in
             RecipePickerSheet(model: recipes) { recipe in pickRecipe(date: target.date, recipe) }
+        }
+        .sheet(item: $previewRecipe) { r in
+            NavigationStack { RecipeDetailView(summary: r, model: recipes) }
         }
     }
 
@@ -322,6 +326,7 @@ struct PlanWeekSheet: View {
             metaTags: tags,
             belowTitleNote: note,
             titleMultilineLeading: true,
+            onOpen: { open(card) },
             onSwap: { Task { await swap(card) } },
             onPick: { pickTarget = PickTarget(date: card.date) },
             onToggleLock: { toggleLock(card.date) },
@@ -330,6 +335,16 @@ struct PlanWeekSheet: View {
                 dragOverDate = over ? card.date : (dragOverDate == card.date ? nil : dragOverDate)
             },
             actionsDisabled: redrafting || isLocked)
+    }
+
+    /// Preview a candidate recipe from its card. Free-text "✨ New dish" cards
+    /// (recipeId == nil) have no detail to open — the tap is inert. Mirrors
+    /// `WeekPlannerView.open`: seed from the loaded library or a placeholder header.
+    private func open(_ card: WaffledAPI.PlanCardDTO) {
+        guard let rid = card.recipeId else { return }
+        previewRecipe = recipes.recipes.first { $0.id == rid }
+            ?? .placeholder(id: rid, title: card.title, emoji: card.emoji,
+                            category: nil, cookTimeMinutes: card.minutes, servings: card.servings)
     }
 
     /// Swap the meals on two review nights (keeps each card's date).
