@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 ### Fixed
+- **The iPhone Goals list now updates itself after you change a goal.** Deleting a goal, logging
+  progress, ticking a checklist step, or editing an entry from a goal's detail screen now refreshes
+  the list the moment you go back — no more stale card until you pull-to-refresh.
+- **Participant chips in the Goals log sheet no longer jump around when tapped.** Selecting who took
+  part keeps each chip the same size instead of growing and nudging its neighbours sideways.
 
 ## [0.7.0] - 2026-07-10
 
