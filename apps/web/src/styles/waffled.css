@@ -3,33 +3,52 @@
    Warm-white Apple canvas · bright per-person color · soft materials
    ============================================================ */
 
+/* ------------------------------------------------------------
+   CANONICAL DESIGN TOKENS — single source of truth.
+   Generated from "Nook Tokens - Source of Truth". Nothing in the
+   product should use a raw hex; if a value isn't here, add it here
+   first, then use it. Light values live in :root; the .dark /
+   [data-theme="dark"] block below overrides ONLY what changes.
+   ------------------------------------------------------------ */
 :root {
-  /* surfaces */
+  /* surfaces — warm whites (never pure) */
   --bg:        #FAF7F2;   /* warm white canvas */
   --rail:      #F1ECE3;   /* nav-rail tint */
-  --panel:     #F4EFE7;   /* inset panel */
-  --card:      #FFFFFF;
-  --card-2:    #FCFAF6;
+  --panel:     #F4EFE7;   /* recessed inset · progress tracks */
+  --card:      #FFFFFF;   /* elevated surface */
+  --card-2:    #FCFAF6;   /* nested / subtle card */
 
-  /* ink */
-  --ink:   #1D1D1F;
-  --ink-2: #6B6B70;
-  --ink-3: #A6A29B;
-  --hair:  rgba(40,33,24,0.08);
-  --hair-2:rgba(40,33,24,0.045);
+  /* ink — three levels only */
+  --ink:   #1D1D1F;   /* primary text */
+  --ink-2: #6B6B70;   /* secondary text */
+  --ink-3: #A6A29B;   /* muted / placeholder (absorbs --muted, #8A8276, #9A958C) */
+
+  /* borders & lines — alpha-based so they sit on any surface */
+  --hair:  rgba(40,33,24,0.08);   /* default hairline */
+  --hair-2:rgba(40,33,24,0.045);  /* faint divider */
+  --line:  rgba(40,33,24,0.18);   /* strong border */
 
   /* brand */
-  --primary:   #EC6049;   /* coral — primary action */
-  --primary-d: #D84A33;
-  --ai:        #6E56CF;   /* violet — AI */
-  --ai-2:      #8C74E8;
-  --gold:      #F3A93B;   /* stars / rewards */
+  --primary:   #EC6049;   /* coral — the only primary action color */
+  --primary-d: #D84A33;   /* pressed / hover */
+  --primary-t: #F3E2D8;   /* primary tint / hover bg */
+  --gold:      #F3A93B;   /* stars & rewards ONLY — not warnings */
+  --ai:        #6E56CF;   /* violet — AI accent */
+  --ai-2:      #8C74E8;   /* AI gradient end */
+  --ai-d:      #6A3FC4;   /* AI text-on-tint */
+  --ai-t:      #EFEAFC;   /* AI tint bg */
 
-  /* people */
+  /* people (base + tint) */
   --kevin:  #2F7FED;  --kevin-t:  #E7F0FE;
   --kelly:  #E0548B;  --kelly-t:  #FCE9F1;
-  --wally:  #25A368;  --wally-t:  #E4F5EC;
+  --wally:  #25A368;  --wally-t:  #E4F5EC;   /* --wally == --success */
   --lottie: #8A5CF0;  --lottie-t: #F0E9FD;
+
+  /* status / semantic (base for text/icons/borders, -t tint for fills/chips) */
+  --success:   #25A368;  --success-t: #E4F5EC;  /* done / positive (absorbs 5 greens) */
+  --danger:    #C0392B;  --danger-t:  #FBE3E1;  /* error / delete / overdue */
+  --warn:      #C77A1A;  --warn-t:    #FDF2DD;  /* warning amber — distinct from --gold */
+  --info:      #2F7FED;  --info-t:    #E7F0FE;  /* info / secondary accent (== --kevin) */
 
   /* radii */
   --r-xs: 8px; --r-sm: 12px; --r-md: 16px; --r-lg: 22px; --r-xl: 30px;
@@ -39,9 +58,72 @@
   --sh-2: 0 2px 8px rgba(40,33,24,.06), 0 8px 24px rgba(40,33,24,.05);
   --sh-3: 0 8px 30px rgba(40,33,24,.10), 0 2px 8px rgba(40,33,24,.05);
 
+  /* type */
   --sans: -apple-system, "SF Pro Text", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
   --serif: "New York", "Iowan Old Style", ui-serif, Georgia, "Times New Roman", serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  color-scheme: light;
 }
+
+/* ------------------------------------------------------------
+   DARK MODE — a warm dark, not a cold one. Surfaces & ink invert
+   onto warm charcoals; every brand/accent/per-person hue stays put
+   so the app still reads as Waffled with the lights off. Pale tints
+   become low-opacity washes; elevation reads by getting LIGHTER
+   (card > canvas), the inverse of light mode.
+   Only the tokens that change are listed here.
+   ------------------------------------------------------------ */
+:root[data-theme="dark"], .dark {
+  /* surfaces — warm charcoals */
+  --bg:     #14110C;
+  --rail:   #1B160F;
+  --panel:  #1A1710;
+  --card:   #232019;
+  --card-2: #1C1811;
+
+  /* ink — warm off-white */
+  --ink:   #F3EEE4;
+  --ink-2: #ADA69A;
+  --ink-3: #726B5E;
+
+  /* borders — white alphas */
+  --hair:  rgba(255,255,255,.10);
+  --hair-2:rgba(255,255,255,.06);
+  --line:  rgba(255,255,255,.18);
+
+  /* brand — hues fixed; tint + text-on-tint retuned for dark */
+  --primary-d: #F0745F;
+  --primary-t: rgba(236,96,73,.18);
+  --ai:        #8C74E8;
+  --ai-2:      #A48CF0;
+  --ai-d:      #B9A3F5;
+  --ai-t:      rgba(140,116,232,.20);
+
+  /* people — bases fixed; tints become translucent washes */
+  --kevin-t:  rgba(47,127,237,.20);
+  --kelly-t:  rgba(224,84,139,.20);
+  --wally-t:  rgba(37,163,104,.22);
+  --lottie-t: rgba(138,92,240,.22);
+
+  /* status — brightened for contrast on dark */
+  --success:   #34B87A;  --success-t: rgba(37,163,104,.20);
+  --danger:    #E15B4C;  --danger-t:  rgba(224,91,76,.18);
+  --warn:      #E8A13E;  --warn-t:    rgba(232,161,62,.18);
+  --info:      #4C9BFF;  --info-t:    rgba(47,127,237,.20);
+
+  /* shadows deepen */
+  --sh-1: 0 1px 2px rgba(0,0,0,.45);
+  --sh-2: 0 2px 10px rgba(0,0,0,.5);
+  --sh-3: 0 12px 34px rgba(0,0,0,.6);
+
+  color-scheme: dark;
+}
+
+/* Component patches for dark — for the few controls whose light value is a solid
+   neutral that a token swap can't express (most surfaces flip automatically via
+   the tokens above). */
+:root[data-theme="dark"] .toggle, .dark .toggle { background: rgba(255,255,255,.16); }
 
 * { box-sizing: border-box; }
 

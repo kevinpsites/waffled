@@ -624,4 +624,25 @@ select.sel {
   padding: 6px 12px; cursor: pointer; border-right: 1px solid var(--hair);
 }
 .apikey-seg button:last-child { border-right: 0; }
-.apikey-seg button.on { background: var(--primary, #e0653f); color: #fff; }
+.apikey-seg button.on { background: var(--primary); color: #fff; }
+
+/* ---- Appearance / theme picker ---- */
+.appr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+.appr-card {
+  all: unset; cursor: pointer; border-radius: 16px; padding: 5px;
+  box-shadow: 0 0 0 1.5px var(--hair); transition: box-shadow .15s;
+}
+.appr-card:hover { box-shadow: 0 0 0 1.5px var(--ink-3); }
+.appr-card.pinned { box-shadow: 0 0 0 2px var(--primary); }
+.appr-mini { border-radius: 12px; overflow: hidden; padding: 12px 12px 14px; }
+.appr-mini-line { display: block; height: 8px; width: 60%; border-radius: 99px; opacity: .85; }
+.appr-mini-card { display: block; height: 26px; border-radius: 8px; margin-top: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+.appr-mini-card.sm { height: 16px; width: 70%; margin-top: 6px; }
+.appr-card-lbl {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px 0 5px; font-size: 13px; font-weight: 750; color: var(--ink);
+}
+.appr-check { color: var(--primary); font-weight: 800; }
+
+/* The .toggle pill is normally a <span>; reset it when used as a real button. */
+button.toggle { border: 0; padding: 0; cursor: pointer; -webkit-appearance: none; appearance: none; }

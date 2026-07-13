@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from '
 import { useSearchParams } from 'react-router'
 import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
+import { useThemePref } from '../lib/theme'
 import { PersonModal } from './components/PersonModal'
 import { SettingCard } from './components/SettingCard'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -15,6 +16,7 @@ import '../styles/settings.css'
 // account/operator. Account is thin today; it grows with per-member self-service later.
 const NAV = [
   // Account — you
+  { key: 'appearance', icon: '🌗', label: 'Appearance', group: 'account' },
   { key: 'profile', icon: '🙂', label: 'My Profile', group: 'account' },
   { key: 'account', icon: '🔒', label: 'My Account', group: 'account' },
   { key: 'households', icon: '🏠', label: 'Households', group: 'account' },
@@ -3014,6 +3016,77 @@ function DisplayKioskPanel() {
   )
 }
 
+// Appearance — theme preference (Light / Dark / Match system). Stored per-device
+// in localStorage via the theme store; applies instantly, no server round-trip.
+// The two preview cards intentionally use fixed literal hexes — they DEPICT each
+// theme, so they must stay light/dark regardless of the active theme.
+function ThemePreview({ label, active, pinned, colors, onSelect }: {
+  label: string
+  active: boolean
+  pinned: boolean
+  colors: { bg: string; card: string; ink: string; line: string }
+  onSelect: () => void
+}) {
+  return (
+    <button type="button" className={`appr-card${pinned ? ' pinned' : ''}`} aria-pressed={pinned} onClick={onSelect}>
+      <div className="appr-mini" style={{ background: colors.bg }}>
+        <span className="appr-mini-line" style={{ background: colors.line }} />
+        <span className="appr-mini-card" style={{ background: colors.card }} />
+        <span className="appr-mini-card sm" style={{ background: colors.card }} />
+      </div>
+      <div className="appr-card-lbl">
+        {active && <span className="appr-check" aria-hidden="true">✓</span>}
+        {label}
+      </div>
+    </button>
+  )
+}
+
+function AppearancePanel() {
+  const { pref, resolved, setPref } = useThemePref()
+  const matchSystem = pref === 'system'
+  return (
+    <div className="set-panel">
+      <div className="set-head"><div className="wf-serif set-head-t">Appearance</div></div>
+
+      <div className="flabel" style={{ padding: '0 2px 10px' }}>THEME</div>
+      <div className="appr-grid">
+        <ThemePreview
+          label="Light"
+          active={resolved === 'light'}
+          pinned={pref === 'light'}
+          colors={{ bg: '#FAF7F2', card: '#FFFFFF', ink: '#1D1D1F', line: '#C9C3B8' }}
+          onSelect={() => setPref('light')}
+        />
+        <ThemePreview
+          label="Dark"
+          active={resolved === 'dark'}
+          pinned={pref === 'dark'}
+          colors={{ bg: '#14110C', card: '#232019', ink: '#F3EEE4', line: '#4A453C' }}
+          onSelect={() => setPref('dark')}
+        />
+      </div>
+
+      <SettingCard style={{ marginTop: 4 }}>
+        <SettingRow icon="🌗" title="Match system" sub="Follow your device's light/dark setting automatically.">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={matchSystem}
+            aria-label="Match system appearance"
+            className={`toggle ${matchSystem ? 'on' : ''}`}
+            onClick={() => setPref(matchSystem ? resolved : 'system')}
+          />
+        </SettingRow>
+      </SettingCard>
+
+      <div className="tiny muted" style={{ padding: '12px 2px 0', fontWeight: 600 }}>
+        This choice is saved on this device only.
+      </div>
+    </div>
+  )
+}
+
 export function Settings() {
   const { household, person, memberships, pendingInvites } = useHousehold()
   // Tab lives in the URL (?tab=) so a refresh returns to where you were.
@@ -3045,7 +3118,9 @@ export function Settings() {
   // the shared kiosk, never for a login-less member.
   const showAccount = !isKioskMode() && !!account?.hasAccount
   const nav = NAV.filter((n) => (!n.admin || isAdmin) && (n.key !== 'households' || showHouseholds) && ((n.key !== 'profile' && n.key !== 'account') || showAccount))
-  const activeTab = nav.some((n) => n.key === tab) ? tab : (nav[0]?.key ?? 'about')
+  // Fall back to About (holds sign-out & account info) rather than whatever
+  // happens to sort first, so a limited/kiosk user lands somewhere sensible.
+  const activeTab = nav.some((n) => n.key === tab) ? tab : (nav.some((n) => n.key === 'about') ? 'about' : nav[0]?.key ?? 'about')
 
   return (
     <div className="settings-screen">
@@ -3068,7 +3143,7 @@ export function Settings() {
         </div>
       </div>
       <div className="set-content">
-        {activeTab === 'profile' ? <MyProfilePanel /> : activeTab === 'account' ? <MyAccountPanel /> : activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <><CalendarsPanel /><CountdownsSettings /></> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'modules' ? <ModulesPanel /> : activeTab === 'apikeys' ? <ApiKeysPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
+        {activeTab === 'appearance' ? <AppearancePanel /> : activeTab === 'profile' ? <MyProfilePanel /> : activeTab === 'account' ? <MyAccountPanel /> : activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <><CalendarsPanel /><CountdownsSettings /></> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'modules' ? <ModulesPanel /> : activeTab === 'apikeys' ? <ApiKeysPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
       </div>
     </div>
   )
