@@ -24,6 +24,18 @@ domain = "waffled.example.com"
 # boot_volume_gbs     = 100
 # availability_domain_number = 1   # bump to 2/3 if you hit "Out of host capacity"
 
+# ── App config deployed into the server's .env (optional) ──
+# API keys, OAuth creds, or any .env override. Applied last, so these win over the
+# generated/derived values. ⚠ Values land in Terraform STATE + instance metadata in
+# plaintext — keep state private, or add the most sensitive keys by hand on the box.
+# app_env = {
+#   ANTHROPIC_API_KEY    = "sk-ant-..."
+#   ANTHROPIC_MODEL      = "claude-haiku-4-5-20251001"
+#   OPENAI_API_KEY       = "sk-..."
+#   GOOGLE_CLIENT_ID     = "....apps.googleusercontent.com"
+#   GOOGLE_CLIENT_SECRET = "..."
+# }
+
 # ── App source ──
 # waffled_ref     = "main"
 # waffled_version = "0.7.0"

@@ -1,6 +1,11 @@
 locals {
   compartment_id = var.compartment_ocid != "" ? var.compartment_ocid : var.tenancy_ocid
 
+  # User-supplied .env entries, rendered as KEY=VALUE lines and base64-encoded so
+  # arbitrary values survive the trip through cloud-init user_data intact.
+  app_env_lines = join("\n", [for k, v in var.app_env : "${k}=${v}"])
+  app_env_b64   = length(var.app_env) > 0 ? base64encode(local.app_env_lines) : ""
+
   # Ports open to the world. PowerSync (8090) is only exposed directly in HTTP-only
   # mode; with a domain, Caddy fronts it on powersync.<domain> over TLS instead.
   ingress_ports = concat(
@@ -118,6 +123,7 @@ resource "oci_core_instance" "waffled" {
       ref             = var.waffled_ref
       waffled_version = var.waffled_version
       domain          = var.domain
+      app_env_b64     = local.app_env_b64
     }))
   }
 }

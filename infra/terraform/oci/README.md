@@ -86,13 +86,54 @@ cd /opt/waffled && sudo docker compose ps      # container health
 - **TLS not issuing** — check both DNS records resolve to `public_ip` and that 80/443
   are reachable; `sudo docker compose logs caddy` shows ACME progress.
 
+## App config & secrets (API keys, OAuth)
+
+Your app config — `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, Google OAuth, etc. — does **not**
+come along automatically. Deliver it one of two ways:
+
+1. **Via Terraform (`app_env`)** — set a map in `terraform.tfvars` and the values are written
+   into the server's `.env` at first boot, applied last so they override the derived values:
+   ```hcl
+   app_env = {
+     ANTHROPIC_API_KEY = "sk-ant-..."
+     OPENAI_API_KEY    = "sk-..."
+   }
+   ```
+   > ⚠ These land in **Terraform state and instance metadata in plaintext**. Keep your state
+   > file private (or use a remote backend with encryption). Values must be single-line —
+   > base64-encode multi-line secrets like PEM keys.
+2. **By hand on the box** (best for your most sensitive keys) — SSH in, edit
+   `/opt/waffled/infra/compose/.env`, then `sudo waffled-oci up` to apply.
+
+`app_env` is also the place to pin durable secrets (`LOCAL_JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`,
+`POSTGRES_PASSWORD`) if you want them to survive an instance rebuild — otherwise they're
+regenerated on each fresh boot, which invalidates sessions and encrypted tokens.
+
+## Upgrading
+
+Upgrades happen **on the server**, not through Terraform — cloud-init only runs once, so
+re-`apply`ing won't upgrade the app (and changing the version could try to *replace* the
+instance and wipe your data). Use the installed helper:
+
+```bash
+ssh ubuntu@<public_ip>
+sudo waffled-oci upgrade    # git pull + pre-upgrade backup + pull images + migrate
+```
+
+`waffled-oci` is a thin wrapper around the same steps as the stock `./waffled`, but it always
+includes this deployment's `docker-compose.oci.yml` override, so **upgrades keep the HTTPS/443
+config** (the plain `./waffled upgrade` would drop it). It also supports
+`up | down | restart | logs | status`; anything else falls through to the real `./waffled` CLI
+(`sudo waffled-oci backup`, `sudo waffled-oci doctor`, …).
+
+> Terraform is for the **infrastructure** (create / resize / destroy the box). The app version
+> is a **day-2, on-box** concern. Two tools, two jobs.
+
 ## Day 2
 
-- The app is a normal Compose stack under `/opt/waffled`. Use the `./waffled` CLI on the
-  box (`sudo ./waffled status|logs|backup|upgrade|doctor`).
-- **Data lives in Docker named volumes** (`pgdata`, `waffled_media`, backups) on the
-  boot volume — **never** `docker compose down -v`. Configure offsite S3 backups via the
-  `BACKUP_S3_*` vars in `/opt/waffled/infra/compose/.env` for real durability.
+- **Data lives in Docker named volumes** (`pgdata`, `waffled_media`, backups) on the boot
+  volume — it survives reboots and upgrades. **Never** `docker compose down -v`. Configure
+  offsite S3 backups via the `BACKUP_S3_*` vars (in `app_env` or `.env`) for real durability.
 - `terraform destroy` tears everything down **including the volumes** — back up first.
 
 ## What this does *not* do

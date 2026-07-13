@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Rendered by Terraform (templatefile) and run as root on first boot by cloud-init.
 # Brings up the full Waffled Docker Compose stack. Log: /var/log/waffled-bootstrap.log
+#
+# Design note: all cloud-specific customization lives in UNTRACKED files
+# (docker-compose.oci.yml, caddy/Caddyfile.oci, .env) so `git pull --ff-only`
+# stays clean on upgrade, and the `waffled-oci` helper always layers the override
+# so upgrades never drop the HTTPS/443 config.
 set -euxo pipefail
 exec > /var/log/waffled-bootstrap.log 2>&1
 
@@ -32,15 +37,14 @@ cd /opt/waffled
 git checkout "${ref}"
 cd infra/compose
 
-# 4) Build .env (mirrors `./waffled up`'s first-run secret generation) plus the
-#    cloud-specific ingress settings.
+# 4) Build .env. Start from the template, then upsert keys. `set_env` removes any
+#    existing line and appends, so values with /, +, = (base64/secrets) are safe.
 cp .env.example .env
 set_env() {
-  if grep -qE "^$1=" .env; then
-    sed -i "s|^$1=.*|$1=$2|" .env
-  else
-    echo "$1=$2" >> .env
-  fi
+  key="$1"; shift; val="$*"
+  grep -v -E "^$${key}=" .env > .env.tmp 2>/dev/null || true
+  mv .env.tmp .env
+  printf '%s=%s\n' "$${key}" "$${val}" >> .env
 }
 set_env LOCAL_JWT_SECRET     "$(openssl rand -base64 48 | tr -d '\n')"
 set_env TOKEN_ENCRYPTION_KEY "$(openssl rand -base64 32 | tr -d '\n')"
@@ -57,38 +61,81 @@ set_env CADDY_SITE_ADDRESS   "${domain}"
 set_env PUBLIC_BASE_URL      "https://${domain}"
 set_env POWERSYNC_PUBLIC_URL "https://powersync.${domain}"
 
-cat >> caddy/Caddyfile <<'CADDY_EOF'
+# Untracked Caddy config: import the repo's Caddyfile (remounted as .base) so
+# upstream changes still flow through, then add PowerSync's own hostname/cert.
+cat > caddy/Caddyfile.oci <<'CADDY_EOF'
+import /etc/caddy/Caddyfile.base
 
-# ── Added by OCI Terraform bootstrap ──
-# Serve PowerSync over its own hostname/cert so offline-sync runs over HTTPS/WSS.
 powersync.${domain} {
 	encode gzip
 	reverse_proxy powersync:8080
 }
 CADDY_EOF
 
-# Publish 80 (ACME challenge + HTTP→HTTPS redirect) and 443 on Caddy. `!override`
-# replaces the base port list so we don't collide with the default 80 mapping.
+# Untracked compose override: publish 80 (ACME + redirect) and 443, and mount the
+# two Caddy files. `!override` replaces the base lists so nothing collides.
 cat > docker-compose.oci.yml <<'COMPOSE_EOF'
 services:
   caddy:
     ports: !override
       - "80:80"
       - "443:443"
+    volumes: !override
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile.base:ro
+      - ./caddy/Caddyfile.oci:/etc/caddy/Caddyfile:ro
+      - waffled_media:/data/media:ro
+      - caddy_data:/data
+      - caddy_config:/config
 COMPOSE_EOF
-
-COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.oci.yml --env-file .env)
 %{ else ~}
 # ── HTTP-only mode: no TLS. Point clients at the raw public IP. ──
 PUBIP="$(curl -fsS https://ifconfig.me || curl -fsS https://icanhazip.com || true)"
-set_env PUBLIC_BASE_URL      "http://$PUBIP"
-set_env POWERSYNC_PUBLIC_URL "http://$PUBIP:8090"
-
-COMPOSE=(docker compose -f docker-compose.yml --env-file .env)
+set_env PUBLIC_BASE_URL      "http://$${PUBIP}"
+set_env POWERSYNC_PUBLIC_URL "http://$${PUBIP}:8090"
 %{ endif ~}
 
-# 5) Pull images and start everything (runs migrate → api → powersync → caddy → backup).
-"$${COMPOSE[@]}" pull
-"$${COMPOSE[@]}" up -d
+# 5) User-supplied app config (API keys, OAuth, overrides). Applied LAST so these
+#    win over the derived values above. Delivered base64-encoded via Terraform.
+%{ if app_env_b64 != "" ~}
+while IFS= read -r __line; do
+  [ -z "$${__line}" ] && continue
+  __key="$(printf '%s' "$${__line}" | cut -d= -f1)"
+  __val="$(printf '%s' "$${__line}" | cut -d= -f2-)"
+  set_env "$${__key}" "$${__val}"
+done < <(printf '%s' "${app_env_b64}" | base64 -d)
+%{ endif ~}
+
+# 6) Cloud lifecycle helper: `waffled-oci up|upgrade|down|logs|status`. Unlike the
+#    stock `./waffled`, it always includes docker-compose.oci.yml, so upgrades keep
+#    the HTTPS/443 config. Anything else falls through to the real ./waffled CLI.
+cat > /usr/local/bin/waffled-oci <<'HELPER_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+cd /opt/waffled/infra/compose
+FILES=(-f docker-compose.yml)
+[ -f docker-compose.oci.yml ] && FILES+=(-f docker-compose.oci.yml)
+DC=(docker compose "$${FILES[@]}" --env-file .env)
+case "$${1:-help}" in
+  up)      "$${DC[@]}" pull; "$${DC[@]}" up -d ;;
+  upgrade)
+    git -C /opt/waffled pull --ff-only || echo "warn: could not fast-forward repo (local changes?)"
+    t="$(grep -E '^WAFFLED_VERSION=' .env.example | head -1 | cut -d= -f2- || true)"
+    if [ -n "$${t}" ]; then
+      grep -v -E '^WAFFLED_VERSION=' .env > .env.tmp; mv .env.tmp .env
+      printf 'WAFFLED_VERSION=%s\n' "$${t}" >> .env
+    fi
+    docker ps --format '{{.Names}}' | grep -q '^waffled-backup$' && docker exec waffled-backup waffled-backup || true
+    "$${DC[@]}" pull; "$${DC[@]}" up -d ;;
+  down)      "$${DC[@]}" down ;;
+  restart)   "$${DC[@]}" up -d --force-recreate ;;
+  logs)      shift || true; "$${DC[@]}" logs -f --tail=120 "$@" ;;
+  ps|status) "$${DC[@]}" ps ;;
+  *)         exec /opt/waffled/waffled "$@" ;;
+esac
+HELPER_EOF
+chmod +x /usr/local/bin/waffled-oci
+
+# 7) Bring the whole stack up (migrate → api → powersync → caddy → backup).
+waffled-oci up
 
 echo "waffled bootstrap complete"

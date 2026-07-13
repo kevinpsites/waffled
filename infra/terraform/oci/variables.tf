@@ -98,3 +98,19 @@ variable "waffled_version" {
   type        = string
   default     = ""
 }
+
+# ── App config delivered into the server's .env ───────────────────────────────
+# Extra KEY = VALUE entries written into infra/compose/.env on the instance —
+# e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_CLIENT_ID/SECRET. Applied AFTER
+# the generated secrets and networking vars, so anything you set here wins.
+#
+# ⚠ SECURITY: these values land in Terraform STATE and the instance metadata in
+# plaintext. Keep your state file private. For the most sensitive keys you can
+# instead leave them out and add them by hand in /opt/waffled/infra/compose/.env.
+# Values must be single-line (base64-encode multi-line secrets like PEM keys).
+variable "app_env" {
+  description = "Extra .env entries (API keys, OAuth, overrides) to deploy onto the server."
+  type        = map(string)
+  default     = {}
+  sensitive   = true
+}

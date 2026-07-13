@@ -158,22 +158,70 @@ sudo docker compose logs caddy                 # TLS / ACME progress
 - **Certificate not issuing** — confirm both DNS records resolve to the public IP and that ports
   80/443 are reachable; `docker compose logs caddy` shows the ACME handshake.
 
-## Day 2
+## Configuring API keys & secrets
 
-The server is a normal Compose stack under `/opt/waffled`, so the whole
-[`./waffled` CLI](/install/docker/#the-waffled-cli) works on the box:
+Your app config — `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, Google Calendar OAuth, and so on —
+does **not** ride along automatically. There are two ways to get it onto the server:
 
-```bash
-cd /opt/waffled
-sudo ./waffled status     # health table
-sudo ./waffled backup     # run a backup now
-sudo ./waffled upgrade    # pull the latest release
+**1. Via Terraform (`app_env`).** Add a map to `terraform.tfvars` and the values are written
+into the server's `.env` on first boot (applied last, so they override the derived values):
+
+```hcl
+app_env = {
+  ANTHROPIC_API_KEY = "sk-ant-..."
+  OPENAI_API_KEY    = "sk-..."
+  GOOGLE_CLIENT_ID     = "....apps.googleusercontent.com"
+  GOOGLE_CLIENT_SECRET = "..."
+}
 ```
 
+:::caution[These end up in your Terraform state]
+Anything in `app_env` is stored in **Terraform state and the instance metadata in plaintext**.
+Keep your state file private (or use an encrypted remote backend). Values must be single-line —
+base64-encode multi-line secrets. For your most sensitive keys, prefer option 2.
+:::
+
+**2. By hand on the box.** SSH in, edit `/opt/waffled/infra/compose/.env`, then apply:
+
+```bash
+ssh ubuntu@<public_ip>
+sudo nano /opt/waffled/infra/compose/.env
+sudo waffled-oci up
+```
+
+`app_env` is also where you'd pin durable secrets (`LOCAL_JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`,
+`POSTGRES_PASSWORD`) if you want them to survive an instance rebuild — otherwise they regenerate
+on each fresh boot, which signs everyone out and makes stored OAuth tokens unreadable.
+
+See the full list in the [Environment variables](/install/environment-variables/) reference.
+
+## Upgrading
+
+Upgrades happen **on the server, not through Terraform.** Cloud-init only runs once, so
+re-running `terraform apply` won't upgrade the app — and bumping the version in Terraform can
+make it try to *replace* the instance, which would wipe your data. Think of it as two tools,
+two jobs: **Terraform owns the box; the app version is a day-2, on-box concern.**
+
+The bootstrap installs a helper for exactly this:
+
+```bash
+ssh ubuntu@<public_ip>
+sudo waffled-oci upgrade
+```
+
+`waffled-oci upgrade` does the same thing as [`./waffled upgrade`](/operations/upgrading/) —
+`git pull`, a pre-upgrade database backup, pull the new images, run migrations — but it always
+includes this deployment's HTTPS override, so **your TLS setup survives the upgrade** (the stock
+`./waffled upgrade` would drop the port-443 config). It also handles `up`, `down`, `restart`,
+`logs`, and `status`; any other subcommand falls through to the real `./waffled` CLI, so
+`sudo waffled-oci backup` and `sudo waffled-oci doctor` work too.
+
+## Day 2
+
 - **Your data lives in Docker named volumes** (`pgdata`, `waffled_media`, backups) on the boot
-  volume. **Never** run `docker compose down -v`. For real durability, set the `BACKUP_S3_*`
-  variables in `/opt/waffled/infra/compose/.env` to push nightly dumps offsite — see
-  [Offsite backups](/guides/offsite-backups/).
+  volume — it survives reboots and upgrades. **Never** run `docker compose down -v`. For real
+  durability, set the `BACKUP_S3_*` variables (in `app_env` or the box's `.env`) to push nightly
+  dumps offsite — see [Offsite backups](/guides/offsite-backups/).
 - **`terraform destroy` deletes everything, including the volumes.** Back up first.
 
 ## HTTP-only (quick test)

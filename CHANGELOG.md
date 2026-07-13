@@ -18,8 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `infra/terraform/oci` module stands up the whole stack (Postgres, PowerSync, api, Caddy,
   backup) on a free Arm Ampere A1 instance and, when you give it a domain, fronts it with
   automatic HTTPS — including a dedicated `powersync.` subdomain so offline-sync runs over
-  TLS too. `terraform apply` prints the public IP, the DNS records to create, and the URL to
-  open. See the module's `README.md` for setup.
+  TLS too. Pass your API keys and other config through an `app_env` map, and upgrade in place
+  on the box with the installed `waffled-oci upgrade` helper (which keeps the HTTPS config
+  across upgrades). `terraform apply` prints the public IP, the DNS records to create, and the
+  URL to open. See the module's `README.md` and the "Deploy to Oracle Cloud" guide.
 
 ### Changed
 
