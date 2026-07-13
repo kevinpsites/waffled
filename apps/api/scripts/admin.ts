@@ -13,6 +13,7 @@
 //   reset-password   --email <e> [--password <pw>] [--yes]
 //   make-admin       (--email <e> | --person <uuid>)
 //   revoke-admin     (--email <e> | --person <uuid>)
+//   set-installation-owner --email <e> [--yes]
 //   password-login   <on|off>
 //   clear-calendar-error  (--email <e> | --all) [--yes]
 //   prune-sessions   [--email <e>] [--yes]
@@ -191,6 +192,22 @@ async function makeAdmin(grant: boolean): Promise<void> {
   if (p.is_admin === grant) { console.log(c.dim + `${p.name} is already ${grant ? 'an admin' : 'not an admin'} — no change.` + c.reset); return }
   await query(`update persons set is_admin = $1, updated_at = now() where id = $2`, [grant, p.id])
   console.log(ok(`✓ ${p.name} is now ${grant ? 'an admin' : 'a regular member'}.`))
+}
+
+async function setInstallationOwner(): Promise<void> {
+  const email = flag('email')
+  if (!email) die('set-installation-owner requires --email <login email>.')
+  const account = await accountByEmail(email)
+  if (!account) die(`No active account found with login email "${email}".`)
+  if (!(await confirm(`Make ${c.bold}${account.email}${c.reset} the installation owner?`))) die('Aborted.', 0)
+  const { rowCount } = await query(
+    `update auth_config
+        set installation_owner_account_id = $1, updated_at = now()
+      where id = true`,
+    [account.id]
+  )
+  if (!rowCount) die('No auth_config row found — run first-time setup before assigning an owner.')
+  console.log(ok(`✓ ${account.email} is now the installation owner.`))
 }
 
 async function passwordLogin(): Promise<void> {
@@ -409,6 +426,7 @@ ${c.dim}Run as: ./waffled admin <command> [flags]${c.reset}
   ${c.bold}list-accounts${c.reset}                      each human and the households they belong to
   ${c.bold}make-admin${c.reset}    (--email <e> | --person <uuid>)    grant admin
   ${c.bold}revoke-admin${c.reset}  (--email <e> | --person <uuid>)    revoke admin (not the owner)
+  ${c.bold}set-installation-owner${c.reset} --email <e> [--yes]       transfer/recover global login settings
   ${c.bold}password-login${c.reset} <on|off>             enable/disable email+password login
   ${c.bold}clear-calendar-error${c.reset} (--email <e> | --all) [--yes]
                                      clear a stuck Google account's sync-error flag
@@ -423,7 +441,7 @@ ${c.dim}Destructive commands prompt for confirmation (or pass --yes).
 Break-glass: set AUTH_FORCE_PASSWORD=1 in the api env + restart to force password login.${c.reset}`)
 }
 
-export const _cmds = { listMembers, resetPassword, makeAdmin, passwordLogin, clearCalendarError, pruneSessions, regeneratePowerSyncKey, listHouseholds, deleteHousehold, addMember, listAccounts }
+export const _cmds = { listMembers, resetPassword, makeAdmin, setInstallationOwner, passwordLogin, clearCalendarError, pruneSessions, regeneratePowerSyncKey, listHouseholds, deleteHousehold, addMember, listAccounts }
 
 async function main(): Promise<void> {
   const command = args()[0] ?? 'help'
@@ -432,6 +450,7 @@ async function main(): Promise<void> {
     case 'reset-password': await resetPassword(); break
     case 'make-admin': await makeAdmin(true); break
     case 'revoke-admin': await makeAdmin(false); break
+    case 'set-installation-owner': await setInstallationOwner(); break
     case 'password-login': await passwordLogin(); break
     case 'clear-calendar-error': await clearCalendarError(); break
     case 'prune-sessions': await pruneSessions(); break
