@@ -32,6 +32,7 @@ type Api = ReturnType<typeof createAPI>
 
 const STATE_TTL_MIN = 10
 const HANDOFF_TTL_MIN = 5
+const DEFAULT_NATIVE_REDIRECT = 'waffled://auth/callback'
 const base64url = (b: Buffer) => b.toString('base64url')
 const sha256b64url = (s: string) => base64url(createHash('sha256').update(s).digest())
 
@@ -165,6 +166,26 @@ function callbackUri(req: Request): string {
   return `${baseUrl(req)}/api/auth/oidc/callback`
 }
 
+function nativeRedirectUri(): string {
+  return process.env.OIDC_NATIVE_REDIRECT_URI?.trim() || DEFAULT_NATIVE_REDIRECT
+}
+
+// Redirect destinations carry a one-time session handoff, so they are an
+// allowlist rather than a general return URL. Web callers may return only to this
+// Waffled origin; the native app has one registered callback URI.
+function allowedRedirect(req: Request, raw: string | null): string | null {
+  if (!raw) return null
+  try {
+    const u = new URL(raw)
+    if (u.protocol === 'http:' || u.protocol === 'https:') {
+      return u.origin === new URL(baseUrl(req)).origin ? `${u.origin}/` : null
+    }
+    return u.toString() === new URL(nativeRedirectUri()).toString() ? nativeRedirectUri() : null
+  } catch {
+    return null
+  }
+}
+
 export function registerOidcRoutes(api: Api): void {
   // PUBLIC — kick off login: store state+PKCE+nonce, redirect to the IdP.
   api.get('/api/auth/oidc/start', async (req: Request, res: Response) => {
@@ -180,7 +201,11 @@ export function registerOidcRoutes(api: Api): void {
     const state = base64url(randomBytes(24))
     const nonce = base64url(randomBytes(16))
     const verifier = base64url(randomBytes(32))
-    const redirectTo = typeof req.query.redirect === 'string' ? req.query.redirect : null
+    const rawRedirect = typeof req.query.redirect === 'string' ? req.query.redirect : null
+    const redirectTo = allowedRedirect(req, rawRedirect)
+    if (rawRedirect && !redirectTo) {
+      return res.status(400).json({ error: 'BadRequest', message: 'redirect is not an allowed Waffled callback' })
+    }
     await query(
       `insert into oidc_login_states (state, code_verifier, nonce, redirect_to) values ($1, $2, $3, $4)`,
       [state, verifier, nonce, redirectTo]
@@ -222,10 +247,13 @@ export function registerOidcRoutes(api: Api): void {
     await query(`delete from oidc_login_states where created_at <= now() - interval '${STATE_TTL_MIN} minutes'`)
     const st = rows[0]
     if (!st) return res.status(400).html(resultPage('Sign-in expired', 'This sign-in link expired. Please try again.', appOrigin(req)))
+    // Revalidate persisted state as well, so states created before an upgrade can
+    // never send a newly-minted handoff to an old, untrusted destination.
+    const redirectTo = allowedRedirect(req, st.redirect_to)
 
     try {
       const cfg = await getAuthConfig()
-      if (!oidcReady(cfg)) return failSignIn(req, res, st.redirect_to, 404, 'Sign-in failed', 'OIDC is not enabled.', 'oidc_disabled')
+      if (!oidcReady(cfg)) return failSignIn(req, res, redirectTo, 404, 'Sign-in failed', 'OIDC is not enabled.', 'oidc_disabled')
       const disco = await discover(cfg.issuerUrl!)
       const claims = await exchangeAndVerify(disco, cfg, code, st.code_verifier, st.nonce, callbackUri(req))
 
@@ -238,7 +266,7 @@ export function registerOidcRoutes(api: Api): void {
       if (!tenant) {
         // First SSO login: invite-gated. Require a verified email that's on file.
         if (!email || !emailVerified) {
-          return failSignIn(req, res, st.redirect_to, 403, 'Sign-in blocked', 'Your identity provider did not supply a verified email.', 'no_verified_email')
+          return failSignIn(req, res, redirectTo, 403, 'Sign-in blocked', 'Your identity provider did not supply a verified email.', 'no_verified_email')
         }
         // Match the verified email to an ACCOUNT (not just a person). The account is
         // the global login; we link the OIDC identity to it and land on its active
@@ -269,7 +297,7 @@ export function registerOidcRoutes(api: Api): void {
             householdId = m.householdId
             await linkIdentity({ householdId, personId, provider: 'oidc', subject, email, emailVerified, accountId: acctId })
           } else {
-            return failSignIn(req, res, st.redirect_to, 403, 'Not invited', `No Waffled account uses ${email}. Ask an admin to add you first.`, 'not_invited')
+            return failSignIn(req, res, redirectTo, 403, 'Not invited', `No Waffled account uses ${email}. Ask an admin to add you first.`, 'not_invited')
           }
         }
         tenant = { sub: subject, personId, householdId, isAdmin: false, memberType: 'adult' }
@@ -277,11 +305,11 @@ export function registerOidcRoutes(api: Api): void {
 
       const handoff = randomUUID()
       await query(`insert into auth_handoffs (code, person_id, subject) values ($1, $2, $3)`, [handoff, tenant.personId, subject])
-      const dest = appCallbackUrl(req, st.redirect_to, handoff)
+      const dest = appCallbackUrl(req, redirectTo, handoff)
       res.redirect(dest)
     } catch (err) {
       console.error('oidc callback failed', err)
-      return failSignIn(req, res, st.redirect_to, 502, 'Sign-in failed', 'Could not complete sign-in. Please try again.', 'sign_in_failed')
+      return failSignIn(req, res, redirectTo, 502, 'Sign-in failed', 'Could not complete sign-in. Please try again.', 'sign_in_failed')
     }
   })
 
@@ -445,16 +473,12 @@ async function exchangeAndVerify(
 // is waiting to intercept.
 function appCallbackUrl(req: Request, redirectTo: string | null, handoff: string): string {
   if (redirectTo) {
-    try {
-      const u = new URL(redirectTo)
-      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-        const sep = redirectTo.includes('?') ? '&' : '?'
-        return `${redirectTo}${sep}code=${encodeURIComponent(handoff)}`
-      }
-      return `${u.origin}/auth/callback?code=${encodeURIComponent(handoff)}`
-    } catch {
-      /* fall through to the request-derived origin */
+    const u = new URL(redirectTo)
+    if (redirectTo === nativeRedirectUri()) {
+      u.searchParams.set('code', handoff)
+      return u.toString()
     }
+    return `${u.origin}/auth/callback?code=${encodeURIComponent(handoff)}`
   }
   return `${baseUrl(req)}/auth/callback?code=${encodeURIComponent(handoff)}`
 }
@@ -462,13 +486,7 @@ function appCallbackUrl(req: Request, redirectTo: string | null, handoff: string
 // True for a native deep-link redirect (custom scheme like waffled://), false for a
 // web origin (http/https) or no redirect.
 function isNativeRedirect(redirectTo: string | null): boolean {
-  if (!redirectTo) return false
-  try {
-    const u = new URL(redirectTo)
-    return u.protocol !== 'http:' && u.protocol !== 'https:'
-  } catch {
-    return false
-  }
+  return redirectTo === nativeRedirectUri()
 }
 
 // End a failed sign-in. A native client gets the error bounced back through its
@@ -509,12 +527,25 @@ function appOrigin(req: Request, redirectTo?: string | null): string {
 // (errors). Matches the Google-calendar callback's resultPage convention. backUrl
 // is absolute so "Back to Waffled" lands on the SPA, not wherever the api was reached.
 function resultPage(title: string, message: string, backUrl = '/'): string {
+  const safeTitle = escapeHtml(title)
+  const safeMessage = escapeHtml(message)
+  const safeBackUrl = escapeHtml(backUrl)
   return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title}</title>
+<title>${safeTitle}</title>
 <body style="font-family:system-ui;display:grid;place-items:center;min-height:100vh;margin:0;background:#f6f3ee;color:#2b2b2b">
 <div style="max-width:380px;text-align:center;padding:28px">
-<div style="font-size:22px;font-weight:700;margin-bottom:8px">${title}</div>
-<div style="color:#6b6b6b;font-weight:500">${message}</div>
-<a href="${backUrl}" style="display:inline-block;margin-top:18px;color:#e0653f;font-weight:700;text-decoration:none">← Back to Waffled</a>
+<div style="font-size:22px;font-weight:700;margin-bottom:8px">${safeTitle}</div>
+<div style="color:#6b6b6b;font-weight:500">${safeMessage}</div>
+<a href="${safeBackUrl}" style="display:inline-block;margin-top:18px;color:#e0653f;font-weight:700;text-decoration:none">← Back to Waffled</a>
 </div></body>`
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[ch]!)
 }

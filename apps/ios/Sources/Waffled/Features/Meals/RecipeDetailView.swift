@@ -8,6 +8,9 @@ import SwiftUI
 struct RecipeDetailView: View {
     let model: RecipesModel
     @Environment(\.dismiss) private var dismiss
+    /// Cook Mode is presented from the app root off this store (so it survives
+    /// backgrounding); the Cook button just hands it the loaded recipe.
+    @Environment(CookSessionStore.self) private var cook
 
     @State private var recipe: WaffledAPI.RecipeSummary
     @State private var ingredients: [WaffledAPI.RecipeIngredientDTO] = []
@@ -26,7 +29,6 @@ struct RecipeDetailView: View {
     @State private var scheduling = false
     @State private var userNotesDraft = ""
     @State private var editing = false
-    @State private var cookMode = false
     @State private var stepNoteEdit: StepNoteEdit?
     @State private var subEdit: SubEdit?
     @State private var cookMatches: [WaffledAPI.RecipeMatch] = []
@@ -78,7 +80,7 @@ struct RecipeDetailView: View {
         }
         .task {
             await loadDetail()
-            if autoCook, !steps.isEmpty { cookMode = true }
+            if autoCook, !steps.isEmpty { startCookMode() }
         }
         .fullScreenCover(isPresented: $editing) {
             RecipeEditorView(mode: .edit(WaffledAPI.RecipeDetailDTO(recipe: recipe, ingredients: ingredients, steps: steps))) { updated in
@@ -92,9 +94,6 @@ struct RecipeDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This removes “\(r.title)” from your recipe library. This can’t be undone.")
-        }
-        .fullScreenCover(isPresented: $cookMode) {
-            CookModeView(title: r.title, steps: steps, ingredients: ingredients) { markCooked() }
         }
         .sheet(item: $stepNoteEdit) { edit in
             StepNoteSheet(stepNumber: edit.step, note: noteFor(edit.step)) { text in
@@ -224,7 +223,7 @@ struct RecipeDetailView: View {
     /// The one primary action — a prominent black pill, the first thing your eye lands on
     /// after the title/tags.
     private var cookButton: some View {
-        Button { cookMode = true } label: {
+        Button { startCookMode() } label: {
             HStack(spacing: 9) {
                 Text("👨‍🍳").font(.system(size: 18))
                 Text("Cook Mode").font(.system(size: 16.5, weight: .heavy)).foregroundStyle(.white)
@@ -523,6 +522,13 @@ struct RecipeDetailView: View {
             do { let updated = try await api.setRecipeFavorite(id: recipe.id, isFavorite: next); apply(updated) }
             catch { recipe = recipe.withFavorite(!next) }
         }
+    }
+
+    /// Hand the loaded recipe to the app-level cook session, which presents Cook Mode
+    /// from the root (durable across backgrounding).
+    private func startCookMode() {
+        guard !steps.isEmpty else { return }
+        cook.start(id: recipe.id, title: r.title, steps: steps, ingredients: ingredients)
     }
 
     private func markCooked() {

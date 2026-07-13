@@ -19,6 +19,7 @@ let url: string
 let app: any
 let closePool: () => Promise<void>
 let kevinId = ''
+let householdId = ''
 let mediaDir = ''
 
 function mint(sub: string): string {
@@ -67,7 +68,7 @@ beforeAll(async () => {
   })
   expect(setup.statusCode).toBe(201)
   kevinId = JSON.parse(setup.body).person.id
-  const householdId = JSON.parse(setup.body).household.id
+  householdId = JSON.parse(setup.body).household.id
   // Seed an identity so the legacy mint('dev|kevin') token resolves to the owner.
   await withClient((c) =>
     c.query(
@@ -134,6 +135,17 @@ describe('photos api', () => {
     expect((await call('POST', '/api/photos', kevin, {})).statusCode).toBe(400)
     // caption present but neither imageUrl nor emoji
     expect((await call('POST', '/api/photos', kevin, { caption: 'No tile' })).statusCode).toBe(400)
+  })
+
+  it('rejects storage keys outside the active household namespace', async () => {
+    expect((await call('POST', '/api/photos', kevin, {
+      storageKey: `${householdId}/../../etc/passwd`,
+      contentType: 'image/jpeg',
+    })).statusCode).toBe(400)
+    expect((await call('POST', '/api/photos', kevin, {
+      storageKey: '22222222-2222-2222-2222-222222222222/other.jpg',
+      contentType: 'image/jpeg',
+    })).statusCode).toBe(400)
   })
 
   it('creates with a blank/omitted caption (caption is optional)', async () => {

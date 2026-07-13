@@ -15,15 +15,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- Installation-wide login and SSO settings now require the installation owner
-  instead of accepting changes from administrators of any household. Ownership
-  is durable across household changes and recoverable from the host admin CLI.
+- **Member logins now respect account ownership.** An administrator can update the login
+  already linked to a household profile, but an account owned by a different person must
+  join through the explicit invitation and acceptance flow.
+- **Sign-in callbacks now return only to Waffled.** OIDC login handoffs are restricted to
+  the current web origin or the registered native-app callback, and browser error pages
+  safely render messages returned by an identity provider.
+- **Uploaded media keys stay inside their household.** Photo, recipe, and chore-proof
+  attachments now reject malformed or cross-household keys, and local storage prevents
+  paths from escaping the configured media directory.
+- **Household links now stay inside the family they belong to.** Chore assignees,
+  currency conversions, calendar events, offline writes, goal participants, list
+  assignees, calendar owners, and meal references reject IDs from another household.
+- **Personal calendar rows now stay on their owner's synced devices.** PowerSync
+  enforces calendar visibility from signed household and person claims instead of
+  downloading the whole household's private rows and relying on client filtering.
+  The bucket split causes a one-time full client re-sync after upgrading.
+- **Installation-wide login settings now have one recoverable owner.** Global login and
+  SSO configuration no longer accepts changes from administrators of any household;
+  ownership persists across household changes and can be recovered from the host admin CLI.
 
 ### Added
+- **Plan breakfast and lunch from the iPhone meal planner, not just dinner.** Each day in the
+  weekly planner now offers an add button for every unplanned meal — Breakfast, Lunch, and
+  Dinner — instead of a lone "Plan dinner" affordance, matching what the iPad grid already did.
+- **"Plan my week" and "Plan my month" now work even without an AI provider — they shuffle.**
+  Households that haven't configured an LLM used to get an error when they asked the planner to
+  fill a week or a month. Instead, the planner now deals a random hand from your own recipe
+  library: it fills only the empty dinner slots, skips anything already planned in that window or
+  cooked in the last couple of weeks, and leaves slots you've already set alone. No AI required,
+  and the app doesn't change — the same "Plan my week" / "Plan my month" buttons just always
+  return a plan.
 
 ### Changed
+- **New chores now default to a one-off on the day you're viewing, and each day's list is sorted sensibly.** On iPhone/iPad, adding a chore from the Chores tab now starts as "Just once" due on the day currently shown — instead of a recurring daily chore always due today. A day's chores are also ordered unfinished-first, then by due time (earliest first, untimed last), then A–Z.
+- **Cook Mode on iPad now keeps the current step's ingredients in a left sidebar.** Instead of
+  the ingredients scrolling away beneath the big instruction, the iPad wall display pins them in
+  a fixed left-hand column so you can glance at what a step needs while the instruction fills the
+  rest of the screen. iPhone keeps its single scrolling column with ingredients inline.
 
 ### Fixed
+- **The iPhone Goals list now updates itself after you change a goal.** Deleting a goal, logging
+  progress, ticking a checklist step, or editing an entry from a goal's detail screen now refreshes
+  the list the moment you go back — no more stale card until you pull-to-refresh.
+- **Participant chips in the Goals log sheet no longer jump around when tapped.** Selecting who took
+  part keeps each chip the same size instead of growing and nudging its neighbours sideways.
+- **Chores tab feels right on iPhone: swipe between days, and no more empty reward badge.** You can now swipe left or right on the chores list to step a day at a time (matching the calendar), and a chore with no star reward no longer shows a stray "★ 0".
+- **Tap a candidate in "Plan my week with AI" to preview its recipe.** In the AI plan review,
+  tapping a suggestion card's emoji and title now opens the full recipe detail (swap, pick, and
+  lock still work as before); brand-new "✨ New dish" suggestions have nothing to open yet, so
+  their tap does nothing.
+- **Cook Mode now stays open when you leave the app and comes back where you were.** On the
+  iPad, backgrounding the app (Home button or app switcher) used to drop you back on Today and
+  lose Cook Mode entirely; now Cook Mode — and any running timers — survive backgrounding and are
+  right there when you return, still on the current step. Tapping a fired timer's notification
+  also re-opens Cook Mode at the exact step whose timer went off. Finishing a cook from Cook
+  Mode still offers the "Used from your pantry" update so your on-hand stock stays accurate.
+- **Cook Mode timers now reliably alert you after you leave the app.** A running step timer's
+  notification used to be cancelled the moment Cook Mode closed — including when you simply pressed
+  Home — so backgrounding the app with a timer running meant no alert ever fired. The pending
+  alert is now kept alive across backgrounding and only cleared when you actually pause or dismiss
+  the timer.
+- **Cook Mode timers now say which timer went off and alert like a proper kitchen alarm.** When
+  several step timers are running at once, the "Timer done" screen and the out-of-app
+  notification now name the specific timer (e.g. "Step 5 · 3-minute timer") instead of just its
+  step, and the notification is marked time-sensitive so it breaks through Focus and the
+  notification summary when you've stepped away from the app.
 
 ## [0.7.0] - 2026-07-10
 

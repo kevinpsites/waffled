@@ -10,6 +10,9 @@ struct WaffledApp: App {
     @State private var session = Session()
     @State private var notifications = NotificationManager()
     @State private var kiosk = KioskMode()
+    /// The active Cook Mode session, hoisted app-level so Cook Mode + its running timers
+    /// survive the app backgrounding (and a tapped timer notification can re-open it).
+    @State private var cook = CookSessionStore()
     /// Cold-launch splash (bouncing logo on cream). Shown once per launch, then faded.
     @State private var showSplash = true
 
@@ -40,6 +43,7 @@ struct WaffledApp: App {
             .environment(session)
             .environment(notifications)
             .environment(kiosk)
+            .environment(cook)
             .tint(WF.primary)
             .preferredColorScheme(.light)          // warm-white canvas is a light theme
             .task { await session.bootstrap() }    // read the Keychain / probe auth status
@@ -68,10 +72,41 @@ struct KioskGate<Content: View>: View {
 /// *planner* (`AppRoot`) or the iPad family *display* (`KioskRoot`). The split is by
 /// device idiom — see `DeviceExperience` and `apps/ios/IPAD_ROADMAP.md`.
 struct RootView: View {
+    @Environment(NotificationManager.self) private var notifications
+    @Environment(CookSessionStore.self) private var cook
+
     var body: some View {
-        switch DeviceExperience.current {
-        case .planner: AppRoot()
-        case .kiosk:   KioskRoot()
+        Group {
+            switch DeviceExperience.current {
+            case .planner: AppRoot()
+            case .kiosk:   KioskRoot()
+            }
         }
+        // Cook Mode is presented HERE, at the app root — above both the phone planner
+        // and the iPad kiosk shell — so it (and its running timers) survives the app
+        // backgrounding. The inner navigation may reset to Today on return; this cover
+        // stays put because it's driven by the durable `CookSessionStore`, not transient
+        // view `@State`. Closing it (✕/Finish) clears the store.
+        .fullScreenCover(isPresented: cookPresented) { CookModeView() }
+        // After a Cook Mode finish, offer the same "Used from your pantry" reconcile the
+        // recipe screen's Mark-cooked uses — the back half of the pantry↔meal loop —
+        // reusing the shared CookConfirmSheet (only when the server returned matches).
+        .sheet(item: pantryReconcile) { rec in
+            CookConfirmSheet(title: rec.title, matches: rec.matches)
+        }
+        // A tapped cook-timer notification re-opens Cook Mode at the fired step.
+        .onChange(of: notifications.pendingCookTimer) { _, link in
+            guard let link else { return }
+            cook.openFromNotification(link)
+            notifications.pendingCookTimer = nil
+        }
+    }
+
+    private var cookPresented: Binding<Bool> {
+        Binding(get: { cook.isActive }, set: { if !$0 { cook.end() } })
+    }
+
+    private var pantryReconcile: Binding<CookSessionStore.PantryReconcile?> {
+        Binding(get: { cook.pendingPantryReconcile }, set: { cook.pendingPantryReconcile = $0 })
     }
 }
