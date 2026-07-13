@@ -144,8 +144,8 @@
   place-items: center;
 }
 .gitem.done .gck {
-  background: var(--wally);
-  border-color: var(--wally);
+  background: var(--person-3);
+  border-color: var(--person-3);
 }
 /* name + ambient attribution stack; takes the row's flexible space */
 .gitem-body {
@@ -372,7 +372,7 @@
   cursor: pointer;
 }
 .staple-chip:hover {
-  background: var(--wally-t);
+  background: var(--person-3-t);
   color: var(--success);
 }
 .staple-chip.editable {

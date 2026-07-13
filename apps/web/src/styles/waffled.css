@@ -38,17 +38,20 @@
   --ai-d:      #6A3FC4;   /* AI text-on-tint */
   --ai-t:      #EFEAFC;   /* AI tint bg */
 
-  /* people (base + tint) */
-  --kevin:  #2F7FED;  --kevin-t:  #E7F0FE;
-  --kelly:  #E0548B;  --kelly-t:  #FCE9F1;
-  --wally:  #25A368;  --wally-t:  #E4F5EC;   /* --wally == --success */
-  --lottie: #8A5CF0;  --lottie-t: #F0E9FD;
+  /* person palette (base + tint) — four distinct accent slots used as default
+     per-person identity colors AND reused as the goal-category palette. Named by
+     slot, NOT by person: a real member's color lives in persons.color_hex; these
+     are the fallback/demo palette. (Slots: 1 blue · 2 pink · 3 green · 4 purple.) */
+  --person-1:  #2F7FED;  --person-1-t:  #E7F0FE;   /* blue */
+  --person-2:  #E0548B;  --person-2-t:  #FCE9F1;   /* pink */
+  --person-3:  #25A368;  --person-3-t:  #E4F5EC;   /* green — same value as --success */
+  --person-4:  #8A5CF0;  --person-4-t:  #F0E9FD;   /* purple */
 
   /* status / semantic (base for text/icons/borders, -t tint for fills/chips) */
   --success:   #25A368;  --success-t: #E4F5EC;  /* done / positive (absorbs 5 greens) */
   --danger:    #C0392B;  --danger-t:  #FBE3E1;  /* error / delete / overdue */
   --warn:      #C77A1A;  --warn-t:    #FDF2DD;  /* warning amber — distinct from --gold */
-  --info:      #2F7FED;  --info-t:    #E7F0FE;  /* info / secondary accent (== --kevin) */
+  --info:      #2F7FED;  --info-t:    #E7F0FE;  /* info / secondary accent (== --person-1) */
 
   /* radii */
   --r-xs: 8px; --r-sm: 12px; --r-md: 16px; --r-lg: 22px; --r-xl: 30px;
@@ -100,11 +103,11 @@
   --ai-d:      #B9A3F5;
   --ai-t:      rgba(140,116,232,.20);
 
-  /* people — bases fixed; tints become translucent washes */
-  --kevin-t:  rgba(47,127,237,.20);
-  --kelly-t:  rgba(224,84,139,.20);
-  --wally-t:  rgba(37,163,104,.22);
-  --lottie-t: rgba(138,92,240,.22);
+  /* person palette — bases fixed; tints become translucent washes */
+  --person-1-t:  rgba(47,127,237,.20);
+  --person-2-t:  rgba(224,84,139,.20);
+  --person-3-t:  rgba(37,163,104,.22);
+  --person-4-t: rgba(138,92,240,.22);
 
   /* status — brightened for contrast on dark */
   --success:   #34B87A;  --success-t: rgba(37,163,104,.20);
@@ -202,10 +205,10 @@
 /* ===== avatars / person ========================================= */
 .av { border-radius: 999px; display: grid; place-items: center; flex: none;
   font-size: 18px; line-height: 1; box-shadow: inset 0 0 0 2px rgba(255,255,255,.7); }
-.av.kevin  { background: var(--kevin-t); }
-.av.kelly  { background: var(--kelly-t); }
-.av.wally  { background: var(--wally-t); }
-.av.lottie { background: var(--lottie-t); }
+.av.kevin  { background: var(--person-1-t); }
+.av.kelly  { background: var(--person-2-t); }
+.av.wally  { background: var(--person-3-t); }
+.av.lottie { background: var(--person-4-t); }
 .av.sm { width: 30px; height: 30px; font-size: 15px; }
 .av.md { width: 40px; height: 40px; font-size: 20px; }
 .av.lg { width: 56px; height: 56px; font-size: 28px; }
@@ -213,10 +216,10 @@
 .person-chip { display: inline-flex; align-items: center; gap: 9px; padding: 7px 16px 7px 8px;
   border-radius: 999px; font-size: 15px; font-weight: 600; }
 .person-chip .ct { margin-left: 2px; font-weight: 600; opacity: .75; font-size: 13px; }
-.c-kevin  { background: var(--kevin-t);  color: #1559b8; }
-.c-kelly  { background: var(--kelly-t);  color: #b22f66; }
-.c-wally  { background: var(--wally-t);  color: var(--success); }
-.c-lottie { background: var(--lottie-t); color: #6a3fc4; }
+.c-kevin  { background: var(--person-1-t);  color: #1559b8; }
+.c-kelly  { background: var(--person-2-t);  color: #b22f66; }
+.c-wally  { background: var(--person-3-t);  color: var(--success); }
+.c-lottie { background: var(--person-4-t); color: #6a3fc4; }
 
 /* ===== generic card ============================================= */
 .card { background: var(--card); border-radius: var(--r-lg); box-shadow: var(--sh-2); }
@@ -273,7 +276,7 @@
 .cap-icon { width: 38px; height: 38px; flex: none; border-radius: 12px; background: var(--panel);
   display: grid; place-items: center; font-size: 20px; }
 .cap-kind { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
-  color: var(--lottie, var(--ai)); display: flex; align-items: center; gap: 8px; }
+  color: var(--person-4, var(--ai)); display: flex; align-items: center; gap: 8px; }
 .cap-via { font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--ink-3);
   font-size: 10.5px; }
 .cap-primary { font-size: 15px; font-weight: 700; color: var(--ink); white-space: nowrap;
@@ -363,10 +366,10 @@ select.cap-edit-sub { cursor: pointer; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* meal-plan events read as recipes — a dashed edge sets them apart from real events */
 .ev.ev-meal { border: 1px dashed currentColor; }
-.ev.kevin  { background: var(--kevin-t);  color: #1559b8; }
-.ev.kelly  { background: var(--kelly-t);  color: #b22f66; }
-.ev.wally  { background: var(--wally-t);  color: var(--success); }
-.ev.lottie { background: var(--lottie-t); color: #6a3fc4; }
+.ev.kevin  { background: var(--person-1-t);  color: #1559b8; }
+.ev.kelly  { background: var(--person-2-t);  color: #b22f66; }
+.ev.wally  { background: var(--person-3-t);  color: var(--success); }
+.ev.lottie { background: var(--person-4-t); color: #6a3fc4; }
 .ev.meal { background: var(--card); border: 1.5px solid var(--hair); color: var(--ink-2); }
 .ev.time::before { content: attr(data-t); color: inherit; opacity: .7; margin-right: 5px; font-weight: 700; }
 .ev-more { font-size: 11px; color: var(--ink-3); font-weight: 600; padding-left: 4px; }
@@ -394,7 +397,7 @@ select.cap-edit-sub { cursor: pointer; }
 .chore .star svg { width: 12px; height: 12px; fill: var(--gold); }
 .tick { width: 26px; height: 26px; border-radius: 999px; border: 2px solid var(--hair);
   flex: none; background: var(--card); }
-.tick.done { background: var(--wally); border-color: var(--wally); position: relative; }
+.tick.done { background: var(--person-3); border-color: var(--person-3); position: relative; }
 .tick.done::after { content:""; position:absolute; left:8px; top:4px; width:6px; height:11px;
   border:2px solid #fff; border-top:0; border-left:0; transform: rotate(43deg); }
 .emoji-lg { font-size: 34px; line-height: 1; }
@@ -402,7 +405,7 @@ select.cap-edit-sub { cursor: pointer; }
   padding: 11px; border-radius: var(--r-md); border: 2px dashed var(--hair); background: transparent;
   color: var(--ink-3); font-size: 14px; font-weight: 700; cursor: pointer; font-family: var(--sans);
   transition: border-color .14s, color .14s, background .14s; }
-.chore-add:hover { border-color: var(--wally); color: var(--wally); background: var(--wally-t); }
+.chore-add:hover { border-color: var(--person-3); color: var(--person-3); background: var(--person-3-t); }
 .chore-add svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2.4; stroke-linecap: round; }
 .chore.is-new { animation: wf-newchore .42s cubic-bezier(.22,.9,.36,1); }
 @keyframes wf-newchore { 0%{opacity:0;transform:translateY(-8px) scale(.96)} 100%{opacity:1;transform:none} }
@@ -416,9 +419,9 @@ select.cap-edit-sub { cursor: pointer; }
 .meal-grid .ch small { display:block; font-family: var(--sans); font-size: 12px; color: var(--ink-3); font-weight:600; }
 .mcell { border-radius: var(--r-md); display: grid; place-items: center; text-align: center;
   font-size: 12.5px; font-weight: 600; padding: 8px; color: var(--ink); }
-.mcell.b { background: var(--wally-t); }
-.mcell.l { background: var(--kelly-t); }
-.mcell.d { background: var(--lottie-t); }
+.mcell.b { background: var(--person-3-t); }
+.mcell.l { background: var(--person-2-t); }
+.mcell.d { background: var(--person-4-t); }
 .mcell.s { background: var(--warn-t); }
 .mcell.empty { background: var(--card-2); border: 1px dashed var(--hair); }
 .mcell.add { color: var(--ink-3); font-size: 22px; }
@@ -431,7 +434,7 @@ select.cap-edit-sub { cursor: pointer; }
 .btn-ghost { background: var(--panel); color: var(--ink); }
 .btn svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 2;
   stroke-linecap: round; stroke-linejoin: round; }
-.fab { width: 58px; height: 58px; border-radius: 999px; background: var(--kevin); color:#fff;
+.fab { width: 58px; height: 58px; border-radius: 999px; background: var(--person-1); color:#fff;
   display: grid; place-items: center; box-shadow: var(--sh-3); }
 .fab svg { width: 26px; height: 26px; stroke: #fff; stroke-width: 2.4; }
 
@@ -478,7 +481,7 @@ select.cap-edit-sub { cursor: pointer; }
 .rc-tags { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
 .tag { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--panel);
   color: var(--ink-2); white-space: nowrap; }
-.tag.veg { background: var(--wally-t); color: var(--success); }
+.tag.veg { background: var(--person-3-t); color: var(--success); }
 .tag.fav { background: var(--warn-t); color: var(--warn); }
 
 /* image gradient placeholders (food) */
@@ -530,7 +533,7 @@ select.cap-edit-sub { cursor: pointer; }
 .constraint .cl { font-size: 14px; font-weight: 600; color: var(--ink-2); flex: 1; }
 .constraint .cv { font-size: 14px; font-weight: 700; color: var(--ink); }
 .use-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700;
-  background: var(--wally-t); color: var(--success); padding: 5px 11px; border-radius: 999px; }
+  background: var(--person-3-t); color: var(--success); padding: 5px 11px; border-radius: 999px; }
 
 /* ===== grocery list ============================================ */
 .aisle-h { display: flex; align-items: center; gap: 10px; margin: 4px 0 8px; }
@@ -635,7 +638,7 @@ select.cap-edit-sub { cursor: pointer; }
 .chev { color: var(--ink-3); }
 .chev svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .toggle { width: 46px; height: 28px; border-radius: 999px; background: #d8d2c8; position: relative; flex: none; }
-.toggle.on { background: var(--wally); }
+.toggle.on { background: var(--person-3); }
 .toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px;
   border-radius: 999px; background: #fff; box-shadow: var(--sh-1); transition: left .18s; }
 .toggle.on::after { left: 21px; }
@@ -647,8 +650,8 @@ select.cap-edit-sub { cursor: pointer; }
 .gicon { width: 36px; height: 36px; border-radius: 999px; background: var(--card); border: 1px solid var(--hair);
   display: grid; place-items: center; font-weight: 800; font-size: 17px; font-family: var(--serif); flex: none; }
 .dotbox { width: 14px; height: 14px; border-radius: 5px; flex: none; }
-.synced { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--wally); }
-.synced::before { content: ""; width: 7px; height: 7px; border-radius: 99px; background: var(--wally); }
+.synced { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--person-3); }
+.synced::before { content: ""; width: 7px; height: 7px; border-radius: 99px; background: var(--person-3); }
 .field { background: var(--card-2); border: 1px solid var(--hair); border-radius: var(--r-md);
   padding: 13px 15px; font-size: 16px; font-weight: 600; }
 .swatch-row { display: flex; gap: 10px; }
@@ -675,11 +678,11 @@ select.cap-edit-sub { cursor: pointer; }
 .jar .jfill { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(var(--gold),#eeb24f); }
 .jar .jlbl { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; font-size: 20px; color: var(--ink); }
 .jar-lid { width: 138px; height: 14px; border-radius: 8px; background: var(--ink); margin: 0 auto 0; }
-.level-badge { width: 66px; height: 66px; border-radius: 999px; background: linear-gradient(135deg,var(--lottie),#a47bf5);
+.level-badge { width: 66px; height: 66px; border-radius: 999px; background: linear-gradient(135deg,var(--person-4),#a47bf5);
   color: #fff; display: grid; place-items: center; font-family: var(--serif); font-size: 26px; font-weight: 700;
   box-shadow: var(--sh-2); flex: none; }
 .xp { height: 13px; border-radius: 99px; background: var(--panel); overflow: hidden; }
-.xp > div { height: 100%; border-radius: 99px; background: linear-gradient(90deg,var(--lottie),#a47bf5); }
+.xp > div { height: 100%; border-radius: 99px; background: linear-gradient(90deg,var(--person-4),#a47bf5); }
 .streak-day { width: 38px; height: 44px; border-radius: 12px; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 2px; font-size: 11px; font-weight: 700;
   background: var(--panel); color: var(--ink-3); }
@@ -715,14 +718,14 @@ select.cap-edit-sub { cursor: pointer; }
 .mnode { display: flex; flex-direction: column; align-items: center; gap: 7px; position: relative; z-index: 1; width: 72px; }
 .mnode .mdot2 { width: 36px; height: 36px; border-radius: 999px; background: var(--panel); display: grid;
   place-items: center; font-size: 17px; border: 3px solid var(--card); box-shadow: 0 0 0 1px var(--hair); }
-.mnode.done .mdot2 { background: var(--wally); color: #fff; box-shadow: none; border-color: var(--card); }
+.mnode.done .mdot2 { background: var(--person-3); color: #fff; box-shadow: none; border-color: var(--card); }
 .mnode.now .mdot2 { background: var(--gold); color: #fff; box-shadow: 0 0 0 4px #fbe6c4; }
 .mnode .ml { font-size: 11.5px; font-weight: 800; }
 .mnode .mr { font-size: 10.5px; color: var(--ink-3); font-weight: 600; }
 .logrow { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--hair-2); }
 .logrow .lwhen { font-size: 12.5px; font-weight: 700; color: var(--ink-2); width: 58px; }
 .logrow .lwhat { flex: 1; font-size: 14.5px; font-weight: 600; }
-.logrow .lamt { font-size: 13.5px; font-weight: 800; color: var(--wally); }
+.logrow .lamt { font-size: 13.5px; font-weight: 800; color: var(--person-3); }
 /* whole-person balance — category mini rings */
 .balance { display: flex; gap: 14px; justify-content: space-between; }
 .bcat { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 1; }
@@ -731,7 +734,7 @@ select.cap-edit-sub { cursor: pointer; }
 .bring .bemo { position: absolute; inset: 0; display: grid; place-items: center; font-size: 21px; }
 
 /* ===== prototype interaction layer ============================ */
-.ing.is-checked .ck { background: var(--wally); border-color: var(--wally); position: relative; }
+.ing.is-checked .ck { background: var(--person-3); border-color: var(--person-3); position: relative; }
 .ing.is-checked .ck::after { content:""; position:absolute; left:5px; top:2px; width:5px; height:9px;
   border:2px solid #fff; border-top:0; border-left:0; transform: rotate(43deg); }
 .ing.is-checked .inm, .ing.is-checked .iq { text-decoration: line-through; color: var(--ink-3); }
@@ -817,7 +820,7 @@ select.cap-edit-sub { cursor: pointer; }
 .mpick { display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; }
 .mpick .mp-check { width: 20px; height: 20px; border-radius: 999px; display: grid; place-items: center;
   background: var(--card); border: 2px solid var(--hair); }
-.mpick.on .mp-check { background: var(--wally); border-color: var(--wally); }
+.mpick.on .mp-check { background: var(--person-3); border-color: var(--person-3); }
 .mpick .mp-name { font-size: 12px; font-weight: 700; color: var(--ink-2); }
 .feature-row { display: flex; align-items: center; gap: 13px; padding: 15px 17px; border-radius: var(--r-md);
   background: linear-gradient(120deg,#fdf3e6,#fcefdb); border: 1px solid #f3dcb8; }

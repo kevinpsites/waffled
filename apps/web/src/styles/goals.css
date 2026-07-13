@@ -334,13 +334,13 @@ button.goal-listhead-link:hover {
 .ge-rowopt .rbd { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .ge-rowopt .rt { font-size: 14.5px; font-weight: 750; }
 .ge-rowopt .rex { font-size: 12px; color: var(--ink-2); font-weight: 600; margin-top: 3px; line-height: 1.35; }
-.ge-rowopt .rex b { color: var(--wally); font-weight: 800; }
+.ge-rowopt .rex b { color: var(--person-3); font-weight: 800; }
 .ge-rowopt .rrk { width: 20px; height: 20px; border-radius: 999px; border: 2px solid var(--hair); flex: none; position: relative; }
 .ge-rowopt.on { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent); }
 .ge-rowopt.on .rrk { background: var(--primary); border-color: var(--primary); }
 .ge-rowopt.on .rrk::after { content: ""; position: absolute; left: 6px; top: 3px; width: 5px; height: 9px; border: 2px solid #fff; border-top: 0; border-left: 0; transform: rotate(43deg); }
 .ge-worked { margin-top: 14px; background: var(--card-2); border: 1px solid var(--hair-2); border-radius: var(--r-md); padding: 13px 15px; display: flex; align-items: center; gap: 12px; }
-.ge-worked .wi { width: 34px; height: 34px; border-radius: 10px; background: var(--wally-t); display: grid; place-items: center; font-size: 17px; flex: none; }
+.ge-worked .wi { width: 34px; height: 34px; border-radius: 10px; background: var(--person-3-t); display: grid; place-items: center; font-size: 17px; flex: none; }
 .ge-worked .wt { font-size: 12.5px; font-weight: 650; color: var(--ink-2); line-height: 1.4; }
 .ge-worked .wt b { color: var(--ink); font-weight: 800; }
 
@@ -799,7 +799,7 @@ button.goal-listhead-link:hover {
   border: 1.5px solid var(--hair); background: var(--card);
   display: grid; place-items: center; font-size: 14px; font-weight: 800; color: #fff;
 }
-.log-step-row.done .log-step-box { background: var(--wally); border-color: var(--wally); }
+.log-step-row.done .log-step-box { background: var(--person-3); border-color: var(--person-3); }
 .log-step-label { font-size: 15px; font-weight: 600; }
 .log-step-row.done .log-step-label { text-decoration: line-through; color: var(--ink-3); }
 
@@ -846,7 +846,7 @@ button.goal-listhead-link:hover {
   transition: background 0.12s, color 0.12s;
 }
 .log-chip.on {
-  background: var(--wally);
+  background: var(--person-3);
   color: #fff;
 }
 .log-custom {
@@ -894,7 +894,7 @@ button.goal-listhead-link:hover {
   color: #fff;
 }
 .log-person.on .av {
-  box-shadow: 0 0 0 2px var(--wally);
+  box-shadow: 0 0 0 2px var(--person-3);
 }
 .log-note {
   width: 100%;
@@ -923,7 +923,7 @@ button.goal-listhead-link:hover {
   cursor: pointer;
 }
 .log-act:hover {
-  background: var(--wally-t);
+  background: var(--person-3-t);
   color: var(--success);
 }
 

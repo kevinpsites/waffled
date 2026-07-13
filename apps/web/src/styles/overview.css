@@ -75,18 +75,18 @@
   background: var(--panel); color: var(--ink-2); text-transform: capitalize;
 }
 .pp-cat-chip.cat-physical { background: #fdeae6; color: #c0432c; stroke: none; }
-.pp-cat-chip.cat-intellectual { background: var(--kevin-t); color: var(--info); }
-.pp-cat-chip.cat-spiritual { background: var(--lottie-t); color: var(--ai-d); }
+.pp-cat-chip.cat-intellectual { background: var(--person-1-t); color: var(--info); }
+.pp-cat-chip.cat-spiritual { background: var(--person-4-t); color: var(--ai-d); }
 .pp-cat-chip.cat-creative { background: #fbf1d6; color: #9a7400; }
-.pp-cat-chip.cat-social { background: var(--wally-t); color: var(--success); }
+.pp-cat-chip.cat-social { background: var(--person-3-t); color: var(--success); }
 .pp-goal-streak { font-size: 12px; font-weight: 800; color: var(--warn); }
 .pp-goal-bar { height: 7px; border-radius: 999px; background: var(--panel); margin-top: 7px; overflow: hidden; }
-.pp-goal-bar span { display: block; height: 100%; background: var(--wally); border-radius: 999px; }
+.pp-goal-bar span { display: block; height: 100%; background: var(--person-3); border-radius: 999px; }
 .pp-goal-num { flex: none; font-size: 14px; text-align: right; }
 .pp-goal-num b { font-size: 16px; }
 
 /* stars & chores */
-.pp-star-big { font-size: 30px; font-weight: 800; color: var(--lottie); }
+.pp-star-big { font-size: 30px; font-weight: 800; color: var(--person-4); }
 /* All currencies equal: one wrapping row, same large size, no priority. */
 .pp-wallet { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 22px; }
 .pp-wallet-cur { font-size: 30px; font-weight: 800; line-height: 1; }
@@ -104,9 +104,9 @@
 .pp-redeem-t { flex: 1; font-weight: 600; font-size: 14px; }
 .pp-redeem-status { font-size: 11px; font-weight: 800; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; }
 .st-pending { background: var(--warn-t); color: #b07d00; }
-.st-approved { background: var(--wally-t); color: var(--success); }
+.st-approved { background: var(--person-3-t); color: var(--success); }
 .st-denied { background: var(--panel); color: var(--ink-3); }
-.pp-redeem-cost { font-size: 13px; font-weight: 800; color: var(--lottie); }
+.pp-redeem-cost { font-size: 13px; font-weight: 800; color: var(--person-4); }
 
 @media (max-width: 1000px) {
   .person-profile { grid-template-columns: 1fr; }
@@ -137,7 +137,7 @@
 .fam-stat-n { font-size: 20px; font-weight: 800; }
 .fam-stat-l { font-size: 11px; font-weight: 600; color: var(--ink-3); }
 .fam-bar { height: 7px; border-radius: 999px; background: var(--panel); overflow: hidden; }
-.fam-bar span { display: block; height: 100%; background: var(--wally); border-radius: 999px; }
+.fam-bar span { display: block; height: 100%; background: var(--person-3); border-radius: 999px; }
 @media (max-width: 600px) { .family-overview { padding: 6px 16px 22px; } }
 
 /* trade-currencies action in the person profile's balance card */
@@ -159,7 +159,7 @@
 .pp-shop { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .pp-shop-card { position: relative; border: 1px solid var(--hair); border-radius: 14px; padding: 12px 10px 10px;
   text-align: center; background: var(--card-2); }
-.pp-shop-card.pinned { border-color: var(--wally); box-shadow: 0 0 0 1px var(--wally) inset; }
+.pp-shop-card.pinned { border-color: var(--person-3); box-shadow: 0 0 0 1px var(--person-3) inset; }
 .pp-shop-pin { position: absolute; top: 6px; right: 6px; border: 0; background: none; cursor: pointer;
   font-size: 13px; opacity: .3; filter: grayscale(1); transition: opacity .12s; padding: 2px; }
 .pp-shop-pin:hover { opacity: .7; }
@@ -180,12 +180,12 @@
 /* Streak card */
 .pp-streak-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
 .pp-streak-days { font-weight: 800; font-size: 17px; }
-.pp-streak-cheer { font-size: 12px; font-weight: 700; color: var(--wally); margin-left: auto; }
+.pp-streak-cheer { font-size: 12px; font-weight: 700; color: var(--person-3); margin-left: auto; }
 .pp-streak-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
 .pp-streak-day { display: flex; flex-direction: column; align-items: center; gap: 4px;
   padding: 8px 0; border-radius: 10px; background: var(--card-2); }
-.pp-streak-day.on { background: color-mix(in srgb, var(--wally) 16%, transparent); }
-.pp-streak-day.today { box-shadow: 0 0 0 2px var(--wally) inset; }
+.pp-streak-day.on { background: color-mix(in srgb, var(--person-3) 16%, transparent); }
+.pp-streak-day.today { box-shadow: 0 0 0 2px var(--person-3) inset; }
 .pp-streak-day.future { opacity: 0.45; }
 .pp-streak-icon { font-size: 16px; line-height: 1; }
 .pp-streak-day:not(.on) .pp-streak-icon { color: var(--ink-3); }

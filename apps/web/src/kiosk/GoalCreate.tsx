@@ -115,7 +115,7 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
       onClick={onClick}
       role="switch"
       aria-checked={on}
-      style={{ width: 46, height: 28, borderRadius: 999, flex: 'none', cursor: 'pointer', background: on ? 'var(--wally)' : '#d8d2c8', position: 'relative', transition: 'background .18s' }}
+      style={{ width: 46, height: 28, borderRadius: 999, flex: 'none', cursor: 'pointer', background: on ? 'var(--person-3)' : '#d8d2c8', position: 'relative', transition: 'background .18s' }}
     >
       <div style={{ position: 'absolute', top: 3, left: on ? 21 : 3, width: 22, height: 22, borderRadius: 999, background: '#fff', boxShadow: 'var(--sh-1)', transition: 'left .18s' }} />
     </div>

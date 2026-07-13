@@ -11,7 +11,7 @@ const MEMBER_TYPES = [
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
-    <div onClick={onClick} role="switch" aria-checked={on} style={{ width: 44, height: 26, borderRadius: 999, flex: 'none', cursor: 'pointer', background: on ? 'var(--wally)' : 'var(--hair)', position: 'relative', transition: 'background .15s' }}>
+    <div onClick={onClick} role="switch" aria-checked={on} style={{ width: 44, height: 26, borderRadius: 999, flex: 'none', cursor: 'pointer', background: on ? 'var(--person-3)' : 'var(--hair)', position: 'relative', transition: 'background .15s' }}>
       <div style={{ position: 'absolute', top: 3, left: on ? 21 : 3, width: 20, height: 20, borderRadius: 999, background: '#fff', transition: 'left .15s' }} />
     </div>
   )

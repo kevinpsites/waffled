@@ -222,13 +222,13 @@
 }
 
 .meals-cell.breakfast {
-  background: var(--wally-t);
+  background: var(--person-3-t);
 }
 .meals-cell.lunch {
-  background: var(--kelly-t);
+  background: var(--person-2-t);
 }
 .meals-cell.dinner {
-  background: var(--lottie-t);
+  background: var(--person-4-t);
 }
 .meals-cell.snack {
   background: #fdf3dd;

@@ -151,8 +151,8 @@ body {
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--lottie);
-  background: color-mix(in srgb, var(--lottie) 14%, transparent);
+  color: var(--person-4);
+  background: color-mix(in srgb, var(--person-4) 14%, transparent);
   padding: 2px 6px;
   border-radius: 999px;
 }
@@ -509,7 +509,7 @@ body {
 .tasks-datenav .dn-rel {
   font-size: 11.5px;
   font-weight: 600;
-  color: var(--lottie, var(--ai));
+  color: var(--person-4, var(--ai));
 }
 .tasks-datenav .dn-today {
   margin-left: 4px;
@@ -560,8 +560,8 @@ button.tick {
   display: inline-block;
 }
 .gcheck.on {
-  background: var(--wally);
-  border-color: var(--wally);
+  background: var(--person-3);
+  border-color: var(--person-3);
 }
 .gcheck.on::after {
   content: '';
@@ -651,7 +651,7 @@ button.tick {
 }
 .rw-bal-name { font-weight: 700; font-size: 14.5px; }
 .rw-bal-coins { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 1px; }
-.rw-coin { display: inline-flex; align-items: center; gap: 4px; font-weight: 800; font-size: 14px; color: var(--lottie); }
+.rw-coin { display: inline-flex; align-items: center; gap: 4px; font-weight: 800; font-size: 14px; color: var(--person-4); }
 .rw-coin-sym { font-size: 13px; }
 /* trade (currency conversions) — modal summary, shared across surfaces */
 .rw-trade-summary { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 12px 14px;
@@ -666,7 +666,7 @@ button.tick {
   font: inherit; font-size: 13px; font-weight: 700; padding: 7px 12px; border-radius: 999px;
   border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2); cursor: pointer;
 }
-.rw-cur-chip.on { border-color: var(--wally); color: var(--wally); }
+.rw-cur-chip.on { border-color: var(--person-3); color: var(--person-3); }
 
 /* archived rewards (admin, collapsed) */
 .rw-archived { margin-top: 4px; }
@@ -692,7 +692,7 @@ button.tick {
 .rw-appr-name { font-weight: 700; }
 .rw-appr-reward { font-weight: 700; }
 .rw-appr-when { font-weight: 600; color: var(--ink-3); }
-.rw-appr-cost { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-weight: 800; color: var(--lottie); }
+.rw-appr-cost { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-weight: 800; color: var(--person-4); }
 .rw-appr-actions { display: flex; gap: 8px; }
 .rw-appr-actions .pill { cursor: pointer; }
 
@@ -733,11 +733,11 @@ button.tick {
 .rw-del:hover { opacity: 1; }
 .rw-card-emo { font-size: 38px; }
 .rw-card-title { font-weight: 700; font-size: 15px; }
-.rw-card-cost { display: flex; align-items: center; gap: 5px; font-weight: 800; color: var(--lottie); font-size: 14px; }
+.rw-card-cost { display: flex; align-items: center; gap: 5px; font-weight: 800; color: var(--person-4); font-size: 14px; }
 .rw-redeem {
   margin-top: 6px; font: inherit; font-size: 13.5px; font-weight: 700;
   padding: 8px 18px; border-radius: 999px; border: 0;
-  background: var(--wally); color: #fff; cursor: pointer;
+  background: var(--person-3); color: #fff; cursor: pointer;
 }
 .rw-pick { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 6px; }
 .rw-pick-p {
@@ -777,13 +777,13 @@ button.tick {
   padding: 7px 12px; border-radius: 999px;
   border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2); cursor: pointer;
 }
-.chore-day.on { background: var(--wally); border-color: var(--wally); color: #fff; }
+.chore-day.on { background: var(--person-3); border-color: var(--person-3); color: #fff; }
 
 /* up-for-grabs claim affordance (Tasks) */
 .claim-btn {
   flex: none; font: inherit; font-size: 12.5px; font-weight: 700;
   padding: 6px 14px; border-radius: 999px; border: 0;
-  background: var(--wally); color: #fff; cursor: pointer;
+  background: var(--person-3); color: #fff; cursor: pointer;
 }
 .claim-pick { display: flex; align-items: center; gap: 5px; flex: none; }
 .claim-p {
@@ -799,13 +799,13 @@ button.tick {
   background: var(--card-2); border: 1px solid var(--hair); border-radius: var(--r-md);
   padding: 11px 13px; margin-top: 4px;
 }
-.chore-approval.on { border-color: var(--wally); background: var(--wally-t); }
+.chore-approval.on { border-color: var(--person-3); background: var(--person-3-t); }
 .chore-approval-check {
   width: 22px; height: 22px; border-radius: 7px; flex: none;
   border: 2px solid var(--hair); background: var(--card);
   display: grid; place-items: center; font-size: 13px; font-weight: 800; color: #fff;
 }
-.chore-approval.on .chore-approval-check { background: var(--wally); border-color: var(--wally); }
+.chore-approval.on .chore-approval-check { background: var(--person-3); border-color: var(--person-3); }
 .chore-approval-t { display: block; font-weight: 700; font-size: 14px; }
 .chore-approval-s { display: block; font-size: 12px; color: var(--ink-3); font-weight: 600; }
 
@@ -831,7 +831,7 @@ button.tick {
   overflow: hidden; border: 1px solid var(--hair); background: var(--card-2); cursor: pointer;
 }
 .chore-proof-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.chore-proof-thumb:hover { border-color: var(--wally); }
+.chore-proof-thumb:hover { border-color: var(--person-3); }
 .rw-appr .chore-proof-thumb { width: 44px; height: 44px; margin-right: 4px; }
 
 /* compact proof affordance on a photo-proof awaiting chore (per-person column) —
@@ -846,7 +846,7 @@ button.tick {
   width: 38px; height: 38px; border-radius: 10px; object-fit: cover; display: block;
   border: 1px solid var(--hair);
 }
-.chore-review:hover img { border-color: var(--wally); }
+.chore-review:hover img { border-color: var(--person-3); }
 .chore-review-badge {
   position: absolute; right: -5px; bottom: -5px; width: 19px; height: 19px;
   border-radius: 999px; background: var(--card); border: 1px solid var(--hair);
@@ -871,7 +871,7 @@ button.tick {
   font: inherit; font-size: 12.5px; font-weight: 700;
   padding: 6px 13px; border-radius: 999px; cursor: pointer;
 }
-.ca-approve { border: 0; background: var(--wally); color: #fff; }
+.ca-approve { border: 0; background: var(--person-3); color: #fff; }
 .ca-reject { border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-2); }
 .chore-streak {
   margin-left: 8px; font-size: 12px; font-weight: 800; color: var(--warn);

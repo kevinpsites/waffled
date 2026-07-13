@@ -131,7 +131,7 @@ function SavingTowardCard({ saving, shop, cur, onPick, onRedeem }: {
         (() => {
           const s = saving!
           const c = cur(s.currency)
-          const color = c?.color ?? 'var(--wally)'
+          const color = c?.color ?? 'var(--person-3)'
           return (
             <div className="pp-saving-row">
               {jar && <Jar pct={s.pct} color={color} />}

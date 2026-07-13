@@ -26,6 +26,9 @@ Two adjustments only:
   `Sources/Waffled/DesignSystem/Theme.swift`, built from `0xRRGGBB` via a custom
   `Color(hex: UInt32)` init that hardcodes `opacity: 1` and sRGB — **not dark-aware.**
 - Per-person colors: `enum FamilyColor` (kevin/kelly/wally/lottie) with `.solid` + `.tint`.
+  **Web has since renamed these tokens to slots `--person-1…4`** (blue/pink/green/purple) to
+  decouple the reusable accent palette from demo-person names; for parity, rename the iOS
+  `FamilyColor` cases to slots too (e.g. `person1…4`) — values are unchanged.
 - The app is **forced light**: `.preferredColorScheme(.light)` in
   `Sources/Waffled/App/WaffledApp.swift` (~line 44).
 - **No `success` / `danger` / `warn` / `info` tokens exist** — status color is currently
@@ -138,7 +141,7 @@ from the source of truth: primary .18, ai .20, success/danger/warn/info .18–.2
 | ai-2 | `#8C74E8` | `#A48CF0` |
 | ai-d | `#6A3FC4` | `#B9A3F5` |
 | ai-t | `#EFEAFC` | ai-2 @ .20 |
-| kevin / kelly / wally / lottie | unchanged | unchanged |
+| person-1…4 (blue/pink/green/purple) | unchanged | unchanged |
 | ·-t (each person tint) | pale solid | base @ .20–.22 |
 | success | `#25A368` (= wally) | `#34B87A` |
 | success-t | `#E4F5EC` | success @ .20 |

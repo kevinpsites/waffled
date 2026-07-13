@@ -26,7 +26,7 @@
 .cm-progress span {
   display: block;
   height: 100%;
-  background: var(--wally);
+  background: var(--person-3);
   border-radius: 999px;
   transition: width 0.25s ease;
 }
@@ -47,7 +47,7 @@
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--wally);
+  color: var(--person-3);
 }
 .cm-instruction {
   font-size: 40px;
@@ -79,14 +79,14 @@
   font-weight: 600;
   padding: 9px 16px;
   border-radius: 999px;
-  background: var(--wally-t);
+  background: var(--person-3-t);
   color: var(--success);
 }
 .cm-note {
   font-size: 17px;
   font-weight: 600;
   color: var(--success);
-  background: var(--wally-t);
+  background: var(--person-3-t);
   padding: 12px 16px;
   border-radius: var(--r-lg);
   line-height: 1.45;
@@ -120,11 +120,11 @@
 .cm-next, .cm-finish {
   margin-left: auto;
   border: 0;
-  background: var(--wally);
+  background: var(--person-3);
   color: #fff;
 }
 .cm-finish {
-  background: var(--wally);
+  background: var(--person-3);
 }
 .cm-allbtn {
   font: inherit;
@@ -191,7 +191,7 @@
   padding: 14px 26px;
   border-radius: var(--r-lg);
   border: 0;
-  background: var(--primary, var(--wally));
+  background: var(--primary, var(--person-3));
   color: #fff;
   cursor: pointer;
   box-shadow: var(--sh-1);
@@ -231,7 +231,7 @@
   cursor: pointer;
 }
 .cm-timer-info:focus-visible {
-  outline: 2px solid var(--primary, var(--wally));
+  outline: 2px solid var(--primary, var(--person-3));
   outline-offset: 2px;
   border-radius: 6px;
 }
@@ -282,15 +282,15 @@
 }
 /* a fired timer flashes (and chimes — handled in JS) until dismissed */
 .cm-timer-firing {
-  border-color: var(--primary, var(--wally));
+  border-color: var(--primary, var(--person-3));
   animation: cm-timer-flash 0.8s steps(1, end) infinite;
 }
 .cm-timer-firing .cm-timer-time {
-  color: var(--primary, var(--wally));
+  color: var(--primary, var(--person-3));
 }
 @keyframes cm-timer-flash {
   0% { background: var(--card); }
-  50% { background: var(--wally-t, rgba(236, 96, 73, 0.16)); }
+  50% { background: var(--person-3-t, rgba(236, 96, 73, 0.16)); }
   100% { background: var(--card); }
 }
 
@@ -322,7 +322,7 @@
   animation: cm-alarm-pop 0.4s ease-out both, cm-alarm-pulse 0.9s ease-in-out infinite;
 }
 @keyframes cm-alarm-pop { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-@keyframes cm-alarm-pulse { 0%,100% { box-shadow: 0 30px 90px rgba(0,0,0,0.4), 0 0 0 0 var(--wally-t, rgba(236,96,73,0.5)); } 50% { box-shadow: 0 30px 90px rgba(0,0,0,0.4), 0 0 0 14px transparent; } }
+@keyframes cm-alarm-pulse { 0%,100% { box-shadow: 0 30px 90px rgba(0,0,0,0.4), 0 0 0 0 var(--person-3-t, rgba(236,96,73,0.5)); } 50% { box-shadow: 0 30px 90px rgba(0,0,0,0.4), 0 0 0 14px transparent; } }
 .cm-alarm-ic { font-size: 52px; line-height: 1; }
 .cm-alarm-h { font-size: 30px; font-weight: 600; margin-top: 8px; color: var(--ink); }
 .cm-alarm-list { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
@@ -336,7 +336,7 @@
   font: inherit; font-size: 14px; font-weight: 800; padding: 10px 16px; border-radius: 999px; cursor: pointer;
 }
 .cm-alarm-jump { border: 1px solid var(--primary); background: var(--card, #fff); color: var(--primary); }
-.cm-alarm-jump:hover { background: var(--wally-t, rgba(236, 96, 73, 0.1)); }
+.cm-alarm-jump:hover { background: var(--person-3-t, rgba(236, 96, 73, 0.1)); }
 .cm-alarm-snooze { border: 1px solid var(--hair, #e4ded4); background: var(--card, #fff); color: var(--ink); }
 .cm-alarm-snooze:hover { border-color: var(--primary); }
 .cm-alarm-dismiss { border: 0; background: var(--primary); color: #fff; }

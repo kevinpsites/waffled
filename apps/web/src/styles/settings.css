@@ -61,7 +61,7 @@
   background: var(--panel);
 }
 .set-navitem.on .set-navic {
-  background: var(--kevin-t);
+  background: var(--person-1-t);
 }
 
 /* Login & security — vertical form under the OIDC toggle. */
@@ -427,7 +427,7 @@ select.sel {
   border-radius: var(--r-md); border: 1px solid var(--hair); background: var(--card-2); color: var(--ink); }
 .cur-flag { flex: none; font: inherit; font-size: 12.5px; font-weight: 700; padding: 7px 12px; border-radius: 999px;
   border: 1px solid var(--hair); background: var(--card-2); color: var(--ink-3); cursor: pointer; white-space: nowrap; }
-.cur-flag.on { border-color: var(--wally); color: var(--wally); background: #eef4ff; }
+.cur-flag.on { border-color: var(--person-3); color: var(--person-3); background: #eef4ff; }
 .cur-del { flex: none; min-width: 30px; padding: 7px 10px; border: 0; border-radius: 999px;
   background: var(--panel); color: var(--ink-3); font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .cur-del:hover { color: var(--primary); }

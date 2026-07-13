@@ -164,7 +164,7 @@
   background: transparent; font: inherit; padding: 9px 12px; border-radius: 12px; color: var(--ink-2);
 }
 .pl-navitem:hover { background: var(--panel); }
-.pl-navitem.on { background: var(--wally-t, #e7f4ec); color: var(--ink); font-weight: 700; }
+.pl-navitem.on { background: var(--person-3-t, #e7f4ec); color: var(--ink); font-weight: 700; }
 .pl-navitem-ic { font-size: 15px; flex: none; width: 20px; text-align: center; }
 .pl-navitem-l { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pl-navitem-n { flex: none; font-size: 12.5px; font-weight: 700; color: var(--ink-3); }
@@ -259,7 +259,7 @@
 .pl-contains-item { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
 
 /* ===== Cook from your pantry (sidebar card + redesigned modal) ===== */
-.pl-cook { margin-top: 18px; padding: 14px; border-radius: var(--r-lg, 14px); background: var(--wally-t, #eaf5ee); }
+.pl-cook { margin-top: 18px; padding: 14px; border-radius: var(--r-lg, 14px); background: var(--person-3-t, #eaf5ee); }
 .pl-cook-h { font-size: 14px; font-weight: 800; color: var(--ink); }
 .pl-cook-sub { font-size: 12px; font-weight: 600; color: var(--ink-2); margin: 5px 0 10px; line-height: 1.4; }
 .pl-cook-btn { width: 100%; justify-content: center; cursor: pointer; }
@@ -298,7 +298,7 @@
 .pl-badge { font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; }
 .pl-badge.green { background: var(--success-t); color: var(--success); }
 .pl-badge.amber { background: #fdf0e3; color: var(--warn); }
-.pl-cook-go { flex: none; font: inherit; font-size: 13px; font-weight: 800; color: #fff; background: var(--wally, #25a368); border: 0; border-radius: 999px; padding: 7px 16px; cursor: pointer; }
+.pl-cook-go { flex: none; font: inherit; font-size: 13px; font-weight: 800; color: #fff; background: var(--person-3, #25a368); border: 0; border-radius: 999px; padding: 7px 16px; cursor: pointer; }
 .pl-plan-btn { flex: none; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink); background: var(--card-2); border: 1px solid var(--hair); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
 .pl-plan-btn:hover { border-color: var(--primary); }
 .pl-plan-btn.done { color: var(--success); background: var(--success-t); border-color: #cfe9d8; }
@@ -327,7 +327,7 @@
 .pl-main-rec-prog { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--ink-3); }
 .pl-dots { display: inline-flex; gap: 3px; }
 .pl-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--hair); }
-.pl-dot.on { background: var(--wally, #25a368); }
+.pl-dot.on { background: var(--person-3, #25a368); }
 
 /* use up soon (loose) */
 .pl-loose { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -500,7 +500,7 @@
 .cc-seg { display: inline-flex; flex: none; border: 1px solid var(--hair); border-radius: 999px; overflow: hidden; background: var(--card); }
 .cc-seg-btn { font: inherit; font-size: 12.5px; font-weight: 700; color: var(--ink-2); background: none; border: 0; padding: 7px 12px; cursor: pointer; border-left: 1px solid var(--hair); }
 .cc-seg-btn:first-child { border-left: 0; }
-.cc-seg-btn.on { background: var(--wally, #25a368); color: #fff; }
+.cc-seg-btn.on { background: var(--person-3, #25a368); color: #fff; }
 .cc-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .cc-foot .pill { cursor: pointer; }
-.cc-foot .pill.primary { color: #fff; background: var(--wally, #25a368); border-color: transparent; }
+.cc-foot .pill.primary { color: #fff; background: var(--person-3, #25a368); border-color: transparent; }

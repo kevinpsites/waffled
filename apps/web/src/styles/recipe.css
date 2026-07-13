@@ -138,8 +138,8 @@
   color: #fff;
 }
 .ring-row.on .ring-ck {
-  background: var(--wally);
-  border-color: var(--wally);
+  background: var(--person-3);
+  border-color: var(--person-3);
 }
 .ring-amt {
   width: 92px;
@@ -226,7 +226,7 @@
   font-weight: 600;
   padding: 4px 10px;
   border-radius: 999px;
-  background: var(--wally-t);
+  background: var(--person-3-t);
   color: var(--success);
 }
 /* per-step timer chip in the Method (read view) */
@@ -572,15 +572,15 @@
   filter: brightness(0.95);
 }
 .rd-tag.coll {
-  background: var(--kevin-t);
+  background: var(--person-1-t);
   color: var(--info);
 }
 .rd-tag.diet {
-  background: var(--lottie-t);
+  background: var(--person-4-t);
   color: var(--ai-d);
 }
 .rd-tag.veg {
-  background: var(--wally-t);
+  background: var(--person-3-t);
   color: var(--success);
   text-transform: none;
 }
@@ -716,8 +716,8 @@
   color: #fff;
 }
 .ms-ck.on {
-  background: var(--wally);
-  border-color: var(--wally);
+  background: var(--person-3);
+  border-color: var(--person-3);
 }
 .recipes-sort {
   cursor: pointer;
@@ -776,7 +776,7 @@
   opacity: 0.55;
 }
 .ring-sub-btn:hover { opacity: 1; }
-.ring-row.subbed .ring-sub-btn { opacity: 1; border-color: var(--wally); color: var(--wally); }
+.ring-row.subbed .ring-sub-btn { opacity: 1; border-color: var(--person-3); color: var(--person-3); }
 .ring-row.editing { gap: 10px; padding: 10px 0; }
 .ring-sub-input {
   flex: 1;
@@ -784,7 +784,7 @@
   font-size: 14.5px;
   padding: 8px 11px;
   border-radius: var(--r-md);
-  border: 1px solid var(--wally);
+  border: 1px solid var(--person-3);
   background: var(--card);
   color: var(--ink);
 }
@@ -797,7 +797,7 @@
   border-radius: 999px;
   cursor: pointer;
 }
-.ring-sub-ok { background: var(--wally); border: 0; color: #fff; }
+.ring-sub-ok { background: var(--person-3); border: 0; color: #fff; }
 .ring-sub-clear { background: var(--card-2); border: 1px solid var(--hair); color: var(--ink-2); }
 .rd-sub-hint { margin-top: 12px; }
 
@@ -807,7 +807,7 @@
   font-size: 13.5px;
   font-weight: 600;
   color: var(--success);
-  background: var(--wally-t);
+  background: var(--person-3-t);
   padding: 8px 12px;
   border-radius: var(--r-md);
   line-height: 1.45;
@@ -823,7 +823,7 @@
   padding: 2px 0;
   cursor: pointer;
 }
-.rd-step-addnote:hover { color: var(--wally); }
+.rd-step-addnote:hover { color: var(--person-3); }
 .rd-step-noteedit { margin-top: 9px; }
 .rd-step-noteedit textarea {
   width: 100%;

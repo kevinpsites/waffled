@@ -22,7 +22,7 @@
   color: var(--ink-2); font: inherit; font-weight: 600; font-size: 14px;
   transition: border-color .12s, background .12s, color .12s;
 }
-.shop-kid.on { background: #F0E9FD; border-color: var(--lottie); color: var(--ink); }
+.shop-kid.on { background: #F0E9FD; border-color: var(--person-4); color: var(--ink); }
 .shop-kid-name { font-weight: 700; }
 .shop-kid-bal { font-weight: 700; color: var(--gold); }
 .shop-kid.on .shop-kid-bal { color: var(--gold); }
@@ -173,7 +173,7 @@
 
 .shop-celebrate-pill {
   display: inline-block; margin-top: 14px; padding: 8px 16px; border-radius: 999px;
-  background: var(--wally-t); color: var(--wally); font-weight: 700; font-size: 14px;
+  background: var(--person-3-t); color: var(--person-3); font-weight: 700; font-size: 14px;
 }
 .shop-back { margin-top: 18px; width: 100%; }
 

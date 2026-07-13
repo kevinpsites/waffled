@@ -37,7 +37,7 @@ function TonightCard({ entry }: { entry: WeekEntry }) {
         <div style={{ position: 'absolute', right: 12, top: 10, fontSize: 34 }}>{emoji}</div>
       </div>
       <div style={{ padding: '14px 16px 15px' }}>
-        <div className="tiny" style={{ color: 'var(--lottie)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+        <div className="tiny" style={{ color: 'var(--person-4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>
           Tonight · Dinner
         </div>
         <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600, margin: '3px 0 6px' }}>

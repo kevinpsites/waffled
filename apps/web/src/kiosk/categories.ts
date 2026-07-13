@@ -8,10 +8,10 @@ export interface Category {
 }
 
 export const CATEGORIES: Record<string, Category> = {
-  physical: { emoji: '🏃', label: 'Physical', color: 'var(--wally)', tint: 'var(--wally-t)', txt: '#167a4a' },
-  intellectual: { emoji: '📚', label: 'Intellectual', color: 'var(--kevin)', tint: 'var(--kevin-t)', txt: '#1559b8' },
-  spiritual: { emoji: '🧘', label: 'Spiritual', color: 'var(--lottie)', tint: 'var(--lottie-t)', txt: '#6a3fc4' },
-  creative: { emoji: '🎨', label: 'Creative', color: 'var(--kelly)', tint: 'var(--kelly-t)', txt: '#b22f66' },
+  physical: { emoji: '🏃', label: 'Physical', color: 'var(--person-3)', tint: 'var(--person-3-t)', txt: '#167a4a' },
+  intellectual: { emoji: '📚', label: 'Intellectual', color: 'var(--person-1)', tint: 'var(--person-1-t)', txt: '#1559b8' },
+  spiritual: { emoji: '🧘', label: 'Spiritual', color: 'var(--person-4)', tint: 'var(--person-4-t)', txt: '#6a3fc4' },
+  creative: { emoji: '🎨', label: 'Creative', color: 'var(--person-2)', tint: 'var(--person-2-t)', txt: '#b22f66' },
   social: { emoji: '🤝', label: 'Social', color: 'var(--gold)', tint: '#fdecd6', txt: '#d98a1c' },
 }
 
