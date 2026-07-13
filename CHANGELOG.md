@@ -46,6 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   PowerSync signing key with the other required secrets, repairs missing environment values,
   and refuses production startup when secrets are malformed or still use public development
   defaults.
+- **Public traffic now enters through Caddy instead of raw service ports.** Postgres and
+  direct API diagnostics bind to loopback, while device-facing PowerSync and Google OAuth
+  callbacks use Caddy; upgrades also migrate the exact legacy localhost callback safely.
 
 ### Added
 - **Plan breakfast and lunch from the iPhone meal planner, not just dinner.** Each day in the
