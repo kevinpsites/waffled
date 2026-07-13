@@ -32,6 +32,8 @@ import {
   setChoreRewardsEnabled,
 } from './chores.service'
 import { getProofTtlDays, setProofTtlDays } from './chore-proof-cleanup.service'
+import { assertPersonInHousehold } from '../../platform/household-refs'
+import { mediaKeyBelongsToHousehold } from '../../platform/storage'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -87,11 +89,17 @@ export function registerChoreRoutes(api: Api): void {
   // a chore that's up-for-grabs (no assignee) or one for themselves — no gate there.
   api.post('/api/chores', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as Partial<CreateChoreInput>
-    if (body.personId != null && body.personId !== tenant.personId) {
-      await requireCapability(tenant, 'chore.manage')
-    }
     if (!body.title || !body.title.trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'title is required' })
+    }
+    if (body.personId != null) {
+      if (!UUID_RE.test(body.personId)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
+      }
+      await assertPersonInHousehold(tenant.householdId, body.personId)
+    }
+    if (body.personId != null && body.personId !== tenant.personId) {
+      await requireCapability(tenant, 'chore.manage')
     }
     const chore = await createChore(tenant, { ...body, title: body.title.trim() })
     return res.status(201).json({ chore: presentChore(chore) })
@@ -104,6 +112,12 @@ export function registerChoreRoutes(api: Api): void {
     const patch = (req.body ?? {}) as Record<string, unknown>
     if (typeof patch.title === 'string' && !patch.title.trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'title cannot be empty' })
+    }
+    if (patch.personId != null) {
+      if (typeof patch.personId !== 'string' || !UUID_RE.test(patch.personId)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
+      }
+      await assertPersonInHousehold(tenant.householdId, patch.personId)
     }
     if (!Object.keys(UPDATABLE_CHORE).some((field) => field in patch)) {
       return res.status(400).json({ error: 'BadRequest', message: 'no updatable fields provided' })
@@ -153,6 +167,12 @@ export function registerChoreRoutes(api: Api): void {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
     const body = (req.body ?? {}) as { storageKey?: unknown; contentType?: unknown }
+    if (body.storageKey != null && (
+      typeof body.storageKey !== 'string' ||
+      !mediaKeyBelongsToHousehold(body.storageKey, tenant.householdId)
+    )) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid proof image key' })
+    }
     const proof = {
       storageKey: typeof body.storageKey === 'string' ? body.storageKey : null,
       contentType: typeof body.contentType === 'string' ? body.contentType : null,
@@ -184,6 +204,7 @@ export function registerChoreRoutes(api: Api): void {
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
     const personId = ((req.body ?? {}) as { personId?: string }).personId?.trim() || tenant.personId
     if (!UUID_RE.test(personId)) return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
+    await assertPersonInHousehold(tenant.householdId, personId)
     const inst = await claimInstance(tenant, id, personId)
     if (!inst) return res.status(409).json({ error: 'Conflict', message: 'already claimed or not found' })
     return { instance: presentInstance(inst) }
@@ -201,6 +222,7 @@ export function registerChoreRoutes(api: Api): void {
     } else {
       personId = String(raw).trim()
       if (!UUID_RE.test(personId)) return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
+      await assertPersonInHousehold(tenant.householdId, personId)
     }
     // Assigning a chore to ANOTHER person needs chore.manage. Releasing it to
     // up-for-grabs (null) or taking it yourself stays open — that's just
