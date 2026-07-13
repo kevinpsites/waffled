@@ -34,6 +34,7 @@ import {
   planWeek,
   shuffleWeek,
   planMonth,
+  shuffleMonth,
   MEAL_TYPES,
   DATE_RE,
   todayDate,
@@ -491,6 +492,18 @@ export function registerMealRoutes(api: Api): void {
       b.weekdayThemes && typeof b.weekdayThemes === 'object' && !Array.isArray(b.weekdayThemes)
         ? Object.fromEntries(Object.entries(b.weekdayThemes as Record<string, unknown>).filter(([k, v]) => /^[0-6]$/.test(k) && typeof v === 'string'))
         : undefined
+    // No LLM provider configured (heuristic) or the selected provider isn't usable
+    // here → shuffle the month's empty nights from the library instead of 501ing.
+    const ai = await getAiConfig(tenant.householdId)
+    if (ai.provider === 'heuristic' || !availability()[ai.provider]) {
+      return await shuffleMonth(tenant, {
+        start,
+        weekdays,
+        skipDates,
+        dates,
+        cookingFor: typeof b.cookingFor === 'number' ? b.cookingFor : null,
+      })
+    }
     try {
       return await planMonth(tenant, {
         start,

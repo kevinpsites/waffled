@@ -1225,3 +1225,123 @@ export async function planMonth(tenant: Tenant, input: PlanMonthInput): Promise<
 
   return { start: monthStartStr, mealType, suggestions, via, existing }
 }
+
+// ── No-AI "Shuffle my month" ─────────────────────────────────────────────────
+// The month-planner counterpart of shuffleWeek: the fallback when the household has
+// no LLM provider configured. Fills the month's EMPTY dinner nights (the same target
+// nights planMonth computes — explicit dates, or the chosen weekdays minus
+// skipped/already-filled) with random library recipes, skipping anything already
+// planned that month and anything cooked in the last ~14 days. Already-filled nights
+// are left untouched (surfaced as `existing`). Degrades gracefully: if there are
+// fewer eligible recipes than empty nights it fills what it can. planMonth-shaped
+// result with via:'shuffle'.
+export async function shuffleMonth(tenant: Tenant, input: PlanMonthInput): Promise<{ start: string; mealType: string; suggestions: PlanCard[]; via: string; existing?: PlanCard[] }> {
+  const mealType = 'dinner'
+  const householdId = tenant.householdId
+  const base = new Date(`${input.start}T00:00:00Z`)
+  const year = base.getUTCFullYear()
+  const month = base.getUTCMonth()
+  const first = new Date(Date.UTC(year, month, 1))
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
+  const monthStartStr = ymdUTC(first)
+
+  // Existing dinners this month: which nights are filled, which recipes are already
+  // used (excluded from the pool), and the read-only cards for the review UI.
+  const entries = await weekEntries(householdId, monthStartStr, daysInMonth)
+  const filled = new Set<string>()
+  const plannedRecipeIds = new Set<string>()
+  for (const e of entries) {
+    if (e.mealType !== mealType) continue
+    filled.add(e.date)
+    if (e.recipeId) plannedRecipeIds.add(e.recipeId)
+  }
+  const existing: PlanCard[] = entries
+    .filter((e) => e.mealType === mealType)
+    .map((e) => ({
+      date: e.date,
+      mealType,
+      title: e.recipe?.title ?? e.title ?? 'Planned',
+      recipeId: e.recipeId,
+      emoji: e.recipe?.emoji ?? null,
+      minutes: e.recipe?.cookTimeMinutes ?? null,
+      servings: e.recipe?.servings ?? (input.cookingFor && input.cookingFor > 0 ? input.cookingFor : 4),
+      note: null,
+    }))
+    .sort((a, b) => (a.date < b.date ? -1 : 1))
+
+  // Target nights (mirrors planMonth): explicit dates in this month, or the chosen
+  // weekdays (default Mon–Fri) minus skipped/already-filled nights.
+  const weekdays = new Set(input.weekdays && input.weekdays.length ? input.weekdays : [1, 2, 3, 4, 5])
+  const skip = new Set(input.skipDates ?? [])
+  let targetDates: string[]
+  if (input.dates && input.dates.length) {
+    targetDates = input.dates.filter((d) => new Date(`${d}T00:00:00Z`).getUTCMonth() === month)
+  } else {
+    targetDates = []
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dt = new Date(Date.UTC(year, month, day))
+      const iso = ymdUTC(dt)
+      if (!weekdays.has(dt.getUTCDay()) || skip.has(iso) || filled.has(iso)) continue
+      targetDates.push(iso)
+    }
+  }
+  targetDates.sort()
+  if (targetDates.length === 0) return { start: monthStartStr, mealType, suggestions: [], via: 'shuffle', existing }
+
+  // Recipes to exclude as "recently cooked" (same rule as shuffleWeek).
+  const { rows: cookedRows } = await query<{ id: string }>(
+    `select r.id
+       from recipes r
+      where r.household_id = $1 and r.deleted_at is null
+        and (
+          r.last_cooked_at >= now() - interval '14 days'
+          or exists (
+            select 1 from meal_plan_entries mpe
+             where mpe.recipe_id = r.id and mpe.household_id = r.household_id
+               and mpe.deleted_at is null and mpe.status = 'cooked'
+               and mpe.date >= current_date - interval '14 days'
+          )
+        )`,
+    [householdId]
+  )
+  const recentlyCooked = new Set(cookedRows.map((r) => r.id))
+
+  const { rows: people } = await query<{ id: string }>(
+    `select id from persons where household_id = $1 and deleted_at is null`,
+    [householdId]
+  )
+  const servings = input.cookingFor && input.cookingFor > 0 ? input.cookingFor : Math.max(1, people.length)
+
+  // Eligible = library MINUS planned-this-month MINUS recently-cooked.
+  const recipes = await listRecipes(householdId)
+  const eligible = recipes.filter((r) => !plannedRecipeIds.has(r.id) && !recentlyCooked.has(r.id))
+
+  const shuffle = <T>(arr: T[]): T[] => {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[arr[i], arr[j]] = [arr[j], arr[i]]
+    }
+    return arr
+  }
+  const onType = shuffle(eligible.filter((r) => (r.category ?? '').toLowerCase() === mealType))
+  const offType = shuffle(eligible.filter((r) => (r.category ?? '').toLowerCase() !== mealType))
+  const ordered = [...onType, ...offType]
+
+  // One distinct recipe per empty night, in date order; stop when the pool runs dry.
+  const suggestions: PlanCard[] = []
+  for (let i = 0; i < targetDates.length && i < ordered.length; i++) {
+    const r = ordered[i]
+    suggestions.push({
+      date: targetDates[i],
+      mealType,
+      title: r.title,
+      recipeId: r.id,
+      emoji: r.emoji ?? null,
+      minutes: r.cook_time_minutes ?? null,
+      servings,
+      note: 'Shuffled',
+    })
+  }
+  suggestions.sort((a, b) => (a.date < b.date ? -1 : 1))
+  return { start: monthStartStr, mealType, suggestions, via: 'shuffle', existing }
+}
