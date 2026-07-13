@@ -23,13 +23,22 @@ the stack needs (~4 GB). Block storage is 200 GB free; we use a 100 GB boot volu
 ## Prerequisites
 
 1. **Terraform** ≥ 1.5 and an **Oracle Cloud account**.
-2. **An API signing key** for Terraform:
-   - Console → **Profile → My profile → API keys → Add API key** → *Generate a key pair*
-     → download the **private key** (save it to e.g. `~/.oci/oci_api_key.pem`).
-   - After adding it, Oracle shows a **configuration file preview** with your
-     `tenancy`, `user`, `fingerprint`, and `region` OCIDs — copy those.
-3. **An SSH key pair** (`ssh-keygen -t ed25519`) — you'll paste the **public** key.
-4. **(HTTPS)** A **domain** you control, where you can add DNS `A` records.
+2. **(HTTPS)** A **domain** you own, where you can add DNS `A` records.
+
+You'll deal with **two different keys** — don't mix them up:
+
+| Key | For | Made by | Goes in |
+|---|---|---|---|
+| **Oracle API key** | Terraform signing in to Oracle | Oracle (Console generates it; you download a `.pem`) | `private_key_path` |
+| **SSH key** | You logging into the server | You: `ssh-keygen -t ed25519 -f ~/.ssh/waffled` | `ssh_public_key` (paste `~/.ssh/waffled.pub`) |
+
+**Oracle API key:** Console → profile icon → **My profile → API keys → Add API key** →
+*Generate API key pair* → **Download private key** (e.g. `~/.oci/oci_api_key.pem`) → **Add**.
+Oracle then shows a **Configuration file preview** with your `tenancy`, `user`, `fingerprint`,
+and `region` — copy those four. Lock the file down: `chmod 600 ~/.oci/oci_api_key.pem`.
+
+The full field-by-field walkthrough (with commands) is in the
+[Deploy to Oracle Cloud guide](https://docs.waffled.app/guides/oracle-cloud-terraform/).
 
 ## Usage
 
@@ -88,26 +97,34 @@ cd /opt/waffled && sudo docker compose ps      # container health
 
 ## App config & secrets (API keys, OAuth)
 
-Your app config — `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, Google OAuth, etc. — does **not**
-come along automatically. Deliver it one of two ways:
+Your API keys ride along automatically — fill in the named variables in `terraform.tfvars` and
+they're written into the server's `.env` at first boot (applied last, so they override the
+derived values). Blank is fine for anything you don't use:
 
-1. **Via Terraform (`app_env`)** — set a map in `terraform.tfvars` and the values are written
-   into the server's `.env` at first boot, applied last so they override the derived values:
-   ```hcl
-   app_env = {
-     ANTHROPIC_API_KEY = "sk-ant-..."
-     OPENAI_API_KEY    = "sk-..."
-   }
-   ```
-   > ⚠ These land in **Terraform state and instance metadata in plaintext**. Keep your state
-   > file private (or use a remote backend with encryption). Values must be single-line —
-   > base64-encode multi-line secrets like PEM keys.
-2. **By hand on the box** (best for your most sensitive keys) — SSH in, edit
-   `/opt/waffled/infra/compose/.env`, then `sudo waffled-oci up` to apply.
+```hcl
+anthropic_api_key    = "sk-ant-..."   # hosted Claude for the AI capture bar
+openai_api_key       = ""             # or OpenAI instead
+google_client_id     = ""             # Google Calendar sync
+google_client_secret = ""
+```
 
-`app_env` is also the place to pin durable secrets (`LOCAL_JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`,
-`POSTGRES_PASSWORD`) if you want them to survive an instance rebuild — otherwise they're
-regenerated on each fresh boot, which invalidates sessions and encrypted tokens.
+Anything not named gets an `app_env` map (backups to S3, Ollama, …):
+
+```hcl
+app_env = { BACKUP_S3_BUCKET = "s3://my-bucket/waffled" }
+```
+
+**On safety:** both `terraform.tfvars` and the state file are **gitignored** — nothing here is
+committed to the repo, it stays on your machine. The variables are marked `sensitive`, so their
+values don't show in `terraform` output either. The only caveat is the ordinary Terraform one:
+the local **state file holds them in plaintext**, so keep that file private; if you ever adopt a
+remote state backend, enable its encryption. Values must be single-line (base64-encode multi-line
+secrets like PEM keys). Prefer to keep a key out of Terraform entirely? SSH in, edit
+`/opt/waffled/infra/compose/.env`, and run `sudo waffled-oci up`.
+
+Tip: pin `LOCAL_JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`, and `POSTGRES_PASSWORD` in `app_env` if you
+want them to survive an instance rebuild — otherwise they regenerate on each fresh boot, which
+signs everyone out and makes stored OAuth tokens unreadable.
 
 ## Upgrading
 

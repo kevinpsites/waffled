@@ -1,10 +1,21 @@
 locals {
   compartment_id = var.compartment_ocid != "" ? var.compartment_ocid : var.tenancy_ocid
 
-  # User-supplied .env entries, rendered as KEY=VALUE lines and base64-encoded so
-  # arbitrary values survive the trip through cloud-init user_data intact.
-  app_env_lines = join("\n", [for k, v in var.app_env : "${k}=${v}"])
-  app_env_b64   = length(var.app_env) > 0 ? base64encode(local.app_env_lines) : ""
+  # The named app-config variables, as .env keys. The free-form app_env map is
+  # merged on top (so it wins) for anything not named here.
+  named_env = {
+    ANTHROPIC_API_KEY    = var.anthropic_api_key
+    ANTHROPIC_MODEL      = var.anthropic_model
+    OPENAI_API_KEY       = var.openai_api_key
+    OPENAI_MODEL         = var.openai_model
+    GOOGLE_CLIENT_ID     = var.google_client_id
+    GOOGLE_CLIENT_SECRET = var.google_client_secret
+  }
+  # Drop blanks (the app already defaults them), merge in app_env, then render as
+  # KEY=VALUE lines and base64-encode so values survive cloud-init user_data intact.
+  merged_env    = merge({ for k, v in local.named_env : k => v if v != "" }, var.app_env)
+  app_env_lines = join("\n", [for k, v in local.merged_env : "${k}=${v}"])
+  app_env_b64   = length(local.merged_env) > 0 ? base64encode(local.app_env_lines) : ""
 
   # Ports open to the world. PowerSync (8090) is only exposed directly in HTTP-only
   # mode; with a domain, Caddy fronts it on powersync.<domain> over TLS instead.

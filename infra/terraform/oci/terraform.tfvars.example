@@ -1,41 +1,62 @@
-# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+# Copy this file to `terraform.tfvars`, then fill in the blanks below.
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# `terraform.tfvars` (your real values) is gitignored — it never gets committed.
+# You'll deal with TWO different keys here; don't mix them up:
+#   1. Oracle API key  → lets Terraform talk to Oracle. Oracle generates it; you
+#      download a .pem private key. (the first block below)
+#   2. SSH key         → lets YOU log into the server later. You generate it on
+#      your own computer with ssh-keygen. (the "Logging in" block below)
 
-# ── OCI API auth (Console → Profile → My profile → API keys → Add API key) ──
-tenancy_ocid     = "ocid1.tenancy.oc1..aaaa..."
-user_ocid        = "ocid1.user.oc1..aaaa..."
-fingerprint      = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
-private_key_path = "~/.oci/oci_api_key.pem"
-region           = "us-ashburn-1"
+# ── 1. Oracle API key — how Terraform signs in to Oracle ──────────────────────
+# In the Oracle Console: profile icon (top-right) → My profile → API keys →
+# Add API key → Generate API key pair → Download private key → Add. Oracle then
+# shows a "Configuration file preview" with four of these five values.
+tenancy_ocid     = "ocid1.tenancy.oc1..aaaa..."   # from the preview: tenancy=
+user_ocid        = "ocid1.user.oc1..aaaa..."      # from the preview: user=
+fingerprint      = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"  # preview: fingerprint=
+private_key_path = "~/.oci/oci_api_key.pem"        # where you saved the downloaded key
+region           = "us-ashburn-1"                  # from the preview: region=
 
-# Leave empty to use the root compartment.
+# Leave empty to use your account's root compartment (fine for a single deploy).
 # compartment_ocid = "ocid1.compartment.oc1..aaaa..."
 
-# ── Access ──
-ssh_public_key   = "ssh-ed25519 AAAA... you@host"
-# Lock SSH to your IP (recommended): allowed_ssh_cidr = "203.0.113.7/32"
+# ── 2. Logging in — your SSH key ──────────────────────────────────────────────
+# Make one if you don't have it (run this on your computer):
+#   ssh-keygen -t ed25519 -C "waffled" -f ~/.ssh/waffled
+# Then paste the PUBLIC half here (print it with:  cat ~/.ssh/waffled.pub ):
+ssh_public_key   = "ssh-ed25519 AAAA... waffled"
+# Recommended: only let your own IP connect. Find yours at https://ifconfig.me
+# allowed_ssh_cidr = "203.0.113.7/32"
 
-# ── Public HTTPS + hostname (recommended so the iOS app + scanner work) ──
-# After `apply`, create the DNS A records the outputs list, then wait for TLS.
+# ── 3. Your domain — for automatic HTTPS ──────────────────────────────────────
+# Needed so the iOS app and barcode scanner work. After `apply`, you'll point two
+# DNS records at the server (the outputs tell you exactly which).
 domain = "waffled.example.com"
 
-# ── Sizing (Always-Free ceiling is 2 OCPU / 12 GB since 2026-06-15) ──
+# ── 4. App config — all optional, fill in only what you use ───────────────────
+# Blank is fine for anything you don't want. These get written into the server's
+# config for you (no SSHing in required).
+anthropic_api_key    = ""   # hosted Claude for the AI capture bar (recommended)
+anthropic_model      = ""   # optional, e.g. "claude-haiku-4-5-20251001"
+openai_api_key       = ""   # or hosted OpenAI instead
+openai_model         = ""   # optional, e.g. "gpt-4o-mini"
+google_client_id     = ""   # Google Calendar sync (optional)
+google_client_secret = ""
+
+# Anything else (offsite S3 backups, Ollama, …) goes here as KEY = VALUE:
+# app_env = {
+#   BACKUP_S3_BUCKET = "s3://my-bucket/waffled"
+# }
+
+# ── 5. Sizing — defaults are the free-tier ceiling; usually leave as-is ───────
+# Always-Free ceiling is 2 OCPU / 12 GB (since 2026-06-15). ~4 GB is plenty.
 # instance_ocpus      = 2
 # instance_memory_gbs = 12
 # boot_volume_gbs     = 100
-# availability_domain_number = 1   # bump to 2/3 if you hit "Out of host capacity"
+# availability_domain_number = 1   # try 2 or 3 if you hit "Out of host capacity"
 
-# ── App config deployed into the server's .env (optional) ──
-# API keys, OAuth creds, or any .env override. Applied last, so these win over the
-# generated/derived values. ⚠ Values land in Terraform STATE + instance metadata in
-# plaintext — keep state private, or add the most sensitive keys by hand on the box.
-# app_env = {
-#   ANTHROPIC_API_KEY    = "sk-ant-..."
-#   ANTHROPIC_MODEL      = "claude-haiku-4-5-20251001"
-#   OPENAI_API_KEY       = "sk-..."
-#   GOOGLE_CLIENT_ID     = "....apps.googleusercontent.com"
-#   GOOGLE_CLIENT_SECRET = "..."
-# }
-
-# ── App source ──
+# ── App source (advanced) ──
 # waffled_ref     = "main"
 # waffled_version = "0.7.0"

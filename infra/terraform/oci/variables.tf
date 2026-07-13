@@ -99,17 +99,61 @@ variable "waffled_version" {
   default     = ""
 }
 
-# ── App config delivered into the server's .env ───────────────────────────────
-# Extra KEY = VALUE entries written into infra/compose/.env on the instance —
-# e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_CLIENT_ID/SECRET. Applied AFTER
-# the generated secrets and networking vars, so anything you set here wins.
-#
-# ⚠ SECURITY: these values land in Terraform STATE and the instance metadata in
-# plaintext. Keep your state file private. For the most sensitive keys you can
-# instead leave them out and add them by hand in /opt/waffled/infra/compose/.env.
-# Values must be single-line (base64-encode multi-line secrets like PEM keys).
+# ── App config (all optional — leave blank for anything you don't use) ────────
+# These are written into the server's .env at first boot. The app treats every one
+# as optional, so empty is fine. They're marked `sensitive` (hidden from Terraform
+# output); your terraform.tfvars and state file are gitignored, so nothing here is
+# ever committed — just keep your local state file to yourself.
+
+# AI capture bar — hosted Claude (recommended). Leave blank to use the on-device
+# heuristic instead.
+variable "anthropic_api_key" {
+  description = "Anthropic API key for the AI capture bar. Blank = off."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "anthropic_model" {
+  description = "Optional Anthropic model override, e.g. claude-haiku-4-5-20251001."
+  type        = string
+  default     = ""
+}
+
+# AI capture bar — hosted OpenAI (alternative to Claude).
+variable "openai_api_key" {
+  description = "OpenAI API key for the AI capture bar. Blank = off."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "openai_model" {
+  description = "Optional OpenAI model override, e.g. gpt-4o-mini."
+  type        = string
+  default     = ""
+}
+
+# Google Calendar 2-way sync (optional). Register a Web application OAuth client in
+# the Google Cloud Console; set its redirect URI to
+# https://<your-domain>/auth/google/calendar/callback.
+variable "google_client_id" {
+  description = "Google OAuth client ID for calendar sync. Blank = off."
+  type        = string
+  default     = ""
+}
+
+variable "google_client_secret" {
+  description = "Google OAuth client secret for calendar sync."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+# Escape hatch for anything not listed above (backups to S3, Ollama, etc.). Same
+# rules: written into the server's .env, and wins over the values above.
 variable "app_env" {
-  description = "Extra .env entries (API keys, OAuth, overrides) to deploy onto the server."
+  description = "Any other .env entries as a KEY = VALUE map (advanced)."
   type        = map(string)
   default     = {}
   sensitive   = true
