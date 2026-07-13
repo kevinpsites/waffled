@@ -59,27 +59,45 @@ export_build_meta() {
   export GIT_SHA BUILD_TIME
 }
 
-# First-run bootstrap: if there's no .env, copy the example and fill the required
-# secrets with freshly generated values so `./waffled up` works on a clean clone with
-# zero manual editing. Existing .env files are never touched.
+# Bootstrap required secrets on a clean clone and fill values added by newer releases.
+# Existing non-empty custom values are never changed.
 ensure_env() {
-  [ -f "$ENV_FILE" ] && return 0
-  echo "${c_dim}No infra/compose/.env — creating it from .env.example…${c_reset}"
-  cp "$ROOT/infra/compose/.env.example" "$ENV_FILE"
+  local created=0 postgres_password
+  if [ ! -f "$ENV_FILE" ]; then
+    echo "${c_dim}No infra/compose/.env — creating it from .env.example…${c_reset}"
+    cp "$ROOT/infra/compose/.env.example" "$ENV_FILE"
+    created=1
+  fi
+
   if command -v openssl >/dev/null 2>&1; then
-    # '|' is a safe sed delimiter — base64 (the JWT/token keys) and hex contain no '|'.
     # POSTGRES_PASSWORD is interpolated into postgres:// URLs in docker-compose.yml, so it
     # must be URL-safe: base64 can include '/', which breaks Node's URL parser and fails
     # the one-shot migrate on a fresh install — so generate it as hex, not base64.
-    secret_set() { sed -i.bak -E "s|^$1=.*$|$1=$2|" "$ENV_FILE" && rm -f "$ENV_FILE.bak"; }
-    secret_set LOCAL_JWT_SECRET     "$(openssl rand -base64 48 | tr -d '\n')"
-    secret_set TOKEN_ENCRYPTION_KEY "$(openssl rand -base64 32 | tr -d '\n')"
-    secret_set POSTGRES_PASSWORD    "$(openssl rand -hex 24 | tr -d '\n')"
-    echo "${c_grn}Created $ENV_FILE with generated secrets.${c_reset}"
-  else
-    echo "${c_ylw}openssl not found — set LOCAL_JWT_SECRET, TOKEN_ENCRYPTION_KEY, and"
-    echo "POSTGRES_PASSWORD in $ENV_FILE before relying on OIDC/Google or production.${c_reset}"
+    [ -n "$(env_val LOCAL_JWT_SECRET)" ] || set_env_var LOCAL_JWT_SECRET "$(openssl rand -base64 48 | tr -d '\n')"
+    [ -n "$(env_val TOKEN_ENCRYPTION_KEY)" ] || set_env_var TOKEN_ENCRYPTION_KEY "$(openssl rand -base64 32 | tr -d '\n')"
+    [ -n "$(env_val POWERSYNC_JWT_PRIVATE_KEY)" ] || set_env_var POWERSYNC_JWT_PRIVATE_KEY "$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null | openssl base64 -A)"
+    postgres_password="$(env_val POSTGRES_PASSWORD)"
+    if [ -z "$postgres_password" ] || { [ "$created" -eq 1 ] && [ "$postgres_password" = "change-me" ]; }; then
+      set_env_var POSTGRES_PASSWORD "$(openssl rand -hex 24 | tr -d '\n')"
+    fi
   fi
+
+  for secret in LOCAL_JWT_SECRET TOKEN_ENCRYPTION_KEY POSTGRES_PASSWORD POWERSYNC_JWT_PRIVATE_KEY; do
+    if [ -z "$(env_val "$secret")" ]; then
+      echo "${c_red}✗ $secret is missing in $ENV_FILE.${c_reset} Install openssl or set it manually, then retry."
+      return 1
+    fi
+  done
+  if [ "$(env_val LOCAL_JWT_SECRET)" = "waffled-local-dev-secret-change-me" ]; then
+    echo "${c_red}✗ LOCAL_JWT_SECRET still uses the public development value.${c_reset} Replace it in $ENV_FILE."
+    return 1
+  fi
+  if [ "$(env_val POSTGRES_PASSWORD)" = "change-me" ]; then
+    echo "${c_red}✗ POSTGRES_PASSWORD still uses the example placeholder.${c_reset}"
+    echo "Set a URL-safe password in $ENV_FILE. For an existing database, rotate the database user's password first."
+    return 1
+  fi
+  [ "$created" -eq 0 ] || echo "${c_grn}Created $ENV_FILE with generated secrets.${c_reset}"
 }
 
 # Upgrade bridge for installs created before PowerSync moved behind Caddy. New
@@ -186,8 +204,8 @@ preflight() {
   if ! docker compose version >/dev/null 2>&1; then
     echo "${c_red}✗ 'docker compose' (v2) not found.${c_reset} The legacy 'docker-compose' won't work — install the Compose v2 plugin: https://docs.docker.com/compose/install/"; return 1
   fi
-  if [ ! -f "$ENV_FILE" ] && ! command -v openssl >/dev/null 2>&1; then
-    echo "${c_ylw}⚠ openssl not found — secrets can't be auto-generated; set them in infra/compose/.env after first run.${c_reset}"
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "${c_ylw}⚠ openssl not found — missing secrets can't be auto-generated; set them in infra/compose/.env.${c_reset}"
   fi
   # Port conflicts — only on a cold start (skip if our stack already holds them).
   if command -v lsof >/dev/null 2>&1 && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^waffled-'; then

@@ -32,7 +32,8 @@ git clone <this-repo> waffled && cd waffled
 That's the whole install. On first run, `./waffled up`:
 
 1. Creates `infra/compose/.env` from `.env.example`, generating `LOCAL_JWT_SECRET`,
-   `TOKEN_ENCRYPTION_KEY`, and `POSTGRES_PASSWORD` for you (an existing `.env` is left alone).
+   `TOKEN_ENCRYPTION_KEY`, `POWERSYNC_JWT_PRIVATE_KEY`, and `POSTGRES_PASSWORD` for you.
+   Missing secrets are also filled during upgrades; existing values are preserved.
 2. Pulls the prebuilt `api` / `caddy` / `backup` images from GHCR (plus Postgres +
    PowerSync). Prefer to build from source? Use `./waffled up --build`.
 3. Runs a one-shot **migrate** service to apply the database schema (so PowerSync's

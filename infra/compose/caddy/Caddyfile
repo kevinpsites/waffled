@@ -8,7 +8,10 @@
 
 	# API (chunk 2.2). Path is preserved upstream, so the api sees /api/*.
 	handle /api/* {
-		reverse_proxy api:3000
+		reverse_proxy api:3000 {
+			# Replace caller-supplied forwarding chains with the address Caddy saw.
+			header_up X-Forwarded-For {remote_host}
+		}
 	}
 	# Google's browser callback is intentionally outside /api, but still enters
 	# through the same public proxy instead of the loopback-only direct API port.

@@ -9,7 +9,7 @@
 // key via mediaUrl(), so MEDIA_BASE_URL can change without a migration.
 import { randomBytes } from 'node:crypto'
 import { mkdir, writeFile, unlink } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, resolve, sep } from 'node:path'
 
 export interface BlobStore {
   put(key: string, bytes: Buffer, contentType: string): Promise<void>
@@ -31,17 +31,32 @@ function mediaDir(): string {
   return process.env.MEDIA_DIR || '/data/media'
 }
 
+const MEDIA_KEY_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/([0-9a-f]{32})\.(jpg|png|webp)$/
+
+export function mediaKeyBelongsToHousehold(key: string, householdId: string): boolean {
+  const match = MEDIA_KEY_RE.exec(key)
+  return match !== null && match[1] === householdId
+}
+
+function localMediaPath(key: string): string {
+  if (!MEDIA_KEY_RE.test(key)) throw new Error('invalid media key')
+  const root = resolve(mediaDir())
+  const path = resolve(root, key)
+  if (!path.startsWith(`${root}${sep}`)) throw new Error('invalid media key')
+  return path
+}
+
 // Local-disk driver. Writes to MEDIA_DIR/<key>, creating the household subdir as
 // needed. Container-only — relies on a writable filesystem.
 class LocalBlobStore implements BlobStore {
   async put(key: string, bytes: Buffer, _contentType: string): Promise<void> {
-    const path = join(mediaDir(), key)
+    const path = localMediaPath(key)
     await mkdir(dirname(path), { recursive: true })
     await writeFile(path, bytes)
   }
 
   async delete(key: string): Promise<void> {
-    const path = join(mediaDir(), key)
+    const path = localMediaPath(key)
     try {
       await unlink(path)
     } catch (err) {
@@ -79,7 +94,7 @@ export function mediaKey(householdId: string, contentType: string): string {
 // Resolve a stored key to its public URL (or null when there's no key). The base is
 // MEDIA_BASE_URL (default '/media'), so it can change without rewriting stored keys.
 export function mediaUrl(key: string | null | undefined): string | null {
-  if (!key) return null
+  if (!key || !MEDIA_KEY_RE.test(key)) return null
   const base = process.env.MEDIA_BASE_URL || '/media'
   return `${base}/${key}`
 }
