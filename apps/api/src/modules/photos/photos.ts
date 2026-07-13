@@ -11,7 +11,7 @@ import type { QueryResultRow } from 'pg'
 import { query } from '../../platform/db'
 import { type Tenant } from '../households/households'
 import { tenantRoute } from '../../platform/route-guards'
-import { getBlobStore, mediaUrl } from '../../platform/storage'
+import { getBlobStore, mediaKeyBelongsToHousehold, mediaUrl } from '../../platform/storage'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -196,6 +196,12 @@ export function registerPhotoRoutes(api: Api): void {
 
   api.post('/api/photos', tenantRoute(async (tenant, req: Request, res: Response) => {
     const body = (req.body ?? {}) as Partial<CreatePhotoInput>
+    if (body.storageKey != null && (
+      typeof body.storageKey !== 'string' ||
+      !mediaKeyBelongsToHousehold(body.storageKey, tenant.householdId)
+    )) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid uploaded image key' })
+    }
     // caption is optional (blank by default); a tile still needs an image or emoji.
     if (!body.imageUrl && !body.storageKey && !body.emoji) {
       return res.status(400).json({ error: 'BadRequest', message: 'an image url, an uploaded image, or an emoji is required' })

@@ -47,6 +47,7 @@ See [Reverse proxy & TLS](/install/reverse-proxy/) for the full remote-access st
 | `ACCESS_TOKEN_TTL_SECONDS` | Access-token lifetime | `3600` (1h) |
 | `REFRESH_TOKEN_TTL_DAYS` | Refresh-token lifetime | `60` |
 | `AUTH_FORCE_PASSWORD` | Break-glass: always show the password form, even in SSO-only mode (`=1`) | unset |
+| `OIDC_NATIVE_REDIRECT_URI` | Exact native-app callback accepted by the OIDC redirect allowlist | `waffled://auth/callback` |
 | `LOCAL_JWT_ISSUER` / `LOCAL_JWT_AUDIENCE` | Local JWT issuer / audience | `waffled-local` / `waffled-api` |
 | `HOUSEHOLD_CLAIM` | Token claim carrying the household id | `https://waffled.app/household_id` |
 | `KIOSK_PIN_MAX_ATTEMPTS` | Kiosk PIN attempts before lockout | `5` |

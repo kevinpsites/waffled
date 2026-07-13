@@ -15,8 +15,8 @@ interface SessionResponse {
   person?: unknown
   household?: unknown
 }
-// Admin-managed OIDC config (Settings → Login & security). The client secret is
-// never returned — `secretSet` reports whether one is stored.
+// Installation-owner-managed OIDC config (Settings → Login & security). The
+// client secret is never returned — `secretSet` reports whether one is stored.
 export interface OidcConfig {
   oidcEnabled: boolean
   issuerUrl: string | null
@@ -69,7 +69,7 @@ export const authApi = {
     const d = await post('/api/auth/oidc/exchange', { code })
     setSession(d.accessToken, d.refreshToken)
   },
-  // Admin OIDC config (authed; routes require admin).
+  // Installation OIDC config (authed; routes require the installation owner).
   getConfig: () => apiGet<OidcConfig>('/api/auth/config'),
   saveConfig: (patch: OidcConfigPatch) => apiSend<{ ok: true }>('PUT', '/api/auth/config', patch),
   testConfig: (issuerUrl: string) =>

@@ -159,7 +159,7 @@ password). Email-only members can sign in via SSO once OIDC is configured.
 Waffled supports backend-mediated OIDC (auth-code + PKCE) against any OpenID-Connect
 provider (Authentik, Keycloak, Google, …). It's **invite-gated**: a person can only
 sign in via SSO if the provider's *verified email* already matches a family member's
-login email. Configure it in **Settings → Login & security** (admin only):
+login email. Configure it in **Settings → Login & security** (installation owner only):
 
 1. Ensure `TOKEN_ENCRYPTION_KEY` is set (the client secret is encrypted at rest).
 2. **Issuer URL** — your provider's discovery base, e.g.
@@ -216,6 +216,7 @@ and credential→identity wiring the API uses, so there's one source of truth.
 | `list-accounts` | List each human (account) and every household they belong to, with an owner/admin/member marker. |
 | `make-admin (--email <e> \| --person <uuid>)` | Grant admin. |
 | `revoke-admin (--email <e> \| --person <uuid>)` | Revoke admin (the household owner can't be demoted). |
+| `set-installation-owner --email <e>` | Transfer or recover ownership of installation-wide login and SSO settings. This is a host-level break-glass action. |
 | `password-login <on\|off>` | Enable/disable email+password login (the DB toggle mirrored in Settings → Login & security). |
 | `clear-calendar-error (--email <e> \| --all)` | Clear a stuck Google account's "sync failing" flag. (The token itself is fixed by **Reconnect** in Settings → Calendars — a browser OAuth step the CLI can't do.) |
 | `prune-sessions [--email <e>]` | Revoke refresh tokens for one member (**across all of their households**), or everyone — forces re-login. |

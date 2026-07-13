@@ -151,10 +151,8 @@ struct KioskCalendarView: View {
     /// Horizontal flick → step month / week / day (mirrors the header chevrons). Ignores
     /// agenda mode and predominantly-vertical drags so the time grids still scroll.
     private func handleSwipe(_ value: DragGesture.Value) {
-        guard mode != .agenda else { return }
-        let dx = value.translation.width, dy = value.translation.height
-        guard abs(dx) > 50, abs(dx) > abs(dy) * 1.5 else { return }
-        step(dx < 0 ? 1 : -1)   // swipe left = next
+        guard mode != .agenda, let dir = HorizontalSwipe.step(value) else { return }
+        step(dir)
     }
 
     private func chevron(_ s: String) -> some View {
