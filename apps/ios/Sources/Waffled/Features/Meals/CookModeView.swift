@@ -205,16 +205,33 @@ struct CookModeView: View {
     }
 
     /// iPad-only: the current step's ingredients in a fixed-width, scrollable LEFT
-    /// sidebar (with an "INGREDIENTS" header) so they stay put while cooking. On the
-    /// phone the chips render inline inside `stepColumn` instead.
+    /// sidebar (with an "INGREDIENTS" header) so they stay put while cooking. Each
+    /// ingredient is a full-width row whose text *wraps* to as many lines as it needs
+    /// — a single-line capsule would truncate long names mid-word in this narrow
+    /// column. On the phone the chips render inline inside `stepColumn` instead.
     @ViewBuilder private var ingredientsSidebar: some View {
         if let igs = step?.ingredients, !igs.isEmpty {
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text("INGREDIENTS")
                         .font(.system(size: 13, weight: .heavy)).tracking(1.2)
                         .foregroundStyle(WF.ink3)
-                    ingredientChips(igs)
+                        .padding(.bottom, 4)
+                    ForEach(igs, id: \.self) { ig in
+                        HStack(alignment: .top, spacing: 10) {
+                            Circle().fill(Color(hex: 0x167A4A).opacity(0.5))
+                                .frame(width: 6, height: 6).padding(.top, 8)
+                            Text(ig)
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundStyle(WF.ink)
+                                .lineLimit(nil)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 9)
+                        .background(Color(hex: 0x167A4A).opacity(0.10))
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 24).padding(.vertical, 28)
