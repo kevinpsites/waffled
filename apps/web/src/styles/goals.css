@@ -118,7 +118,7 @@ button.goal-listhead-link:hover {
 .feat-tag {
   display: inline-flex; align-items: center; gap: 3px;
   font-size: 10px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase;
-  color: #b07d1c; background: #fdf2dd; padding: 3px 8px; border-radius: 999px;
+  color: #b07d1c; background: var(--warn-t); padding: 3px 8px; border-radius: 999px;
 }
 /* Quick pin/unpin — a muted pushpin that brightens on hover; solid when pinned. */
 .goal-pin {
@@ -203,7 +203,7 @@ button.goal-listhead-link:hover {
   color: #fff;
 }
 .hero-log {
-  background: #fff;
+  background: var(--card);
   color: #2f7d4f;
 }
 
@@ -319,7 +319,7 @@ button.goal-listhead-link:hover {
 /* shared / each segmented control */
 .ge-share { display: inline-flex; background: var(--panel); border-radius: 999px; padding: 4px; margin-top: 14px; }
 .ge-share button { border: 0; background: transparent; font: inherit; font-size: 13.5px; font-weight: 650; color: var(--ink-2); padding: 8px 16px; border-radius: 999px; cursor: pointer; }
-.ge-share button.on { background: #fff; color: var(--ink); box-shadow: var(--sh-1); font-weight: 700; }
+.ge-share button.on { background: var(--card); color: var(--ink); box-shadow: var(--sh-1); font-weight: 700; }
 .ge-share.ge-share-3 { display: flex; margin-top: 0; }
 .ge-share.ge-share-3 button { flex: 1; text-align: center; white-space: nowrap; }
 
@@ -409,8 +409,8 @@ button.goal-listhead-link:hover {
 .ge-ms { padding: 4px 0 8px 47px; display: flex; flex-direction: column; gap: 8px; }
 .ge-ms-hint { font-size: 11.5px; color: var(--ink-3); font-weight: 550; margin: 2px 0 4px; }
 .ge-ms-row { display: flex; align-items: center; gap: 10px; background: var(--card-2); border: 1px solid var(--hair-2); border-radius: var(--r-md); padding: 8px 10px; }
-.ge-ms-emoji { width: 40px; text-align: center; border: 1px solid var(--hair-2); background: #fff; border-radius: 8px; padding: 7px 2px; font: inherit; font-size: 16px; outline: none; flex: none; }
-.ge-ms-n { display: inline-flex; align-items: center; background: #fff; border: 1px solid var(--hair); border-radius: 9px; overflow: hidden; }
+.ge-ms-emoji { width: 40px; text-align: center; border: 1px solid var(--hair-2); background: var(--card); border-radius: 8px; padding: 7px 2px; font: inherit; font-size: 16px; outline: none; flex: none; }
+.ge-ms-n { display: inline-flex; align-items: center; background: var(--card); border: 1px solid var(--hair); border-radius: 9px; overflow: hidden; }
 .ge-ms-n input { width: 56px; border: 0; outline: none; text-align: center; font: inherit; font-size: 14px; font-weight: 700; padding: 7px 2px; color: var(--ink); }
 .ge-ms-r { flex: 1; border: 0; background: transparent; outline: none; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink); min-width: 0; }
 .ge-ms-r::placeholder { color: var(--ink-3); font-weight: 550; }
@@ -796,7 +796,7 @@ button.goal-listhead-link:hover {
 }
 .log-step-box {
   width: 24px; height: 24px; flex: none; border-radius: 7px;
-  border: 1.5px solid var(--hair); background: #fff;
+  border: 1.5px solid var(--hair); background: var(--card);
   display: grid; place-items: center; font-size: 14px; font-weight: 800; color: #fff;
 }
 .log-step-row.done .log-step-box { background: var(--wally); border-color: var(--wally); }
@@ -924,7 +924,7 @@ button.goal-listhead-link:hover {
 }
 .log-act:hover {
   background: var(--wally-t);
-  color: #167a4a;
+  color: var(--success);
 }
 
 /* milestone editor rows (create/edit) */

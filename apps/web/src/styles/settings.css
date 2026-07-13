@@ -47,7 +47,7 @@
   background: rgba(0, 0, 0, 0.025);
 }
 .set-navitem.on {
-  background: #fff;
+  background: var(--card);
   box-shadow: var(--sh-1);
 }
 .set-navic {
@@ -81,11 +81,11 @@
 }
 .set-signout {
   width: 100%;
-  color: var(--primary, #e0653f);
+  color: var(--primary);
   font-weight: 700;
 }
 .set-signout:hover {
-  background: color-mix(in srgb, var(--primary, #e0653f) 10%, transparent);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
 /* content */
@@ -173,7 +173,7 @@
   width: 18px;
   height: 18px;
   cursor: pointer;
-  accent-color: var(--accent, #4c8bf5);
+  accent-color: var(--info);
 }
 
 /* calendars: search + filter toolbar */
@@ -195,7 +195,7 @@
   color: var(--ink);
 }
 .cal-search::placeholder {
-  color: var(--muted);
+  color: var(--ink-3);
   font-weight: 600;
 }
 
@@ -220,7 +220,7 @@
   flex: none;
   font-size: 22px;
   line-height: 1;
-  color: var(--muted);
+  color: var(--ink-3);
   transform: rotate(90deg);
   transition: transform 0.15s ease;
 }
@@ -242,7 +242,7 @@
   font: inherit;
   font-size: 12px;
   font-weight: 700;
-  color: var(--accent, #4c8bf5);
+  color: var(--info);
   cursor: pointer;
 }
 .linkbtn:hover {
@@ -256,10 +256,10 @@
   font-size: 20px;
   line-height: 1;
   padding: 4px;
-  color: var(--muted);
+  color: var(--ink-3);
 }
 .cal-star.on {
-  color: var(--accent, #4c8bf5);
+  color: var(--info);
 }
 
 /* household setting rows */
@@ -310,7 +310,7 @@
   padding: 2px 0 10px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--ink-3);
 }
 /* Chip / staple grids carry a little inner padding; at a card's bottom edge the
    card's own 20px supplies the breathing room, so drop theirs to avoid doubling. */
@@ -349,7 +349,7 @@ select.sel {
   padding: 8px 12px;
   border-radius: 999px;
   border: 1px solid var(--hair);
-  background: #fff;
+  background: var(--card);
   width: 180px;
 }
 .set-inline-input[type='time'] {
@@ -361,7 +361,7 @@ select.sel {
 .set-check {
   width: 20px;
   height: 20px;
-  accent-color: var(--primary, #4c8bf5);
+  accent-color: var(--primary);
   cursor: pointer;
 }
 .set-check:disabled {
@@ -381,8 +381,8 @@ select.sel {
   cursor: pointer;
 }
 .meal-chips .tag.on {
-  background: var(--primary, #4c8bf5);
-  border-color: var(--primary, #4c8bf5);
+  background: var(--primary);
+  border-color: var(--primary);
   color: #fff;
 }
 .meal-chips .tag:disabled {
@@ -415,7 +415,7 @@ select.sel {
   background: var(--ai); }
 .ai-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
   background: var(--panel); color: var(--ink-3); flex: none; }
-.ai-badge.ok { background: #e7f3ea; color: #2e7d32; }
+.ai-badge.ok { background: #e7f3ea; color: var(--success); }
 
 /* ===== Currency catalog (Chores & rewards settings) ===== */
 .cur-row, .cur-add { display: flex; align-items: center; gap: 8px; padding: 9px 0; }
@@ -519,14 +519,14 @@ select.sel {
   font-size: 14px; font-weight: 700; color: #fff; flex: none; }
 .health-badge-lg { width: auto; height: auto; padding: 4px 12px; border-radius: 999px; font-size: 12.5px; gap: 4px; }
 .health-ok { background: #2E9E5B; }
-.health-degraded { background: #D9882B; }
-.health-down { background: var(--danger, #c0392b); }
+.health-degraded { background: var(--warn); }
+.health-down { background: var(--danger, var(--danger)); }
 .health-hint { margin-top: 10px; font-size: 12px; font-weight: 600; line-height: 1.45; color: var(--ink-2);
-  background: var(--card-2); border-left: 3px solid #D9882B; border-radius: 6px; padding: 7px 10px; }
+  background: var(--card-2); border-left: 3px solid var(--warn); border-radius: 6px; padding: 7px 10px; }
 .cal-reconnect { flex: none; color: #fff; border: 0; }
 .cal-acct-error { margin: 0 14px 12px; padding: 9px 12px; border-radius: 8px; font-size: 12.5px;
   font-weight: 600; line-height: 1.45; color: var(--ink-2); background: #fbe7d8;
-  border-left: 3px solid #D9882B; }
+  border-left: 3px solid var(--warn); }
 
 /* Modules tab — optional feature toggles */
 .set-head-sub { font-size: 13px; font-weight: 600; color: var(--ink-3); }
@@ -536,14 +536,14 @@ select.sel {
   background: var(--card); border: 1px solid var(--hair); border-radius: var(--r-lg, 16px);
 }
 .set-module-row { display: flex; align-items: center; gap: 14px; }
-.set-module.on { border-color: color-mix(in srgb, var(--primary, #e0653f) 45%, transparent); }
+.set-module.on { border-color: color-mix(in srgb, var(--primary) 45%, transparent); }
 
 /* pill toggle switch */
 .set-switch {
   flex: none; width: 46px; height: 27px; border-radius: 999px; border: 0; cursor: pointer; padding: 0;
   background: var(--hair, #e4ded4); position: relative; transition: background 0.15s ease;
 }
-.set-switch.on { background: var(--primary, #e0653f); }
+.set-switch.on { background: var(--primary); }
 .set-switch:disabled { opacity: 0.5; cursor: default; }
 .set-switch-knob {
   position: absolute; top: 3px; left: 3px; width: 21px; height: 21px; border-radius: 50%;
@@ -564,20 +564,20 @@ select.sel {
 }
 .set-module-ic {
   width: 42px; height: 42px; flex: none; border-radius: 12px; display: grid; place-items: center;
-  font-size: 22px; background: var(--card-2, #faf8f4); border: 1px solid var(--hair);
+  font-size: 22px; background: var(--card-2); border: 1px solid var(--hair);
 }
 .set-module-main { flex: 1; min-width: 0; }
 .set-module-name { font-weight: 800; font-size: 15px; color: var(--ink); }
 .set-module-desc { font-size: 13px; font-weight: 500; color: var(--ink-3); margin-top: 2px; }
 .set-module-soon {
   flex: none; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
-  color: var(--ink-3); background: var(--card-2, #faf8f4); border: 1px solid var(--hair);
+  color: var(--ink-3); background: var(--card-2); border: 1px solid var(--hair);
   padding: 5px 10px; border-radius: 999px;
 }
 
 /* ── API keys ─────────────────────────────────────────────────────────────────── */
 .apikey-reveal {
-  border: 1px solid color-mix(in srgb, #2e9e6b 40%, var(--hair)); background: color-mix(in srgb, #2e9e6b 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--success) 40%, var(--hair)); background: color-mix(in srgb, var(--success) 7%, transparent);
   border-radius: var(--r-lg, 14px); padding: 14px 16px; margin-bottom: 16px;
 }
 .apikey-reveal-h { font-size: 13px; font-weight: 800; color: var(--ink); margin-bottom: 10px; }
@@ -603,22 +603,22 @@ select.sel {
 .apikey-name { font-weight: 700; font-size: 15px; color: var(--ink); }
 .apikey-prefix {
   font-family: var(--mono, ui-monospace, monospace); font-size: 12px; color: var(--ink-3);
-  background: var(--card-2, #faf8f4); border: 1px solid var(--hair); border-radius: 6px; padding: 1px 6px; margin-top: 3px; display: inline-block;
+  background: var(--card-2); border: 1px solid var(--hair); border-radius: 6px; padding: 1px 6px; margin-top: 3px; display: inline-block;
 }
 .apikey-scopes { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0 6px; }
 .apikey-scope {
   font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
-  background: color-mix(in srgb, var(--primary, #e0653f) 10%, transparent); color: var(--primary, #e0653f);
+  background: color-mix(in srgb, var(--primary) 10%, transparent); color: var(--primary);
 }
 .apikey-meta { font-weight: 600; }
-.apikey-revoke { flex: none; color: var(--danger, #c0392b); }
+.apikey-revoke { flex: none; color: var(--danger, var(--danger)); }
 
 .apikey-scopegrid { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; padding-right: 2px; }
 .apikey-scoperow { display: flex; align-items: center; gap: 12px; padding: 8px 4px; border-bottom: 1px solid var(--hair); }
 .apikey-scoperow:last-child { border-bottom: 0; }
 .apikey-scoperow-main { flex: 1; min-width: 0; }
 .apikey-scoperow-label { font-weight: 700; font-size: 14px; color: var(--ink); }
-.apikey-seg { flex: none; display: inline-flex; border: 1px solid var(--hair); border-radius: 999px; overflow: hidden; background: var(--card-2, #faf8f4); }
+.apikey-seg { flex: none; display: inline-flex; border: 1px solid var(--hair); border-radius: 999px; overflow: hidden; background: var(--card-2); }
 .apikey-seg button {
   border: 0; background: transparent; font: inherit; font-size: 12px; font-weight: 700; color: var(--ink-3);
   padding: 6px 12px; cursor: pointer; border-right: 1px solid var(--hair);

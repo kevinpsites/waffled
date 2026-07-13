@@ -688,7 +688,7 @@ function MyProfilePanel() {
           <button type="button" className="btn btn-primary" onClick={save} disabled={!dirty || !name.trim() || saving}>
             {saving ? 'Saving…' : 'Save'}
           </button>
-          {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+          {saved && <span className="tiny" style={{ color: 'var(--success)', fontWeight: 700 }}>✓ Saved</span>}
         </div>
         {saveErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10 }}>{saveErr}</div>}
       </SettingCard>
@@ -795,7 +795,7 @@ function MyAccountPanel() {
               <button type="button" className="btn btn-primary" onClick={saveEmail} disabled={emailBusy || !email.trim() || !emailPw || email.trim() === (info.email ?? '')}>
                 {emailBusy ? 'Saving…' : 'Update email'}
               </button>
-              {emailOk && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+              {emailOk && <span className="tiny" style={{ color: 'var(--success)', fontWeight: 700 }}>✓ Saved</span>}
             </div>
             {emailErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10 }}>{emailErr}</div>}
           </SettingCard>
@@ -818,7 +818,7 @@ function MyAccountPanel() {
               <button type="button" className="btn btn-primary" onClick={savePassword} disabled={pwBusy || !curPw || !newPw || !confirmPw}>
                 {pwBusy ? 'Saving…' : 'Update password'}
               </button>
-              {pwOk && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+              {pwOk && <span className="tiny" style={{ color: 'var(--success)', fontWeight: 700 }}>✓ Saved</span>}
             </div>
             {pwErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10 }}>{pwErr}</div>}
           </SettingCard>
@@ -874,7 +874,7 @@ function KioskPinCard({ personId, hasPin }: { personId: string; hasPin: boolean 
           {busy ? 'Saving…' : pinSet ? 'Update PIN' : 'Set PIN'}
         </button>
         {pinSet && <button type="button" className="btn btn-ghost" onClick={remove} disabled={busy}>Remove PIN</button>}
-        {ok && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+        {ok && <span className="tiny" style={{ color: 'var(--success)', fontWeight: 700 }}>✓ Saved</span>}
       </div>
       {err && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10 }}>{err}</div>}
     </SettingCard>
@@ -1144,7 +1144,7 @@ function AiPanel() {
         <button type="button" className="btn btn-primary" onClick={save} disabled={!dirty || saving}>
           {saving ? 'Saving…' : 'Save'}
         </button>
-        {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+        {saved && <span className="tiny" style={{ color: 'var(--success)', fontWeight: 700 }}>✓ Saved</span>}
         <span className="tiny muted" style={{ fontWeight: 600 }}>
           Keys are read from the server environment and never leave it.
         </span>
@@ -1258,7 +1258,7 @@ function MealsPanel() {
     <div className="set-panel">
       <div className="set-head" style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
         <div className="wf-serif set-head-t">Meals</div>
-        {savedFlash && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved · meals updated</span>}
+        {savedFlash && <span className="tiny" style={{ color: 'var(--success)', fontWeight: 700 }}>✓ Saved · meals updated</span>}
         <span className="tiny muted" style={{ marginLeft: 'auto', fontWeight: 600 }}>Changes save automatically</span>
       </div>
 
@@ -1485,7 +1485,7 @@ function CalendarsPanel() {
                 {cal.visibility === 'personal' ? '🔒 Private (only you)' : '👪 Family viewable'}
               </span>
             )}
-            {cal.isWriteTarget && <span style={{ color: 'var(--accent, #4c8bf5)' }}> · ★ new events go here</span>}
+            {cal.isWriteTarget && <span style={{ color: 'var(--info)' }}> · ★ new events go here</span>}
           </div>
         </div>
         {canTarget && (
@@ -2583,12 +2583,12 @@ function SecurityPanel() {
     <div className="set-panel">
       <div className="set-head" style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
         <div className="wf-serif set-head-t">Sign-in &amp; Security</div>
-        {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+        {saved && <span className="tiny" style={{ color: 'var(--success)', fontWeight: 700 }}>✓ Saved</span>}
       </div>
 
       {!cfg.encryptionAvailable && (
         <SettingCard style={{ marginBottom: 16 }}>
-          <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary, #e0653f)' }}>
+          <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)' }}>
             Set <code>TOKEN_ENCRYPTION_KEY</code> in the server environment to store the OIDC client secret securely. OIDC can't be enabled until then.
           </div>
         </SettingCard>
@@ -2605,7 +2605,7 @@ function SecurityPanel() {
             <input className="set-inline-input" style={{ flex: 1, width: 'auto' }} value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="https://auth.example.com/application/o/waffled/" />
             <button type="button" className="btn btn-ghost" onClick={test} disabled={busy || !issuer.trim()}>Test</button>
           </div>
-          {testMsg && <div className="tiny" style={{ fontWeight: 700, marginTop: 6, color: testMsg.ok ? 'var(--good, #2e7d32)' : 'var(--primary, #e0653f)' }}>{testMsg.text}</div>}
+          {testMsg && <div className="tiny" style={{ fontWeight: 700, marginTop: 6, color: testMsg.ok ? 'var(--success)' : 'var(--primary)' }}>{testMsg.text}</div>}
 
           <label className="auth-label">Client ID</label>
           <input className="set-inline-input" style={{ width: '100%' }} value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="waffled" />
@@ -2723,7 +2723,7 @@ function KioskDevicesSection() {
       <CardHeader title="Kiosk Devices" sub="Turn a tablet into a shared family display with a profile picker. Pair it from here, or set up the tablet itself with a code." />
 
       {adminsNoPin.length > 0 && (
-        <SettingCard style={{ marginBottom: 14, borderLeft: '3px solid var(--primary, #e0653f)' }}>
+        <SettingCard style={{ marginBottom: 14, borderLeft: '3px solid var(--primary)' }}>
           <div className="set-row2-t" style={{ marginBottom: 4 }}>⚠️ Set a PIN for your admins</div>
           <div className="tiny muted" style={{ fontWeight: 600 }}>
             On a shared kiosk, anyone can tap an admin profile with no PIN and gain full control.
@@ -2738,7 +2738,7 @@ function KioskDevicesSection() {
           {busy ? 'Generating…' : 'Generate pairing code'}
         </button>
       </div>
-      {note && <div className="tiny" style={{ fontWeight: 700, color: 'var(--good, #2e7d32)', marginTop: 10 }}>{note}</div>}
+      {note && <div className="tiny" style={{ fontWeight: 700, color: 'var(--success)', marginTop: 10 }}>{note}</div>}
       {code && (
         <div style={{ marginTop: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -2877,7 +2877,7 @@ function DisplayKioskPanel() {
     <div className="set-panel">
       <div className="set-head" style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
         <div className="wf-serif set-head-t">Display &amp; Kiosk</div>
-        {savedFlash && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+        {savedFlash && <span className="tiny" style={{ color: 'var(--success)', fontWeight: 700 }}>✓ Saved</span>}
         <span className="tiny muted" style={{ marginLeft: 'auto', fontWeight: 600 }}>Screensaver settings save automatically</span>
       </div>
 

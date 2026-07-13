@@ -8,7 +8,7 @@
 
 /* "NEW MEMORY — N photos" banner */
 .ph-banner { margin: 0 30px 16px; display: flex; align-items: center; gap: 14px;
-  padding: 16px 20px; border-radius: var(--r-lg); background: linear-gradient(120deg,#efeafc,#f4eefe); }
+  padding: 16px 20px; border-radius: var(--r-lg); background: linear-gradient(120deg,var(--ai-t),var(--ai-t)); }
 .ph-banner-tile { width: 56px; height: 56px; border-radius: 14px; display: grid;
   place-items: center; font-size: 28px; flex: none; overflow: hidden; }
 .ph-banner-tile img { width: 100%; height: 100%; object-fit: cover; }
@@ -85,7 +85,7 @@
 .ap-drop-sub { font-size: 15px; color: var(--ink-3); }
 .ap-drop-link { color: var(--primary); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .ap-drop-meta { margin-top: 14px; }
-.ap-err { color: var(--danger, #c0392b); font-weight: 700; }
+.ap-err { color: var(--danger, var(--danger)); font-weight: 700; }
 
 /* staged state: a "Album for all" bar over a list of per-photo rows */
 .ap-batch { width: min(720px, 100%); display: flex; flex-direction: column; gap: 14px; }
@@ -97,7 +97,7 @@
 .ap-uploading { font-weight: 700; }
 
 .ap-list { display: flex; flex-direction: column; gap: 12px; }
-.ap-row { display: flex; gap: 14px; align-items: flex-start; background: #fff;
+.ap-row { display: flex; gap: 14px; align-items: flex-start; background: var(--card);
   border-radius: var(--r-md); box-shadow: var(--sh-1); padding: 12px; }
 .ap-row-thumb { flex: none; width: 104px; height: 104px; border-radius: var(--r-sm, 12px);
   overflow: hidden; background: rgba(0,0,0,.05); }
@@ -107,7 +107,7 @@
 .ap-row-album { flex: 1; min-width: 0; }
 .ap-row-del { flex: none; width: 34px; height: 34px; border-radius: 999px; border: 0;
   background: rgba(0,0,0,.06); color: var(--ink-3); font-size: 22px; line-height: 1; cursor: pointer; }
-.ap-row-del:hover { background: rgba(192,57,43,.12); color: var(--danger, #c0392b); }
+.ap-row-del:hover { background: rgba(192,57,43,.12); color: var(--danger, var(--danger)); }
 
 .ap-field-label { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; font-weight: 700;
   color: var(--ink-3); letter-spacing: .02em; }

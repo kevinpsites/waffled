@@ -299,7 +299,7 @@ export function LogModal({
                 {!multi && (
                   <button type="button" className={`log-person ${who.includes(FAMILY) ? 'on' : ''}`} onClick={() => toggleWho(FAMILY)}>
                     <div className="av md" style={{ background: 'var(--panel)' }}>👪</div>
-                    <span className="log-check" style={{ background: who.includes(FAMILY) ? 'var(--wally)' : '#fff', borderColor: who.includes(FAMILY) ? 'var(--wally)' : 'var(--hair)' }}>
+                    <span className="log-check" style={{ background: who.includes(FAMILY) ? 'var(--wally)' : 'var(--card)', borderColor: who.includes(FAMILY) ? 'var(--wally)' : 'var(--hair)' }}>
                       {who.includes(FAMILY) ? '✓' : ''}
                     </span>
                     <span className="tiny" style={{ fontWeight: 700, color: 'var(--ink-2)' }}>Family</span>
@@ -310,7 +310,7 @@ export function LogModal({
                   return (
                     <button key={p.personId} type="button" className={`log-person ${on ? 'on' : ''}`} onClick={() => toggleWho(p.personId)}>
                       <div className="av md" style={{ background: `${p.colorHex ?? '#A6A29B'}22` }}>{p.avatarEmoji ?? '🙂'}</div>
-                      <span className="log-check" style={{ background: on ? 'var(--wally)' : '#fff', borderColor: on ? 'var(--wally)' : 'var(--hair)' }}>
+                      <span className="log-check" style={{ background: on ? 'var(--wally)' : 'var(--card)', borderColor: on ? 'var(--wally)' : 'var(--hair)' }}>
                         {on ? '✓' : ''}
                       </span>
                       <span className="tiny" style={{ fontWeight: 700, color: 'var(--ink-2)' }}>{p.name.split(' ')[0]}</span>

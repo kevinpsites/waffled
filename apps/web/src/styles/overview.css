@@ -46,7 +46,7 @@
 .pp-insight {
   display: flex; gap: 12px; align-items: flex-start;
   padding: 14px 16px; border-radius: var(--r-lg);
-  background: linear-gradient(120deg, #efeafc, #f4eefe);
+  background: linear-gradient(120deg, var(--ai-t), var(--ai-t));
 }
 .pp-insight .ai-spark { width: 32px; height: 32px; flex: none; }
 .pp-insight-t { font-size: 14.5px; font-weight: 700; color: var(--ai); }
@@ -75,11 +75,11 @@
   background: var(--panel); color: var(--ink-2); text-transform: capitalize;
 }
 .pp-cat-chip.cat-physical { background: #fdeae6; color: #c0432c; stroke: none; }
-.pp-cat-chip.cat-intellectual { background: var(--kevin-t); color: #1559b8; }
-.pp-cat-chip.cat-spiritual { background: var(--lottie-t); color: #6a3fc4; }
+.pp-cat-chip.cat-intellectual { background: var(--kevin-t); color: var(--info); }
+.pp-cat-chip.cat-spiritual { background: var(--lottie-t); color: var(--ai-d); }
 .pp-cat-chip.cat-creative { background: #fbf1d6; color: #9a7400; }
-.pp-cat-chip.cat-social { background: var(--wally-t); color: #167a4a; }
-.pp-goal-streak { font-size: 12px; font-weight: 800; color: #d9650a; }
+.pp-cat-chip.cat-social { background: var(--wally-t); color: var(--success); }
+.pp-goal-streak { font-size: 12px; font-weight: 800; color: var(--warn); }
 .pp-goal-bar { height: 7px; border-radius: 999px; background: var(--panel); margin-top: 7px; overflow: hidden; }
 .pp-goal-bar span { display: block; height: 100%; background: var(--wally); border-radius: 999px; }
 .pp-goal-num { flex: none; font-size: 14px; text-align: right; }
@@ -93,7 +93,7 @@
 .pp-ledger { display: flex; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--hair-2); font-size: 14px; }
 .pp-ledger:last-child { border-bottom: 0; }
 .pp-ledger-amt { width: 44px; flex: none; font-weight: 800; }
-.pp-ledger-amt.pos { color: #167a4a; }
+.pp-ledger-amt.pos { color: var(--success); }
 .pp-ledger-amt.neg { color: var(--primary); }
 .pp-ledger-r { color: var(--ink-2); font-weight: 600; }
 
@@ -103,8 +103,8 @@
 .pp-redeem-emo { font-size: 20px; }
 .pp-redeem-t { flex: 1; font-weight: 600; font-size: 14px; }
 .pp-redeem-status { font-size: 11px; font-weight: 800; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; }
-.st-pending { background: #fff5e0; color: #b07d00; }
-.st-approved { background: var(--wally-t); color: #167a4a; }
+.st-pending { background: var(--warn-t); color: #b07d00; }
+.st-approved { background: var(--wally-t); color: var(--success); }
 .st-denied { background: var(--panel); color: var(--ink-3); }
 .pp-redeem-cost { font-size: 13px; font-weight: 800; color: var(--lottie); }
 
@@ -131,7 +131,7 @@
 .fam-av { width: 46px; height: 46px; border-radius: 999px; flex: none; display: grid; place-items: center; font-size: 24px; }
 .fam-name-wrap { flex: 1; min-width: 0; }
 .fam-name { font-weight: 700; font-size: 17px; }
-.fam-streak { font-size: 13px; font-weight: 800; color: #d9650a; }
+.fam-streak { font-size: 13px; font-weight: 800; color: var(--warn); }
 .fam-stats { display: flex; justify-content: space-between; }
 .fam-stat { text-align: center; }
 .fam-stat-n { font-size: 20px; font-weight: 800; }

@@ -48,9 +48,9 @@
 }
 .slot-dragging { opacity: 0.4; }
 .slot-drop {
-  outline: 2px dashed var(--primary, #e0653f);
+  outline: 2px dashed var(--primary);
   outline-offset: -2px;
-  background: color-mix(in srgb, var(--primary, #e0653f) 10%, var(--card)) !important;
+  background: color-mix(in srgb, var(--primary) 10%, var(--card)) !important;
 }
 .grid-drag-ghost {
   position: fixed;
@@ -388,7 +388,7 @@
 }
 .meal-remove:hover {
   opacity: 1;
-  background: #fff;
+  background: var(--card);
   color: var(--primary);
 }
 
@@ -481,8 +481,8 @@
 
 /* "Library is smaller than the month" nudge in the month planner. */
 .plan-lib-hint {
-  background: color-mix(in srgb, var(--gold, #e0a32e) 14%, var(--card));
-  border: 1px solid color-mix(in srgb, var(--gold, #e0a32e) 35%, transparent);
+  background: color-mix(in srgb, var(--gold) 14%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--gold) 35%, transparent);
   border-radius: var(--r-md, 12px);
   padding: 9px 12px;
   font-weight: 600;
@@ -577,7 +577,7 @@
 }
 .use-chip b {
   cursor: pointer;
-  color: var(--muted);
+  color: var(--ink-3);
   font-weight: 700;
 }
 .use-add-input {
@@ -644,7 +644,7 @@
   width: 16px;
   height: 16px;
   border: 2.5px solid var(--hair, rgba(0, 0, 0, 0.12));
-  border-top-color: var(--primary, #e0664b);
+  border-top-color: var(--primary);
   border-radius: 50%;
   animation: waffled-spin 0.7s linear infinite;
 }
@@ -683,7 +683,7 @@
   margin-bottom: 8px;
 }
 .plan-day.locked {
-  border-color: var(--accent, #4c8bf5);
+  border-color: var(--info);
 }
 .pd-day {
   width: 52px;
@@ -698,7 +698,7 @@
 .pd-dt {
   font-size: 12px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--ink-3);
 }
 .pd-img {
   width: 56px;
@@ -722,7 +722,7 @@
 .pd-m {
   font-size: 13px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--ink-3);
   margin-top: 1px;
 }
 .plan-day .reason {
@@ -732,8 +732,8 @@
   margin-top: 7px;
   padding: 3px 10px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--accent, #4c8bf5) 12%, transparent);
-  color: var(--accent, #4c8bf5);
+  background: color-mix(in srgb, var(--info) 12%, transparent);
+  color: var(--info);
   font-size: 12px;
   font-weight: 700;
 }
@@ -758,7 +758,7 @@
   place-items: center;
 }
 .pd-icon.on {
-  background: color-mix(in srgb, var(--accent, #4c8bf5) 16%, transparent);
+  background: color-mix(in srgb, var(--info) 16%, transparent);
 }
 .plan-foot {
   display: flex;

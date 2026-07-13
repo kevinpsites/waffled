@@ -288,7 +288,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
                       : 'Invited to sign in via SSO (no password set)'}
                 </div>
               </div>
-              {loginSaved && <span className="tiny" style={{ fontWeight: 700, color: 'var(--good, #2e7d32)' }}>✓ Saved</span>}
+              {loginSaved && <span className="tiny" style={{ fontWeight: 700, color: 'var(--success)' }}>✓ Saved</span>}
             </div>
 
             <label className="field" style={{ marginBottom: 8 }}>
@@ -326,7 +326,7 @@ export function PersonModal({ person, onClose, onSaved }: { person: SettingsMemb
                     : 'Optional — set one to protect this profile on the kiosk'}
                 </div>
               </div>
-              {pinSaved && <span className="tiny" style={{ fontWeight: 700, color: 'var(--good, #2e7d32)' }}>✓ Saved</span>}
+              {pinSaved && <span className="tiny" style={{ fontWeight: 700, color: 'var(--success)' }}>✓ Saved</span>}
             </div>
             <label className="field" style={{ marginBottom: 8 }}>
               <span>{hasPinLocal ? 'New PIN (4–8 digits)' : 'PIN (4–8 digits)'}</span>

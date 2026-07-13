@@ -72,7 +72,7 @@
   padding: 11px 13px;
   border-radius: var(--r-md, 12px);
   border: 1px solid var(--hair, #e4ded4);
-  background: var(--card-2, #faf8f4);
+  background: var(--card-2);
   color: var(--ink);
   width: 100%;
   box-sizing: border-box;
@@ -85,11 +85,11 @@
 }
 .auth-input:focus {
   outline: none;
-  border-color: var(--primary, #e0653f);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary, #e0653f) 16%, transparent);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 16%, transparent);
 }
 .auth-error {
-  color: var(--primary, #e0653f);
+  color: var(--primary);
   font-size: 13px;
   font-weight: 600;
   margin-top: 10px;
@@ -110,12 +110,12 @@
 /* SSO button — distinct from the primary password submit (outlined). */
 .auth-sso {
   border: 1px solid var(--hair, #e4ded4);
-  background: var(--card-2, #faf8f4);
+  background: var(--card-2);
   color: var(--ink);
   font-weight: 700;
 }
 .auth-sso:hover {
-  border-color: var(--primary, #e0653f);
+  border-color: var(--primary);
 }
 /* "or" divider between SSO and password. */
 .auth-or {
@@ -152,13 +152,13 @@
   text-transform: uppercase;
   border: 1px solid var(--hair, #e4ded4);
   border-radius: 12px;
-  background: var(--card-2, #faf8f4);
+  background: var(--card-2);
   color: var(--ink);
 }
 .pair-box:focus {
   outline: none;
-  border-color: var(--primary, #e0653f);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary, #e0653f) 18%, transparent);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
 }
 
 /* Subtle link under the login form: turn this device into a shared kiosk. */
@@ -168,7 +168,7 @@
   margin-top: 18px;
   background: none;
   border: none;
-  color: var(--ink-3, #8a8276);
+  color: var(--ink-3);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;

@@ -209,7 +209,7 @@ export function DescribeImportModal({ onClose, onDraft }: { onClose: () => void;
                 type="button"
                 className="pill"
                 onClick={toggleMic}
-                style={listening ? { background: '#c0392b', color: '#fff', border: 0 } : undefined}
+                style={listening ? { background: 'var(--danger)', color: '#fff', border: 0 } : undefined}
               >
                 {listening ? '● Listening… tap to stop' : '🎤 Dictate'}
               </button>

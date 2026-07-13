@@ -55,7 +55,7 @@
   font-weight: 800;
   letter-spacing: 0.05em;
   color: var(--primary);
-  background: var(--primary-t, #f3e2d8);
+  background: var(--primary-t);
   padding: 2px 8px;
   border-radius: 999px;
   vertical-align: middle;
@@ -283,7 +283,7 @@
   padding: 4px 8px;
   border: 1px solid var(--hair);
   border-radius: var(--r-sm);
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
 }
 
@@ -352,5 +352,5 @@
    .assign-menu to outrank `.assign-menu button { color: var(--ink) }`. */
 .assign-menu .lists-more-del,
 .assign-menu .lists-more-del:hover {
-  color: var(--danger, #c0392b);
+  color: var(--danger, var(--danger));
 }

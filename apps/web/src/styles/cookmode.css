@@ -80,12 +80,12 @@
   padding: 9px 16px;
   border-radius: 999px;
   background: var(--wally-t);
-  color: #167a4a;
+  color: var(--success);
 }
 .cm-note {
   font-size: 17px;
   font-weight: 600;
-  color: #167a4a;
+  color: var(--success);
   background: var(--wally-t);
   padding: 12px 16px;
   border-radius: var(--r-lg);
@@ -307,9 +307,9 @@
   animation: cm-alarm-bg 1.2s steps(1, end) infinite;
 }
 @keyframes cm-alarm-bg {
-  0% { background: var(--primary, #e0653f); }
+  0% { background: var(--primary); }
   50% { background: #2f7fed; }
-  100% { background: var(--primary, #e0653f); }
+  100% { background: var(--primary); }
 }
 .cm-alarm-card {
   width: 100%;
@@ -328,15 +328,15 @@
 .cm-alarm-list { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
 .cm-alarm-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 12px 14px; border-radius: 14px; background: var(--card-2, #faf8f4); border: 1px solid var(--hair, #e4ded4);
+  padding: 12px 14px; border-radius: 14px; background: var(--card-2); border: 1px solid var(--hair, #e4ded4);
 }
 .cm-alarm-label { font-weight: 800; font-size: 16px; color: var(--ink); text-align: left; }
 .cm-alarm-actions { display: flex; gap: 8px; flex: none; }
 .cm-alarm-jump, .cm-alarm-snooze, .cm-alarm-dismiss {
   font: inherit; font-size: 14px; font-weight: 800; padding: 10px 16px; border-radius: 999px; cursor: pointer;
 }
-.cm-alarm-jump { border: 1px solid var(--primary, #e0653f); background: var(--card, #fff); color: var(--primary, #e0653f); }
+.cm-alarm-jump { border: 1px solid var(--primary); background: var(--card, #fff); color: var(--primary); }
 .cm-alarm-jump:hover { background: var(--wally-t, rgba(236, 96, 73, 0.1)); }
 .cm-alarm-snooze { border: 1px solid var(--hair, #e4ded4); background: var(--card, #fff); color: var(--ink); }
-.cm-alarm-snooze:hover { border-color: var(--primary, #e0653f); }
-.cm-alarm-dismiss { border: 0; background: var(--primary, #e0653f); color: #fff; }
+.cm-alarm-snooze:hover { border-color: var(--primary); }
+.cm-alarm-dismiss { border: 0; background: var(--primary); color: #fff; }
