@@ -53,7 +53,7 @@ export function ConfirmDialog({
           <button
             type="submit"
             className="btn btn-primary"
-            style={danger ? { background: 'var(--danger, #c0392b)', borderColor: 'transparent' } : undefined}
+            style={danger ? { background: 'var(--danger)', borderColor: 'transparent' } : undefined}
             disabled={busy || (!!input && !value.trim())}
           >
             {busy ? 'Working…' : confirmLabel}

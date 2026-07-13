@@ -508,7 +508,7 @@ export function RecipeEditor() {
             </div>
           </div>
           <textarea className="re-paste-input" value={markdown} onChange={(e) => setMarkdown(e.target.value)} placeholder="Paste frontmatter + markdown here…" rows={12} />
-          {parseErr && <div className="tiny" style={{ color: 'var(--danger,#c0392b)', fontWeight: 700, marginTop: 6 }}>{parseErr}</div>}
+          {parseErr && <div className="tiny" style={{ color: 'var(--danger)', fontWeight: 700, marginTop: 6 }}>{parseErr}</div>}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 10 }}>
             <button type="button" className="pill" onClick={() => setPasteOpen(false)}>Cancel</button>
             <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={parsing || !markdown.trim()} onClick={parse}>
@@ -609,7 +609,7 @@ export function RecipeEditor() {
                 />
               </label>
             </div>
-            {uploadErr && <div className="tiny" style={{ color: 'var(--danger,#c0392b)', fontWeight: 700, marginTop: 6 }}>{uploadErr}</div>}
+            {uploadErr && <div className="tiny" style={{ color: 'var(--danger)', fontWeight: 700, marginTop: 6 }}>{uploadErr}</div>}
             {imagePreview && (
               <div className="re-image-preview">
                 <img src={imagePreview} alt="Recipe preview" />

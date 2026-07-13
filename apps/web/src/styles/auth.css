@@ -4,7 +4,7 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: var(--bg, #f6f3ee);
+  background: var(--bg);
 }
 .auth-loading {
   color: var(--ink-3);
@@ -13,9 +13,9 @@
 .auth-card {
   width: 100%;
   max-width: 420px;
-  background: var(--card, #fff);
-  border-radius: var(--r-lg, 18px);
-  box-shadow: var(--sh-2, 0 12px 40px rgba(0, 0, 0, 0.1));
+  background: var(--card);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-2);
   padding: 30px 28px 28px;
 }
 .auth-logo {
@@ -70,8 +70,8 @@
   font: inherit;
   font-size: 15px;
   padding: 11px 13px;
-  border-radius: var(--r-md, 12px);
-  border: 1px solid var(--hair, #e4ded4);
+  border-radius: var(--r-md);
+  border: 1px solid var(--hair);
   background: var(--card-2);
   color: var(--ink);
   width: 100%;
@@ -109,7 +109,7 @@
 }
 /* SSO button — distinct from the primary password submit (outlined). */
 .auth-sso {
-  border: 1px solid var(--hair, #e4ded4);
+  border: 1px solid var(--hair);
   background: var(--card-2);
   color: var(--ink);
   font-weight: 700;
@@ -134,7 +134,7 @@
   content: '';
   flex: 1;
   height: 1px;
-  background: var(--hair, #e4ded4);
+  background: var(--hair);
 }
 /* Segmented pairing-code input (6 boxes). */
 .pair-code {
@@ -150,7 +150,7 @@
   font-size: 26px;
   font-weight: 700;
   text-transform: uppercase;
-  border: 1px solid var(--hair, #e4ded4);
+  border: 1px solid var(--hair);
   border-radius: 12px;
   background: var(--card-2);
   color: var(--ink);

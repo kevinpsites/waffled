@@ -1055,7 +1055,7 @@
   border: 0; background: transparent; color: var(--ink-3); cursor: pointer; font-size: 18px;
   width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center;
 }
-.re-ing-x:hover { background: var(--panel); color: var(--danger, var(--danger)); }
+.re-ing-x:hover { background: var(--panel); color: var(--danger); }
 .re-ing-actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
 .re-add-ing {
   font: inherit; font-size: 14px; font-weight: 800; padding: 11px 18px; border-radius: 999px;
@@ -1144,7 +1144,7 @@
   box-shadow: 0 1px 2px rgba(0,0,0,0.04); display: grid; place-items: center; }
 .re-step-ctl button:hover:not(:disabled) { border-color: var(--primary); color: var(--ink); }
 .re-step-ctl button:disabled { opacity: 0.3; cursor: default; }
-.re-step-ctl .re-del { color: var(--danger, var(--danger)); }
+.re-step-ctl .re-del { color: var(--danger); }
 
 /* ingredient-row controls (reorder / remove) — compact inline on a single-line row */
 .re-row-ctl { display: flex; gap: 4px; align-items: center; }
@@ -1152,7 +1152,7 @@
   background: var(--card); color: var(--ink-2); cursor: pointer; font-size: 14px; font-weight: 700; }
 .re-row-ctl button:hover:not(:disabled) { background: var(--panel); }
 .re-row-ctl button:disabled { opacity: 0.3; cursor: default; }
-.re-row-ctl .re-del { color: var(--danger, var(--danger)); }
+.re-row-ctl .re-del { color: var(--danger); }
 
 /* photo: URL field + upload button + inline preview */
 .re-image { display: flex; flex-direction: column; gap: 8px; }
@@ -1160,11 +1160,11 @@
 .re-image-row input { flex: 1; }
 .re-upload-btn { cursor: pointer; }
 .re-image-preview { display: flex; align-items: center; gap: 10px; }
-.re-image-preview img { width: 96px; height: 96px; object-fit: cover; border-radius: var(--r-lg, 12px); border: 1px solid var(--hair); }
+.re-image-preview img { width: 96px; height: 96px; object-fit: cover; border-radius: var(--r-lg); border: 1px solid var(--hair); }
 
 .re-actions { display: flex; align-items: center; gap: 12px; margin-top: 22px; }
 .re-actions-right { margin-left: auto; display: flex; gap: 10px; }
-.re-delete-btn { color: var(--danger, var(--danger)); cursor: pointer; }
+.re-delete-btn { color: var(--danger); cursor: pointer; }
 
 @media (max-width: 760px) {
   .re-meta-grid { grid-template-columns: repeat(2, 1fr); }

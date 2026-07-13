@@ -218,7 +218,7 @@
   z-index: 40;
   background: var(--card);
   border-radius: var(--r-md);
-  box-shadow: var(--sh-2, 0 8px 28px rgba(0, 0, 0, 0.16));
+  box-shadow: var(--sh-2);
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -236,7 +236,7 @@
   font-weight: 600;
   color: var(--ink);
   padding: 8px 10px;
-  border-radius: var(--r-sm, 9px);
+  border-radius: var(--r-sm);
   cursor: pointer;
   text-align: left;
 }
@@ -352,5 +352,5 @@
    .assign-menu to outrank `.assign-menu button { color: var(--ink) }`. */
 .assign-menu .lists-more-del,
 .assign-menu .lists-more-del:hover {
-  color: var(--danger, var(--danger));
+  color: var(--danger);
 }

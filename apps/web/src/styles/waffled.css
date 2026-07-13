@@ -46,6 +46,9 @@
   --person-2:  #E0548B;  --person-2-t:  #FCE9F1;   /* pink */
   --person-3:  #25A368;  --person-3-t:  #E4F5EC;   /* green — same value as --success */
   --person-4:  #8A5CF0;  --person-4-t:  #F0E9FD;   /* purple */
+  /* readable text/icon color for a label sitting ON its own -t tint (darker than
+     the base in light; brightened in dark so it stays legible on the wash). */
+  --person-1-tx: #1559b8;  --person-2-tx: #b22f66;  --person-3-tx: #167a4a;  --person-4-tx: #6a3fc4;
 
   /* status / semantic (base for text/icons/borders, -t tint for fills/chips) */
   --success:   #25A368;  --success-t: #E4F5EC;  /* done / positive (absorbs 5 greens) */
@@ -103,11 +106,13 @@
   --ai-d:      #B9A3F5;
   --ai-t:      rgba(140,116,232,.20);
 
-  /* person palette — bases fixed; tints become translucent washes */
+  /* person palette — bases fixed; tints become translucent washes; text-on-tint
+     brightens so labels stay legible on the dark wash. */
   --person-1-t:  rgba(47,127,237,.20);
   --person-2-t:  rgba(224,84,139,.20);
   --person-3-t:  rgba(37,163,104,.22);
   --person-4-t: rgba(138,92,240,.22);
+  --person-1-tx: #6BA6FF;  --person-2-tx: #EC7FAE;  --person-3-tx: #34B87A;  --person-4-tx: #B9A3F5;
 
   /* status — brightened for contrast on dark */
   --success:   #34B87A;  --success-t: rgba(37,163,104,.20);
@@ -176,10 +181,10 @@
 .tb-wx { display: flex; align-items: center; gap: 7px; color: var(--ink-2);
   font-size: 19px; font-weight: 500; border: 0; background: none; font-family: inherit;
   cursor: pointer; padding: 4px 6px; border-radius: 10px; }
-.tb-wx:hover { background: var(--panel, rgba(0,0,0,.04)); }
+.tb-wx:hover { background: var(--panel); }
 .tb-wx svg { width: 24px; height: 24px; }
 .tb-wx-pop { display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
-  margin-top: 8px; background: var(--card, #fff); border-radius: 12px; box-shadow: var(--sh-1, 0 8px 30px rgba(0,0,0,.12));
+  margin-top: 8px; background: var(--card); border-radius: 12px; box-shadow: var(--sh-1);
   padding: 10px 14px; white-space: nowrap; z-index: 50; text-align: center; }
 .tb-wx-pop.open, .tb-wx-wrap:hover .tb-wx-pop { display: block; }
 .tb-wx-pop-t { font-size: 14px; font-weight: 700; color: var(--ink); }
@@ -216,10 +221,10 @@
 .person-chip { display: inline-flex; align-items: center; gap: 9px; padding: 7px 16px 7px 8px;
   border-radius: 999px; font-size: 15px; font-weight: 600; }
 .person-chip .ct { margin-left: 2px; font-weight: 600; opacity: .75; font-size: 13px; }
-.c-kevin  { background: var(--person-1-t);  color: #1559b8; }
-.c-kelly  { background: var(--person-2-t);  color: #b22f66; }
-.c-wally  { background: var(--person-3-t);  color: var(--success); }
-.c-lottie { background: var(--person-4-t); color: #6a3fc4; }
+.c-kevin  { background: var(--person-1-t);  color: var(--person-1-tx); }
+.c-kelly  { background: var(--person-2-t);  color: var(--person-2-tx); }
+.c-wally  { background: var(--person-3-t);  color: var(--person-3-tx); }
+.c-lottie { background: var(--person-4-t); color: var(--person-4-tx); }
 
 /* ===== generic card ============================================= */
 .card { background: var(--card); border-radius: var(--r-lg); box-shadow: var(--sh-2); }
@@ -271,12 +276,12 @@
 .cap-go:disabled { opacity: .4; cursor: default; }
 .cap-panel { position: absolute; top: calc(100% + 8px); left: 0; right: 0; z-index: 40;
   background: var(--card); border: 1px solid var(--hair-2); border-radius: var(--r-lg);
-  box-shadow: var(--sh-3, 0 12px 32px rgba(0,0,0,.16)); padding: 12px 14px; }
+  box-shadow: var(--sh-3); padding: 12px 14px; }
 .cap-preview { display: flex; align-items: center; gap: 12px; }
 .cap-icon { width: 38px; height: 38px; flex: none; border-radius: 12px; background: var(--panel);
   display: grid; place-items: center; font-size: 20px; }
 .cap-kind { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
-  color: var(--person-4, var(--ai)); display: flex; align-items: center; gap: 8px; }
+  color: var(--person-4); display: flex; align-items: center; gap: 8px; }
 .cap-via { font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--ink-3);
   font-size: 10.5px; }
 .cap-primary { font-size: 15px; font-weight: 700; color: var(--ink); white-space: nowrap;
@@ -287,7 +292,7 @@
   background: var(--panel); border-radius: 999px; padding: 4px 10px; }
 .cap-flash { font-size: 14px; font-weight: 600; }
 .cap-flash.ok { color: var(--ink); }
-.cap-flash.err { color: var(--danger, #c0392b); }
+.cap-flash.err { color: var(--danger); }
 
 /* inline edit of the parsed result (fix the text / re-route the type) */
 .cap-preview.editing { align-items: flex-start; }
@@ -366,10 +371,10 @@ select.cap-edit-sub { cursor: pointer; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* meal-plan events read as recipes — a dashed edge sets them apart from real events */
 .ev.ev-meal { border: 1px dashed currentColor; }
-.ev.kevin  { background: var(--person-1-t);  color: #1559b8; }
-.ev.kelly  { background: var(--person-2-t);  color: #b22f66; }
-.ev.wally  { background: var(--person-3-t);  color: var(--success); }
-.ev.lottie { background: var(--person-4-t); color: #6a3fc4; }
+.ev.kevin  { background: var(--person-1-t);  color: var(--person-1-tx); }
+.ev.kelly  { background: var(--person-2-t);  color: var(--person-2-tx); }
+.ev.wally  { background: var(--person-3-t);  color: var(--person-3-tx); }
+.ev.lottie { background: var(--person-4-t); color: var(--person-4-tx); }
 .ev.meal { background: var(--card); border: 1.5px solid var(--hair); color: var(--ink-2); }
 .ev.time::before { content: attr(data-t); color: inherit; opacity: .7; margin-right: 5px; font-weight: 700; }
 .ev-more { font-size: 11px; color: var(--ink-3); font-weight: 600; padding-left: 4px; }

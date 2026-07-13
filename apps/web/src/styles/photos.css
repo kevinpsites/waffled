@@ -73,8 +73,8 @@
 .ap-pick { display: flex; flex-direction: column; align-items: center; gap: 18px; width: 100%; }
 .ap-drop { width: min(640px, 100%); min-height: 340px; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 6px; text-align: center;
-  background: rgba(255,255,255,.5); border: 2px dashed var(--line, rgba(0,0,0,.18));
-  border-radius: var(--r-xl, 22px); padding: 40px; cursor: pointer; color: var(--ink);
+  background: rgba(255,255,255,.5); border: 2px dashed var(--line);
+  border-radius: var(--r-xl); padding: 40px; cursor: pointer; color: var(--ink);
   transition: border-color .15s, background .15s, transform .15s; }
 .ap-drop:hover { border-color: var(--primary); background: rgba(255,255,255,.72); }
 .ap-drop.over { border-color: var(--primary); border-style: solid; background: rgba(208,107,79,.08);
@@ -85,7 +85,7 @@
 .ap-drop-sub { font-size: 15px; color: var(--ink-3); }
 .ap-drop-link { color: var(--primary); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .ap-drop-meta { margin-top: 14px; }
-.ap-err { color: var(--danger, var(--danger)); font-weight: 700; }
+.ap-err { color: var(--danger); font-weight: 700; }
 
 /* staged state: a "Album for all" bar over a list of per-photo rows */
 .ap-batch { width: min(720px, 100%); display: flex; flex-direction: column; gap: 14px; }
@@ -99,7 +99,7 @@
 .ap-list { display: flex; flex-direction: column; gap: 12px; }
 .ap-row { display: flex; gap: 14px; align-items: flex-start; background: var(--card);
   border-radius: var(--r-md); box-shadow: var(--sh-1); padding: 12px; }
-.ap-row-thumb { flex: none; width: 104px; height: 104px; border-radius: var(--r-sm, 12px);
+.ap-row-thumb { flex: none; width: 104px; height: 104px; border-radius: var(--r-sm);
   overflow: hidden; background: rgba(0,0,0,.05); }
 .ap-row-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .ap-row-fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -107,7 +107,7 @@
 .ap-row-album { flex: 1; min-width: 0; }
 .ap-row-del { flex: none; width: 34px; height: 34px; border-radius: 999px; border: 0;
   background: rgba(0,0,0,.06); color: var(--ink-3); font-size: 22px; line-height: 1; cursor: pointer; }
-.ap-row-del:hover { background: rgba(192,57,43,.12); color: var(--danger, var(--danger)); }
+.ap-row-del:hover { background: rgba(192,57,43,.12); color: var(--danger); }
 
 .ap-field-label { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; font-weight: 700;
   color: var(--ink-3); letter-spacing: .02em; }
@@ -138,7 +138,7 @@
 /* compact "view the rest of this album" CTA (content-sized, not full width/height) */
 .pd-album-cta { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px;
   padding: 11px 16px; border: 0; border-radius: var(--r-md); cursor: pointer;
-  background: var(--panel, rgba(0,0,0,.05)); color: var(--ink); font-size: 13.5px; font-weight: 700; }
+  background: var(--panel); color: var(--ink); font-size: 13.5px; font-weight: 700; }
 .pd-album-cta:hover { background: rgba(0,0,0,.09); }
 .pd-album-cta span[aria-hidden] { color: var(--ink-3); font-size: 16px; }
 

@@ -8,11 +8,11 @@ export interface Category {
 }
 
 export const CATEGORIES: Record<string, Category> = {
-  physical: { emoji: '🏃', label: 'Physical', color: 'var(--person-3)', tint: 'var(--person-3-t)', txt: '#167a4a' },
-  intellectual: { emoji: '📚', label: 'Intellectual', color: 'var(--person-1)', tint: 'var(--person-1-t)', txt: '#1559b8' },
-  spiritual: { emoji: '🧘', label: 'Spiritual', color: 'var(--person-4)', tint: 'var(--person-4-t)', txt: '#6a3fc4' },
-  creative: { emoji: '🎨', label: 'Creative', color: 'var(--person-2)', tint: 'var(--person-2-t)', txt: '#b22f66' },
-  social: { emoji: '🤝', label: 'Social', color: 'var(--gold)', tint: '#fdecd6', txt: '#d98a1c' },
+  physical: { emoji: '🏃', label: 'Physical', color: 'var(--person-3)', tint: 'var(--person-3-t)', txt: 'var(--person-3-tx)' },
+  intellectual: { emoji: '📚', label: 'Intellectual', color: 'var(--person-1)', tint: 'var(--person-1-t)', txt: 'var(--person-1-tx)' },
+  spiritual: { emoji: '🧘', label: 'Spiritual', color: 'var(--person-4)', tint: 'var(--person-4-t)', txt: 'var(--person-4-tx)' },
+  creative: { emoji: '🎨', label: 'Creative', color: 'var(--person-2)', tint: 'var(--person-2-t)', txt: 'var(--person-2-tx)' },
+  social: { emoji: '🤝', label: 'Social', color: 'var(--gold)', tint: 'var(--warn-t)', txt: 'var(--warn)' },
 }
 
 export const CATEGORY_KEYS = Object.keys(CATEGORIES)

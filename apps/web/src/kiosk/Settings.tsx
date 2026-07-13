@@ -1557,7 +1557,7 @@ function CalendarsPanel() {
         )}
       </div>
 
-      {syncMsg && <div className="tiny" style={{ fontWeight: 700, margin: '0 2px 12px', color: 'var(--ink, #2b2b2b)' }}>{syncMsg}</div>}
+      {syncMsg && <div className="tiny" style={{ fontWeight: 700, margin: '0 2px 12px', color: 'var(--ink)' }}>{syncMsg}</div>}
 
       {!status.connected ? (
         <SettingCard>

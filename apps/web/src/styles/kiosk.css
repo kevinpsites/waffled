@@ -509,7 +509,7 @@ body {
 .tasks-datenav .dn-rel {
   font-size: 11.5px;
   font-weight: 600;
-  color: var(--person-4, var(--ai));
+  color: var(--person-4);
 }
 .tasks-datenav .dn-today {
   margin-left: 4px;

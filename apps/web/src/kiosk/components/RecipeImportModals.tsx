@@ -109,7 +109,7 @@ export function PhotoImportModal({ onClose, onDraft }: { onClose: () => void; on
           </div>
         )}
 
-        {err && <div className="tiny" style={{ color: 'var(--danger,#c0392b)', fontWeight: 700, marginTop: 10 }}>{err}</div>}
+        {err && <div className="tiny" style={{ color: 'var(--danger)', fontWeight: 700, marginTop: 10 }}>{err}</div>}
 
         {photos.length > 0 && (
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--hair)' }}>
@@ -224,7 +224,7 @@ export function DescribeImportModal({ onClose, onDraft }: { onClose: () => void;
           />
         </label>
 
-        {err && <div className="tiny" style={{ color: 'var(--danger,#c0392b)', fontWeight: 700, marginTop: 10 }}>{err}</div>}
+        {err && <div className="tiny" style={{ color: 'var(--danger)', fontWeight: 700, marginTop: 10 }}>{err}</div>}
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
           <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>

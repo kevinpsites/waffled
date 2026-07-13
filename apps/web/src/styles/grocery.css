@@ -103,10 +103,10 @@
   background: var(--panel);
   color: var(--ink-2);
 }
-.meal-badge.mt-breakfast { background: #fdf0d5; color: #9a6b00; }
+.meal-badge.mt-breakfast { background: var(--warn-t); color: var(--warn); }
 .meal-badge.mt-lunch { background: var(--success-t); color: var(--success); }
-.meal-badge.mt-dinner { background: #e8f0fe; color: #1f5fd0; }
-.meal-badge.mt-snack { background: #fce8f3; color: #b83280; }
+.meal-badge.mt-dinner { background: var(--person-1-t); color: var(--person-1-tx); }
+.meal-badge.mt-snack { background: var(--person-2-t); color: var(--person-2-tx); }
 
 /* rail meal-type selector */
 .rail-seg {

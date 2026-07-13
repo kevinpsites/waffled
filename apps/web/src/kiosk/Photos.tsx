@@ -136,7 +136,7 @@ export function Photos() {
           <button
             type="button"
             className="pill"
-            style={{ color: 'var(--danger, #c0392b)', cursor: 'pointer' }}
+            style={{ color: 'var(--danger)', cursor: 'pointer' }}
             disabled={selected.size === 0}
             onClick={() => setConfirmIds([...selected])}
           >
