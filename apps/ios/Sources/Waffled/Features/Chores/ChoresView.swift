@@ -44,13 +44,11 @@ final class ChoresModel {
         // 1. Incomplete (pending) before everything else — done/awaiting sink.
         if (a.status == "pending") != (b.status == "pending") { return a.status == "pending" }
         // 2. Due time ascending; a set "HH:mm" (string-comparable) beats an unset (nil) one.
+        //    Reached only when the times differ, so exactly one of these branches applies.
         if a.dueTime != b.dueTime {
-            switch (a.dueTime, b.dueTime) {
-            case let (x?, y?): return x < y
-            case (_?, nil): return true
-            case (nil, _?): return false
-            default: break
-            }
+            guard let at = a.dueTime else { return false }  // a untimed, b timed → a after b
+            guard let bt = b.dueTime else { return true }   // a timed, b untimed → a before b
+            return at < bt
         }
         // 3. Title A–Z (case-insensitive, locale-aware).
         return a.choreTitle.localizedCaseInsensitiveCompare(b.choreTitle) == .orderedAscending
@@ -429,13 +427,12 @@ struct ChoresView: View {
         .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded(handleDaySwipe))
     }
 
-    /// Horizontal flick on the phone list → step a day. Ignores predominantly-vertical
-    /// drags so it doesn't fight the ScrollView. (Mirrors Calendar's `handleCalendarSwipe`.)
+    /// Horizontal flick on the phone list → step a day. Uses the shared `HorizontalSwipe`
+    /// so its thresholds stay in sync with the calendar; a nil result (too small / too
+    /// vertical) leaves the ScrollView's own scroll untouched.
     private func handleDaySwipe(_ value: DragGesture.Value) {
-        let dx = value.translation.width, dy = value.translation.height
-        guard abs(dx) > 50, abs(dx) > abs(dy) * 1.5 else { return }
-        let forward = dx < 0   // swipe left = go forward (next day)
-        Task { await model.shift(forward ? 1 : -1) }
+        guard let dir = HorizontalSwipe.step(value) else { return }
+        Task { await model.shift(dir) }
     }
 
     // MARK: iPad — side-by-side Kanban columns

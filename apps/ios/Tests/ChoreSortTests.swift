@@ -57,6 +57,25 @@ private func titles(_ xs: [WaffledAPI.ChoreInstanceDTO]) -> [String] { xs.map(\.
         #expect(titles(sorted) == ["Apple", "banana", "cherry"])
     }
 
+    @Test func awaitingWithEarlierTimeStillSinksBelowPending() {
+        // Status trumps time: an awaiting chore due at 06:00 must NOT jump above a pending
+        // one with no time at all.
+        let sorted = ChoresModel.sortChores([
+            inst("Early awaiting", status: "awaiting", dueTime: "06:00"),
+            inst("Untimed pending"),
+        ])
+        #expect(titles(sorted) == ["Untimed pending", "Early awaiting"])
+    }
+
+    @Test func equalTimeAndTitleAreEquivalent() {
+        // Same status, same dueTime, same title → the comparator reports neither strictly
+        // before the other (a proper strict-weak ordering).
+        let a = inst("Tidy up", dueTime: "08:00")
+        let b = inst("Tidy up", dueTime: "08:00")
+        #expect(ChoresModel.choreSortsBefore(a, b) == false)
+        #expect(ChoresModel.choreSortsBefore(b, a) == false)
+    }
+
     @Test func fullOrderingAcrossAllRules() {
         let sorted = ChoresModel.sortChores([
             inst("Zebra done", status: "done"),
