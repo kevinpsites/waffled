@@ -38,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   worker removes API caches created by older versions; the app shell and PowerSync calendar
   remain available offline, while REST-backed screens require the server instead of risking
   another account's stale response.
+- **Sensitive routes now have trusted abuse limits and bounded request bodies.** The API
+  rejects oversized payloads before buffering and throttles repeated login, setup, OIDC,
+  kiosk, refresh, and media attempts; Caddy normalizes the client address and direct API
+  access is restricted to the Docker host.
 
 ### Added
 - **Plan breakfast and lunch from the iPhone meal planner, not just dinner.** Each day in the
