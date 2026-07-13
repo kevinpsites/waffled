@@ -177,7 +177,11 @@
   --overlay-hover: rgba(255,255,255,.05);
   --gloss:         rgba(255,255,255,.14);
   --control-track: rgba(255,255,255,.16);
-  /* --on-accent, --on-color-track, --viewer-bg, and the --g-* gradients are unchanged */
+  /* --g-ai / --g-warm carry foreground TEXT/ICON tokens that flip light, so these
+     two gradients must flip too (the food-tile --g-* stay fixed — fixed white text
+     on a brand hue). --on-accent, --on-color-track, --viewer-bg unchanged. */
+  --g-ai:   linear-gradient(135deg, rgba(140,116,232,.22), rgba(110,86,207,.14));
+  --g-warm: linear-gradient(120deg, #24201a, #1e1a13);
 
   color-scheme: dark;
 }

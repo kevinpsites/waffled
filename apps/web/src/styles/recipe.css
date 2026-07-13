@@ -633,6 +633,12 @@
   background-repeat: no-repeat;
   background-position: right 12px center;
 }
+/* Unselected pill sits on --card; flip the fixed-gray chevron to dark --ink-2.
+   (The .on override below wins for selected via higher specificity.) */
+:root[data-theme="dark"] .recipes-filter,
+.dark .recipes-filter {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23ADA69A' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+}
 .recipes-filter.on {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
 }
@@ -979,7 +985,7 @@
 
 /* AI auto-fill — "thinking" indicator while a request is in flight */
 .re-ai-thinking { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 800;
-  color: var(--ai-d); padding: 7px 14px; border-radius: 999px; background: linear-gradient(0deg, var(--ai-t), #f4efff);
+  color: var(--ai-d); padding: 7px 14px; border-radius: 999px; background: linear-gradient(0deg, var(--ai-t), var(--ai-t));
   box-shadow: var(--sh-1); }
 .re-ai-spark { display: inline-block; animation: re-ai-pulse 1s ease-in-out infinite; }
 @keyframes re-ai-pulse { 0%, 100% { opacity: 0.35; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.15); } }
@@ -989,7 +995,7 @@
 .re-ai-tag { font-size: 12.5px; font-weight: 800; color: var(--ai-d); }
 .re-ai-chip { font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; padding: 7px 14px;
   border-radius: 999px; border: 1px solid transparent; color: var(--ai-d);
-  background: linear-gradient(0deg, var(--ai-t), #f4efff); box-shadow: var(--sh-1); }
+  background: linear-gradient(0deg, var(--ai-t), var(--ai-t)); box-shadow: var(--sh-1); }
 .re-ai-chip:hover { background: var(--ai-t); }
 .re-ai-dismiss { font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; padding: 7px 10px;
   border: 0; background: none; color: var(--ink-3); border-radius: 999px; }

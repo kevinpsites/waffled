@@ -180,7 +180,7 @@
 /* AI cards — heads-up (agenda) + per-event insight (detail). Driven by the
    household's AI provider with a deterministic server fallback. */
 .ag-ai, .ed-ai { display: flex; gap: 12px; align-items: flex-start; padding: 16px 18px; border-radius: var(--r-lg);
-  background: linear-gradient(135deg, var(--ai-t), #f4f0fd); border: 1px solid var(--ai-t); }
+  background: linear-gradient(135deg, var(--ai-t), var(--ai-t)); border: 1px solid var(--ai-t); }
 .ag-ai-icon, .ed-ai-icon { width: 34px; height: 34px; border-radius: 999px; flex: none; display: grid; place-items: center;
   background: linear-gradient(135deg, var(--ai-2), var(--ai)); color: var(--on-accent); font-size: 16px; }
 .ag-ai-icon svg { width: 17px; height: 17px; fill: var(--on-accent); }
@@ -196,6 +196,11 @@
 .ai-think-bar { height: 11px; border-radius: 6px;
   background: linear-gradient(90deg, #e4dcf7 25%, #f6f2fe 50%, #e4dcf7 75%);
   background-size: 200% 100%; animation: ai-shimmer 1.3s linear infinite; }
+/* dark: the shimmer stops must flip too, else a bright band on the dark callout */
+:root[data-theme="dark"] .ai-think-bar,
+.dark .ai-think-bar {
+  background: linear-gradient(90deg, rgba(140,116,232,.12) 25%, rgba(140,116,232,.24) 50%, rgba(140,116,232,.12) 75%);
+}
 .ai-think-bar.head { height: 13px; width: 44%; margin-bottom: 3px; } /* stands in for the headline */
 .ai-think-bar.short { width: 60%; }
 @keyframes ai-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
