@@ -24,9 +24,36 @@ final class ChoresModel {
 
     func load() async {
         loading = true
-        do { instances = try await api.choreInstances(date: date); error = false }
+        // Sort once here (not in the `columns` computed property, which a render reads
+        // N× per pass): incomplete first, then due time ascending, then title A–Z.
+        do { instances = ChoresModel.sortChores(try await api.choreInstances(date: date)); error = false }
         catch { self.error = true }
         loading = false
+    }
+
+    /// Order a day's chores for display. Pending (incomplete) chores lead; done/awaiting
+    /// ones sink to the bottom. Within a group, earlier due times come first (a set time
+    /// beats no time), then titles run A–Z. Pure + static so it can be unit-tested.
+    nonisolated static func sortChores(_ instances: [WaffledAPI.ChoreInstanceDTO]) -> [WaffledAPI.ChoreInstanceDTO] {
+        instances.sorted(by: choreSortsBefore)
+    }
+
+    /// Strict-weak-ordering comparator used by `sortChores`. Extracted so the ordering
+    /// rules are testable in isolation.
+    nonisolated static func choreSortsBefore(_ a: WaffledAPI.ChoreInstanceDTO, _ b: WaffledAPI.ChoreInstanceDTO) -> Bool {
+        // 1. Incomplete (pending) before everything else — done/awaiting sink.
+        if (a.status == "pending") != (b.status == "pending") { return a.status == "pending" }
+        // 2. Due time ascending; a set "HH:mm" (string-comparable) beats an unset (nil) one.
+        if a.dueTime != b.dueTime {
+            switch (a.dueTime, b.dueTime) {
+            case let (x?, y?): return x < y
+            case (_?, nil): return true
+            case (nil, _?): return false
+            default: break
+            }
+        }
+        // 3. Title A–Z (case-insensitive, locale-aware).
+        return a.choreTitle.localizedCaseInsensitiveCompare(b.choreTitle) == .orderedAscending
     }
 
     func shift(_ days: Int) async { date = ChoreDates.shift(date, days); await load() }
@@ -262,6 +289,8 @@ struct ChoresView: View {
                 ? sync.members
                 : sync.members.filter { $0.id == sync.currentPersonId }
             ChoreEditSheet(assignableMembers: assignable, currencies: sync.currencies, target: target,
+                // A brand-new chore defaults its "On" date to the day being viewed.
+                initialDate: DateFmt.date(model.date, "yyyy-MM-dd", .current) ?? Date(),
                 onSave: { choreId, body in await model.save(choreId: choreId, body: body) },
                 onDelete: { choreId in Task { await model.delete(choreId: choreId) } })
         }
@@ -395,6 +424,18 @@ struct ChoresView: View {
         // Bounce even when nothing's scheduled, so pull-to-refresh still triggers.
         .scrollBounceBehavior(.always)
         .refreshable { await model.load(); await approvals.load() }
+        // Horizontal flick steps a day (matching Calendar's day view). simultaneousGesture
+        // (not gesture) so vertical scroll + drag-to-reassign still work.
+        .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded(handleDaySwipe))
+    }
+
+    /// Horizontal flick on the phone list → step a day. Ignores predominantly-vertical
+    /// drags so it doesn't fight the ScrollView. (Mirrors Calendar's `handleCalendarSwipe`.)
+    private func handleDaySwipe(_ value: DragGesture.Value) {
+        let dx = value.translation.width, dy = value.translation.height
+        guard abs(dx) > 50, abs(dx) > abs(dy) * 1.5 else { return }
+        let forward = dx < 0   // swipe left = go forward (next day)
+        Task { await model.shift(forward ? 1 : -1) }
     }
 
     // MARK: iPad — side-by-side Kanban columns
@@ -817,8 +858,12 @@ struct ChoresView: View {
                         }
                     }
                     HStack(spacing: 5) {
-                        Text(sync.currencySymbol(inst.rewardCurrency)).font(.system(size: 11))
-                        Text("\(inst.rewardAmount)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
+                        // Only show the reward chip when there's actually a reward — a
+                        // zero-reward chore shouldn't read as "★ 0".
+                        if inst.rewardAmount > 0 {
+                            Text(sync.currencySymbol(inst.rewardCurrency)).font(.system(size: 11))
+                            Text("\(inst.rewardAmount)").font(.system(size: 12, weight: .bold)).foregroundStyle(WF.ink3)
+                        }
                         if let t = ChoreDates.timeLabel(inst.dueTime) {
                             Text("🕒 \(t)").font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
                         }
@@ -961,7 +1006,7 @@ struct ChoreEditSheet: View {
     @FocusState private var titleFocused: Bool
 
     init(assignableMembers: [SyncedMember], currencies: [WaffledAPI.Currency],
-         target: ChoresView.ChoreEditorTarget,
+         target: ChoresView.ChoreEditorTarget, initialDate: Date = Date(),
          onSave: @escaping (String?, [String: JSONValue]) async -> String?, onDelete: @escaping (String) -> Void) {
         self.assignableMembers = assignableMembers; self.currencies = currencies
         self.target = target; self.onSave = onSave; self.onDelete = onDelete
@@ -971,8 +1016,10 @@ struct ChoreEditSheet: View {
             _title = State(initialValue: ""); _emoji = State(initialValue: "")
             _personId = State(initialValue: pid); _stars = State(initialValue: 1)
             _currencyKey = State(initialValue: nil)
-            _freq = State(initialValue: "daily"); _days = State(initialValue: [])
-            _dueOn = State(initialValue: Date())
+            // Default a new chore to a one-off due on the day you're currently viewing —
+            // not a recurring daily chore, and not always today.
+            _freq = State(initialValue: "once"); _days = State(initialValue: [])
+            _dueOn = State(initialValue: initialDate)
             _hasDueTime = State(initialValue: false); _dueTime = State(initialValue: Date())
             _requiresApproval = State(initialValue: false)
             _requiresPhoto = State(initialValue: false)

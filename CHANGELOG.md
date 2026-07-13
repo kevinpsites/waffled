@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+- **New chores now default to a one-off on the day you're viewing, and each day's list is sorted sensibly.** On iPhone/iPad, adding a chore from the Chores tab now starts as "Just once" due on the day currently shown — instead of a recurring daily chore always due today. A day's chores are also ordered unfinished-first, then by due time (earliest first, untimed last), then A–Z.
 
 ### Fixed
 - **The iPhone Goals list now updates itself after you change a goal.** Deleting a goal, logging
@@ -23,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the list the moment you go back — no more stale card until you pull-to-refresh.
 - **Participant chips in the Goals log sheet no longer jump around when tapped.** Selecting who took
   part keeps each chip the same size instead of growing and nudging its neighbours sideways.
+- **Chores tab feels right on iPhone: swipe between days, and no more empty reward badge.** You can now swipe left or right on the chores list to step a day at a time (matching the calendar), and a chore with no star reward no longer shows a stray "★ 0".
 
 ## [0.7.0] - 2026-07-10
 
