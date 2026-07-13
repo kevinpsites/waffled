@@ -30,6 +30,19 @@ struct CookTimer: Identifiable, Equatable {
         let s = max(0, secs)
         return String(format: "%d:%02d", s / 60, s % 60)
     }
+
+    /// A self-describing name combining the step and this timer's duration —
+    /// e.g. "Step 5 · 3-minute timer". Several timers can ring at once
+    /// (`firingTimer = timers.first { $0.firing }`), so both the in-app alarm and
+    /// the background notification use this to say *which* timer is up.
+    var displayName: String {
+        let m = total / 60, s = total % 60
+        let duration: String
+        if m > 0 && s == 0 { duration = "\(m)-minute" }
+        else if m == 0 { duration = "\(s)-second" }
+        else { duration = CookTimer.mmss(total) }
+        return "\(label) · \(duration) timer"
+    }
 }
 
 /// Full-screen, step-by-step cook mode — big type for across-the-kitchen reading,
@@ -77,55 +90,19 @@ struct CookModeView: View {
 
                 // The current step, centered in the available space — but scrollable so a
                 // long step is never clipped (short steps sit dead-center; long ones scroll).
+                // On the iPad wall display (kiosk) the step's ingredients move into a fixed
+                // LEFT sidebar so they stay visible while the big instruction fills the rest;
+                // on the phone we keep the single scrolling column with ingredients inline.
                 GeometryReader { geo in
-                    ScrollView {
-                        // Left-aligned and using the full width (with margins) so the big
-                        // type fills the screen instead of wrapping into a narrow center
-                        // column — long steps fit without scrolling.
-                        VStack(alignment: .leading, spacing: 24) {
-                            Text("STEP \(step?.stepNumber ?? index + 1) OF \(steps.count)")
-                                .font(.system(size: 14, weight: .heavy)).tracking(1.4)
-                                .foregroundStyle(Color(hex: 0x167A4A))
-                            Text(step?.instruction ?? "")
-                                .font(WF.serif(instructionSize, .semibold)).foregroundStyle(WF.ink)
-                                .multilineTextAlignment(.leading)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            if let secs = step?.timerSeconds, secs > 0 {
-                                startTimerButton(secs: secs)
-                            } else {
-                                // Step has no built-in timer — let the cook add one on the
-                                // fly, tied to this step via the same runtime timer path.
-                                // `id(index)` resets the control when navigating steps.
-                                AddTimerControl { secs in
-                                    startTimer(secs: secs, stepIndex: index, stepNumber: step?.stepNumber ?? index + 1)
-                                }
-                                .id(index)
+                    if isKiosk {
+                        HStack(alignment: .top, spacing: 0) {
+                            if stepHasIngredients {
+                                ingredientsSidebar
                             }
-                            if let igs = step?.ingredients, !igs.isEmpty {
-                                ChipFlow(spacing: 8, lineSpacing: 8, alignment: .leading) {
-                                    ForEach(igs, id: \.self) { ig in
-                                        Text(ig).font(.system(size: isKiosk ? 18 : 15, weight: .medium))
-                                            .foregroundStyle(Color(hex: 0x167A4A))
-                                            .padding(.horizontal, 12).padding(.vertical, 7)
-                                            .background(Color(hex: 0x167A4A).opacity(0.12))
-                                            .clipShape(Capsule())
-                                    }
-                                }
-                            }
-                            if let note = step?.note {
-                                Text("📝 \(note)").font(.system(size: isKiosk ? 19 : 16)).foregroundStyle(WF.ink2)
-                                    .multilineTextAlignment(.leading)
-                                    .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
-                            }
+                            stepScroll(geo)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, isKiosk ? 56 : 28).padding(.vertical, 24)
-                        // Leave room so the floating dock never hides content.
-                        .padding(.bottom, dockTimers.isEmpty ? 0 : 96)
-                        // Center vertically when the step is short; grow (and scroll) when long.
-                        .frame(minHeight: geo.size.height, alignment: .center)
+                    } else {
+                        stepScroll(geo)
                     }
                 }
 
@@ -165,6 +142,101 @@ struct CookModeView: View {
             if phase == .active { refreshFiring() }
         }
         .sheet(isPresented: $showOverview) { allIngredientsSheet }
+    }
+
+    // MARK: step content
+
+    private var stepHasIngredients: Bool { !(step?.ingredients.isEmpty ?? true) }
+
+    /// The scrolling step column — STEP label, the big instruction, the timer control,
+    /// and the optional note. On the phone the step's ingredients render inline
+    /// underneath; on the iPad they live in `ingredientsSidebar` instead.
+    private func stepScroll(_ geo: GeometryProxy) -> some View {
+        ScrollView {
+            // Left-aligned and using the full width (with margins) so the big
+            // type fills the screen instead of wrapping into a narrow center
+            // column — long steps fit without scrolling.
+            VStack(alignment: .leading, spacing: 24) {
+                stepColumn
+                // Phone: keep the current single column with ingredients inline
+                // underneath. (On iPad they're in the left sidebar.)
+                if !isKiosk { ingredientsSidebar }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, isKiosk ? 56 : 28).padding(.vertical, 24)
+            // Leave room so the floating dock never hides content.
+            .padding(.bottom, dockTimers.isEmpty ? 0 : 96)
+            // Center vertically when the step is short; grow (and scroll) when long.
+            .frame(minHeight: geo.size.height, alignment: .center)
+        }
+    }
+
+    /// STEP label + instruction + timer control + note (no ingredients — those are
+    /// either inline on the phone or in the sidebar on the iPad).
+    private var stepColumn: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            Text("STEP \(step?.stepNumber ?? index + 1) OF \(steps.count)")
+                .font(.system(size: 14, weight: .heavy)).tracking(1.4)
+                .foregroundStyle(Color(hex: 0x167A4A))
+            Text(step?.instruction ?? "")
+                .font(WF.serif(instructionSize, .semibold)).foregroundStyle(WF.ink)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let secs = step?.timerSeconds, secs > 0 {
+                startTimerButton(secs: secs)
+            } else {
+                // Step has no built-in timer — let the cook add one on the
+                // fly, tied to this step via the same runtime timer path.
+                // `id(index)` resets the control when navigating steps.
+                AddTimerControl { secs in
+                    startTimer(secs: secs, stepIndex: index, stepNumber: step?.stepNumber ?? index + 1)
+                }
+                .id(index)
+            }
+            if let note = step?.note {
+                Text("📝 \(note)").font(.system(size: isKiosk ? 19 : 16)).foregroundStyle(WF.ink2)
+                    .multilineTextAlignment(.leading)
+                    .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            }
+        }
+    }
+
+    /// The current step's ingredients as wrapping chips. Rendered inline under the
+    /// step on the phone; on the iPad it's wrapped in a fixed-width, scrollable LEFT
+    /// sidebar (with an "INGREDIENTS" header) so it stays put while cooking.
+    @ViewBuilder private var ingredientsSidebar: some View {
+        if let igs = step?.ingredients, !igs.isEmpty {
+            if isKiosk {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("INGREDIENTS")
+                            .font(.system(size: 13, weight: .heavy)).tracking(1.2)
+                            .foregroundStyle(WF.ink3)
+                        ingredientChips(igs)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 24).padding(.vertical, 28)
+                }
+                .frame(width: 300)
+                .background(WF.panel)
+            } else {
+                ingredientChips(igs)
+            }
+        }
+    }
+
+    private func ingredientChips(_ igs: [String]) -> some View {
+        ChipFlow(spacing: 8, lineSpacing: 8, alignment: .leading) {
+            ForEach(igs, id: \.self) { ig in
+                Text(ig).font(.system(size: isKiosk ? 18 : 15, weight: .medium))
+                    .foregroundStyle(Color(hex: 0x167A4A))
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(Color(hex: 0x167A4A).opacity(0.12))
+                    .clipShape(Capsule())
+            }
+        }
     }
 
     // MARK: timer UI
@@ -234,7 +306,7 @@ struct CookModeView: View {
             VStack(spacing: 18) {
                 Image(systemName: "timer").font(.system(size: 44, weight: .bold)).foregroundStyle(WF.primary)
                 Text("Timer done").font(WF.serif(28, .bold)).foregroundStyle(WF.ink)
-                Text(t.label).font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink2)
+                Text(t.displayName).font(.system(size: 16, weight: .semibold)).foregroundStyle(WF.ink2)
 
                 VStack(spacing: 10) {
                     Button { jumpTo(t) } label: {
@@ -274,7 +346,7 @@ struct CookModeView: View {
         let t = CookTimer(notifId: notifId, label: "Step \(stepNumber)", stepIndex: stepIndex,
                           total: secs, fireAt: fireAt, running: true, firing: false, pausedRemaining: secs)
         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { timers.append(t) }
-        alarm.scheduleNotification(id: notifId, fireAt: fireAt, label: t.label)
+        alarm.scheduleNotification(id: notifId, fireAt: fireAt, name: t.displayName)
     }
 
     private func togglePause(_ t: CookTimer) {
@@ -289,7 +361,7 @@ struct CookModeView: View {
             let rem = max(1, timers[i].pausedRemaining)
             timers[i].fireAt = Date().addingTimeInterval(TimeInterval(rem))
             timers[i].running = true
-            alarm.scheduleNotification(id: timers[i].notifId, fireAt: timers[i].fireAt, label: timers[i].label)
+            alarm.scheduleNotification(id: timers[i].notifId, fireAt: timers[i].fireAt, name: timers[i].displayName)
         }
     }
 
@@ -316,7 +388,7 @@ struct CookModeView: View {
         timers[i].running = true
         timers[i].fireAt = Date().addingTimeInterval(60)
         timers[i].pausedRemaining = 60
-        alarm.scheduleNotification(id: timers[i].notifId, fireAt: timers[i].fireAt, label: timers[i].label)
+        alarm.scheduleNotification(id: timers[i].notifId, fireAt: timers[i].fireAt, name: timers[i].displayName)
         if timers.allSatisfy({ !$0.firing }) { alarm.stop() }
     }
 
@@ -595,13 +667,18 @@ final class TimerAlarm {
 
     /// Schedule the out-of-app fallback alert at this timer's absolute fire instant.
     /// Re-adding with the same id replaces, so pause→resume / +1:00 stay idempotent.
-    func scheduleNotification(id: String, fireAt: Date, label: String) {
+    /// `name` names *which* timer fired (step + duration) so overlapping timers are
+    /// distinguishable on the lock screen. The interruption level is `.timeSensitive`
+    /// so it behaves like a kitchen alarm — breaking through Focus and the scheduled
+    /// notification summary — without needing the Critical Alerts entitlement.
+    func scheduleNotification(id: String, fireAt: Date, name: String) {
         let interval = fireAt.timeIntervalSinceNow
         guard interval > 0.5 else { return }
         let c = UNMutableNotificationContent()
         c.title = "Timer done"
-        c.body = "\(label) — your cook timer is up."
+        c.body = "\(name) — your cook timer is up."
         c.sound = .default
+        c.interruptionLevel = .timeSensitive
         c.threadIdentifier = "waffled-cook-timers"
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
         center.add(UNNotificationRequest(identifier: id, content: c, trigger: trigger))

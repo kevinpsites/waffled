@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **New chores now default to a one-off on the day you're viewing, and each day's list is sorted sensibly.** On iPhone/iPad, adding a chore from the Chores tab now starts as "Just once" due on the day currently shown — instead of a recurring daily chore always due today. A day's chores are also ordered unfinished-first, then by due time (earliest first, untimed last), then A–Z.
+- **Cook Mode on iPad now keeps the current step's ingredients in a left sidebar.** Instead of
+  the ingredients scrolling away beneath the big instruction, the iPad wall display pins them in
+  a fixed left-hand column so you can glance at what a step needs while the instruction fills the
+  rest of the screen. iPhone keeps its single scrolling column with ingredients inline.
 
 ### Fixed
 - **The iPhone Goals list now updates itself after you change a goal.** Deleting a goal, logging
@@ -32,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tapping a suggestion card's emoji and title now opens the full recipe detail (swap, pick, and
   lock still work as before); brand-new "✨ New dish" suggestions have nothing to open yet, so
   their tap does nothing.
+- **Cook Mode timers now say which timer went off and alert like a proper kitchen alarm.** When
+  several step timers are running at once, the "Timer done" screen and the out-of-app
+  notification now name the specific timer (e.g. "Step 5 · 3-minute timer") instead of just its
+  step, and the notification is marked time-sensitive so it breaks through Focus and the
+  notification summary when you've stepped away from the app.
 
 ## [0.7.0] - 2026-07-10
 
