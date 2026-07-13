@@ -49,6 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Public traffic now enters through Caddy instead of raw service ports.** Postgres and
   direct API diagnostics bind to loopback, while device-facing PowerSync and Google OAuth
   callbacks use Caddy; upgrades also migrate the exact legacy localhost callback safely.
+- **Application containers now drop root privileges after volume preparation.** The API and
+  backup scheduler run as unprivileged image users, while a short-lived startup job safely
+  updates ownership on volumes created by older root-running releases.
 
 ### Added
 - **Plan breakfast and lunch from the iPhone meal planner, not just dinner.** Each day in the
