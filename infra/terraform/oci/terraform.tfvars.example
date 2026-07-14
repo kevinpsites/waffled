@@ -38,10 +38,10 @@ ssh_public_key   = "ssh-ed25519 AAAA... waffled"
 # DNS record(s) at the server (the outputs tell you exactly which).
 domain = "waffled.example.com"
 
-# PowerSync (offline-sync) is served on your SAME domain at https://<domain>:8090 by
-# default — no subdomain, no extra DNS record. Override only if you want to:
-# powersync_port = 8443                             # same domain, a different port
-# powersync_host = "powersync-waffled.example.com"  # a dedicated hostname (needs its own DNS record)
+# PowerSync (offline-sync) is served at https://powersync.<domain> by default (a 2nd
+# DNS record; everything on 443, most reliable across client networks). Override with:
+# powersync_port = 8443                             # same domain, a different port (one DNS record)
+# powersync_host = "powersync-waffled.example.com"  # a dedicated hostname (its own DNS record)
 
 # ── 4. App config — all optional, fill in only what you use ───────────────────
 # Blank is fine for anything you don't want. These get written into the server's

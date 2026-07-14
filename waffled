@@ -32,7 +32,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$ROOT/infra/compose/docker-compose.yml"
 ENV_FILE="$ROOT/infra/compose/.env"
-DC=(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE")
+
+# Optional compose overrides, layered on top of the base file so a deployment can add
+# published ports / mounts without editing tracked files (e.g. the OCI cloud deploy).
+# Additive, in order: the conventional docker-compose.override.yml if present, then any
+# --override <file> flags parsed from the command line (handled just below).
+COMPOSE_OVERRIDES=()
+[ -f "$ROOT/infra/compose/docker-compose.override.yml" ] && COMPOSE_OVERRIDES+=("$ROOT/infra/compose/docker-compose.override.yml")
 
 # Services we expect to be running, in startup order.
 SERVICES=(postgres api powersync caddy backup)
@@ -277,6 +283,24 @@ next_steps() {
     fi
   fi
 }
+
+# Pull global `--override <file>` flags out of the args (position-independent) and
+# build the final compose invocation once the full override list is known.
+_wf_args=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --override)   shift; [ -n "${1:-}" ] || { echo "${c_red}✗ --override needs a file path.${c_reset}"; exit 1; }; COMPOSE_OVERRIDES+=("$1") ;;
+    --override=*) COMPOSE_OVERRIDES+=("${1#--override=}") ;;
+    *)            _wf_args+=("$1") ;;
+  esac
+  shift
+done
+set -- ${_wf_args[@]+"${_wf_args[@]}"}
+
+DC=(docker compose -f "$COMPOSE_FILE")
+for _ovr in ${COMPOSE_OVERRIDES[@]+"${COMPOSE_OVERRIDES[@]}"}; do DC+=(-f "$_ovr"); done
+DC+=(--env-file "$ENV_FILE")
+[ ${#COMPOSE_OVERRIDES[@]} -gt 0 ] && echo "${c_dim}Compose override(s): ${COMPOSE_OVERRIDES[*]}${c_reset}" >&2
 
 cmd="${1:-help}"; shift || true
 case "$cmd" in

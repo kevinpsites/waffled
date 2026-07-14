@@ -59,25 +59,25 @@ variable "domain" {
 }
 
 # ── Where PowerSync (offline-sync) is served over HTTPS ───────────────────────
-# PowerSync needs its own HTTPS address, fronted by Caddy via the stack's
-# POWERSYNC_CADDY_ADDRESS knob. In HTTPS mode you get, in order of precedence:
+# PowerSync needs its own HTTPS address, fronted by Caddy (the bootstrap adds the
+# block). In HTTPS mode, in order of precedence:
 #
-#   • Default (both blank): https://<domain>:8090 — SAME domain, port 8090, reusing
-#     your one DNS record + cert. No subdomain needed. (This is the stack's own default.)
-#   • powersync_port = 8443: same as default but on a different port you choose
-#     (https://<domain>:8443) — handy if 8090 is inconvenient.
-#   • powersync_host = "sync.example.com": a dedicated hostname on 443. Needs its own
-#     DNS record — use this only if you actually want a separate hostname.
+#   • Default (both blank): a `powersync.<domain>` subdomain on 443. Needs a 2nd DNS
+#     record. Most reliable across client networks (everything on 443).
+#   • powersync_port = 8443: SAME domain, a different port (https://<domain>:8443).
+#     No extra DNS record — best if your DNS host won't let you add a subdomain.
+#   • powersync_host = "sync.example.com": a dedicated hostname on 443 (its own DNS
+#     record) — e.g. a hyphenated sibling if you can't nest subdomains.
 #
 # `powersync_host` wins over `powersync_port` if both are set.
 variable "powersync_port" {
-  description = "Serve PowerSync on https://<domain>:<port> instead of the default :8090. 0 = use :8090."
+  description = "Serve PowerSync on https://<domain>:<port> (one DNS record) instead of the powersync.<domain> subdomain. 0 = subdomain."
   type        = number
   default     = 0
 }
 
 variable "powersync_host" {
-  description = "Dedicated hostname for PowerSync (TLS on 443, own DNS record). Empty = serve on the main domain."
+  description = "Dedicated hostname for PowerSync (TLS on 443, own DNS record). Empty = powersync.<domain>."
   type        = string
   default     = ""
 }

@@ -55,17 +55,18 @@ terraform apply
 
 ### If you set a `domain` (HTTPS — recommended)
 
-1. Create the DNS **A record** from the `dns_records_needed` output, pointing at `public_ip` —
-   by default just **one** record:
+1. Create the DNS **A records** from the `dns_records_needed` output, pointing at `public_ip`.
+   By default that's **two** — the app plus a `powersync.` subdomain for offline-sync (the stock
+   Caddyfile doesn't front PowerSync, so the bootstrap adds a Caddy block for it):
    ```
-   waffled.example.com  A  <public_ip>
+   waffled.example.com            A  <public_ip>
+   powersync.waffled.example.com  A  <public_ip>
    ```
-   Offline-sync (PowerSync) rides the **same hostname** at `https://<domain>:8090` (Caddy fronts
-   it via the stack's `POWERSYNC_CADDY_ADDRESS` knob, reusing the same cert), so no subdomain is
-   needed. Options: `powersync_port = 8443` to use a different port, or
-   `powersync_host = "sync.example.com"` for a dedicated hostname (that one needs a second record).
+   Everything's on 443 (most reliable across client networks). Alternatives if you can't add a
+   subdomain: `powersync_port = 8443` (same domain, a different port, **one** record) or
+   `powersync_host = "sync.example.com"` (a dedicated hostname).
 2. Wait a few minutes. Cloud-init pulls images and starts the stack, then **Caddy
-   fetches Let's Encrypt certificates** (needs the DNS record live + the ports open, both
+   fetches Let's Encrypt certificates** (needs the DNS records live + the ports open, both
    of which this module handles).
 3. Open `https://waffled.example.com`, finish the first-run wizard, and **that URL is
    what you plug into the app**.
@@ -84,7 +85,7 @@ Bootstrapping takes a few minutes (image pulls). To watch it:
 ssh -i ~/.ssh/waffled ubuntu@<public_ip>   # or copy the `ssh_command` output
 sudo tail -f /var/log/waffled-bootstrap.log   # this module's script
 sudo tail -f /var/log/cloud-init-output.log   # cloud-init overall
-sudo waffled-oci status                        # container health (compose is in infra/compose)
+cd /opt/waffled && sudo ./waffled status       # container health
 ```
 
 - **"Server is down" from Cloudflare** — your DNS records are *Proxied* (orange cloud).
@@ -129,7 +130,7 @@ values don't show in `terraform` output either. The only caveat is the ordinary 
 the local **state file holds them in plaintext**, so keep that file private; if you ever adopt a
 remote state backend, enable its encryption. Values must be single-line (base64-encode multi-line
 secrets like PEM keys). Prefer to keep a key out of Terraform entirely? SSH in, edit
-`/opt/waffled/infra/compose/.env`, and run `sudo waffled-oci up`.
+`/opt/waffled/infra/compose/.env`, and run `sudo ./waffled up`.
 
 Tip: pin `LOCAL_JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`, and `POSTGRES_PASSWORD` in `app_env` if you
 want them to survive an instance rebuild — otherwise they regenerate on each fresh boot, which
@@ -139,27 +140,27 @@ signs everyone out and makes stored OAuth tokens unreadable.
 
 Upgrades happen **on the server**, not through Terraform — cloud-init only runs once, so
 re-`apply`ing won't upgrade the app (and changing the version could try to *replace* the
-instance and wipe your data). Use the installed helper:
+instance and wipe your data). Just use the stock CLI:
 
 ```bash
 ssh ubuntu@<public_ip>
-sudo waffled-oci upgrade    # git pull + pre-upgrade backup + pull images + migrate
+cd /opt/waffled && sudo ./waffled upgrade   # git pull + pre-upgrade backup + pull images + migrate
 ```
 
-`waffled-oci` is a thin wrapper around the same steps as the stock `./waffled`, but it always
-includes this deployment's `docker-compose.oci.yml` override, so **upgrades keep the published
-ports** (the plain `./waffled upgrade` would drop them). It also supports
-`up | down | restart | logs | status`; anything else falls through to the real `./waffled` CLI
-(`sudo waffled-oci backup`, `sudo waffled-oci doctor`, …).
+The bootstrap writes its HTTPS config to `infra/compose/docker-compose.override.yml`, and
+`./waffled` **auto-loads that override**, so `./waffled up`/`upgrade` keep the published ports and
+the PowerSync front across upgrades — no separate wrapper. (For an ad-hoc extra override, there's
+also a `./waffled --override <file> up`.)
 
 Two upgrade nuances:
 
-- **Pinned versions are honored.** If you deployed with `waffled_version` set, a marker keeps
-  `upgrade` on that pin instead of bumping to the latest published tag. To move off the pin,
-  `sudo rm /opt/waffled/.waffled-oci-pin` (or edit `.env`), then upgrade.
-- **Deployed on a tag/branch.** `upgrade` advances the code only when `waffled_ref` is a **branch**
-  (it fast-forwards). If you pinned to a **tag or SHA** (detached HEAD), it says so and leaves the
-  code where it is — re-run `terraform apply` with a new `waffled_ref` to move it.
+- **`upgrade` moves to the latest release.** It re-pins `WAFFLED_VERSION` to what the pulled
+  `.env.example` ships (stock behaviour). If you deployed a specific `waffled_version` and want to
+  *stay* on it, don't run `upgrade` — re-run `terraform apply` (which re-writes your pin), or set
+  `WAFFLED_VERSION` back in `.env`.
+- **Deployed on a tag/SHA.** If `waffled_ref` is a tag or SHA, the checkout is a detached HEAD;
+  `./waffled upgrade` skips the repo fast-forward (it says so) and only refreshes images — re-run
+  `terraform apply` with a new `waffled_ref` to advance the code.
 
 > Terraform is for the **infrastructure** (create / resize / destroy the box). The app version
 > is a **day-2, on-box** concern. Two tools, two jobs.

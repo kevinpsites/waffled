@@ -156,34 +156,34 @@ region — most regions have a single AD, and the module validates this to avoid
 
 ## Step 5 — Point DNS at it, then wait for HTTPS
 
-Create the **A record** from the `dns_records_needed` output at your DNS provider, pointing at
-`public_ip`. By default that's just **one** record — the app itself:
+Create the **A records** from the `dns_records_needed` output at your DNS provider, pointing at
+`public_ip`. By default that's **two** — the app plus a `powersync.` subdomain for offline-sync:
 
 | Record | Type | Value |
 |---|---|---|
 | `waffled.example.com` | A | *your public IP* |
+| `powersync.waffled.example.com` | A | *your public IP* |
 
-Offline-sync (PowerSync) is served on that **same hostname** at `https://waffled.example.com:8090`
-(TLS, reusing the same certificate), so there's no second record and no subdomain to nest — the
-server hands that URL to your devices automatically. This is Caddy fronting PowerSync via the
-stack's built-in `POWERSYNC_CADDY_ADDRESS` knob; the module just opens the extra port.
+The stock Caddyfile doesn't front PowerSync, so the bootstrap adds a Caddy block that serves it
+over TLS on its own hostname — everything on 443, which is the most reliable across client networks
+(some block non-standard ports). The server hands that URL to your devices automatically.
 
-:::danger[On Cloudflare? Set the record to "DNS only" (grey cloud)]
+:::danger[On Cloudflare? Set the records to "DNS only" (grey cloud)]
 If your domain's DNS is on Cloudflare, new records default to **Proxied (orange cloud)** — and that
 breaks this setup. Cloudflare intercepts the ports, so Caddy can't complete its Let's Encrypt
 challenge or serve its certificate, and you'll get a **"server is down"** error page *from
-Cloudflare*. Click the orange cloud to turn it **grey (DNS only)**. This matters doubly here:
-Cloudflare's proxy only forwards standard ports, so it would never pass PowerSync's `:8090` anyway.
+Cloudflare*. Click the orange cloud on **each** record to turn it **grey (DNS only)**. (If you use
+the `powersync_port` option below, that's doubly true — Cloudflare's proxy only forwards standard
+ports.)
 :::
 
-:::note[Want PowerSync on a dedicated hostname or a different port?]
+:::note[Can't add a subdomain, or want a different layout?]
 Optional, set in `terraform.tfvars` before you `apply`:
 
-- **Different port** — `powersync_port = 8443` serves it at `https://waffled.example.com:8443`
-  instead of `:8090` (still the same one DNS record).
+- **Same domain, different port** — `powersync_port = 8443` serves PowerSync at
+  `https://waffled.example.com:8443` with **one** DNS record (no subdomain).
 - **Dedicated hostname** — `powersync_host = "sync.example.com"` serves it on 443 under its own
-  name. This one *does* need a second DNS record (the `dns_records_needed` output will list it).
-  If your host only allows one subdomain level, use a hyphenated sibling:
+  name. If your host only allows one subdomain level, use a hyphenated sibling:
   `powersync_host = "powersync-mysub.domain.app"` for `domain = "mysub.domain.app"`.
 :::
 
@@ -200,12 +200,13 @@ outputs — it points `-i` at your key):
 ```bash
 ssh -i ~/.ssh/waffled ubuntu@<public_ip>
 sudo tail -f /var/log/waffled-bootstrap.log   # the deploy script
-sudo waffled-oci status                        # container health
-sudo waffled-oci logs caddy                    # TLS / ACME progress
+cd /opt/waffled
+sudo ./waffled status                          # container health
+sudo ./waffled logs caddy                      # TLS / ACME progress
 ```
 
-(The compose files live in `/opt/waffled/infra/compose`, so run bare `docker compose` from there —
-or just use `waffled-oci`, which handles the directory and the HTTPS override for you.)
+(`./waffled` auto-loads the deployment's `docker-compose.override.yml`, so it always includes the
+HTTPS front — you don't need `docker compose` directly or any special wrapper.)
 
 - **"Server is down" from Cloudflare** — your DNS records are *Proxied* (orange cloud). Set them to
   **DNS only** (grey cloud) so Caddy can issue and serve certificates directly. See the callout in
@@ -255,7 +256,7 @@ tokens readable), set those three in `app_env` so they stay constant.
 
 See the full list of settings in the [Environment variables](/install/environment-variables/)
 reference. Prefer not to put a particular key in Terraform at all? You can always SSH in, edit
-`/opt/waffled/infra/compose/.env`, and run `sudo waffled-oci up`.
+`/opt/waffled/infra/compose/.env`, and run `sudo ./waffled up`.
 
 ## Upgrading
 
@@ -264,19 +265,23 @@ re-running `terraform apply` won't upgrade the app — and bumping the version i
 make it try to *replace* the instance, which would wipe your data. Think of it as two tools,
 two jobs: **Terraform owns the box; the app version is a day-2, on-box concern.**
 
-The bootstrap installs a helper for exactly this:
+Just use the stock CLI:
 
 ```bash
 ssh ubuntu@<public_ip>
-sudo waffled-oci upgrade
+cd /opt/waffled && sudo ./waffled upgrade
 ```
 
-`waffled-oci upgrade` does the same thing as [`./waffled upgrade`](/operations/upgrading/) —
-`git pull`, a pre-upgrade database backup, pull the new images, run migrations — but it always
-includes this deployment's HTTPS override, so **your TLS setup survives the upgrade** (the stock
-`./waffled upgrade` would drop the port-443 config). It also handles `up`, `down`, `restart`,
-`logs`, and `status`; any other subcommand falls through to the real `./waffled` CLI, so
-`sudo waffled-oci backup` and `sudo waffled-oci doctor` work too.
+`./waffled upgrade` does a `git pull`, a pre-upgrade database backup, pulls the new images, and
+runs migrations. The bootstrap wrote its HTTPS config to `infra/compose/docker-compose.override.yml`,
+and **`./waffled` auto-loads that override**, so the published ports and PowerSync front survive
+every upgrade — no special wrapper needed. (There's also a `./waffled --override <file> up` for
+ad-hoc use.)
+
+Two things to know: `upgrade` moves you to the **latest** release (to stay on a pinned
+`waffled_version`, re-run `terraform apply` instead of `upgrade`), and if you deployed on a **tag
+or SHA** the checkout is a detached HEAD, so `upgrade` refreshes images but won't advance the code
+(re-`apply` with a new `waffled_ref` for that).
 
 ## Day 2
 

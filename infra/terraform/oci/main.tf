@@ -18,34 +18,26 @@ locals {
   app_env_b64   = length(local.merged_env) > 0 ? base64encode(local.app_env_lines) : ""
 
   # ── How PowerSync is served over HTTPS (only when domain is set) ──
-  # We drive the base stack's own POWERSYNC_CADDY_ADDRESS knob (Caddy already fronts
-  # PowerSync from that env var) rather than shipping a custom Caddyfile.
-  #   default    → https://<domain>:8090  (same domain, no extra DNS record — the
-  #                stack's own default, derived by ensure_powersync_proxy_env)
-  #   host mode  → a dedicated hostname (TLS on 443); needs its own DNS record
-  #   port mode  → https://<domain>:<port> (same domain, a different port)
+  # The stock Caddyfile doesn't front PowerSync, so the bootstrap adds a Caddy block
+  # (via an untracked Caddyfile.oci) that reverse-proxies it under `powersync_site`:
+  #   default    → powersync.<domain>   (dedicated subdomain, TLS on 443; 2nd DNS record)
+  #   port mode  → <domain>:<port>      (same domain, a different port; one DNS record)
+  #   host mode  → <custom hostname>    (TLS on 443; its own DNS record)
   ps_host_mode = var.domain != "" && var.powersync_host != ""
   ps_port_mode = var.domain != "" && var.powersync_port > 0
 
-  powersync_caddy_address = (
-    var.domain == "" ? "" : # HTTP mode: base derives ":8090"
+  powersync_site = (
+    var.domain == "" ? "" :
     local.ps_host_mode ? var.powersync_host :
-    local.ps_port_mode ? "https://${var.domain}:${var.powersync_port}" :
-    "https://${var.domain}:8090"
+    local.ps_port_mode ? "${var.domain}:${var.powersync_port}" :
+    "powersync.${var.domain}"
   )
-  powersync_public_url = (
-    var.domain == "" ? "" :
-    local.ps_host_mode ? "https://${var.powersync_host}" :
-    local.ps_port_mode ? "https://${var.domain}:${var.powersync_port}" :
-    "https://${var.domain}:8090"
-  )
-  # Extra Caddy port to publish + open, beyond 80/443. Host mode rides on 443, so none.
-  ps_extra_port = (
-    var.domain == "" ? "" :
-    local.ps_host_mode ? "" :
-    local.ps_port_mode ? tostring(var.powersync_port) :
-    "8090"
-  )
+  powersync_public_url = var.domain == "" ? "" : "https://${local.powersync_site}"
+
+  # Extra Caddy port to publish + open, beyond 80/443. Only port mode uses one;
+  # subdomain/host modes ride on 443.
+  ps_extra_port = (var.domain != "" && local.ps_port_mode) ? tostring(var.powersync_port) : ""
+
   # Caddy port publishes for the HTTPS override file: 80, 443, + the extra PS port.
   caddy_ports_yaml = join("\n", concat(
     ["      - \"80:80\"", "      - \"443:443\""],
@@ -53,14 +45,14 @@ locals {
   ))
 
   # Ports open to the world. HTTP mode exposes PowerSync on 8090; HTTPS mode exposes
-  # 443 (+ the extra PS port for default/port mode; host mode rides on 443).
+  # 443 (+ the extra PS port in port mode; subdomain/host modes ride on 443).
   ingress_ports = concat(
     [
       { port = 22, cidr = var.allowed_ssh_cidr },
       { port = 80, cidr = "0.0.0.0/0" },
     ],
     var.domain == "" ? [{ port = 8090, cidr = "0.0.0.0/0" }] : [{ port = 443, cidr = "0.0.0.0/0" }],
-    (var.domain != "" && local.ps_extra_port != "") ? [{ port = tonumber(local.ps_extra_port), cidr = "0.0.0.0/0" }] : []
+    local.ps_extra_port != "" ? [{ port = tonumber(local.ps_extra_port), cidr = "0.0.0.0/0" }] : []
   )
 }
 
@@ -169,11 +161,11 @@ resource "oci_core_instance" "waffled" {
       ref                     = var.waffled_ref
       waffled_version         = var.waffled_version
       domain                  = var.domain
-      app_env_b64             = local.app_env_b64
-      powersync_public_url    = local.powersync_public_url
-      powersync_caddy_address = local.powersync_caddy_address
-      ps_extra_port           = local.ps_extra_port
-      caddy_ports_yaml        = local.caddy_ports_yaml
+      app_env_b64          = local.app_env_b64
+      powersync_public_url = local.powersync_public_url
+      powersync_site       = local.powersync_site
+      ps_extra_port        = local.ps_extra_port
+      caddy_ports_yaml     = local.caddy_ports_yaml
     }))
   }
 
