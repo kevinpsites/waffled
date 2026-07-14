@@ -37,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   defaults.
 
 ### Added
+- **Operators can populate a demo household straight from the running container.** The
+  "The Seinfelds" screenshot/demo seed now ships inside the API image, so you can fill a
+  fresh install with a lived-in example family — people, chores, goals, meals, pantry,
+  photos, and a rolling month of calendar events (last week through three weeks out, so
+  "this week" and "next week" are never empty) — without any host tooling. It is off by
+  default and refuses to run unless you set `WAFFLED_ALLOW_DEMO_SEED=1`, so it can never
+  inject demo data into a real household by accident.
 - **Plan breakfast and lunch from the iPhone meal planner, not just dinner.** Each day in the
   weekly planner now offers an add button for every unplanned meal — Breakfast, Lunch, and
   Dinner — instead of a lone "Plan dinner" affordance, matching what the iPad grid already did.
