@@ -10,7 +10,7 @@ reference for *what* gets installed and how the pieces fit; for the shortest pat
 ## Install in three commands
 
 ```bash
-git clone <this-repo> waffled && cd waffled
+git clone https://github.com/kevinpsites/waffled.git waffled && cd waffled
 ./waffled setup   # recommended if a tablet/phone/other computer will connect
 ./waffled up      # preflight → create .env → pull images → migrate → start
 ```
