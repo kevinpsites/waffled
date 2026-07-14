@@ -334,23 +334,14 @@ struct PhotoTile: View {
 
     @ViewBuilder
     private var background: some View {
-        if let url = MediaURL.resolve(photo.imageUrl) {
+        if photo.imageUrl != nil {
             // The image goes in an overlay over a flexible spacer so its (large)
             // scaledToFill size can't inflate the tile's layout width — otherwise the
             // grid measures the tile wider than its column and the row bleeds off-screen.
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .overlay {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case let .success(image):
-                            image.resizable().scaledToFill()
-                        case .failure:
-                            emojiTile
-                        default:
-                            ZStack { tint; ProgressView().tint(.white) }
-                        }
-                    }
+                    CachedImage(photo.imageUrl) { emojiTile }
                 }
                 .clipped()
         } else {
@@ -370,5 +361,4 @@ struct PhotoTile: View {
     }
 
     private var tintSolid: Color { Color(hexString: photo.colorHex) ?? WF.panel }
-    private var tint: Color { tintSolid }
 }

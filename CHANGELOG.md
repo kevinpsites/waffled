@@ -210,6 +210,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a non-numeric milestone — are turned away with a clear message rather than saved and breaking
   the goal later, and progress can only be credited to real members of your household.
 
+- **The iOS photo grid now reuses decoded images while scrolling.** Photo tiles no longer
+  refetch and decode the same image whenever SwiftUI recreates a grid cell.
+
 - **Per-step timers now carry into the recipe editor when parsing.** Building a recipe
   from a photo, a description, or pasted Markdown correctly detected each step's timer but
   dropped it when filling the form, so every step showed "Add timer" even when the recipe
