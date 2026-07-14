@@ -75,7 +75,7 @@ struct PantryItemDetailView: View {
                         Image(systemName: "camera.fill").font(.system(size: 13))
                         Text(uploading ? "Uploading…" : "Replace photo").font(.system(size: 14, weight: .semibold))
                     }
-                    .foregroundStyle(.white).padding(.horizontal, 14).padding(.vertical, 10)
+                    .foregroundStyle(WF.onInk).padding(.horizontal, 14).padding(.vertical, 10)
                     .background(WF.ink).clipShape(Capsule())
                 }
                 .disabled(uploading)

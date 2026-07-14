@@ -226,7 +226,7 @@ struct RecipeDetailView: View {
         Button { startCookMode() } label: {
             HStack(spacing: 9) {
                 Text("👨‍🍳").font(.system(size: 18))
-                Text("Cook Mode").font(.system(size: 16.5, weight: .heavy)).foregroundStyle(.white)
+                Text("Cook Mode").font(.system(size: 16.5, weight: .heavy)).foregroundStyle(WF.onInk)
             }
             .frame(maxWidth: .infinity).padding(.vertical, 16)
             .background(WF.ink).clipShape(Capsule())

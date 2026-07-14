@@ -330,7 +330,7 @@ struct CookModeView: View {
 
                 VStack(spacing: 10) {
                     Button { jumpTo(t) } label: {
-                        Text("Jump to \(t.label)").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                        Text("Jump to \(t.label)").font(.system(size: 17, weight: .bold)).foregroundStyle(WF.onInk)
                             .frame(maxWidth: .infinity).padding(.vertical, 14)
                             .background(WF.ink).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     }.buttonStyle(.plain)
@@ -476,7 +476,7 @@ struct CookModeView: View {
                 .buttonStyle(.plain)
             } else {
                 Button { withAnimation { store.index = min(steps.count - 1, store.index + 1) } } label: {
-                    Text("Next").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                    Text("Next").font(.system(size: 16, weight: .bold)).foregroundStyle(WF.onInk)
                         .frame(maxWidth: .infinity).padding(.vertical, 15)
                         .background(WF.ink).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                 }
