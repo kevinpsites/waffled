@@ -95,6 +95,26 @@ export function requireAdmin(tenant: Tenant): void {
   if (!tenant.isAdmin) throw new AuthError('Admin privileges required', 403)
 }
 
+// Installation-wide settings must not be writable by every household admin.
+// Ownership is stored against the global account so the same human keeps operator
+// access after switching households. The host-level admin CLI is the recovery and
+// transfer path if that account is ever retired.
+export async function requireInstallationOwner(tenant: Tenant): Promise<void> {
+  const { rows } = await query<{ allowed: boolean }>(
+    `select (
+       current_person.account_id is not null
+       and current_person.account_id = cfg.installation_owner_account_id
+     ) as allowed
+       from persons current_person
+       cross join auth_config cfg
+      where current_person.id = $1`,
+    [tenant.personId]
+  )
+  if (rows[0]?.allowed !== true) {
+    throw new AuthError('Installation owner privileges required', 403)
+  }
+}
+
 export async function findTenantBySub(sub: string): Promise<Tenant | null> {
   const { rows } = await query<{ person_id: string; household_id: string; is_admin: boolean; member_type: string }>(
     `select i.person_id, p.household_id, p.is_admin, p.member_type
@@ -234,6 +254,16 @@ export async function provisionHousehold(
        values ($1, $2, $3, $4, $5, $6, true, $7)`,
       [household.id, person.id, input.provider, input.sub, input.email, input.emailVerified, accountId]
     )
+
+    if (accountId) {
+      await client.query(
+        `update auth_config
+            set installation_owner_account_id = coalesce(installation_owner_account_id, $1),
+                updated_at = now()
+          where id = true`,
+        [accountId]
+      )
+    }
 
     await client.query('commit')
     return { household, person }

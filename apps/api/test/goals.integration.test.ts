@@ -13,6 +13,8 @@ let url: string
 let app: any
 let closePool: () => Promise<void>
 let kevinId = ''
+let foreignPersonId = ''
+let foreignGoalListId = ''
 
 function mint(sub: string): string {
   return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
@@ -63,6 +65,19 @@ beforeAll(async () => {
       [householdId, kevinId]
     )
   )
+  await withClient(async (c) => {
+    const h = await c.query<{ id: string }>(
+      `insert into households (name, timezone) values ('Other goals','UTC') returning id`
+    )
+    foreignPersonId = (await c.query<{ id: string }>(
+      `insert into persons (household_id, name, member_type) values ($1,'Outsider','adult') returning id`,
+      [h.rows[0].id]
+    )).rows[0].id
+    foreignGoalListId = (await c.query<{ id: string }>(
+      `insert into goal_lists (household_id, name) values ($1,'Foreign list') returning id`,
+      [h.rows[0].id]
+    )).rows[0].id
+  })
 })
 
 afterAll(async () => {
@@ -133,6 +148,37 @@ describe('goals api', () => {
     expect((await call('POST', '/api/goals', kevin, { goalType: 'count', trackingMode: 'shared_total' })).statusCode).toBe(400)
     expect((await call('POST', '/api/goals', kevin, { title: 'X', trackingMode: 'shared_total' })).statusCode).toBe(400)
     expect((await call('POST', '/api/goals', kevin, { title: 'X', goalType: 'count' })).statusCode).toBe(400)
+  })
+
+  it('rejects foreign list members, goal participants, list links, and log targets', async () => {
+    expect((await call('POST', '/api/goal-lists', kevin, {
+      name: 'Unsafe list', memberIds: [foreignPersonId],
+    })).statusCode).toBe(404)
+
+    const list = await call('POST', '/api/goal-lists', kevin, { name: 'Boundary list', memberIds: [kevinId] })
+    expect(list.statusCode).toBe(201)
+    const listId = JSON.parse(list.body).list.id as string
+    expect((await call('PATCH', `/api/goal-lists/${listId}`, kevin, {
+      memberIds: [foreignPersonId],
+    })).statusCode).toBe(404)
+
+    const base = { title: 'Boundary goal', goalType: 'count', trackingMode: 'shared_total', targetValue: 5 }
+    expect((await call('POST', '/api/goals', kevin, {
+      ...base, participantIds: [foreignPersonId],
+    })).statusCode).toBe(404)
+    expect((await call('POST', '/api/goals', kevin, {
+      ...base, title: 'Foreign list goal', goalListId: foreignGoalListId,
+    })).statusCode).toBe(404)
+
+    const goal = await call('POST', '/api/goals', kevin, { ...base, participantIds: [kevinId] })
+    expect(goal.statusCode).toBe(201)
+    const goalId = JSON.parse(goal.body).goal.id as string
+    expect((await call('PATCH', `/api/goals/${goalId}`, kevin, {
+      participantIds: [foreignPersonId],
+    })).statusCode).toBe(404)
+    expect((await call('POST', `/api/goals/${goalId}/log`, kevin, {
+      amount: 1, personIds: [foreignPersonId],
+    })).statusCode).toBe(400)
   })
 
   it('creates a shared goal, logs progress, and derives totals', async () => {
