@@ -174,8 +174,9 @@ Some providers won't let you nest a subdomain two levels deep. Two ways around i
 - **Same domain, different port** — set `powersync_port = 8443`. PowerSync is then served at
   `https://waffled.example.com:8443`, reusing your **one** DNS record and certificate. No second
   record needed (the `dns_records_needed` output drops to a single row).
-- **A hostname you can create** — set `powersync_host = "sync.example.com"` to use any record your
-  host *does* allow.
+- **A hostname you can create** — set `powersync_host` to any record your host *does* allow. If it
+  only lets you make records at one level, use a hyphenated sibling instead of a deeper subdomain:
+  for `domain = "mysub.domain.app"`, set `powersync_host = "powersync-mysub.domain.app"`.
 
 You don't touch anything on the app side — the server hands the right PowerSync URL to your
 devices automatically.

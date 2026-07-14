@@ -40,8 +40,9 @@ domain = "waffled.example.com"
 # you nest a subdomain that deep, serve it on the SAME domain, different port —
 # no extra DNS record needed:
 # powersync_port = 8443
-# ...or point it at a hostname you CAN create a record for:
-# powersync_host = "sync.example.com"
+# ...or point it at a hostname you CAN create a record for — e.g. a same-level
+# sibling of your domain using a hyphen instead of a deeper subdomain:
+# powersync_host = "powersync-waffled.example.com"   # (for domain = waffled.example.com)
 
 # ── 4. App config — all optional, fill in only what you use ───────────────────
 # Blank is fine for anything you don't want. These get written into the server's
