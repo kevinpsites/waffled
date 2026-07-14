@@ -108,10 +108,8 @@ resolution, no reads, no settings writes.
 
 ### Tier 2 — "Do anything" (the mutate verb class)
 
-Introduces **item resolution**: the parser must identify *which* existing chore/event/grocery
-item/goal the user means, from partial descriptions, and the preview must let the user correct a
-wrong match. This is the same fuzzy-resolution problem already flagged for person names
-(`capture.md:37`), generalized to arbitrary items.
+Introduces **candidate lookup** (a.k.a. item resolution) — the one genuinely hard, new piece of
+the whole plan.
 
 | Mutation | Phrase | Target |
 |---|---|---|
@@ -121,17 +119,62 @@ wrong match. This is the same fuzzy-resolution problem already flagged for perso
 | Redeem | "Emma spent 3 stars on ice cream" | Rewards ledger |
 | Delete | "delete the dentist appointment" | Any — **always** a destructive confirm |
 
-Design work Tier 2 needs before coding:
-- A **resolution step**: given a verb + a fuzzy noun, return candidate items (with enough context
-  to disambiguate) so the preview can show the match and offer alternatives.
-- Ambiguity handling: 0 matches → "couldn't find that"; >1 → let the user pick in the preview.
-- Offline: mutations should **require** the LLM/server path (see §6) rather than heuristic-guess.
+#### Why this is the hard part
 
-### Tier 3 — "Run anything" (settings + queries)
+Every intent today is a **create**, which is trivial in one specific way: there is no existing
+thing to find. "taco night Thursday" → `INSERT` a new meal row; the parser only extracts fields.
 
-The true "talk to the app" experience. Two sub-parts:
+A **mutate** can't insert — it must `UPDATE`/`DELETE` **one specific existing row**, so it needs
+that row's **id**. But the user gave a *vague description* ("the trash chore", "my reading goal"),
+not an id. Turning that phrase into "chore #a1b2… assigned to Lottie, due today" is candidate
+lookup, and it's the entire reason Tier 2 is harder than Tier 1.
 
-**Settings writes** — a small, closed vocabulary maps cleanly to `households.settings` / person prefs:
+#### What candidate lookup has to do — four sub-steps
+
+Worked example: **"mark the trash chore done"**
+
+1. **Route to a collection.** "chore" → search the *chores* table. ("cross milk off" → grocery
+   items; "move soccer" → events.) The verb + noun first picks *which* module's data to search.
+2. **Search within it.** Fuzzy-match "the trash chore" against the row titled "Take out the
+   trash" — the same shape as the existing `matchListStrict` token-overlap, run over item titles
+   (LLM-assisted for looser phrasings).
+3. **Scope / disambiguate.** The sneaky part: a recurring chore (Tue & Thu) means completing
+   **today's occurrence**, not the template; "**my** reading goal" needs **who's speaking** (the
+   kiosk/person context already threaded through); two "clean" chores → multiple candidates.
+4. **Decide by confidence → three outcomes:**
+   - **Exactly 1 confident match** → straight into the confirm card.
+   - **0 matches** → "couldn't find a chore like that" (optionally offer to *create* one).
+   - **2+ plausible** → show candidates, user **picks in the preview** before confirm.
+
+That 1/0/many fork is why confirm-and-edit matters even more here: the preview isn't just editing
+fields, it's **catching a wrong match before it commits**.
+
+#### The load-bearing principle: the model proposes, deterministic code resolves
+
+**Do not let the LLM pick the item** — it doesn't know real ids or the current inventory and will
+hallucinate. Split it exactly the way date math is already split: the model is "unreliable at date
+math," so `resolveDayFromText` (`capture.ts:263`) resolves days deterministically and overrides the
+model's guess. Same here — **the model extracts the *description*** (`target.description = "trash
+chore"`); **deterministic DB code does the actual lookup** against real rows. This generalizes the
+two baby versions already in the code: `matchListStrict` (lists) and exact-name matching for people
+(`capture.ts:131`).
+
+#### Where lookup runs — **decided: separate step (Option B)**
+
+`/api/capture` parses to an **unresolved** intent (`verb` + `target.description`, no id); a
+**separate resolution call** finds candidate rows and feeds the disambiguation UI. This keeps the
+parser stateless (the property that makes today's parse/commit split nice), makes the
+"many candidates → pick one" flow natural, and is far easier to test than folding DB search into
+the parse route. (Rejected: Option A, parse-and-resolve in one shot — fewer round trips but couples
+the parser to per-module queries.)
+
+Also: mutations **require** the server path and degrade to "I need a connection for that" offline —
+the on-device heuristic must never guess a destructive action (see §6).
+
+### Tier 3 — Settings in words (the settings verb class)
+
+Change household or personal config by talking. A small, **closed vocabulary** maps cleanly to
+`households.settings` / person prefs — start with the highest-value keys, not "any setting."
 
 | Setting | Phrase | Scope |
 |---|---|---|
@@ -142,17 +185,27 @@ The true "talk to the app" experience. Two sub-parts:
 | Allergens | "add peanuts to Emma's allergies" | Person |
 | Today-card layout, kiosk pairing | "hide the weather card" | Person / device |
 
-**Queries (read path)** — the first genuinely non-write class:
+Each setting change previews the **before → after** value and its **scope** (this person vs. the
+whole household) before it commits — a "dark mode for everyone" is not a silent flip.
 
-| Query | Phrase |
-|---|---|
-| Meal lookup | "what's for dinner tonight" |
-| Chore lookup | "who has chores today", "what's left on my list" |
-| Rewards balance | "how many stars does Emma have" |
-| Schedule lookup | "when's the dentist" |
+**Queries — intentionally thin.** Reads are mostly already answered by the **Today dashboard**, so
+the bar does *not* try to be a general Q&A surface. Keep at most a small "quick lookup" slice
+("what's for dinner tonight", "how many stars does Emma have") that returns a dismissable answer
+card and, for anything richer, **deep-links to the screen that already shows it** (Today, the meal
+plan, a person's rewards). This is a deliberate scope cut, not an omission — see the open question
+on exactly how thin.
 
-Queries return an **answer card**, not a mutation. Confirm-and-edit degenerates to dismiss, but a
-follow-up action ("add that to the list") re-enters the normal confirm flow.
+### Tier 4 — Multi-action phrases
+
+One utterance, several actions: "add milk **and** mark the trash done", "taco night Thursday, and
+give the dishes to Wally." A distinct capability because it changes the *shape* of a capture, not
+just its verb — the parser returns **an ordered list of intents**, and the client shows **one
+confirm card per action** (each still individually editable and, for mutations, individually
+resolved). Confirm-all or confirm-each; a rejected card doesn't block the others.
+
+Sequenced last on purpose: it composes on top of every earlier tier (each sub-action is just a
+create/mutate/setting we already handle) and only adds the split-and-stack layer, so it's cheapest
+once the verb classes exist.
 
 ---
 
@@ -163,19 +216,26 @@ These apply across tiers and should be settled before Tier 2.
 ### Intent schema shape (design once)
 
 Extend the current flat `CaptureIntent` to carry a **verb** alongside **kind**, so a single schema
-covers all four classes without a rewrite later. Sketch:
+covers all four classes without a rewrite later. The capture response becomes a **list** of intents
+(one for a normal phrase, N for a Tier-4 multi-action). Sketch:
 
 ```
-{
+// response: { intents: Intent[] }   // 1 today; N for multi-action (Tier 4)
+
+Intent {
   verb: "create" | "complete" | "update" | "delete" | "log" | "set" | "query",
   kind: "event" | "task" | "grocery" | "list" | "meal" | "goal" | "pantry" |
         "countdown" | "reward" | "person" | "setting",
   ...existing create fields...,
-  target?: { ref?: string; description?: string },  // for mutate/query: which item
+  target?:  { description: string },   // mutate/query: the model's *words*, NOT an id.
+                                        // a separate resolution step (B) fills the id.
   setting?: { key: string; value: string; scope: "person" | "household" },
-  unsupported?: { reason: string }
+  unsupported?: { reason: string; deepLink?: string }
 }
 ```
+
+Note `target` carries only the model's **description** — resolution runs as a **separate step**
+(decided in Tier 2, Option B) and is what attaches the real row id.
 
 The `unsupported` escape hatch stays: anything the bar can't do yet returns a friendly reason and,
 ideally, a **deep link to the right screen** ("I can't do that yet — here's Settings →
@@ -225,12 +285,22 @@ the parsed intent first, then implement.
 
 ## 8. Open questions
 
-- **Resolution service (Tier 2):** new endpoint, or fold candidate-lookup into the parse response?
-- **Query answers (Tier 3):** does the bar render structured answer cards, or hand off to the
-  relevant screen? How much read surface do we expose?
+**Decided (moved out of open questions):**
+- ✅ **Resolution runs as a separate step (Option B)** — parse returns an unresolved intent; a
+  dedicated resolution call attaches the row id. (Tier 2.)
+- ✅ **Multi-action is in scope, as its own tier (Tier 4)** — split one utterance into an ordered
+  list of intents, one confirm card each.
+- ✅ **Queries stay thin** — the Today dashboard is the real read surface; the bar keeps at most a
+  small quick-lookup slice and deep-links for the rest. (Tier 3.)
+
+**Still open:**
+- **Exactly how thin are queries?** Which handful of lookups (if any) are worth answering inline
+  vs. always deep-linking to Today / the relevant screen?
+- **Resolution API surface (Tier 2):** one `/api/capture/resolve` endpoint that any kind routes
+  through, or per-module search the client calls? What context does it take (speaker, "now")?
 - **Settings vocabulary (Tier 3):** enumerate the exact settable keys — start with the highest-value
   (theme, start-of-week, module toggles, allergens) rather than "any setting".
-- **Multi-action phrases:** "add milk and mark the trash done" — one intent per utterance today.
-  Do we split, or keep one-action-per-capture?
+- **Multi-action confirm UX (Tier 4):** confirm-all vs. confirm-each; how a rejected card is shown
+  without blocking the others.
 - **Voice quick-add (roadmap ~219):** the iOS freeform voice intent parses via `/api/capture` then
   speaks a summary — the universal confirm-and-edit contract needs a spoken-confirm story.
