@@ -79,6 +79,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explains the required terminal, initial credentials, success checks, and safe troubleshooting.
 
 ### Fixed
+- **Upgrades now stop when their safety checks fail.** `./waffled upgrade` aborts after
+  a failed repository fast-forward or database backup unless backup skipping is explicit.
+
 - **Up-for-grabs chores now appear on Today.** The Family Chores card shows unassigned
   chores that anyone can claim instead of incorrectly saying there are no chores yet.
 

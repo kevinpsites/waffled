@@ -4,8 +4,8 @@
 #   ./waffled up        start everything (checks prereqs, creates .env on first run, PULLS
 #                    the published images, runs migrations), then status + what's-next
 #   ./waffled up --build   same, but build the images from source (dev / bleeding-edge)
-#   ./waffled upgrade   pull the latest release: fast-forward the repo, bump the pinned
-#                    version in .env, pull the new images, and apply migrations
+#   ./waffled upgrade [--skip-backup]   pull the latest release: fast-forward the repo,
+#                    back up the DB, bump the pinned version, and apply migrations
 #   ./waffled setup     guided: how devices reach this server (localhost / LAN IP / hostname)
 #   ./waffled status    show each container's state + health (✓/✗)
 #   ./waffled down      stop & remove the stack
@@ -216,6 +216,47 @@ wait_for_services() {
   return 1
 }
 
+update_repo_for_upgrade() {
+  if ! git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local branch
+  branch="$(git -C "$ROOT" symbolic-ref --short -q HEAD || true)"
+  if [ -z "$branch" ]; then
+    echo "${c_ylw}⚠ Detached HEAD — skipping repo update. The checked-out release tag will determine the target version.${c_reset}"
+    return 0
+  fi
+
+  echo "${c_dim}Updating repo ($branch)…${c_reset}"
+  if ! git -C "$ROOT" pull --ff-only; then
+    echo "${c_red}✗ Couldn't fast-forward the repo (local changes or diverged history).${c_reset}"
+    echo "Resolve the repository state, then re-run './waffled upgrade'. No images were changed."
+    return 1
+  fi
+}
+
+run_pre_upgrade_backup() {
+  local skip_backup="$1"
+  if [ "$skip_backup" -eq 1 ]; then
+    echo "${c_ylw}⚠ Skipping the pre-upgrade database backup because --skip-backup was supplied.${c_reset}"
+    return 0
+  fi
+
+  if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^waffled-backup$'; then
+    echo "${c_red}✗ The backup service is not running, so no rollback point can be created.${c_reset}"
+    echo "Start the stack and retry, or explicitly accept the risk with './waffled upgrade --skip-backup'."
+    return 1
+  fi
+
+  echo "${c_dim}Backing up the database first (rollback point)…${c_reset}"
+  if ! docker exec waffled-backup waffled-backup; then
+    echo "${c_red}✗ Pre-upgrade backup failed; the upgrade has been stopped.${c_reset}"
+    echo "Fix the backup error and retry, or explicitly accept the risk with './waffled upgrade --skip-backup'."
+    return 1
+  fi
+}
+
 # Best-effort primary LAN IPv4 (for "reach it from a tablet"). Empty if undetectable.
 detect_lan_ip() {
   local ip=""
@@ -314,19 +355,22 @@ case "$cmd" in
     # tagged repo + image tag are a matched pair — compose/configs/./waffled must agree
     # with the image), sync WAFFLED_VERSION in .env to this checkout's .env.example,
     # then pull + up (the one-shot `migrate` reruns because the image tag changed).
+    skip_backup=0
+    for arg in "$@"; do
+      case "$arg" in
+        --skip-backup) skip_backup=1 ;;
+        *) echo "usage: ./waffled upgrade [--skip-backup]"; exit 1 ;;
+      esac
+    done
     preflight || exit 1
     ensure_env
     ensure_powersync_proxy_env
     ensure_google_callback_env
-    if git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
-      branch="$(git -C "$ROOT" symbolic-ref --short -q HEAD || true)"
-      if [ -n "$branch" ]; then
-        echo "${c_dim}Updating repo ($branch)…${c_reset}"
-        git -C "$ROOT" pull --ff-only || echo "${c_ylw}⚠ Couldn't fast-forward the repo (local changes or diverged history). Resolve it, then re-run './waffled upgrade'.${c_reset}"
-      else
-        echo "${c_ylw}⚠ Detached HEAD — skipping repo update. Check out a branch or a release tag to update the code, then re-run.${c_reset}"
-      fi
-    fi
+    update_repo_for_upgrade || exit 1
+    # Snapshot the DB BEFORE changing the version pin or swapping images.
+    # Migrations are forward-only, so a missing rollback point is fatal unless
+    # the operator explicitly accepts it.
+    run_pre_upgrade_backup "$skip_backup" || exit 1
     target="$(grep -E '^WAFFLED_VERSION=' "$ROOT/infra/compose/.env.example" 2>/dev/null | head -1 | cut -d= -f2- || true)"
     current="$(env_val WAFFLED_VERSION)"
     if [ -z "$target" ]; then
@@ -336,13 +380,6 @@ case "$cmd" in
     else
       set_env_var WAFFLED_VERSION "$target"
       echo "${c_grn}WAFFLED_VERSION ${current:-unset} → ${target}${c_reset}"
-    fi
-    # Safety: snapshot the DB BEFORE swapping images, while the current stack is still
-    # up — this is your rollback point (migrations are forward-only). Best-effort: a
-    # not-yet-running / partial install just skips it.
-    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^waffled-backup$'; then
-      echo "${c_dim}Backing up the database first (rollback point)…${c_reset}"
-      docker exec waffled-backup waffled-backup || echo "${c_ylw}⚠ Pre-upgrade backup failed — continuing anyway. You can run './waffled backup' manually first.${c_reset}"
     fi
     export_build_meta
     echo "${c_dim}Pulling images + restarting stack (applying migrations)…${c_reset}"
