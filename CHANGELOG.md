@@ -55,6 +55,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Waffled with the lights off. The choice is saved per device and applies instantly. The two
   platforms share one palette, so a screen looks the same with the lights off on your phone as it
   does on the wall.
+- **Add a recipe from a photo or by describing it — now on iPhone and iPad, not just the web.**
+  The recipe editor's "start from…" options now include **From a photo** (snap or choose up to six
+  pictures of a recipe card, cookbook page, or handwritten note and let the AI read them) and
+  **Describe it** (say or type the ingredients and steps in any order — with on-device voice
+  dictation — and the AI organizes it into a recipe). Both prefill the editor for you to review and
+  save, exactly like the web app, and appear only when your household's AI provider supports them.
 
 ### Changed
 - **New chores now default to a one-off on the day you're viewing, and each day's list is sorted sensibly.** On iPhone/iPad, adding a chore from the Chores tab now starts as "Just once" due on the day currently shown — instead of a recurring daily chore always due today. A day's chores are also ordered unfinished-first, then by due time (earliest first, untimed last), then A–Z.
