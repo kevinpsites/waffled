@@ -470,7 +470,7 @@ struct PersonEditorSheet: View {
                     .textContentType(.newPassword)
                     .padding(12).background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                 if let loginError { Text(loginError).font(.system(size: 12.5, weight: .medium)).foregroundStyle(WF.primary) }
-                else if let loginNote { Text(loginNote).font(.system(size: 12.5, weight: .medium)).foregroundStyle(Color(hex: 0x25A368)) }
+                else if let loginNote { Text(loginNote).font(.system(size: 12.5, weight: .medium)).foregroundStyle(WF.success) }
 
                 Button { Task { await saveLogin() } } label: {
                     Text(loginBusy ? "Saving…" : (hasLogin ? "Update login" : "Give a login"))
@@ -508,7 +508,7 @@ struct PersonEditorSheet: View {
                     .onChange(of: pin) { _, v in pin = String(v.filter(\.isNumber).prefix(8)) }
                     .padding(12).background(WF.panel).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
                 if let pinError { Text(pinError).font(.system(size: 12.5, weight: .medium)).foregroundStyle(WF.primary) }
-                else if let pinNote { Text(pinNote).font(.system(size: 12.5, weight: .medium)).foregroundStyle(Color(hex: 0x25A368)) }
+                else if let pinNote { Text(pinNote).font(.system(size: 12.5, weight: .medium)).foregroundStyle(WF.success) }
 
                 Button { Task { await savePin() } } label: {
                     Text(pinBusy ? "Saving…" : (hasPin ? "Update PIN" : "Set PIN"))

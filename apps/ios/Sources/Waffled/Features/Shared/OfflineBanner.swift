@@ -17,7 +17,7 @@ struct OfflineBanner: View {
                     ? "Offline · \(changeCount) saved, will sync when you're back"
                     : "Offline · showing your saved data")
             } else if sync.pendingUploads > 0 {
-                bar(icon: "arrow.triangle.2.circlepath", bg: FamilyColor.wally.solid,
+                bar(icon: "arrow.triangle.2.circlepath", bg: FamilyColor.person3.solid,
                     text: "Syncing \(changeCount)…")
             }
         }

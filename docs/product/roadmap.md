@@ -17,11 +17,12 @@ Legend: ✅ done · 🟡 partial / in progress · 🚧 planned · ⛔ dropped (s
 
 ## Done ✅
 
-- **Dark mode (web/kiosk)** — a warm dark theme alongside light, chosen from **Settings →
-  Appearance** (Light / Dark / Match system), saved per device and applied instantly. Built on a
-  consolidated design-token layer (one canonical `:root` + a `[data-theme="dark"]` override; new
-  semantic success/danger/warn/info tokens). **iPhone/iPad parity is the remaining piece** — the
-  palette + plan are captured in `apps/ios/DARK_MODE.md`.
+- **Dark mode (web/kiosk + iPhone/iPad)** — a warm dark theme alongside light, chosen from
+  **Settings → Appearance** (Light / Dark / Match system), saved per device and applied instantly,
+  on every surface. Built on a consolidated design-token layer (web: one canonical `:root` + a
+  `[data-theme="dark"]` override; iOS: dark-aware `Color(light:dark:)` tokens re-resolved by UIKit
+  on the appearance change), with a shared palette and semantic success/danger/warn/info tokens so
+  the two platforms read identically with the lights off.
 - **Self-host packaging** — one-command `./waffled up` (pulls multi-arch GHCR images by
   default; `--build` for source), in-container migrations, and one-command `./waffled
   upgrade` (repo fast-forward + version bump + DB snapshot + pull + migrate).

@@ -1233,7 +1233,7 @@ struct StepTagSection: View {
     let onRemove: (UUID) -> Void
     @State private var showPopover = false
 
-    private static let green = Color(hex: 0x25A368)
+    private static let green = WF.success
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

@@ -100,9 +100,9 @@ struct PantryTodayCard: View {
     @ViewBuilder private func statusTag(_ item: WaffledAPI.PantryItem) -> some View {
         if model.isSoon(item), let d = model.days(item) {
             Text(expiryText(d))
-                .font(.system(size: 12, weight: .bold)).foregroundStyle(Color(hex: 0xB8860B))
+                .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.warn)
                 .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(Color(hex: 0xFBF0D5)).clipShape(Capsule())
+                .background(WF.warnT).clipShape(Capsule())
         } else {
             Text("Low")
                 .font(.system(size: 12, weight: .bold)).foregroundStyle(WF.primaryD)

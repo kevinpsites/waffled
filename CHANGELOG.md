@@ -47,12 +47,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cooked in the last couple of weeks, and leaves slots you've already set alone. No AI required,
   and the app doesn't change — the same "Plan my week" / "Plan my month" buttons just always
   return a plan.
-- **Dark mode.** Waffled now has a warm dark theme alongside the original light one, chosen from
-  **Settings → Appearance**: pick Light, Dark, or **Match system** to follow your device
-  automatically. It's a warm dark — surfaces and text move to soft charcoals rather than cold
-  black-and-blue, and every brand, accent, and per-person color stays exactly the same, so the app
-  still reads as Waffled with the lights off. The choice is saved per device and applies instantly,
-  including on the kitchen kiosk display.
+- **Dark mode, everywhere.** Waffled now has a warm dark theme alongside the original light one,
+  chosen from **Settings → Appearance** on the web, the kitchen kiosk display, **and the
+  iPhone/iPad app**: pick Light, Dark, or **Match system** to follow your device automatically.
+  It's a warm dark — surfaces and text move to soft charcoals rather than cold black-and-blue, and
+  every brand, accent, and per-person color stays exactly the same, so the app still reads as
+  Waffled with the lights off. The choice is saved per device and applies instantly. The two
+  platforms share one palette, so a screen looks the same with the lights off on your phone as it
+  does on the wall.
 - **Add a recipe from a photo or by describing it — now on iPhone and iPad, not just the web.**
   The recipe editor's "start from…" options now include **From a photo** (snap or choose up to six
   pictures of a recipe card, cookbook page, or handwritten note and let the AI read them) and
