@@ -78,6 +78,12 @@ See [Troubleshooting → Locked out](/operations/troubleshooting/#locked-out--fo
 No — it **syncs two-way** with it. Connect per person in Settings → Calendars; Waffled pulls
 Google events and pushes the ones it authors. See [Google Calendar](/administration/google-calendar/).
 
+### Do I need to buy a special display (like a Skylight)?
+No. Any tablet you already own — a spare iPad or Android tablet — becomes the always-on kitchen
+kiosk in fullscreen/PWA mode, with an ambient photo screensaver when it's idle. There's no
+dedicated hardware to buy and no screen locked behind a subscription. See
+[Kiosk & devices](/administration/kiosk/).
+
 ### Do I need an AI subscription for the "Add anything" bar?
 No. With no provider configured, capture still works via an on-device heuristic. Add a key
 (Anthropic, any OpenAI-compatible endpoint, or a local Ollama model) to make it smarter. Keys
@@ -109,9 +115,9 @@ and the database holds *encrypted* Google/OIDC refresh tokens that can't be reco
 re-consented. If any guide tells you to wipe a volume, stop. Restore from a backup instead.
 
 ### Everything shows "Offline" — what's wrong?
-Almost always one of two things: an empty `POWERSYNC_JWT_PRIVATE_KEY` (the api rotates its
-signing key on every restart), or a `POWERSYNC_PUBLIC_URL` that clients can't actually reach
-(e.g. `localhost`). See [Troubleshooting → PowerSync offline](/operations/troubleshooting/#powersync-offline-banner).
+Almost always one of two things: a missing `POWERSYNC_JWT_PRIVATE_KEY` on an older/manual
+installation, or a `POWERSYNC_PUBLIC_URL` that clients can't actually reach (e.g. `localhost`).
+See [Troubleshooting → PowerSync offline](/operations/troubleshooting/#powersync-offline-banner).
 
 ## Contributing & project
 

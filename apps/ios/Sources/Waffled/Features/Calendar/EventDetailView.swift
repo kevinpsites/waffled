@@ -396,12 +396,15 @@ struct EventDetailView: View {
         return "Repeats"
     }
     private func dayKey(_ d: Date) -> String { DateFmt.string(d, "yyyy-MM-dd", tz) }
+    private static let isoFrac: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f
+    }()
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f
+    }()
     private func parseISO(_ s: String?) -> Date? {
         guard let s else { return nil }
-        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = f.date(from: s) { return d }
-        f.formatOptions = [.withInternetDateTime]
-        return f.date(from: s)
+        return Self.isoFrac.date(from: s) ?? Self.isoPlain.date(from: s)
     }
 }
 

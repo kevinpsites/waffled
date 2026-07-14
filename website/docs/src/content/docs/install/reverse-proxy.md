@@ -14,6 +14,8 @@ unless you want to — Caddy already:
 
 - Serves the web/kiosk SPA (baked into the image).
 - Proxies `/api/*` → the api container.
+- Proxies the Google OAuth callback → the api container.
+- Proxies the device-facing PowerSync port → the private PowerSync container.
 - Serves uploaded media at `/media/*`.
 - Can provision **automatic HTTPS** for a real hostname.
 
@@ -26,7 +28,7 @@ writes the right address variables for you:
 |---|---|---|
 | **Just this computer** | localhost defaults | You only use Waffled on the host itself. |
 | **Other devices on my network** | `POWERSYNC_PUBLIC_URL` + `PUBLIC_BASE_URL` → this machine's **LAN IP** | A tablet / phone / laptop on your home network (the common case). |
-| **A hostname with automatic HTTPS** | `CADDY_SITE_ADDRESS` (auto-TLS) + `PUBLIC_BASE_URL` | You have a domain pointing at the machine. |
+| **A hostname with automatic HTTPS** | Caddy addresses + public URLs for the hostname | You have a domain pointing at the machine. |
 
 Run it **before** `./waffled up` for the simplest flow, or any time later — then run `./waffled
 up` again to apply it (a bare `./waffled restart` reuses the old values).
@@ -67,8 +69,9 @@ pointing at the machine:
 3. Point DNS at the machine and make sure port `443` is reachable.
 4. `./waffled up`.
 
-For **remote sync over HTTPS**, PowerSync serves on its own port (`8090`) — expose and proxy it
-with TLS too, and set `POWERSYNC_PUBLIC_URL` to that HTTPS address.
+PowerSync remains on port `8090`, but that public socket belongs to Caddy rather than the
+PowerSync container. `./waffled setup` configures its Caddy listener for TLS and sets
+`POWERSYNC_PUBLIC_URL=https://your.host:8090`; no separate sync proxy is required.
 
 ## Behind your own reverse proxy
 
@@ -77,15 +80,15 @@ proxy two upstreams and set the public URLs to match:
 
 - **Web + api:** proxy your hostname to the Caddy container's HTTP port (`8080`). Caddy handles
   `/api/*` and `/media/*` internally, so a single upstream covers the app.
-- **PowerSync:** proxy a second hostname/path to the PowerSync port (`8090`), and set
-  `POWERSYNC_PUBLIC_URL` to that public address.
+- **PowerSync:** proxy a second hostname/port to Caddy's PowerSync listener (`8090`), and
+  set `POWERSYNC_PUBLIC_URL` to that public address.
 
-Then set `CADDY_SITE_ADDRESS=:80` (let your outer proxy own TLS) and `PUBLIC_BASE_URL` to your
-public origin.
+Then set `CADDY_SITE_ADDRESS=:80` and `POWERSYNC_CADDY_ADDRESS=:8090` (let your outer
+proxy own TLS), and set both public URL variables to the addresses clients use.
 
 ## Editing by hand
 
-The three variables `setup` writes are just entries in `infra/compose/.env` — you can set them
+The four variables `setup` writes are just entries in `infra/compose/.env` — you can set them
 directly and `./waffled up`:
 
 | Variable | Meaning |
@@ -93,5 +96,6 @@ directly and `./waffled up`:
 | `POWERSYNC_PUBLIC_URL` | The sync endpoint clients connect to — **the common trap**; must be device-reachable. |
 | `PUBLIC_BASE_URL` | Public origin used for calendar / OIDC redirect URLs. |
 | `CADDY_SITE_ADDRESS` | `:80` for plain HTTP, or a hostname to turn on Caddy auto-TLS. |
+| `POWERSYNC_CADDY_ADDRESS` | `:8090` locally, or the HTTPS hostname listener used for sync. |
 
 See the full list in [Environment variables](/install/environment-variables/).

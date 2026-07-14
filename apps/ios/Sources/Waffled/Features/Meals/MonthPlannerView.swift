@@ -315,7 +315,7 @@ struct MonthPlannerView: View {
         Dictionary(entries.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
     }
     private var cal: Calendar {
-        var c = Calendar(identifier: .gregorian); c.timeZone = sync.householdTz; return c
+        Cal.gregorian(sync.householdTz)
     }
     private var monthStart: Date {
         cal.date(from: cal.dateComponents([.year, .month], from: anchor)) ?? anchor

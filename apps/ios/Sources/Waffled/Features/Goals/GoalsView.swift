@@ -30,8 +30,11 @@ final class GoalsModel {
                 || (filter == .shared ? g.trackingMode == "shared_total" : g.trackingMode == "each_tracks")
         }
     }
-    var featured: WaffledAPI.Goal? { visibleGoals.first { $0.isFeatured } }
-    var more: [WaffledAPI.Goal] { visibleGoals.filter { $0.id != featured?.id } }
+    // Three tiers (mirrors web): the one Spotlight hero, the Pinned band, then everything else
+    // A–Z (the API already sorts A–Z). `isFeatured` is the internal flag behind "Pinned".
+    var spotlight: WaffledAPI.Goal? { visibleGoals.first { $0.isSpotlight ?? false } }
+    var pinned: [WaffledAPI.Goal] { visibleGoals.filter { $0.isFeatured && !($0.isSpotlight ?? false) } }
+    var more: [WaffledAPI.Goal] { visibleGoals.filter { !($0.isSpotlight ?? false) && !$0.isFeatured } }
 
     func loadLists() async {
         loading = true
@@ -59,9 +62,15 @@ final class GoalsModel {
         catch { self.error = true }
     }
 
-    func log(goalId: String, amount: Double, personIds: [String], note: String, loggedOn: String?) async {
+    /// Quick pin/unpin: toggle the Pinned tier (isFeatured) straight from a card.
+    func togglePin(_ g: WaffledAPI.Goal) async {
+        do { try await api.updateGoal(id: g.id, ["isFeatured": .bool(!g.isFeatured)]); await loadGoals() }
+        catch { self.error = true }
+    }
+
+    func log(goalId: String, amount: Double, personIds: [String], note: String, loggedOn: String?, hours: Int? = nil, minutes: Int? = nil) async {
         do {
-            try await api.logGoalProgress(goalId: goalId, amount: amount, personIds: personIds, note: note, loggedOn: loggedOn)
+            try await api.logGoalProgress(goalId: goalId, amount: amount, personIds: personIds, note: note, loggedOn: loggedOn, hours: hours, minutes: minutes)
             await loadGoals()
         } catch { self.error = true }
     }
@@ -133,10 +142,14 @@ enum GoalStyle {
 
 func goalFirstName(_ name: String) -> String { name.split(separator: " ").first.map(String.init) ?? name }
 
-/// Whole numbers without a decimal, otherwise a compact form; nil → em dash.
+/// Whole numbers without a decimal, otherwise rounded to at most 2 decimals with
+/// trailing zeros dropped (3 → "3", 1.5 → "1.5", 2.5833… → "2.58", 6.16667 → "6.17");
+/// nil → em dash. Amounts are stored exact (an hours+minutes log is 1h5m = 1.0833… h),
+/// so every display goes through here to avoid showing the raw repeating decimal.
 func goalFmt(_ n: Double?) -> String {
     guard let n else { return "—" }
-    return n == n.rounded() ? String(Int(n)) : String(format: "%g", n)
+    let r = (n * 100).rounded() / 100
+    return r == r.rounded() ? String(Int(r)) : String(format: "%g", r)
 }
 
 /// Compact, rounded formatting for the tight goal ring: values under 1,000 round to a
@@ -233,17 +246,31 @@ struct GoalsView: View {
                 listPicker
                 if let list = model.selectedList { listHead(list) }
                 if !model.isIndividual, model.selectedList != nil { filterSeg }
-                if let f = model.featured { hero(f) }
+                if let s = model.spotlight {
+                    SectionLabel(text: "Spotlight").padding(.top, 2)
+                    hero(s)
+                }
+                if !model.pinned.isEmpty {
+                    SectionLabel(text: "Pinned").padding(.top, 2)
+                    if isKiosk {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 300, maximum: 460), spacing: 14, alignment: .top)],
+                                  alignment: .leading, spacing: 14) {
+                            ForEach(model.pinned) { moreCard($0, pinned: true) }
+                        }
+                    } else {
+                        ForEach(model.pinned) { moreCard($0, pinned: true) }
+                    }
+                }
                 if !model.more.isEmpty {
-                    SectionLabel(text: "More \(model.selectedList?.name ?? "") goals")
+                    SectionLabel(text: "More \(model.selectedList?.name ?? "") goals · A–Z")
                         .padding(.top, 2)
                     if isKiosk {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 300, maximum: 460), spacing: 14, alignment: .top)],
                                   alignment: .leading, spacing: 14) {
-                            ForEach(model.more) { moreCard($0) }
+                            ForEach(model.more) { moreCard($0, pinned: false) }
                         }
                     } else {
-                        ForEach(model.more) { moreCard($0) }
+                        ForEach(model.more) { moreCard($0, pinned: false) }
                     }
                 }
                 if model.loading && model.visibleGoals.isEmpty {
@@ -271,15 +298,22 @@ struct GoalsView: View {
         .task {
             if model.lists.isEmpty { await model.loadLists() }
             await model.syncHealth()
-            if DemoHooks.openGoal, !Self.didOpenGoal, let f = model.featured {
+            if DemoHooks.openGoal, !Self.didOpenGoal, let f = model.spotlight ?? model.visibleGoals.first {
                 Self.didOpenGoal = true; path.append(.goal(f))
             }
             if DemoHooks.newGoal, !Self.didOpenGoal { Self.didOpenGoal = true; creating = true }
         }
+        // GoalDetailView owns a SEPARATE model, so deletes / logged progress / step
+        // ticks / entry edits there don't touch this list's model. When the user pops
+        // back (path shrinks), reload the selected list so those changes show without a
+        // manual pull-to-refresh. Only fires on return — pushing in grows the path.
+        .onChange(of: path) { oldPath, newPath in
+            if newPath.count < oldPath.count { Task { await model.loadGoals() } }
+        }
         .refreshable { await model.loadLists(); await model.syncHealth() }
         .sheet(item: $logging) { g in
-            GoalLogSheet(goal: g) { amount, ids, note, loggedOn in
-                Task { await model.log(goalId: g.id, amount: amount, personIds: ids, note: note, loggedOn: loggedOn) }
+            GoalLogSheet(goal: g, onChanged: { Task { await model.loadGoals() } }) { amount, hours, minutes, ids, note, loggedOn in
+                Task { await model.log(goalId: g.id, amount: amount, personIds: ids, note: note, loggedOn: loggedOn, hours: hours, minutes: minutes) }
             }
         }
         .goalEditor(isPresented: $creating) {
@@ -386,7 +420,7 @@ struct GoalsView: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 6) {
-                    heroPill("⭐ Featured · shared total")
+                    heroPill("🌟 Spotlight · shared total")
                     Text(g.title).font(WF.serif(26)).foregroundStyle(.white).lineLimit(2)
                         .minimumScaleFactor(0.7)
                     Text("Everyone contributes to one pool\(g.deadline.map { " · by \(fmtDeadline($0))" } ?? "")")
@@ -416,7 +450,7 @@ struct GoalsView: View {
                     .frame(width: 64, height: 64)
                     .background(.white.opacity(0.18)).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 VStack(alignment: .leading, spacing: 6) {
-                    heroPill("⭐ Featured · each tracks their own")
+                    heroPill("🌟 Spotlight · each tracks their own")
                     Text(g.title).font(WF.serif(26)).foregroundStyle(.white).lineLimit(2)
                         .minimumScaleFactor(0.7)
                     Text(g.target.map { "\(goalFmt($0)) \(g.unit ?? "")".trimmingCharacters(in: .whitespaces) + " each" } ?? "Everyone tracks their own")
@@ -487,7 +521,7 @@ struct GoalsView: View {
 
     // MARK: more cards
 
-    private func moreCard(_ g: WaffledAPI.Goal) -> some View {
+    private func moreCard(_ g: WaffledAPI.Goal, pinned: Bool) -> some View {
         let c = GoalStyle.color(g.category)
         let frac = g.target.map { $0 > 0 ? min(g.totalProgress / $0, 1) : 0 } ?? 0
         return Button { path.append(.goal(g)) } label: {
@@ -497,7 +531,14 @@ struct GoalsView: View {
                         .frame(width: 42, height: 42)
                         .background(c.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(g.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text(g.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
+                            if pinned {
+                                Text("📌 PINNED").font(.system(size: 9, weight: .heavy)).foregroundStyle(Color(hex: 0xB07D1C))
+                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                    .background(Color(hex: 0xFDF2DD)).clipShape(Capsule())
+                            }
+                        }
                         Text(goalDescriptor(g)).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
                     }
                     Spacer(minLength: 6)
@@ -505,6 +546,7 @@ struct GoalsView: View {
                         Text(goalFmt(g.totalProgress)).font(.system(size: 16, weight: .heavy)).foregroundStyle(WF.ink)
                         Text("/\(goalFmt(g.target))").font(.system(size: 11, weight: .semibold)).foregroundStyle(WF.ink3)
                     }
+                    pinToggle(g)
                 }
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
@@ -520,6 +562,25 @@ struct GoalsView: View {
             }
             .padding(14)
             .wfField()
+            .overlay {
+                if pinned {
+                    RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
+                        .strokeBorder(Color(hex: 0xE2A636).opacity(0.5), lineWidth: 1.5)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// A quick pin/unpin toggle on a card. Nested in the card button — SwiftUI routes the tap
+    /// to this inner button, so it doesn't open the goal.
+    private func pinToggle(_ g: WaffledAPI.Goal) -> some View {
+        Button { Task { await model.togglePin(g) } } label: {
+            Image(systemName: g.isFeatured ? "pin.fill" : "pin")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(g.isFeatured ? WF.primary : WF.ink3.opacity(0.55))
+                .frame(width: 30, height: 30)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -535,13 +596,24 @@ struct GoalsView: View {
 struct GoalLogSheet: View {
     @Environment(\.dismiss) private var dismiss
     let goal: WaffledAPI.Goal
-    /// 4th arg is the backdate (YYYY-MM-DD), or nil for today.
-    let onSave: (Double, [String], String, String?) -> Void
+    /// (amount, hours, minutes, who, note, backdate). For a time goal, `hours`/`minutes`
+    /// carry the entry and the server converts; otherwise they're nil and `amount` is used.
+    /// Backdate is a YYYY-MM-DD string, or nil for today.
+    let onSave: (Double, Int?, Int?, [String], String, String?) -> Void
+    /// Called after a checklist step is ticked (the parent reloads to reflect it).
+    var onChanged: (() -> Void)? = nil
 
+    private let api = WaffledAPI()
     @State private var amount: Double
     @State private var amountText: String
+    /// Time goals are logged as hours + minutes; the server folds them into decimal hours.
+    @State private var hours: Int
+    @State private var minutes: Int
     @State private var who: Set<String>
     @State private var note = ""
+    /// A checklist goal's steps (fetched on appear; ticking is the "log" for checklists).
+    @State private var steps: [WaffledAPI.GoalDetail.Step] = []
+    @State private var stepsLoaded = false
     /// The day this entry counts for — defaults to today, backdate to catch up a streak.
     @State private var loggedOn = Date()
     /// Tier-0 Apple Health read-&-suggest: today's total for a metric this goal's unit
@@ -552,10 +624,29 @@ struct GoalLogSheet: View {
     private static let activityChips = ["Bike ride", "Park", "Sports", "Outside play", "Reading", "Art"]
 
     private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+    private var isChecklist: Bool { goal.goalType == "checklist" }
+    private var isHabit: Bool { goal.goalType == "habit" }
+    private var isCount: Bool { goal.goalType == "count" }
     /// A log must be credited to someone: when the goal has participants, at least one
-    /// must be picked (single-participant goals pre-select that person).
+    /// must be picked (single-participant goals pre-select that person). A habit's "done"
+    /// still needs a who; count/total the same.
     private var whoMissing: Bool { !goal.participants.isEmpty && who.isEmpty }
     private var isHours: Bool { goal.unit.map { Self.hourUnits.contains($0.lowercased()) } ?? false }
+    /// A total goal measured in hours — logged as hours + minutes.
+    private var isTime: Bool { !isHabit && !isCount && isHours }
+    /// The amount actually logged: habit = 1 (one completion), count = whole units,
+    /// time = hours + minutes folded to decimal hours, total = entered.
+    private var logAmount: Double { isHabit ? 1 : isCount ? max(1, amount.rounded()) : isTime ? (Double(hours) + Double(minutes) / 60) : amount }
+    /// "2h 10m" / "45m" / "1h" for time goals.
+    private var durationLabel: String {
+        hours > 0 && minutes > 0 ? "\(hours)h \(minutes)m" : hours > 0 ? "\(hours)h" : "\(minutes)m"
+    }
+    private var unitSuffix: String { goal.unit.map { " \($0)" } ?? "" }
+    // "Who" copy adapts to the goal's participant type (mirrors web LogModal).
+    private var eachAdds: Bool { goal.trackingMode == "each_tracks" }
+    private var isSplit: Bool { goal.trackingMode == "shared_total" && (goal.participantMode ?? "count_once") == "split" }
+    private var whoLabel: String { eachAdds ? "Who took part?" : isSplit ? "Split between" : "Who was there?" }
+    private var confirmLabel: String { isHabit ? "Mark done for today" : isTime ? "Log \(durationLabel)" : "Log \(goalFmt(logAmount))\(unitSuffix)" }
     private var chips: [(label: String, value: Double)] {
         if isHours {
             return [("30m", 0.5), ("1 hr", 1), ("1.5 hr", 1.5), ("2 hr", 2)]
@@ -564,12 +655,19 @@ struct GoalLogSheet: View {
         return [1, 2, 3, 5].map { (label: "\(Int($0))\(u)", value: Double($0)) }
     }
 
-    init(goal: WaffledAPI.Goal, onSave: @escaping (Double, [String], String, String?) -> Void) {
+    init(goal: WaffledAPI.Goal, onChanged: (() -> Void)? = nil, onSave: @escaping (Double, Int?, Int?, [String], String, String?) -> Void) {
         self.goal = goal
         self.onSave = onSave
-        let initial = goal.unit.map { GoalLogSheet.hourUnits.contains($0.lowercased()) } ?? false ? 1.0 : 2.0
+        self.onChanged = onChanged
+        let isHours = goal.unit.map { GoalLogSheet.hourUnits.contains($0.lowercased()) } ?? false
+        // Habit/count start at 1 (one completion / one whole thing); an hours total at 1,
+        // any other total at 2.
+        let initial: Double = (goal.goalType == "habit" || goal.goalType == "count") ? 1 : (isHours ? 1 : 2)
         _amount = State(initialValue: initial)
         _amountText = State(initialValue: goalFmt(initial))
+        // A time goal (total measured in hours) starts at 1h 0m and is entered as hours + minutes.
+        _hours = State(initialValue: (goal.goalType != "habit" && goal.goalType != "count" && isHours) ? 1 : 0)
+        _minutes = State(initialValue: 0)
         _who = State(initialValue: goal.participants.count == 1 ? [goal.participants[0].personId] : [])
     }
 
@@ -616,83 +714,239 @@ struct GoalLogSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    if let s = healthSuggestion { healthSuggestionCard(s) }
-
-                    VStack(alignment: .leading, spacing: 9) {
-                        SectionLabel(text: isHours ? "How long?" : "How much?")
-                        chipRow
-                        HStack(spacing: 8) {
-                            Text("or").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
-                            TextField("amount", text: $amountText)
-                                .keyboardType(.decimalPad)
-                                .font(.system(size: 16, weight: .semibold))
-                                .padding(.horizontal, 13).padding(.vertical, 10)
-                                .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
-                                .frame(width: 110)
-                                .onChange(of: amountText) { _, new in if let v = Double(new) { amount = v } }
-                            if let u = goal.unit { Text(u).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3) }
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 9) {
-                        SectionLabel(text: "When?")
-                        whenRow
-                    }
-
-                    if !goal.participants.isEmpty {
+                    if isChecklist {
+                        checklistSection
+                    } else {
+                        if let s = healthSuggestion { healthSuggestionCard(s) }
+                        amountSection
                         VStack(alignment: .leading, spacing: 9) {
-                            HStack(spacing: 6) {
-                                SectionLabel(text: "Who?")
-                                if whoMissing {
-                                    Text("pick at least one")
-                                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.primary)
-                                }
-                            }
-                            whoRow
+                            SectionLabel(text: "When?")
+                            whenRow
                         }
-                    }
-
-                    VStack(alignment: .leading, spacing: 9) {
-                        SectionLabel(text: "What did you do? · optional")
-                        TextField("Creek hike + fort building", text: $note)
-                            .font(.system(size: 16, weight: .semibold))
-                            .padding(.horizontal, 13).padding(.vertical, 12)
-                            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
-                        ChipFlow(spacing: 8, lineSpacing: 8) {
-                            ForEach(Self.activityChips, id: \.self) { a in
-                                Button { note = a } label: {
-                                    Text(a).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
-                                        .padding(.horizontal, 11).padding(.vertical, 7)
-                                        .background(WF.card2).overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
-                                        .clipShape(Capsule())
+                        if !goal.participants.isEmpty {
+                            VStack(alignment: .leading, spacing: 9) {
+                                HStack(spacing: 6) {
+                                    SectionLabel(text: whoLabel)
+                                    if whoMissing {
+                                        Text("pick at least one")
+                                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.primary)
+                                    }
                                 }
-                                .buttonStyle(.plain)
+                                whoRow
                             }
                         }
+                        noteSection
                     }
                 }
                 .padding(20)
             }
             .background(WF.canvas)
-            .task { await loadHealthSuggestion() }
-            .navigationTitle("Log progress")
+            .task { if isChecklist { await loadSteps() } else { await loadHealthSuggestion() } }
+            .navigationTitle(isChecklist ? "Checklist" : "Log progress")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Log \(goalFmt(amount))\(goal.unit.map { " \($0)" } ?? "")") {
-                        let backdate = Calendar.current.isDateInToday(loggedOn) ? nil : DateFmt.string(loggedOn, "yyyy-MM-dd", .current)
-                        onSave(amount, Array(who), note.trimmingCharacters(in: .whitespacesAndNewlines), backdate)
-                        dismiss()
+                ToolbarItem(placement: .cancellationAction) { Button(isChecklist ? "Done" : "Cancel") { dismiss() } }
+                if !isChecklist {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(confirmLabel) {
+                            let backdate = Cal.current.isDateInToday(loggedOn) ? nil : DateFmt.string(loggedOn, "yyyy-MM-dd", .current)
+                            onSave(logAmount, isTime ? hours : nil, isTime ? minutes : nil, Array(who), note.trimmingCharacters(in: .whitespacesAndNewlines), backdate)
+                            dismiss()
+                        }
+                        .fontWeight(.semibold)
+                        .disabled(logAmount == 0 || whoMissing)
                     }
-                    .fontWeight(.semibold)
-                    .disabled(amount == 0 || whoMissing)
                 }
             }
         }
         .modifier(KioskSheetPresentation(kiosk: isKiosk))
+    }
+
+    // Amount input adapts to the goal type: habit = one-tap, count = whole-unit stepper,
+    // total = quick chips + free entry.
+    @ViewBuilder private var amountSection: some View {
+        if isHabit {
+            VStack(alignment: .leading, spacing: 9) {
+                SectionLabel(text: "Mark it done")
+                HStack(spacing: 11) {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 22)).foregroundStyle(WF.primary)
+                    Text("One tap logs today’s completion — keep the streak going.")
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
+                    Spacer(minLength: 0)
+                }
+                .padding(14).background(WF.card2).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            }
+        } else if isCount {
+            VStack(alignment: .leading, spacing: 9) {
+                SectionLabel(text: "How many?")
+                HStack(spacing: 18) {
+                    stepButton("minus", disabled: max(1, amount.rounded()) <= 1) {
+                        amount = max(1, amount.rounded() - 1); amountText = goalFmt(amount)
+                    }
+                    Text("\(Int(max(1, amount.rounded())))\(unitSuffix)")
+                        .font(WF.serif(22)).foregroundStyle(WF.ink).frame(minWidth: 90)
+                    stepButton("plus", disabled: false) {
+                        amount = amount.rounded() + 1; amountText = goalFmt(amount)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        } else if isTime {
+            // Time goal: quick chips + separate hours/minutes entry (server converts to
+            // decimal hours), so "10 min" never has to become 0.1666… here.
+            VStack(alignment: .leading, spacing: 9) {
+                SectionLabel(text: "How long?")
+                timeChipRow
+                HStack(spacing: 8) {
+                    Text("or").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                    hmField($hours, unit: "hr")
+                    hmField($minutes, unit: "min", clampTo: 59)
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 9) {
+                SectionLabel(text: "How much?")
+                chipRow
+                HStack(spacing: 8) {
+                    Text("or").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
+                    TextField("amount", text: $amountText)
+                        .keyboardType(.decimalPad)
+                        .font(.system(size: 16, weight: .semibold))
+                        .padding(.horizontal, 13).padding(.vertical, 10)
+                        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+                        .frame(width: 110)
+                        .onChange(of: amountText) { _, new in if let v = Double(new) { amount = v } }
+                    if let u = goal.unit { Text(u).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3) }
+                }
+            }
+        }
+    }
+
+    /// A compact whole-number field for hours or minutes. `clampTo` caps the value
+    /// (minutes at 59); the numeric keypad already blocks negatives.
+    private func hmField(_ value: Binding<Int>, unit: String, clampTo: Int? = nil) -> some View {
+        HStack(spacing: 6) {
+            TextField("0", value: value, format: .number)
+                .keyboardType(.numberPad)
+                .multilineTextAlignment(.center)
+                .font(.system(size: 16, weight: .semibold))
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+                .frame(width: 64)
+                .onChange(of: value.wrappedValue) { _, v in
+                    if v < 0 { value.wrappedValue = 0 } else if let cap = clampTo, v > cap { value.wrappedValue = cap }
+                }
+            Text(unit).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
+        }
+    }
+
+    /// Quick-duration chips (30m / 1 hr / …) that set the hours + minutes fields.
+    private var timeChipRow: some View {
+        HStack(spacing: 8) {
+            ForEach(chips, id: \.label) { c in
+                let on = abs((Double(hours) + Double(minutes) / 60) - c.value) < 1e-6
+                Button { setTimeChip(c.value) } label: {
+                    Text(c.label).font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(on ? .white : WF.ink2)
+                        .frame(maxWidth: .infinity).padding(.vertical, 11)
+                        .background(on ? WF.primary : WF.card)
+                        .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(on ? Color.clear : WF.hair, lineWidth: 1))
+                        .clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func setTimeChip(_ v: Double) {
+        hours = Int(v)
+        minutes = Int((v - Double(Int(v))) * 60 + 0.5)
+    }
+
+    private func stepButton(_ icon: String, disabled: Bool, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon).font(.system(size: 16, weight: .bold))
+                .foregroundStyle(disabled ? WF.ink3 : WF.ink)
+                .frame(width: 46, height: 46)
+                .background(Circle().fill(WF.card).overlay(Circle().strokeBorder(WF.hair, lineWidth: 1)))
+        }
+        .buttonStyle(.plain).disabled(disabled)
+    }
+
+    private var noteSection: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            SectionLabel(text: "What did you do? · optional")
+            TextField("Creek hike + fort building", text: $note)
+                .font(.system(size: 16, weight: .semibold))
+                .padding(.horizontal, 13).padding(.vertical, 12)
+                .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+            ChipFlow(spacing: 8, lineSpacing: 8) {
+                ForEach(Self.activityChips, id: \.self) { a in
+                    Button { note = a } label: {
+                        Text(a).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink2)
+                            .padding(.horizontal, 11).padding(.vertical, 7)
+                            .background(WF.card2).overlay(Capsule().strokeBorder(WF.hair, lineWidth: 1))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    // ── checklist: tick steps (this IS "log progress" for a checklist goal) ────
+    private var checklistSection: some View {
+        let done = steps.filter { $0.done }.count
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("\(done)/\(steps.count) steps done")
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
+            if !stepsLoaded {
+                Text("Loading…").font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
+            } else if steps.isEmpty {
+                Text("No steps yet — add some by editing this goal.")
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3)
+            } else {
+                ForEach(steps) { s in stepRow(s) }
+            }
+        }
+    }
+
+    private func stepRow(_ s: WaffledAPI.GoalDetail.Step) -> some View {
+        Button { Task { await toggleStep(s) } } label: {
+            HStack(spacing: 11) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(s.done ? WF.primary : WF.hair, lineWidth: 2).frame(width: 22, height: 22)
+                    if s.done {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous).fill(WF.primary).frame(width: 22, height: 22)
+                        Image(systemName: "checkmark").font(.system(size: 12, weight: .black)).foregroundStyle(.white)
+                    }
+                }
+                Text(s.label).font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(s.done ? WF.ink3 : WF.ink).strikethrough(s.done, color: WF.ink3)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair2, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func loadSteps() async {
+        if let d = try? await api.goalDetail(id: goal.id) { steps = d.steps }
+        stepsLoaded = true
+    }
+    private func toggleStep(_ s: WaffledAPI.GoalDetail.Step) async {
+        let next = !s.done
+        if let i = steps.firstIndex(where: { $0.id == s.id }) {
+            steps[i] = .init(id: s.id, label: s.label, done: next, doneBy: s.doneBy)
+        }
+        do { try await api.tickGoalStep(goalId: goal.id, stepId: s.id, done: next); onChanged?() }
+        catch { if let i = steps.firstIndex(where: { $0.id == s.id }) { steps[i] = s } }
     }
 
     private var chipRow: some View {
@@ -715,7 +969,7 @@ struct GoalLogSheet: View {
     /// Quick Today/Yesterday chips plus a compact picker for any earlier day — so a
     /// missed log can be backdated without breaking the streak. Future days disabled.
     private var whenRow: some View {
-        let cal = Calendar.current
+        let cal = Cal.current
         let today = Date()
         let yesterday = cal.date(byAdding: .day, value: -1, to: today) ?? today
         return HStack(spacing: 8) {
@@ -728,7 +982,7 @@ struct GoalLogSheet: View {
     }
 
     private func dayChip(_ label: String, date: Date) -> some View {
-        let on = Calendar.current.isDate(loggedOn, inSameDayAs: date)
+        let on = Cal.current.isDate(loggedOn, inSameDayAs: date)
         return Button { loggedOn = date } label: {
             Text(label).font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(on ? .white : WF.ink2)
@@ -752,10 +1006,11 @@ struct GoalLogSheet: View {
                             Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 24)
                             Text(goalFirstName(p.name)).font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(on ? WF.ink : WF.ink2)
-                            if on {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 14)).foregroundStyle(WF.primary)
-                            }
+                            // Always render the checkmark and toggle visibility so the chip
+                            // width stays fixed on select (inserting it shifted neighbours).
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 14)).foregroundStyle(WF.primary)
+                                .opacity(on ? 1 : 0)
                         }
                         .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
                         .wfChip(selected: on)
@@ -905,7 +1160,12 @@ struct GoalCreateSheet: View {
 
     @State private var title = ""
     @State private var goalListId: String?
-    @State private var trackingMode = "shared_total"
+    // Counting model (mirrors web). Default "each tracks their own" (per-person basis),
+    // matching the design mock; users flip to "One shared total" + a measure-aware
+    // counting choice below the measure picker.
+    @State private var trackingMode = "each_tracks"
+    @State private var participantMode = "count_once"
+    @State private var targetBasis = "per_person"
     @State private var goalType = "total"
     @State private var target = "1000"
     @State private var unit = "hours"
@@ -914,7 +1174,12 @@ struct GoalCreateSheet: View {
     @State private var category = "physical"
     @State private var hasDeadline = false
     @State private var deadline = Date()
-    @State private var isFeatured = true
+    // Tier defaults to Normal — elevating to Pinned/Spotlight is an intentional choice.
+    @State private var isFeatured = false
+    @State private var isSpotlight = false
+    /// The selected list's current spotlight (a different goal), so picking Spotlight can name it.
+    @State private var listSpotlightTitle: String?
+    private let tierApi = WaffledAPI()
     @State private var hasRewards = false
     // Calendar auto-count defaults ON (product decision): most goals benefit from
     // matching events adding progress, and it's still one tap to turn off.
@@ -931,6 +1196,51 @@ struct GoalCreateSheet: View {
     private var isHabit: Bool { goalType == "habit" }
     private var isChecklist: Bool { goalType == "checklist" }
     private var filledSteps: [Step] { steps.filter { !$0.label.trimmingCharacters(in: .whitespaces).isEmpty } }
+
+    // ── counting model (mirrors web) ───────────────────────────────────────────
+    private var selectedList: WaffledAPI.GoalList? { localLists.first { $0.id == goalListId } }
+    private var participantCount: Int { selectedList?.members.count ?? editGoal?.participants.count ?? 0 }
+    /// Shared-vs-each derived from the backend fields. "Each tracks their own" is the
+    /// per-person basis for total/count, or plain each_tracks for habit/checklist.
+    private var shared: Bool {
+        (goalType == "total" || goalType == "count")
+            ? !(trackingMode == "each_tracks" && targetBasis == "per_person")
+            : trackingMode != "each_tracks"
+    }
+    /// The measure-aware count sub-choice: total → full|split, count → each|once.
+    private var countChoice: String {
+        goalType == "total" ? (trackingMode == "each_tracks" ? "full" : "split")
+            : (trackingMode == "each_tracks" ? "each" : "once")
+    }
+    private func setSharedMode() {
+        if goalType == "total" || goalType == "count" { trackingMode = "each_tracks"; targetBasis = "family" }
+        else { trackingMode = "shared_total"; targetBasis = "family" }
+        participantMode = "count_once"
+    }
+    private func setEachMode() {
+        trackingMode = "each_tracks"
+        targetBasis = (goalType == "total" || goalType == "count") ? "per_person" : "family"
+        participantMode = "count_once"
+    }
+    private func setCountChoice(_ k: String) {
+        switch (goalType, k) {
+        case ("total", "full"), ("count", "each"):
+            trackingMode = "each_tracks"; targetBasis = "family"; participantMode = "count_once"
+        case ("total", "split"):
+            trackingMode = "shared_total"; targetBasis = "family"; participantMode = "split"
+        default: // count "once"
+            trackingMode = "shared_total"; targetBasis = "family"; participantMode = "count_once"
+        }
+    }
+    /// Switch measure; fit the unit (Count shouldn't inherit the Total "hours" default)
+    /// and re-normalize the counting fields for the new measure.
+    private func selectMeasure(_ key: String) {
+        if key == "count", unit == "hours" || unit.isEmpty { unit = "" }
+        else if key == "total", unit.isEmpty { unit = "hours" }
+        let wasShared = shared
+        goalType = key
+        if wasShared { setSharedMode() } else { setEachMode() }
+    }
 
     /// Apple Health metric this goal auto-tracks (Tier 1 discoverable picker). Picking one
     /// sets the unit + a suggested target — no typing — and, since the unit then matches,
@@ -986,6 +1296,7 @@ struct GoalCreateSheet: View {
             .onAppear(perform: prefill)
             // New goal: land in the name field. (Edits keep the keyboard down.)
             .task { if editGoal == nil { try? await Task.sleep(for: .milliseconds(300)); titleFocused = true } }
+            .task(id: goalListId) { await loadListSpotlight() }
             // Auto-derived milestones track the target/type until the user hand-edits
             // them (see `reDeriveIfUntouched`). Create only — edits keep the goal's own.
             .onChange(of: goalType) { _, _ in reDeriveIfUntouched() }
@@ -1062,13 +1373,16 @@ struct GoalCreateSheet: View {
                     .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1.5))
                     .wfShadow1()
             }
-            mockSection("Who’s it for?", hint: "Pick a goal list. Share one total, or each tracks their own.") {
+            mockSection("Who’s it for?", hint: "Pick a goal list — the people in it share this goal.") {
                 whoChips
-                shareSegment.padding(.top, 4)
             }
             mockSection("How do you measure it?", hint: "This shapes how progress is logged and shown.") {
                 measureCards
                 measureRow.padding(.top, 4)
+                // Shared-vs-each lives below the measure — it only matters once a measure
+                // with a per-person dimension is chosen (hidden for a checklist).
+                if participantCount > 1 && !isChecklist { shareSegment.padding(.top, 14) }
+                countReveal
             }
             mockSection("Category", hint: "Where this counts toward a balanced life.") { categoryChips }
             mockSection("Extras", hint: "All optional. Turn on only what this goal needs.") { extras }
@@ -1095,7 +1409,7 @@ struct GoalCreateSheet: View {
 
     private func typeCard(_ t: TypeOpt) -> some View {
         let on = goalType == t.key
-        return Button { goalType = t.key } label: {
+        return Button { withAnimation(.easeOut(duration: 0.15)) { selectMeasure(t.key) } } label: {
             HStack(spacing: 12) {
                 WaffledEmojiTile(emoji: t.emoji)
                 VStack(alignment: .leading, spacing: 1) {
@@ -1323,22 +1637,126 @@ struct GoalCreateSheet: View {
 
     private var shareSegment: some View {
         HStack(spacing: 4) {
-            segButton("One shared total", "shared_total")
-            segButton("Each tracks own", "each_tracks")
+            segButton(isHabit ? "One shared streak" : "One shared total", selected: shared) { setSharedMode() }
+            segButton(isHabit ? "Each keeps their own" : "Each tracks their own", selected: !shared) { setEachMode() }
         }
         .padding(4).background(WF.panel).clipShape(Capsule())
     }
-    private func segButton(_ label: String, _ value: String) -> some View {
-        let on = trackingMode == value
-        return Button { withAnimation(.easeOut(duration: 0.15)) { trackingMode = value } } label: {
+    private func segButton(_ label: String, selected: Bool, _ action: @escaping () -> Void) -> some View {
+        Button { withAnimation(.easeOut(duration: 0.15)) { action() } } label: {
             Text(label)
-                .font(.system(size: 12.5, weight: on ? .bold : .semibold))
-                .foregroundStyle(on ? WF.ink : WF.ink2)
+                .font(.system(size: 12.5, weight: selected ? .bold : .semibold))
+                .foregroundStyle(selected ? WF.ink : WF.ink2)
                 .frame(maxWidth: .infinity).padding(.vertical, 9)
-                .background { if on { Capsule().fill(WF.card).wfShadow1() } }
+                .background { if selected { Capsule().fill(WF.card).wfShadow1() } }
         }
         .buttonStyle(.plain)
     }
+
+    // ── measure-aware group counting ("Counting Below Measure") ────────────────
+    private struct CountOpt { let k, emoji, title: String }
+    private var countOptions: [CountOpt] {
+        goalType == "total"
+            ? [CountOpt(k: "full", emoji: "👥", title: "Everyone’s counts fully"),
+               CountOpt(k: "split", emoji: "➗", title: "Split across who took part")]
+            : [CountOpt(k: "each", emoji: "👥", title: "Count it for each person"),
+               CountOpt(k: "once", emoji: "✅", title: "Count the activity once")]
+    }
+    @ViewBuilder private var countReveal: some View {
+        if shared && participantCount > 1 && (goalType == "total" || goalType == "count") {
+            VStack(alignment: .leading, spacing: 9) {
+                Text("When a shared activity includes more than one person…")
+                    .font(.system(size: 13.5, weight: .bold)).foregroundStyle(WF.ink)
+                Text("How should a group entry add up toward the total?")
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
+                ForEach(countOptions, id: \.k) { countRow($0) }
+                workedBox
+            }
+            .padding(.top, 14)
+        }
+    }
+    private func countRow(_ o: CountOpt) -> some View {
+        let on = countChoice == o.k
+        return Button { withAnimation(.easeOut(duration: 0.15)) { setCountChoice(o.k) } } label: {
+            HStack(spacing: 13) {
+                Text(o.emoji).font(.system(size: 20))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(o.title).font(.system(size: 14.5, weight: .bold)).foregroundStyle(WF.ink)
+                    countExample(o.k)
+                }
+                Spacer(minLength: 0)
+                ZStack {
+                    Circle().strokeBorder(on ? WF.primary : WF.hair, lineWidth: 2).frame(width: 20, height: 20)
+                    if on {
+                        Circle().fill(WF.primary).frame(width: 20, height: 20)
+                        Image(systemName: "checkmark").font(.system(size: 10, weight: .black)).foregroundStyle(.white)
+                    }
+                }
+            }
+            .padding(14)
+            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(on ? WF.primary : WF.hair, lineWidth: on ? 1.5 : 1))
+        }
+        .buttonStyle(.plain)
+    }
+    /// Per-row example with the arithmetic delta highlighted (mirrors web `.rex b`).
+    private func countExample(_ k: String) -> Text {
+        let u = unitOrDefault
+        let pre: String, bold: String, post: String
+        switch k {
+        case "full":  (pre, bold, post) = ("2 people, 1 \(singular(u)) each → ", "+2 \(u)", "")
+        case "split": (pre, bold, post) = ("1 \(singular(u)) together, 2 people → ", "+1 \(singular(u))", ", ½ each")
+        case "each":  (pre, bold, post) = ("\(participantCount) at once → ", "+\(participantCount)", " (one each)")
+        default:      (pre, bold, post) = ("\(participantCount) at once → ", "+1", ", they’re just who came")
+        }
+        return (Text(pre).foregroundStyle(WF.ink2)
+                + Text(bold).foregroundStyle(WF.primary).fontWeight(.heavy)
+                + Text(post).foregroundStyle(WF.ink2))
+            .font(.system(size: 12, weight: .semibold))
+    }
+    private var workedNames: [String] {
+        (selectedList?.members.map { $0.name } ?? editGoal?.participants.map { $0.name } ?? [])
+            .map { $0.split(separator: " ").first.map(String.init) ?? $0 }
+    }
+    private var workedBox: some View {
+        let names = workedNames
+        let two = names.prefix(2).joined(separator: " + ")
+        let some = (names.count > 3 ? Array(names.prefix(3)) + ["…"] : names).joined(separator: ", ")
+        let u = unitOrDefault
+        let icon: String, lead: String, delta: String, tail: String
+        if goalType == "total" {
+            if countChoice == "split" {
+                (icon, lead, delta, tail) = ("🌳", "\(two.isEmpty ? "Two people" : two), 1 \(singular(u)) outside together → total ", "+1 \(singular(u))", ", ½ each.")
+            } else {
+                (icon, lead, delta, tail) = ("🌳", "\(two.isEmpty ? "Two people" : two), 1 \(singular(u)) each → total ", "+2 \(u)", ".")
+            }
+        } else {
+            if countChoice == "once" {
+                (icon, lead, delta, tail) = ("🏞️", "Log “\(some.isEmpty ? "everyone" : some)” → the total goes up by ", "1", " \(u).")
+            } else {
+                (icon, lead, delta, tail) = ("🏞️", "Log “\(some.isEmpty ? "everyone" : some)” → the total goes up by ", "\(max(2, participantCount))", " (one each).")
+            }
+        }
+        return HStack(spacing: 12) {
+            Text(icon).font(.system(size: 17))
+                .frame(width: 34, height: 34)
+                .background(WF.primary.opacity(0.12)).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            (Text(lead).foregroundStyle(WF.ink2)
+                + Text(delta).foregroundStyle(WF.ink).fontWeight(.heavy)
+                + Text(tail).foregroundStyle(WF.ink2))
+                .font(.system(size: 12.5, weight: .semibold))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 15).padding(.vertical, 13)
+        .background(WF.card2).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair2, lineWidth: 1))
+    }
+    private var unitOrDefault: String {
+        let u = unit.trimmingCharacters(in: .whitespaces)
+        return u.isEmpty ? (goalType == "total" ? "hr" : "visit") : u
+    }
+    private func singular(_ u: String) -> String { (u.count > 1 && u.hasSuffix("s")) ? String(u.dropLast()) : u }
 
     private var categoryChips: some View {
         ChipFlow(spacing: 8, lineSpacing: 8) {
@@ -1370,11 +1788,58 @@ struct GoalCreateSheet: View {
         }
     }
 
+    // MARK: Spotlight / Pinned / Normal tier
+
+    enum Tier: Hashable { case spotlight, pinned, normal }
+    private var tier: Tier { isSpotlight ? .spotlight : isFeatured ? .pinned : .normal }
+    private var tierBinding: Binding<Tier> {
+        Binding(get: { tier }, set: { t in isSpotlight = t == .spotlight; isFeatured = t == .pinned })
+    }
+    private var tierHint: String {
+        switch tier {
+        case .spotlight: return "The one big hero card for this list — only one goal can be the spotlight."
+        case .pinned:    return "Pinned to the top of the goals list, above the rest."
+        case .normal:    return "Lives in the goals list with everything else."
+        }
+    }
+    /// Look up the list's current spotlight (a different goal) so the picker can name it.
+    private func loadListSpotlight() async {
+        guard let lid = goalListId else { listSpotlightTitle = nil; return }
+        let gs = (try? await tierApi.goalsIn(listId: lid)) ?? []
+        listSpotlightTitle = gs.first { ($0.isSpotlight ?? false) && $0.id != editGoal?.id }?.title
+    }
+    private var tierPickerRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 13) {
+                Text("🌟").font(.system(size: 18)).frame(width: 30)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Spotlight & pinned").font(.system(size: 15, weight: .semibold)).foregroundStyle(WF.ink)
+                    Text("How prominent this goal is on the home screen and goals list")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink2).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            Picker("", selection: tierBinding) {
+                Text("🌟 Spotlight").tag(Tier.spotlight)
+                Text("📌 Pinned").tag(Tier.pinned)
+                Text("Normal").tag(Tier.normal)
+            }
+            .pickerStyle(.segmented)
+            Text(tierHint).font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3).fixedSize(horizontal: false, vertical: true)
+            if tier == .spotlight, let t = listSpotlightTitle {
+                Text("Replaces “\(t)” as this list’s spotlight (it becomes Pinned).")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 14)
+    }
+
     // MARK: Extras (flat, hairline-divided rows — matching the mock's "Extras" group)
 
     private var extras: some View {
         VStack(spacing: 0) {
-            extraRow("⭐", "Feature on the home screen", "Shows big on the family hub", $isFeatured, first: true)
+            tierPickerRow
+            Divider().overlay(WF.hair)
             extraRow("🏆", "Milestones & rewards", "Bonus stars at thresholds you set", $hasRewards)
             if hasRewards { milestoneEditor.padding(.top, 4).padding(.bottom, 10) }
             // Auto-count is offered for total/count/habit only — a checklist's progress
@@ -1464,7 +1929,7 @@ struct GoalCreateSheet: View {
     /// The pinned compact preview at the top of the iPhone form.
     private var compactPreview: some View {
         let shared = trackingMode == "shared_total"
-        let feat = isFeatured
+        let feat = tier != .normal // Spotlight or Pinned both get the elevated coral preview
         return HStack(spacing: 13) {
             ZStack {
                 RoundedRectangle(cornerRadius: 13, style: .continuous)
@@ -1474,7 +1939,7 @@ struct GoalCreateSheet: View {
             .frame(width: 46, height: 46)
             VStack(alignment: .leading, spacing: 2) {
                 if feat {
-                    Text("★ FEATURED").font(.system(size: 9.5, weight: .heavy)).tracking(0.3).foregroundStyle(.white)
+                    Text(tier == .spotlight ? "🌟 SPOTLIGHT" : "📌 PINNED").font(.system(size: 9.5, weight: .heavy)).tracking(0.3).foregroundStyle(.white)
                         .padding(.horizontal, 7).padding(.vertical, 2).background(Color.white.opacity(0.2), in: Capsule())
                 }
                 Text(previewTitle).font(WF.serif(17)).lineLimit(1)
@@ -1505,14 +1970,14 @@ struct GoalCreateSheet: View {
     private var generousPreview: some View {
         let shared = trackingMode == "shared_total"
         return VStack(alignment: .leading, spacing: 16) {
-            if isFeatured { featuredHero(shared: shared) } else { plainPreviewCard(shared: shared) }
+            if tier != .normal { featuredHero(shared: shared) } else { plainPreviewCard(shared: shared) }
             if hasRewards {
                 let nodes = Array(milestones.filter { !$0.threshold.isEmpty }.prefix(4))
                 if !nodes.isEmpty { milestoneTrack(nodes) }
             }
             HStack(spacing: 8) {
                 Image(systemName: "display").font(.system(size: 13, weight: .semibold))
-                Text(isFeatured ? "Featured big on the home screen" : "Lives in the goals list")
+                Text(tier == .spotlight ? "The spotlight on the home screen" : tier == .pinned ? "Pinned to the top of the goals list" : "Lives in the goals list")
                     .font(.system(size: 12, weight: .semibold))
             }
             .foregroundStyle(WF.ink3)
@@ -1666,6 +2131,8 @@ struct GoalCreateSheet: View {
         title = g.title
         goalListId = g.goalListId
         trackingMode = g.trackingMode
+        participantMode = g.participantMode ?? "count_once"
+        targetBasis = g.targetBasis ?? "family"
         goalType = g.goalType
         category = g.category ?? "physical"
         unit = g.unit ?? ""
@@ -1673,6 +2140,7 @@ struct GoalCreateSheet: View {
         habitPeriod = g.habitPeriod ?? "week"
         if let h = g.habitTargetPerPeriod { habitPer = String(h) }
         isFeatured = g.isFeatured
+        isSpotlight = g.isSpotlight ?? false
         hasRewards = g.hasRewards
         autoFromCalendar = g.autoFromCalendar
         if let d = g.deadline, let parsed = Self.parseDay(d) { hasDeadline = true; deadline = parsed }
@@ -1704,8 +2172,11 @@ struct GoalCreateSheet: View {
             "category": .string(category),
             "goalType": .string(goalType),
             "trackingMode": .string(trackingMode),
+            "participantMode": .string(participantMode),
+            "targetBasis": .string(targetBasis),
             "logMethod": .string("quick_log"),
             "isFeatured": .bool(isFeatured),
+            "isSpotlight": .bool(isSpotlight),
             "hasRewards": .bool(hasRewards),
             // Checklist progress comes from steps, never from the calendar.
             "autoFromCalendar": .bool(isChecklist ? false : autoFromCalendar),
@@ -1755,6 +2226,145 @@ struct GoalCreateSheet: View {
 
 // MARK: - Goal detail
 
+/// Edit or delete a single logged entry — amount, who took part, note, and date.
+/// Mirrors the web EntryModal. (A checklist tick isn't editable here — it's a step.)
+struct GoalEntryEditSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let entry: WaffledAPI.GoalDetail.LogEntry
+    let participants: [WaffledAPI.Goal.Participant]
+    let goalType: String
+    let unit: String?
+    /// (amount?, personIds?, note, loggedOn as YYYY-MM-DD)
+    let onSave: (Double?, [String]?, String, String) -> Void
+    let onDelete: () -> Void
+
+    @State private var amount: Double
+    @State private var amountText: String
+    @State private var who: Set<String>
+    @State private var note: String
+    @State private var loggedOn: Date
+    @State private var confirmDelete = false
+
+    private var isCount: Bool { goalType == "count" }
+    private var numeric: Bool { goalType == "total" || goalType == "count" }
+    private var showWho: Bool { participants.count > 1 }
+    private var unitSuffix: String { unit.map { " \($0)" } ?? "" }
+    private var logAmount: Double { isCount ? max(1, amount.rounded()) : amount }
+    private var isKiosk: Bool { DeviceExperience.current == .kiosk }
+
+    init(entry: WaffledAPI.GoalDetail.LogEntry, participants: [WaffledAPI.Goal.Participant],
+         goalType: String, unit: String?,
+         onSave: @escaping (Double?, [String]?, String, String) -> Void, onDelete: @escaping () -> Void) {
+        self.entry = entry; self.participants = participants; self.goalType = goalType; self.unit = unit
+        self.onSave = onSave; self.onDelete = onDelete
+        _amount = State(initialValue: entry.amount)
+        _amountText = State(initialValue: goalFmt(entry.amount))
+        _who = State(initialValue: Set(entry.participants.compactMap { $0.personId }))
+        _note = State(initialValue: entry.note ?? "")
+        _loggedOn = State(initialValue: GoalEntryEditSheet.parseDay(entry.loggedAt))
+    }
+    private static func parseDay(_ iso: String) -> Date {
+        DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", DateFmt.utc) ?? Date()
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    if numeric {
+                        VStack(alignment: .leading, spacing: 9) {
+                            SectionLabel(text: "Amount")
+                            if isCount {
+                                HStack(spacing: 18) {
+                                    stepBtn("minus", disabled: max(1, amount.rounded()) <= 1) { amount = max(1, amount.rounded() - 1) }
+                                    Text("\(Int(max(1, amount.rounded())))\(unitSuffix)").font(WF.serif(22)).foregroundStyle(WF.ink).frame(minWidth: 90)
+                                    stepBtn("plus", disabled: false) { amount = amount.rounded() + 1 }
+                                    Spacer(minLength: 0)
+                                }
+                            } else {
+                                HStack(spacing: 8) {
+                                    TextField("amount", text: $amountText)
+                                        .keyboardType(.decimalPad).font(.system(size: 16, weight: .semibold))
+                                        .padding(.horizontal, 13).padding(.vertical, 10)
+                                        .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous))
+                                        .overlay(RoundedRectangle(cornerRadius: WF.rSM, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+                                        .frame(width: 120)
+                                        .onChange(of: amountText) { _, new in if let v = Double(new) { amount = v } }
+                                    if let u = unit { Text(u).font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink3) }
+                                }
+                            }
+                        }
+                    }
+                    if showWho {
+                        VStack(alignment: .leading, spacing: 9) {
+                            SectionLabel(text: "Who took part?")
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(participants, id: \.personId) { p in
+                                        let on = who.contains(p.personId)
+                                        Button { if on { who.remove(p.personId) } else { who.insert(p.personId) } } label: {
+                                            HStack(spacing: 7) {
+                                                Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 24)
+                                                Text(goalFirstName(p.name)).font(.system(size: 14, weight: .semibold)).foregroundStyle(on ? WF.ink : WF.ink2)
+                                                // Always render + fade the checkmark so the chip width stays fixed on select.
+                                                Image(systemName: "checkmark.circle.fill").font(.system(size: 14)).foregroundStyle(WF.primary).opacity(on ? 1 : 0)
+                                            }
+                                            .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6).wfChip(selected: on)
+                                        }.buttonStyle(.plain)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "When?")
+                        DatePicker("", selection: $loggedOn, in: ...Date(), displayedComponents: .date).labelsHidden()
+                    }
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionLabel(text: "Note · optional")
+                        TextField("What happened", text: $note)
+                            .font(.system(size: 16, weight: .semibold))
+                            .padding(.horizontal, 13).padding(.vertical, 12)
+                            .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
+                    }
+                    Button {
+                        if confirmDelete { onDelete(); dismiss() } else { withAnimation { confirmDelete = true } }
+                    } label: {
+                        Text(confirmDelete ? "Tap again to delete this entry" : "Delete entry")
+                            .font(.system(size: 13, weight: .bold)).foregroundStyle(confirmDelete ? WF.primary : WF.ink3)
+                            .frame(maxWidth: .infinity)
+                    }.buttonStyle(.plain).padding(.top, 6)
+                }
+                .padding(20)
+            }
+            .background(WF.canvas)
+            .navigationTitle("Edit entry")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(numeric ? logAmount : nil,
+                               showWho ? Array(who) : nil,
+                               note.trimmingCharacters(in: .whitespacesAndNewlines),
+                               DateFmt.string(loggedOn, "yyyy-MM-dd", DateFmt.utc))
+                        dismiss()
+                    }.fontWeight(.semibold)
+                }
+            }
+        }
+        .modifier(KioskSheetPresentation(kiosk: isKiosk))
+    }
+
+    private func stepBtn(_ icon: String, disabled: Bool, _ action: @escaping () -> Void) -> some View {
+        Button { action(); amountText = goalFmt(amount) } label: {
+            Image(systemName: icon).font(.system(size: 16, weight: .bold)).foregroundStyle(disabled ? WF.ink3 : WF.ink)
+                .frame(width: 46, height: 46).background(Circle().fill(WF.card).overlay(Circle().strokeBorder(WF.hair, lineWidth: 1)))
+        }.buttonStyle(.plain).disabled(disabled)
+    }
+}
+
 @MainActor
 @Observable
 final class GoalDetailModel {
@@ -1796,9 +2406,9 @@ final class GoalDetailModel {
         catch { self.error = true }
     }
 
-    func log(amount: Double, personIds: [String], note: String, loggedOn: String?) async {
+    func log(amount: Double, personIds: [String], note: String, loggedOn: String?, hours: Int? = nil, minutes: Int? = nil) async {
         do {
-            try await api.logGoalProgress(goalId: goal.id, amount: amount, personIds: personIds, note: note, loggedOn: loggedOn)
+            try await api.logGoalProgress(goalId: goal.id, amount: amount, personIds: personIds, note: note, loggedOn: loggedOn, hours: hours, minutes: minutes)
             await load()
         } catch { self.error = true }
     }
@@ -1806,6 +2416,23 @@ final class GoalDetailModel {
     func delete() async -> Bool {
         do { try await api.deleteGoal(id: goal.id); return true }
         catch { self.error = true; return false }
+    }
+
+    func tickStep(_ stepId: String, done: Bool) async {
+        do { try await api.tickGoalStep(goalId: goal.id, stepId: stepId, done: done); await load() }
+        catch { self.error = true }
+    }
+
+    func editEntry(_ logId: String, amount: Double?, personIds: [String]?, note: String?, loggedOn: String?) async {
+        do {
+            try await api.editGoalLog(goalId: goal.id, logId: logId, amount: amount, personIds: personIds, note: note, loggedOn: loggedOn)
+            await load()
+        } catch { self.error = true }
+    }
+
+    func deleteEntry(_ logId: String) async {
+        do { try await api.deleteGoalLog(goalId: goal.id, logId: logId); await load() }
+        catch { self.error = true }
     }
 }
 
@@ -1821,9 +2448,21 @@ struct GoalDetailView: View {
     @State private var editing = false
     @State private var scheduling = false
     @State private var confirmDelete = false
+    /// The recent-activity entry being edited (amount / who / note / date / delete).
+    @State private var editEntry: WaffledAPI.GoalDetail.LogEntry?
+
+    private var isChecklist: Bool { (model.detail?.goalType ?? goal.goalType) == "checklist" }
+    /// A checklist's "entries" are step ticks — managed by the step rows, not the entry editor.
+    private var canEditEntries: Bool { !isChecklist }
 
     private static let heroGreen = LinearGradient(colors: [Color(hex: 0x2BA86B), Color(hex: 0x1C8A56)],
                                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+
+    // ISO8601DateFormatter is expensive to allocate per call; hoist both parse configs.
+    private static let isoFracDF: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f
+    }()
+    private static let isoDF = ISO8601DateFormatter()
 
     init(goal: WaffledAPI.Goal, path: Binding<[HubRoute]>) {
         self.goal = goal
@@ -1845,7 +2484,10 @@ struct GoalDetailView: View {
         WaffledAPI.Goal(id: goal.id, goalListId: goal.goalListId, title: goal.title, emoji: goal.emoji,
                      category: goal.category, goalType: goal.goalType, unit: unit,
                      habitPeriod: goal.habitPeriod, habitTargetPerPeriod: goal.habitTargetPerPeriod,
-                     trackingMode: goal.trackingMode, deadline: goal.deadline, isFeatured: goal.isFeatured,
+                     trackingMode: goal.trackingMode,
+                     participantMode: model.detail?.participantMode ?? goal.participantMode,
+                     targetBasis: model.detail?.targetBasis ?? goal.targetBasis,
+                     deadline: goal.deadline, isFeatured: goal.isFeatured, isSpotlight: goal.isSpotlight,
                      target: target, totalProgress: progress, milestoneTotal: goal.milestoneTotal,
                      milestoneReached: goal.milestoneReached, streakDays: goal.streakDays,
                      autoFromCalendar: goal.autoFromCalendar, healthMetric: goal.healthMetric,
@@ -1859,6 +2501,7 @@ struct GoalDetailView: View {
             VStack(alignment: .leading, spacing: 16) {
                 hero
                 actionRow
+                if isChecklist, let steps = model.detail?.steps, !steps.isEmpty { stepsCard(steps) }
                 if isKiosk {
                     HStack(alignment: .top, spacing: 16) {
                         VStack(spacing: 16) {
@@ -1893,8 +2536,8 @@ struct GoalDetailView: View {
         .task { await model.load(); await model.syncHealth() }
         .refreshable { await model.load(); await model.syncHealth() }
         .sheet(isPresented: $logging) {
-            GoalLogSheet(goal: logGoal) { amount, ids, note, loggedOn in
-                Task { await model.log(amount: amount, personIds: ids, note: note, loggedOn: loggedOn) }
+            GoalLogSheet(goal: logGoal, onChanged: { Task { await model.load() } }) { amount, hours, minutes, ids, note, loggedOn in
+                Task { await model.log(amount: amount, personIds: ids, note: note, loggedOn: loggedOn, hours: hours, minutes: minutes) }
             }
         }
         .goalEditor(isPresented: $editing) {
@@ -1908,6 +2551,45 @@ struct GoalDetailView: View {
             EventEditSheet(event: nil, initialDate: Date(),
                            prefillGoalId: goal.id,
                            prefillParticipantIds: participants.map(\.personId))
+        }
+        .sheet(item: $editEntry) { entry in
+            GoalEntryEditSheet(
+                entry: entry,
+                participants: participants,
+                goalType: model.detail?.goalType ?? goal.goalType,
+                unit: unit,
+                onSave: { amount, ids, note, day in
+                    Task { await model.editEntry(entry.id, amount: amount, personIds: ids, note: note, loggedOn: day) }
+                },
+                onDelete: { Task { await model.deleteEntry(entry.id) } }
+            )
+        }
+    }
+
+    private func stepsCard(_ steps: [WaffledAPI.GoalDetail.Step]) -> some View {
+        detailCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("STEPS").font(.system(size: 12.5, weight: .heavy)).foregroundStyle(WF.ink3).tracking(0.4)
+                ForEach(steps) { s in
+                    Button { Task { await model.tickStep(s.id, done: !s.done) } } label: {
+                        HStack(spacing: 11) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .strokeBorder(s.done ? WF.primary : WF.hair, lineWidth: 2).frame(width: 22, height: 22)
+                                if s.done {
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous).fill(WF.primary).frame(width: 22, height: 22)
+                                    Image(systemName: "checkmark").font(.system(size: 12, weight: .black)).foregroundStyle(.white)
+                                }
+                            }
+                            Text(s.label).font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(s.done ? WF.ink3 : WF.ink).strikethrough(s.done, color: WF.ink3)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.vertical, 6).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 
@@ -2082,28 +2764,34 @@ struct GoalDetailView: View {
             if let r = model.detail?.recent, !r.isEmpty {
                 VStack(spacing: 0) {
                     ForEach(Array(r.enumerated()), id: \.element.id) { i, log in
-                        HStack(spacing: 10) {
-                            Text(weekday(log.loggedAt)).font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(WF.ink3).frame(width: 34, alignment: .leading)
-                            if log.participants.isEmpty {
-                                Avatar(colorHex: nil, emoji: "🙂", size: 24)
-                            } else {
-                                // Split-pool logs collapse to one row; show everyone credited
-                                // as an overlapping avatar cluster (matches AvatarStack).
-                                HStack(spacing: -24 * 0.34) {
-                                    ForEach(log.participants.prefix(4)) { p in
-                                        Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 24)
-                                            .overlay(Circle().strokeBorder(WF.canvas, lineWidth: 2))
+                        Button { if canEditEntries { editEntry = log } } label: {
+                            HStack(spacing: 10) {
+                                Text(weekday(log.loggedAt)).font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(WF.ink3).frame(width: 34, alignment: .leading)
+                                if log.participants.isEmpty {
+                                    Avatar(colorHex: nil, emoji: "🙂", size: 24)
+                                } else {
+                                    // Split-pool logs collapse to one row; show everyone credited
+                                    // as an overlapping avatar cluster (matches AvatarStack).
+                                    HStack(spacing: -24 * 0.34) {
+                                        ForEach(log.participants.prefix(4)) { p in
+                                            Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 24)
+                                                .overlay(Circle().strokeBorder(WF.canvas, lineWidth: 2))
+                                        }
                                     }
                                 }
+                                Text(log.note?.isEmpty == false ? log.note! : "Logged progress")
+                                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
+                                Spacer(minLength: 6)
+                                Text("+\(goalFmt(log.amount))\(unit.map { " \($0)" } ?? "")")
+                                    .font(.system(size: 13, weight: .bold)).foregroundStyle(FamilyColor.wally.solid)
+                                if canEditEntries {
+                                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
+                                }
                             }
-                            Text(log.note?.isEmpty == false ? log.note! : "Logged progress")
-                                .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
-                            Spacer(minLength: 6)
-                            Text("+\(goalFmt(log.amount))\(unit.map { " \($0)" } ?? "")")
-                                .font(.system(size: 13, weight: .bold)).foregroundStyle(FamilyColor.wally.solid)
+                            .padding(.vertical, 8).contentShape(Rectangle())
                         }
-                        .padding(.vertical, 8)
+                        .buttonStyle(.plain).disabled(!canEditEntries)
                         if i < r.count - 1 { Divider().background(WF.hair) }
                     }
                 }
@@ -2142,9 +2830,7 @@ struct GoalDetailView: View {
     private func monthDay(_ iso: String) -> String { fmtDate(iso, "MMM d") }
     private func weekday(_ iso: String) -> String { fmtDate(iso, "EEE") }
     private func fmtDate(_ iso: String, _ fmt: String) -> String {
-        let inF = ISO8601DateFormatter()
-        inF.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let date = inF.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
+        let date = Self.isoFracDF.date(from: iso) ?? Self.isoDF.date(from: iso)
         guard let date else {
             // Fall back to a plain yyyy-MM-dd date string.
             guard let parsed = DateFmt.date(String(iso.prefix(10)), "yyyy-MM-dd", DateFmt.utc) else { return "" }

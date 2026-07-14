@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useTopbarFull } from './topbar-slot'
-import { usePersonOverview, useConversions, usePersons, useHousehold, useGoalLists, can, personsApi, rewardsApi, type OverviewGoal, type CategoryBalance, type ShopReward, type SavingToward, type OverviewCurrency, type StreakSummary } from '../lib/api'
+import { usePersonOverview, useConversions, usePersons, useHousehold, useGoalLists, can, personsApi, rewardsApi, fmtGoalNum, type OverviewGoal, type CategoryBalance, type ShopReward, type SavingToward, type OverviewCurrency, type StreakSummary } from '../lib/api'
 import { TradeModal } from './components/TradeModal'
 import { SpotAwardModal } from './components/SpotAwardModal'
 import { rewardsEnabled } from '../lib/modules'
@@ -32,9 +32,9 @@ function GoalRow({ g, onOpen }: { g: OverviewGoal; onOpen: () => void }) {
         <div className="pp-goal-bar"><span style={{ width: `${pct}%` }} /></div>
       </div>
       <div className="pp-goal-num">
-        <b>{+g.progress.toFixed(g.progress % 1 ? 1 : 0)}</b>
+        <b>{fmtGoalNum(g.progress)}</b>
         <span className="muted">
-          /{g.target ?? '—'}
+          /{fmtGoalNum(g.target)}
           {g.goalType === 'habit'
             ? ` ${g.habitPeriod === 'day' ? 'today' : g.habitPeriod === 'month' ? 'this month' : 'this week'}`
             : g.goalType === 'checklist'

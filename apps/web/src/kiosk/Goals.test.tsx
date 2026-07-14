@@ -29,7 +29,8 @@ const featured = {
   trackingMode: 'shared_total',
   logMethod: 'quick_log',
   deadline: null,
-  isFeatured: true,
+  isFeatured: false,
+  isSpotlight: true, // the hero is now the Spotlight tier
   hasRewards: false,
   target: 1000,
   totalProgress: 312,
@@ -53,20 +54,26 @@ const moreGoal = {
   habitPeriod: 'week',
   habitTargetPerPeriod: 5,
   isFeatured: false,
+  isSpotlight: false,
   target: 5,
   totalProgress: 4,
   streakDays: 0,
   participants: [],
 }
 
-function mockApi(opts: { lists?: unknown[]; goals?: unknown[]; logged?: unknown[] }) {
+function mockApi(opts: { lists?: unknown[]; goals?: unknown[]; logged?: unknown[]; person?: unknown; patched?: { url: string; body: unknown }[] }) {
   globalThis.fetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
     const u = String(url)
     if (u.includes('/api/persons')) return { ok: true, json: async () => ({ persons: [] }) }
     if (u.includes('/api/goal-lists')) return { ok: true, json: async () => ({ lists: opts.lists ?? [] }) }
+    if (u.includes('/api/household')) return { ok: true, json: async () => ({ provisioned: true, household: { id: 'h', name: 'Home', timezone: 'UTC', weekStart: 'sunday' }, person: opts.person ?? null }) }
     if (/\/api\/goals\/[^/]+\/log$/.test(u) && init?.method === 'POST') {
       opts.logged?.push(JSON.parse(init.body!))
       return { ok: true, json: async () => ({ ok: true }) }
+    }
+    if (/\/api\/goals\/[^/]+$/.test(u) && init?.method === 'PATCH') {
+      opts.patched?.push({ url: u, body: JSON.parse(init.body!) })
+      return { ok: true, json: async () => ({ goal: {} }) }
     }
     if (u.includes('/api/goals')) return { ok: true, json: async () => ({ goals: opts.goals ?? [] }) }
     return { ok: false, status: 404, json: async () => ({}) }
@@ -90,9 +97,9 @@ describe('Goals home (goal-lists model)', () => {
     expect(await screen.findAllByText('Family')).not.toHaveLength(0)
     expect(screen.getAllByText(/Kevin & Kelly/i).length).toBeGreaterThan(0)
 
-    // featured hero
+    // spotlight hero
     expect(screen.getByText('1,000 Hours Outside')).toBeInTheDocument()
-    expect(screen.getByText(/Featured · shared total/)).toBeInTheDocument()
+    expect(screen.getByText(/Spotlight · shared total/)).toBeInTheDocument()
     expect(screen.getByText(/9-day streak/)).toBeInTheDocument()
 
     // more goals with type descriptor
@@ -109,7 +116,21 @@ describe('Goals home (goal-lists model)', () => {
     const modal = document.querySelector('.modal-card') as HTMLElement
     fireEvent.click(within(modal).getByRole('button', { name: /^Log \d/ }))
     await waitFor(() => expect(logged).toHaveLength(1))
-    expect(logged[0]).toMatchObject({ amount: 1 })
+    // A time goal (hours) logs hours + minutes; the server folds them to decimal hours.
+    expect(logged[0]).toMatchObject({ hours: 1, minutes: 0 })
+  })
+
+  it('pins a "More" goal from its card (quick PATCH, no edit form)', async () => {
+    const patched: { url: string; body: unknown }[] = []
+    const person = { id: 'p1', name: 'Kevin', memberType: 'adult', isAdmin: true, capabilities: ['goal.manage'] }
+    // featured = the Spotlight hero; moreGoal ("Dinner together") is a plain "More" card.
+    mockApi({ lists: [familyList], goals: [featured, moreGoal], person, patched })
+    renderHome()
+    const card = (await screen.findByText('Dinner together')).closest('.goal-card') as HTMLElement
+    fireEvent.click(within(card).getByRole('button', { name: /^Pin/i }))
+    await waitFor(() => expect(patched).toHaveLength(1))
+    expect(patched[0].url).toContain('/api/goals/g2')
+    expect(patched[0].body).toMatchObject({ isFeatured: true })
   })
 
   it('renders the orange each-tracks hero variant', async () => {
@@ -117,7 +138,7 @@ describe('Goals home (goal-lists model)', () => {
     mockApi({ lists: [familyList], goals: [eachGoal] })
     renderHome()
     expect(await screen.findByText('Summer Reading Challenge')).toBeInTheDocument()
-    expect(screen.getByText(/Featured · each tracks their own/)).toBeInTheDocument()
+    expect(screen.getByText(/Spotlight · each tracks their own/)).toBeInTheDocument()
     expect(screen.getByText('TOGETHER')).toBeInTheDocument()
   })
 })

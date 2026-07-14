@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router'
 import { LogModal } from './components/LogModal'
+import { EntryModal } from './components/EntryModal'
 import { EventModal } from './components/EventModal'
 import { ReviewList } from './components/GoalRecap'
-import { useGoalDetail, useHousehold, can, api, type GoalParticipant, type GoalMilestone, type GoalLogEntry } from '../lib/api'
+import { useGoalDetail, useHousehold, can, api, fmtGoalNum, type GoalParticipant, type GoalMilestone, type GoalLogEntry } from '../lib/api'
 import { useTopbarFull } from './topbar-slot'
 import { CATEGORIES } from './categories'
 import './../styles/goals.css'
@@ -12,9 +13,7 @@ const HOUR_UNITS = new Set(['hour', 'hours', 'hr', 'hrs'])
 function pctOf(progress: number, target: number | null): number {
   return target ? Math.min(Math.round((progress / target) * 100), 100) : 0
 }
-function fmtNum(n: number | null): string {
-  return n == null ? '—' : n.toLocaleString('en-US')
-}
+const fmtNum = fmtGoalNum
 // Shrink the ring's hero number so long/fractional values (e.g. a split-backfill
 // "295.99" or "1,234") stay inside the inner circle instead of clipping the ring
 // stroke. `base` is the CSS font-size for a short value.
@@ -55,7 +54,7 @@ function HoursRow({ p, max, unit }: { p: GoalParticipant; max: number; unit: str
         <div style={{ width: `${w}%`, background: color }} />
       </div>
       <div className="tiny muted detail-hours-val">
-        {p.progress}
+        {fmtNum(p.progress)}
         {unit ? ` ${unit}` : ''}
       </div>
     </div>
@@ -77,6 +76,7 @@ export function GoalDetail() {
   const [logging, setLogging] = useState(false)
   const [planning, setPlanning] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
+  const [editEntry, setEditEntry] = useState<GoalLogEntry | null>(null)
   // Optimistic checklist toggles: stepId -> intended done state. The checkbox
   // flips instantly (no wait for the round-trip) and rapid taps stay consistent;
   // each override is dropped once the server confirms it (or on error).
@@ -172,7 +172,12 @@ export function GoalDetail() {
   const stepTotal = stepState.length
   // Each type measures on its own axis (period for habits, steps for checklists).
   const dProg = isHabit ? goal.periodDone : isChecklist ? stepDone : goal.totalProgress
-  const dTarget = isHabit ? goal.habitTargetPerPeriod ?? goal.target : isChecklist ? stepTotal || null : goal.target
+  // A per-person target ("read 12 EACH") makes the family ring target grow with the
+  // household: 12 × members. A family-basis goal uses the flat target as stored.
+  const ringTarget = goal.targetBasis === 'per_person' && goal.target != null
+    ? goal.target * Math.max(1, goal.participants.length)
+    : goal.target
+  const dTarget = isHabit ? goal.habitTargetPerPeriod ?? goal.target : isChecklist ? stepTotal || null : ringTarget
   const dUnit = isHabit
     ? goal.habitPeriod === 'day' ? 'today' : goal.habitPeriod === 'month' ? 'this month' : 'this week'
     : isChecklist ? 'steps' : goal.unit ?? ''
@@ -281,10 +286,22 @@ export function GoalDetail() {
           {goal.autoFromCalendar && <ReviewList goalId={goal.id} variant="inline" />}
 
           <div className="card detail-card">
-            <div className="card-h" style={{ marginBottom: 8 }}>Recent activity</div>
+            <div className="card-h" style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <span>Recent activity</span>
+              {canEdit && !isChecklist && goal.recent.length > 0 && <span className="tiny muted" style={{ fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>tap to edit</span>}
+            </div>
             {goal.recent.length === 0 && <div className="tiny muted" style={{ fontWeight: 600, padding: '8px 0' }}>No activity yet — log some progress.</div>}
-            {goal.recent.map((r: GoalLogEntry) => (
-              <div key={r.id} className="logrow">
+            {goal.recent.map((r: GoalLogEntry) => {
+              const editable = canEdit && !isChecklist
+              return (
+              <div
+                key={r.id}
+                className="logrow"
+                role={editable ? 'button' : undefined}
+                tabIndex={editable ? 0 : undefined}
+                onClick={editable ? () => setEditEntry(r) : undefined}
+                style={editable ? { cursor: 'pointer' } : undefined}
+              >
                 <div className="lwhen">{fmtDay(r.loggedAt)}</div>
                 {r.participants.length > 0 ? (
                   <div className="avstack">
@@ -297,11 +314,12 @@ export function GoalDetail() {
                 )}
                 <div className="lwhat">{r.note || 'Logged progress'}</div>
                 <div className="lamt">
-                  +{r.amount}
+                  +{fmtNum(r.amount)}
                   {goal.unit ? ` ${goal.unit}` : ''}
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
 
           {canEdit && (
@@ -316,6 +334,7 @@ export function GoalDetail() {
         </div>
       </div>
 
+      {editEntry && <EntryModal goal={goal} entry={editEntry} onClose={() => setEditEntry(null)} onSaved={refetch} />}
       {logging && <LogModal goal={goal} canLogOthers={canManageGoals} selfPersonId={person?.id ?? null} canDelete={canEdit} onClose={() => setLogging(false)} onSaved={refetch} onDeleted={() => navigate('/goals')} />}
       {planning && (
         <EventModal

@@ -133,7 +133,7 @@ struct KioskCalendarView: View {
     private func step(_ n: Int) {
         switch mode {
         case .month:
-            var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+            let cal = Cal.gregorian(tz)
             if let d = cal.date(byAdding: .month, value: n, to: monthAnchor) { withAnimation { monthAnchor = d } }
         case .week: shiftDay(n * 7)
         case .day: shiftDay(n)
@@ -142,7 +142,7 @@ struct KioskCalendarView: View {
     }
 
     private func shiftDay(_ n: Int) {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let cal = Cal.gregorian(tz)
         if let d = dayKeyToDate(selectedDay), let nd = cal.date(byAdding: .day, value: n, to: d) {
             withAnimation { selectedDay = EventTime.dayKey(nd, tz) }
         }
@@ -151,10 +151,8 @@ struct KioskCalendarView: View {
     /// Horizontal flick → step month / week / day (mirrors the header chevrons). Ignores
     /// agenda mode and predominantly-vertical drags so the time grids still scroll.
     private func handleSwipe(_ value: DragGesture.Value) {
-        guard mode != .agenda else { return }
-        let dx = value.translation.width, dy = value.translation.height
-        guard abs(dx) > 50, abs(dx) > abs(dy) * 1.5 else { return }
-        step(dx < 0 ? 1 : -1)   // swipe left = next
+        guard mode != .agenda, let dir = HorizontalSwipe.step(value) else { return }
+        step(dir)
     }
 
     private func chevron(_ s: String) -> some View {
@@ -487,7 +485,7 @@ struct KioskCalendarView: View {
     }
 
     private func stepMini(_ n: Int) {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let cal = Cal.gregorian(tz)
         if let d = cal.date(byAdding: .month, value: n, to: miniAnchor) { withAnimation { miniAnchor = d } }
     }
 
@@ -508,7 +506,7 @@ struct KioskCalendarView: View {
 
     /// The Sun-led week (7 day keys) containing `key`.
     private func weekDays(_ key: String) -> [String] {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let cal = Cal.gregorian(tz)
         guard let d = dayKeyToDate(key) else { return [] }
         let weekday = cal.component(.weekday, from: d) - 1   // 0=Sun
         guard let start = cal.date(byAdding: .day, value: -weekday, to: d) else { return [] }
@@ -516,7 +514,7 @@ struct KioskCalendarView: View {
     }
 
     private func relativeLabel(_ key: String) -> String {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let cal = Cal.gregorian(tz)
         let tomorrow = EventTime.dayKey(cal.date(byAdding: .day, value: 1, to: Date()) ?? Date(), tz)
         if key == Agenda.todayKey(tz) { return "Today" }
         if key == tomorrow { return "Tomorrow" }
@@ -530,7 +528,7 @@ struct KioskCalendarView: View {
     }
 
     private func monthCells(_ anchor: Date) -> [CalendarView.MonthCell] {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let cal = Cal.gregorian(tz)
         let comps = cal.dateComponents([.year, .month], from: anchor)
         guard let first = cal.date(from: comps) else { return [] }
         let anchorMonth = cal.component(.month, from: first)
@@ -707,7 +705,7 @@ struct CalTimeGrid: View {
     static let nowRed = Color(red: 0.89, green: 0.22, blue: 0.20)
 
     private func nowY(_ date: Date) -> CGFloat {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let cal = Cal.gregorian(tz)
         let c = cal.dateComponents([.hour, .minute], from: date)
         return (CGFloat(c.hour ?? 0) + CGFloat(c.minute ?? 0) / 60) * hourHeight
     }
@@ -798,7 +796,7 @@ struct CalTimeGrid: View {
         return "\(hr) \(h < 12 ? "AM" : "PM")"
     }
     private func hourMinute(_ date: Date) -> (Int, Int) {
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        let cal = Cal.gregorian(tz)
         let c = cal.dateComponents([.hour, .minute], from: date)
         return (c.hour ?? 0, c.minute ?? 0)
     }

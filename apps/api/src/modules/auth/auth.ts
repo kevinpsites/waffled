@@ -255,7 +255,7 @@ export function registerAuthRoutes(api: Api): void {
       await setPersonLogin(tenant.householdId, personId, email, password || null)
       return { ok: true }
     } catch (err) {
-      if ((err as { code?: string }).code === '23505') {
+      if (err instanceof LoginEmailConflictError || (err as { code?: string }).code === '23505') {
         return res.status(409).json({ error: 'Conflict', message: 'That email is already in use.' })
       }
       throw err
@@ -279,9 +279,9 @@ export function registerAuthRoutes(api: Api): void {
 }
 
 // Give (or change) a member's login, now backed by `accounts` (the global human
-// login keyed by email) — the credentials table is retired. Find-or-create the
-// active account for the email, set/update its password_hash when a password is
-// given, link persons.account_id, and keep the password→identity wiring intact.
+// login keyed by email) — the credentials table is retired. An existing global
+// account may only be changed through the person already linked to it; joining a
+// different household goes through the explicit invitation/acceptance flow.
 //
 // Identity wiring: a password identity still exists per person (provider='password')
 // so OIDC invite-gating (findPersonByEmail, which matches by identities.email) and
@@ -290,25 +290,39 @@ export function registerAuthRoutes(api: Api): void {
 // id — there's nothing to key off, so we mint a stable random subject. Existing
 // password identities keep their old subject; we only refresh their email.
 //
-// The unique lower(email) index on accounts surfaces a duplicate email as 23505,
-// which the route maps to 409.
+export class LoginEmailConflictError extends Error {}
+
 export async function setPersonLogin(householdId: string, personId: string, email: string, password: string | null): Promise<void> {
   const client = await getPool().connect()
   try {
     await client.query('begin')
     const hash = password ? hashPassword(password) : undefined
-    // Find-or-create the account for this email (case-insensitive). Lock any
-    // existing active row so concurrent grants don't race the unique index.
+    const person = await client.query<{ account_id: string | null }>(
+      `select account_id from persons
+        where id = $1 and household_id = $2 and deleted_at is null
+        for update`,
+      [personId, householdId]
+    )
+    if (!person.rows[0]) throw new Error('person not found')
+
+    // Lock any account that already owns the requested email. It is safe to edit
+    // only when this exact person is already linked to that account.
     const existingAccount = await client.query<{ id: string }>(
       `select id from accounts where lower(email) = lower($1) and deleted_at is null for update`,
       [email]
     )
-    let accountId: string
+    let accountId = person.rows[0].account_id
     if (existingAccount.rows[0]) {
-      accountId = existingAccount.rows[0].id
-      // Update email casing + set the password only when one was supplied.
+      if (accountId !== existingAccount.rows[0].id) throw new LoginEmailConflictError()
       await client.query(
         `update accounts set email = $1, password_hash = coalesce($2, password_hash), updated_at = now() where id = $3`,
+        [email, hash ?? null, accountId]
+      )
+    } else if (accountId) {
+      // Rename/update the person's own account rather than orphaning it and
+      // silently switching the membership to a newly-created global account.
+      await client.query(
+        `update accounts set email = $1, password_hash = coalesce($2, password_hash), updated_at = now() where id = $3 and deleted_at is null`,
         [email, hash ?? null, accountId]
       )
     } else {
@@ -318,26 +332,22 @@ export async function setPersonLogin(householdId: string, personId: string, emai
       )
       accountId = ins.rows[0].id
     }
-    // Link THIS membership to the account (the unique (account_id, household_id)
-    // index would reject a second membership in the same household, which is fine).
     await client.query(`update persons set account_id = $1 where id = $2`, [accountId, personId])
     // When a password exists, make sure a password identity for this person exists
     // so OIDC invite-gating (matched by identities.email) and any legacy sub path
     // keep resolving. auth0_user_id must be unique + non-null; mint a fresh subject.
-    if (password) {
-      const ident = await client.query<{ id: string }>(
-        `select id from identities where person_id = $1 and provider = 'password' and deleted_at is null`,
-        [personId]
+    const ident = await client.query<{ id: string }>(
+      `select id from identities where person_id = $1 and provider = 'password' and deleted_at is null`,
+      [personId]
+    )
+    if (ident.rows.length) {
+      await client.query(`update identities set email = $1, account_id = $2, updated_at = now() where id = $3`, [email, accountId, ident.rows[0].id])
+    } else if (password) {
+      await client.query(
+        `insert into identities (household_id, person_id, provider, auth0_user_id, email, email_verified, is_primary, account_id)
+         values ($1, $2, 'password', $3, $4, true, false, $5)`,
+        [householdId, personId, `password:${randomUUID()}`, email, accountId]
       )
-      if (ident.rows.length) {
-        await client.query(`update identities set email = $1, account_id = $2, updated_at = now() where id = $3`, [email, accountId, ident.rows[0].id])
-      } else {
-        await client.query(
-          `insert into identities (household_id, person_id, provider, auth0_user_id, email, email_verified, is_primary, account_id)
-           values ($1, $2, 'password', $3, $4, true, false, $5)`,
-          [householdId, personId, `password:${randomUUID()}`, email, accountId]
-        )
-      }
     }
     await client.query('commit')
   } catch (err) {

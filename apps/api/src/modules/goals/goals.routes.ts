@@ -3,6 +3,11 @@
 import createAPI, { type Request, type Response } from 'lambda-api'
 import { requireCapability } from '../../platform/permissions'
 import { moduleRoutes } from '../../platform/route-guards'
+import {
+  InvalidReferenceError,
+  assertGoalListInHousehold,
+  assertPersonsInHousehold,
+} from '../../platform/household-refs'
 import type { CreateGoalListInput, UpdateGoalListInput, CreateGoalInput } from './goals.types'
 import {
   listGoalLists,
@@ -16,12 +21,21 @@ import {
   softDeleteGoal,
   toggleGoalStep,
   logProgress,
+  deleteGoalLog,
+  editGoalLog,
   syncHealthProgress,
   goalExists,
+  goalTypeFor,
+  goalMetaFor,
+  isTimeUnit,
   goalParticipantIds,
   GOAL_TYPES,
   TRACKING_MODES,
+  PARTICIPANT_MODES,
+  TARGET_BASES,
+  HABIT_PERIODS,
   HEALTH_METRICS,
+  personsInHousehold,
 } from './goals.service'
 
 type Api = ReturnType<typeof createAPI>
@@ -30,6 +44,37 @@ type Api = ReturnType<typeof createAPI>
 const { tenantRoute, capRoute } = moduleRoutes('goals')
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+// Shape checks shared by create + PATCH: reject malformed values that would otherwise
+// slip into numeric/date columns (a 500) or a habit period that breaks the progress
+// query. `goalType` is the effective type (from the body on create, or the body/stored
+// type on PATCH) so count goals can enforce whole-number targets. Returns an error
+// message or null. Absent fields are skipped — PATCH only validates what it's changing.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function goalShapeError(body: any, goalType?: string | null): string | null {
+  if (body.targetValue != null && body.targetValue !== '') {
+    const n = Number(body.targetValue)
+    if (!Number.isFinite(n)) return 'targetValue must be a number'
+    if (goalType === 'count' && !Number.isInteger(n)) return 'a count goal target must be a whole number'
+  }
+  if (body.deadline != null && body.deadline !== '' && !(typeof body.deadline === 'string' && DATE_RE.test(body.deadline))) {
+    return 'deadline must be a YYYY-MM-DD date'
+  }
+  if (body.habitPeriod != null && body.habitPeriod !== '' && !HABIT_PERIODS.has(String(body.habitPeriod))) {
+    return 'habitPeriod must be day, week, or month'
+  }
+  if (body.habitTargetPerPeriod != null) {
+    const n = Number(body.habitTargetPerPeriod)
+    if (!Number.isInteger(n) || n <= 0) return 'habitTargetPerPeriod must be a positive whole number'
+  }
+  if (Array.isArray(body.milestones)) {
+    for (const m of body.milestones) {
+      if (!Number.isFinite(Number(m?.threshold))) return 'milestone threshold must be a number'
+    }
+  }
+  return null
+}
 
 export function registerGoalRoutes(api: Api): void {
   // goal lists (sidebar)
@@ -42,6 +87,12 @@ export function registerGoalRoutes(api: Api): void {
     if (!body.name || !body.name.trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'name is required' })
     }
+    if (body.memberIds !== undefined) {
+      if (!Array.isArray(body.memberIds) || body.memberIds.some((id) => typeof id !== 'string')) {
+        throw new InvalidReferenceError('invalid member ids')
+      }
+      await assertPersonsInHousehold(tenant.householdId, body.memberIds)
+    }
     const list = await createGoalList(tenant, { ...body, name: body.name.trim() } as CreateGoalListInput)
     return res.status(201).json({ list })
   }))
@@ -52,6 +103,12 @@ export function registerGoalRoutes(api: Api): void {
     const body = (req.body ?? {}) as UpdateGoalListInput
     if (body.name !== undefined && !String(body.name).trim()) {
       return res.status(400).json({ error: 'BadRequest', message: 'name cannot be empty' })
+    }
+    if (body.memberIds !== undefined) {
+      if (!Array.isArray(body.memberIds) || body.memberIds.some((personId) => typeof personId !== 'string')) {
+        throw new InvalidReferenceError('invalid member ids')
+      }
+      await assertPersonsInHousehold(tenant.householdId, body.memberIds)
     }
     const patch: UpdateGoalListInput = { ...body }
     if (patch.name !== undefined) patch.name = String(patch.name).trim()
@@ -80,11 +137,26 @@ export function registerGoalRoutes(api: Api): void {
     if (!body.trackingMode || !TRACKING_MODES.has(body.trackingMode)) {
       return res.status(400).json({ error: 'BadRequest', message: 'trackingMode is required' })
     }
+    if (body.participantMode != null && !PARTICIPANT_MODES.has(String(body.participantMode))) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid participantMode' })
+    }
+    if (body.targetBasis != null && !TARGET_BASES.has(String(body.targetBasis))) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid targetBasis' })
+    }
     if (body.healthMetric != null && !HEALTH_METRICS.has(String(body.healthMetric))) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid healthMetric' })
     }
     if (body.healthDailyTarget != null && !(Number(body.healthDailyTarget) >= 0)) {
       return res.status(400).json({ error: 'BadRequest', message: 'healthDailyTarget must be a non-negative number' })
+    }
+    const shapeErr = goalShapeError(body, body.goalType)
+    if (shapeErr) return res.status(400).json({ error: 'BadRequest', message: shapeErr })
+    if (body.goalListId != null) await assertGoalListInHousehold(tenant.householdId, body.goalListId)
+    if (body.participantIds !== undefined) {
+      if (!Array.isArray(body.participantIds) || body.participantIds.some((personId) => typeof personId !== 'string')) {
+        throw new InvalidReferenceError('invalid participant ids')
+      }
+      await assertPersonsInHousehold(tenant.householdId, body.participantIds)
     }
     // Carve-out: a goal that assigns no one else (nobody, or only the caller) is
     // self-scoped. Assigning another participant takes goal.manage.
@@ -112,18 +184,43 @@ export function registerGoalRoutes(api: Api): void {
   api.patch('/api/goals/:id', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
-    const body = (req.body ?? {}) as { goalType?: string; trackingMode?: string; healthMetric?: unknown; healthDailyTarget?: unknown }
+    const body = (req.body ?? {}) as {
+      goalType?: string; trackingMode?: string; participantMode?: string; targetBasis?: string
+      healthMetric?: unknown; healthDailyTarget?: unknown
+      goalListId?: string | null; participantIds?: string[]
+    }
     if (body.goalType && !GOAL_TYPES.has(body.goalType)) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid goalType' })
     }
     if (body.trackingMode && !TRACKING_MODES.has(body.trackingMode)) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid trackingMode' })
     }
+    if (body.participantMode && !PARTICIPANT_MODES.has(body.participantMode)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid participantMode' })
+    }
+    if (body.targetBasis && !TARGET_BASES.has(body.targetBasis)) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid targetBasis' })
+    }
+    // Validate against the EFFECTIVE type: the body's goalType when it's re-sent
+    // (both web + iOS do), else the stored type — so a PATCH that changes only the
+    // target still enforces a count goal's whole-number rule.
+    const effectiveType = body.goalType ?? (await goalTypeFor(tenant.householdId, id))
+    const patchShapeErr = goalShapeError(body, effectiveType)
+    if (patchShapeErr) return res.status(400).json({ error: 'BadRequest', message: patchShapeErr })
+    // A cleared deadline arrives as '' — normalize to null so it isn't written to a date column.
+    if ((req.body as { deadline?: unknown })?.deadline === '') (req.body as { deadline?: unknown }).deadline = null
     if (body.healthMetric != null && !HEALTH_METRICS.has(String(body.healthMetric))) {
       return res.status(400).json({ error: 'BadRequest', message: 'invalid healthMetric' })
     }
     if (body.healthDailyTarget != null && !(Number(body.healthDailyTarget) >= 0)) {
       return res.status(400).json({ error: 'BadRequest', message: 'healthDailyTarget must be a non-negative number' })
+    }
+    if (body.goalListId != null) await assertGoalListInHousehold(tenant.householdId, body.goalListId)
+    if (body.participantIds !== undefined) {
+      if (!Array.isArray(body.participantIds) || body.participantIds.some((personId) => typeof personId !== 'string')) {
+        throw new InvalidReferenceError('invalid participant ids')
+      }
+      await assertPersonsInHousehold(tenant.householdId, body.participantIds)
     }
     // Carve-out: a goal whose sole participant is the caller is their own personal
     // goal — editable freely. Anything else (shared, others', or a family goal with
@@ -134,7 +231,8 @@ export function registerGoalRoutes(api: Api): void {
     }
     const editParticipants = await goalParticipantIds(tenant.householdId, id)
     const editIsSelfOnly = editParticipants.length === 1 && editParticipants[0] === tenant.personId
-    if (!editIsSelfOnly) {
+    const assignsAnother = body.participantIds?.some((personId) => personId !== tenant.personId) ?? false
+    if (!editIsSelfOnly || assignsAnother) {
       await requireCapability(tenant, 'goal.manage')
     }
     const ok = await updateGoal(tenant, id, req.body ?? {})
@@ -145,11 +243,7 @@ export function registerGoalRoutes(api: Api): void {
   api.post('/api/goals/:id/log', tenantRoute(async (tenant, req: Request, res: Response) => {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
-    const body = (req.body ?? {}) as { amount?: unknown; personId?: string; personIds?: string[]; note?: string; loggedOn?: unknown }
-    const amount = Number(body.amount)
-    if (!Number.isFinite(amount) || amount === 0) {
-      return res.status(400).json({ error: 'BadRequest', message: 'amount must be a non-zero number' })
-    }
+    const body = (req.body ?? {}) as { amount?: unknown; hours?: unknown; minutes?: unknown; personId?: string; personIds?: string[]; note?: string; loggedOn?: unknown }
     // Optional backdate to catch up a missed day (e.g. keep a streak alive).
     let loggedOn: string | null = null
     if (body.loggedOn != null && body.loggedOn !== '') {
@@ -158,10 +252,53 @@ export function registerGoalRoutes(api: Api): void {
       }
       loggedOn = body.loggedOn
     }
-    if (!(await goalExists(tenant.householdId, id))) {
+    const meta = await goalMetaFor(tenant.householdId, id)
+    if (meta == null) {
       return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
     }
+    // A checklist has no numeric progress — it's driven by ticking steps. Reject a
+    // stray /log so a client can't record a meaningless "1" against it.
+    if (meta.goalType === 'checklist') {
+      return res.status(400).json({ error: 'BadRequest', message: 'checklist goals are updated by ticking steps, not logging progress' })
+    }
+    // Time goals may be logged as hours + minutes; the server folds them into the
+    // decimal-hours `amount` so the client never has to (10m -> 0.1666…). Both fields
+    // are optional and either may stand alone (0h 45m, or 2h with no minutes).
+    let amount: number
+    const usesHm = body.hours != null || body.minutes != null
+    if (usesHm) {
+      if (body.amount != null) {
+        return res.status(400).json({ error: 'BadRequest', message: 'send either amount or hours/minutes, not both' })
+      }
+      if (meta.goalType !== 'total' || !isTimeUnit(meta.unit)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'hours and minutes only apply to a time goal (measured in hours)' })
+      }
+      const hours = body.hours == null ? 0 : Number(body.hours)
+      const minutes = body.minutes == null ? 0 : Number(body.minutes)
+      // Whole hours + a 0–59 minute remainder — the same shape both clients enter, reasserted
+      // here so a non-UI caller can't fold e.g. { minutes: 200 } into 3.33h.
+      if (!Number.isInteger(hours) || hours < 0 || !Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
+        return res.status(400).json({ error: 'BadRequest', message: 'hours must be a whole number ≥ 0 and minutes 0–59' })
+      }
+      amount = hours + minutes / 60
+      if (amount === 0) {
+        return res.status(400).json({ error: 'BadRequest', message: 'log some time — hours and minutes cannot both be zero' })
+      }
+    } else {
+      amount = Number(body.amount)
+      if (!Number.isFinite(amount) || amount === 0) {
+        return res.status(400).json({ error: 'BadRequest', message: 'amount must be a non-zero number' })
+      }
+      // A count goal tallies whole things (parks, books) — no fractional amounts.
+      if (meta.goalType === 'count' && !Number.isInteger(amount)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'a count goal is logged in whole numbers' })
+      }
+    }
     const personIds = Array.isArray(body.personIds) ? body.personIds.filter(Boolean) : body.personId ? [body.personId] : []
+    // Every credited person must be a real member of this household — no crediting a stranger.
+    if (personIds.length && !(await personsInHousehold(tenant.householdId, personIds))) {
+      return res.status(400).json({ error: 'BadRequest', message: 'unknown person' })
+    }
     // Carve-out: logging for nobody (a family/shared log) or only for yourself is
     // always allowed; attributing progress to another person takes goal.manage.
     if (personIds.some((pid) => pid !== tenant.personId)) {
@@ -204,6 +341,65 @@ export function registerGoalRoutes(api: Api): void {
     const ok = await toggleGoalStep(tenant, id, stepId, done)
     if (!ok) return res.status(404).json({ error: 'NotFound', message: 'step not found' })
     return res.status(200).json({ ok: true })
+  }))
+
+  // Edit a single logged entry (amount / note / date). Re-plans through the goal's
+  // counting rules, keeping the same participants.
+  api.patch('/api/goals/:id/logs/:logId', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const id = req.params.id ?? ''
+    const logId = req.params.logId ?? ''
+    if (!UUID_RE.test(id) || !UUID_RE.test(logId)) return res.status(404).json({ error: 'NotFound', message: 'entry not found' })
+    const body = (req.body ?? {}) as { amount?: unknown; note?: unknown; loggedOn?: unknown; personIds?: unknown }
+    const patch: { amount?: number; note?: string | null; loggedOn?: string; personIds?: string[] } = {}
+    if (Array.isArray(body.personIds)) {
+      const ids = body.personIds.filter(Boolean).map(String)
+      if (ids.length && !(await personsInHousehold(tenant.householdId, ids))) {
+        return res.status(400).json({ error: 'BadRequest', message: 'a logged person must be in your household' })
+      }
+      patch.personIds = ids
+    }
+    if (body.amount !== undefined) {
+      const amount = Number(body.amount)
+      if (!Number.isFinite(amount) || amount === 0) {
+        return res.status(400).json({ error: 'BadRequest', message: 'amount must be a non-zero number' })
+      }
+      if ((await goalTypeFor(tenant.householdId, id)) === 'count' && !Number.isInteger(amount)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'a count goal is logged in whole numbers' })
+      }
+      patch.amount = amount
+    }
+    if (body.note !== undefined) patch.note = body.note == null ? null : String(body.note)
+    if (body.loggedOn != null && body.loggedOn !== '') {
+      if (typeof body.loggedOn !== 'string' || !DATE_RE.test(body.loggedOn)) {
+        return res.status(400).json({ error: 'BadRequest', message: 'loggedOn must be a YYYY-MM-DD date' })
+      }
+      patch.loggedOn = body.loggedOn
+    }
+    if (!(await goalExists(tenant.householdId, id))) {
+      return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    }
+    const parts = await goalParticipantIds(tenant.householdId, id)
+    if (!(parts.length === 1 && parts[0] === tenant.personId)) await requireCapability(tenant, 'goal.manage')
+    const result = await editGoalLog(tenant, id, logId, patch)
+    if (result === 'not_found') return res.status(404).json({ error: 'NotFound', message: 'entry not found' })
+    if (result === 'not_editable') return res.status(400).json({ error: 'BadRequest', message: 'this entry is managed by its source (a checklist tick, calendar event, or Health sync)' })
+    return { goal: await goalDetail(tenant.householdId, id) }
+  }))
+
+  // Delete a single logged entry (the whole batch if it was split/attributed).
+  api.delete('/api/goals/:id/logs/:logId', tenantRoute(async (tenant, req: Request, res: Response) => {
+    const id = req.params.id ?? ''
+    const logId = req.params.logId ?? ''
+    if (!UUID_RE.test(id) || !UUID_RE.test(logId)) return res.status(404).json({ error: 'NotFound', message: 'entry not found' })
+    if (!(await goalExists(tenant.householdId, id))) {
+      return res.status(404).json({ error: 'NotFound', message: 'goal not found' })
+    }
+    const parts = await goalParticipantIds(tenant.householdId, id)
+    if (!(parts.length === 1 && parts[0] === tenant.personId)) await requireCapability(tenant, 'goal.manage')
+    const result = await deleteGoalLog(tenant, id, logId)
+    if (result === 'not_found') return res.status(404).json({ error: 'NotFound', message: 'entry not found' })
+    if (result === 'not_editable') return res.status(400).json({ error: 'BadRequest', message: 'this entry is managed by its source (a checklist tick, calendar event, or Health sync)' })
+    return res.status(200).json({ goal: await goalDetail(tenant.householdId, id) })
   }))
 
   api.delete('/api/goals/:id', tenantRoute(async (tenant, req: Request, res: Response) => {

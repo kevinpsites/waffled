@@ -13,8 +13,141 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### Security
 
+- **Member logins now respect account ownership.** An administrator can update the login
+  already linked to a household profile, but an account owned by a different person must
+  join through the explicit invitation and acceptance flow.
+- **Sign-in callbacks now return only to Waffled.** OIDC login handoffs are restricted to
+  the current web origin or the registered native-app callback, and browser error pages
+  safely render messages returned by an identity provider.
+- **Uploaded media keys stay inside their household.** Photo, recipe, and chore-proof
+  attachments now reject malformed or cross-household keys, and local storage prevents
+  paths from escaping the configured media directory.
+- **Household links now stay inside the family they belong to.** Chore assignees,
+  currency conversions, calendar events, offline writes, goal participants, list
+  assignees, calendar owners, and meal references reject IDs from another household.
+- **Personal calendar rows now stay on their owner's synced devices.** PowerSync
+  enforces calendar visibility from signed household and person claims instead of
+  downloading the whole household's private rows and relying on client filtering.
+  The bucket split causes a one-time full client re-sync after upgrading.
+- **Installation-wide login settings now have one recoverable owner.** Global login and
+  SSO configuration no longer accepts changes from administrators of any household;
+  ownership persists across household changes and can be recovered from the host admin CLI.
+- **Authenticated API responses no longer enter a shared browser cache.** The web service
+  worker removes API caches created by older versions; the app shell and PowerSync calendar
+  remain available offline, while REST-backed screens require the server instead of risking
+  another account's stale response.
+- **Sensitive routes now have trusted abuse limits and bounded request bodies.** The API
+  rejects oversized payloads before buffering and throttles repeated login, setup, OIDC,
+  kiosk, refresh, and media attempts; Caddy normalizes the client address and direct API
+  access is restricted to the Docker host.
+- **Production starts only with durable, non-default secrets.** Setup generates a stable
+  PowerSync signing key with the other required secrets, repairs missing environment values,
+  and refuses production startup when secrets are malformed or still use public development
+  defaults.
+- **Public traffic now enters through Caddy instead of raw service ports.** Postgres and
+  direct API diagnostics bind to loopback, while device-facing PowerSync and Google OAuth
+  callbacks use Caddy; upgrades also migrate the exact legacy localhost callback safely.
+- **Application containers now drop root privileges after volume preparation.** The API and
+  backup scheduler run as unprivileged image users, while a short-lived startup job safely
+  updates ownership on volumes created by older root-running releases.
+- **Caddy now enforces a restrictive browser security policy.** Outbound sync is limited to
+  the configured PowerSync endpoint, and HSTS, MIME-sniffing, referrer, and browser-capability
+  protections are enabled while preserving camera and photo support.
+
+### Added
+- **Plan breakfast and lunch from the iPhone meal planner, not just dinner.** Each day in the
+  weekly planner now offers an add button for every unplanned meal — Breakfast, Lunch, and
+  Dinner — instead of a lone "Plan dinner" affordance, matching what the iPad grid already did.
+- **"Plan my week" and "Plan my month" now work even without an AI provider — they shuffle.**
+  Households that haven't configured an LLM used to get an error when they asked the planner to
+  fill a week or a month. Instead, the planner now deals a random hand from your own recipe
+  library: it fills only the empty dinner slots, skips anything already planned in that window or
+  cooked in the last couple of weeks, and leaves slots you've already set alone. No AI required,
+  and the app doesn't change — the same "Plan my week" / "Plan my month" buttons just always
+  return a plan.
+
+### Changed
+- **New chores now default to a one-off on the day you're viewing, and each day's list is sorted sensibly.** On iPhone/iPad, adding a chore from the Chores tab now starts as "Just once" due on the day currently shown — instead of a recurring daily chore always due today. A day's chores are also ordered unfinished-first, then by due time (earliest first, untimed last), then A–Z.
+- **Cook Mode on iPad now keeps the current step's ingredients in a left sidebar.** Instead of
+  the ingredients scrolling away beneath the big instruction, the iPad wall display pins them in
+  a fixed left-hand column so you can glance at what a step needs while the instruction fills the
+  rest of the screen. iPhone keeps its single scrolling column with ingredients inline.
+
+- Make the self-hosting quick start copy-pasteable for first-time Docker users, including the
+  required terminal, no-credentials guidance, success checks, and safe troubleshooting steps.
+
+### Fixed
+- **The iPhone Goals list now updates itself after you change a goal.** Deleting a goal, logging
+  progress, ticking a checklist step, or editing an entry from a goal's detail screen now refreshes
+  the list the moment you go back — no more stale card until you pull-to-refresh.
+- **Participant chips in the Goals log sheet no longer jump around when tapped.** Selecting who took
+  part keeps each chip the same size instead of growing and nudging its neighbours sideways.
+- **Chores tab feels right on iPhone: swipe between days, and no more empty reward badge.** You can now swipe left or right on the chores list to step a day at a time (matching the calendar), and a chore with no star reward no longer shows a stray "★ 0".
+- **Tap a candidate in "Plan my week with AI" to preview its recipe.** In the AI plan review,
+  tapping a suggestion card's emoji and title now opens the full recipe detail (swap, pick, and
+  lock still work as before); brand-new "✨ New dish" suggestions have nothing to open yet, so
+  their tap does nothing.
+- **Cook Mode now stays open when you leave the app and comes back where you were.** On the
+  iPad, backgrounding the app (Home button or app switcher) used to drop you back on Today and
+  lose Cook Mode entirely; now Cook Mode — and any running timers — survive backgrounding and are
+  right there when you return, still on the current step. Tapping a fired timer's notification
+  also re-opens Cook Mode at the exact step whose timer went off. Finishing a cook from Cook
+  Mode still offers the "Used from your pantry" update so your on-hand stock stays accurate.
+- **Cook Mode timers now reliably alert you after you leave the app.** A running step timer's
+  notification used to be cancelled the moment Cook Mode closed — including when you simply pressed
+  Home — so backgrounding the app with a timer running meant no alert ever fired. The pending
+  alert is now kept alive across backgrounding and only cleared when you actually pause or dismiss
+  the timer.
+- **Cook Mode timers now say which timer went off and alert like a proper kitchen alarm.** When
+  several step timers are running at once, the "Timer done" screen and the out-of-app
+  notification now name the specific timer (e.g. "Step 5 · 3-minute timer") instead of just its
+  step, and the notification is marked time-sensitive so it breaks through Focus and the
+  notification summary when you've stepped away from the app.
+
+## [0.7.0] - 2026-07-10
+
+### Added
+- **Goals now have three deliberate tiers instead of one overloaded "Featured" flag.** The old
+  flag was doing two jobs at once — a tag any number of goals could carry, *and* the single big
+  hero slot — so extras silently did nothing. Now each goal list has a **Spotlight** (the one big
+  hero card) and any number of **Pinned** goals that sit in a band at the top, with everything
+  else below as compact **A–Z rows**. The create/edit form gets a Spotlight / Pinned / Normal
+  picker, and choosing Spotlight when the list already has one tells you which goal it replaces
+  (that one becomes Pinned). You can also **pin or unpin a goal in one tap right from its card** —
+  no need to open the editor. On iPhone/iPad the goals list gets the same three sections, the
+  tier picker, one-tap pin/unpin, and the Today goal card now shows the **Spotlight** (falling
+  back to a Pinned goal). Web + iOS. On the iPhone Today card you can also **choose exactly which
+  goal it shows** — My spotlight, Family spotlight, or a specific pinned goal — from the card's
+  own menu (a scrollable goal picker). The **web Today** now also has a **Goals card** showing the
+  Spotlight goal's progress (a reorderable card in the Customize layout) — matching the phone,
+  with the same **My spotlight / Family spotlight / pick a specific goal** selector.
+- **iPhone now has full parity with the web app for Goals.** Everything above ships on iPhone/iPad
+  too: **ticking off a checklist** (from the goal or the Log sheet — previously iPhone could only add
+  numeric progress, which made no sense for a checklist), the **measure-aware group-counting** choice
+  under "How do you measure it?", a **Log sheet that adapts to the goal type** (count stepper, total
+  amount, habit one-tap, checklist ticking, with the right unit), and **editing or removing a logged
+  entry** — including who took part.
+- **You can now fix or remove a goal entry logged by mistake.** Each line in a goal's Recent
+  activity can be edited — amount, **who took part**, note, and date — or deleted; a split/shared
+  entry is removed as a whole and re-splits correctly when you change who was there. Entries
+  created by ticking a checklist, confirming a calendar event, or an Apple Health sync stay
+  managed by those features.
+- **Goals now make group counting clear and measure-aware.** Alongside the *One shared total /
+  Each tracks their own* choice, a shared goal with more than one person shows a short follow-up
+  right under "How do you measure it?" asking how a group entry should count — with options
+  tailored to the measure and a worked example using your family's names. For a **total**:
+  *everyone's counts fully* (2 people, 1 hr each → +2 hrs) or *split across who took part* (1 hr
+  together → +1 hr, ½ each). For a **count**: *count it for each person* (3 at the park → +3) or
+  *count the activity once* (→ +1, the people are just who came). "Each tracks their own" keeps a
+  per-person target — "read 12 books each" shows a family ring of 12 × the household. Together
+  these cover every way a family goal can add up, without the confusing overlap the old controls
+  had.
+- **Log time goals in hours and minutes — no more decimals.** For a goal measured in hours
+  (like "750 Hours Outside"), the Log sheet now takes an **hours** field and a **minutes** field
+  instead of asking you to turn "10 minutes" into `0.17`. You enter `2 hr 10 min` and the server
+  does the math; the button and progress read back as a plain duration ("2h 10m"). Web + iOS.
 - **Add a recipe from a photo or by describing it.** The recipe editor's "New recipe"
   screen can now build the whole form for you two new ways. **From a photo** — snap or
   choose photos of a recipe card, cookbook page, or handwritten note (a few pages of one
@@ -30,14 +163,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   automatically deleted.
 
 ### Changed
-
+- **Customizing the Today layout is far easier to use.** In Customize mode every card now
+  collapses to a compact labeled chip instead of rendering its full contents — so a long list
+  (a 60-item grocery card) no longer dominates the board and buries the cards below it. Each
+  chip now has an **× to hide that card from Today**, and hidden cards collect in a tray beneath
+  the board where a tap adds any of them back. Your hidden cards and arrangement save **per
+  person** ("Save for me"), and — unlike before — a card you hide *stays* hidden, even the
+  module cards (Chores, Meals, Grocery, Pantry, Goals, Family Night) that used to reappear on
+  their own.
+- **Goals now list alphabetically** (A–Z by title), instead of by creation date — one clean,
+  predictable list that's easy to scan. Featuring a goal shows it big on the home screen; it no
+  longer floats to the top of the goals list (which made the order look random).
+- **The "one shared total / each tracks their own" choice moved below "How do you measure it?"**
+  It only applies once you've picked a measure with a per-person dimension — so it now sits with
+  the group-counting options under the measure picker, and no longer appears for a checklist
+  (whose steps are always shared).
+- **Past events on the Today agenda now fade once they're over.** On the Today
+  dashboard's agenda card, an event whose time has already passed is subtly dimmed —
+  the same treatment the calendar's agenda list already uses — so at a glance it's clear
+  what's done and what's still ahead. All-day events aren't dimmed. Web and iPhone.
 - **Recipe steps that mention a time now get a timer automatically.** Whether a recipe
   comes from a photo, a description, or pasted Markdown, a step that says something like
   "cook for 6 minutes" now attaches a cook-mode timer without needing an explicit
   `**Timer:**` line. An explicit marker still wins, and a step that lists two times uses
   the first.
+- **Lower battery drain on the always-on iPad kiosk.** The family-display screensaver no longer
+  redraws the clock 60× a minute (it updates on the minute now), stops re-checking idle/night state
+  every second, and refreshes photos/weather every 15 minutes instead of every 2.5 (and not at all
+  overnight). Under the hood, the calendar, meal, chore, and settings screens stopped rebuilding
+  expensive date objects on every render — so a screen left on all day keeps the chip idle far more
+  of the time. Nothing about how the kiosk looks or behaves changes — it just draws less power.
 
 ### Fixed
+- **A Count goal no longer inherits "hours" as its unit.** Switching a new goal's measure to
+  Count now clears the Total default, so you name what you're counting (parks, books) and logging
+  a park reads "1 park", not "2 hours". A unit you've typed yourself is always kept.
+- **Logging a shared count goal with several people no longer multiplies the total.** Marking
+  a state-park visit or camping trip with the whole family used to add one for *each* person
+  selected; it now counts the event once and records who was there. (Choose *Count it for each
+  person* if you do want everyone credited toward the total.)
+- **Checklist goals can no longer be given a meaningless numeric "log".** A checklist is
+  completed by ticking its items, so recording "1" against it is rejected — checklists progress
+  only by checking things off.
+- **Goal forms now reject nonsense input instead of failing silently.** Malformed values —
+  a non-date deadline, a fractional target on a whole-number (count) goal, a bad habit cadence,
+  a non-numeric milestone — are turned away with a clear message rather than saved and breaking
+  the goal later, and progress can only be credited to real members of your household.
 
 - **The iOS photo grid now reuses decoded images while scrolling.** Photo tiles no longer
   refetch and decode the same image whenever SwiftUI recreates a grid cell.
@@ -729,7 +900,8 @@ fixes bump **PATCH**. Pre-1.0, expect **MINOR** to carry the weight of feature w
 \* Most `chore`/`refactor`/`test`/`docs` commits are omitted; include one only when a
 user or operator would notice the result.
 
-[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/kevinpsites/waffled/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/kevinpsites/waffled/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/kevinpsites/waffled/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/kevinpsites/waffled/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/kevinpsites/waffled/compare/v0.4.0...v0.5.0

@@ -27,12 +27,15 @@ export interface CreateGoalInput {
   habitPeriod?: string | null
   habitTargetPerPeriod?: number | null
   trackingMode: string
+  participantMode?: string | null
+  targetBasis?: string | null
   logMethod?: string | null
   autoFromCalendar?: boolean
   healthMetric?: string | null
   healthDailyTarget?: number | null
   deadline?: string | null
   isFeatured?: boolean
+  isSpotlight?: boolean
   hasRewards?: boolean
   participantIds?: string[]
   milestones?: Array<{ threshold: number; emoji?: string | null; label?: string | null; rewardText?: string | null }>
