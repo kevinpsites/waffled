@@ -55,7 +55,7 @@ struct AISettingsView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                         }
                         .buttonStyle(.plain).disabled(!dirty || saving)
-                        if saved { Text("✓ Saved").font(.system(size: 13, weight: .bold)).foregroundStyle(Color(hex: 0x167A4A)) }
+                        if saved { Text("✓ Saved").font(.system(size: 13, weight: .bold)).foregroundStyle(WF.success) }
                         Spacer()
                     }
                     Text("Keys are read from the server environment and never leave it.")
@@ -90,7 +90,7 @@ struct AISettingsView: View {
                 if p != "heuristic" {
                     WaffledStatusBadge(
                         text: enabled ? "key detected" : "not configured",
-                        color: enabled ? Color(hex: 0x167A4A) : WF.ink3,
+                        color: enabled ? WF.success : WF.ink3,
                         size: 10.5)
                 }
             }

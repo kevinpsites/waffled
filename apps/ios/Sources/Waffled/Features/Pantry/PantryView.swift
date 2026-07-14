@@ -289,7 +289,7 @@ struct PantryView: View {
         .background(WF.card)
         .clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
-            .strokeBorder(model.flagged(item).isEmpty ? WF.hair : Color(hex: 0xC0392B).opacity(0.4), lineWidth: 1))
+            .strokeBorder(model.flagged(item).isEmpty ? WF.hair : WF.danger.opacity(0.4), lineWidth: 1))
     }
 
     private func subline(_ item: WaffledAPI.PantryItem) -> some View {
@@ -435,9 +435,9 @@ struct PantryView: View {
 
     private func expiryTag(_ item: WaffledAPI.PantryItem) -> (text: String, color: Color)? {
         guard let d = model.days(item) else { return nil }
-        if d < 0 { return ("Expired", Color(hex: 0xC0392B)) }
-        if d == 0 { return ("Today", Color(hex: 0xB8860B)) }
-        if d <= 3 { return ("\(d) day\(d == 1 ? "" : "s")", Color(hex: 0xB8860B)) }
+        if d < 0 { return ("Expired", WF.danger) }
+        if d == 0 { return ("Today", WF.warn) }
+        if d <= 3 { return ("\(d) day\(d == 1 ? "" : "s")", WF.warn) }
         return (item.expiresOn.flatMap(PantryExpiry.shortLabel) ?? "", WF.ink3)
     }
 }

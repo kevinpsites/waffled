@@ -1,7 +1,10 @@
 # iOS dark-mode parity — implementation notes
 
-**Status:** not started (web dark mode shipped first). This is the plan to bring the
-iPhone/iPad app to 1:1 color + design parity with the web dark theme.
+**Status:** ✅ implemented. The plan below was executed — dark-aware `Color(light:dark:)`
+tokens in `Theme.swift`, a `ThemeStore` (`waffled.theme`, default `system`) driving
+`.preferredColorScheme` at the app root, a **Settings → Appearance** screen, the
+`FamilyColor` → `person1…4` rename, and the inline-literal sweep to `WF.*` tokens. Locked by
+`Tests/ThemeTests.swift`. This doc is kept as the palette source-of-truth + design record.
 
 The canonical color system — every token, with one **light** and one **dark** value —
 is defined for the web in `apps/web/src/styles/waffled.css` and documented in the
