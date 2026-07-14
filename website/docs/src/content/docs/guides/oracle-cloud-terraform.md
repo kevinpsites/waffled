@@ -167,6 +167,15 @@ Create the **A record(s)** from the `dns_records_needed` output at your DNS prov
 The `powersync.` record gives the offline-sync service its own hostname and certificate, so sync
 runs over HTTPS/WSS — without it the iOS app and kiosk can't sync from a secure page.
 
+:::danger[On Cloudflare? Set the records to "DNS only" (grey cloud)]
+If your domain's DNS is on Cloudflare, new records default to **Proxied (orange cloud)** — and that
+breaks this setup. Cloudflare intercepts ports 80/443, so Caddy can't complete its Let's Encrypt
+challenge or serve its certificate, and you'll get a **"server is down"** error page *from
+Cloudflare*. Click the orange cloud next to each record to turn it **grey (DNS only)**. (The
+`powersync.` record on a non-standard port wouldn't proxy anyway.) The port-mode option
+(`powersync_port`) also requires grey cloud, since Cloudflare's proxy only forwards standard ports.
+:::
+
 :::note[Your DNS host won't let you add that subdomain?]
 Some providers won't let you nest a subdomain two levels deep. Two ways around it, both set in
 `terraform.tfvars` before you `apply`:
@@ -189,19 +198,26 @@ DNS has propagated, open **`https://waffled.example.com`**, complete the
 
 ## Watching the first boot / troubleshooting
 
-Bootstrapping runs unattended, but you can watch it over SSH:
+Bootstrapping runs unattended, but you can watch it over SSH (use the `ssh_command` from the
+outputs — it points `-i` at your key):
 
 ```bash
-ssh ubuntu@<public_ip>
+ssh -i ~/.ssh/waffled ubuntu@<public_ip>
 sudo tail -f /var/log/waffled-bootstrap.log   # the deploy script
 cd /opt/waffled && sudo docker compose ps      # container health
 sudo docker compose logs caddy                 # TLS / ACME progress
 ```
 
+- **"Server is down" from Cloudflare** — your DNS records are *Proxied* (orange cloud). Set them to
+  **DNS only** (grey cloud) so Caddy can issue and serve certificates directly. See the callout in
+  Step 5.
+- **SSH `Permission denied (publickey)`** — you connected fine (port 22 is open), but `ssh` didn't
+  offer the right key. Point it at your private key: `ssh -i ~/.ssh/waffled ubuntu@<public_ip>`, and
+  make sure `cat ~/.ssh/waffled.pub` matches the `ssh_public_key` in your `terraform.tfvars`.
 - **Site unreachable although the instance is up** — Oracle's Ubuntu image ships a restrictive
   host firewall; the boot script opens 80/443 in it, but verify with `sudo iptables -L INPUT -n`.
-- **Certificate not issuing** — confirm both DNS records resolve to the public IP and that ports
-  80/443 are reachable; `docker compose logs caddy` shows the ACME handshake.
+- **Certificate not issuing** — confirm both DNS records resolve to the public IP (grey cloud on
+  Cloudflare) and that ports 80/443 are reachable; `docker compose logs caddy` shows the handshake.
 
 ## About your API keys and secrets
 

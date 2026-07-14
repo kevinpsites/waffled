@@ -29,6 +29,9 @@ region           = "us-ashburn-1"                  # from the preview: region=
 ssh_public_key   = "ssh-ed25519 AAAA... waffled"
 # Recommended: only let your own IP connect. Find yours at https://ifconfig.me
 # allowed_ssh_cidr = "203.0.113.7/32"
+# If you saved the key somewhere other than ~/.ssh/waffled, set this so the printed
+# `ssh_command` output uses the right `-i` path:
+# ssh_private_key_path = "~/.ssh/waffled"
 
 # ── 3. Your domain — for automatic HTTPS ──────────────────────────────────────
 # Needed so the iOS app and barcode scanner work. After `apply`, you'll point the

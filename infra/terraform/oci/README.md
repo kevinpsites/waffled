@@ -85,20 +85,27 @@ browser check — set a `domain` for real use.
 Bootstrapping takes a few minutes (image pulls). To watch it:
 
 ```bash
-ssh ubuntu@<public_ip>
+ssh -i ~/.ssh/waffled ubuntu@<public_ip>   # or copy the `ssh_command` output
 sudo tail -f /var/log/waffled-bootstrap.log   # this module's script
 sudo tail -f /var/log/cloud-init-output.log   # cloud-init overall
 cd /opt/waffled && sudo docker compose ps      # container health
 ```
 
+- **"Server is down" from Cloudflare** — your DNS records are *Proxied* (orange cloud).
+  Cloudflare then intercepts 80/443 so Caddy can't issue/serve certs. Set both records to
+  **DNS only** (grey cloud). Port-mode PowerSync also needs grey cloud (CF only proxies
+  standard ports).
+- **SSH `Permission denied (publickey)`** — the connection worked (port 22 is open); `ssh`
+  just didn't offer the right key. Use `ssh -i <your_private_key> ubuntu@<public_ip>` and
+  confirm your `.pub` matches the `ssh_public_key` in `terraform.tfvars`.
 - **`Out of host capacity` on apply** — the classic free-tier A1 pain. Try a different
   `availability_domain_number` (1/2/3), a different `region`, or re-run `apply` on a
   loop until capacity frees. A **Pay-As-You-Go** account largely fixes this.
 - **Site unreachable but instance is up** — OCI's Ubuntu image ships a restrictive host
   iptables firewall; the bootstrap opens 80/443 (and 8090 in HTTP mode) in it. Confirm
   with `sudo iptables -L INPUT -n`. The cloud Security List is managed by Terraform.
-- **TLS not issuing** — check both DNS records resolve to `public_ip` and that 80/443
-  are reachable; `sudo docker compose logs caddy` shows ACME progress.
+- **TLS not issuing** — check both DNS records resolve to `public_ip` (grey cloud on
+  Cloudflare) and that 80/443 are reachable; `sudo docker compose logs caddy` shows ACME.
 
 ## App config & secrets (API keys, OAuth)
 

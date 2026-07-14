@@ -32,8 +32,14 @@ variable "compartment_ocid" {
 
 # ── Access ────────────────────────────────────────────────────────────────────
 variable "ssh_public_key" {
-  description = "SSH public key (the contents of e.g. ~/.ssh/id_ed25519.pub) for the `ubuntu` user."
+  description = "SSH public key (the contents of e.g. ~/.ssh/waffled.pub) for the `ubuntu` user."
   type        = string
+}
+
+variable "ssh_private_key_path" {
+  description = "Path to the matching PRIVATE key — only used to print a correct `ssh -i ...` command in the outputs."
+  type        = string
+  default     = "~/.ssh/waffled"
 }
 
 variable "allowed_ssh_cidr" {

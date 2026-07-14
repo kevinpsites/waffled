@@ -28,5 +28,5 @@ output "dns_records_needed" {
 
 output "ssh_command" {
   description = "SSH in (e.g. to tail /var/log/waffled-bootstrap.log)."
-  value       = "ssh ubuntu@${oci_core_instance.waffled.public_ip}"
+  value       = "ssh -i ${var.ssh_private_key_path} ubuntu@${oci_core_instance.waffled.public_ip}"
 }
