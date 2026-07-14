@@ -75,10 +75,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a fixed left-hand column so you can glance at what a step needs while the instruction fills the
   rest of the screen. iPhone keeps its single scrolling column with ingredients inline.
 
-- Make the self-hosting quick start copy-pasteable for first-time Docker users, including the
-  required terminal, no-credentials guidance, success checks, and safe troubleshooting steps.
+- **The self-hosting quick start is now copy-pasteable for first-time Docker users.** It
+  explains the required terminal, initial credentials, success checks, and safe troubleshooting.
 
 ### Fixed
+- **The iOS photo grid now reuses decoded images while scrolling.** Photo tiles no longer
+  refetch and decode the same image whenever SwiftUI recreates a grid cell.
+- **`./waffled up` now waits for health checks before showing its final status.** Normal startup
+  no longer looks like a failure just because API, PowerSync, or Caddy is still warming up.
+
 - **The iPhone Goals list now updates itself after you change a goal.** Deleting a goal, logging
   progress, ticking a checklist step, or editing an entry from a goal's detail screen now refreshes
   the list the moment you go back — no more stale card until you pull-to-refresh.
@@ -209,12 +214,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a non-date deadline, a fractional target on a whole-number (count) goal, a bad habit cadence,
   a non-numeric milestone — are turned away with a clear message rather than saved and breaking
   the goal later, and progress can only be credited to real members of your household.
-
-- **The iOS photo grid now reuses decoded images while scrolling.** Photo tiles no longer
-  refetch and decode the same image whenever SwiftUI recreates a grid cell.
-
-- **`./waffled up` now waits for health checks before showing its final status.** Normal startup
-  no longer looks like a failure just because API, PowerSync, or Caddy is still warming up.
 
 - **Per-step timers now carry into the recipe editor when parsing.** Building a recipe
   from a photo, a description, or pasted Markdown correctly detected each step's timer but
