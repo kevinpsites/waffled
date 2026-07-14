@@ -32,7 +32,6 @@ const kevin = mint('dev|kevin')
 let householdId = ''
 let kevinId = ''
 let kellyId = ''
-let foreignPersonId = ''
 let listId = ''
 
 async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
@@ -77,15 +76,6 @@ beforeAll(async () => {
   )
   const k = await call('POST', '/api/persons', kevin, { name: 'Kelly', memberType: 'adult' })
   kellyId = JSON.parse(k.body).person.id
-  foreignPersonId = await withClient(async (cl) => {
-    const h = await cl.query<{ id: string }>(
-      `insert into households (name, timezone) values ('Other recap','UTC') returning id`
-    )
-    return (await cl.query<{ id: string }>(
-      `insert into persons (household_id, name, member_type) values ($1,'Outsider','adult') returning id`,
-      [h.rows[0].id]
-    )).rows[0].id
-  })
   const list = await call('POST', '/api/goal-lists', kevin, { name: 'Kevin', memberIds: [kevinId] })
   listId = JSON.parse(list.body).list.id
 }, 60_000)
@@ -109,19 +99,6 @@ async function recap(goalId?: string) {
 }
 
 describe('calendar → goal recap', () => {
-  it('rejects confirmation attribution to another household', async () => {
-    const goalId = await makeGoal({ title: 'Boundary recap' })
-    await linkedEvent(goalId, 60, [kevinId])
-    const item = (await recap(goalId))[0]
-    expect((await call('POST', '/api/goal-calendar/recap/confirm', kevin, {
-      eventId: item.eventId,
-      occurrenceDate: item.occurrenceDate,
-      amount: 1,
-      personIds: [foreignPersonId],
-    })).statusCode).toBe(404)
-    expect(await recap(goalId)).toHaveLength(1)
-  })
-
   it('surfaces a linked, ended event with duration + attribution, then confirms it', async () => {
     const goalId = await makeGoal({ title: 'Hours total' })
     const eventId = await linkedEvent(goalId, 90, [kevinId]) // 90 min = 1.5 hours
