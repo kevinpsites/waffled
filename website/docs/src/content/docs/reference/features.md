@@ -226,7 +226,8 @@ Legend: ✅ supported · 🟡 partial · 🚧 planned · ❌ not supported / N-A
 
 | Feature | Web / Kiosk | iPhone | iPad | Status |
 | --- | :---: | :---: | :---: | --- |
-| Natural-language capture → event / task / grocery / meal | ✅ | ✅ | ✅ | ✅ Done |
+| Natural-language capture → event / task / grocery / meal / list | ✅ | ✅ | ✅ | ✅ Done |
+| Capture a **countdown** ("12 days until Disney", "Disney in 12 days", "countdown to X on Aug 25") | ✅ | ✅ | ✅ | ✅ Done (always-on; resolves the target day, optional emoji, editable in the preview) |
 | Capture parses **event recurrence** + edit Repeats/Ends in the preview | ✅ | ✅ | ✅ | ✅ Done ("lunch every Thursday for a month" → RRULE) |
 | **Pluggable provider** (Anthropic / OpenAI-compatible / Ollama), per household | ✅ | ✅ | ✅ | ✅ Done |
 | Instant on-device parse, then **upgrade to LLM** with a provider tag | ✅ | ✅ | ✅ | ✅ Done (instant guess + "improving…"; **pick** the other take on a kind-disagreement; **recurrence backfill** when a weak LLM drops it) |

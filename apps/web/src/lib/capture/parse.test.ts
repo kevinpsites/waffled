@@ -220,6 +220,54 @@ describe('parseCapture — meals', () => {
   })
 })
 
+describe('parseCapture — countdown', () => {
+  it('"12 days until Disney" → a countdown 12 days out', () => {
+    const i = p('12 days until Disney')
+    expect(i?.kind).toBe('countdown')
+    if (i?.kind !== 'countdown') throw new Error('expected countdown')
+    expect(i.title).toBe('Disney')
+    expect(i.date).toBe('2026-06-23') // June 11 + 12 days
+  })
+
+  it('"Disney in 12 days" → the same countdown', () => {
+    const i = p('Disney in 12 days')
+    expect(i?.kind).toBe('countdown')
+    if (i?.kind !== 'countdown') throw new Error('expected countdown')
+    expect(i.title).toBe('Disney')
+    expect(i.date).toBe('2026-06-23')
+  })
+
+  it('"10 sleeps until Christmas" → a countdown', () => {
+    const i = p('10 sleeps until Christmas')
+    expect(i?.kind).toBe('countdown')
+    if (i?.kind !== 'countdown') throw new Error('expected countdown')
+    expect(i.title).toBe('Christmas')
+    expect(i.date).toBe('2026-06-21') // June 11 + 10 days
+  })
+
+  it('"countdown to the beach party on August 25" reads the explicit date', () => {
+    const i = p('countdown to the beach party on August 25')
+    expect(i?.kind).toBe('countdown')
+    if (i?.kind !== 'countdown') throw new Error('expected countdown')
+    expect(i.title).toBe('Beach party')
+    expect(new Date(`${i.date}T00:00:00`).getMonth()).toBe(7) // August
+    expect(new Date(`${i.date}T00:00:00`).getDate()).toBe(25)
+  })
+
+  it('a countdown with a clock time is an event, not a countdown', () => {
+    // "New Year at midnight" carries a time → schedule it as an event.
+    expect(p('countdown to New Year at 6pm')?.kind).toBe('event')
+  })
+
+  it('summarizes a countdown for the preview chip', () => {
+    const i = p('12 days until Disney')
+    if (i?.kind !== 'countdown') throw new Error('expected countdown')
+    const s = intentSummary(i)
+    expect(s.kind).toBe('Countdown')
+    expect(s.primary).toBe('Disney')
+  })
+})
+
 describe('intentSummary + edge cases', () => {
   it('returns null for empty input', () => {
     expect(p('')).toBeNull()

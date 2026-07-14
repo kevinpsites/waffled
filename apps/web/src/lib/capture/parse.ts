@@ -21,6 +21,7 @@ export type ParsedIntent =
   | { kind: 'task'; title: string; personName: string | null; stars: number | null; rrule: string | null; scheduleLabel: string }
   | { kind: 'meal'; title: string; date: string | null; mealType: string; whenLabel: string }
   | { kind: 'list'; listName: string | null; itemName: string; quantity: string | null }
+  | { kind: 'countdown'; title: string; date: string; emoji: string | null; whenLabel: string }
   | { kind: 'unsupported'; reason: string }
 
 const MEAL_TYPES = new Set(['breakfast', 'lunch', 'dinner', 'snack'])
@@ -298,6 +299,55 @@ function matchKnownList(text: string, lists: string[]): string | null {
   return best?.name ?? null
 }
 
+// COUNTDOWN — a future day to count down to, with NO clock time. Triggers:
+// "N days until X", "X in N days", "countdown to X [on <date>]", "N sleeps until X".
+// A clock time means it's a scheduled event, not a day marker, so we bail then.
+const CD_UNTIL = /^\s*(\d{1,3})\s+(?:days?|sleeps?)\s+(?:until|til|till|to|before)\s+(.+)$/i
+const CD_IN = /^(.+?)\s+in\s+(\d{1,3})\s+(?:days?|sleeps?)\s*$/i
+const CD_TO = /\bcountdown\s+(?:to|until|til|till)\s+(.+)$/i
+
+function ymdLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+function addDaysFrom(now: Date, n: number): Date {
+  const d = startOfDay(now)
+  d.setDate(d.getDate() + n)
+  return d
+}
+function countdownWhen(target: Date, now: Date): string {
+  const days = Math.round((startOfDay(target).getTime() - startOfDay(now).getTime()) / 86_400_000)
+  const dayLabel = target.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  const rel = days <= 0 ? 'Today' : days === 1 ? 'Tomorrow' : `${days} days`
+  return `${dayLabel} · ${rel}`
+}
+function detectCountdown(text: string, now: Date): Extract<ParsedIntent, { kind: 'countdown' }> | null {
+  if (findTime(text)) return null // a clock time → schedule an event instead
+  let titleRaw: string | null = null
+  let target: Date | null = null
+
+  let m = CD_UNTIL.exec(text)
+  if (m) { target = addDaysFrom(now, parseInt(m[1], 10)); titleRaw = m[2] }
+  if (!titleRaw) {
+    m = CD_IN.exec(text)
+    if (m) { target = addDaysFrom(now, parseInt(m[2], 10)); titleRaw = m[1] }
+  }
+  if (!titleRaw) {
+    m = CD_TO.exec(text)
+    if (m) {
+      titleRaw = m[1]
+      // "countdown to X on <date>" — pull an explicit day out of the tail.
+      const dh = findDay(titleRaw, now)
+      if (dh) {
+        target = new Date(dh.y, dh.mo, dh.d)
+        titleRaw = cut(titleRaw, [dh.span]).replace(/\b(?:on|to)\s*$/i, '')
+      }
+    }
+  }
+  if (!titleRaw || !target) return null
+  const title = titleCase(tidy(titleRaw)) || 'Countdown'
+  return { kind: 'countdown', title, date: ymdLocal(target), emoji: null, whenLabel: countdownWhen(target, now) }
+}
+
 export function parseCapture(raw: string, persons: string[] = [], now: Date = new Date(), lists: string[] = []): ParsedIntent | null {
   const text = raw.trim()
   if (!text) return null
@@ -389,6 +439,11 @@ export function parseCapture(raw: string, persons: string[] = [], now: Date = ne
     const itemName = titleCase(name)
     if (itemName) return { kind: 'list', listName, itemName, quantity }
   }
+
+  // COUNTDOWN — a day marker ("12 days until Disney"). Before the event branch so an
+  // explicit "countdown to X on <date>" isn't swallowed as a plain dated event.
+  const countdown = detectCountdown(text, now)
+  if (countdown) return countdown
 
   const day = findDay(text, now)
   const time = findTime(text)
@@ -483,6 +538,8 @@ export function intentSummary(intent: ParsedIntent): { icon: string; kind: strin
         primary: [intent.quantity, intent.itemName].filter(Boolean).join(' '),
         detail: intent.listName ? `Adds to “${intent.listName}”` : 'Adds to a list',
       }
+    case 'countdown':
+      return { icon: '⏳', kind: 'Countdown', primary: intent.title, detail: intent.whenLabel }
     case 'unsupported':
       return { icon: '🤔', kind: 'Not supported yet', primary: intent.reason, detail: '' }
   }

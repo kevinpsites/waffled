@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from '../icons'
-import { usePersons, api, localToday, type Person, type ListSummary } from '../../lib/api'
+import { usePersons, api, countdownsApi, localToday, type Person, type ListSummary } from '../../lib/api'
 import { parseCapture, intentSummary, looksConfident, type ParsedIntent } from '../../lib/capture/parse'
 import { describeRrule } from './recurrence'
 
@@ -27,6 +27,7 @@ const KINDS: Array<{ k: ParsedIntent['kind']; label: string }> = [
   { k: 'grocery', label: '🛒 Grocery' },
   { k: 'task', label: '✅ Task' },
   { k: 'meal', label: '🍽️ Meal' },
+  { k: 'countdown', label: '⏳ Countdown' },
 ]
 
 const kindLabel = (k: ParsedIntent['kind']) => KINDS.find((x) => x.k === k)?.label ?? 'item'
@@ -45,12 +46,22 @@ function mealWhen(date: string, mealType: string): string {
   const d = new Date(`${date}T12:00:00`)
   return `${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · ${cap(mealType)}`
 }
+function countdownWhen(date: string): string {
+  const d = new Date(`${date}T12:00:00`)
+  const dayLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const days = Math.round((new Date(`${date}T00:00:00`).getTime() - today.getTime()) / 86_400_000)
+  const rel = days <= 0 ? 'Today' : days === 1 ? 'Tomorrow' : `${days} days`
+  return `${dayLabel} · ${rel}`
+}
 
 function primaryOf(i: ParsedIntent): string {
   switch (i.kind) {
     case 'event':
     case 'task':
     case 'meal':
+    case 'countdown':
       return i.title
     case 'grocery':
       return i.name
@@ -65,6 +76,7 @@ function withPrimary(i: ParsedIntent, v: string): ParsedIntent {
     case 'event':
     case 'task':
     case 'meal':
+    case 'countdown':
       return { ...i, title: v }
     case 'grocery':
       return { ...i, name: v }
@@ -92,6 +104,8 @@ function rerouteKind(i: ParsedIntent, kind: ParsedIntent['kind'], today: string)
       return { kind: 'list', itemName: primary, listName: i.kind === 'list' ? i.listName : null, quantity }
     case 'meal':
       return { kind: 'meal', title: primary, date: today, mealType: 'dinner', whenLabel: mealWhen(today, 'dinner') }
+    case 'countdown':
+      return { kind: 'countdown', title: primary, date: today, emoji: i.kind === 'countdown' ? i.emoji : null, whenLabel: countdownWhen(today) }
     default:
       return i
   }
@@ -206,6 +220,13 @@ function DraftFields({ intent, persons, lists, set, today }: { intent: ParsedInt
           ))}
         </div>
         <input type="date" className="cap-edit-mini" value={intent.date ?? today} onChange={(e) => set({ ...intent, date: e.target.value, whenLabel: mealWhen(e.target.value, intent.mealType) })} aria-label="Date" />
+      </div>
+    )
+  }
+  if (intent.kind === 'countdown') {
+    return (
+      <div className="cap-edit-row">
+        <input type="date" className="cap-edit-mini" value={intent.date} onChange={(e) => set({ ...intent, date: e.target.value, whenLabel: countdownWhen(e.target.value) })} aria-label="Date" />
       </div>
     )
   }
@@ -340,6 +361,10 @@ export function CaptureBar() {
       }
       await api.planSlot({ date, mealType: i.mealType, recipeId, title: recipeId ? undefined : i.title })
       return `Added “${i.title}” to ${i.mealType} (${i.whenLabel.split(' · ')[0]})`
+    }
+    if (i.kind === 'countdown') {
+      await countdownsApi.create({ title: i.title, date: i.date, emoji: i.emoji ?? undefined })
+      return `Added the “${i.title}” countdown`
     }
     if (i.kind === 'unsupported') return ''
     await api.createChore({ title: i.title, personId: personId(i.personName), rewardAmount: i.stars ?? undefined, rrule: i.rrule ?? undefined })

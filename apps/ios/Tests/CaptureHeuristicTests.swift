@@ -35,6 +35,10 @@ private func asMeal(_ i: CaptureIntent?) -> (title: String, date: String?, mealT
     if case let .meal(t, d, mt, w) = i { return (t, d, mt, w) }
     return nil
 }
+private func asCountdown(_ i: CaptureIntent?) -> (title: String, date: String, emoji: String?, when: String)? {
+    if case let .countdown(t, d, e, w) = i { return (t, d, e, w) }
+    return nil
+}
 
 private func iso(_ s: String) -> Date {
     let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -214,6 +218,32 @@ private func dowOfDate(_ s: String) -> Int {
     }
     @Test func reservationIsEvent() {
         #expect(asEvent(p("eating out at 7pm on friday")) != nil)
+    }
+}
+
+@Suite struct CaptureHeuristicCountdownTests {
+    @Test func daysUntil() {
+        let c = asCountdown(p("12 days until Disney"))!
+        #expect(c.title == "Disney")
+        #expect(c.date == "2026-06-23") // June 11 + 12 days
+    }
+    @Test func inNDays() {
+        let c = asCountdown(p("Disney in 12 days"))!
+        #expect(c.title == "Disney")
+        #expect(c.date == "2026-06-23")
+    }
+    @Test func sleepsUntil() {
+        let c = asCountdown(p("10 sleeps until Christmas"))!
+        #expect(c.title == "Christmas")
+        #expect(c.date == "2026-06-21") // June 11 + 10 days
+    }
+    @Test func countdownToExplicitDate() {
+        let c = asCountdown(p("countdown to the beach party on August 25"))!
+        #expect(c.title == "Beach party")
+        #expect(c.date == "2026-08-25")
+    }
+    @Test func clockTimeIsEvent() {
+        #expect(asEvent(p("countdown to New Year at 6pm")) != nil)
     }
 }
 

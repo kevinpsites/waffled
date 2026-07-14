@@ -134,6 +134,31 @@ describe('finalizeIntent — model JSON → finished intent', () => {
     expect(i.mealType).toBe('lunch')
     expect(i.date).toBe('2026-06-12')
   })
+
+  it('maps a countdown with an explicit date + emoji', () => {
+    const i = finalizeIntent({ kind: 'countdown', title: 'Disney', date: '2026-08-25', emoji: '🏰' }, ctx)
+    expect(i.kind).toBe('countdown')
+    expect(i.title).toBe('Disney')
+    expect(i.date).toBe('2026-08-25')
+    expect(i.emoji).toBe('🏰')
+    expect(i.whenLabel).toMatch(/·/)
+  })
+
+  it('resolves a loose countdown date ("in 12 days") deterministically', () => {
+    const i = finalizeIntent({ kind: 'countdown', title: 'Vacation', date: 'in 12 days' }, ctx)
+    expect(i.kind).toBe('countdown')
+    // A non-ISO date is run through resolveDayFromText (same as the meal path).
+    expect(i.date).toBe(resolveDayFromText('in 12 days', ctx.timezone))
+    expect(i.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  })
+
+  it('rejects a countdown with no usable date', () => {
+    expect(() => finalizeIntent({ kind: 'countdown', title: 'Someday' }, ctx)).toThrow()
+  })
+
+  it('rejects a countdown with no title', () => {
+    expect(() => finalizeIntent({ kind: 'countdown', date: '2026-08-25' }, ctx)).toThrow()
+  })
 })
 
 describe('resolveDayFromText — deterministic meal day (model-independent)', () => {

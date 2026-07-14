@@ -427,6 +427,12 @@ final class SyncManager {
         return ok
     }
 
+    /// Commit a captured countdown via REST. `date` must be YYYY-MM-DD. The Countdowns
+    /// card reloads on next appearance (no reactive rev — the list is fetch-on-view).
+    func commitCountdown(title: String, date: String, emoji: String?) async -> Bool {
+        await restCommit { _ = try await api.createCountdown(title: title, date: date, emoji: emoji) }
+    }
+
     /// Plan (upsert) a meal slot from the weekly planner; bumps `mealsRev` so the
     /// Today card and any open week reload.
     func setMealPlan(date: String, mealType: String, recipeId: String?, title: String?, cookPersonId: String? = nil) async -> Bool {

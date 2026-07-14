@@ -327,6 +327,45 @@ enum CaptureHeuristic {
         return best?.name
     }
 
+    // MARK: countdown
+
+    // A future day to count down to, with NO clock time. Triggers: "N days until X",
+    // "X in N days", "countdown to X [on <date>]", "N sleeps until X". A clock time
+    // means it's a scheduled event, so we bail then. Mirrors `detectCountdown` in parse.ts.
+    private static func ymdLocal(_ d: Date, _ cal: Calendar) -> String {
+        String(format: "%04d-%02d-%02d", cal.component(.year, from: d), cal.component(.month, from: d), cal.component(.day, from: d))
+    }
+    private static func countdownWhen(_ target: Date, _ now: Date, _ cal: Calendar) -> String {
+        let days = Int((startOfDay(target, cal).timeIntervalSince(startOfDay(now, cal)) / 86_400).rounded())
+        let rel = days <= 0 ? "Today" : (days == 1 ? "Tomorrow" : "\(days) days")
+        return "\(fmt(target, "EEE, MMM d", cal)) · \(rel)"
+    }
+    private static func detectCountdown(_ text: NSString, _ now: Date, _ cal: Calendar) -> CaptureIntent? {
+        if findTime(text) != nil { return nil }   // a clock time → schedule an event instead
+        var titleRaw: String?
+        var target: Date?
+
+        if let m = firstMatch(#"^\s*(\d{1,3})\s+(?:days?|sleeps?)\s+(?:until|til|till|to|before)\s+(.+)$"#, text) {
+            target = addDays(startOfDay(now, cal), Int(m.groups[1] ?? "") ?? 0, cal); titleRaw = m.groups[2]
+        }
+        if titleRaw == nil, let m = firstMatch(#"^(.+?)\s+in\s+(\d{1,3})\s+(?:days?|sleeps?)\s*$"#, text) {
+            target = addDays(startOfDay(now, cal), Int(m.groups[2] ?? "") ?? 0, cal); titleRaw = m.groups[1]
+        }
+        if titleRaw == nil, let m = firstMatch(#"\bcountdown\s+(?:to|until|til|till)\s+(.+)$"#, text) {
+            titleRaw = m.groups[1]
+            // "countdown to X on <date>" — pull an explicit day out of the tail.
+            if let raw = titleRaw, let dh = findDay(raw as NSString, now, cal) {
+                target = ymd(dh.y, dh.mo, dh.d, cal)
+                let stripped = cut(raw as NSString, [dh.span])
+                titleRaw = replaceFirst(#"\b(?:on|to)\s*$"#, stripped, "") as String
+            }
+        }
+        guard let tRaw = titleRaw, let t = target else { return nil }
+        let title = titleCase(tidy(tRaw as NSString))
+        return .countdown(title: title.isEmpty ? "Countdown" : title, date: ymdLocal(t, cal),
+                          emoji: nil, whenLabel: countdownWhen(t, now, cal))
+    }
+
     // MARK: parse
 
     static func parse(_ raw: String, persons: [String] = [], now: Date = Date(),
@@ -424,6 +463,10 @@ enum CaptureHeuristic {
             let itemName = titleCase(name)
             if !itemName.isEmpty { return .list(itemName: itemName, listName: listName, quantity: quantity) }
         }
+
+        // COUNTDOWN — a day marker ("12 days until Disney"). Before the event branch so
+        // an explicit "countdown to X on <date>" isn't swallowed as a plain dated event.
+        if let countdown = detectCountdown(text, now, cal) { return countdown }
 
         let day = findDay(text, now, cal)
         let time = findTime(text)

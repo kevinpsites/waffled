@@ -35,6 +35,7 @@ struct CaptureSheet: View {
     @State private var evUntil = Date()
     @State private var mealSlot = "dinner"
     @State private var mealDate = Date()
+    @State private var cdDate = Date()                       // countdown target day
     @State private var lists: [WaffledAPI.ListSummary] = []   // for the list picker
     @State private var editing = false                     // glance → full field editor
     @FocusState private var focused: Bool
@@ -42,7 +43,7 @@ struct CaptureSheet: View {
 
     private static let kinds: [(key: String, icon: String, label: String)] = [
         ("event", "📅", "Event"), ("list", "📝", "List"), ("grocery", "🛒", "Grocery"),
-        ("task", "✅", "Task"), ("meal", "🍽️", "Meal"),
+        ("task", "✅", "Task"), ("meal", "🍽️", "Meal"), ("countdown", "⏳", "Countdown"),
     ]
 
     // ISO8601DateFormatter is expensive to allocate; hoist the two distinct configs
@@ -273,6 +274,7 @@ struct CaptureSheet: View {
         case let .task(t, _, _, _, _): return ("Task", t)
         case let .meal(t, _, _, _): return ("Meal", t)
         case let .list(item, _, _): return ("List", item)
+        case let .countdown(t, _, _, _): return ("Countdown", t)
         }
     }
 
@@ -309,6 +311,8 @@ struct CaptureSheet: View {
             return editListName.isEmpty ? "Adds to a list" : "Adds to \(editListName)"
         case "meal":
             return "\(mealSlot.capitalized) · \(DateFmt.string(mealDate, "EEE, MMM d", sync.householdTz))"
+        case "countdown":
+            return DateFmt.string(cdDate, "EEE, MMM d", sync.householdTz)
         default: return ""
         }
     }
@@ -369,6 +373,8 @@ struct CaptureSheet: View {
                 }
             }
             HStack { DatePicker("", selection: $mealDate, displayedComponents: .date).labelsHidden(); Spacer(minLength: 0) }
+        case "countdown":
+            HStack { DatePicker("", selection: $cdDate, displayedComponents: .date).labelsHidden(); Spacer(minLength: 0) }
         default: EmptyView()
         }
     }
@@ -533,6 +539,7 @@ struct CaptureSheet: View {
         case "event": return "Event title"
         case "task": return "Chore title"
         case "meal": return "Meal"
+        case "countdown": return "Countdown title"
         default: return "Item"
         }
     }
@@ -544,6 +551,7 @@ struct CaptureSheet: View {
         case "grocery": return "Add to groceries"
         case "list": return "Add to list"
         case "meal": return "Add meal"
+        case "countdown": return "Add countdown"
         default: return "Add"
         }
     }
@@ -619,7 +627,7 @@ struct CaptureSheet: View {
     private func kindOf(_ i: CaptureIntent) -> String {
         switch i {
         case .event: return "event"; case .grocery: return "grocery"; case .task: return "task"
-        case .meal: return "meal"; case .list: return "list"
+        case .meal: return "meal"; case .list: return "list"; case .countdown: return "countdown"
         }
     }
 
@@ -657,6 +665,12 @@ struct CaptureSheet: View {
         case let .list(itemName, listName, quantity):
             editKind = "list"; editName = itemName; editQty = quantity ?? ""
             editListName = listName ?? (lists.first { $0.listType.lowercased() != "grocery" }?.name ?? "")
+        case let .countdown(title, d, _, _):
+            editKind = "countdown"; editName = title
+            let parts = d.split(separator: "-").compactMap { Int($0) }
+            cdDate = parts.count == 3
+                ? (Cal.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) ?? Date())
+                : Date()
         }
     }
 
@@ -689,6 +703,9 @@ struct CaptureSheet: View {
                 ok = await sync.commitMeal(title: name, date: d, mealType: mealSlot)
             case "list":
                 ok = await sync.commitListItem(item: name, listName: editListName, quantity: qty)
+            case "countdown":
+                let d = DateFmt.string(cdDate, "yyyy-MM-dd", sync.householdTz)
+                ok = await sync.commitCountdown(title: name, date: d, emoji: nil)
             default:
                 ok = false
             }
