@@ -165,6 +165,14 @@ config** (the plain `./waffled upgrade` would drop it). It also supports
   offsite S3 backups via the `BACKUP_S3_*` vars (in `app_env` or `.env`) for real durability.
 - `terraform destroy` tears everything down **including the volumes** — back up first.
 
+## Testing the bootstrap
+
+`test/config-check.sh` validates — offline, no image pulls — that the bootstrap assembles a
+**complete, valid** stack: it merges the deployed ref's compose with the override this module
+writes and asserts every required secret is present (the check that catches the class of bug
+where the stack won't start). Run it before trusting a change to the bootstrap. See
+[`test/README.md`](test/README.md).
+
 ## What this does *not* do
 
 - No reserved/static public IP resource — it uses the instance's ephemeral public IP,
