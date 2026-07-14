@@ -24,7 +24,7 @@ function MemberCard({ m, onOpen }: { m: FamilyMember; onOpen: () => void }) {
           <div className="fam-stat-l">avg progress</div>
         </div>
         <div className="fam-stat">
-          <div className="fam-stat-n" style={{ color: 'var(--lottie)' }}>⭐ {m.stars}</div>
+          <div className="fam-stat-n" style={{ color: 'var(--person-4)' }}>⭐ {m.stars}</div>
           <div className="fam-stat-l">stars</div>
         </div>
       </div>

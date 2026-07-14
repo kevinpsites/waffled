@@ -47,6 +47,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cooked in the last couple of weeks, and leaves slots you've already set alone. No AI required,
   and the app doesn't change — the same "Plan my week" / "Plan my month" buttons just always
   return a plan.
+- **Dark mode.** Waffled now has a warm dark theme alongside the original light one, chosen from
+  **Settings → Appearance**: pick Light, Dark, or **Match system** to follow your device
+  automatically. It's a warm dark — surfaces and text move to soft charcoals rather than cold
+  black-and-blue, and every brand, accent, and per-person color stays exactly the same, so the app
+  still reads as Waffled with the lights off. The choice is saved per device and applies instantly,
+  including on the kitchen kiosk display.
 
 ### Changed
 - **New chores now default to a one-off on the day you're viewing, and each day's list is sorted sensibly.** On iPhone/iPad, adding a chore from the Chores tab now starts as "Just once" due on the day currently shown — instead of a recurring daily chore always due today. A day's chores are also ordered unfinished-first, then by due time (earliest first, untimed last), then A–Z.
@@ -54,6 +60,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the ingredients scrolling away beneath the big instruction, the iPad wall display pins them in
   a fixed left-hand column so you can glance at what a step needs while the instruction fills the
   rest of the screen. iPhone keeps its single scrolling column with ingredients inline.
+- **The color system is now a single source of truth.** Every color the web app uses is defined
+  once as a design token (including new semantic tokens for success / warning / danger / info),
+  and the scattered one-off hex values that had crept in were consolidated onto them. This is what
+  makes dark mode consistent — and keeps future color changes to one place.
 
 - **The self-hosting quick start is now copy-pasteable for first-time Docker users.** It
   explains the required terminal, initial credentials, success checks, and safe troubleshooting.

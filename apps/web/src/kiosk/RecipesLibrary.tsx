@@ -61,7 +61,7 @@ export function RecipesLibrary() {
       <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 14 }}>
         <button className="pill" style={{ cursor: 'pointer' }} onClick={() => navigate('/meals')}>‹ Meals</button>
         <div className="wf-serif" style={{ fontSize: 20, fontWeight: 600 }}>Recipes</div>
-        <button className="pill btn-primary" style={{ marginLeft: 'auto', color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => navigate('/meals/recipe/new')}>＋ New recipe</button>
+        <button className="pill btn-primary" style={{ marginLeft: 'auto', color: 'var(--on-accent)', border: 0, cursor: 'pointer' }} onClick={() => navigate('/meals/recipe/new')}>＋ New recipe</button>
       </div>
     ),
     [navigate]
@@ -110,10 +110,10 @@ export function RecipesLibrary() {
             <option key={s.key} value={s.key}>Sort: {s.label}</option>
           ))}
         </select>
-        <button type="button" className={`pill ${fav ? 'btn-primary' : ''}`} style={{ cursor: 'pointer', color: fav ? '#fff' : undefined, border: fav ? 0 : undefined }} onClick={() => setFav((v) => !v)}>
+        <button type="button" className={`pill ${fav ? 'btn-primary' : ''}`} style={{ cursor: 'pointer', color: fav ? 'var(--on-accent)' : undefined, border: fav ? 0 : undefined }} onClick={() => setFav((v) => !v)}>
           {fav ? '❤️' : '🤍'} Favorites
         </button>
-        <button type="button" className={`pill ${newOnly ? 'btn-primary' : ''}`} style={{ cursor: 'pointer', color: newOnly ? '#fff' : undefined, border: newOnly ? 0 : undefined }} onClick={() => setNewOnly((v) => !v)}>
+        <button type="button" className={`pill ${newOnly ? 'btn-primary' : ''}`} style={{ cursor: 'pointer', color: newOnly ? 'var(--on-accent)' : undefined, border: newOnly ? 0 : undefined }} onClick={() => setNewOnly((v) => !v)}>
           🆕 New
         </button>
       </div>
@@ -131,7 +131,7 @@ export function RecipesLibrary() {
       {!error && !loading && sorted.length === 0 && (
         <div className="muted" style={{ padding: 20, fontWeight: 600 }}>
           {recipes.length === 0 ? (
-            <>No recipes yet — tap <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0, cursor: 'pointer' }} onClick={() => navigate('/meals/recipe/new')}>＋ New recipe</button> to add your first.</>
+            <>No recipes yet — tap <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0, cursor: 'pointer' }} onClick={() => navigate('/meals/recipe/new')}>＋ New recipe</button> to add your first.</>
           ) : 'No recipes match these filters.'}
         </div>
       )}

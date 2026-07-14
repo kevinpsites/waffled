@@ -15,7 +15,7 @@
 .upd-cmd code {
   display: block; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 14px; font-weight: 600; color: var(--ink);
-  background: #fff; border: 1px solid var(--hair); border-radius: 9px; padding: 9px 12px;
+  background: var(--card); border: 1px solid var(--hair); border-radius: 9px; padding: 9px 12px;
 }
 
 .upd-actions { display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
