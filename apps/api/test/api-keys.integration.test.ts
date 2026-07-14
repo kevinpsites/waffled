@@ -1,7 +1,7 @@
 // Per-user API keys: management CRUD (session-authed) + the x-api-key auth path and
 // its central scope gate, against a real Postgres (Testcontainers).
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 

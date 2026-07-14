@@ -6,7 +6,7 @@
 // token creating its own household — is intentionally deferred to a sell-time lift,
 // so it is rejected here. (This replaces the former self-serve first-login flow.)
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 

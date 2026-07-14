@@ -4,7 +4,7 @@
 // for every legacy credential / SSO identity. To exercise the backfill we migrate
 // up to *just before* this migration, seed legacy-shaped rows, then apply it.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
 import { readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'

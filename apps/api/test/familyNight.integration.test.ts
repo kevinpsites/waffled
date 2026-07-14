@@ -1,7 +1,7 @@
 // Family Night — module gating, config, rotation suggestions, occurrence/assignment
 // persistence, and the optional calendar event, against a real Postgres (Testcontainers).
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 

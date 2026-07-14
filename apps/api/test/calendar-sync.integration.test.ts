@@ -5,7 +5,7 @@
 // stored cursor), waffled-owned person inheritance/preservation, the 410 stale-token
 // full-resync path, and skipping unselected calendars.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { createServer, type Server } from 'node:http'
 import { randomBytes } from 'node:crypto'
 import jwt from 'jsonwebtoken'

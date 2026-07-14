@@ -3,7 +3,7 @@
 // exercised against the in-process Google stub. Covers create (PUT) → routed +
 // pushed, participant add, edit (PATCH) → pushed, and delete → pushed.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { createServer, type Server } from 'node:http'
 import { randomBytes, randomUUID } from 'node:crypto'
 import jwt from 'jsonwebtoken'

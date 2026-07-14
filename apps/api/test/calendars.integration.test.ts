@@ -4,7 +4,7 @@
 // is wired via the overridable GOOGLE_* URLs in config; env must be set BEFORE the
 // app (and thus config) is imported.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { createServer, type Server } from 'node:http'
 import { randomBytes } from 'node:crypto'
 import { Client } from 'pg'

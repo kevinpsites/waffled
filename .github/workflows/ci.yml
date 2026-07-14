@@ -122,10 +122,44 @@ jobs:
   api-tests:
     name: API tests (vitest + Testcontainers)
     runs-on: ubuntu-latest
-    # The api suite runs files sequentially (vitest fileParallelism:false, to
-    # avoid Docker/port contention) with 120s test / 180s hook timeouts, and
-    # api.e2e.test.ts builds the Dockerfile via Testcontainers — so it is slow.
-    # Generous headroom so a cold container pull / image build never times out.
+    # The integration/unit suite now boots ONE shared Postgres (vitest globalSetup)
+    # and gives each test file its own isolated database, so files run in parallel
+    # (bounded fork pool) instead of each booting its own container. The slow
+    # Dockerfile-building e2e test is split out into the `api-e2e` job below, so it
+    # no longer serializes this one. Headroom kept generous for a cold Postgres pull.
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+
+      - name: Install api deps
+        working-directory: apps/api
+        run: npm ci
+
+      # ubuntu-latest ships with Docker running, which is all Testcontainers needs
+      # (the shared ephemeral Postgres + wiremock JWKS).
+      - name: Run api tests
+        working-directory: apps/api
+        run: npm test                 # vitest run (unit + integration; excludes api.e2e.test.ts)
+
+  api-e2e:
+    name: API e2e (Dockerfile build + real HTTP)
+    runs-on: ubuntu-latest
+    # api.e2e.test.ts builds the api image from the Dockerfile via Testcontainers and
+    # drives the running container over HTTP — minutes of work. It runs as its own
+    # parallel job (still on every PR, so coverage is unchanged) rather than inline in
+    # api-tests, so a slow image build never gates the fast integration suite.
+    #
+    # Alternative considered: gate this to push-to-main or a label to save PR minutes.
+    # Rejected — keeping it on PRs preserves per-PR coverage; splitting it out already
+    # removes the serialization cost, which was the actual problem.
     timeout-minutes: 40
     steps:
       - name: Checkout
@@ -142,8 +176,6 @@ jobs:
         working-directory: apps/api
         run: npm ci
 
-      # ubuntu-latest ships with Docker running, which is all Testcontainers
-      # needs (ephemeral Postgres, wiremock JWKS, and the e2e Dockerfile build).
-      - name: Run api tests
+      - name: Run api e2e test
         working-directory: apps/api
-        run: npm test                 # vitest run (full suite: unit + integration + e2e)
+        run: npm run test:e2e         # vitest run --config vitest.e2e.config.ts
