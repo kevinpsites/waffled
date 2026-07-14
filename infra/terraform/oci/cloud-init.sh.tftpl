@@ -38,23 +38,29 @@ rm -rf /opt/waffled
 git clone "${repo_url}" /opt/waffled
 cd /opt/waffled
 git checkout "${ref}"
-cd infra/compose
 
-# 4) Build .env. Start from the template, then upsert keys. `set_env` removes any
-#    existing line and appends, so values with /, +, = (base64/secrets) are safe.
-cp .env.example .env
+# 4) Let ./waffled generate infra/compose/.env with ALL required secrets and do the
+#    first bring-up. Delegating to the app's own ensure_env is the source of truth —
+#    it also fills any *new* required secret a future release adds, so this bootstrap
+#    can't drift out of sync (an earlier hand-rolled copy missed a required key and
+#    the stack failed to start). This first `up` uses the stock compose (plain :80);
+#    step 7 re-applies with the HTTPS override.
+./waffled up
+
+# 5) Patch the cloud/networking vars + app config into the .env ./waffled just made.
+#    `set_env` upserts (removes any existing line, appends), so values with /, +, =
+#    (base64/secrets) are safe. NB: do NOT recreate .env here — that would wipe the
+#    secrets ./waffled generated above.
+cd infra/compose
 set_env() {
   key="$1"; shift; val="$*"
   grep -v -E "^$${key}=" .env > .env.tmp 2>/dev/null || true
   mv .env.tmp .env
   printf '%s=%s\n' "$${key}" "$${val}" >> .env
 }
-set_env LOCAL_JWT_SECRET     "$(openssl rand -base64 48 | tr -d '\n')"
-set_env TOKEN_ENCRYPTION_KEY "$(openssl rand -base64 32 | tr -d '\n')"
-set_env POSTGRES_PASSWORD    "$(openssl rand -hex 24 | tr -d '\n')"
-set_env HTTP_PORT            "80"
+set_env HTTP_PORT "80"
 %{ if waffled_version != "" ~}
-set_env WAFFLED_VERSION      "${waffled_version}"
+set_env WAFFLED_VERSION "${waffled_version}"
 %{ endif ~}
 
 %{ if domain != "" ~}
@@ -97,7 +103,7 @@ set_env PUBLIC_BASE_URL      "http://$${PUBIP}"
 set_env POWERSYNC_PUBLIC_URL "http://$${PUBIP}:8090"
 %{ endif ~}
 
-# 5) User-supplied app config (API keys, OAuth, overrides). Applied LAST so these
+# 6) User-supplied app config (API keys, OAuth, overrides). Applied LAST so these
 #    win over the derived values above. Delivered base64-encoded via Terraform.
 %{ if app_env_b64 != "" ~}
 while IFS= read -r __line; do
@@ -108,7 +114,7 @@ while IFS= read -r __line; do
 done < <(printf '%s' "${app_env_b64}" | base64 -d)
 %{ endif ~}
 
-# 6) Cloud lifecycle helper: `waffled-oci up|upgrade|down|logs|status`. Unlike the
+# 7) Cloud lifecycle helper: `waffled-oci up|upgrade|down|logs|status`. Unlike the
 #    stock `./waffled`, it always includes docker-compose.oci.yml, so upgrades keep
 #    the HTTPS/443 config. Anything else falls through to the real ./waffled CLI.
 cat > /usr/local/bin/waffled-oci <<'HELPER_EOF'
@@ -138,7 +144,8 @@ esac
 HELPER_EOF
 chmod +x /usr/local/bin/waffled-oci
 
-# 7) Bring the whole stack up (migrate → api → powersync → caddy → backup).
+# 8) Re-apply with the HTTPS override (adds 443 + the PowerSync front). In HTTP mode
+#    this just republishes on port 80 with the patched .env.
 waffled-oci up
 
 echo "waffled bootstrap complete"

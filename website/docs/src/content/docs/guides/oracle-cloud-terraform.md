@@ -204,9 +204,12 @@ outputs — it points `-i` at your key):
 ```bash
 ssh -i ~/.ssh/waffled ubuntu@<public_ip>
 sudo tail -f /var/log/waffled-bootstrap.log   # the deploy script
-cd /opt/waffled && sudo docker compose ps      # container health
-sudo docker compose logs caddy                 # TLS / ACME progress
+sudo waffled-oci status                        # container health
+sudo waffled-oci logs caddy                    # TLS / ACME progress
 ```
+
+(The compose files live in `/opt/waffled/infra/compose`, so run bare `docker compose` from there —
+or just use `waffled-oci`, which handles the directory and the HTTPS override for you.)
 
 - **"Server is down" from Cloudflare** — your DNS records are *Proxied* (orange cloud). Set them to
   **DNS only** (grey cloud) so Caddy can issue and serve certificates directly. See the callout in

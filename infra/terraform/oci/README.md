@@ -88,7 +88,7 @@ Bootstrapping takes a few minutes (image pulls). To watch it:
 ssh -i ~/.ssh/waffled ubuntu@<public_ip>   # or copy the `ssh_command` output
 sudo tail -f /var/log/waffled-bootstrap.log   # this module's script
 sudo tail -f /var/log/cloud-init-output.log   # cloud-init overall
-cd /opt/waffled && sudo docker compose ps      # container health
+sudo waffled-oci status                        # container health (compose is in infra/compose)
 ```
 
 - **"Server is down" from Cloudflare** — your DNS records are *Proxied* (orange cloud).
