@@ -7,7 +7,6 @@ import { query } from './platform/db'
 import { log } from './platform/logger'
 import { version } from './platform/version'
 import { recordHttpRequest } from './platform/telemetry'
-import { sensitiveRouteRateLimit } from './platform/rate-limit'
 import { registerHealthRoutes } from './modules/health/health'
 import { registerUpdateRoutes } from './modules/updates/updates'
 import {
@@ -66,11 +65,6 @@ api.use((req: Request, _res: Response, next: NextFunction) => {
   ;(req as Request & { startTime?: number }).startTime = Date.now()
   next()
 })
-
-// Bound credential guessing and expensive public flows before authentication so
-// failed attempts consume quota too. The limiter is intentionally process-local:
-// the bundled self-hosted stack runs one API process.
-api.use(sensitiveRouteRateLimit)
 
 // Routes that skip auth. /api/auth/keys is the JWKS PowerSync fetches; the Google
 // calendar callback is hit by Google's browser redirect (no Authorization header)

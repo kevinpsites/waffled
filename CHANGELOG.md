@@ -38,10 +38,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   worker removes API caches created by older versions; the app shell and PowerSync calendar
   remain available offline, while REST-backed screens require the server instead of risking
   another account's stale response.
-- **Sensitive routes now have trusted abuse limits and bounded request bodies.** The API
-  rejects oversized payloads before buffering and throttles repeated login, setup, OIDC,
-  kiosk, refresh, and media attempts; Caddy normalizes the client address and direct API
-  access is restricted to the Docker host.
 - **Production starts only with durable, non-default secrets.** Setup generates a stable
   PowerSync signing key with the other required secrets, repairs missing environment values,
   and refuses production startup when secrets are malformed or still use public development

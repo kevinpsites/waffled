@@ -74,16 +74,6 @@ services:
       # Session lifetimes (built-in + OIDC login). Empty → code defaults (1h / 60d).
       ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-}
       REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-}
-      # Sensitive-route abuse limits. Empty values use the conservative API defaults.
-      RATE_LIMIT_SETUP_MAX: ${RATE_LIMIT_SETUP_MAX:-}
-      RATE_LIMIT_LOGIN_ACCOUNT_MAX: ${RATE_LIMIT_LOGIN_ACCOUNT_MAX:-}
-      RATE_LIMIT_LOGIN_IP_MAX: ${RATE_LIMIT_LOGIN_IP_MAX:-}
-      RATE_LIMIT_OIDC_START_MAX: ${RATE_LIMIT_OIDC_START_MAX:-}
-      RATE_LIMIT_OIDC_EXCHANGE_MAX: ${RATE_LIMIT_OIDC_EXCHANGE_MAX:-}
-      RATE_LIMIT_REFRESH_MAX: ${RATE_LIMIT_REFRESH_MAX:-}
-      RATE_LIMIT_KIOSK_PAIR_MAX: ${RATE_LIMIT_KIOSK_PAIR_MAX:-}
-      RATE_LIMIT_KIOSK_TOKEN_MAX: ${RATE_LIMIT_KIOSK_TOKEN_MAX:-}
-      RATE_LIMIT_MEDIA_MAX: ${RATE_LIMIT_MEDIA_MAX:-}
       # Break-glass: always show the password form even if SSO-only is toggled on.
       AUTH_FORCE_PASSWORD: ${AUTH_FORCE_PASSWORD:-}
       # Public origin for redirect URLs (OIDC + Google calendar callbacks). Set this
@@ -143,9 +133,7 @@ services:
     volumes:
       - waffled_media:/data/media         # uploaded blobs (read-write); Caddy serves them read-only
     ports:
-      # Host-only direct access; public requests must traverse Caddy so proxy trust
-      # and ingress policy remain enforced.
-      - "127.0.0.1:${API_PORT:-3000}:3000"
+      - "${API_PORT:-3000}:3000"     # direct dev access; also reachable via Caddy /api/*
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 10s
