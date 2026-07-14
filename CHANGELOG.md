@@ -52,9 +52,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Application containers now drop root privileges after volume preparation.** The API and
   backup scheduler run as unprivileged image users, while a short-lived startup job safely
   updates ownership on volumes created by older root-running releases.
-- **Caddy now enforces a restrictive browser security policy.** Outbound sync is limited to
-  the configured PowerSync endpoint, and HSTS, MIME-sniffing, referrer, and browser-capability
-  protections are enabled while preserving camera and photo support.
 
 ### Added
 - **Plan breakfast and lunch from the iPhone meal planner, not just dinner.** Each day in the
