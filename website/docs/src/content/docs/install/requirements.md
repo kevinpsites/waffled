@@ -37,9 +37,9 @@ Defaults (all overridable in `infra/compose/.env`):
 | Port | Service | Notes |
 |---|---|---|
 | `8080` | Caddy (web / kiosk) | The address you open. `HTTP_PORT`. |
-| `3000` | api | Loopback-only diagnostics; clients use Caddy `/api/*`. `API_PORT`. |
-| `8090` | Caddy → PowerSync | Offline-sync endpoint clients connect to. `POWERSYNC_PORT`. |
-| `5432` | Postgres | Loopback-only local tools. `POSTGRES_PORT`. |
+| `3000` | api | Also reachable via Caddy at `/api/*`. `API_PORT`. |
+| `8090` | PowerSync | Offline-sync endpoint clients connect to. `POWERSYNC_PORT`. |
+| `5432` | Postgres | `POSTGRES_PORT`. |
 | `443` | Caddy (HTTPS) | **Commented out by default** — enable for hostname/TLS. |
 
 The preflight warns (doesn't block) if `8080` / `3000` / `8090` / `5432` are already busy on a

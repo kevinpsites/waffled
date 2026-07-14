@@ -100,55 +100,6 @@ ensure_env() {
   [ "$created" -eq 0 ] || echo "${c_grn}Created $ENV_FILE with generated secrets.${c_reset}"
 }
 
-# Upgrade bridge for installs created before PowerSync moved behind Caddy. New
-# `.env` files already carry this value; existing files get the matching listener
-# without overwriting any operator customization.
-ensure_powersync_proxy_env() {
-  [ -n "$(env_val POWERSYNC_CADDY_ADDRESS)" ] && return 0
-  local site host
-  site="$(env_val CADDY_SITE_ADDRESS)"
-  case "$site" in
-    ""|:*) set_env_var POWERSYNC_CADDY_ADDRESS ":8090" ;;
-    *)
-      host="${site#https://}"; host="${host#http://}"; host="${host%%:*}"
-      set_env_var POWERSYNC_CADDY_ADDRESS "https://$host:8090"
-      ;;
-  esac
-}
-
-# Return a replacement only for the exact legacy localhost default. Custom OAuth
-# callbacks belong to the operator because changing one also requires updating the
-# Google Cloud console; those are warned about below, never silently overwritten.
-google_callback_replacement() {
-  local current="$1" public_base="$2" http_port="$3"
-  [ "$current" = "http://localhost:3000/auth/google/calendar/callback" ] || return 1
-  if [ -n "$public_base" ]; then
-    printf '%s/auth/google/calendar/callback' "${public_base%/}"
-  else
-    printf 'http://localhost:%s/auth/google/calendar/callback' "$http_port"
-  fi
-}
-
-ensure_google_callback_env() {
-  local current public_base http_port replacement
-  current="$(env_val GOOGLE_CALENDAR_REDIRECT_URI)"
-  [ -n "$current" ] || return 0
-  public_base="$(env_val PUBLIC_BASE_URL)"
-  http_port="$(env_val HTTP_PORT)"; http_port="${http_port:-8080}"
-  if replacement="$(google_callback_replacement "$current" "$public_base" "$http_port")"; then
-    set_env_var GOOGLE_CALENDAR_REDIRECT_URI "$replacement"
-    echo "${c_grn}Updated Google Calendar callback to Caddy: $replacement${c_reset}"
-    [ -z "$public_base" ] || echo "${c_ylw}Register this exact callback in Google Cloud before reconnecting Calendar.${c_reset}"
-    return 0
-  fi
-  case "$current" in
-    http://*:3000/auth/google/calendar/callback|https://*:3000/auth/google/calendar/callback)
-      echo "${c_ylw}Google Calendar callback still targets direct API port :3000, which is now loopback-only.${c_reset}"
-      echo "${c_ylw}Set GOOGLE_CALENDAR_REDIRECT_URI to your Caddy origin + /auth/google/calendar/callback and register that exact URL in Google Cloud.${c_reset}"
-      ;;
-  esac
-}
-
 status() {
   local any_fail=0
   printf '%-12s %-10s %s\n' "SERVICE" "STATE" "HEALTH"
@@ -331,7 +282,7 @@ cmd="${1:-help}"; shift || true
 case "$cmd" in
   up)
     preflight || exit 1
-    ensure_env; ensure_powersync_proxy_env; ensure_google_callback_env; export_build_meta
+    ensure_env; export_build_meta
     # Default: pull the published images (fast — no local toolchain build) and start.
     # `./waffled up --build [svc]` (dev/bleeding-edge): build the images from source
     # instead, stamping the current git SHA into /healthz + /api/health.
@@ -364,8 +315,6 @@ case "$cmd" in
     done
     preflight || exit 1
     ensure_env
-    ensure_powersync_proxy_env
-    ensure_google_callback_env
     update_repo_for_upgrade || exit 1
     # Snapshot the DB BEFORE changing the version pin or swapping images.
     # Migrations are forward-only, so a missing rollback point is fatal unless
@@ -390,7 +339,7 @@ case "$cmd" in
     ;;
   down)    "${DC[@]}" down "$@" ;;
   restart) "${DC[@]}" restart "$@"; wait_for_services "$@" || true; echo; status || true ;;
-  rebuild) preflight || exit 1; ensure_env; ensure_powersync_proxy_env; ensure_google_callback_env; export_build_meta; "${DC[@]}" up -d --build --force-recreate "$@"; wait_for_services "$@" || true; echo; status || true ;;
+  rebuild) preflight || exit 1; ensure_env; export_build_meta; "${DC[@]}" up -d --build --force-recreate "$@"; wait_for_services "$@" || true; echo; status || true ;;
   logs)    "${DC[@]}" logs -f --tail=120 "$@" ;;
   status|st|ps) status || true ;;
   migrate)
@@ -467,7 +416,6 @@ case "$cmd" in
       1)
         set_env_var PUBLIC_BASE_URL ""
         set_env_var POWERSYNC_PUBLIC_URL "http://localhost:$ps_port"
-        set_env_var POWERSYNC_CADDY_ADDRESS ":8090"
         set_env_var CADDY_SITE_ADDRESS ":80"
         echo "${c_grn}Set for localhost.${c_reset} Run ${c_dim}./waffled up${c_reset}, then open http://localhost:$http_port"
         ;;
@@ -478,7 +426,6 @@ case "$cmd" in
         [ -n "$addr" ] || { echo "${c_red}No address given — aborting.${c_reset}"; exit 1; }
         set_env_var PUBLIC_BASE_URL "http://$addr:$http_port"
         set_env_var POWERSYNC_PUBLIC_URL "http://$addr:$ps_port"
-        set_env_var POWERSYNC_CADDY_ADDRESS ":8090"
         set_env_var CADDY_SITE_ADDRESS ":80"
         echo "${c_grn}Set for your network ($addr).${c_reset} Run ${c_dim}./waffled up${c_reset}, then open http://$addr:$http_port on any device."
         echo "${c_dim}Tip: reserve a static IP for this machine in your router so the address doesn't drift.${c_reset}"
@@ -489,9 +436,8 @@ case "$cmd" in
         set_env_var CADDY_SITE_ADDRESS "$host"
         set_env_var PUBLIC_BASE_URL "https://$host"
         set_env_var POWERSYNC_PUBLIC_URL "https://$host:$ps_port"
-        set_env_var POWERSYNC_CADDY_ADDRESS "https://$host:8090"
         echo "${c_grn}Set for https://$host.${c_reset} Enable the 443 mapping in infra/compose/docker-compose.yml, point DNS at this machine, then run ${c_dim}./waffled up${c_reset}."
-        echo "${c_dim}PowerSync is served through Caddy with TLS on :$ps_port.${c_reset}"
+        echo "${c_ylw}Note: PowerSync serves on :$ps_port — for public HTTPS you'll also need to expose/proxy that port with TLS (see docs/TROUBLESHOOTING.md).${c_reset}"
         ;;
       *) echo "${c_red}Unknown choice — run ./waffled setup again.${c_reset}"; exit 1 ;;
     esac
