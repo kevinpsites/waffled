@@ -2,7 +2,7 @@
 // PG, plus pure intent-finalization unit checks. (LLM adapters hit external HTTP
 // and aren't exercised here; finalizeIntent covers the mapping they feed into.)
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 import { finalizeIntent, resolveDayFromText } from '../src/modules/capture/capture'

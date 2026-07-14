@@ -4,8 +4,8 @@
 #   ./waffled up        start everything (checks prereqs, creates .env on first run, PULLS
 #                    the published images, runs migrations), then status + what's-next
 #   ./waffled up --build   same, but build the images from source (dev / bleeding-edge)
-#   ./waffled upgrade   pull the latest release: fast-forward the repo, bump the pinned
-#                    version in .env, pull the new images, and apply migrations
+#   ./waffled upgrade [--skip-backup]   pull the latest release: fast-forward the repo,
+#                    back up the DB, bump the pinned version, and apply migrations
 #   ./waffled setup     guided: how devices reach this server (localhost / LAN IP / hostname)
 #   ./waffled status    show each container's state + health (✓/✗)
 #   ./waffled down      stop & remove the stack
@@ -59,27 +59,45 @@ export_build_meta() {
   export GIT_SHA BUILD_TIME
 }
 
-# First-run bootstrap: if there's no .env, copy the example and fill the required
-# secrets with freshly generated values so `./waffled up` works on a clean clone with
-# zero manual editing. Existing .env files are never touched.
+# Bootstrap required secrets on a clean clone and fill values added by newer releases.
+# Existing non-empty custom values are never changed.
 ensure_env() {
-  [ -f "$ENV_FILE" ] && return 0
-  echo "${c_dim}No infra/compose/.env — creating it from .env.example…${c_reset}"
-  cp "$ROOT/infra/compose/.env.example" "$ENV_FILE"
+  local created=0 postgres_password
+  if [ ! -f "$ENV_FILE" ]; then
+    echo "${c_dim}No infra/compose/.env — creating it from .env.example…${c_reset}"
+    cp "$ROOT/infra/compose/.env.example" "$ENV_FILE"
+    created=1
+  fi
+
   if command -v openssl >/dev/null 2>&1; then
-    # '|' is a safe sed delimiter — base64 (the JWT/token keys) and hex contain no '|'.
     # POSTGRES_PASSWORD is interpolated into postgres:// URLs in docker-compose.yml, so it
     # must be URL-safe: base64 can include '/', which breaks Node's URL parser and fails
     # the one-shot migrate on a fresh install — so generate it as hex, not base64.
-    secret_set() { sed -i.bak -E "s|^$1=.*$|$1=$2|" "$ENV_FILE" && rm -f "$ENV_FILE.bak"; }
-    secret_set LOCAL_JWT_SECRET     "$(openssl rand -base64 48 | tr -d '\n')"
-    secret_set TOKEN_ENCRYPTION_KEY "$(openssl rand -base64 32 | tr -d '\n')"
-    secret_set POSTGRES_PASSWORD    "$(openssl rand -hex 24 | tr -d '\n')"
-    echo "${c_grn}Created $ENV_FILE with generated secrets.${c_reset}"
-  else
-    echo "${c_ylw}openssl not found — set LOCAL_JWT_SECRET, TOKEN_ENCRYPTION_KEY, and"
-    echo "POSTGRES_PASSWORD in $ENV_FILE before relying on OIDC/Google or production.${c_reset}"
+    [ -n "$(env_val LOCAL_JWT_SECRET)" ] || set_env_var LOCAL_JWT_SECRET "$(openssl rand -base64 48 | tr -d '\n')"
+    [ -n "$(env_val TOKEN_ENCRYPTION_KEY)" ] || set_env_var TOKEN_ENCRYPTION_KEY "$(openssl rand -base64 32 | tr -d '\n')"
+    [ -n "$(env_val POWERSYNC_JWT_PRIVATE_KEY)" ] || set_env_var POWERSYNC_JWT_PRIVATE_KEY "$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null | openssl base64 -A)"
+    postgres_password="$(env_val POSTGRES_PASSWORD)"
+    if [ -z "$postgres_password" ] || { [ "$created" -eq 1 ] && [ "$postgres_password" = "change-me" ]; }; then
+      set_env_var POSTGRES_PASSWORD "$(openssl rand -hex 24 | tr -d '\n')"
+    fi
   fi
+
+  for secret in LOCAL_JWT_SECRET TOKEN_ENCRYPTION_KEY POSTGRES_PASSWORD POWERSYNC_JWT_PRIVATE_KEY; do
+    if [ -z "$(env_val "$secret")" ]; then
+      echo "${c_red}✗ $secret is missing in $ENV_FILE.${c_reset} Install openssl or set it manually, then retry."
+      return 1
+    fi
+  done
+  if [ "$(env_val LOCAL_JWT_SECRET)" = "waffled-local-dev-secret-change-me" ]; then
+    echo "${c_red}✗ LOCAL_JWT_SECRET still uses the public development value.${c_reset} Replace it in $ENV_FILE."
+    return 1
+  fi
+  if [ "$(env_val POSTGRES_PASSWORD)" = "change-me" ]; then
+    echo "${c_red}✗ POSTGRES_PASSWORD still uses the example placeholder.${c_reset}"
+    echo "Set a URL-safe password in $ENV_FILE. For an existing database, rotate the database user's password first."
+    return 1
+  fi
+  [ "$created" -eq 0 ] || echo "${c_grn}Created $ENV_FILE with generated secrets.${c_reset}"
 }
 
 status() {
@@ -105,6 +123,89 @@ status() {
   [ "$any_fail" -eq 0 ] && echo "${c_grn}All services healthy.${c_reset}" \
                         || echo "${c_ylw}Some services are not healthy — see 'waffled logs <svc>'.${c_reset}"
   return "$any_fail"
+}
+
+services_ready() {
+  local targets=("$@")
+  [ "${#targets[@]}" -gt 0 ] || targets=("${SERVICES[@]}")
+  for s in "${targets[@]}"; do
+    local cid state health
+    cid="$("${DC[@]}" ps -q "$s" 2>/dev/null || true)"
+    [ -n "$cid" ] || return 1
+    state="$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || echo unknown)"
+    health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}—{{end}}' "$cid" 2>/dev/null || echo unknown)"
+    [ "$state" = "running" ] && { [ "$health" = "healthy" ] || [ "$health" = "—" ]; } || return 1
+  done
+}
+
+# Compose returns as soon as containers start, several seconds before their health
+# checks pass. Wait briefly so first-run users see the settled state, not a false alarm.
+wait_for_services() {
+  local remaining="${WAFFLED_HEALTH_ATTEMPTS:-30}"
+  local requested=("$@") targets=() service arg
+  for service in "${SERVICES[@]}"; do
+    for arg in "${requested[@]}"; do
+      if [ "$arg" = "$service" ]; then
+        targets+=("$service")
+        break
+      fi
+    done
+  done
+  [ "${#targets[@]}" -gt 0 ] || targets=("${SERVICES[@]}")
+  printf '%s' "${c_dim}Waiting for services to become healthy"
+  while [ "$remaining" -gt 0 ]; do
+    if services_ready "${targets[@]}"; then
+      echo "${c_grn} ready.${c_reset}"
+      return 0
+    fi
+    remaining=$((remaining - 1))
+    printf '.'
+    sleep 2
+  done
+  echo
+  echo "${c_ylw}Services are taking longer than expected; showing their current state.${c_reset}"
+  return 1
+}
+
+update_repo_for_upgrade() {
+  if ! git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local branch
+  branch="$(git -C "$ROOT" symbolic-ref --short -q HEAD || true)"
+  if [ -z "$branch" ]; then
+    echo "${c_ylw}⚠ Detached HEAD — skipping repo update. The checked-out release tag will determine the target version.${c_reset}"
+    return 0
+  fi
+
+  echo "${c_dim}Updating repo ($branch)…${c_reset}"
+  if ! git -C "$ROOT" pull --ff-only; then
+    echo "${c_red}✗ Couldn't fast-forward the repo (local changes or diverged history).${c_reset}"
+    echo "Resolve the repository state, then re-run './waffled upgrade'. No images were changed."
+    return 1
+  fi
+}
+
+run_pre_upgrade_backup() {
+  local skip_backup="$1"
+  if [ "$skip_backup" -eq 1 ]; then
+    echo "${c_ylw}⚠ Skipping the pre-upgrade database backup because --skip-backup was supplied.${c_reset}"
+    return 0
+  fi
+
+  if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^waffled-backup$'; then
+    echo "${c_red}✗ The backup service is not running, so no rollback point can be created.${c_reset}"
+    echo "Start the stack and retry, or explicitly accept the risk with './waffled upgrade --skip-backup'."
+    return 1
+  fi
+
+  echo "${c_dim}Backing up the database first (rollback point)…${c_reset}"
+  if ! docker exec waffled-backup waffled-backup; then
+    echo "${c_red}✗ Pre-upgrade backup failed; the upgrade has been stopped.${c_reset}"
+    echo "Fix the backup error and retry, or explicitly accept the risk with './waffled upgrade --skip-backup'."
+    return 1
+  fi
 }
 
 # Best-effort primary LAN IPv4 (for "reach it from a tablet"). Empty if undetectable.
@@ -137,8 +238,8 @@ preflight() {
   if ! docker compose version >/dev/null 2>&1; then
     echo "${c_red}✗ 'docker compose' (v2) not found.${c_reset} The legacy 'docker-compose' won't work — install the Compose v2 plugin: https://docs.docker.com/compose/install/"; return 1
   fi
-  if [ ! -f "$ENV_FILE" ] && ! command -v openssl >/dev/null 2>&1; then
-    echo "${c_ylw}⚠ openssl not found — secrets can't be auto-generated; set them in infra/compose/.env after first run.${c_reset}"
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "${c_ylw}⚠ openssl not found — missing secrets can't be auto-generated; set them in infra/compose/.env.${c_reset}"
   fi
   # Port conflicts — only on a cold start (skip if our stack already holds them).
   if command -v lsof >/dev/null 2>&1 && ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^waffled-'; then
@@ -194,6 +295,7 @@ case "$cmd" in
       "${DC[@]}" pull "$@" || echo "${c_ylw}⚠ Couldn't pull some images — using local/cached copies. Run './waffled up --build' to build from source.${c_reset}"
       "${DC[@]}" up -d "$@"
     fi
+    wait_for_services "$@" || true
     echo; status || true
     next_steps
     ;;
@@ -204,17 +306,20 @@ case "$cmd" in
     # tagged repo + image tag are a matched pair — compose/configs/./waffled must agree
     # with the image), sync WAFFLED_VERSION in .env to this checkout's .env.example,
     # then pull + up (the one-shot `migrate` reruns because the image tag changed).
+    skip_backup=0
+    for arg in "$@"; do
+      case "$arg" in
+        --skip-backup) skip_backup=1 ;;
+        *) echo "usage: ./waffled upgrade [--skip-backup]"; exit 1 ;;
+      esac
+    done
     preflight || exit 1
     ensure_env
-    if git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
-      branch="$(git -C "$ROOT" symbolic-ref --short -q HEAD || true)"
-      if [ -n "$branch" ]; then
-        echo "${c_dim}Updating repo ($branch)…${c_reset}"
-        git -C "$ROOT" pull --ff-only || echo "${c_ylw}⚠ Couldn't fast-forward the repo (local changes or diverged history). Resolve it, then re-run './waffled upgrade'.${c_reset}"
-      else
-        echo "${c_ylw}⚠ Detached HEAD — skipping repo update. Check out a branch or a release tag to update the code, then re-run.${c_reset}"
-      fi
-    fi
+    update_repo_for_upgrade || exit 1
+    # Snapshot the DB BEFORE changing the version pin or swapping images.
+    # Migrations are forward-only, so a missing rollback point is fatal unless
+    # the operator explicitly accepts it.
+    run_pre_upgrade_backup "$skip_backup" || exit 1
     target="$(grep -E '^WAFFLED_VERSION=' "$ROOT/infra/compose/.env.example" 2>/dev/null | head -1 | cut -d= -f2- || true)"
     current="$(env_val WAFFLED_VERSION)"
     if [ -z "$target" ]; then
@@ -225,22 +330,16 @@ case "$cmd" in
       set_env_var WAFFLED_VERSION "$target"
       echo "${c_grn}WAFFLED_VERSION ${current:-unset} → ${target}${c_reset}"
     fi
-    # Safety: snapshot the DB BEFORE swapping images, while the current stack is still
-    # up — this is your rollback point (migrations are forward-only). Best-effort: a
-    # not-yet-running / partial install just skips it.
-    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^waffled-backup$'; then
-      echo "${c_dim}Backing up the database first (rollback point)…${c_reset}"
-      docker exec waffled-backup waffled-backup || echo "${c_ylw}⚠ Pre-upgrade backup failed — continuing anyway. You can run './waffled backup' manually first.${c_reset}"
-    fi
     export_build_meta
     echo "${c_dim}Pulling images + restarting stack (applying migrations)…${c_reset}"
     "${DC[@]}" pull || echo "${c_ylw}⚠ Couldn't pull some images — confirm the tag exists on GHCR, or run './waffled up --build' to build from source.${c_reset}"
     "${DC[@]}" up -d
+    wait_for_services || true
     echo; status || true
     ;;
   down)    "${DC[@]}" down "$@" ;;
-  restart) "${DC[@]}" restart "$@"; echo; status || true ;;
-  rebuild) preflight || exit 1; ensure_env; export_build_meta; "${DC[@]}" up -d --build --force-recreate "$@"; echo; status || true ;;
+  restart) "${DC[@]}" restart "$@"; wait_for_services "$@" || true; echo; status || true ;;
+  rebuild) preflight || exit 1; ensure_env; export_build_meta; "${DC[@]}" up -d --build --force-recreate "$@"; wait_for_services "$@" || true; echo; status || true ;;
   logs)    "${DC[@]}" logs -f --tail=120 "$@" ;;
   status|st|ps) status || true ;;
   migrate)
@@ -288,6 +387,7 @@ case "$cmd" in
       "gunzip -c /backups/$file | psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 --single-transaction"
     echo "${c_dim}Restarting the stack (migrations re-run to catch up an older dump)…${c_reset}"
     export_build_meta; "${DC[@]}" up -d
+    wait_for_services || true
     echo; status || true
     echo "${c_grn}Restore complete.${c_reset}"
     ;;

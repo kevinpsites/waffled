@@ -107,7 +107,7 @@ export function ChoreProofModal({
         </div>
         <div className="cpm-actions">
           <button type="button" className="pill" disabled={acting} onClick={() => { onReject(c.id); onClose() }}>Not yet</button>
-          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={acting} onClick={() => { onApprove(c.id); onClose() }}>Approve</button>
+          <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0 }} disabled={acting} onClick={() => { onApprove(c.id); onClose() }}>Approve</button>
         </div>
       </div>
     </div>
@@ -156,7 +156,7 @@ export function ChoreApprovalsCard({
           )}
           <div className="rw-appr-actions">
             <button type="button" className="pill" disabled={busy === c.id} onClick={() => onReject(c.id)}>Not yet</button>
-            <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={busy === c.id} onClick={() => onApprove(c.id)}>Approve</button>
+            <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0 }} disabled={busy === c.id} onClick={() => onApprove(c.id)}>Approve</button>
           </div>
         </div>
         )
@@ -203,7 +203,7 @@ export function RewardApprovalsCard({
           </div>
           <div className="rw-appr-actions">
             <button type="button" className="pill" disabled={busy === p.id} onClick={() => onDecide(p.id, false)}>Deny</button>
-            <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={busy === p.id} onClick={() => onDecide(p.id, true)}>Approve</button>
+            <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0 }} disabled={busy === p.id} onClick={() => onDecide(p.id, true)}>Approve</button>
           </div>
         </div>
       ))}

@@ -2,7 +2,7 @@
 // enforcement), while ungated routes and other modules keep working. Shares one
 // Postgres testcontainer + app, mirroring the other integration suites.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { runMigrations } from '../src/migrate'
 
 const SECRET = 'waffled-local-dev-secret-change-me'

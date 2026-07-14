@@ -111,7 +111,7 @@ export function PhotoAdd({
   const addLabel = saving ? 'Adding…' : items.length > 1 ? `Add ${items.length} photos` : 'Add photo'
 
   return (
-    <div className="ph-saver" style={{ position: 'fixed', inset: 0, zIndex: 900, background: 'var(--bg, #efece6)', color: 'var(--ink)', display: 'block', cursor: 'default' }}>
+    <div className="ph-saver" style={{ position: 'fixed', inset: 0, zIndex: 900, background: 'var(--bg)', color: 'var(--ink)', display: 'block', cursor: 'default' }}>
       <div className="wf-kiosk wf" style={{ position: 'absolute', inset: 0, background: '#efece6' }}>
         <div className="kiosk-main" style={{ gridColumn: '1 / -1' }}>
           <div className="topbar">

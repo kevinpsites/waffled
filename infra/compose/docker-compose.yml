@@ -17,7 +17,7 @@ services:
       - max_wal_senders=10
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run ./waffled up to generate POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"          # reachable on localhost / tailnet for psql + tools
@@ -43,7 +43,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run ./waffled up to generate POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     command: ["node", "dist/migrate.js"]
     restart: "no"
 
@@ -70,7 +70,7 @@ services:
       PORT: 3000
       # Local auth (HS256). Leave AUTH0_DOMAIN unset to stay dependency-free.
       # mint-token signs with this same secret, so dev tokens validate.
-      LOCAL_JWT_SECRET: ${LOCAL_JWT_SECRET:-waffled-local-dev-secret-change-me}
+      LOCAL_JWT_SECRET: ${LOCAL_JWT_SECRET:?Run ./waffled up to generate LOCAL_JWT_SECRET}
       # Session lifetimes (built-in + OIDC login). Empty → code defaults (1h / 60d).
       ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-}
       REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-}
@@ -79,7 +79,7 @@ services:
       # Public origin for redirect URLs (OIDC + Google calendar callbacks). Set this
       # to your real host when not on localhost; empty → derived from request headers.
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
-      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run ./waffled up to generate POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       # --- Media/blob uploads (local disk): api writes blobs, Caddy serves them.
       # Files land in MEDIA_DIR (the waffled_media volume) and are served read-only by
       # Caddy at MEDIA_BASE_URL, so the api stays out of the read path.
@@ -89,9 +89,7 @@ services:
       # Returned by /api/powersync/token so clients know where to connect.
       POWERSYNC_PUBLIC_URL: ${POWERSYNC_PUBLIC_URL:-http://localhost:8090}
       # Stable RS256 signing key for PowerSync tokens (base64 of a PEM, or raw PEM).
-      # Empty → an ephemeral key is generated each boot, which breaks sync on every
-      # api restart until PowerSync re-fetches the JWKS. Set this to make it durable.
-      POWERSYNC_JWT_PRIVATE_KEY: ${POWERSYNC_JWT_PRIVATE_KEY:-}
+      POWERSYNC_JWT_PRIVATE_KEY: ${POWERSYNC_JWT_PRIVATE_KEY:?Run ./waffled up to generate POWERSYNC_JWT_PRIVATE_KEY}
       # --- AI capture bar (6.6): set any subset; pick the active one in Settings.
       # Hosted providers (keys never leave the server):
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -106,7 +104,7 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL:-}
       # --- Google Calendar OAuth (5.2): "Connect your calendar". Independent of Auth0.
       # TOKEN_ENCRYPTION_KEY encrypts the stored refresh token (openssl rand -base64 32).
-      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:?Run ./waffled up to generate TOKEN_ENCRYPTION_KEY}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_CALENDAR_REDIRECT_URI: ${GOOGLE_CALENDAR_REDIRECT_URI:-}
@@ -161,9 +159,9 @@ services:
       NODE_OPTIONS: --max-old-space-size=1000
       PS_PORT: 8080
       # Replicate from our DB (needs the `powersync` publication: run `just migrate`).
-      PS_DATA_SOURCE_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      PS_DATA_SOURCE_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run ./waffled up to generate POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       # PowerSync's own bucket storage lives in the powersync_storage database.
-      PS_STORAGE_SOURCE_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/powersync_storage
+      PS_STORAGE_SOURCE_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run ./waffled up to generate POSTGRES_PASSWORD}@postgres:5432/powersync_storage
       # JWKS our api serves; clients present tokens minted by /api/powersync/token.
       PS_JWKS_URL: ${PS_JWKS_URL:-http://api:3000/api/auth/keys}
     ports:
@@ -226,7 +224,7 @@ services:
       migrate:
         condition: service_completed_successfully   # needs the backup_runs table (0071)
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run ./waffled up to generate POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       BACKUP_DIR: /backups
       TZ: ${TZ:-UTC}
       BACKUP_TIME: ${BACKUP_TIME:-02:00}                    # daily HH:MM (container TZ)

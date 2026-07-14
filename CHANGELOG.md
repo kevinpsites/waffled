@@ -13,20 +13,110 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Member logins now respect account ownership.** An administrator can update the login
+  already linked to a household profile, but an account owned by a different person must
+  join through the explicit invitation and acceptance flow.
+- **Sign-in callbacks now return only to Waffled.** OIDC login handoffs are restricted to
+  the current web origin or the registered native-app callback, and browser error pages
+  safely render messages returned by an identity provider.
+- **Uploaded media keys stay inside their household.** Photo, recipe, and chore-proof
+  attachments now reject malformed or cross-household keys, and local storage prevents
+  paths from escaping the configured media directory.
+- **Installation-wide login settings now have one recoverable owner.** Global login and
+  SSO configuration no longer accepts changes from administrators of any household;
+  ownership persists across household changes and can be recovered from the host admin CLI.
+- **Authenticated API responses no longer enter a shared browser cache.** The web service
+  worker removes API caches created by older versions; the app shell and PowerSync calendar
+  remain available offline, while REST-backed screens require the server instead of risking
+  another account's stale response.
+- **Production starts only with durable, non-default secrets.** Setup generates a stable
+  PowerSync signing key with the other required secrets, repairs missing environment values,
+  and refuses production startup when secrets are malformed or still use public development
+  defaults.
+
 ### Added
+- **Plan breakfast and lunch from the iPhone meal planner, not just dinner.** Each day in the
+  weekly planner now offers an add button for every unplanned meal — Breakfast, Lunch, and
+  Dinner — instead of a lone "Plan dinner" affordance, matching what the iPad grid already did.
+- **"Plan my week" and "Plan my month" now work even without an AI provider — they shuffle.**
+  Households that haven't configured an LLM used to get an error when they asked the planner to
+  fill a week or a month. Instead, the planner now deals a random hand from your own recipe
+  library: it fills only the empty dinner slots, skips anything already planned in that window or
+  cooked in the last couple of weeks, and leaves slots you've already set alone. No AI required,
+  and the app doesn't change — the same "Plan my week" / "Plan my month" buttons just always
+  return a plan.
+- **Dark mode.** Waffled now has a warm dark theme alongside the original light one, chosen from
+  **Settings → Appearance**: pick Light, Dark, or **Match system** to follow your device
+  automatically. It's a warm dark — surfaces and text move to soft charcoals rather than cold
+  black-and-blue, and every brand, accent, and per-person color stays exactly the same, so the app
+  still reads as Waffled with the lights off. The choice is saved per device and applies instantly,
+  including on the kitchen kiosk display.
 - **One-command cloud deploy to Oracle Cloud's Always Free tier via Terraform.** A new
   `infra/terraform/oci` module stands up the whole stack (Postgres, PowerSync, api, Caddy,
   backup) on a free Arm Ampere A1 instance and, when you give it a domain, fronts it with
-  automatic HTTPS — with offline-sync served over TLS on the same hostname by default (no
-  extra DNS record; optionally a different port or a dedicated hostname), fronted through the
-  stack's own Caddy knob. Pass your API keys and other config through named variables, and upgrade in place
-  on the box with the installed `waffled-oci upgrade` helper (which keeps the HTTPS config
-  across upgrades). `terraform apply` prints the public IP, the DNS records to create, and the
-  URL to open. See the module's `README.md` and the "Deploy to Oracle Cloud" guide.
+  automatic HTTPS — including a TLS front for offline-sync (a `powersync.` subdomain by default,
+  or a same-domain port / dedicated hostname). Pass your API keys and other config through named
+  variables. `terraform apply` prints the public IP, the DNS records to create, and the URL to
+  open. See the module's `README.md` and the "Deploy to Oracle Cloud" guide.
+- **`./waffled` can layer an extra Compose override.** A `--override <file>` flag and an
+  auto-loaded `infra/compose/docker-compose.override.yml` let a deployment add published ports or
+  mounts without editing tracked files — used by the Oracle Cloud deploy so plain `./waffled
+  up`/`upgrade` keep its HTTPS front across upgrades.
 
 ### Changed
+- **New chores now default to a one-off on the day you're viewing, and each day's list is sorted sensibly.** On iPhone/iPad, adding a chore from the Chores tab now starts as "Just once" due on the day currently shown — instead of a recurring daily chore always due today. A day's chores are also ordered unfinished-first, then by due time (earliest first, untimed last), then A–Z.
+- **Cook Mode on iPad now keeps the current step's ingredients in a left sidebar.** Instead of
+  the ingredients scrolling away beneath the big instruction, the iPad wall display pins them in
+  a fixed left-hand column so you can glance at what a step needs while the instruction fills the
+  rest of the screen. iPhone keeps its single scrolling column with ingredients inline.
+- **The color system is now a single source of truth.** Every color the web app uses is defined
+  once as a design token (including new semantic tokens for success / warning / danger / info),
+  and the scattered one-off hex values that had crept in were consolidated onto them. This is what
+  makes dark mode consistent — and keeps future color changes to one place.
+
+- **The self-hosting quick start is now copy-pasteable for first-time Docker users.** It
+  explains the required terminal, initial credentials, success checks, and safe troubleshooting.
 
 ### Fixed
+- **Upgrades now stop when their safety checks fail.** `./waffled upgrade` aborts after
+  a failed repository fast-forward or database backup unless backup skipping is explicit.
+
+- **Up-for-grabs chores now appear on Today.** The Family Chores card shows unassigned
+  chores that anyone can claim instead of incorrectly saying there are no chores yet.
+
+- **The iOS photo grid now reuses decoded images while scrolling.** Photo tiles no longer
+  refetch and decode the same image whenever SwiftUI recreates a grid cell.
+- **`./waffled up` now waits for health checks before showing its final status.** Normal startup
+  no longer looks like a failure just because API, PowerSync, or Caddy is still warming up.
+
+- **The iPhone Goals list now updates itself after you change a goal.** Deleting a goal, logging
+  progress, ticking a checklist step, or editing an entry from a goal's detail screen now refreshes
+  the list the moment you go back — no more stale card until you pull-to-refresh.
+- **Participant chips in the Goals log sheet no longer jump around when tapped.** Selecting who took
+  part keeps each chip the same size instead of growing and nudging its neighbours sideways.
+- **Chores tab feels right on iPhone: swipe between days, and no more empty reward badge.** You can now swipe left or right on the chores list to step a day at a time (matching the calendar), and a chore with no star reward no longer shows a stray "★ 0".
+- **Tap a candidate in "Plan my week with AI" to preview its recipe.** In the AI plan review,
+  tapping a suggestion card's emoji and title now opens the full recipe detail (swap, pick, and
+  lock still work as before); brand-new "✨ New dish" suggestions have nothing to open yet, so
+  their tap does nothing.
+- **Cook Mode now stays open when you leave the app and comes back where you were.** On the
+  iPad, backgrounding the app (Home button or app switcher) used to drop you back on Today and
+  lose Cook Mode entirely; now Cook Mode — and any running timers — survive backgrounding and are
+  right there when you return, still on the current step. Tapping a fired timer's notification
+  also re-opens Cook Mode at the exact step whose timer went off. Finishing a cook from Cook
+  Mode still offers the "Used from your pantry" update so your on-hand stock stays accurate.
+- **Cook Mode timers now reliably alert you after you leave the app.** A running step timer's
+  notification used to be cancelled the moment Cook Mode closed — including when you simply pressed
+  Home — so backgrounding the app with a timer running meant no alert ever fired. The pending
+  alert is now kept alive across backgrounding and only cleared when you actually pause or dismiss
+  the timer.
+- **Cook Mode timers now say which timer went off and alert like a proper kitchen alarm.** When
+  several step timers are running at once, the "Timer done" screen and the out-of-app
+  notification now name the specific timer (e.g. "Step 5 · 3-minute timer") instead of just its
+  step, and the notification is marked time-sensitive so it breaks through Focus and the
+  notification summary when you've stepped away from the app.
 
 ## [0.7.0] - 2026-07-10
 

@@ -5,7 +5,7 @@
 // membership accounts behave exactly as today (no forced picker). Refresh re-mints
 // account-scoped tokens and UPGRADES in-flight legacy refresh tokens.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { randomBytes, randomUUID } from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
@@ -25,6 +25,7 @@ let kevinAccountId = ''
 let wallyPersonId = ''
 let householdA = ''
 let householdB = ''
+let victimAccountId = ''
 
 interface RunResult { statusCode: number; body: string }
 function call(method: string, path: string, token?: string, body?: unknown): Promise<RunResult> {
@@ -72,6 +73,19 @@ beforeAll(async () => {
   const hb = await query(`insert into households (name, timezone) values ('B','America/Chicago') returning id`)
   householdB = hb.rows[0].id
   await query(`insert into persons (household_id, name, member_type, is_admin, account_id) values ($1,'KevinB','adult',true,$2)`, [householdB, kevinAccountId])
+
+  // A separate human who belongs only to household B. Household A's admin must
+  // not be able to attach this account or replace its global password by email.
+  const { hashPassword } = await import('../src/modules/auth/auth')
+  const victim = await query(
+    `insert into accounts (email, password_hash, last_household_id) values ('victim@example.com',$1,$2) returning id`,
+    [hashPassword('victim-original1'), householdB]
+  )
+  victimAccountId = victim.rows[0].id
+  await query(
+    `insert into persons (household_id, name, member_type, account_id) values ($1,'Victim','adult',$2)`,
+    [householdB, victimAccountId]
+  )
 }, 60_000)
 
 afterAll(async () => {
@@ -127,6 +141,33 @@ describe('P2.2 account login', () => {
   it('rejects a wrong password and a missing field (unchanged)', async () => {
     expect((await call('POST', '/api/auth/login', undefined, { email: 'kevin@example.com', password: 'nope' })).statusCode).toBe(401)
     expect((await call('POST', '/api/auth/login', undefined, { email: 'kevin@example.com' })).statusCode).toBe(400)
+  })
+
+  it('does not attach or reset an account that belongs to another household', async () => {
+    const candidate = json(await call('POST', '/api/persons', ownerToken, { name: 'Candidate', memberType: 'adult' })).person.id
+
+    const grant = await call('PUT', `/api/persons/${candidate}/login`, ownerToken, {
+      email: 'victim@example.com',
+      password: 'attacker-chosen1',
+    })
+    expect(grant.statusCode).toBe(409)
+
+    expect((await call('POST', '/api/auth/login', undefined, {
+      email: 'victim@example.com',
+      password: 'victim-original1',
+    })).statusCode).toBe(200)
+    expect((await call('POST', '/api/auth/login', undefined, {
+      email: 'victim@example.com',
+      password: 'attacker-chosen1',
+    })).statusCode).toBe(401)
+
+    const candidateAccount = await query(`select account_id from persons where id = $1`, [candidate])
+    expect(candidateAccount.rows[0].account_id).toBeNull()
+    const victimMemberships = await query(
+      `select household_id from persons where account_id = $1 and deleted_at is null`,
+      [victimAccountId]
+    )
+    expect(victimMemberships.rows.map((r: { household_id: string }) => r.household_id)).toEqual([householdB])
   })
 
   it('refresh re-mints an account-scoped token that still resolves', async () => {

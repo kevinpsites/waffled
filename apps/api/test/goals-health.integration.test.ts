@@ -3,7 +3,7 @@
 // habits, idempotent per person/metric/day). Own Postgres testcontainer + app, mirroring
 // goals.integration.test.ts.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'

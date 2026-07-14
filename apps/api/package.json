@@ -14,7 +14,8 @@
     "migrate:down": "node-pg-migrate down",
     "check:migrations": "node scripts/check-migration-numbers.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",

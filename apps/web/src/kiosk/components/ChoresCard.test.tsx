@@ -8,10 +8,10 @@ const CURRENCIES = [
 
 // Mock chores/today, currencies, and household. `capabilities` controls whether
 // the current person holds reward.grant (drives the Spot-award quick-tap).
-function mockAll(people: unknown[], capabilities: string[] = []) {
+function mockAll(people: unknown[], capabilities: string[] = [], upForGrabs = 0) {
   globalThis.fetch = vi.fn(async (url: string) => {
     const u = String(url)
-    if (u.includes('/api/chores/today')) return { ok: true, json: async () => ({ date: '2026-06-08', people }) }
+    if (u.includes('/api/chores/today')) return { ok: true, json: async () => ({ date: '2026-06-08', people, upForGrabs }) }
     if (u.includes('/api/currencies')) return { ok: true, json: async () => ({ currencies: CURRENCIES }) }
     if (u.includes('/api/household')) return {
       ok: true,
@@ -50,6 +50,17 @@ describe('ChoresCard', () => {
     ])
     renderCard()
     expect(await screen.findByText(/No chores yet/)).toBeInTheDocument()
+    expect(screen.queryByText('Kevin')).not.toBeInTheDocument()
+  })
+
+  it('shows up-for-grabs chores instead of the empty state', async () => {
+    mockAll([
+      { id: '1', name: 'Kevin', avatarEmoji: '🐻', colorHex: '#2F7FED', memberType: 'adult', isAdmin: true, total: 0, done: 0, stars: 0 },
+    ], [], 2)
+    renderCard()
+    expect(await screen.findByText('Up for grabs')).toBeInTheDocument()
+    expect(screen.getByText('2 chores available')).toBeInTheDocument()
+    expect(screen.queryByText(/No chores yet/)).not.toBeInTheDocument()
     expect(screen.queryByText('Kevin')).not.toBeInTheDocument()
   })
 

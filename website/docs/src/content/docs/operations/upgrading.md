@@ -23,14 +23,15 @@ That does the whole thing, in order:
 1. **Fast-forwards the repo** (`git pull --ff-only`). The tagged repo and the images
    are a *matched pair* — the compose file, configs, and `./waffled` script must agree
    with the image you're about to run — so the code is updated first. If the pull can't
-   fast-forward (local changes or diverged history), it **warns and skips** rather than
-   clobbering your tree; resolve it and re-run.
-2. **Bumps `WAFFLED_VERSION` in your `.env`** to match the version this checkout points
+   fast-forward (local changes or diverged history), the upgrade **stops before changing
+   images**; resolve the repository state and re-run.
+2. **Takes a database backup** (via the running backup sidecar) as your rollback point,
+   *before* changing the version pin or images. If the backup service is unavailable or
+   the backup fails, the upgrade stops.
+3. **Bumps `WAFFLED_VERSION` in your `.env`** to match the version this checkout points
    at. This is the step that used to be manual: `./waffled` only writes `.env` on first
    run, so an existing `.env` kept its *old* version and a plain `./waffled up` would
    re-pull the old image.
-3. **Takes a database backup** (via the running backup sidecar) as your rollback point,
-   *before* anything changes. Best-effort — a partial/not-yet-running install just skips it.
 4. **Pulls the new images and restarts** the stack. The one-shot **migrate** service
    reruns automatically (the image tag changed) and applies any new migrations before
    `api` comes up.
@@ -38,6 +39,11 @@ That does the whole thing, in order:
 
 Migrations are **idempotent** — only the ones you don't have yet are applied, and it's
 safe to re-run `upgrade`.
+
+If you have independently created and verified a rollback point, you can explicitly bypass
+the automatic snapshot with `./waffled upgrade --skip-backup`. This is intentionally opt-in:
+without a matching pre-upgrade database backup, a forward-only migration cannot be cleanly
+rolled back.
 
 ### You'll be told when there's an update
 

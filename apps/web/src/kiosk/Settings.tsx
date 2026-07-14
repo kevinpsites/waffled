@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from '
 import { useSearchParams } from 'react-router'
 import { personsApi, permissionsApi, healthApi, updatesApi, type UpdateInfo, accountApi, type AccountInfo, apiKeysApi, captureApi, calendarsApi, mealsApi, currenciesApi, conversionsApi, rewardsApi, choresApi, goalCalendarApi, groceryApi, authApi, kioskApi, usePantry, pantryApi, useCountdowns, countdownsApi, DEFAULT_BIRTHDAY_HORIZON_DAYS, useFamilyNight, familyNightApi, weekdayName, type FamilyNightPart, ALLERGEN_LABELS, ALLERGEN_KEYS, isDisplayMode, setDisplayMode, isKioskMode, usePersons, useCurrencies, useConversions, useHousehold, useHouseholdSettings, useWeather, useEventsToday, usePhotos, emitHouseholdChanged, CAPABILITIES, CAPABILITY_LABELS, ROLE_LABELS, type SettingsMember, type CaptureConfig, type Provider, type CalendarStatus, type CalendarLink, type MealCalendarSettings, type Currency, type MemoryGroup, type PantryStaple, type OidcConfig, type OidcConfigPatch, type KioskDevice, type DisplayConfig, type StoredProof, type PermissionMatrix, type Role, type Capability, type HealthReport, type HealthStatus, type ApiKey, type ApiScopeDef } from '../lib/api'
 import { MODULES, moduleEnabled } from '../lib/modules'
+import { useThemePref } from '../lib/theme'
 import { PersonModal } from './components/PersonModal'
 import { SettingCard } from './components/SettingCard'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -15,6 +16,7 @@ import '../styles/settings.css'
 // account/operator. Account is thin today; it grows with per-member self-service later.
 const NAV = [
   // Account — you
+  { key: 'appearance', icon: '🌗', label: 'Appearance', group: 'account' },
   { key: 'profile', icon: '🙂', label: 'My Profile', group: 'account' },
   { key: 'account', icon: '🔒', label: 'My Account', group: 'account' },
   { key: 'households', icon: '🏠', label: 'Households', group: 'account' },
@@ -686,7 +688,7 @@ function MyProfilePanel() {
           <button type="button" className="btn btn-primary" onClick={save} disabled={!dirty || !name.trim() || saving}>
             {saving ? 'Saving…' : 'Save'}
           </button>
-          {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+          {saved && <span className="tiny" style={{ color: 'var(--success)', fontWeight: 700 }}>✓ Saved</span>}
         </div>
         {saveErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10 }}>{saveErr}</div>}
       </SettingCard>
@@ -793,7 +795,7 @@ function MyAccountPanel() {
               <button type="button" className="btn btn-primary" onClick={saveEmail} disabled={emailBusy || !email.trim() || !emailPw || email.trim() === (info.email ?? '')}>
                 {emailBusy ? 'Saving…' : 'Update email'}
               </button>
-              {emailOk && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+              {emailOk && <span className="tiny" style={{ color: 'var(--success)', fontWeight: 700 }}>✓ Saved</span>}
             </div>
             {emailErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10 }}>{emailErr}</div>}
           </SettingCard>
@@ -816,7 +818,7 @@ function MyAccountPanel() {
               <button type="button" className="btn btn-primary" onClick={savePassword} disabled={pwBusy || !curPw || !newPw || !confirmPw}>
                 {pwBusy ? 'Saving…' : 'Update password'}
               </button>
-              {pwOk && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+              {pwOk && <span className="tiny" style={{ color: 'var(--success)', fontWeight: 700 }}>✓ Saved</span>}
             </div>
             {pwErr && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10 }}>{pwErr}</div>}
           </SettingCard>
@@ -872,7 +874,7 @@ function KioskPinCard({ personId, hasPin }: { personId: string; hasPin: boolean 
           {busy ? 'Saving…' : pinSet ? 'Update PIN' : 'Set PIN'}
         </button>
         {pinSet && <button type="button" className="btn btn-ghost" onClick={remove} disabled={busy}>Remove PIN</button>}
-        {ok && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+        {ok && <span className="tiny" style={{ color: 'var(--success)', fontWeight: 700 }}>✓ Saved</span>}
       </div>
       {err && <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)', marginTop: 10 }}>{err}</div>}
     </SettingCard>
@@ -1142,7 +1144,7 @@ function AiPanel() {
         <button type="button" className="btn btn-primary" onClick={save} disabled={!dirty || saving}>
           {saving ? 'Saving…' : 'Save'}
         </button>
-        {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+        {saved && <span className="tiny" style={{ color: 'var(--success)', fontWeight: 700 }}>✓ Saved</span>}
         <span className="tiny muted" style={{ fontWeight: 600 }}>
           Keys are read from the server environment and never leave it.
         </span>
@@ -1256,7 +1258,7 @@ function MealsPanel() {
     <div className="set-panel">
       <div className="set-head" style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
         <div className="wf-serif set-head-t">Meals</div>
-        {savedFlash && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved · meals updated</span>}
+        {savedFlash && <span className="tiny" style={{ color: 'var(--success)', fontWeight: 700 }}>✓ Saved · meals updated</span>}
         <span className="tiny muted" style={{ marginLeft: 'auto', fontWeight: 600 }}>Changes save automatically</span>
       </div>
 
@@ -1483,7 +1485,7 @@ function CalendarsPanel() {
                 {cal.visibility === 'personal' ? '🔒 Private (only you)' : '👪 Family viewable'}
               </span>
             )}
-            {cal.isWriteTarget && <span style={{ color: 'var(--accent, #4c8bf5)' }}> · ★ new events go here</span>}
+            {cal.isWriteTarget && <span style={{ color: 'var(--info)' }}> · ★ new events go here</span>}
           </div>
         </div>
         {canTarget && (
@@ -1555,7 +1557,7 @@ function CalendarsPanel() {
         )}
       </div>
 
-      {syncMsg && <div className="tiny" style={{ fontWeight: 700, margin: '0 2px 12px', color: 'var(--ink, #2b2b2b)' }}>{syncMsg}</div>}
+      {syncMsg && <div className="tiny" style={{ fontWeight: 700, margin: '0 2px 12px', color: 'var(--ink)' }}>{syncMsg}</div>}
 
       {!status.connected ? (
         <SettingCard>
@@ -2011,7 +2013,7 @@ function RewardsSettingsPanel() {
         <div className="cur-add">
           <input className="cur-sym" value={newSymbol} maxLength={2} placeholder="⭐" aria-label="New symbol" onChange={(e) => setNewSymbol(e.target.value)} />
           <input className="cur-label" value={newLabel} placeholder="Add a currency (e.g. Family Dollars)" aria-label="New label" onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
-          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={adding || !newLabel.trim()} onClick={add}>＋ Add</button>
+          <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0 }} disabled={adding || !newLabel.trim()} onClick={add}>＋ Add</button>
         </div>
         {currencies.length > 1 && <ConversionsSection currencies={currencies} />}
       </SettingCard>
@@ -2066,7 +2068,7 @@ function ConversionsSection({ currencies }: { currencies: Currency[] }) {
         <select className="conv-cur" value={toCur} onChange={(e) => setToCur(e.target.value)} aria-label="To currency">
           {currencies.map((c) => <option key={c.key} value={c.key}>{(c.symbol ? `${c.symbol} ` : '') + c.label}</option>)}
         </select>
-        <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={busy || fromCur === toCur} onClick={add}>＋ Add</button>
+        <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0 }} disabled={busy || fromCur === toCur} onClick={add}>＋ Add</button>
       </div>
     </>
   )
@@ -2490,9 +2492,9 @@ function HouseholdsPanel() {
   )
 }
 
-// Login & security (admin only) — attach an OIDC/SSO provider and decide whether
-// password login stays on. Immich-style: config lives in the DB, edited here. The
-// client secret is write-only (server returns only whether one is set).
+// Login & security — the installation owner can attach an OIDC/SSO provider and
+// decide whether password login stays on. Household admins still manage their own
+// kiosk devices below. The client secret is write-only.
 function SecurityPanel() {
   const [cfg, setCfg] = useState<OidcConfig | null>(null)
   const [forbidden, setForbidden] = useState(false)
@@ -2522,7 +2524,17 @@ function SecurityPanel() {
     authApi.getConfig().then(hydrate).catch(() => setForbidden(true))
   }, [])
 
-  if (forbidden) return <div className="set-panel"><div className="set-head"><div className="wf-serif set-head-t">Sign-in &amp; Security</div></div><SettingCard><div className="muted" style={{ fontWeight: 600 }}>Only an admin can manage sign-in settings.</div></SettingCard></div>
+  if (forbidden) return (
+    <div className="set-panel">
+      <div className="set-head"><div className="wf-serif set-head-t">Sign-in &amp; Security</div></div>
+      <SettingCard>
+        <div className="muted" style={{ fontWeight: 600 }}>
+          Only the installation owner can manage login methods and SSO settings.
+        </div>
+      </SettingCard>
+      <KioskDevicesSection />
+    </div>
+  )
   if (!cfg) return <div className="set-panel"><div className="muted" style={{ padding: 20 }}>Loading…</div></div>
 
   async function test() {
@@ -2571,12 +2583,12 @@ function SecurityPanel() {
     <div className="set-panel">
       <div className="set-head" style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
         <div className="wf-serif set-head-t">Sign-in &amp; Security</div>
-        {saved && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+        {saved && <span className="tiny" style={{ color: 'var(--success)', fontWeight: 700 }}>✓ Saved</span>}
       </div>
 
       {!cfg.encryptionAvailable && (
         <SettingCard style={{ marginBottom: 16 }}>
-          <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary, #e0653f)' }}>
+          <div className="tiny" style={{ fontWeight: 700, color: 'var(--primary)' }}>
             Set <code>TOKEN_ENCRYPTION_KEY</code> in the server environment to store the OIDC client secret securely. OIDC can't be enabled until then.
           </div>
         </SettingCard>
@@ -2593,7 +2605,7 @@ function SecurityPanel() {
             <input className="set-inline-input" style={{ flex: 1, width: 'auto' }} value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="https://auth.example.com/application/o/waffled/" />
             <button type="button" className="btn btn-ghost" onClick={test} disabled={busy || !issuer.trim()}>Test</button>
           </div>
-          {testMsg && <div className="tiny" style={{ fontWeight: 700, marginTop: 6, color: testMsg.ok ? 'var(--good, #2e7d32)' : 'var(--primary, #e0653f)' }}>{testMsg.text}</div>}
+          {testMsg && <div className="tiny" style={{ fontWeight: 700, marginTop: 6, color: testMsg.ok ? 'var(--success)' : 'var(--primary)' }}>{testMsg.text}</div>}
 
           <label className="auth-label">Client ID</label>
           <input className="set-inline-input" style={{ width: '100%' }} value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="waffled" />
@@ -2711,7 +2723,7 @@ function KioskDevicesSection() {
       <CardHeader title="Kiosk Devices" sub="Turn a tablet into a shared family display with a profile picker. Pair it from here, or set up the tablet itself with a code." />
 
       {adminsNoPin.length > 0 && (
-        <SettingCard style={{ marginBottom: 14, borderLeft: '3px solid var(--primary, #e0653f)' }}>
+        <SettingCard style={{ marginBottom: 14, borderLeft: '3px solid var(--primary)' }}>
           <div className="set-row2-t" style={{ marginBottom: 4 }}>⚠️ Set a PIN for your admins</div>
           <div className="tiny muted" style={{ fontWeight: 600 }}>
             On a shared kiosk, anyone can tap an admin profile with no PIN and gain full control.
@@ -2726,7 +2738,7 @@ function KioskDevicesSection() {
           {busy ? 'Generating…' : 'Generate pairing code'}
         </button>
       </div>
-      {note && <div className="tiny" style={{ fontWeight: 700, color: 'var(--good, #2e7d32)', marginTop: 10 }}>{note}</div>}
+      {note && <div className="tiny" style={{ fontWeight: 700, color: 'var(--success)', marginTop: 10 }}>{note}</div>}
       {code && (
         <div style={{ marginTop: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -2865,7 +2877,7 @@ function DisplayKioskPanel() {
     <div className="set-panel">
       <div className="set-head" style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
         <div className="wf-serif set-head-t">Display &amp; Kiosk</div>
-        {savedFlash && <span className="tiny" style={{ color: 'var(--good, #2e7d32)', fontWeight: 700 }}>✓ Saved</span>}
+        {savedFlash && <span className="tiny" style={{ color: 'var(--success)', fontWeight: 700 }}>✓ Saved</span>}
         <span className="tiny muted" style={{ marginLeft: 'auto', fontWeight: 600 }}>Screensaver settings save automatically</span>
       </div>
 
@@ -3004,6 +3016,77 @@ function DisplayKioskPanel() {
   )
 }
 
+// Appearance — theme preference (Light / Dark / Match system). Stored per-device
+// in localStorage via the theme store; applies instantly, no server round-trip.
+// The two preview cards intentionally use fixed literal hexes — they DEPICT each
+// theme, so they must stay light/dark regardless of the active theme.
+function ThemePreview({ label, active, pinned, colors, onSelect }: {
+  label: string
+  active: boolean
+  pinned: boolean
+  colors: { bg: string; card: string; line: string }
+  onSelect: () => void
+}) {
+  return (
+    <button type="button" className={`appr-card${pinned ? ' pinned' : ''}`} aria-pressed={pinned} onClick={onSelect}>
+      <div className="appr-mini" style={{ background: colors.bg }}>
+        <span className="appr-mini-line" style={{ background: colors.line }} />
+        <span className="appr-mini-card" style={{ background: colors.card }} />
+        <span className="appr-mini-card sm" style={{ background: colors.card }} />
+      </div>
+      <div className="appr-card-lbl">
+        {active && <span className="appr-check" aria-hidden="true">✓</span>}
+        {label}
+      </div>
+    </button>
+  )
+}
+
+function AppearancePanel() {
+  const { pref, resolved, setPref } = useThemePref()
+  const matchSystem = pref === 'system'
+  return (
+    <div className="set-panel">
+      <div className="set-head"><div className="wf-serif set-head-t">Appearance</div></div>
+
+      <div className="flabel" style={{ padding: '0 2px 10px' }}>THEME</div>
+      <div className="appr-grid">
+        <ThemePreview
+          label="Light"
+          active={resolved === 'light'}
+          pinned={pref === 'light'}
+          colors={{ bg: '#FAF7F2', card: '#FFFFFF', line: '#C9C3B8' }}
+          onSelect={() => setPref('light')}
+        />
+        <ThemePreview
+          label="Dark"
+          active={resolved === 'dark'}
+          pinned={pref === 'dark'}
+          colors={{ bg: '#14110C', card: '#232019', line: '#4A453C' }}
+          onSelect={() => setPref('dark')}
+        />
+      </div>
+
+      <SettingCard style={{ marginTop: 4 }}>
+        <SettingRow icon="🌗" title="Match system" sub="Follow your device's light/dark setting automatically.">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={matchSystem}
+            aria-label="Match system appearance"
+            className={`toggle ${matchSystem ? 'on' : ''}`}
+            onClick={() => setPref(matchSystem ? resolved : 'system')}
+          />
+        </SettingRow>
+      </SettingCard>
+
+      <div className="tiny muted" style={{ padding: '12px 2px 0', fontWeight: 600 }}>
+        This choice is saved on this device only.
+      </div>
+    </div>
+  )
+}
+
 export function Settings() {
   const { household, person, memberships, pendingInvites } = useHousehold()
   // Tab lives in the URL (?tab=) so a refresh returns to where you were.
@@ -3035,7 +3118,9 @@ export function Settings() {
   // the shared kiosk, never for a login-less member.
   const showAccount = !isKioskMode() && !!account?.hasAccount
   const nav = NAV.filter((n) => (!n.admin || isAdmin) && (n.key !== 'households' || showHouseholds) && ((n.key !== 'profile' && n.key !== 'account') || showAccount))
-  const activeTab = nav.some((n) => n.key === tab) ? tab : (nav[0]?.key ?? 'about')
+  // Fall back to About (holds sign-out & account info) rather than whatever
+  // happens to sort first, so a limited/kiosk user lands somewhere sensible.
+  const activeTab = nav.some((n) => n.key === tab) ? tab : (nav.some((n) => n.key === 'about') ? 'about' : nav[0]?.key ?? 'about')
 
   return (
     <div className="settings-screen">
@@ -3058,7 +3143,7 @@ export function Settings() {
         </div>
       </div>
       <div className="set-content">
-        {activeTab === 'profile' ? <MyProfilePanel /> : activeTab === 'account' ? <MyAccountPanel /> : activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <><CalendarsPanel /><CountdownsSettings /></> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'modules' ? <ModulesPanel /> : activeTab === 'apikeys' ? <ApiKeysPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
+        {activeTab === 'appearance' ? <AppearancePanel /> : activeTab === 'profile' ? <MyProfilePanel /> : activeTab === 'account' ? <MyAccountPanel /> : activeTab === 'family' ? <FamilyPanel /> : activeTab === 'ai' ? <AiPanel /> : activeTab === 'calendars' ? <><CalendarsPanel /><CountdownsSettings /></> : activeTab === 'meals' ? <MealsPanel /> : activeTab === 'chores' ? <RewardsSettingsPanel /> : activeTab === 'security' ? <SecurityPanel /> : activeTab === 'display' ? <DisplayKioskPanel /> : activeTab === 'health' ? <SystemHealthPanel /> : activeTab === 'modules' ? <ModulesPanel /> : activeTab === 'apikeys' ? <ApiKeysPanel /> : activeTab === 'households' ? <HouseholdsPanel /> : activeTab === 'about' ? <AboutPanel /> : <Placeholder tab={activeTab} />}
       </div>
     </div>
   )

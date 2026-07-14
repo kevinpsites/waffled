@@ -303,6 +303,13 @@ struct GoalsView: View {
             }
             if DemoHooks.newGoal, !Self.didOpenGoal { Self.didOpenGoal = true; creating = true }
         }
+        // GoalDetailView owns a SEPARATE model, so deletes / logged progress / step
+        // ticks / entry edits there don't touch this list's model. When the user pops
+        // back (path shrinks), reload the selected list so those changes show without a
+        // manual pull-to-refresh. Only fires on return — pushing in grows the path.
+        .onChange(of: path) { oldPath, newPath in
+            if newPath.count < oldPath.count { Task { await model.loadGoals() } }
+        }
         .refreshable { await model.loadLists(); await model.syncHealth() }
         .sheet(item: $logging) { g in
             GoalLogSheet(goal: g, onChanged: { Task { await model.loadGoals() } }) { amount, hours, minutes, ids, note, loggedOn in
@@ -999,10 +1006,11 @@ struct GoalLogSheet: View {
                             Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 24)
                             Text(goalFirstName(p.name)).font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(on ? WF.ink : WF.ink2)
-                            if on {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 14)).foregroundStyle(WF.primary)
-                            }
+                            // Always render the checkmark and toggle visibility so the chip
+                            // width stays fixed on select (inserting it shifted neighbours).
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 14)).foregroundStyle(WF.primary)
+                                .opacity(on ? 1 : 0)
                         }
                         .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
                         .wfChip(selected: on)
@@ -2298,7 +2306,8 @@ struct GoalEntryEditSheet: View {
                                             HStack(spacing: 7) {
                                                 Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 24)
                                                 Text(goalFirstName(p.name)).font(.system(size: 14, weight: .semibold)).foregroundStyle(on ? WF.ink : WF.ink2)
-                                                if on { Image(systemName: "checkmark.circle.fill").font(.system(size: 14)).foregroundStyle(WF.primary) }
+                                                // Always render + fade the checkmark so the chip width stays fixed on select.
+                                                Image(systemName: "checkmark.circle.fill").font(.system(size: 14)).foregroundStyle(WF.primary).opacity(on ? 1 : 0)
                                             }
                                             .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6).wfChip(selected: on)
                                         }.buttonStyle(.plain)

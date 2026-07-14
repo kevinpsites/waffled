@@ -166,7 +166,7 @@ export function Pantry() {
         <input className="pl-search" placeholder={`Search all ${counts.all} items…`} value={q} onChange={(e) => setQ(e.target.value)} />
         <div className="pl-head-actions">
           <button type="button" className="pill" onClick={() => setScanning(true)}>⛶ Scan</button>
-          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} onClick={() => setEditing('new')}>+ Add item</button>
+          <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0 }} onClick={() => setEditing('new')}>+ Add item</button>
         </div>
       </div>
 
@@ -266,7 +266,7 @@ export function Pantry() {
               {shownUsed.map((it) => (
                 <div key={it.id} className={`pantry-item used${busy === it.id ? ' busy' : ''}`}>
                   <div className="pantry-item-main static"><span className="pantry-item-name">{it.name}</span><span className="pantry-used-tag">• Used up</span></div>
-                  <button type="button" className="pill btn-primary pantry-used-buy" style={{ color: '#fff', border: 0 }} disabled={busy === it.id} onClick={() => toShoppingList(it)}>+ Shopping list</button>
+                  <button type="button" className="pill btn-primary pantry-used-buy" style={{ color: 'var(--on-accent)', border: 0 }} disabled={busy === it.id} onClick={() => toShoppingList(it)}>+ Shopping list</button>
                   <button type="button" className="pill pantry-used-remove" disabled={busy === it.id} onClick={() => removeItem(it)}>Remove</button>
                 </div>
               ))}
@@ -575,7 +575,7 @@ function ItemModal({ item, locations, onClose, onSaved }: {
           {item && <button type="button" className="pill pantry-del" disabled={saving} onClick={remove}>Delete</button>}
           <span style={{ flex: 1 }} />
           <button type="button" className="pill" disabled={saving} onClick={onClose}>Cancel</button>
-          <button type="button" className="pill btn-primary" style={{ color: '#fff', border: 0 }} disabled={saving || !name.trim()} onClick={save}>
+          <button type="button" className="pill btn-primary" style={{ color: 'var(--on-accent)', border: 0 }} disabled={saving || !name.trim()} onClick={save}>
             {saving ? 'Saving…' : item ? 'Save' : 'Add'}
           </button>
         </div>

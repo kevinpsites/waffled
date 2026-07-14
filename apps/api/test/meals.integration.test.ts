@@ -1,6 +1,6 @@
 // Meals domain — migration + api. Shares one Postgres testcontainer + app.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { Client } from 'pg'
 import jwt from 'jsonwebtoken'
 import { stat, rm } from 'node:fs/promises'
@@ -59,6 +59,7 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 
 const kevin = mint('dev|kevin')
 let kevinId = ''
+let householdId = ''
 let mediaDir = ''
 
 beforeAll(async () => {
@@ -79,7 +80,7 @@ beforeAll(async () => {
   })
   expect(setup.statusCode).toBe(201)
   kevinId = JSON.parse(setup.body).person.id
-  const householdId = JSON.parse(setup.body).household.id
+  householdId = JSON.parse(setup.body).household.id
   // Seed an identity so the legacy mint('dev|kevin') token resolves to the owner.
   await withClient((c) =>
     c.query(
@@ -428,18 +429,17 @@ describe('meal planning api', () => {
 
   // "Try New Recipe": the AI planner accepts steering toward novelty — a
   // `trySomethingNew` toggle and a `wantToTry` list of specific dishes. The test
-  // container has no LLM provider selected → heuristic → the prompt is built and
-  // the request accepted, then completeJson throws → route maps to 501. We assert
+  // container has no LLM provider selected → heuristic → plan-week shuffles the
+  // empty slots from the library (200, via:'shuffle') rather than 501ing. We assert
   // the new inputs are accepted the same as a plain plan-week (no 400 / no crash).
-  it('plan-week accepts wantToTry + trySomethingNew (501 with no AI provider, like a plain plan-week)', async () => {
-    // Use a week window with no prior plans so a target date actually reaches the
-    // LLM (an empty/filled window short-circuits to 200 before completeJson).
+  it('plan-week accepts wantToTry + trySomethingNew (shuffles with no AI provider, like a plain plan-week)', async () => {
     const plain = await call('POST', '/api/meals/plan-week', kevin, {
       start: '2026-06-22',
       mealType: 'dinner',
       dates: ['2026-06-24'],
     })
-    expect(plain.statusCode).toBe(501)
+    expect(plain.statusCode).toBe(200)
+    expect(JSON.parse(plain.body).via).toBe('shuffle')
 
     const steered = await call('POST', '/api/meals/plan-week', kevin, {
       start: '2026-06-22',
@@ -448,9 +448,9 @@ describe('meal planning api', () => {
       trySomethingNew: true,
       wantToTry: ['Shakshuka', 'Bibimbap'],
     })
-    // Same accepted path — the new fields don't 400 or blow up prompt building.
+    // Same accepted path — the new fields don't 400 or blow up the shuffle branch.
     expect(steered.statusCode).toBe(plain.statusCode)
-    expect(steered.statusCode).toBe(501)
+    expect(JSON.parse(steered.body).via).toBe('shuffle')
   })
 })
 
@@ -712,6 +712,17 @@ describe('recipe images (blob storage)', () => {
     // And it survives a GET (presenter path).
     const got = JSON.parse((await call('GET', `/api/recipes/${recipe.id}`, kevin)).body).recipe
     expect(got.imageUrl).toBe(`/media/${key}`)
+  })
+
+  it('rejects storage keys outside the active household namespace', async () => {
+    expect((await call('POST', '/api/recipes', kevin, {
+      title: 'Unsafe', storageKey: `${householdId}/../../etc/passwd`, contentType: 'image/jpeg',
+    })).statusCode).toBe(400)
+
+    const recipe = JSON.parse((await call('POST', '/api/recipes', kevin, { title: 'Safe' })).body).recipe
+    expect((await call('PATCH', `/api/recipes/${recipe.id}`, kevin, {
+      storageKey: '22222222-2222-2222-2222-222222222222/other.jpg',
+    })).statusCode).toBe(400)
   })
 
   it('PATCH replacing the image drops the old blob; soft-delete drops the current one', async () => {

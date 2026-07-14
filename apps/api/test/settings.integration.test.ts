@@ -1,7 +1,7 @@
 // Settings domain — household settings read + update, on top of the existing
 // persons CRUD. Shares one Postgres testcontainer + app.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
 

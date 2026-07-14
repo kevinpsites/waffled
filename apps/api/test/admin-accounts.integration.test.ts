@@ -6,7 +6,7 @@
 //   - list-accounts shows one human → all their households.
 // Drives the CLI command functions directly (like admin-cli.integration.test.ts).
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { randomBytes } from 'node:crypto'
 import { runMigrations } from '../src/migrate'
 

@@ -1,7 +1,7 @@
 // Built-in auth: setup → login → refresh → authed request. Fresh container so the
 // instance starts uninitialized.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { runMigrations } from '../src/migrate'
 
 let pg: StartedPostgreSqlContainer

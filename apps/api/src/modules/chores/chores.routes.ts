@@ -13,6 +13,7 @@ import {
   householdTz,
   ensureTodayInstances,
   todaySummary,
+  upForGrabsCount,
   listTodayInstances,
   listAwaitingInstances,
   completeInstance,
@@ -32,6 +33,7 @@ import {
   setChoreRewardsEnabled,
 } from './chores.service'
 import { getProofTtlDays, setProofTtlDays } from './chore-proof-cleanup.service'
+import { mediaKeyBelongsToHousehold } from '../../platform/storage'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -127,8 +129,11 @@ export function registerChoreRoutes(api: Api): void {
     const tz = await householdTz(tenant.householdId)
     const date = requestedDate(req.query?.date, todayDate(tz))
     await ensureTodayInstances(tenant.householdId, date)
-    const people = await todaySummary(tenant.householdId, date, tz)
-    return { date, people }
+    const [people, upForGrabs] = await Promise.all([
+      todaySummary(tenant.householdId, date, tz),
+      upForGrabsCount(tenant.householdId, date, tz),
+    ])
+    return { date, people, upForGrabs }
   }))
 
   // Individual chore instances (the Tasks list) for a day. `?date=YYYY-MM-DD`
@@ -153,6 +158,12 @@ export function registerChoreRoutes(api: Api): void {
     const id = req.params.id ?? ''
     if (!UUID_RE.test(id)) return res.status(404).json({ error: 'NotFound', message: 'instance not found' })
     const body = (req.body ?? {}) as { storageKey?: unknown; contentType?: unknown }
+    if (body.storageKey != null && (
+      typeof body.storageKey !== 'string' ||
+      !mediaKeyBelongsToHousehold(body.storageKey, tenant.householdId)
+    )) {
+      return res.status(400).json({ error: 'BadRequest', message: 'invalid proof image key' })
+    }
     const proof = {
       storageKey: typeof body.storageKey === 'string' ? body.storageKey : null,
       contentType: typeof body.contentType === 'string' ? body.contentType : null,

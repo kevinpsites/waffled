@@ -15,6 +15,10 @@ SSO later (optional).
 - `./waffled up` runs a **preflight** first and tells you (with fix links) if Docker is
   missing, the daemon is off, Compose v2 isn't installed, or a required port is busy.
 
+New to self-hosting? Install **Docker Desktop**, open it, and wait until it says Docker is
+running. Then open **Terminal** on macOS/Linux, or **Git Bash/WSL** on Windows. You do not need
+to create an `.env` file, buy a domain, or obtain any API keys for the core app.
+
 ## Install
 
 > **Setting this up for a tablet, phone, or another computer?** That's the whole point —
@@ -24,7 +28,8 @@ SSO later (optional).
 > "Offline." Details: [Accessing it from other devices](#accessing-it-from-other-devices).
 
 ```bash
-git clone <this-repo> waffled && cd waffled
+git clone https://github.com/kevinpsites/waffled.git
+cd waffled
 ./waffled setup   # recommended if other devices will connect (skip for localhost-only)
 ./waffled up      # checks prereqs, creates .env (generated secrets), pulls images, migrates, starts
 ```
@@ -32,7 +37,8 @@ git clone <this-repo> waffled && cd waffled
 That's the whole install. On first run, `./waffled up`:
 
 1. Creates `infra/compose/.env` from `.env.example`, generating `LOCAL_JWT_SECRET`,
-   `TOKEN_ENCRYPTION_KEY`, and `POSTGRES_PASSWORD` for you (an existing `.env` is left alone).
+   `TOKEN_ENCRYPTION_KEY`, `POWERSYNC_JWT_PRIVATE_KEY`, and `POSTGRES_PASSWORD` for you.
+   Missing secrets are also filled during upgrades; existing values are preserved.
 2. Pulls the prebuilt `api` / `caddy` / `backup` images from GHCR (plus Postgres +
    PowerSync). Prefer to build from source? Use `./waffled up --build`.
 3. Runs a one-shot **migrate** service to apply the database schema (so PowerSync's
@@ -41,15 +47,19 @@ That's the whole install. On first run, `./waffled up`:
 
 Open the kiosk/web app at the URL it prints — **http://localhost:8080** by default.
 
-> **Going to use it from a tablet, phone, or another computer?** (Waffled's whole point is
-> an always-on tablet + the iOS app.) Run **`./waffled setup`** — it asks one question
-> ("how will devices reach this server?"), auto-detects your machine's LAN IP, and writes
-> the address settings so sync works off-device. Running it *before* `./waffled up` is
-> simplest, but you can run it **any time later** too — just run `./waffled up` again
-> afterward to apply it (a bare `./waffled restart` reuses the old values and won't pick
-> up the change). Skipping this is the #1 cause of "everything shows Offline on the tablet"
-> (a `localhost` sync URL other devices can't reach). See
-> [Accessing it from other devices](#accessing-it-from-other-devices).
+## Check that it worked
+
+The final table should show `postgres`, `api`, `powersync`, `caddy`, and `backup` as healthy or
+running. You can check again at any time:
+
+```bash
+./waffled status
+./waffled doctor
+```
+
+If the browser does not open the app, copy the last error from `./waffled up` and check the
+[troubleshooting guide](/operations/troubleshooting/). Do not delete Docker volumes to retry;
+`./waffled down` safely stops the app without deleting data.
 
 ## First-run setup
 
@@ -59,6 +69,8 @@ On first load you get a **setup wizard**:
 2. Create your **admin account** (name, email, password — min 8 chars).
 
 That's it — you're in. The admin account is the household owner.
+
+![The Waffled Today dashboard after setup, showing the family calendar, chores, dinner, pantry and countdowns](/screenshots/today.png)
 
 ## Adding family members
 
