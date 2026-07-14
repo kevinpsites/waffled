@@ -187,12 +187,12 @@ struct CalendarView: View {
                 } else {
                     // "Everyone" — a family glyph so the chip matches the person chips' size.
                     Image(systemName: "person.2.fill").font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(on ? .white : WF.ink2)
+                        .foregroundStyle(on ? WF.onInk : WF.ink2)
                         .frame(width: 24, height: 24)
-                        .background(on ? Color.white.opacity(0.22) : WF.panel).clipShape(Circle())
+                        .background(on ? WF.onInk.opacity(0.22) : WF.panel).clipShape(Circle())
                 }
                 Text(label).font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(on ? .white : WF.ink2)
+                    .foregroundStyle(on ? WF.onInk : WF.ink2)
             }
             .padding(.leading, 6).padding(.trailing, 14).padding(.vertical, 7)
             .background(on ? WF.ink : WF.card)

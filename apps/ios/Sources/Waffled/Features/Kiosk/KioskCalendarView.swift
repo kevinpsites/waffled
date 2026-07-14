@@ -181,11 +181,11 @@ struct KioskCalendarView: View {
                     Avatar(colorHex: m.colorHex, emoji: m.emoji ?? "🙂", size: 22)
                 } else {
                     Image(systemName: "person.2.fill").font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(on ? .white : WF.ink2)
+                        .foregroundStyle(on ? WF.onInk : WF.ink2)
                         .frame(width: 22, height: 22)
-                        .background(on ? Color.white.opacity(0.22) : WF.panel).clipShape(Circle())
+                        .background(on ? WF.onInk.opacity(0.22) : WF.panel).clipShape(Circle())
                 }
-                Text(label).font(.system(size: 13, weight: .bold)).foregroundStyle(on ? .white : WF.ink2)
+                Text(label).font(.system(size: 13, weight: .bold)).foregroundStyle(on ? WF.onInk : WF.ink2)
             }
             .padding(.leading, 6).padding(.trailing, 13).padding(.vertical, 6)
             .background(on ? WF.ink : WF.card)

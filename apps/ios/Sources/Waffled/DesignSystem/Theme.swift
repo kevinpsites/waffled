@@ -25,6 +25,10 @@ enum WF {
     static let ink   = Color(light: 0x1D1D1F, dark: 0xF3EEE4)
     static let ink2  = Color(light: 0x6B6B70, dark: 0xADA69A)
     static let ink3  = Color(light: 0xA6A29B, dark: 0x726B5E)
+    /// Foreground for text/icons sitting on a solid `WF.ink` fill (a selected pill). It's
+    /// the *inverse* of ink — so a `.white` literal (which stays white while `ink` flips to
+    /// near-white in dark, giving white-on-white) is replaced by this at those sites.
+    static let onInk = Color(light: 0xFAF7F2, dark: 0x14110C)
 
     // MARK: Borders — the alpha AMOUNT differs by mode for hair (.08 → .10) and hair-2
     // (.045 → .06), so they can't use the single-opacity init; resolve per-appearance.
