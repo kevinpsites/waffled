@@ -16,7 +16,9 @@ secrets/
 .terraform.lock.hcl
 
 # node
-node_modules/
+# No trailing slash: also ignore a `node_modules` *symlink* (worktrees symlink
+# deps in), so it can never be committed as a tracked link again — see PR #51.
+node_modules
 dist/
 build/
 *.tsbuildinfo
