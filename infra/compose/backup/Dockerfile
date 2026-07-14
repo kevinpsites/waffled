@@ -12,10 +12,7 @@ RUN apt-get update \
 
 COPY backup.sh     /usr/local/bin/waffled-backup
 COPY entrypoint.sh /usr/local/bin/waffled-backup-entrypoint
-RUN chmod +x /usr/local/bin/waffled-backup /usr/local/bin/waffled-backup-entrypoint \
-    && mkdir -p /backups \
-    && chown postgres:postgres /backups
+RUN chmod +x /usr/local/bin/waffled-backup /usr/local/bin/waffled-backup-entrypoint
 
 # Runs the scheduler loop; `docker exec waffled-backup waffled-backup` triggers one on demand.
-USER postgres
 ENTRYPOINT ["/usr/local/bin/waffled-backup-entrypoint"]

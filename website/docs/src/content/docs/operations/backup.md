@@ -34,14 +34,6 @@ By default, dumps land in the `waffled_backups` Docker volume and are pruned aft
   the `BACKUP_S3_*` vars. Each dump is uploaded in addition to the local copy. For S3-side
   retention, use a bucket lifecycle rule (local retention only prunes local files).
 
-:::caution[`BACKUP_HOST_PATH` ownership changes]
-The backup scheduler runs as an unprivileged user. On the first start after upgrading from an
-older release, a one-shot permissions job recursively changes the configured backup path to
-numeric UID/GID `999` (the container's `postgres` user). If `BACKUP_HOST_PATH` is a host folder,
-its ownership changes on the host too. Choose a dedicated backup directory and make sure your
-host-side backup tooling can still read it.
-:::
-
 ## Configuration
 
 All optional — set in `infra/compose/.env` (documented in `.env.example`). Defaults shown:

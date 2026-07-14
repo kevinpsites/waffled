@@ -39,7 +39,5 @@ COPY --from=builder /app/dist ./dist
 # `migrate` one-shot) can apply the schema with no host tooling. dist/migrate.js
 # resolves them at ../migrations relative to itself.
 COPY --from=builder /app/migrations ./migrations
-RUN mkdir -p /data/media && chown node:node /data/media
-USER node
 EXPOSE 3000
 CMD ["node", "dist/server.js"]
