@@ -46,8 +46,6 @@ enum SyncSchema {
             .text("household_id"),
             .text("event_id"),
             .text("person_id"),
-            .text("visibility"),
-            .text("owner_person_id"),
         ]),
         // Materialized occurrences of a recurring master (event_id). Read as plain
         // dated rows (no client-side RRULE expansion); the server worker keeps them
