@@ -1,30 +1,19 @@
 # yaml-language-server: $schema=https://unpkg.com/@powersync/service-sync-rules@latest/schema/sync_rules.json
 #
-# Sync rules: shared household buckets plus a personal bucket for each member.
-# Both ids come from the signed PowerSync token, so clients receive their
-# household's shared rows plus only personal-calendar rows owned by the active
-# person. Soft-deleted rows are filtered out so deletes propagate as removals.
+# Sync rules: one bucket per household. The household_id comes from the client's
+# PowerSync token (minted by our api with the caller's real household_id), so a
+# client only ever receives its own household's rows. Soft-deleted rows are
+# filtered out so deletes propagate as removals on the client.
 #
 # As more domains become offline-synced, add their tables to the publication
 # (ALTER PUBLICATION powersync ...) and a matching `data:` query here.
 
 bucket_definitions:
-  household_core:
+  household:
     parameters: SELECT request.jwt() ->> 'household_id' as household_id
     data:
       - SELECT * FROM households WHERE id = bucket.household_id AND deleted_at IS NULL
       - SELECT * FROM persons WHERE household_id = bucket.household_id AND deleted_at IS NULL
-
-  family_events:
-    parameters: SELECT request.jwt() ->> 'household_id' as household_id
-    data:
-      - SELECT * FROM events WHERE household_id = bucket.household_id AND visibility = 'family' AND deleted_at IS NULL
-      - SELECT * FROM event_participants WHERE household_id = bucket.household_id AND visibility = 'family' AND deleted_at IS NULL
-      - SELECT * FROM event_occurrences WHERE household_id = bucket.household_id AND visibility = 'family' AND deleted_at IS NULL
-
-  personal_events:
-    parameters: SELECT request.jwt() ->> 'household_id' as household_id, request.jwt() ->> 'person_id' as person_id
-    data:
-      - SELECT * FROM events WHERE household_id = bucket.household_id AND visibility = 'personal' AND owner_person_id = bucket.person_id AND deleted_at IS NULL
-      - SELECT * FROM event_participants WHERE household_id = bucket.household_id AND visibility = 'personal' AND owner_person_id = bucket.person_id AND deleted_at IS NULL
-      - SELECT * FROM event_occurrences WHERE household_id = bucket.household_id AND visibility = 'personal' AND owner_person_id = bucket.person_id AND deleted_at IS NULL
+      - SELECT * FROM events WHERE household_id = bucket.household_id AND deleted_at IS NULL
+      - SELECT * FROM event_participants WHERE household_id = bucket.household_id AND deleted_at IS NULL
+      - SELECT * FROM event_occurrences WHERE household_id = bucket.household_id AND deleted_at IS NULL

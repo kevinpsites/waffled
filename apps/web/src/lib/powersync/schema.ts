@@ -32,8 +32,6 @@ const event_participants = new Table({
   household_id: column.text,
   event_id: column.text,
   person_id: column.text,
-  visibility: column.text,
-  owner_person_id: column.text,
 })
 
 // Materialized occurrences of a recurring master (event_id). Clients render these
