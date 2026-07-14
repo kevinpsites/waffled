@@ -38,7 +38,7 @@ export interface ChoreInstance {
 }
 
 export const choresApi = {
-  choresToday: () => apiGet<{ date: string; people: PersonChores[] }>('/api/chores/today'),
+  choresToday: () => apiGet<{ date: string; people: PersonChores[]; upForGrabs?: number }>('/api/chores/today'),
   // Optional date (YYYY-MM-DD) to look ahead/back; defaults to today.
   choreInstancesForDate: (date?: string) =>
     apiGet<{ date: string; instances: ChoreInstance[] }>(`/api/chore-instances/today${date ? `?date=${date}` : ''}`),
@@ -93,19 +93,20 @@ export interface StoredProof {
 
 export interface ChoresState {
   people: PersonChores[]
+  upForGrabs: number
   loading: boolean
   error: boolean
 }
 
 export function useChoresToday(): ChoresState {
-  const [state, setState] = useState<ChoresState>({ people: [], loading: true, error: false })
+  const [state, setState] = useState<ChoresState>({ people: [], upForGrabs: 0, loading: true, error: false })
   const [nonce, setNonce] = useState(0)
   useEffect(() => {
     let alive = true
     choresApi
       .choresToday()
-      .then((d) => alive && setState({ people: d.people, loading: false, error: false }))
-      .catch(() => alive && setState({ people: [], loading: false, error: true }))
+      .then((d) => alive && setState({ people: d.people, upForGrabs: d.upForGrabs ?? 0, loading: false, error: false }))
+      .catch(() => alive && setState({ people: [], upForGrabs: 0, loading: false, error: true }))
     return () => {
       alive = false
     }

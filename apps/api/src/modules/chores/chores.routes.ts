@@ -13,6 +13,7 @@ import {
   householdTz,
   ensureTodayInstances,
   todaySummary,
+  upForGrabsCount,
   listTodayInstances,
   listAwaitingInstances,
   completeInstance,
@@ -141,8 +142,11 @@ export function registerChoreRoutes(api: Api): void {
     const tz = await householdTz(tenant.householdId)
     const date = requestedDate(req.query?.date, todayDate(tz))
     await ensureTodayInstances(tenant.householdId, date)
-    const people = await todaySummary(tenant.householdId, date, tz)
-    return { date, people }
+    const [people, upForGrabs] = await Promise.all([
+      todaySummary(tenant.householdId, date, tz),
+      upForGrabsCount(tenant.householdId, date, tz),
+    ])
+    return { date, people, upForGrabs }
   }))
 
   // Individual chore instances (the Tasks list) for a day. `?date=YYYY-MM-DD`
