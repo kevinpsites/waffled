@@ -75,6 +75,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a fixed left-hand column so you can glance at what a step needs while the instruction fills the
   rest of the screen. iPhone keeps its single scrolling column with ingredients inline.
 
+- Make the self-hosting quick start copy-pasteable for first-time Docker users, including the
+  required terminal, no-credentials guidance, success checks, and safe troubleshooting steps.
+
 ### Fixed
 - **The iPhone Goals list now updates itself after you change a goal.** Deleting a goal, logging
   progress, ticking a checklist step, or editing an entry from a goal's detail screen now refreshes
