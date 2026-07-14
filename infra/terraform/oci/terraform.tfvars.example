@@ -38,14 +38,10 @@ ssh_public_key   = "ssh-ed25519 AAAA... waffled"
 # DNS record(s) at the server (the outputs tell you exactly which).
 domain = "waffled.example.com"
 
-# PowerSync (offline-sync) needs its own HTTPS address. By default that's a
-# `powersync.<domain>` subdomain (a 2nd DNS record). If your DNS host won't let
-# you nest a subdomain that deep, serve it on the SAME domain, different port —
-# no extra DNS record needed:
-# powersync_port = 8443
-# ...or point it at a hostname you CAN create a record for — e.g. a same-level
-# sibling of your domain using a hyphen instead of a deeper subdomain:
-# powersync_host = "powersync-waffled.example.com"   # (for domain = waffled.example.com)
+# PowerSync (offline-sync) is served on your SAME domain at https://<domain>:8090 by
+# default — no subdomain, no extra DNS record. Override only if you want to:
+# powersync_port = 8443                             # same domain, a different port
+# powersync_host = "powersync-waffled.example.com"  # a dedicated hostname (needs its own DNS record)
 
 # ── 4. App config — all optional, fill in only what you use ───────────────────
 # Blank is fine for anything you don't want. These get written into the server's
@@ -67,7 +63,8 @@ google_client_secret = ""
 # instance_ocpus      = 2
 # instance_memory_gbs = 12
 # boot_volume_gbs     = 100
-# availability_domain_number = 1   # try 2 or 3 if you hit "Out of host capacity"
+# availability_domain_number = 1   # most regions have only 1 AD; raise only in a multi-AD
+                                   # region. For "Out of host capacity", try a different region.
 
 # ── App source (advanced) ──
 # waffled_ref     = "main"

@@ -27,22 +27,19 @@ trap 'rm -rf "$WORK"' EXIT
 pass() { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 fail() { printf '  \033[31m✗ %s\033[0m\n' "$1"; exit 1; }
 
-echo "== OCI bootstrap config check (ref: $REF, port mode) =="
+echo "== OCI bootstrap config check (ref: $REF, default PowerSync mode) =="
 
 # 1) Materialize the deployed ref's compose tree into a scratch dir.
 git -C "$REPO_ROOT" archive "$REF" infra/compose | tar -x -C "$WORK"
 CDIR="$WORK/infra/compose"
 [ -f "$CDIR/docker-compose.yml" ] || fail "couldn't extract infra/compose from $REF"
 
-# 2) Recreate the override files the bootstrap writes, by extracting the real
-#    heredoc bodies from the template and applying the port-mode substitutions
-#    (so this stays faithful to cloud-init.sh.tftpl instead of duplicating it).
-SITE="demo.waffled.app:8443"
-PORTS_YAML='      - "80:80"\n      - "443:443"\n      - "8443:8443"'
+# 2) Recreate the override the bootstrap writes, by extracting the real heredoc body
+#    from the template and applying the default-mode port list (same-domain :8090) —
+#    so this stays faithful to cloud-init.sh.tftpl instead of duplicating it.
+PORTS_YAML='      - "80:80"\n      - "443:443"\n      - "8090:8090"'
 awk "/cat > docker-compose.oci.yml <<'COMPOSE_EOF'/{f=1;next} /^COMPOSE_EOF/{f=0} f" "$TPL" \
-  | sed "s|\${powersync_ports_yaml}|$PORTS_YAML|" > "$CDIR/docker-compose.oci.yml"
-awk "/cat > caddy\/Caddyfile.oci <<'CADDY_EOF'/{f=1;next} /^CADDY_EOF/{f=0} f" "$TPL" \
-  | sed "s|\${powersync_site}|$SITE|" > "$CDIR/caddy/Caddyfile.oci"
+  | sed "s|\${caddy_ports_yaml}|$PORTS_YAML|" > "$CDIR/docker-compose.oci.yml"
 grep -q 'ports: !override' "$CDIR/docker-compose.oci.yml" || fail "override extraction failed — template shape changed?"
 
 # 3) Build a COMPLETE .env: .env.example defaults + every required (:?) secret + the
@@ -59,10 +56,10 @@ for v in "${REQ[@]}"; do
     *)                 set_env "$v" "$(openssl rand -base64 32 | tr -d '\n')" ;;
   esac
 done
-set_env HTTP_PORT "80"
 set_env CADDY_SITE_ADDRESS "demo.waffled.app"
 set_env PUBLIC_BASE_URL "https://demo.waffled.app"
-set_env POWERSYNC_PUBLIC_URL "https://demo.waffled.app:8443"
+set_env POWERSYNC_CADDY_ADDRESS "https://demo.waffled.app:8090"
+set_env POWERSYNC_PUBLIC_URL "https://demo.waffled.app:8090"
 set_env ANTHROPIC_API_KEY "sk-ant-config-check"   # stands in for an app_env value
 
 DC=(docker compose -f docker-compose.yml -f docker-compose.oci.yml --env-file .env)
@@ -74,9 +71,10 @@ pass "compose config is valid (base + override merge, all required vars satisfie
 # 5) Assert the HTTPS override actually landed and app_env is injected.
 CFG="$("${DC[@]}" config 2>/dev/null)"
 grep -q 'published: "443"'  <<<"$CFG" || fail "port 443 not published (HTTPS override missing)"
-grep -q 'published: "8443"' <<<"$CFG" || fail "port 8443 not published (PowerSync port-mode missing)"
+grep -q 'published: "8090"' <<<"$CFG" || fail "port 8090 not published (PowerSync front missing)"
+grep -q 'POWERSYNC_CADDY_ADDRESS: https://demo.waffled.app:8090' <<<"$CFG" || fail "POWERSYNC_CADDY_ADDRESS not set"
 grep -q 'ANTHROPIC_API_KEY: sk-ant-config-check' <<<"$CFG" || fail "app_env value not injected"
-pass "HTTPS override applied (443 + 8443 published) and app_env injected"
+pass "HTTPS override applied (443 + 8090 published), PowerSync fronted via POWERSYNC_CADDY_ADDRESS, app_env injected"
 
 # 6) Negative: every required secret must be enforced. Drop each and expect failure.
 for v in "${REQ[@]}"; do

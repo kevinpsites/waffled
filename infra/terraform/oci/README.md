@@ -55,21 +55,17 @@ terraform apply
 
 ### If you set a `domain` (HTTPS — recommended)
 
-1. Create the DNS **A record(s)** from the `dns_records_needed` output, pointing at
-   `public_ip`. By default that's two records — the app and a `powersync.` subdomain for
-   offline-sync (its port isn't behind Caddy in the stock config, so it gets its own
-   hostname + cert):
+1. Create the DNS **A record** from the `dns_records_needed` output, pointing at `public_ip` —
+   by default just **one** record:
    ```
-   waffled.example.com            A  <public_ip>
-   powersync.waffled.example.com  A  <public_ip>
+   waffled.example.com  A  <public_ip>
    ```
-
-   **Can't add a second-level subdomain?** (Some DNS hosts won't.) Set `powersync_port = 8443`
-   and PowerSync is served on your **same domain, a different port** — `dns_records_needed`
-   then lists just the one record, and clients use `https://<domain>:8443`. Or set
-   `powersync_host = "sync.example.com"` to use any hostname you *can* create a record for.
+   Offline-sync (PowerSync) rides the **same hostname** at `https://<domain>:8090` (Caddy fronts
+   it via the stack's `POWERSYNC_CADDY_ADDRESS` knob, reusing the same cert), so no subdomain is
+   needed. Options: `powersync_port = 8443` to use a different port, or
+   `powersync_host = "sync.example.com"` for a dedicated hostname (that one needs a second record).
 2. Wait a few minutes. Cloud-init pulls images and starts the stack, then **Caddy
-   fetches Let's Encrypt certificates** (needs the DNS records live + the ports open, both
+   fetches Let's Encrypt certificates** (needs the DNS record live + the ports open, both
    of which this module handles).
 3. Open `https://waffled.example.com`, finish the first-run wizard, and **that URL is
    what you plug into the app**.
@@ -99,8 +95,9 @@ sudo waffled-oci status                        # container health (compose is in
   just didn't offer the right key. Use `ssh -i <your_private_key> ubuntu@<public_ip>` and
   confirm your `.pub` matches the `ssh_public_key` in `terraform.tfvars`.
 - **`Out of host capacity` on apply** — the classic free-tier A1 pain. Try a different
-  `availability_domain_number` (1/2/3), a different `region`, or re-run `apply` on a
-  loop until capacity frees. A **Pay-As-You-Go** account largely fixes this.
+  `region`, or re-run `apply` until capacity frees. A **Pay-As-You-Go** account largely
+  fixes this. (Raise `availability_domain_number` only in a known multi-AD region — the
+  module validates it, since most regions have a single AD.)
 - **Site unreachable but instance is up** — OCI's Ubuntu image ships a restrictive host
   iptables firewall; the bootstrap opens 80/443 (and 8090 in HTTP mode) in it. Confirm
   with `sudo iptables -L INPUT -n`. The cloud Security List is managed by Terraform.
@@ -150,10 +147,19 @@ sudo waffled-oci upgrade    # git pull + pre-upgrade backup + pull images + migr
 ```
 
 `waffled-oci` is a thin wrapper around the same steps as the stock `./waffled`, but it always
-includes this deployment's `docker-compose.oci.yml` override, so **upgrades keep the HTTPS/443
-config** (the plain `./waffled upgrade` would drop it). It also supports
+includes this deployment's `docker-compose.oci.yml` override, so **upgrades keep the published
+ports** (the plain `./waffled upgrade` would drop them). It also supports
 `up | down | restart | logs | status`; anything else falls through to the real `./waffled` CLI
 (`sudo waffled-oci backup`, `sudo waffled-oci doctor`, …).
+
+Two upgrade nuances:
+
+- **Pinned versions are honored.** If you deployed with `waffled_version` set, a marker keeps
+  `upgrade` on that pin instead of bumping to the latest published tag. To move off the pin,
+  `sudo rm /opt/waffled/.waffled-oci-pin` (or edit `.env`), then upgrade.
+- **Deployed on a tag/branch.** `upgrade` advances the code only when `waffled_ref` is a **branch**
+  (it fast-forwards). If you pinned to a **tag or SHA** (detached HEAD), it says so and leaves the
+  code where it is — re-run `terraform apply` with a new `waffled_ref` to move it.
 
 > Terraform is for the **infrastructure** (create / resize / destroy the box). The app version
 > is a **day-2, on-box** concern. Two tools, two jobs.

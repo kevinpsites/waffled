@@ -142,57 +142,53 @@ prints the outputs:
 app_url            = "https://waffled.example.com"
 public_ip          = "140.238.x.x"
 dns_records_needed = [
-  "waffled.example.com            A  140.238.x.x",
-  "powersync.waffled.example.com  A  140.238.x.x",
+  "waffled.example.com  A  140.238.x.x",
 ]
 ```
 
 :::caution["Out of host capacity"]
 Free A1 capacity is in high demand, so `apply` sometimes fails with **`Out of host capacity`**.
-Try a different `availability_domain_number` (1, 2, 3), a different `region`, or just re-run
-`apply` until it lands. Upgrading the account to **Pay-As-You-Go** (still free for these
-resources) dramatically improves availability and stops idle accounts from being reclaimed.
+Best fix: try a **different `region`**, or just re-run `apply` until it lands. Upgrading the account
+to **Pay-As-You-Go** (still free for these resources) dramatically improves availability and stops
+idle accounts from being reclaimed. (Only raise `availability_domain_number` in a known multi-AD
+region — most regions have a single AD, and the module validates this to avoid a confusing error.)
 :::
 
 ## Step 5 — Point DNS at it, then wait for HTTPS
 
-Create the **A record(s)** from the `dns_records_needed` output at your DNS provider, pointing at
-`public_ip`. By default that's two — the app, plus a `powersync.` subdomain for offline-sync:
+Create the **A record** from the `dns_records_needed` output at your DNS provider, pointing at
+`public_ip`. By default that's just **one** record — the app itself:
 
 | Record | Type | Value |
 |---|---|---|
 | `waffled.example.com` | A | *your public IP* |
-| `powersync.waffled.example.com` | A | *your public IP* |
 
-The `powersync.` record gives the offline-sync service its own hostname and certificate, so sync
-runs over HTTPS/WSS — without it the iOS app and kiosk can't sync from a secure page.
+Offline-sync (PowerSync) is served on that **same hostname** at `https://waffled.example.com:8090`
+(TLS, reusing the same certificate), so there's no second record and no subdomain to nest — the
+server hands that URL to your devices automatically. This is Caddy fronting PowerSync via the
+stack's built-in `POWERSYNC_CADDY_ADDRESS` knob; the module just opens the extra port.
 
-:::danger[On Cloudflare? Set the records to "DNS only" (grey cloud)]
+:::danger[On Cloudflare? Set the record to "DNS only" (grey cloud)]
 If your domain's DNS is on Cloudflare, new records default to **Proxied (orange cloud)** — and that
-breaks this setup. Cloudflare intercepts ports 80/443, so Caddy can't complete its Let's Encrypt
+breaks this setup. Cloudflare intercepts the ports, so Caddy can't complete its Let's Encrypt
 challenge or serve its certificate, and you'll get a **"server is down"** error page *from
-Cloudflare*. Click the orange cloud next to each record to turn it **grey (DNS only)**. (The
-`powersync.` record on a non-standard port wouldn't proxy anyway.) The port-mode option
-(`powersync_port`) also requires grey cloud, since Cloudflare's proxy only forwards standard ports.
+Cloudflare*. Click the orange cloud to turn it **grey (DNS only)**. This matters doubly here:
+Cloudflare's proxy only forwards standard ports, so it would never pass PowerSync's `:8090` anyway.
 :::
 
-:::note[Your DNS host won't let you add that subdomain?]
-Some providers won't let you nest a subdomain two levels deep. Two ways around it, both set in
-`terraform.tfvars` before you `apply`:
+:::note[Want PowerSync on a dedicated hostname or a different port?]
+Optional, set in `terraform.tfvars` before you `apply`:
 
-- **Same domain, different port** — set `powersync_port = 8443`. PowerSync is then served at
-  `https://waffled.example.com:8443`, reusing your **one** DNS record and certificate. No second
-  record needed (the `dns_records_needed` output drops to a single row).
-- **A hostname you can create** — set `powersync_host` to any record your host *does* allow. If it
-  only lets you make records at one level, use a hyphenated sibling instead of a deeper subdomain:
-  for `domain = "mysub.domain.app"`, set `powersync_host = "powersync-mysub.domain.app"`.
-
-You don't touch anything on the app side — the server hands the right PowerSync URL to your
-devices automatically.
+- **Different port** — `powersync_port = 8443` serves it at `https://waffled.example.com:8443`
+  instead of `:8090` (still the same one DNS record).
+- **Dedicated hostname** — `powersync_host = "sync.example.com"` serves it on 443 under its own
+  name. This one *does* need a second DNS record (the `dns_records_needed` output will list it).
+  If your host only allows one subdomain level, use a hyphenated sibling:
+  `powersync_host = "powersync-mysub.domain.app"` for `domain = "mysub.domain.app"`.
 :::
 
 The instance needs a few minutes on first boot to pull images and start the stack; then Caddy
-requests certificates (this needs the DNS records live and the ports open — both handled). Once
+requests certificates (this needs the DNS record live and the ports open — both handled). Once
 DNS has propagated, open **`https://waffled.example.com`**, complete the
 [first-run wizard](/install/docker/#first-run), and **that URL is what you enter in the app**.
 

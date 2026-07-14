@@ -2,10 +2,11 @@
 # Rendered by Terraform (templatefile) and run as root on first boot by cloud-init.
 # Brings up the full Waffled Docker Compose stack. Log: /var/log/waffled-bootstrap.log
 #
-# Design note: all cloud-specific customization lives in UNTRACKED files
-# (docker-compose.oci.yml, caddy/Caddyfile.oci, .env) so `git pull --ff-only`
-# stays clean on upgrade, and the `waffled-oci` helper always layers the override
-# so upgrades never drop the HTTPS/443 config.
+# Design note: cloud-specific customization lives in UNTRACKED files (a small
+# docker-compose.oci.yml that only publishes the extra ports, plus .env), so
+# `git pull --ff-only` stays clean on upgrade and the `waffled-oci` helper always
+# layers the override. HTTPS + PowerSync fronting reuse the stack's own env knobs
+# (CADDY_SITE_ADDRESS / POWERSYNC_CADDY_ADDRESS), not a bespoke Caddyfile.
 set -euxo pipefail
 exec > /var/log/waffled-bootstrap.log 2>&1
 
@@ -22,12 +23,13 @@ systemctl enable --now docker
 #    drop everything except SSH, so opening the cloud Security List is not enough —
 #    we must also punch through the OS firewall. Insert ACCEPTs at the top of INPUT.
 iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT
+%{ if domain != "" ~}
 iptables -I INPUT 1 -p tcp --dport 443 -j ACCEPT
-%{ if domain == "" ~}
-iptables -I INPUT 1 -p tcp --dport 8090 -j ACCEPT
+%{ if ps_extra_port != "" ~}
+iptables -I INPUT 1 -p tcp --dport ${ps_extra_port} -j ACCEPT
 %{ endif ~}
-%{ if powersync_open_port != "" ~}
-iptables -I INPUT 1 -p tcp --dport ${powersync_open_port} -j ACCEPT
+%{ else ~}
+iptables -I INPUT 1 -p tcp --dport 8090 -j ACCEPT
 %{ endif ~}
 if ! netfilter-persistent save; then
   apt-get update && apt-get install -y iptables-persistent && netfilter-persistent save || true
@@ -41,10 +43,14 @@ git checkout "${ref}"
 
 # 4) Let ./waffled generate infra/compose/.env with ALL required secrets and do the
 #    first bring-up. Delegating to the app's own ensure_env is the source of truth —
-#    it also fills any *new* required secret a future release adds, so this bootstrap
-#    can't drift out of sync (an earlier hand-rolled copy missed a required key and
-#    the stack failed to start). This first `up` uses the stock compose (plain :80);
-#    step 7 re-applies with the HTTPS override.
+#    it fills any *new* required secret a future release adds, so this bootstrap can't
+#    drift (an earlier hand-rolled copy missed a required key and the stack failed to
+#    start). We export a pinned WAFFLED_VERSION first so this pull grabs the pinned tag
+#    (shell env wins over .env for compose interpolation) — otherwise step 4 would pull
+#    the wrong image. Step 8 re-applies with the ports override for HTTPS.
+%{ if waffled_version != "" ~}
+export WAFFLED_VERSION="${waffled_version}"
+%{ endif ~}
 ./waffled up
 
 # 5) Patch the cloud/networking vars + app config into the .env ./waffled just made.
@@ -58,46 +64,31 @@ set_env() {
   mv .env.tmp .env
   printf '%s=%s\n' "$${key}" "$${val}" >> .env
 }
-set_env HTTP_PORT "80"
 %{ if waffled_version != "" ~}
 set_env WAFFLED_VERSION "${waffled_version}"
+# Marker so `waffled-oci upgrade` keeps this pin instead of bumping to latest.
+printf '%s\n' "${waffled_version}" > /opt/waffled/.waffled-oci-pin
 %{ endif ~}
 
 %{ if domain != "" ~}
-# ── HTTPS mode: Caddy auto-TLS for the app, plus a TLS front for PowerSync
-#    (its own port isn't behind Caddy in the stock Caddyfile). The PowerSync
-#    address (subdomain / same-domain port / custom host) is chosen in Terraform. ──
-set_env CADDY_SITE_ADDRESS   "${domain}"
-set_env PUBLIC_BASE_URL      "https://${domain}"
-set_env POWERSYNC_PUBLIC_URL "${powersync_public_url}"
+# ── HTTPS mode: Caddy auto-TLS for the app, and front PowerSync over TLS via the
+#    stack's own POWERSYNC_CADDY_ADDRESS knob (no custom Caddyfile needed). The
+#    address (same-domain :8090 default / same-domain :port / custom host) is chosen
+#    in Terraform. The override only publishes the extra port(s). ──
+set_env CADDY_SITE_ADDRESS      "${domain}"
+set_env PUBLIC_BASE_URL         "https://${domain}"
+set_env POWERSYNC_CADDY_ADDRESS "${powersync_caddy_address}"
+set_env POWERSYNC_PUBLIC_URL    "${powersync_public_url}"
 
-# Untracked Caddy config: import the repo's Caddyfile (remounted as .base) so
-# upstream changes still flow through, then front PowerSync at its chosen address.
-cat > caddy/Caddyfile.oci <<'CADDY_EOF'
-import /etc/caddy/Caddyfile.base
-
-${powersync_site} {
-	encode gzip
-	reverse_proxy powersync:8080
-}
-CADDY_EOF
-
-# Untracked compose override: publish the web ports (+ the PowerSync port in port
-# mode) and mount the two Caddy files. `!override` replaces the base lists.
 cat > docker-compose.oci.yml <<'COMPOSE_EOF'
 services:
   caddy:
     ports: !override
-${powersync_ports_yaml}
-    volumes: !override
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile.base:ro
-      - ./caddy/Caddyfile.oci:/etc/caddy/Caddyfile:ro
-      - waffled_media:/data/media:ro
-      - caddy_data:/data
-      - caddy_config:/config
+${caddy_ports_yaml}
 COMPOSE_EOF
 %{ else ~}
-# ── HTTP-only mode: no TLS. Point clients at the raw public IP. ──
+# ── HTTP-only mode: no TLS. Point clients at the raw public IP; the base stack
+#    already fronts PowerSync on :8090 (POWERSYNC_CADDY_ADDRESS defaults to :8090). ──
 PUBIP="$(curl -fsS https://ifconfig.me || curl -fsS https://icanhazip.com || true)"
 set_env PUBLIC_BASE_URL      "http://$${PUBIP}"
 set_env POWERSYNC_PUBLIC_URL "http://$${PUBIP}:8090"
@@ -116,7 +107,7 @@ done < <(printf '%s' "${app_env_b64}" | base64 -d)
 
 # 7) Cloud lifecycle helper: `waffled-oci up|upgrade|down|logs|status`. Unlike the
 #    stock `./waffled`, it always includes docker-compose.oci.yml, so upgrades keep
-#    the HTTPS/443 config. Anything else falls through to the real ./waffled CLI.
+#    the published ports. Anything else falls through to the real ./waffled CLI.
 cat > /usr/local/bin/waffled-oci <<'HELPER_EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -127,11 +118,27 @@ DC=(docker compose "$${FILES[@]}" --env-file .env)
 case "$${1:-help}" in
   up)      "$${DC[@]}" pull; "$${DC[@]}" up -d ;;
   upgrade)
-    git -C /opt/waffled pull --ff-only || echo "warn: could not fast-forward repo (local changes?)"
-    t="$(grep -E '^WAFFLED_VERSION=' .env.example | head -1 | cut -d= -f2- || true)"
-    if [ -n "$${t}" ]; then
+    # Advance code only on a branch; a tag/SHA pin leaves a detached HEAD that can't
+    # fast-forward — say so loudly instead of swallowing the error.
+    branch="$(git -C /opt/waffled symbolic-ref --short -q HEAD || true)"
+    if [ -n "$${branch}" ]; then
+      git -C /opt/waffled pull --ff-only || echo "warn: could not fast-forward $${branch} (local changes?)"
+    else
+      echo "note: repo is pinned at a fixed ref (detached HEAD) — code will NOT advance on upgrade."
+      echo "      re-run terraform with a new waffled_ref, or 'git -C /opt/waffled checkout <newtag>', to move it."
+    fi
+    # Honor an explicit version pin; otherwise track this checkout's .env.example.
+    if [ -f /opt/waffled/.waffled-oci-pin ]; then
+      pin="$(cat /opt/waffled/.waffled-oci-pin)"
       grep -v -E '^WAFFLED_VERSION=' .env > .env.tmp; mv .env.tmp .env
-      printf 'WAFFLED_VERSION=%s\n' "$${t}" >> .env
+      printf 'WAFFLED_VERSION=%s\n' "$${pin}" >> .env
+      echo "note: WAFFLED_VERSION pinned to $${pin} (delete /opt/waffled/.waffled-oci-pin to track latest)."
+    else
+      t="$(grep -E '^WAFFLED_VERSION=' .env.example | head -1 | cut -d= -f2- || true)"
+      if [ -n "$${t}" ]; then
+        grep -v -E '^WAFFLED_VERSION=' .env > .env.tmp; mv .env.tmp .env
+        printf 'WAFFLED_VERSION=%s\n' "$${t}" >> .env
+      fi
     fi
     docker ps --format '{{.Names}}' | grep -q '^waffled-backup$' && docker exec waffled-backup waffled-backup || true
     "$${DC[@]}" pull; "$${DC[@]}" up -d ;;
@@ -144,8 +151,9 @@ esac
 HELPER_EOF
 chmod +x /usr/local/bin/waffled-oci
 
-# 8) Re-apply with the HTTPS override (adds 443 + the PowerSync front). In HTTP mode
-#    this just republishes on port 80 with the patched .env.
+# 8) Re-apply with the ports override (publishes 443 + the PowerSync port). Images are
+#    already pulled/cached from step 4, so this only reconciles the changed containers.
+#    In HTTP mode there's no override, so this is a cheap no-op reconcile.
 waffled-oci up
 
 echo "waffled bootstrap complete"

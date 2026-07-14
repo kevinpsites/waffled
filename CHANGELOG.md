@@ -17,9 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **One-command cloud deploy to Oracle Cloud's Always Free tier via Terraform.** A new
   `infra/terraform/oci` module stands up the whole stack (Postgres, PowerSync, api, Caddy,
   backup) on a free Arm Ampere A1 instance and, when you give it a domain, fronts it with
-  automatic HTTPS — including an HTTPS front for offline-sync (a `powersync.` subdomain by
-  default, or a same-domain port / custom hostname if your DNS host can't nest subdomains).
-  Pass your API keys and other config through named variables, and upgrade in place
+  automatic HTTPS — with offline-sync served over TLS on the same hostname by default (no
+  extra DNS record; optionally a different port or a dedicated hostname), fronted through the
+  stack's own Caddy knob. Pass your API keys and other config through named variables, and upgrade in place
   on the box with the installed `waffled-oci upgrade` helper (which keeps the HTTPS config
   across upgrades). `terraform apply` prints the public IP, the DNS records to create, and the
   URL to open. See the module's `README.md` and the "Deploy to Oracle Cloud" guide.

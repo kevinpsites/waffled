@@ -17,30 +17,50 @@ locals {
   app_env_lines = join("\n", [for k, v in local.merged_env : "${k}=${v}"])
   app_env_b64   = length(local.merged_env) > 0 ? base64encode(local.app_env_lines) : ""
 
-  # ── How PowerSync is served over HTTPS (only relevant when domain is set) ──
-  # Port mode: same domain, different port (no extra DNS record). Otherwise a
-  # hostname (powersync.<domain> by default, or a custom powersync_host).
-  ps_port_mode         = var.domain != "" && var.powersync_port > 0
-  ps_host              = var.powersync_host != "" ? var.powersync_host : "powersync.${var.domain}"
-  powersync_site       = local.ps_port_mode ? "${var.domain}:${var.powersync_port}" : local.ps_host
-  powersync_public_url = var.domain == "" ? "" : "https://${local.powersync_site}"
-  powersync_open_port  = local.ps_port_mode ? tostring(var.powersync_port) : ""
-  # Caddy port publishes for the override file — 80/443 always, plus the PS port in port mode.
-  powersync_ports_yaml = join("\n", concat(
+  # ── How PowerSync is served over HTTPS (only when domain is set) ──
+  # We drive the base stack's own POWERSYNC_CADDY_ADDRESS knob (Caddy already fronts
+  # PowerSync from that env var) rather than shipping a custom Caddyfile.
+  #   default    → https://<domain>:8090  (same domain, no extra DNS record — the
+  #                stack's own default, derived by ensure_powersync_proxy_env)
+  #   host mode  → a dedicated hostname (TLS on 443); needs its own DNS record
+  #   port mode  → https://<domain>:<port> (same domain, a different port)
+  ps_host_mode = var.domain != "" && var.powersync_host != ""
+  ps_port_mode = var.domain != "" && var.powersync_port > 0
+
+  powersync_caddy_address = (
+    var.domain == "" ? "" : # HTTP mode: base derives ":8090"
+    local.ps_host_mode ? var.powersync_host :
+    local.ps_port_mode ? "https://${var.domain}:${var.powersync_port}" :
+    "https://${var.domain}:8090"
+  )
+  powersync_public_url = (
+    var.domain == "" ? "" :
+    local.ps_host_mode ? "https://${var.powersync_host}" :
+    local.ps_port_mode ? "https://${var.domain}:${var.powersync_port}" :
+    "https://${var.domain}:8090"
+  )
+  # Extra Caddy port to publish + open, beyond 80/443. Host mode rides on 443, so none.
+  ps_extra_port = (
+    var.domain == "" ? "" :
+    local.ps_host_mode ? "" :
+    local.ps_port_mode ? tostring(var.powersync_port) :
+    "8090"
+  )
+  # Caddy port publishes for the HTTPS override file: 80, 443, + the extra PS port.
+  caddy_ports_yaml = join("\n", concat(
     ["      - \"80:80\"", "      - \"443:443\""],
-    local.ps_port_mode ? ["      - \"${var.powersync_port}:${var.powersync_port}\""] : []
+    local.ps_extra_port != "" ? ["      - \"${local.ps_extra_port}:${local.ps_extra_port}\""] : []
   ))
 
-  # Ports open to the world. PowerSync's direct port (8090) is only exposed in
-  # HTTP-only mode; in HTTPS mode Caddy fronts it (via subdomain or the port above).
+  # Ports open to the world. HTTP mode exposes PowerSync on 8090; HTTPS mode exposes
+  # 443 (+ the extra PS port for default/port mode; host mode rides on 443).
   ingress_ports = concat(
     [
       { port = 22, cidr = var.allowed_ssh_cidr },
       { port = 80, cidr = "0.0.0.0/0" },
-      { port = 443, cidr = "0.0.0.0/0" },
     ],
-    var.domain == "" ? [{ port = 8090, cidr = "0.0.0.0/0" }] : [],
-    local.ps_port_mode ? [{ port = var.powersync_port, cidr = "0.0.0.0/0" }] : []
+    var.domain == "" ? [{ port = 8090, cidr = "0.0.0.0/0" }] : [{ port = 443, cidr = "0.0.0.0/0" }],
+    (var.domain != "" && local.ps_extra_port != "") ? [{ port = tonumber(local.ps_extra_port), cidr = "0.0.0.0/0" }] : []
   )
 }
 
@@ -145,15 +165,25 @@ resource "oci_core_instance" "waffled" {
   metadata = {
     ssh_authorized_keys = var.ssh_public_key
     user_data = base64encode(templatefile("${path.module}/cloud-init.sh.tftpl", {
-      repo_url             = var.waffled_repo_url
-      ref                  = var.waffled_ref
-      waffled_version      = var.waffled_version
-      domain               = var.domain
-      app_env_b64          = local.app_env_b64
-      powersync_public_url = local.powersync_public_url
-      powersync_site       = local.powersync_site
-      powersync_open_port  = local.powersync_open_port
-      powersync_ports_yaml = local.powersync_ports_yaml
+      repo_url                = var.waffled_repo_url
+      ref                     = var.waffled_ref
+      waffled_version         = var.waffled_version
+      domain                  = var.domain
+      app_env_b64             = local.app_env_b64
+      powersync_public_url    = local.powersync_public_url
+      powersync_caddy_address = local.powersync_caddy_address
+      ps_extra_port           = local.ps_extra_port
+      caddy_ports_yaml        = local.caddy_ports_yaml
     }))
+  }
+
+  # Catch the common footgun: most OCI regions (free-tier home regions especially)
+  # have exactly ONE availability domain, so availability_domain_number > 1 would
+  # index past the list and fail apply with an opaque "index out of range".
+  lifecycle {
+    precondition {
+      condition     = var.availability_domain_number >= 1 && var.availability_domain_number <= length(data.oci_identity_availability_domains.ads.availability_domains)
+      error_message = "availability_domain_number is ${var.availability_domain_number}, but ${var.region} has ${length(data.oci_identity_availability_domains.ads.availability_domains)} availability domain(s). Most regions have only 1; ADs 2/3 exist solely in multi-AD regions. If you hit 'Out of host capacity', try a different region instead."
+    }
   }
 }

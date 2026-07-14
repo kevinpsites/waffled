@@ -59,25 +59,25 @@ variable "domain" {
 }
 
 # ── Where PowerSync (offline-sync) is served over HTTPS ───────────────────────
-# PowerSync needs its own HTTPS address. Pick ONE of three ways (only in HTTPS mode):
+# PowerSync needs its own HTTPS address, fronted by Caddy via the stack's
+# POWERSYNC_CADDY_ADDRESS knob. In HTTPS mode you get, in order of precedence:
 #
-#   • Default (both blank): a `powersync.<domain>` subdomain — needs a 2nd DNS
-#     record. Clean, but some DNS hosts won't let you nest a subdomain that deep.
-#   • powersync_port = 8443: serve it on your SAME domain, just a different port
-#     (https://<domain>:8443). Needs NO extra DNS record — reuses your one record
-#     and cert. Best if your host won't let you add another subdomain.
-#   • powersync_host = "sync.example.com": use a hostname you CAN create a record
-#     for (e.g. a single-level subdomain). Needs a DNS record for that host.
+#   • Default (both blank): https://<domain>:8090 — SAME domain, port 8090, reusing
+#     your one DNS record + cert. No subdomain needed. (This is the stack's own default.)
+#   • powersync_port = 8443: same as default but on a different port you choose
+#     (https://<domain>:8443) — handy if 8090 is inconvenient.
+#   • powersync_host = "sync.example.com": a dedicated hostname on 443. Needs its own
+#     DNS record — use this only if you actually want a separate hostname.
 #
-# `powersync_port` wins if both are set.
+# `powersync_host` wins over `powersync_port` if both are set.
 variable "powersync_port" {
-  description = "Serve PowerSync on https://<domain>:<port> (no extra DNS record). 0 = use a hostname instead."
+  description = "Serve PowerSync on https://<domain>:<port> instead of the default :8090. 0 = use :8090."
   type        = number
   default     = 0
 }
 
 variable "powersync_host" {
-  description = "Hostname for PowerSync. Empty = powersync.<domain>. Ignored if powersync_port is set."
+  description = "Dedicated hostname for PowerSync (TLS on 443, own DNS record). Empty = serve on the main domain."
   type        = string
   default     = ""
 }
@@ -102,7 +102,7 @@ variable "boot_volume_gbs" {
 }
 
 variable "availability_domain_number" {
-  description = "Which availability domain to launch in (1-based). Try another if you hit 'Out of host capacity'."
+  description = "Which availability domain to launch in (1-based). Most regions have only ONE AD — raise this only in a known multi-AD region (apply validates it). For capacity errors, prefer a different region."
   type        = number
   default     = 1
 }

@@ -15,13 +15,14 @@ output "powersync_url" {
 
 output "dns_records_needed" {
   description = "DNS records to create (HTTPS mode) so auto-TLS can succeed."
-  # Port mode reuses the one domain record; hostname mode needs a record for the PS host too.
+  # Default + port mode reuse the single domain record (PowerSync rides the same host
+  # on :8090 or :port). Only a custom powersync_host needs its own second record.
   value = var.domain == "" ? [] : (
-    local.ps_port_mode ? [
-      "${var.domain}  A  ${oci_core_instance.waffled.public_ip}",
+    local.ps_host_mode ? [
+      "${var.domain}          A  ${oci_core_instance.waffled.public_ip}",
+      "${var.powersync_host}  A  ${oci_core_instance.waffled.public_ip}",
       ] : [
-      "${var.domain}      A  ${oci_core_instance.waffled.public_ip}",
-      "${local.ps_host}  A  ${oci_core_instance.waffled.public_ip}",
+      "${var.domain}  A  ${oci_core_instance.waffled.public_ip}",
     ]
   )
 }
