@@ -26,6 +26,9 @@ iptables -I INPUT 1 -p tcp --dport 443 -j ACCEPT
 %{ if domain == "" ~}
 iptables -I INPUT 1 -p tcp --dport 8090 -j ACCEPT
 %{ endif ~}
+%{ if powersync_open_port != "" ~}
+iptables -I INPUT 1 -p tcp --dport ${powersync_open_port} -j ACCEPT
+%{ endif ~}
 if ! netfilter-persistent save; then
   apt-get update && apt-get install -y iptables-persistent && netfilter-persistent save || true
 fi
@@ -55,31 +58,31 @@ set_env WAFFLED_VERSION      "${waffled_version}"
 %{ endif ~}
 
 %{ if domain != "" ~}
-# ── HTTPS mode: Caddy auto-TLS for the app, plus a dedicated TLS subdomain that
-#    fronts PowerSync (its own port isn't behind Caddy in the stock Caddyfile). ──
+# ── HTTPS mode: Caddy auto-TLS for the app, plus a TLS front for PowerSync
+#    (its own port isn't behind Caddy in the stock Caddyfile). The PowerSync
+#    address (subdomain / same-domain port / custom host) is chosen in Terraform. ──
 set_env CADDY_SITE_ADDRESS   "${domain}"
 set_env PUBLIC_BASE_URL      "https://${domain}"
-set_env POWERSYNC_PUBLIC_URL "https://powersync.${domain}"
+set_env POWERSYNC_PUBLIC_URL "${powersync_public_url}"
 
 # Untracked Caddy config: import the repo's Caddyfile (remounted as .base) so
-# upstream changes still flow through, then add PowerSync's own hostname/cert.
+# upstream changes still flow through, then front PowerSync at its chosen address.
 cat > caddy/Caddyfile.oci <<'CADDY_EOF'
 import /etc/caddy/Caddyfile.base
 
-powersync.${domain} {
+${powersync_site} {
 	encode gzip
 	reverse_proxy powersync:8080
 }
 CADDY_EOF
 
-# Untracked compose override: publish 80 (ACME + redirect) and 443, and mount the
-# two Caddy files. `!override` replaces the base lists so nothing collides.
+# Untracked compose override: publish the web ports (+ the PowerSync port in port
+# mode) and mount the two Caddy files. `!override` replaces the base lists.
 cat > docker-compose.oci.yml <<'COMPOSE_EOF'
 services:
   caddy:
     ports: !override
-      - "80:80"
-      - "443:443"
+${powersync_ports_yaml}
     volumes: !override
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile.base:ro
       - ./caddy/Caddyfile.oci:/etc/caddy/Caddyfile:ro

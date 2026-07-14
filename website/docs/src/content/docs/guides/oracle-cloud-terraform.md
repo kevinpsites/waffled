@@ -156,8 +156,8 @@ resources) dramatically improves availability and stops idle accounts from being
 
 ## Step 5 — Point DNS at it, then wait for HTTPS
 
-Create the two **A records** from the `dns_records_needed` output at your DNS provider, both
-pointing at `public_ip`:
+Create the **A record(s)** from the `dns_records_needed` output at your DNS provider, pointing at
+`public_ip`. By default that's two — the app, plus a `powersync.` subdomain for offline-sync:
 
 | Record | Type | Value |
 |---|---|---|
@@ -167,9 +167,23 @@ pointing at `public_ip`:
 The `powersync.` record gives the offline-sync service its own hostname and certificate, so sync
 runs over HTTPS/WSS — without it the iOS app and kiosk can't sync from a secure page.
 
+:::note[Your DNS host won't let you add that subdomain?]
+Some providers won't let you nest a subdomain two levels deep. Two ways around it, both set in
+`terraform.tfvars` before you `apply`:
+
+- **Same domain, different port** — set `powersync_port = 8443`. PowerSync is then served at
+  `https://waffled.example.com:8443`, reusing your **one** DNS record and certificate. No second
+  record needed (the `dns_records_needed` output drops to a single row).
+- **A hostname you can create** — set `powersync_host = "sync.example.com"` to use any record your
+  host *does* allow.
+
+You don't touch anything on the app side — the server hands the right PowerSync URL to your
+devices automatically.
+:::
+
 The instance needs a few minutes on first boot to pull images and start the stack; then Caddy
-requests certificates (this needs the DNS records live and ports 80/443 open — both handled).
-Once DNS has propagated, open **`https://waffled.example.com`**, complete the
+requests certificates (this needs the DNS records live and the ports open — both handled). Once
+DNS has propagated, open **`https://waffled.example.com`**, complete the
 [first-run wizard](/install/docker/#first-run), and **that URL is what you enter in the app**.
 
 ## Watching the first boot / troubleshooting

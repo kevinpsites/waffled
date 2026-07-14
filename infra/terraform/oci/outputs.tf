@@ -10,15 +10,20 @@ output "app_url" {
 
 output "powersync_url" {
   description = "Offline-sync endpoint clients use (returned by the api to the app)."
-  value       = var.domain != "" ? "https://powersync.${var.domain}" : "http://${oci_core_instance.waffled.public_ip}:8090"
+  value       = var.domain != "" ? local.powersync_public_url : "http://${oci_core_instance.waffled.public_ip}:8090"
 }
 
 output "dns_records_needed" {
   description = "DNS records to create (HTTPS mode) so auto-TLS can succeed."
-  value = var.domain != "" ? [
-    "${var.domain}            A  ${oci_core_instance.waffled.public_ip}",
-    "powersync.${var.domain}  A  ${oci_core_instance.waffled.public_ip}",
-  ] : []
+  # Port mode reuses the one domain record; hostname mode needs a record for the PS host too.
+  value = var.domain == "" ? [] : (
+    local.ps_port_mode ? [
+      "${var.domain}  A  ${oci_core_instance.waffled.public_ip}",
+      ] : [
+      "${var.domain}      A  ${oci_core_instance.waffled.public_ip}",
+      "${local.ps_host}  A  ${oci_core_instance.waffled.public_ip}",
+    ]
+  )
 }
 
 output "ssh_command" {

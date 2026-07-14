@@ -55,17 +55,22 @@ terraform apply
 
 ### If you set a `domain` (HTTPS — recommended)
 
-1. Create the two DNS **A records** from the `dns_records_needed` output, both pointing
-   at `public_ip`:
+1. Create the DNS **A record(s)** from the `dns_records_needed` output, pointing at
+   `public_ip`. By default that's two records — the app and a `powersync.` subdomain for
+   offline-sync (its port isn't behind Caddy in the stock config, so it gets its own
+   hostname + cert):
    ```
    waffled.example.com            A  <public_ip>
    powersync.waffled.example.com  A  <public_ip>
    ```
-   (The `powersync.` record lets offline-sync run over HTTPS/WSS too — its port isn't
-   behind Caddy in the stock config, so this module gives it its own hostname + cert.)
+
+   **Can't add a second-level subdomain?** (Some DNS hosts won't.) Set `powersync_port = 8443`
+   and PowerSync is served on your **same domain, a different port** — `dns_records_needed`
+   then lists just the one record, and clients use `https://<domain>:8443`. Or set
+   `powersync_host = "sync.example.com"` to use any hostname you *can* create a record for.
 2. Wait a few minutes. Cloud-init pulls images and starts the stack, then **Caddy
-   fetches Let's Encrypt certificates** (needs the DNS records live + ports 80/443 open,
-   both of which this module handles).
+   fetches Let's Encrypt certificates** (needs the DNS records live + the ports open, both
+   of which this module handles).
 3. Open `https://waffled.example.com`, finish the first-run wizard, and **that URL is
    what you plug into the app**.
 

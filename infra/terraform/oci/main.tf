@@ -17,15 +17,30 @@ locals {
   app_env_lines = join("\n", [for k, v in local.merged_env : "${k}=${v}"])
   app_env_b64   = length(local.merged_env) > 0 ? base64encode(local.app_env_lines) : ""
 
-  # Ports open to the world. PowerSync (8090) is only exposed directly in HTTP-only
-  # mode; with a domain, Caddy fronts it on powersync.<domain> over TLS instead.
+  # ── How PowerSync is served over HTTPS (only relevant when domain is set) ──
+  # Port mode: same domain, different port (no extra DNS record). Otherwise a
+  # hostname (powersync.<domain> by default, or a custom powersync_host).
+  ps_port_mode         = var.domain != "" && var.powersync_port > 0
+  ps_host              = var.powersync_host != "" ? var.powersync_host : "powersync.${var.domain}"
+  powersync_site       = local.ps_port_mode ? "${var.domain}:${var.powersync_port}" : local.ps_host
+  powersync_public_url = var.domain == "" ? "" : "https://${local.powersync_site}"
+  powersync_open_port  = local.ps_port_mode ? tostring(var.powersync_port) : ""
+  # Caddy port publishes for the override file — 80/443 always, plus the PS port in port mode.
+  powersync_ports_yaml = join("\n", concat(
+    ["      - \"80:80\"", "      - \"443:443\""],
+    local.ps_port_mode ? ["      - \"${var.powersync_port}:${var.powersync_port}\""] : []
+  ))
+
+  # Ports open to the world. PowerSync's direct port (8090) is only exposed in
+  # HTTP-only mode; in HTTPS mode Caddy fronts it (via subdomain or the port above).
   ingress_ports = concat(
     [
       { port = 22, cidr = var.allowed_ssh_cidr },
       { port = 80, cidr = "0.0.0.0/0" },
       { port = 443, cidr = "0.0.0.0/0" },
     ],
-    var.domain == "" ? [{ port = 8090, cidr = "0.0.0.0/0" }] : []
+    var.domain == "" ? [{ port = 8090, cidr = "0.0.0.0/0" }] : [],
+    local.ps_port_mode ? [{ port = var.powersync_port, cidr = "0.0.0.0/0" }] : []
   )
 }
 
@@ -130,11 +145,15 @@ resource "oci_core_instance" "waffled" {
   metadata = {
     ssh_authorized_keys = var.ssh_public_key
     user_data = base64encode(templatefile("${path.module}/cloud-init.sh.tftpl", {
-      repo_url        = var.waffled_repo_url
-      ref             = var.waffled_ref
-      waffled_version = var.waffled_version
-      domain          = var.domain
-      app_env_b64     = local.app_env_b64
+      repo_url             = var.waffled_repo_url
+      ref                  = var.waffled_ref
+      waffled_version      = var.waffled_version
+      domain               = var.domain
+      app_env_b64          = local.app_env_b64
+      powersync_public_url = local.powersync_public_url
+      powersync_site       = local.powersync_site
+      powersync_open_port  = local.powersync_open_port
+      powersync_ports_yaml = local.powersync_ports_yaml
     }))
   }
 }

@@ -43,14 +43,35 @@ variable "allowed_ssh_cidr" {
 }
 
 # ── Public HTTPS + hostname ───────────────────────────────────────────────────
-# Set `domain` to enable automatic TLS (Let's Encrypt via Caddy). You must point
-# BOTH of these DNS records at the instance's public IP AFTER `apply`:
-#   <domain>            A   <public_ip>
-#   powersync.<domain>  A   <public_ip>     (so offline-sync also runs over HTTPS)
-# Leave `domain` empty for a quick HTTP-only test on http://<public_ip> (no TLS;
-# the iOS app + barcode scanner need HTTPS, so this is for a browser smoke-test only).
+# Set `domain` to enable automatic TLS (Let's Encrypt via Caddy). Leave it empty
+# for a quick HTTP-only test on http://<public_ip> (no TLS; the iOS app + barcode
+# scanner need HTTPS, so that's a browser smoke-test only).
 variable "domain" {
   description = "Public hostname for the app (auto-TLS). Empty = HTTP-only on the public IP."
+  type        = string
+  default     = ""
+}
+
+# ── Where PowerSync (offline-sync) is served over HTTPS ───────────────────────
+# PowerSync needs its own HTTPS address. Pick ONE of three ways (only in HTTPS mode):
+#
+#   • Default (both blank): a `powersync.<domain>` subdomain — needs a 2nd DNS
+#     record. Clean, but some DNS hosts won't let you nest a subdomain that deep.
+#   • powersync_port = 8443: serve it on your SAME domain, just a different port
+#     (https://<domain>:8443). Needs NO extra DNS record — reuses your one record
+#     and cert. Best if your host won't let you add another subdomain.
+#   • powersync_host = "sync.example.com": use a hostname you CAN create a record
+#     for (e.g. a single-level subdomain). Needs a DNS record for that host.
+#
+# `powersync_port` wins if both are set.
+variable "powersync_port" {
+  description = "Serve PowerSync on https://<domain>:<port> (no extra DNS record). 0 = use a hostname instead."
+  type        = number
+  default     = 0
+}
+
+variable "powersync_host" {
+  description = "Hostname for PowerSync. Empty = powersync.<domain>. Ignored if powersync_port is set."
   type        = string
   default     = ""
 }
