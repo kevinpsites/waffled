@@ -25,10 +25,11 @@ enum WF {
     static let ink   = Color(light: 0x1D1D1F, dark: 0xF3EEE4)
     static let ink2  = Color(light: 0x6B6B70, dark: 0xADA69A)
     static let ink3  = Color(light: 0xA6A29B, dark: 0x726B5E)
-    /// Foreground for text/icons sitting on a solid `WF.ink` fill (a selected pill). It's
-    /// the *inverse* of ink — so a `.white` literal (which stays white while `ink` flips to
-    /// near-white in dark, giving white-on-white) is replaced by this at those sites.
-    static let onInk = Color(light: 0xFAF7F2, dark: 0x14110C)
+    /// Foreground for text/icons on a solid `WF.ink` fill (a selected pill/button). The
+    /// *inverse* of ink — replaces a `.white` literal, which would stay white while `ink`
+    /// flips to near-white in dark (white-on-white). The lightest surface is the natural
+    /// on-ink color, so this aliases `canvas` — keeping the two from drifting on a repalette.
+    static let onInk = canvas
 
     // MARK: Borders — the alpha AMOUNT differs by mode for hair (.08 → .10) and hair-2
     // (.045 → .06), so they can't use the single-opacity init; resolve per-appearance.
@@ -137,9 +138,10 @@ extension Color {
 
     /// A Color that resolves per appearance. `light`/`dark` are 0xRRGGBB literals.
     /// This is the backbone of the dark theme — one line per token, table stays 1:1 with web.
-    init(light: UInt32, dark: UInt32, opacity: Double = 1) {
+    /// (Alpha stays 1; the one token that needs transparency — `line` — applies `.opacity`.)
+    init(light: UInt32, dark: UInt32) {
         self = Color(UIColor { tc in
-            UIColor(hex: tc.userInterfaceStyle == .dark ? dark : light, alpha: opacity)
+            UIColor(hex: tc.userInterfaceStyle == .dark ? dark : light, alpha: 1)
         })
     }
 
