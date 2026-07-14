@@ -168,32 +168,53 @@ parser stateless (the property that makes today's parse/commit split nice), make
 the parse route. (Rejected: Option A, parse-and-resolve in one shot — fewer round trips but couples
 the parser to per-module queries.)
 
+#### Resolution API surface — **decided: module-owned resolvers behind one capture endpoint**
+
+Keep each module's search **in its own domain** — capture must never query another module's tables.
+Invert the dependency the way `moduleRoutes()` already does:
+
+- Each module exports a `resolveCandidates(ctx)` that **reuses the queries it already has**, wrapped
+  with `matchListStrict`-style title scoring, and **registers** it into a capture registry at
+  startup (`registerCaptureResolver('chore', chores.resolveCandidates)`). Capture imports nothing
+  cross-domain; it holds only a `{ kind → resolver }` map.
+- **`POST /api/capture/resolve`** is a thin dispatcher: look up the resolver for the intent's
+  `kind`, call it with `{ householdId, personId (the speaker), now, description }`, and return a
+  **uniform `Candidate[]`** (`{ id, title, subtitle, confidence }`) for the pick-a-candidate UI.
+
+Beats the client calling N per-module `/search` routes (one response shape, one confirm UI), and
+`ModuleGate` falls out for free — a disabled module has no registered resolver, so a mutation
+against it → 0 candidates → a graceful "that's turned off." (Rejected: capture reaching across
+domains, and the client wiring up N endpoints.)
+
 Also: mutations **require** the server path and degrade to "I need a connection for that" offline —
 the on-device heuristic must never guess a destructive action (see §6).
 
 ### Tier 3 — Settings in words (the settings verb class)
 
 Change household or personal config by talking. A small, **closed vocabulary** maps cleanly to
-`households.settings` / person prefs — start with the highest-value keys, not "any setting."
+`households.settings` / person prefs. **v1 = three keys** — start there, not "any setting."
 
-| Setting | Phrase | Scope |
-|---|---|---|
-| Theme | "switch to dark mode" | Person (or household default) |
-| Start of week | "start my week on Monday" | Household |
-| Module toggle | "turn on the pantry" | Household — **admin-gated** |
-| AI provider/model | "use Claude for capture" | Household — **admin-gated** |
-| Allergens | "add peanuts to Emma's allergies" | Person |
-| Today-card layout, kiosk pairing | "hide the weather card" | Person / device |
+| Setting | Phrase | Scope | v1 |
+|---|---|---|---|
+| Theme | "switch to dark mode" | Person (or household default) | ✅ |
+| Start of week | "start my week on Monday" | Household | ✅ |
+| Allergens | "add peanuts to Emma's allergies" | Person | ✅ |
+| Module toggle | "turn on the pantry" | Household — **admin-gated** | ⏳ deferred |
+| AI provider/model | "use Claude for capture" | Household — **admin-gated** | ⏳ deferred |
+| Today-card layout, kiosk pairing | "hide the weather card" | Person / device | ⏳ deferred |
 
 Each setting change previews the **before → after** value and its **scope** (this person vs. the
 whole household) before it commits — a "dark mode for everyone" is not a silent flip.
 
-**Queries — intentionally thin.** Reads are mostly already answered by the **Today dashboard**, so
-the bar does *not* try to be a general Q&A surface. Keep at most a small "quick lookup" slice
-("what's for dinner tonight", "how many stars does Emma have") that returns a dismissable answer
-card and, for anything richer, **deep-links to the screen that already shows it** (Today, the meal
-plan, a person's rewards). This is a deliberate scope cut, not an omission — see the open question
-on exactly how thin.
+> **Note on allergens:** it's really a *mutate-a-list on a person* ("which person? add to their
+> list"), not a one-shot config flip like theme/start-of-week — so it leans on **Tier 2
+> resolution** and effectively straddles the two tiers. Theme and start-of-week are true `set`
+> writes; allergens is a `set` in vocabulary but a `mutate` in mechanics.
+
+**Queries — deep-link only.** Reads are already answered by the **Today dashboard**, so the bar
+renders **no inline answers**. A question routes to the screen that answers it — Today, the meal
+plan, a person's rewards — and opens it. No answer-card system to build, no overlap with Today. If
+a specific spoken lookup later proves painful to navigate, add it *then*; start at zero.
 
 ### Tier 4 — Multi-action phrases
 
@@ -201,7 +222,8 @@ One utterance, several actions: "add milk **and** mark the trash done", "taco ni
 give the dishes to Wally." A distinct capability because it changes the *shape* of a capture, not
 just its verb — the parser returns **an ordered list of intents**, and the client shows **one
 confirm card per action** (each still individually editable and, for mutations, individually
-resolved). Confirm-all or confirm-each; a rejected card doesn't block the others.
+resolved). **Confirm-each, with a Confirm-all button** for the common case — approve individually
+or one-tap the whole batch; a rejected or edited card doesn't block the others.
 
 Sequenced last on purpose: it composes on top of every earlier tier (each sub-action is just a
 create/mutate/setting we already handle) and only adds the split-and-stack layer, so it's cheapest
@@ -285,22 +307,24 @@ the parsed intent first, then implement.
 
 ## 8. Open questions
 
-**Decided (moved out of open questions):**
+**Decided:**
 - ✅ **Resolution runs as a separate step (Option B)** — parse returns an unresolved intent; a
   dedicated resolution call attaches the row id. (Tier 2.)
-- ✅ **Multi-action is in scope, as its own tier (Tier 4)** — split one utterance into an ordered
-  list of intents, one confirm card each.
-- ✅ **Queries stay thin** — the Today dashboard is the real read surface; the bar keeps at most a
-  small quick-lookup slice and deep-links for the rest. (Tier 3.)
+- ✅ **Resolution API = module-owned resolvers behind one `/api/capture/resolve`** — each module
+  registers a `resolveCandidates`; capture dispatches by `kind` and returns a uniform `Candidate[]`.
+  No cross-domain queries, no N client endpoints. (Tier 2.)
+- ✅ **Queries are deep-link only** — no inline answers; the bar opens the screen that answers the
+  question. Today stays the read surface. (Tier 3.)
+- ✅ **Settings v1 = theme, start-of-week, allergens** — module toggles / AI provider / kiosk
+  layout deferred. (Tier 3.)
+- ✅ **Multi-action is its own tier (Tier 4)**, confirmed **each with a Confirm-all button**.
 
-**Still open:**
-- **Exactly how thin are queries?** Which handful of lookups (if any) are worth answering inline
-  vs. always deep-linking to Today / the relevant screen?
-- **Resolution API surface (Tier 2):** one `/api/capture/resolve` endpoint that any kind routes
-  through, or per-module search the client calls? What context does it take (speaker, "now")?
-- **Settings vocabulary (Tier 3):** enumerate the exact settable keys — start with the highest-value
-  (theme, start-of-week, module toggles, allergens) rather than "any setting".
-- **Multi-action confirm UX (Tier 4):** confirm-all vs. confirm-each; how a rejected card is shown
-  without blocking the others.
-- **Voice quick-add (roadmap ~219):** the iOS freeform voice intent parses via `/api/capture` then
-  speaks a summary — the universal confirm-and-edit contract needs a spoken-confirm story.
+**Still open / to detail during build:**
+- **Allergens mechanics:** since it's a mutate-a-list-on-a-person, does it ship *with* Tier 2
+  resolution, or as a special-cased simple append in Tier 3? (Leaning: reuse Tier 2 resolution.)
+- **Resolver context & scoring:** the exact `Candidate` ranking (token overlap threshold, recency
+  tiebreak) and how "today's occurrence" is chosen for recurring items.
+- **Deep-link targets:** the precise screen/route each query kind opens.
+- **Voice quick-add (roadmap ~219) — deferred:** the iOS freeform voice intent parses via
+  `/api/capture` then speaks a summary; the universal confirm-and-edit contract will need a
+  spoken-confirm story when voice ships.
