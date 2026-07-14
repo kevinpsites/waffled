@@ -7,8 +7,6 @@ import type { QueryResultRow } from 'pg'
 import { getPool, query } from '../../platform/db'
 import { requireTenant, requireAdmin, type Tenant } from '../households/households'
 import { tenantRoute, adminRoute } from '../../platform/route-guards'
-import { assertPersonInHousehold } from '../../platform/household-refs'
-import { requireCapability } from '../../platform/permissions'
 
 type Api = ReturnType<typeof createAPI>
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -350,8 +348,6 @@ export function registerCurrencyRoutes(api: Api): void {
     const body = (req.body ?? {}) as { personId?: string; times?: number }
     const personId = body.personId?.trim() || tenant.personId
     if (!UUID_RE.test(personId)) return res.status(400).json({ error: 'BadRequest', message: 'valid personId required' })
-    await assertPersonInHousehold(tenant.householdId, personId)
-    if (personId !== tenant.personId) await requireCapability(tenant, 'reward.manage')
     const result = await applyConversion(tenant, id, personId, body.times ?? 1)
     if (!result.ok) {
       return res.status(result.error === 'conversion not found' ? 404 : 409).json({ error: 'Conflict', message: result.error })

@@ -14,8 +14,7 @@ import { type Tenant } from '../households/households'
 import { tenantRoute } from '../../platform/route-guards'
 import { resolveWriteTarget, resolveWriteTargetById, pushEventNow } from '../calendar/calendar-sync.service'
 import { recordMatch, WEIGHT } from '../goals/goal-match-memory'
-import { assertEventReferences, updateEvent, softDeleteEvent } from '../events/events'
-import { assertEventInHousehold, assertPersonInHousehold } from '../../platform/household-refs'
+import { updateEvent, softDeleteEvent } from '../events/events'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -118,38 +117,6 @@ async function applyParticipantPut(tenant: Tenant, id: string, data: Record<stri
   )
 }
 
-function eventReferenceInput(data: Record<string, unknown>): Record<string, unknown> {
-  const input: Record<string, unknown> = {}
-  if ('person_id' in data) input.personId = asStr(data.person_id)
-  if ('goal_id' in data) input.goalId = asStr(data.goal_id)
-  if ('goal_step_id' in data) input.goalStepId = asStr(data.goal_step_id)
-  if ('calendar_id' in data) input.calendarId = asStr(data.calendar_id)
-  return input
-}
-
-async function validateOps(tenant: Tenant, ops: CrudOp[]): Promise<void> {
-  for (const op of ops) {
-    if (!op || typeof op.id !== 'string' || !op.id) continue
-    const data = op.data ?? {}
-    if (op.table === 'events' && (op.op === 'PUT' || op.op === 'PATCH')) {
-      let existingGoalId: string | null | undefined
-      if (op.op === 'PATCH' && 'goal_step_id' in data && !('goal_id' in data)) {
-        const current = await query<{ goal_id: string | null }>(
-          `select goal_id from events where household_id = $1 and id = $2 and deleted_at is null`,
-          [tenant.householdId, op.id]
-        )
-        existingGoalId = current.rows[0]?.goal_id
-      }
-      await assertEventReferences(tenant.householdId, eventReferenceInput(data), existingGoalId)
-    } else if (op.table === 'event_participants' && (op.op === 'PUT' || op.op === 'PATCH')) {
-      const eventId = asStr(data.event_id)
-      const personId = asStr(data.person_id)
-      if (eventId) await assertEventInHousehold(tenant.householdId, eventId)
-      if (personId) await assertPersonInHousehold(tenant.householdId, personId)
-    }
-  }
-}
-
 export function registerPowerSyncCrudRoutes(api: Api): void {
   // PowerSync's connector uploads queued row ops here (see web WaffledConnector).
   api.post('/api/powersync/crud', tenantRoute(async (tenant, req: Request, res: Response) => {
@@ -157,7 +124,6 @@ export function registerPowerSyncCrudRoutes(api: Api): void {
     if (!Array.isArray(ops)) {
       return res.status(400).json({ error: 'BadRequest', message: 'ops[] required' })
     }
-    await validateOps(tenant, ops)
     for (const op of ops) {
       if (!op || typeof op.id !== 'string' || !op.id) continue
       const data = op.data ?? {}

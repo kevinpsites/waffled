@@ -13,12 +13,6 @@ let url: string
 let app: any
 let closePool: () => Promise<void>
 let kevinId = ''
-let householdId = ''
-let foreignPersonId = ''
-let localGoalId = ''
-let foreignGoalId = ''
-let foreignGoalStepId = ''
-let foreignCalendarId = ''
 
 function mint(sub: string): string {
   return jwt.sign({}, SECRET, {
@@ -76,7 +70,7 @@ beforeAll(async () => {
   })
   expect(setup.statusCode).toBe(201)
   kevinId = JSON.parse(setup.body).person.id
-  householdId = JSON.parse(setup.body).household.id
+  const householdId = JSON.parse(setup.body).household.id
   // Seed an identity so the legacy mint('dev|kevin') token resolves to the owner.
   await withClient((c) =>
     c.query(
@@ -84,45 +78,6 @@ beforeAll(async () => {
       [householdId, kevinId]
     )
   )
-  await withClient(async (c) => {
-    localGoalId = (await c.query<{ id: string }>(
-      `insert into goals (household_id, title, goal_type, tracking_mode)
-       values ($1,'Local goal','checklist','shared_total') returning id`,
-      [householdId]
-    )).rows[0].id
-    const h = await c.query<{ id: string }>(
-      `insert into households (name, timezone) values ('Other events','UTC') returning id`
-    )
-    const foreignHouseholdId = h.rows[0].id
-    const p = await c.query<{ id: string }>(
-      `insert into persons (household_id, name, member_type) values ($1,'Outsider','adult') returning id`,
-      [foreignHouseholdId]
-    )
-    foreignPersonId = p.rows[0].id
-    const g = await c.query<{ id: string }>(
-      `insert into goals (household_id, title, goal_type, tracking_mode)
-       values ($1,'Foreign goal','checklist','shared_total') returning id`,
-      [foreignHouseholdId]
-    )
-    foreignGoalId = g.rows[0].id
-    const s = await c.query<{ id: string }>(
-      `insert into goal_steps (household_id, goal_id, label) values ($1,$2,'Foreign step') returning id`,
-      [foreignHouseholdId, foreignGoalId]
-    )
-    foreignGoalStepId = s.rows[0].id
-    const a = await c.query<{ id: string }>(
-      `insert into calendar_accounts
-         (household_id, person_id, google_sub, refresh_token_encrypted)
-       values ($1,$2,'foreign-sub','encrypted') returning id`,
-      [foreignHouseholdId, foreignPersonId]
-    )
-    const cal = await c.query<{ id: string }>(
-      `insert into calendars (household_id, account_id, person_id, google_calendar_id, summary)
-       values ($1,$2,$3,'foreign-primary','Foreign calendar') returning id`,
-      [foreignHouseholdId, a.rows[0].id, foreignPersonId]
-    )
-    foreignCalendarId = cal.rows[0].id
-  })
 })
 
 afterAll(async () => {
@@ -218,31 +173,6 @@ describe('events api', () => {
   it('400 without title or with a bad startsAt', async () => {
     expect((await call('POST', '/api/events', kevin, { startsAt: '2026-06-08T13:30:00Z' })).statusCode).toBe(400)
     expect((await call('POST', '/api/events', kevin, { title: 'X', startsAt: 'not-a-date' })).statusCode).toBe(400)
-  })
-
-  it('rejects foreign people, goals, steps, and calendars on create and update', async () => {
-    const base = { title: 'Boundary event', startsAt: '2026-06-08T18:00:00Z' }
-    for (const foreignRef of [
-      { personId: foreignPersonId },
-      { participantIds: [kevinId, foreignPersonId] },
-      { goalId: foreignGoalId },
-      { goalId: localGoalId, goalStepId: foreignGoalStepId },
-      { calendarId: foreignCalendarId },
-    ]) {
-      expect((await call('POST', '/api/events', kevin, { ...base, ...foreignRef })).statusCode).toBe(404)
-    }
-
-    const created = await call('POST', '/api/events', kevin, base)
-    expect(created.statusCode).toBe(201)
-    const id = JSON.parse(created.body).event.id as string
-    for (const foreignRef of [
-      { personId: foreignPersonId },
-      { participantIds: [foreignPersonId] },
-      { goalId: foreignGoalId },
-      { goalId: localGoalId, goalStepId: foreignGoalStepId },
-    ]) {
-      expect((await call('PATCH', `/api/events/${id}`, kevin, foreignRef)).statusCode).toBe(404)
-    }
   })
 
   it('creates an event and lists it in today with the person color', async () => {

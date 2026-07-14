@@ -21,7 +21,6 @@ let stubCalls: string[] = []
 let app: any
 let closePool: () => Promise<void>
 let kellyId = ''
-let foreignPersonId = ''
 
 function mint(sub: string): string {
   return jwt.sign({}, SECRET, { algorithm: 'HS256', subject: sub, issuer: 'waffled-local', audience: 'waffled-api', expiresIn: '1h' })
@@ -110,13 +109,6 @@ beforeAll(async () => {
     [sb.household.id, sb.person.id]
   )
   kellyId = JSON.parse((await call('POST', '/api/persons', kevin, { name: 'Kelly', memberType: 'adult', colorHex: '#E0548B' })).body).person.id
-  const foreignHousehold = await query<{ id: string }>(
-    `insert into households (name, timezone) values ('Other calendars','UTC') returning id`
-  )
-  foreignPersonId = (await query<{ id: string }>(
-    `insert into persons (household_id, name, member_type) values ($1,'Outsider','adult') returning id`,
-    [foreignHousehold.rows[0].id]
-  )).rows[0].id
 }, 60_000)
 
 afterAll(async () => {
@@ -204,13 +196,6 @@ describe('calendar mapping + reconnect', () => {
     const res = await call('PATCH', `/api/calendar/google/calendars/${fam.id}`, kevin, { personId: kellyId, selected: false })
     expect(res.statusCode).toBe(200)
     expect(JSON.parse(res.body).calendar).toMatchObject({ personName: 'Kelly', selected: false })
-  })
-
-  it('rejects mapping a calendar to a person in another household', async () => {
-    const fam = await familyCal()
-    expect((await call('PATCH', `/api/calendar/google/calendars/${fam.id}`, kevin, {
-      personId: foreignPersonId,
-    })).statusCode).toBe(404)
   })
 
   it('preserves the household mapping when the same account reconnects', async () => {

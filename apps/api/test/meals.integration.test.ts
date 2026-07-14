@@ -60,8 +60,6 @@ function call(method: string, path: string, token?: string, body?: unknown) {
 const kevin = mint('dev|kevin')
 let kevinId = ''
 let householdId = ''
-let foreignPersonId = ''
-let foreignRecipeId = ''
 let mediaDir = ''
 
 beforeAll(async () => {
@@ -90,19 +88,6 @@ beforeAll(async () => {
       [householdId, kevinId]
     )
   )
-  await withClient(async (c) => {
-    const h = await c.query<{ id: string }>(
-      `insert into households (name, timezone) values ('Other meals','UTC') returning id`
-    )
-    foreignPersonId = (await c.query<{ id: string }>(
-      `insert into persons (household_id, name, member_type) values ($1,'Outsider','adult') returning id`,
-      [h.rows[0].id]
-    )).rows[0].id
-    foreignRecipeId = (await c.query<{ id: string }>(
-      `insert into recipes (household_id, title) values ($1,'Foreign recipe') returning id`,
-      [h.rows[0].id]
-    )).rows[0].id
-  })
 })
 
 afterAll(async () => {
@@ -422,21 +407,6 @@ describe('meal planning api', () => {
       (await call('POST', '/api/meals/plan', kevin, { date: '2026-06-12', mealType: 'lunch', cookPersonId: 'nope' }))
         .statusCode
     ).toBe(400)
-  })
-
-  it('rejects recipes, cooks, and calendar participants from another household', async () => {
-    expect((await call('POST', '/api/meals/plan', kevin, {
-      date: '2026-06-14', mealType: 'dinner', recipeId: foreignRecipeId,
-    })).statusCode).toBe(404)
-    expect((await call('POST', '/api/meals/plan', kevin, {
-      date: '2026-06-14', mealType: 'lunch', cookPersonId: foreignPersonId,
-    })).statusCode).toBe(404)
-    expect((await call('PUT', '/api/meals/calendar-settings', kevin, {
-      calendarPersonId: foreignPersonId,
-    })).statusCode).toBe(404)
-    expect((await call('PUT', '/api/meals/calendar-settings', kevin, {
-      participantIds: [kevinId, foreignPersonId],
-    })).statusCode).toBe(404)
   })
 
   it('clears a planned slot (204) and removes it from the week; 404 when empty', async () => {

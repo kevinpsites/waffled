@@ -15,7 +15,6 @@ import { updateEvent } from '../events/events'
 import { keywordMatch, type MatchGoal } from './goal-match'
 import { loadMemory, loadMemoryGrouped, forgetMemory, clearMemory, memoryMatch, recordMatch, WEIGHT, AUTO_LINK_THRESHOLD } from './goal-match-memory'
 import { getAiConfig, completeJson } from '../../platform/llm'
-import { assertPersonsInHousehold } from '../../platform/household-refs'
 
 type Api = ReturnType<typeof createAPI>
 
@@ -601,7 +600,6 @@ export function registerGoalCalendarRoutes(api: Api): void {
       return res.status(400).json({ error: 'BadRequest', message: 'amount must be a non-zero number' })
     }
     const personIds = Array.isArray(body.personIds) ? body.personIds.filter((p) => typeof p === 'string') : []
-    await assertPersonsInHousehold(tenant.householdId, personIds)
     const result = await confirmRecap(tenant, body.eventId, body.occurrenceDate, amount, personIds, body.note ?? null)
     if (result === null) return res.status(404).json({ error: 'NotFound', message: 'event or goal link not found' })
     return res.status(201).json({ status: result })
