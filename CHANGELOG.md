@@ -79,6 +79,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explains the required terminal, initial credentials, success checks, and safe troubleshooting.
 
 ### Fixed
+- **Up-for-grabs chores now appear on Today.** The Family Chores card shows unassigned
+  chores that anyone can claim instead of incorrectly saying there are no chores yet.
+
 - **The iOS photo grid now reuses decoded images while scrolling.** Photo tiles no longer
   refetch and decode the same image whenever SwiftUI recreates a grid cell.
 - **`./waffled up` now waits for health checks before showing its final status.** Normal startup

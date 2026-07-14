@@ -217,6 +217,21 @@ describe('chores today api', () => {
     expect(me).toMatchObject({ total: 1, done: 0, stars: 0 })
   })
 
+  it('surfaces up-for-grabs chores without assigning them to a person summary', async () => {
+    const before = JSON.parse((await call('GET', '/api/chores/today', kevin)).body)
+    const beforeTotal = before.people.find((p: { id: string }) => p.id === kevinId).total
+
+    const add = await call('POST', '/api/chores', kevin, {
+      title: 'Anyone can sweep',
+      personId: null,
+    })
+    expect(add.statusCode).toBe(201)
+
+    const after = JSON.parse((await call('GET', '/api/chores/today', kevin)).body)
+    expect(after.upForGrabs).toBe(before.upForGrabs + 1)
+    expect(after.people.find((p: { id: string }) => p.id === kevinId).total).toBe(beforeTotal)
+  })
+
   it('rejects assignees from another household across chore write paths', async () => {
     expect((await call('POST', '/api/chores', kevin, {
       title: 'Foreign create', personId: foreignPersonId,

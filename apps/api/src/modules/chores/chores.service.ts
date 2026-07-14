@@ -234,6 +234,27 @@ export async function todaySummary(householdId: string, dueOn: string, tz = 'UTC
   }))
 }
 
+// Unassigned pending instances that someone can claim from the Tasks board.
+// Kept separate from the person summaries so API consumers never mistake this
+// bucket for a household member.
+export async function upForGrabsCount(householdId: string, dueOn: string, tz = 'UTC'): Promise<number> {
+  const { rows } = await query<{ total: string }>(
+    `select count(*) as total
+       from chore_instances ci
+       join chores c on c.id = ci.chore_id and c.deleted_at is null
+      where ci.household_id = $1
+        and ci.person_id is null
+        and ci.status = 'pending'
+        and ci.deleted_at is null
+        and (ci.due_on = $2::date
+             or (ci.due_on < $2::date and c.rrule is null and c.rollover)
+             or (ci.due_on > $2::date and c.rrule is null
+                 and (ci.created_at at time zone $3)::date <= $2::date))`,
+    [householdId, dueOn, tz]
+  )
+  return Number(rows[0]?.total ?? 0)
+}
+
 // Per-chore streak: consecutive calendar days (ending today if done, else
 // yesterday) the chore was completed. Day-based — exact for daily chores, an
 // approximation for weekly ones. Computed in JS over the last ~60 days.
