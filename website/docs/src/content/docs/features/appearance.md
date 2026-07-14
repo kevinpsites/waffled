@@ -31,11 +31,12 @@ keeping the accent hues fixed is what makes the app still feel like Waffled with
 | Surface | Support |
 |---|---|
 | Web / Kiosk | ✅ |
-| iPhone / iPad | 🔜 Planned (parity with web) |
+| iPhone / iPad | ✅ |
 
-On the web and the kitchen kiosk display, dark mode is available today. The iPhone/iPad app
-mirrors the same warm-dark palette and **Settings → Appearance** control; that parity is in
-progress.
+Dark mode is available on the web, the kitchen kiosk display, and the iPhone/iPad app. The phone
+and iPad mirror the exact same warm-dark palette and the same **Settings → Appearance** control
+(Light / Dark / Match system, saved per device), so a screen reads the same with the lights off on
+your phone as it does on the wall.
 
 ## Notes
 - **Match system** uses your device/browser's `prefers-color-scheme`; no account setting is

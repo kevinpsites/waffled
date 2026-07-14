@@ -118,10 +118,10 @@ final class GoalsModel {
 enum GoalStyle {
     static func color(_ key: String?) -> Color {
         switch key {
-        case "physical":     return FamilyColor.wally.solid
-        case "intellectual": return FamilyColor.kevin.solid
-        case "spiritual":    return FamilyColor.lottie.solid
-        case "creative":     return FamilyColor.kelly.solid
+        case "physical":     return FamilyColor.person3.solid
+        case "intellectual": return FamilyColor.person1.solid
+        case "spiritual":    return FamilyColor.person4.solid
+        case "creative":     return FamilyColor.person2.solid
         case "social":       return WF.gold
         default:             return WF.primary
         }
@@ -432,7 +432,7 @@ struct GoalsView: View {
                     ForEach(g.participants, id: \.personId) { contribRow($0, max: maxProg, unit: g.unit) }
                 }
             }
-            logButton(g, fg: Color(hex: 0x1C8A56))
+            logButton(g, fg: WF.success)
         }
         .padding(16)
         .background(Self.heroGreen)
@@ -470,7 +470,7 @@ struct GoalsView: View {
                     }
                 }
             }
-            logButton(g, fg: Color(hex: 0xC9760F))
+            logButton(g, fg: WF.warn)
         }
         .padding(16)
         .background(Self.heroOrange)
@@ -534,9 +534,9 @@ struct GoalsView: View {
                         HStack(spacing: 6) {
                             Text(g.title).font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink).lineLimit(1)
                             if pinned {
-                                Text("📌 PINNED").font(.system(size: 9, weight: .heavy)).foregroundStyle(Color(hex: 0xB07D1C))
+                                Text("📌 PINNED").font(.system(size: 9, weight: .heavy)).foregroundStyle(WF.warn)
                                     .padding(.horizontal, 6).padding(.vertical, 2)
-                                    .background(Color(hex: 0xFDF2DD)).clipShape(Capsule())
+                                    .background(WF.warnT).clipShape(Capsule())
                             }
                         }
                         Text(goalDescriptor(g)).font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3).lineLimit(1)
@@ -565,7 +565,7 @@ struct GoalsView: View {
             .overlay {
                 if pinned {
                     RoundedRectangle(cornerRadius: WF.rMD, style: .continuous)
-                        .strokeBorder(Color(hex: 0xE2A636).opacity(0.5), lineWidth: 1.5)
+                        .strokeBorder(WF.warn.opacity(0.5), lineWidth: 1.5)
                 }
             }
         }
@@ -1451,7 +1451,7 @@ struct GoalCreateSheet: View {
                 Text(isChecklist ? "Finish by a date" : (isHabit ? "Keep it up until" : "Set a deadline"))
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(WF.ink2)
             }
-            .tint(FamilyColor.wally.solid)
+            .tint(FamilyColor.person3.solid)
             if hasDeadline {
                 DatePicker("Deadline", selection: $deadline, displayedComponents: .date)
                     .datePickerStyle(.compact).labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
@@ -1879,7 +1879,7 @@ struct GoalCreateSheet: View {
                     Text(sub).font(.system(size: 12, weight: .medium)).foregroundStyle(WF.ink3)
                 }
                 Spacer(minLength: 8)
-                Toggle("", isOn: on.animation()).labelsHidden().tint(FamilyColor.wally.solid)
+                Toggle("", isOn: on.animation()).labelsHidden().tint(FamilyColor.person3.solid)
             }
             .padding(.vertical, 14)
         }
@@ -1933,7 +1933,7 @@ struct GoalCreateSheet: View {
         return HStack(spacing: 13) {
             ZStack {
                 RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(feat ? AnyShapeStyle(Color.white.opacity(0.18)) : AnyShapeStyle(Color(hex: 0xFBE7E1)))
+                    .fill(feat ? AnyShapeStyle(Color.white.opacity(0.18)) : AnyShapeStyle(WF.dangerT))
                 Text("🎯").font(.system(size: 24))
             }
             .frame(width: 46, height: 46)
@@ -2014,7 +2014,7 @@ struct GoalCreateSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 14) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 15, style: .continuous).fill(Color(hex: 0xFBE7E1))
+                    RoundedRectangle(cornerRadius: 15, style: .continuous).fill(WF.dangerT)
                     Text("🎯").font(.system(size: 27))
                 }
                 .frame(width: 52, height: 52)
@@ -2705,9 +2705,9 @@ struct GoalDetailView: View {
                     HStack(spacing: 12) {
                         Text(m.emoji ?? "⛳").font(.system(size: 16))
                             .frame(width: 34, height: 34)
-                            .background(m.reached ? FamilyColor.wally.solid.opacity(0.18) : (isNow ? WF.primary.opacity(0.12) : WF.panel))
+                            .background(m.reached ? FamilyColor.person3.solid.opacity(0.18) : (isNow ? WF.primary.opacity(0.12) : WF.panel))
                             .clipShape(Circle())
-                            .overlay(Circle().strokeBorder(m.reached ? FamilyColor.wally.solid : (isNow ? WF.primary : Color.clear), lineWidth: 1.5))
+                            .overlay(Circle().strokeBorder(m.reached ? FamilyColor.person3.solid : (isNow ? WF.primary : Color.clear), lineWidth: 1.5))
                         Text(m.label ?? goalFmt(m.threshold))
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(m.reached || isNow ? WF.ink : WF.ink2)
@@ -2716,7 +2716,7 @@ struct GoalDetailView: View {
                                 : isNow ? "\(goalFmt(m.threshold - progress)) to go"
                                 : (m.rewardText ?? "—"))
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(m.reached ? FamilyColor.wally.solid : (isNow ? WF.primary : WF.ink3))
+                            .foregroundStyle(m.reached ? FamilyColor.person3.solid : (isNow ? WF.primary : WF.ink3))
                             .lineLimit(1)
                     }
                     .padding(.vertical, 7)
@@ -2735,7 +2735,7 @@ struct GoalDetailView: View {
                 .font(.system(size: 15, weight: .bold)).foregroundStyle(WF.ink)
             VStack(spacing: 11) {
                 ForEach(participants, id: \.personId) { p in
-                    let color = Color(hexString: p.colorHex) ?? FamilyColor.kevin.solid
+                    let color = Color(hexString: p.colorHex) ?? FamilyColor.person1.solid
                     HStack(spacing: 10) {
                         Avatar(colorHex: p.colorHex, emoji: p.avatarEmoji ?? "🙂", size: 26)
                         Text(goalFirstName(p.name)).font(.system(size: 13, weight: .bold))
@@ -2784,7 +2784,7 @@ struct GoalDetailView: View {
                                     .font(.system(size: 13, weight: .semibold)).foregroundStyle(WF.ink).lineLimit(1)
                                 Spacer(minLength: 6)
                                 Text("+\(goalFmt(log.amount))\(unit.map { " \($0)" } ?? "")")
-                                    .font(.system(size: 13, weight: .bold)).foregroundStyle(FamilyColor.wally.solid)
+                                    .font(.system(size: 13, weight: .bold)).foregroundStyle(FamilyColor.person3.solid)
                                 if canEditEntries {
                                     Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(WF.ink3)
                                 }
@@ -2911,7 +2911,7 @@ struct GoalListCreateSheet: View {
                             Text("Only these members see it").font(.system(size: 12, weight: .semibold)).foregroundStyle(WF.ink3)
                         }
                     }
-                    .tint(FamilyColor.wally.solid)
+                    .tint(FamilyColor.person3.solid)
                     .padding(13)
                     .background(WF.card).clipShape(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: WF.rMD, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))

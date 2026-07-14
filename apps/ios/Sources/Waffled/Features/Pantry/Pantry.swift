@@ -284,9 +284,9 @@ struct AgePill: View {
     var body: some View {
         Text("\(icon ? "🕰️ " : "")\(PantryExpiry.ageLabel(daysSince: days))\(trailing)")
             .font(.system(size: size, weight: .bold))
-            .foregroundStyle(Color(hex: 0x8A6D3B))
+            .foregroundStyle(WF.warn)
             .padding(.horizontal, 7).padding(.vertical, 2)
-            .background(Color(hex: 0xF4ECD8)).clipShape(Capsule())
+            .background(WF.warnT).clipShape(Capsule())
     }
 }
 

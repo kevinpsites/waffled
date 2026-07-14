@@ -246,10 +246,10 @@ struct KioskCalendarView: View {
                     if let cds = countdowns.byDate[cell.key], let first = cds.first {
                         HStack(spacing: 2) {
                             Text(first.emoji ?? "⏳").font(.system(size: 9))
-                            Text(CountdownFormat.short(first.daysLeft)).font(.system(size: 9, weight: .heavy)).foregroundStyle(Color(hex: 0x8A6D3B))
+                            Text(CountdownFormat.short(first.daysLeft)).font(.system(size: 9, weight: .heavy)).foregroundStyle(WF.warn)
                         }
                         .padding(.horizontal, 4).padding(.vertical, 1)
-                        .background(Color(hex: 0xF4ECD8)).clipShape(Capsule())
+                        .background(WF.warnT).clipShape(Capsule())
                     }
                 }
                 ForEach(items.prefix(3)) { ev in eventChip(ev) }

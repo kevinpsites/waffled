@@ -684,7 +684,7 @@ struct RecipeScheduleSheet: View {
                 Text(day.formatted(.dateTime.day())).font(WF.serif(17, .bold)).foregroundStyle(saving ? .white : WF.ink)
             }
             .frame(maxWidth: .infinity).padding(.vertical, 10)
-            .background(saving ? FamilyColor.wally.solid : WF.card2)
+            .background(saving ? FamilyColor.person3.solid : WF.card2)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(WF.hair, lineWidth: 1))
         }
@@ -751,9 +751,9 @@ struct TagChip: View {
     private var fg: Color {
         switch chip.style {
         case .plain: return WF.ink2
-        case .collection: return Color(hex: 0x1559B8)
+        case .collection: return WF.info
         case .dietary: return WF.ai
-        case .veg: return Color(hex: 0x167A4A)
+        case .veg: return WF.success
         case .soft: return WF.ink3
         case .new: return WF.primary
         }
@@ -761,9 +761,9 @@ struct TagChip: View {
     private var bg: Color {
         switch chip.style {
         case .plain: return WF.panel
-        case .collection: return Color(hex: 0x1559B8).opacity(0.12)
+        case .collection: return WF.info.opacity(0.12)
         case .dietary: return WF.ai.opacity(0.12)
-        case .veg: return Color(hex: 0x167A4A).opacity(0.12)
+        case .veg: return WF.success.opacity(0.12)
         case .soft: return .clear
         case .new: return WF.primary.opacity(0.12)
         }

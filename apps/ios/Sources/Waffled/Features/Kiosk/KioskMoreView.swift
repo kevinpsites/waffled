@@ -70,10 +70,10 @@ struct KioskMoreView: View {
 
     private func descriptor(_ nav: KioskNav) -> (emoji: String, title: String, subtitle: String, accent: Color) {
         switch nav {
-        case .tasks:   return ("✅", "Chores", "Who's doing what today", FamilyColor.wally.tint)
+        case .tasks:   return ("✅", "Chores", "Who's doing what today", FamilyColor.person3.tint)
         case .rewards: return ("⭐", "Rewards", "Stars, jars & redemptions", Color(hex: 0xFDF0D6))
         case .goals:   return ("🎯", "Goals", "What the family's working toward", Color(hex: 0xE8F0E4))
-        case .lists:   return ("📋", "Lists", "Groceries, packing & to-dos", FamilyColor.kevin.tint)
+        case .lists:   return ("📋", "Lists", "Groceries, packing & to-dos", FamilyColor.person1.tint)
         case .pantry:  return ("🥫", "Pantry", "What's on hand", Color(hex: 0xF3E8D6))
         case .photos:  return ("📷", "Photos", "The family album", Color(hex: 0xDFF0EF))
         case .meals:   return ("🍽️", "Meals", "This week's plan & recipes", Color(hex: 0xF6E7DE))
