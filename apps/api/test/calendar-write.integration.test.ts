@@ -5,7 +5,7 @@
 // write-target override, update + delete mirroring, local-only events (no push),
 // and the push_failed → retry path via POST /api/calendar/sync.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { createServer, type Server } from 'node:http'
 import { randomBytes } from 'node:crypto'
 import jwt from 'jsonwebtoken'

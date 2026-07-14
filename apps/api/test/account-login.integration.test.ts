@@ -5,7 +5,7 @@
 // membership accounts behave exactly as today (no forced picker). Refresh re-mints
 // account-scoped tokens and UPGRADES in-flight legacy refresh tokens.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from './helpers/pg'
 import { randomBytes, randomUUID } from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import { runMigrations } from '../src/migrate'
